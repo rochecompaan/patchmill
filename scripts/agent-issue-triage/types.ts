@@ -1,0 +1,122 @@
+export type TriageConfig = {
+  repoRoot: string;
+  dryRun: boolean;
+  execute: boolean;
+  showHelp?: boolean;
+  teaLogin?: string;
+  issueNumber?: number;
+  limit?: number;
+  all?: boolean;
+  logDir: string;
+};
+
+export type CommandResult = {
+  code: number;
+  stdout: string;
+  stderr: string;
+};
+
+export type CommandRunOptions = {
+  cwd?: string;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
+};
+
+export type CommandRunner = {
+  run(
+    command: string,
+    args: string[],
+    options?: CommandRunOptions,
+  ): Promise<CommandResult>;
+};
+
+export type IssueSummary = {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+  state: string;
+  author?: string;
+  updated?: string;
+  comments?: unknown[];
+};
+
+export type LabelDefinition = {
+  name: string;
+  color: string;
+  description: string;
+};
+
+export type PrimaryBucket =
+  | "agent-ready"
+  | "needs-info"
+  | "agent-unsuitable";
+
+export type Confidence = "low" | "medium" | "high";
+
+export type RawTriageDecision = {
+  issueNumber: unknown;
+  primaryBucket: unknown;
+  labels: unknown;
+  confidence: unknown;
+  rationale: unknown;
+  questions: unknown;
+  comment: unknown;
+};
+
+export type HumanDecisionQuestion = {
+  question: string;
+  recommendedAnswer: string;
+};
+
+export type TriageQuestion = string | HumanDecisionQuestion;
+
+export type RawTriageDocument = {
+  decisions: unknown;
+};
+
+export type TriageDecision = {
+  issueNumber: number;
+  primaryBucket: PrimaryBucket;
+  labels: string[];
+  confidence: Confidence;
+  rationale: string;
+  questions: TriageQuestion[];
+  comment: string | null;
+};
+
+export type LabelChangePlan = {
+  issueNumber: number;
+  oldLabels: string[];
+  newLabels: string[];
+  addLabels: string[];
+  removeLabels: string[];
+};
+
+export type TriageLogIssueEntry = {
+  issueNumber: number;
+  title: string;
+  previousLabels: string[];
+  finalLabels: string[];
+  primaryBucket: PrimaryBucket;
+  confidence: Confidence;
+  rationale: string;
+  questions: TriageQuestion[];
+  comment: string | null;
+  mutationStatus: "planned" | "applied" | "failed";
+  error?: string;
+};
+
+export type TriageLog = {
+  mode: "dry-run" | "execute";
+  createdAt: string;
+  issues: TriageLogIssueEntry[];
+  error?: string;
+};
+
+export type TriageResult = {
+  status: "no-issues" | "dry-run" | "applied";
+  issueCount: number;
+  logPath: string;
+  issues: TriageLogIssueEntry[];
+};

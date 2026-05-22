@@ -1,0 +1,21 @@
+{
+  "name": "patchmill",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An agent-driven software factory that turns issues into reviewed diffs.",
+  "type": "module",
+  "bin": {
+    "patchmill": "./bin/patchmill.ts"
+  },
+  "scripts": {
+    "patchmill": "node bin/patchmill.ts",
+    "triage": "node scripts/agent-issue-triage.ts",
+    "run-once": "node scripts/agent-issue-once.ts",
+    "test": "node --test scripts/agent-issue-triage/*.test.ts scripts/agent-issue/*.test.ts",
+    "test:triage": "node --test scripts/agent-issue-triage/*.test.ts",
+    "test:run-once": "node --test scripts/agent-issue/*.test.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

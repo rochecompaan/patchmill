@@ -1,0 +1,10 @@
+node_modules/
+coverage/
+.DS_Store
+.env
+.env.*
+!.env.example
+.pi/agent-issue/runs/
+.pi/agent-issue/triage-runs/
+.worktrees/
+.tmp/
