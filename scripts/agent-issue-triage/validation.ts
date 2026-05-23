@@ -1,7 +1,12 @@
-import { PRIMARY_BUCKET_SET, TRIAGE_ALLOWED_LABEL_NAMES } from "./labels.ts";
+import { labelForPrimaryBucket, type PatchmillTriagePolicy } from "../../src/policy/triage.ts";
+import {
+  DEFAULT_TRIAGE_POLICY,
+  primaryBucketLabelMap,
+  primaryBucketLabels,
+  primaryBucketSet,
+  triageAllowedLabelNames,
+} from "./labels.ts";
 import type { Confidence, IssueSummary, PrimaryBucket, RawTriageDecision, RawTriageDocument, TriageQuestion, TriageDecision } from "./types.ts";
-
-const CONFIDENCE = new Set<string>(["low", "medium", "high"]);
 
 function asRecord(value: unknown, context: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -44,7 +49,11 @@ function asComment(value: unknown): string | null {
   return asString(value, "comment");
 }
 
-function validateOne(raw: RawTriageDecision, issueNumbers: Set<number>): TriageDecision {
+function validateOne(
+  raw: RawTriageDecision,
+  issueNumbers: Set<number>,
+  triagePolicy: PatchmillTriagePolicy,
+): TriageDecision {
   const issueNumber = raw.issueNumber;
   if (!Number.isInteger(issueNumber) || Number(issueNumber) <= 0) {
     throw new Error("issueNumber must be a positive integer");
@@ -53,36 +62,45 @@ function validateOne(raw: RawTriageDecision, issueNumbers: Set<number>): TriageD
     throw new Error(`Unknown issue number ${issueNumber}`);
   }
 
+  const primaryBuckets = primaryBucketSet(triagePolicy);
+  const bucketLabelsByStatus = primaryBucketLabelMap(triagePolicy);
+  const bucketLabelNames = primaryBucketLabels(triagePolicy);
+  const allowedLabelNames = triageAllowedLabelNames(triagePolicy);
+  const readyLabel = labelForPrimaryBucket(triagePolicy, "agent-ready");
   const primaryBucket = asString(raw.primaryBucket, "primaryBucket");
-  if (!PRIMARY_BUCKET_SET.has(primaryBucket)) {
+  if (!primaryBuckets.has(primaryBucket)) {
     throw new Error(`Invalid primaryBucket ${primaryBucket}`);
   }
 
   const labels = asStringArray(raw.labels, `labels for issue ${issueNumber}`);
   for (const label of labels) {
-    if (!TRIAGE_ALLOWED_LABEL_NAMES.has(label)) {
-      if (label === "in-progress") {
-        throw new Error("in-progress is not allowed in triage decisions");
+    if (!allowedLabelNames.has(label)) {
+      if (label === triagePolicy.labels.inProgress) {
+        throw new Error(`${triagePolicy.labels.inProgress} is not allowed in triage decisions`);
       }
       throw new Error(`Unknown label ${label}`);
     }
   }
 
-  const hasAgentReady = labels.includes("agent-ready");
+  const hasAgentReady = labels.includes(readyLabel);
   if (primaryBucket === "agent-ready" && !hasAgentReady) {
-    throw new Error(`${primaryBucket} requires agent-ready`);
+    throw new Error(`${primaryBucket} requires ${readyLabel}`);
   }
   if (primaryBucket !== "agent-ready" && hasAgentReady) {
-    throw new Error("agent-ready is only allowed for the agent-ready bucket");
+    throw new Error(`${readyLabel} is only allowed for the agent-ready bucket`);
   }
 
-  const bucketLabels = labels.filter((label) => PRIMARY_BUCKET_SET.has(label));
-  if (bucketLabels.length !== 1 || bucketLabels[0] !== primaryBucket) {
-    throw new Error(`Issue ${issueNumber} must include exactly its primary bucket label`);
+  const requiredBucketLabel = bucketLabelsByStatus.get(primaryBucket as PrimaryBucket);
+  if (!requiredBucketLabel) throw new Error(`Missing primary bucket label for ${primaryBucket}`);
+  const bucketLabels = labels.filter((label) => bucketLabelNames.has(label));
+  if (bucketLabels.length !== 1 || bucketLabels[0] !== requiredBucketLabel) {
+    throw new Error(`Issue ${issueNumber} must include exactly its primary bucket label ${requiredBucketLabel}`);
   }
 
   const confidence = asString(raw.confidence, "confidence");
-  if (!CONFIDENCE.has(confidence)) throw new Error(`Invalid confidence ${confidence}`);
+  if (!triagePolicy.confidenceValues.includes(confidence as Confidence)) {
+    throw new Error(`Invalid confidence ${confidence}`);
+  }
 
   const rationale = asString(raw.rationale, `rationale for issue ${issueNumber}`);
   const questions = asQuestions(raw.questions, `questions for issue ${issueNumber}`);
@@ -101,7 +119,11 @@ function validateOne(raw: RawTriageDecision, issueNumbers: Set<number>): TriageD
   };
 }
 
-export function validateTriageDocument(document: RawTriageDocument, issues: IssueSummary[]): TriageDecision[] {
+export function validateTriageDocument(
+  document: RawTriageDocument,
+  issues: IssueSummary[],
+  triagePolicy: PatchmillTriagePolicy = DEFAULT_TRIAGE_POLICY,
+): TriageDecision[] {
   const record = asRecord(document, "triage document");
   if (!Array.isArray(record.decisions)) throw new Error("decisions must be an array");
   if (record.decisions.length !== issues.length) {
@@ -111,7 +133,11 @@ export function validateTriageDocument(document: RawTriageDocument, issues: Issu
   const issueNumbers = new Set(issues.map((issue) => issue.number));
   const seen = new Set<number>();
   const decisions = record.decisions.map((entry, index) => {
-    const decision = validateOne(asRecord(entry, `decisions[${index}]`) as RawTriageDecision, issueNumbers);
+    const decision = validateOne(
+      asRecord(entry, `decisions[${index}]`) as RawTriageDecision,
+      issueNumbers,
+      triagePolicy,
+    );
     if (seen.has(decision.issueNumber)) throw new Error(`Duplicate decision for issue ${decision.issueNumber}`);
     seen.add(decision.issueNumber);
     return decision;

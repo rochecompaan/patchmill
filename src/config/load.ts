@@ -222,6 +222,7 @@ function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillCon
     pi: { ...base.pi, ...update.pi },
     labels: {
       ...labels,
+      types: cloneStringArray(update.labels?.types ?? base.labels.types),
       priorities: cloneStringArray(update.labels?.priorities ?? base.labels.priorities),
     },
     paths: {
@@ -453,6 +454,7 @@ function parseConfigFile(data: unknown): PartialConfig {
     const inProgress = readOptionalString(labels, "inProgress", "labels.inProgress");
     const done = readOptionalString(labels, "done", "labels.done");
     const blocked = readOptionalString(labels, "blocked", "labels.blocked");
+    const types = readOptionalStringArray(labels, "types", "labels.types");
     const priorities = readOptionalStringArray(labels, "priorities", "labels.priorities");
     if (ready !== undefined) parsed.ready = ready;
     if (needsInfo !== undefined) parsed.needsInfo = needsInfo;
@@ -460,6 +462,7 @@ function parseConfigFile(data: unknown): PartialConfig {
     if (inProgress !== undefined) parsed.inProgress = inProgress;
     if (done !== undefined) parsed.done = done;
     if (blocked !== undefined) parsed.blocked = blocked;
+    if (types !== undefined) parsed.types = types;
     if (priorities !== undefined) parsed.priorities = priorities;
     if (hasEntries(parsed)) config.labels = parsed;
   }

@@ -1,3 +1,10 @@
+import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
+import type {
+  PatchmillTriageConfidence,
+  PatchmillTriagePolicy,
+  PatchmillTriagePrimaryBucketStatus,
+} from "../../src/policy/triage.ts";
+
 export type TriageConfig = {
   repoRoot: string;
   dryRun: boolean;
@@ -8,6 +15,8 @@ export type TriageConfig = {
   limit?: number;
   all?: boolean;
   logDir: string;
+  projectPolicy?: PatchmillProjectPolicy;
+  triagePolicy?: PatchmillTriagePolicy;
 };
 
 export type CommandResult = {
@@ -47,12 +56,9 @@ export type LabelDefinition = {
   description: string;
 };
 
-export type PrimaryBucket =
-  | "agent-ready"
-  | "needs-info"
-  | "agent-unsuitable";
+export type PrimaryBucket = PatchmillTriagePrimaryBucketStatus;
 
-export type Confidence = "low" | "medium" | "high";
+export type Confidence = PatchmillTriageConfidence;
 
 export type RawTriageDecision = {
   issueNumber: unknown;

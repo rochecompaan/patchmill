@@ -1,6 +1,8 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { DEFAULT_TRIAGE_EXCLUDED_LABELS } from "../agent-issue-triage/labels.ts";
+import { createTriagePolicy } from "../../src/policy/triage.ts";
 import type { IssueSelectionOptions, IssueSummary } from "./types.ts";
+
+const DEFAULT_TRIAGE_POLICY = createTriagePolicy(DEFAULT_PATCHMILL_CONFIG.labels);
 
 type ResolvedIssueSelectionOptions = {
   issueNumber?: number;
@@ -9,16 +11,18 @@ type ResolvedIssueSelectionOptions = {
   excludedLabels: Set<string>;
 };
 
-function defaultExcludedLabels(): string[] {
-  return [...DEFAULT_TRIAGE_EXCLUDED_LABELS].filter((label) => label !== DEFAULT_PATCHMILL_CONFIG.labels.ready);
+function defaultExcludedLabels(options: IssueSelectionOptions): string[] {
+  return [...(options.triagePolicy ?? DEFAULT_TRIAGE_POLICY).runOnceSelection.excludedLabels];
 }
 
 function resolveSelectionOptions(options: IssueSelectionOptions): ResolvedIssueSelectionOptions {
+  const triagePolicy = options.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+
   return {
     issueNumber: options.issueNumber,
     readyLabel: options.readyLabel,
-    priorityLabels: options.priorityLabels ?? DEFAULT_PATCHMILL_CONFIG.labels.priorities,
-    excludedLabels: new Set(options.excludedLabels ?? defaultExcludedLabels()),
+    priorityLabels: options.priorityLabels ?? triagePolicy.runOnceSelection.priorityOrder,
+    excludedLabels: new Set(options.excludedLabels ?? defaultExcludedLabels(options)),
   };
 }
 

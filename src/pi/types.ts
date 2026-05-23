@@ -7,6 +7,7 @@ import type {
 } from "../../scripts/agent-issue/types.ts";
 import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 import type { RawTriageDocument } from "../../scripts/agent-issue-triage/types.ts";
+import type { PromptTriageLabels } from "../../scripts/agent-issue/prompts.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 
 export type TriagePiInput = {
@@ -22,6 +23,7 @@ export type PlanPiInput = {
   issue: IssueSummary;
   planPath: string;
   projectPolicy?: PatchmillProjectPolicy;
+  triageLabels?: Partial<PromptTriageLabels>;
   runOptions?: PiRunnerRunOptions;
 };
 

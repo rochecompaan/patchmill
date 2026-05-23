@@ -14,6 +14,7 @@ import {
   listOpenIssues,
 } from "../agent-issue-triage/forgejo.ts";
 import {
+  DEFAULT_TRIAGE_POLICY,
   missingLabelDefinitions,
   planLabelChange,
 } from "../agent-issue-triage/labels.ts";
@@ -170,6 +171,22 @@ function nextLabels(
   const removed = new Set(remove);
   const kept = labels.filter((label) => !removed.has(label));
   return [...kept, ...add.filter((label) => !kept.includes(label))];
+}
+
+function lifecycleLabels(config: Pick<AgentIssueConfig, "readyLabel" | "triagePolicy">): {
+  ready: string;
+  inProgress: string;
+  done: string;
+  needsInfo: string;
+} {
+  const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+
+  return {
+    ready: config.triagePolicy?.labels.ready ?? config.readyLabel,
+    inProgress: triagePolicy.labels.inProgress,
+    done: triagePolicy.labels.done,
+    needsInfo: triagePolicy.labels.needsInfo,
+  };
 }
 
 const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<keyof AgentIssueRunCheckpoints>([
@@ -393,11 +410,12 @@ async function selectResumableIssue(
   issues: IssueSummary[],
   config: AgentIssueConfig,
 ): Promise<{ issue: IssueSummary; resumed: boolean } | undefined> {
+  const { inProgress, ready } = lifecycleLabels(config);
   const shouldResume = config.execute && !config.dryRun;
   const resumable: IssueSummary[] = [];
   if (shouldResume) {
     for (const issue of issues) {
-      if (!issue.labels.includes("in-progress")) continue;
+      if (!issue.labels.includes(inProgress)) continue;
       const state = await readRunState(config.runStateDir, issue.number);
       if (state && isResumableRunState(state)) resumable.push(issue);
     }
@@ -405,7 +423,7 @@ async function selectResumableIssue(
 
   if (resumable.length > 1) {
     throw new Error(
-      `Multiple resumable in-progress automation runs found: ${resumable.map((issue) => `#${issue.number}`).join(", ")}`,
+      `Multiple resumable ${inProgress} automation runs found: ${resumable.map((issue) => `#${issue.number}`).join(", ")}`,
     );
   }
 
@@ -416,12 +434,13 @@ async function selectResumableIssue(
     }
     const selected = selectIssue(issues, {
       issueNumber: config.issueNumber,
-      readyLabel: config.readyLabel,
+      readyLabel: ready,
+      triagePolicy: config.triagePolicy,
     });
     if (!selected) return undefined;
     if (resumable.length === 1 && resumable[0]?.number !== selected.number) {
       throw new Error(
-        `Resumable in-progress automation run #${resumable[0]?.number} exists; resume it before processing #${selected.number}`,
+        `Resumable ${inProgress} automation run #${resumable[0]?.number} exists; resume it before processing #${selected.number}`,
       );
     }
     return { issue: selected, resumed: resumable[0]?.number === selected.number };
@@ -433,14 +452,15 @@ async function selectResumableIssue(
 
   const selected = selectIssue(issues, {
     issueNumber: config.issueNumber,
-    readyLabel: config.readyLabel,
+    readyLabel: ready,
+    triagePolicy: config.triagePolicy,
   });
   return selected ? { issue: selected, resumed: false } : undefined;
 }
 
-function unexpectedFailureComment(reason: string): string {
+function unexpectedFailureComment(reason: string, inProgressLabel: string): string {
   return [
-    `Automation failed unexpectedly and remains in-progress.`,
+    `Automation failed unexpectedly and remains ${inProgressLabel}.`,
     ``,
     reason,
     ``,
@@ -455,10 +475,11 @@ function unexpectedFailureCommentKey(status: "claimed" | "planning" | "implement
 async function ensureAutomationLabel(
   runner: CommandRunner,
   config: AgentIssueConfig,
-  name: "in-progress" | "agent-done",
+  name: string,
 ): Promise<void> {
   const missing = missingLabelDefinitions(
     await listLabels(runner, config.repoRoot, config.teaLogin),
+    config.triagePolicy ?? DEFAULT_TRIAGE_POLICY,
   );
   const label = missing.find((definition) => definition.name === name);
   if (!label) return;
@@ -507,11 +528,12 @@ async function unexpectedFailure(
   const state = await readRunState(config.runStateDir, issue.number);
   const failureCommentKey = unexpectedFailureCommentKey(status);
   if (!state?.failureCommentKeys?.includes(failureCommentKey)) {
+    const { inProgress } = lifecycleLabels(config);
     const commented = await commentIssue(
       runner,
       config.repoRoot,
       issue.number,
-      unexpectedFailureComment(reason),
+      unexpectedFailureComment(reason, inProgress),
       config.teaLogin,
     ).then(() => true).catch(() => false);
     if (commented) {
@@ -562,10 +584,12 @@ async function blockIssue(
   timestamp: string,
   options: RunOneIssueOptions,
 ): Promise<AgentIssuePipelineResult> {
+  const { inProgress, needsInfo } = lifecycleLabels(config);
   await progress(options, "error", "blocked", `blocked: ${result.reason}`, {
     issueNumber: issue.number,
   });
-  const blockedLabels = nextLabels(labels, ["in-progress"], ["needs-info"]);
+  const blockedLabels = nextLabels(labels, [inProgress], [needsInfo]);
+  await ensureAutomationLabel(runner, config, needsInfo);
   await applyIssueLabels(
     runner,
     config.repoRoot,
@@ -726,21 +750,22 @@ export async function runOneIssue(
     config.repoRoot,
     ignoredPaths,
   );
+  const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
   let labels = resumed
-    ? (issue.labels.includes("in-progress")
+    ? (issue.labels.includes(inProgress)
       ? issue.labels
-      : nextLabels(issue.labels, [config.readyLabel], ["in-progress"]))
-    : nextLabels(issue.labels, [config.readyLabel], ["in-progress"]);
+      : nextLabels(issue.labels, [ready], [inProgress]))
+    : nextLabels(issue.labels, [ready], [inProgress]);
   if (!checkpoints.claimed) {
     await runStep("claim issue", async () => {
       await progress(
         options,
         "info",
         "labels",
-        "ensuring in-progress label exists",
+        `ensuring ${inProgress} label exists`,
         { issueNumber: issue.number },
       );
-      await ensureAutomationLabel(runner, config, "in-progress");
+      await ensureAutomationLabel(runner, config, inProgress);
       await applyIssueLabels(
         runner,
         config.repoRoot,
@@ -751,7 +776,7 @@ export async function runOneIssue(
         options,
         "info",
         "claim",
-        `claimed #${issue.number}: ${config.readyLabel} -> in-progress`,
+        `claimed #${issue.number}: ${ready} -> ${inProgress}`,
         { issueNumber: issue.number },
       );
       await writeRunState(
@@ -855,6 +880,7 @@ export async function runOneIssue(
             issue,
             planPath,
             projectPolicy: config.projectPolicy,
+            triageLabels: { ready, needsInfo },
           }),
           {
             progress: options.progress,
@@ -920,8 +946,8 @@ export async function runOneIssue(
     if (config.planOnly) {
       const finalLabels = nextLabels(
         labels,
-        ["in-progress"],
-        [config.readyLabel],
+        [inProgress],
+        [ready],
       );
       if (!checkpoints.planReadyCommentPosted) {
         await commentIssue(
@@ -1345,7 +1371,7 @@ export async function runOneIssue(
       checkpoints.handoffCommentPosted = true;
     }
     if (!checkpoints.doneLabelEnsured) {
-      await ensureAutomationLabel(runner, config, "agent-done");
+      await ensureAutomationLabel(runner, config, done);
       await writeRunState(
         config.runStateDir,
         {
@@ -1361,7 +1387,7 @@ export async function runOneIssue(
       );
       checkpoints.doneLabelEnsured = true;
     }
-    const doneLabels = nextLabels(labels, ["in-progress"], ["agent-done"]);
+    const doneLabels = nextLabels(labels, [inProgress], [done]);
     if (!checkpoints.doneLabelApplied) {
       await applyIssueLabels(
         runner,

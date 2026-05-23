@@ -19,6 +19,7 @@ export type PatchmillLabelsConfig = {
   inProgress: string;
   done: string;
   blocked: string;
+  types: string[];
   priorities: string[];
 };
 

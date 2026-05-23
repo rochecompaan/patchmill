@@ -1,4 +1,5 @@
 import type { CleanupHookConfig } from "../../src/cleanup/types.ts";
+import type { PatchmillTriagePolicy } from "../../src/policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 
@@ -29,6 +30,7 @@ export type AgentIssueConfig = {
   cleanStatusIgnorePrefixes?: string[];
   cleanupHooks: CleanupHookConfig[];
   projectPolicy: PatchmillProjectPolicy;
+  triagePolicy?: PatchmillTriagePolicy;
   readyLabel: string;
   issueLimit: 1;
   requirePlanApproval: boolean;
@@ -43,7 +45,7 @@ export type AgentIssueConfig = {
 
 export type IssueSelectionOptions = Pick<
   AgentIssueConfig,
-  "issueNumber" | "readyLabel"
+  "issueNumber" | "readyLabel" | "triagePolicy"
 > & {
   priorityLabels?: readonly string[];
   excludedLabels?: readonly string[];

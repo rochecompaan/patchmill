@@ -17,6 +17,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     inProgress: "in-progress",
     done: "agent-done",
     blocked: "blocked",
+    types: ["bug", "enhancement", "docs", "chore", "test"],
     priorities: ["priority:critical", "priority:high", "priority:medium", "priority:low"],
   },
   paths: {

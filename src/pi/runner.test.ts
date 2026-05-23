@@ -147,6 +147,45 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
   assert.ok(events.some((event) => event.stage === "pi-plan" && event.message === "started pi"));
 });
 
+test("PiRunner plan passes configured ready and needs-info labels into the prompt", async () => {
+  const repoRoot = "/repo";
+  const planPath = "docs/plans/2026-05-23-pi-runner-custom-labels.md";
+  const runner = createFakeRunner((call) => {
+    assert.equal(call.command, "pi");
+    assert.match(call.prompt, /Treat `ready-for-bots` as meaning the issue is already clear and unambiguous enough to plan/);
+    assert.match(call.prompt, /post directly as a `needs-clarification` comment/);
+    assert.doesNotMatch(call.prompt, /Treat `agent-ready` as meaning the issue is already clear and unambiguous enough to plan/);
+    assert.doesNotMatch(call.prompt, /post directly as a `needs-info` comment/);
+    return {
+      code: 0,
+      stdout: JSON.stringify({ status: "plan-created", planPath, commit: "def456" }),
+      stderr: "",
+    };
+  });
+
+  const result = await new PiRunner(runner).plan({
+    repoRoot,
+    issue: {
+      ...issue,
+      title: "Use configured workflow labels",
+      body: "This issue is already clear enough for planning.",
+      labels: ["ready-for-bots", "bug"],
+      comments: [{ author: "sam", created: "2026-05-23T12:30:00Z", body: "Please use the configured workflow labels." }],
+    },
+    planPath,
+    triageLabels: {
+      ready: "ready-for-bots",
+      needsInfo: "needs-clarification",
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: "plan-created",
+    planPath,
+    commit: "def456",
+  });
+});
+
 test("PiRunner implementation uses the worktree root, derives the default landing branch from git.baseBranch, preserves resume context, and keeps runner metadata authoritative", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-"));
   const worktreePath = "worktrees/issue-42-fix";

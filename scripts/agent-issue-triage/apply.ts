@@ -1,3 +1,4 @@
+import type { PatchmillTriagePolicy } from "../../src/policy/triage.ts";
 import { applyIssueLabels, commentIssue } from "./forgejo.ts";
 import { planLabelChange } from "./labels.ts";
 import type { CommandRunner, TriageQuestion, IssueSummary, TriageDecision, TriageLogIssueEntry } from "./types.ts";
@@ -36,8 +37,15 @@ export function buildNeedsInfoComment(decision: TriageDecision): string {
   return `${header}\n\nRationale:\n${decision.rationale}\n\nFollow-up questions and recommended answers:\n${questions}`;
 }
 
-function commentForDecision(decision: TriageDecision): string | null {
-  if (decision.primaryBucket === "needs-info") return buildNeedsInfoComment(decision);
+function commentForDecision(
+  decision: TriageDecision,
+  triagePolicy?: PatchmillTriagePolicy,
+): string | null {
+  if (decision.primaryBucket === "needs-info") {
+    if (!triagePolicy || triagePolicy.needsInfo.commentBehavior === "generated-from-rationale-and-questions") {
+      return buildNeedsInfoComment(decision);
+    }
+  }
   return decision.comment;
 }
 
@@ -46,6 +54,7 @@ export function createLogEntries(
   decisions: TriageDecision[],
   status: "planned" | "applied" | "failed",
   errorByIssue = new Map<number, string>(),
+  triagePolicy?: PatchmillTriagePolicy,
 ): TriageLogIssueEntry[] {
   const issuesByNumber = issueMap(issues);
 
@@ -63,7 +72,7 @@ export function createLogEntries(
       confidence: decision.confidence,
       rationale: decision.rationale,
       questions: decision.questions,
-      comment: commentForDecision(decision),
+      comment: commentForDecision(decision, triagePolicy),
       mutationStatus: error ? "failed" : status,
       ...(error ? { error } : {}),
     };
@@ -76,6 +85,7 @@ export async function applyDecisions(
   issues: IssueSummary[],
   decisions: TriageDecision[],
   teaLogin?: string,
+  triagePolicy?: PatchmillTriagePolicy,
 ): Promise<void> {
   const issuesByNumber = issueMap(issues);
 
@@ -89,7 +99,7 @@ export async function applyDecisions(
       throw new ApplyDecisionError(issue.number, "labels", error);
     }
 
-    const comment = commentForDecision(decision);
+    const comment = commentForDecision(decision, triagePolicy);
     if (!comment) continue;
 
     try {

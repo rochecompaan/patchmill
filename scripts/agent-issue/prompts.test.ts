@@ -111,6 +111,29 @@ test("buildPlanCreationPrompt uses deterministic fallbacks for missing fields", 
   assert.match(prompt, /Recent issue comments:\n\(none available\)/);
 });
 
+test("buildPlanCreationPrompt renders configured ready and needs-info labels", () => {
+  const prompt = buildPlanCreationPrompt({
+    issue: {
+      ...issue,
+      title: "Clarify custom planning labels",
+      body: "This issue is already clear enough for planning.",
+      labels: ["ready-for-bots", "bug", "priority:high"],
+      comments: [{ author: "sam", body: "Please use the configured workflow labels." }],
+    },
+    planPath,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    triageLabels: {
+      ready: "ready-for-bots",
+      needsInfo: "needs-clarification",
+    },
+  });
+
+  assert.match(prompt, /Treat `ready-for-bots` as meaning the issue is already clear and unambiguous enough to plan/);
+  assert.match(prompt, /post directly as a `needs-clarification` comment/);
+  assert.doesNotMatch(prompt, /Treat `agent-ready` as meaning the issue is already clear and unambiguous enough to plan/);
+  assert.doesNotMatch(prompt, /post directly as a `needs-info` comment/);
+});
+
 test("buildImplementationPrompt includes plan-first execution, review loop, validation rules, and result contracts", () => {
   const prompt = buildImplementationPrompt({
     issue: {

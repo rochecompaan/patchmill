@@ -1,6 +1,9 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import type { PatchmillConfig } from "../../src/config/types.ts";
+import { createTriagePolicy } from "../../src/policy/triage.ts";
+import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import type { TriageConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
@@ -44,6 +47,8 @@ export function parseArgs(
     showHelp: args.length === 0,
     teaLogin: defaultTeaLogin(env, normalizedConfig),
     logDir: normalizedConfig?.paths.triageLogDir ?? join(repoRoot, ".pi", "agent-issue", "triage-runs"),
+    projectPolicy: normalizedConfig?.projectPolicy ?? CROPRUN_COMPAT_POLICY,
+    triagePolicy: createTriagePolicy(normalizedConfig?.labels ?? DEFAULT_PATCHMILL_CONFIG.labels),
   };
 
   for (let index = 0; index < args.length; index += 1) {

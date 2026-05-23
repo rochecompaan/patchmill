@@ -13,6 +13,12 @@ export type PlanCreationPromptInput = {
   issue: IssueSummary;
   planPath: string;
   projectPolicy: PatchmillProjectPolicy;
+  triageLabels?: Partial<PromptTriageLabels>;
+};
+
+export type PromptTriageLabels = {
+  ready: string;
+  needsInfo: string;
 };
 
 export type ImplementationPromptInput = {
@@ -28,6 +34,13 @@ export type ImplementationPromptInput = {
 
 function formatLabels(labels: string[]): string {
   return labels.length > 0 ? labels.join(", ") : "(none)";
+}
+
+function resolvePromptTriageLabels(labels?: Partial<PromptTriageLabels>): PromptTriageLabels {
+  return {
+    ready: labels?.ready ?? "agent-ready",
+    needsInfo: labels?.needsInfo ?? "needs-info",
+  };
 }
 
 function commentAuthor(comment: Record<string, unknown>): string | undefined {
@@ -518,10 +531,11 @@ function numberedWorkflow(steps: string[]): string {
 
 export function buildPlanCreationPrompt(input: PlanCreationPromptInput): string {
   const { issue, planPath, projectPolicy } = input;
+  const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
     projectPolicy.toolchainInstruction,
-    "Treat `agent-ready` as meaning the issue is already clear and unambiguous enough to plan. Do not run a separate brainstorming/requirements-discovery process by default.",
+    `Treat \`${ready}\` as meaning the issue is already clear and unambiguous enough to plan. Do not run a separate brainstorming/requirements-discovery process by default.`,
     `Use \`superpowers:writing-plans\` to write the implementation plan. Do not substitute an ad-hoc planning process for this skill. The plan must be saved to ${planPath} and use checkbox steps suitable for agent execution.`,
     projectPolicy.planRequiresApproval
       ? "Stop after writing the plan and wait for explicit manual approval before implementation continues."
@@ -556,7 +570,7 @@ Required workflow:
 ${workflow}
 
 Blocker contract:
-If the issue is not actually clear enough to plan, do not invent requirements. Instead, write no plan, make no code changes, keep the reason and questions concise enough to post directly as a \`needs-info\` comment, and return this exact JSON object as the final response:
+If the issue is not actually clear enough to plan, do not invent requirements. Instead, write no plan, make no code changes, keep the reason and questions concise enough to post directly as a \`${needsInfo}\` comment, and return this exact JSON object as the final response:
 {
   "status": "blocked",
   "reason": "short reason",

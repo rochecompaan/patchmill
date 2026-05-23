@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { appendFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import { CROPRUN_COMPAT_POLICY, DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { createTriagePolicy } from "../../src/policy/triage.ts";
 import { TILT_JUST_CLEANUP_HOOK } from "./tilt-cleanup.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
@@ -1288,6 +1290,111 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
   assert.equal(runner.calls.some((call) => call.command === "pi"), false);
   assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"));
   assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit" && call.args.includes("agent-done")));
+});
+
+test("runOneIssue resumes and completes saved handoff with configured lifecycle labels", async () => {
+  const triagePolicy = createTriagePolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.labels,
+    inProgress: "claimed",
+    done: "completed-by-bot",
+    needsInfo: "info-needed",
+  });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: undefined,
+    agentTeamName: undefined,
+    triagePolicy,
+    readyLabel: triagePolicy.labels.ready,
+  });
+  const planPath = "docs/plans/2026-05-14-issue-45-complete-custom-lifecycle-labels.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Complete custom lifecycle labels",
+      status: "implementing",
+      planPath,
+      branch: "agent/issue-45-complete-custom-lifecycle-labels",
+      worktreePath: ".worktrees/agent-issue-45-complete-custom-lifecycle-labels",
+      implementationStatus: "pr-created",
+      prUrl: "https://forgejo/pr/45",
+      commits: ["abc123"],
+      validation: ["just agent-issue-test ok"],
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+        worktreeReady: true,
+        implementationCompleted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1"
+          ? issueListPayload([issue(45, ["claimed"], "Complete custom lifecycle labels")])
+          : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-complete-custom-lifecycle-labels")}\n`,
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
+      return { code: 0, stdout: "agent/issue-45-complete-custom-lifecycle-labels\n", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+      return {
+        code: 0,
+        stdout: labelListPayload([
+          ...DEFAULT_LABEL_NAMES.filter((label) => !["in-progress", "needs-info", "agent-done"].includes(label)),
+          "claimed",
+          "info-needed",
+        ]),
+        stderr: "",
+      };
+    }
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "create") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
+  const doneLabelCreate = runner.calls.find(
+    (call) =>
+      call.command === "tea"
+      && call.args[0] === "labels"
+      && call.args[1] === "create"
+      && call.args.includes("completed-by-bot"),
+  );
+  assert.ok(doneLabelCreate);
+  const editCalls = runner.calls.filter(
+    (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit",
+  );
+  assert.deepEqual(editCalls[0]?.args, withRepo([
+    "issues",
+    "edit",
+    "45",
+    "--remove-labels",
+    "claimed",
+    "--add-labels",
+    "completed-by-bot",
+  ], config.repoRoot));
 });
 
 test("runOneIssue does not run cleanup commands when cleanup hooks are not configured", async () => {
@@ -3801,6 +3908,258 @@ test("runOneIssue marks deterministic blockers as needs-info without restoring a
   );
   assert.equal(runState.status, "blocked");
   assert.equal(runState.lastError, "Need API ownership decision");
+});
+
+test("runOneIssue uses configured claim and blocker labels", async () => {
+  const triagePolicy = createTriagePolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.labels,
+    inProgress: "claimed",
+    done: "completed-by-bot",
+    needsInfo: "info-needed",
+  });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    triagePolicy,
+    readyLabel: triagePolicy.labels.ready,
+  });
+  const selected = issue(
+    32,
+    [triagePolicy.labels.ready, "enhancement"],
+    "Clarify custom lifecycle labels",
+  );
+  const existingPlanPath = join(
+    config.plansDir,
+    "2026-05-01-issue-32-clarify-custom-lifecycle-labels.md",
+  );
+  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea"
+      && call.args[0] === "issues"
+      && call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "git"
+      && (call.args[0] === "status" || call.args[0] === "worktree")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea"
+      && call.args[0] === "labels"
+      && call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: labelListPayload(
+          DEFAULT_LABEL_NAMES.filter((label) => !["in-progress", "needs-info", "agent-done"].includes(label)),
+        ),
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "tea"
+      && call.args[0] === "labels"
+      && call.args[1] === "create"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea"
+      && (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout:
+          '{"status":"blocked","reason":"Need API ownership decision","questions":[{"question":"Which API should own the runner output?","recommendedAnswer":"Keep ownership in the existing triage package to avoid duplicating adapters."}],"commits":["789fed"],"validation":["tests not run"]}',
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  const claimedLabelCreate = runner.calls.find(
+    (call) =>
+      call.command === "tea"
+      && call.args[0] === "labels"
+      && call.args[1] === "create"
+      && call.args.includes("claimed"),
+  );
+  assert.ok(claimedLabelCreate);
+  const editCalls = runner.calls.filter(
+    (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit",
+  );
+  assert.deepEqual(editCalls[0]?.args, withRepo([
+    "issues",
+    "edit",
+    "32",
+    "--remove-labels",
+    triagePolicy.labels.ready,
+    "--add-labels",
+    "claimed",
+  ], config.repoRoot));
+  assert.deepEqual(editCalls[1]?.args, withRepo([
+    "issues",
+    "edit",
+    "32",
+    "--remove-labels",
+    "claimed",
+    "--add-labels",
+    "info-needed",
+  ], config.repoRoot));
+});
+
+test("runOneIssue ensures a missing configured blocker label before applying it", async () => {
+  const triagePolicy = createTriagePolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.labels,
+    needsInfo: "info-needed",
+  });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    triagePolicy,
+    readyLabel: triagePolicy.labels.ready,
+  });
+  const selected = issue(
+    33,
+    [triagePolicy.labels.ready, "enhancement"],
+    "Create missing blocker label before applying it",
+  );
+  const existingPlanPath = join(
+    config.plansDir,
+    "2026-05-01-issue-33-create-missing-blocker-label-before-applying-it.md",
+  );
+  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea"
+      && call.args[0] === "issues"
+      && call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "git"
+      && (call.args[0] === "status" || call.args[0] === "worktree")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea"
+      && call.args[0] === "labels"
+      && call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: labelListPayload(DEFAULT_LABEL_NAMES.filter((label) => label !== "needs-info")),
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "tea"
+      && call.args[0] === "labels"
+      && call.args[1] === "create"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea"
+      && (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout:
+          '{"status":"blocked","reason":"Need API ownership decision","questions":[{"question":"Which API should own the runner output?","recommendedAnswer":"Keep ownership in the existing triage package to avoid duplicating adapters."}],"commits":["789fed"],"validation":["tests not run"]}',
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  const blockerLabelCreateIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea"
+      && call.args[0] === "labels"
+      && call.args[1] === "create"
+      && call.args.includes("info-needed"),
+  );
+  const blockerEditIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea"
+      && call.args[0] === "issues"
+      && call.args[1] === "edit"
+      && call.args.includes("info-needed"),
+  );
+  assert.ok(blockerLabelCreateIndex >= 0);
+  assert.ok(blockerEditIndex > blockerLabelCreateIndex);
+  assert.deepEqual(runner.calls[blockerLabelCreateIndex]?.args, withRepo([
+    "labels",
+    "create",
+    "--name",
+    "info-needed",
+    "--color",
+    "#8957e5",
+    "--description",
+    "Needs reporter information or human decision before planning",
+  ], config.repoRoot));
+  assert.deepEqual(runner.calls[blockerEditIndex]?.args, withRepo([
+    "issues",
+    "edit",
+    "33",
+    "--remove-labels",
+    triagePolicy.labels.inProgress,
+    "--add-labels",
+    "info-needed",
+  ], config.repoRoot));
 });
 
 test("runOneIssue records and comments unexpected planning failures without replacing in-progress", async () => {

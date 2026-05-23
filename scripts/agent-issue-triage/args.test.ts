@@ -108,6 +108,13 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
       triageLogDir: ".patchmill/triage-runs",
       worktreeDir: ".patchmill/worktrees",
     },
+    labels: {
+      ready: "ready-for-bots",
+      needsInfo: "needs-clarification",
+      unsuitable: "manual-only",
+      types: ["incident"],
+      priorities: ["priority:p1", "priority:p2"],
+    },
   }));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
@@ -116,6 +123,8 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
 
   assert.equal(config.teaLogin, "config-bot");
   assert.equal(config.logDir, join(repoRoot, ".patchmill/triage-runs"));
+  assert.equal(config.triagePolicy?.primaryBuckets[0]?.label, "ready-for-bots");
+  assert.ok(config.triagePolicy?.triageAllowedLabels.some((label) => label.name === "incident"));
 });
 
 test("loadCliConfig preserves Croprun tea login when patchmill config only customizes paths", async () => {

@@ -1,6 +1,14 @@
 import type { PatchmillLabelsConfig } from "../config/types.ts";
 import type { LabelDefinition } from "../host/types.ts";
 
+const DEFAULT_TYPE_LABELS: LabelDefinition[] = [
+  { name: "bug", color: "#d73a4a", description: "Something is broken" },
+  { name: "enhancement", color: "#a2eeef", description: "Feature request or improvement" },
+  { name: "docs", color: "#0075ca", description: "Documentation work" },
+  { name: "chore", color: "#cfd3d7", description: "Maintenance work" },
+  { name: "test", color: "#bfdadc", description: "Test-only or test-focused work" },
+];
+
 const DEFAULT_PRIORITY_LABELS: LabelDefinition[] = [
   { name: "priority:critical", color: "#cf222e", description: "Critical priority" },
   { name: "priority:high", color: "#db6d28", description: "High priority" },
@@ -8,11 +16,19 @@ const DEFAULT_PRIORITY_LABELS: LabelDefinition[] = [
   { name: "priority:low", color: "#8b949e", description: "Low priority" },
 ];
 
+const DEFAULT_TYPE_LABELS_BY_NAME = new Map(
+  DEFAULT_TYPE_LABELS.map((label) => [label.name, label]),
+);
+
 const DEFAULT_PRIORITY_LABELS_BY_NAME = new Map(
   DEFAULT_PRIORITY_LABELS.map((label) => [label.name, label]),
 );
 
-function humanizePriorityName(name: string): string {
+function cloneLabelDefinition(label: LabelDefinition): LabelDefinition {
+  return { ...label };
+}
+
+function humanizeConfiguredName(name: string): string {
   const rawName = name.split(":").at(-1)?.trim() ?? "";
   const words = rawName
     .split(/[^a-zA-Z0-9]+/)
@@ -22,19 +38,48 @@ function humanizePriorityName(name: string): string {
   return words.join(" ");
 }
 
-function priorityLabelDefinition(name: string, index: number): LabelDefinition {
-  const defaultLabel = DEFAULT_PRIORITY_LABELS_BY_NAME.get(name);
-  if (defaultLabel) return defaultLabel;
+function configuredLabelDefinition(
+  name: string,
+  index: number,
+  defaults: LabelDefinition[],
+  defaultsByName: Map<string, LabelDefinition>,
+  fallbackDescription: (humanizedName: string) => string,
+): LabelDefinition {
+  const defaultLabel = defaultsByName.get(name);
+  if (defaultLabel) return cloneLabelDefinition(defaultLabel);
 
-  const fallbackColor = DEFAULT_PRIORITY_LABELS[Math.min(index, DEFAULT_PRIORITY_LABELS.length - 1)]?.color
-    ?? "#8b949e";
-  const humanizedName = humanizePriorityName(name);
+  const fallbackColor = defaults[Math.min(index, defaults.length - 1)]?.color ?? "#8b949e";
+  const humanizedName = humanizeConfiguredName(name);
 
   return {
     name,
     color: fallbackColor,
-    description: humanizedName ? `${humanizedName} priority` : "Configured priority label",
+    description: fallbackDescription(humanizedName),
   };
+}
+
+function typeLabelDefinition(name: string, index: number): LabelDefinition {
+  return configuredLabelDefinition(
+    name,
+    index,
+    DEFAULT_TYPE_LABELS,
+    DEFAULT_TYPE_LABELS_BY_NAME,
+    (humanizedName) => humanizedName || "Configured type label",
+  );
+}
+
+function priorityLabelDefinition(name: string, index: number): LabelDefinition {
+  return configuredLabelDefinition(
+    name,
+    index,
+    DEFAULT_PRIORITY_LABELS,
+    DEFAULT_PRIORITY_LABELS_BY_NAME,
+    (humanizedName) => (humanizedName ? `${humanizedName} priority` : "Configured priority label"),
+  );
+}
+
+function typeLabels(config: PatchmillLabelsConfig): LabelDefinition[] {
+  return config.types.map((name, index) => typeLabelDefinition(name, index));
 }
 
 function priorityLabels(config: PatchmillLabelsConfig): LabelDefinition[] {
@@ -49,11 +94,7 @@ export function requiredLabels(config: PatchmillLabelsConfig): LabelDefinition[]
     { name: config.inProgress, color: "#fbca04", description: "Issue is currently being processed by automation" },
     { name: config.done, color: "#0e8a16", description: "Issue was completed by automation" },
     { name: config.blocked, color: "#d876e3", description: "Blocked by another issue or dependency" },
-    { name: "bug", color: "#d73a4a", description: "Something is broken" },
-    { name: "enhancement", color: "#a2eeef", description: "Feature request or improvement" },
-    { name: "docs", color: "#0075ca", description: "Documentation work" },
-    { name: "chore", color: "#cfd3d7", description: "Maintenance work" },
-    { name: "test", color: "#bfdadc", description: "Test-only or test-focused work" },
+    ...typeLabels(config),
     ...priorityLabels(config),
   ];
 }

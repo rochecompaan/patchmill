@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
+import { createTriagePolicy } from "../../src/policy/triage.ts";
 import { validateTriageDocument } from "./validation.ts";
 import type { IssueSummary, RawTriageDocument } from "./types.ts";
 
@@ -76,6 +78,33 @@ test("validateTriageDocument accepts recommended answers for needs-info decision
   }]);
 });
 
+test("validateTriageDocument accepts configured bucket labels while keeping default statuses", () => {
+  const decisions = validateTriageDocument(doc({
+    issueNumber: 1,
+    primaryBucket: "agent-ready",
+    labels: ["bug", "ready-for-bots", "priority:medium"],
+    confidence: "high",
+    rationale: "Clear work.",
+    questions: [],
+    comment: null,
+  }), [issues[0]], createTriagePolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.labels,
+    ready: "ready-for-bots",
+    needsInfo: "needs-clarification",
+    unsuitable: "manual-only",
+  }));
+
+  assert.deepEqual(decisions[0], {
+    issueNumber: 1,
+    primaryBucket: "agent-ready",
+    labels: ["bug", "ready-for-bots", "priority:medium"],
+    confidence: "high",
+    rationale: "Clear work.",
+    questions: [],
+    comment: null,
+  });
+});
+
 test("validateTriageDocument rejects unknown labels", () => {
   assert.throws(
     () => validateTriageDocument(doc({
@@ -88,6 +117,24 @@ test("validateTriageDocument rejects unknown labels", () => {
       comment: null,
     }), [issues[0]]),
     /Unknown label custom-label/,
+  );
+});
+
+test("validateTriageDocument rejects the default status name when a custom ready label is configured", () => {
+  assert.throws(
+    () => validateTriageDocument(doc({
+      issueNumber: 1,
+      primaryBucket: "agent-ready",
+      labels: ["bug", "agent-ready", "priority:medium"],
+      confidence: "high",
+      rationale: "Clear work.",
+      questions: [],
+      comment: null,
+    }), [issues[0]], createTriagePolicy({
+      ...DEFAULT_PATCHMILL_CONFIG.labels,
+      ready: "ready-for-bots",
+    })),
+    /Unknown label agent-ready/,
   );
 });
 

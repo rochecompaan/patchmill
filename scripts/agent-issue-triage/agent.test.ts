@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createStaticCommandRunner } from "./command.ts";
 import { buildTriagePrompt, parseAgentJson, runTriageAgent } from "./agent.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import { CROPRUN_COMPAT_POLICY, DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { createTriagePolicy } from "../../src/policy/triage.ts";
 import type { IssueSummary } from "./types.ts";
 
 const issues: IssueSummary[] = [
@@ -52,6 +54,46 @@ test("buildTriagePrompt includes ambiguity routing, untrusted input boundaries, 
   assert.match(prompt, /"comments": \[/);
   assert.match(prompt, /Please include CSV export details/);
   assert.doesNotMatch(prompt, /- in-progress: Issue is currently being processed by automation/);
+});
+
+test("buildTriagePrompt maps default bucket statuses to configured labels", () => {
+  const prompt = buildTriagePrompt({
+    issues: [{ ...issues[0], labels: ["bug"] }],
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    triagePolicy: createTriagePolicy({
+      ...DEFAULT_PATCHMILL_CONFIG.labels,
+      ready: "ready-for-bots",
+      needsInfo: "needs-clarification",
+      unsuitable: "manual-only",
+      types: ["incident"],
+      priorities: ["priority:p1", "priority:p2"],
+    }),
+  });
+
+  assert.match(prompt, /- agent-ready \(apply label: ready-for-bots\)/);
+  assert.match(prompt, /- needs-info \(apply label: needs-clarification\)/);
+  assert.match(prompt, /- agent-unsuitable \(apply label: manual-only\)/);
+  assert.match(prompt, /agent-ready is the only automation-ready bucket and must include the ready-for-bots label/);
+  assert.match(prompt, /needs-info and agent-unsuitable must not include ready-for-bots/);
+  assert.match(prompt, /- incident: Incident/);
+  assert.match(prompt, /"primaryBucket": "needs-info"/);
+  assert.match(prompt, /"labels": \["incident", "needs-clarification", "priority:p1"\]/);
+  assert.doesNotMatch(prompt, /enhancement/);
+});
+
+
+test("buildTriagePrompt omits example type label when none are configured", () => {
+  const prompt = buildTriagePrompt({
+    issues: [{ ...issues[0], labels: ["bug"] }],
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    triagePolicy: createTriagePolicy({
+      ...DEFAULT_PATCHMILL_CONFIG.labels,
+      types: [],
+      priorities: ["priority:p1", "priority:p2"],
+    }),
+  });
+
+  assert.match(prompt, /"labels": \["needs-info", "priority:p1"\]/);
 });
 
 test("buildTriagePrompt does not include removed triage labels", () => {

@@ -8,6 +8,23 @@ test("requiredLabels derives automation labels from config", () => {
   assert.ok(labels.some((label) => label.name === "ready-for-bots"));
 });
 
+test("requiredLabels derives configured type labels", () => {
+  const labels = requiredLabels({
+    ...DEFAULT_PATCHMILL_CONFIG.labels,
+    types: ["incident", "maintenance"],
+  });
+
+  assert.deepEqual(
+    labels
+      .filter((label) => ["incident", "maintenance"].includes(label.name))
+      .map((label) => ({ name: label.name, color: label.color, description: label.description })),
+    [
+      { name: "incident", color: "#d73a4a", description: "Incident" },
+      { name: "maintenance", color: "#a2eeef", description: "Maintenance" },
+    ],
+  );
+});
+
 test("requiredLabels derives priority labels from config", () => {
   const labels = requiredLabels({
     ...DEFAULT_PATCHMILL_CONFIG.labels,
@@ -28,4 +45,17 @@ test("requiredLabels derives priority labels from config", () => {
 test("automationProtectionLabels includes configured done label", () => {
   const labels = automationProtectionLabels({ ...DEFAULT_PATCHMILL_CONFIG.labels, done: "factory-done" });
   assert.ok(labels.has("factory-done"));
+});
+
+test("requiredLabels clones default type definitions", () => {
+  const first = requiredLabels(DEFAULT_PATCHMILL_CONFIG.labels);
+  const bug = first.find((label) => label.name === "bug");
+  assert.ok(bug);
+  bug.description = "Mutated";
+
+  const second = requiredLabels(DEFAULT_PATCHMILL_CONFIG.labels);
+  const freshBug = second.find((label) => label.name === "bug");
+  assert.ok(freshBug);
+  assert.equal(freshBug.description, "Something is broken");
+  assert.notEqual(freshBug, bug);
 });

@@ -236,6 +236,15 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
     host: { login: "config-bot" },
     pi: { team: "config-team" },
+    labels: {
+      ready: "ready-for-bots",
+      needsInfo: "needs-clarification",
+      unsuitable: "manual-only",
+      inProgress: "claimed",
+      done: "done-by-bot",
+      blocked: "waiting",
+      priorities: ["priority:p1", "priority:p2"],
+    },
     paths: {
       plansDir: "pm-plans",
       runStateDir: ".patchmill/runs",
@@ -259,6 +268,9 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.deepEqual(config.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
   assert.deepEqual(config.cleanupHooks, []);
   assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
+  assert.equal(config.readyLabel, "ready-for-bots");
+  assert.deepEqual(config.triagePolicy?.runOnceSelection.priorityOrder, ["priority:p1", "priority:p2"]);
+  assert.deepEqual(config.triagePolicy?.runOnceSelection.excludedLabels, ["needs-clarification", "manual-only", "claimed", "done-by-bot", "waiting"]);
 });
 
 test("loadCliConfig passes configured project policy through to run-once prompts", async () => {

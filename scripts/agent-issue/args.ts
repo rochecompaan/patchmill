@@ -8,6 +8,7 @@ import {
   LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
 } from "../../src/git/worktree-strategy.ts";
 import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
+import { createTriagePolicy } from "../../src/policy/triage.ts";
 import type { PatchmillConfig } from "../../src/config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
@@ -86,6 +87,7 @@ export function parseArgs(
     cleanStatusIgnorePrefixes: [...(normalizedConfig?.paths.cleanStatusIgnorePrefixes ?? DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES)],
     cleanupHooks: cloneCleanupHooks(normalizedConfig?.cleanupHooks ?? LEGACY_CROPRUN_CLEANUP_HOOKS),
     projectPolicy,
+    triagePolicy: createTriagePolicy(normalizedConfig?.labels ?? DEFAULT_PATCHMILL_CONFIG.labels),
     readyLabel: normalizedConfig?.labels.ready ?? "agent-ready",
     issueLimit: 1,
     requirePlanApproval: projectPolicy.planRequiresApproval,

@@ -1,7 +1,7 @@
 import { ApplyDecisionError, applyDecisions, createLogEntries } from "./apply.ts";
 import { runTriageAgent } from "./agent.ts";
 import { createLabel, hydrateIssueComments, listLabels, listOpenIssues } from "./forgejo.ts";
-import { DEFAULT_TRIAGE_EXCLUDED_LABELS, missingLabelDefinitions } from "./labels.ts";
+import { DEFAULT_TRIAGE_POLICY, missingLabelDefinitions } from "./labels.ts";
 import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import { writeTriageLog } from "./log.ts";
 import { validateTriageDocument } from "./validation.ts";
@@ -9,11 +9,13 @@ import type { CommandRunner, IssueSummary, TriageConfig, TriageDecision, TriageL
 
 function selectIssues(issues: IssueSummary[], config: TriageConfig): IssueSummary[] {
   let selected = issues;
+  const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+  const excludedLabels = new Set(triagePolicy.excludedLabels);
 
   if (config.issueNumber !== undefined) {
     selected = selected.filter((issue) => issue.number === config.issueNumber);
   } else if (!config.all) {
-    selected = selected.filter((issue) => !issue.labels.some((label) => DEFAULT_TRIAGE_EXCLUDED_LABELS.has(label)));
+    selected = selected.filter((issue) => !issue.labels.some((label) => excludedLabels.has(label)));
   }
 
   if (config.limit !== undefined) {
@@ -53,6 +55,8 @@ async function tryWriteFailureLog(
 
 export async function runTriage(runner: CommandRunner, config: TriageConfig): Promise<TriageResult> {
   const createdAt = new Date().toISOString();
+  const projectPolicy = config.projectPolicy ?? CROPRUN_COMPAT_POLICY;
+  const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
 
   let listedIssues: IssueSummary[];
   try {
@@ -95,7 +99,7 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
     throw error;
   }
 
-  const missingLabels = missingLabelDefinitions(existingLabels);
+  const missingLabels = missingLabelDefinitions(existingLabels, triagePolicy);
 
   if (config.execute) {
     try {
@@ -112,15 +116,16 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
   try {
     decisions = validateTriageDocument(await runTriageAgent(runner, config.repoRoot, {
       issues,
-      projectPolicy: CROPRUN_COMPAT_POLICY,
-    }), issues);
+      projectPolicy,
+      triagePolicy,
+    }), issues, triagePolicy);
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
   }
 
   if (!config.execute) {
-    const logIssues = createLogEntries(issues, decisions, "planned");
+    const logIssues = createLogEntries(issues, decisions, "planned", new Map(), triagePolicy);
     const logPath = await writeTriageLog(config.logDir, {
       mode: "dry-run",
       createdAt,
@@ -131,7 +136,7 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
   }
 
   try {
-    await applyDecisions(runner, config.repoRoot, issues, decisions, config.teaLogin);
+    await applyDecisions(runner, config.repoRoot, issues, decisions, config.teaLogin, triagePolicy);
   } catch (error) {
     if (error instanceof ApplyDecisionError) {
       await tryWriteFailureLog(
@@ -142,6 +147,7 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
           decisionsThroughFailure(decisions, error.issueNumber),
           "applied",
           new Map([[error.issueNumber, error.message]]),
+          triagePolicy,
         ),
         error,
       );
@@ -152,7 +158,7 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
     throw error;
   }
 
-  const logIssues = createLogEntries(issues, decisions, "applied");
+  const logIssues = createLogEntries(issues, decisions, "applied", new Map(), triagePolicy);
   const logPath = await writeTriageLog(config.logDir, {
     mode: "execute",
     createdAt,

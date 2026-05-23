@@ -37,6 +37,7 @@ export class PiRunner implements PiPromptContracts {
       issue: input.issue,
       planPath: input.planPath,
       projectPolicy,
+      triageLabels: input.triageLabels,
     }), {
       ...input.runOptions,
       stage: "pi-plan",

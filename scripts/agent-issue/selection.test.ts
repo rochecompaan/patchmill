@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
+import { createTriagePolicy } from "../../src/policy/triage.ts";
 import { selectIssue } from "./selection.ts";
 import type { IssueSummary } from "./types.ts";
 
@@ -75,6 +76,30 @@ test("selectIssue ignores issues with non-ready triage or protection labels", ()
   ], { readyLabel: ready });
 
   assert.equal(selected?.number, 5);
+});
+
+test("selectIssue uses triage policy ready label, protection labels, and priority ordering", () => {
+  const triagePolicy = createTriagePolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.labels,
+    ready: "ready-for-bots",
+    needsInfo: "needs-clarification",
+    unsuitable: "manual-only",
+    inProgress: "claimed",
+    done: "done-by-bot",
+    blocked: "waiting",
+    priorities: ["priority:p1", "priority:p2"],
+  });
+
+  const selected = selectIssue([
+    issue(1, ["ready-for-bots", "priority:p2", "claimed"]),
+    issue(2, ["ready-for-bots", "priority:p2"]),
+    issue(3, ["ready-for-bots", "priority:p1"]),
+  ], {
+    readyLabel: "ready-for-bots",
+    triagePolicy,
+  });
+
+  assert.equal(selected?.number, 3);
 });
 
 test("selectIssue honors custom excluded labels during automatic selection", () => {
