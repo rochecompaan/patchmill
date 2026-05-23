@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
 
 test("defaults match the current patchmill baseline configuration", () => {
+  assert.equal(DEFAULT_PATCHMILL_CONFIG.projectPolicy, DEFAULT_PATCHMILL_POLICY);
   assert.deepEqual(DEFAULT_PATCHMILL_CONFIG, {
     host: {
       provider: "forgejo-tea",
@@ -37,10 +39,6 @@ test("defaults match the current patchmill baseline configuration", () => {
       allowDirectLand: true,
     },
     cleanupHooks: [],
-    projectPolicy: {
-      validationCommands: [],
-      landingPolicy: "project-default",
-      planRequiresApproval: false,
-    },
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
   });
 });

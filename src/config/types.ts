@@ -1,5 +1,6 @@
 import type { CleanupHookConfig } from "../cleanup/types.ts";
 import type { GitWorktreeStrategyConfig } from "../git/types.ts";
+import type { PatchmillProjectPolicy } from "../policy/types.ts";
 
 export type PatchmillHostConfig = {
   provider: "forgejo-tea";
@@ -31,11 +32,7 @@ export type PatchmillPathsConfig = {
 
 export type PatchmillGitConfig = Omit<GitWorktreeStrategyConfig, "worktreeDir">;
 
-export type PatchmillProjectPolicyConfig = {
-  validationCommands: string[];
-  landingPolicy: "project-default";
-  planRequiresApproval: boolean;
-};
+export type PatchmillProjectPolicyConfig = PatchmillProjectPolicy;
 
 export type PatchmillConfig = {
   host: PatchmillHostConfig;

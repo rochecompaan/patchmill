@@ -1,4 +1,5 @@
 import { DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG } from "../git/worktree-strategy.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
 import type { PatchmillConfig } from "./types.ts";
 
 export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
@@ -35,9 +36,5 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     allowDirectLand: DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.allowDirectLand,
   },
   cleanupHooks: [],
-  projectPolicy: {
-    validationCommands: [],
-    landingPolicy: "project-default",
-    planRequiresApproval: false,
-  },
+  projectPolicy: DEFAULT_PATCHMILL_POLICY,
 };

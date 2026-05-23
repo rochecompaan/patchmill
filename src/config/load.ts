@@ -7,6 +7,14 @@ import type { PatchmillConfig } from "./types.ts";
 const CONFIG_FILE_NAME = "patchmill.config.json";
 
 type Env = Record<string, string | undefined>;
+
+type PartialProjectPolicy = Partial<Omit<PatchmillConfig["projectPolicy"], "validation" | "directLand" | "visualEvidence" | "pi">> & {
+  validation?: Partial<PatchmillConfig["projectPolicy"]["validation"]>;
+  directLand?: Partial<PatchmillConfig["projectPolicy"]["directLand"]>;
+  visualEvidence?: Partial<PatchmillConfig["projectPolicy"]["visualEvidence"]>;
+  pi?: Partial<PatchmillConfig["projectPolicy"]["pi"]>;
+};
+
 type PartialConfig = Partial<{
   host: Partial<PatchmillConfig["host"]>;
   pi: Partial<PatchmillConfig["pi"]>;
@@ -14,7 +22,7 @@ type PartialConfig = Partial<{
   labels: Partial<PatchmillConfig["labels"]>;
   git: Partial<PatchmillConfig["git"]>;
   cleanupHooks: CleanupHookConfig[];
-  projectPolicy: Partial<PatchmillConfig["projectPolicy"]>;
+  projectPolicy: PartialProjectPolicy;
 }>;
 
 function cloneStringArray(values: string[]): string[] {
@@ -33,10 +41,57 @@ function cloneCleanupHooks(hooks: CleanupHookConfig[]): CleanupHookConfig[] {
   }));
 }
 
+function cloneValidationRules(
+  rules: PatchmillConfig["projectPolicy"]["validation"]["rules"],
+): PatchmillConfig["projectPolicy"]["validation"]["rules"] {
+  return rules.map((rule) => ({
+    category: rule.category,
+    commands: cloneStringArray(rule.commands),
+  }));
+}
+
+function cloneProjectPolicy(projectPolicy: PatchmillConfig["projectPolicy"]): PatchmillConfig["projectPolicy"] {
+  return {
+    ...(projectPolicy.projectName !== undefined ? { projectName: projectPolicy.projectName } : {}),
+    contextFileNames: cloneStringArray(projectPolicy.contextFileNames),
+    toolchainInstruction: projectPolicy.toolchainInstruction,
+    validation: {
+      rules: cloneValidationRules(projectPolicy.validation.rules),
+      forbiddenSubstitutions: cloneStringArray(projectPolicy.validation.forbiddenSubstitutions),
+    },
+    directLand: { ...projectPolicy.directLand },
+    visualEvidence: { ...projectPolicy.visualEvidence },
+    hostToolingInstruction: projectPolicy.hostToolingInstruction,
+    pi: { ...projectPolicy.pi },
+    planRequiresApproval: projectPolicy.planRequiresApproval,
+  };
+}
+
+function mergeProjectPolicy(
+  base: PatchmillConfig["projectPolicy"],
+  update: PartialProjectPolicy | undefined,
+): PatchmillConfig["projectPolicy"] {
+  return {
+    ...(update?.projectName !== undefined ? { projectName: update.projectName } : base.projectName !== undefined ? { projectName: base.projectName } : {}),
+    contextFileNames: cloneStringArray(update?.contextFileNames ?? base.contextFileNames),
+    toolchainInstruction: update?.toolchainInstruction ?? base.toolchainInstruction,
+    validation: {
+      rules: cloneValidationRules(update?.validation?.rules ?? base.validation.rules),
+      forbiddenSubstitutions: cloneStringArray(
+        update?.validation?.forbiddenSubstitutions ?? base.validation.forbiddenSubstitutions,
+      ),
+    },
+    directLand: { ...base.directLand, ...update?.directLand },
+    visualEvidence: { ...base.visualEvidence, ...update?.visualEvidence },
+    hostToolingInstruction: update?.hostToolingInstruction ?? base.hostToolingInstruction,
+    pi: { ...base.pi, ...update?.pi },
+    planRequiresApproval: update?.planRequiresApproval ?? base.planRequiresApproval,
+  };
+}
+
 function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillConfig {
   const labels = { ...base.labels, ...update.labels };
   const paths = { ...base.paths, ...update.paths };
-  const projectPolicy = { ...base.projectPolicy, ...update.projectPolicy };
 
   return {
     host: { ...base.host, ...update.host },
@@ -53,12 +108,7 @@ function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillCon
     },
     git: { ...base.git, ...update.git },
     cleanupHooks: cloneCleanupHooks(update.cleanupHooks ?? base.cleanupHooks),
-    projectPolicy: {
-      ...projectPolicy,
-      validationCommands: cloneStringArray(
-        update.projectPolicy?.validationCommands ?? base.projectPolicy.validationCommands,
-      ),
-    },
+    projectPolicy: mergeProjectPolicy(base.projectPolicy, update.projectPolicy),
   };
 }
 
@@ -77,6 +127,7 @@ function absolutizePaths(root: string, config: PatchmillConfig): PatchmillConfig
       cleanStatusIgnorePrefixes: cloneStringArray(config.paths.cleanStatusIgnorePrefixes),
     },
     cleanupHooks: cloneCleanupHooks(config.cleanupHooks),
+    projectPolicy: cloneProjectPolicy(config.projectPolicy),
   };
 }
 
@@ -184,6 +235,36 @@ function readCleanupHooks(source: Record<string, unknown>): CleanupHookConfig[] 
   });
 }
 
+function readValidationRules(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+): PatchmillConfig["projectPolicy"]["validation"]["rules"] | undefined {
+  const value = source[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw configError(path, "an array of validation rule objects", value);
+  }
+
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw configError(`${path}[${index}]`, "an object", entry);
+    }
+
+    const category = readOptionalString(entry, "category", `${path}[${index}].category`);
+    if (category === undefined) {
+      throw configError(`${path}[${index}].category`, "a string", entry.category);
+    }
+
+    const commands = readOptionalStringArray(entry, "commands", `${path}[${index}].commands`);
+    if (commands === undefined) {
+      throw configError(`${path}[${index}].commands`, "an array of strings", entry.commands);
+    }
+
+    return { category, commands };
+  });
+}
+
 function hasEntries(value: object): boolean {
   return Object.keys(value).length > 0;
 }
@@ -282,25 +363,84 @@ function parseConfigFile(data: unknown): PartialConfig {
 
   const projectPolicy = readOptionalSection(data, "projectPolicy");
   if (projectPolicy) {
-    const parsed: Partial<PatchmillConfig["projectPolicy"]> = {};
-    const validationCommands = readOptionalStringArray(
+    const parsed: PartialProjectPolicy = {};
+    const projectName = readOptionalString(projectPolicy, "projectName", "projectPolicy.projectName");
+    const contextFileNames = readOptionalStringArray(
       projectPolicy,
-      "validationCommands",
-      "projectPolicy.validationCommands",
+      "contextFileNames",
+      "projectPolicy.contextFileNames",
     );
-    const landingPolicy = readOptionalLiteral(
+    const toolchainInstruction = readOptionalString(
       projectPolicy,
-      "landingPolicy",
-      "projectPolicy.landingPolicy",
-      ["project-default"],
+      "toolchainInstruction",
+      "projectPolicy.toolchainInstruction",
     );
+    const validation = readOptionalSection(projectPolicy, "validation");
+    if (validation) {
+      const parsedValidation: NonNullable<PartialProjectPolicy["validation"]> = {};
+      const rules = readValidationRules(validation, "rules", "projectPolicy.validation.rules");
+      const forbiddenSubstitutions = readOptionalStringArray(
+        validation,
+        "forbiddenSubstitutions",
+        "projectPolicy.validation.forbiddenSubstitutions",
+      );
+      if (rules !== undefined) parsedValidation.rules = rules;
+      if (forbiddenSubstitutions !== undefined) parsedValidation.forbiddenSubstitutions = forbiddenSubstitutions;
+      if (hasEntries(parsedValidation)) parsed.validation = parsedValidation;
+    }
+    const directLand = readOptionalSection(projectPolicy, "directLand");
+    if (directLand) {
+      const parsedDirectLand: NonNullable<PartialProjectPolicy["directLand"]> = {};
+      const policyText = readOptionalString(directLand, "policyText", "projectPolicy.directLand.policyText");
+      const targetBranch = readOptionalString(directLand, "targetBranch", "projectPolicy.directLand.targetBranch");
+      if (policyText !== undefined) parsedDirectLand.policyText = policyText;
+      if (targetBranch !== undefined) parsedDirectLand.targetBranch = targetBranch;
+      if (hasEntries(parsedDirectLand)) parsed.directLand = parsedDirectLand;
+    }
+    const visualEvidence = readOptionalSection(projectPolicy, "visualEvidence");
+    if (visualEvidence) {
+      const parsedVisualEvidence: NonNullable<PartialProjectPolicy["visualEvidence"]> = {};
+      const policyText = readOptionalString(
+        visualEvidence,
+        "policyText",
+        "projectPolicy.visualEvidence.policyText",
+      );
+      if (policyText !== undefined) parsedVisualEvidence.policyText = policyText;
+      if (hasEntries(parsedVisualEvidence)) parsed.visualEvidence = parsedVisualEvidence;
+    }
+    const hostToolingInstruction = readOptionalString(
+      projectPolicy,
+      "hostToolingInstruction",
+      "projectPolicy.hostToolingInstruction",
+    );
+    const piWorkflow = readOptionalSection(projectPolicy, "pi");
+    if (piWorkflow) {
+      const parsedPi: NonNullable<PartialProjectPolicy["pi"]> = {};
+      const todoWorkflowInstruction = readOptionalString(
+        piWorkflow,
+        "todoWorkflowInstruction",
+        "projectPolicy.pi.todoWorkflowInstruction",
+      );
+      const subagentWorkflowInstruction = readOptionalString(
+        piWorkflow,
+        "subagentWorkflowInstruction",
+        "projectPolicy.pi.subagentWorkflowInstruction",
+      );
+      if (todoWorkflowInstruction !== undefined) parsedPi.todoWorkflowInstruction = todoWorkflowInstruction;
+      if (subagentWorkflowInstruction !== undefined) {
+        parsedPi.subagentWorkflowInstruction = subagentWorkflowInstruction;
+      }
+      if (hasEntries(parsedPi)) parsed.pi = parsedPi;
+    }
     const planRequiresApproval = readOptionalBoolean(
       projectPolicy,
       "planRequiresApproval",
       "projectPolicy.planRequiresApproval",
     );
-    if (validationCommands !== undefined) parsed.validationCommands = validationCommands;
-    if (landingPolicy !== undefined) parsed.landingPolicy = landingPolicy;
+    if (projectName !== undefined) parsed.projectName = projectName;
+    if (contextFileNames !== undefined) parsed.contextFileNames = contextFileNames;
+    if (toolchainInstruction !== undefined) parsed.toolchainInstruction = toolchainInstruction;
+    if (hostToolingInstruction !== undefined) parsed.hostToolingInstruction = hostToolingInstruction;
     if (planRequiresApproval !== undefined) parsed.planRequiresApproval = planRequiresApproval;
     if (hasEntries(parsed)) config.projectPolicy = parsed;
   }
