@@ -1,59 +1,75 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const HELP_TEXT = `Usage:
+export const HELP_TEXT = `Usage:
   patchmill <command> [options]
 
 Commands:
   triage      Classify repository issues for agent readiness.
   run-once    Claim and process one agent-ready issue.
-
-Examples:
-  patchmill triage --dry-run
-  patchmill triage --execute --limit 5
-  patchmill run-once --dry-run
-  patchmill run-once --execute --agent-team openai-only
-
-Patchmill is currently bootstrapped from the Croprun Forgejo + Pi workflow.
-Generalization work is tracked in docs/specs and docs/plans.
 `;
 
-const command = process.argv[2];
-const args = process.argv.slice(3);
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-const scripts: Record<string, string> = {
-  triage: join(root, "scripts", "agent-issue-triage.ts"),
-  "run-once": join(root, "scripts", "agent-issue-once.ts"),
+export type ResolvedCommand = {
+  script: string;
+  args: string[];
 };
 
-if (!command || command === "--help" || command === "-h" || command === "help") {
-  console.log(HELP_TEXT);
-  process.exit(0);
+const COMMAND_SCRIPTS = new Map<string, string>([
+  ["triage", "agent-issue-triage.ts"],
+  ["run-once", "agent-issue-once.ts"],
+]);
+
+export function resolveCommand(root: string, argv: string[]): ResolvedCommand | "help" {
+  const command = argv[0];
+  if (!command || command === "--help" || command === "-h" || command === "help") return "help";
+
+  const scriptName = COMMAND_SCRIPTS.get(command);
+  if (!scriptName) throw new Error(`Unknown command: ${command}`);
+  return { script: join(root, "scripts", scriptName), args: argv.slice(1) };
 }
 
-const script = scripts[command];
-if (!script) {
-  console.error(`Unknown command: ${command}`);
-  console.error(HELP_TEXT);
-  process.exit(1);
+export function main(argv = process.argv.slice(2)): number {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  let resolved: ResolvedCommand | "help";
+  try {
+    resolved = resolveCommand(root, argv);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(HELP_TEXT);
+    return 1;
+  }
+
+  if (resolved === "help") {
+    console.log(HELP_TEXT);
+    return 0;
+  }
+
+  const result = spawnSync(process.execPath, [resolved.script, ...resolved.args], {
+    cwd: process.cwd(),
+    stdio: "inherit",
+  });
+  if (result.error) {
+    console.error(result.error.message);
+    return 1;
+  }
+  if (result.signal) {
+    console.error(`patchmill terminated by ${result.signal}`);
+    return 1;
+  }
+  return result.status ?? 1;
 }
 
-const result = spawnSync(process.execPath, [script, ...args], {
-  cwd: process.cwd(),
-  stdio: "inherit",
-});
+function isMainModule(metaUrl: string, argv1 = process.argv[1]): boolean {
+  if (!argv1) return false;
 
-if (result.error) {
-  console.error(result.error.message);
-  process.exit(1);
+  try {
+    return metaUrl === pathToFileURL(realpathSync(argv1)).href;
+  } catch {
+    return false;
+  }
 }
 
-if (result.signal) {
-  console.error(`patchmill ${command} terminated by ${result.signal}`);
-  process.exit(1);
-}
-
-process.exit(result.status ?? 1);
+if (isMainModule(import.meta.url)) process.exit(main());

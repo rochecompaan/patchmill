@@ -11,7 +11,8 @@
     "patchmill": "node bin/patchmill.ts",
     "triage": "node scripts/agent-issue-triage.ts",
     "run-once": "node scripts/agent-issue-once.ts",
-    "test": "node --test scripts/agent-issue-triage/*.test.ts scripts/agent-issue/*.test.ts",
+    "test": "node --test bin/*.test.ts scripts/agent-issue-triage/*.test.ts scripts/agent-issue/*.test.ts",
+    "test:cli": "node --test bin/*.test.ts",
     "test:triage": "node --test scripts/agent-issue-triage/*.test.ts",
     "test:run-once": "node --test scripts/agent-issue/*.test.ts"
   },
