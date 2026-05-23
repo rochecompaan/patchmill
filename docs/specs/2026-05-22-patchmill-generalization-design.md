@@ -179,6 +179,20 @@ The copied implementation uses git worktrees and branch-per-issue. Keep this as 
 - direct-land enabled/disabled
 - cleanup hooks
 
+### Discovered non-generalized workflow assumptions
+
+The extraction audit found additional Croprun-specific behavior that must be treated as policy, strategy, or provider behavior rather than core Patchmill logic:
+
+- **Workflow wiring:** loading `patchmill.config.json` is not enough; triage and run-once orchestration must consume normalized config for labels, paths, git, host login, Pi team, and project policy.
+- **Git worktrees:** branch names, worktree paths, base refs, remotes, clean-worktree ignored paths, and saved branch/worktree safety checks are currently deterministic Croprun conventions.
+- **Cleanup:** Tilt cleanup is a project cleanup hook, not core behavior. The current `.env` probe, Linux `/proc` process cleanup, `tilt up`/`just tilt-up` detection, and `just tilt-down` command must move behind cleanup-hook configuration.
+- **Prompt policy:** Croprun wording, `devenv shell`, `AGENTS.md`, Just/Tilt validation commands, forbidden command substitutions, direct squash landing to `main`, staging QA assumptions, and visual evidence rules belong in prompt policy inputs/templates.
+- **Visual evidence:** screenshot requirements and Forgejo PR asset uploads are separate concerns. Prompt policy decides what evidence is required; the host provider or a host-adjacent upload adapter handles PR assets/comments.
+- **Pi todos and task progress:** `.pi/todos`, `issue-<n>-task-<NN>-<slug>` todo names, final open-todo rejection, and `## Task N:` plan heading parsing are Patchmill/Pi plan contracts and should be documented or configurable.
+- **Agent teams:** `.pi/agent-teams` lookup paths, required `worker`/`reviewer` roles, and model/thinking dispatch rules are Pi team policy, not Croprun-specific constants.
+- **Triage taxonomy:** automation labels, type labels, priority labels, confidence levels, ambiguity policy, and needs-info comment generation should be represented as triage policy. Defaults may match the copied workflow.
+- **Environment:** `PATCHMILL_*` variables should be primary. `CROPRUN_*` variables remain compatibility fallbacks only for the seed workflow.
+
 ## Data and output contracts
 
 Keep strict validation around all Pi output. Pi prompt results are untrusted and must return one of the documented JSON statuses.

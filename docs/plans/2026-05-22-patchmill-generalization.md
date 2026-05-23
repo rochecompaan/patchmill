@@ -975,6 +975,486 @@ git add README.md docs/providers.md
 git commit -m "docs: describe patchmill host and pi runtime"
 ```
 
+## Task 9: Wire normalized config into the compatibility workflows
+
+**Files:**
+- Modify: `bin/patchmill.ts`
+- Modify: `scripts/agent-issue-triage/args.ts`
+- Modify: `scripts/agent-issue/args.ts`
+- Modify: `scripts/agent-issue-triage.ts`
+- Modify: `scripts/agent-issue-once.ts`
+- Modify: related args and CLI tests
+
+- [ ] **Step 1: Add tests that `patchmill.config.json` affects copied commands**
+
+Add CLI/config tests that create a temporary repo with `patchmill.config.json` and assert:
+
+```json
+{
+  "host": { "login": "config-bot" },
+  "pi": { "team": "config-team" },
+  "paths": {
+    "plansDir": "pm-plans",
+    "runStateDir": ".patchmill/runs",
+    "triageLogDir": ".patchmill/triage-runs",
+    "worktreeDir": ".patchmill/worktrees"
+  }
+}
+```
+
+Expected behavior:
+- triage uses `config-bot` unless `--tea-login` or `--host-login` overrides it.
+- run-once uses `config-bot` and `config-team` unless CLI overrides them.
+- default state/log paths come from normalized config, not `.pi/agent-issue`.
+
+- [ ] **Step 2: Add Patchmill-aware parse options**
+
+Extend copied `parseArgs` functions to accept an optional normalized `PatchmillConfig` argument. Keep current direct script behavior working when no config is passed.
+
+- [ ] **Step 3: Load config in compatibility entrypoints**
+
+In `scripts/agent-issue-triage.ts` and `scripts/agent-issue-once.ts`, load `patchmill.config.json` before parsing command-specific args and pass the normalized config into `parseArgs`.
+
+- [ ] **Step 4: Normalize CLI naming without breaking compatibility**
+
+Support both old and new flags:
+
+```sh
+--tea-login <name>   # compatibility alias
+--host-login <name>  # Patchmill primary flag
+--agent-team <name>
+```
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+npm test
+git add bin/patchmill.ts scripts/agent-issue-triage.ts scripts/agent-issue-once.ts scripts/agent-issue-triage/args.ts scripts/agent-issue/args.ts src/config/load.ts '*test.ts'
+git commit -m "feat(config): wire patchmill config into workflows"
+```
+
+## Task 10: Move paths and run-state locations out of `.pi/agent-issue`
+
+**Files:**
+- Modify: `src/config/types.ts`
+- Modify: `src/config/defaults.ts`
+- Modify: `scripts/agent-issue/args.ts`
+- Modify: `scripts/agent-issue-triage/args.ts`
+- Modify: `scripts/agent-issue/git.ts`
+- Modify: `scripts/agent-issue/progress.ts`
+- Modify: `scripts/agent-issue/run-state.ts`
+- Modify: related tests
+
+- [ ] **Step 1: Add regression tests for configured paths**
+
+Write tests proving these values are honored:
+
+- `paths.plansDir`
+- `paths.runStateDir`
+- `paths.triageLogDir`
+- `paths.worktreeDir`
+- `paths.cleanStatusIgnorePrefixes`
+
+- [ ] **Step 2: Extend path config**
+
+Add this field to `PatchmillPathsConfig`:
+
+```ts
+cleanStatusIgnorePrefixes: string[];
+```
+
+Default:
+
+```ts
+cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"],
+```
+
+- [ ] **Step 3: Replace hard-coded path defaults**
+
+Remove direct defaults to `.pi/agent-issue/runs` and `.pi/agent-issue/triage-runs` from the compatibility arg parsers when normalized config is available. Keep the old paths only as direct-script compatibility defaults.
+
+- [ ] **Step 4: Make clean-worktree ignored paths configurable**
+
+Change `assertCleanWorktree` so ignored status prefixes come from config instead of only `.pi/agent-issue/runs/`.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+npm test
+git add src/config scripts/agent-issue scripts/agent-issue-triage
+git commit -m "feat(paths): use patchmill state and log paths"
+```
+
+## Task 11: Extract configurable git worktree strategy
+
+**Files:**
+- Create: `src/git/types.ts`
+- Create: `src/git/worktree-strategy.ts`
+- Create: `src/git/worktree-strategy.test.ts`
+- Modify: `scripts/agent-issue/git.ts`
+- Modify: `scripts/agent-issue/pipeline.ts`
+- Modify: related git and pipeline tests
+
+- [ ] **Step 1: Define `GitWorktreeStrategyConfig`**
+
+Create config-driven strategy types covering:
+
+```ts
+export type GitWorktreeStrategyConfig = {
+  baseBranch: string;
+  baseRef: string;
+  remote: string;
+  branchPrefix: string;
+  worktreeDir: string;
+  worktreePrefix: string;
+  slugLength: number;
+  allowDirectLand: boolean;
+};
+```
+
+- [ ] **Step 2: Move branch/worktree name construction**
+
+Move `buildIssueBranchName`, `buildIssueWorktreePath`, and slug truncation into `src/git/worktree-strategy.ts` with tests for defaults and custom prefixes.
+
+- [ ] **Step 3: Thread strategy config through run-once**
+
+Update `expectedIssueWorkspace`, `ensureIssueWorktree`, and saved branch/worktree safety checks to use the configured strategy.
+
+- [ ] **Step 4: Make base ref and remote configurable**
+
+Use configured `baseRef` for `git worktree add` and configured `remote` for pushes/direct-land prompt instructions.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+node --test src/git/*.test.ts scripts/agent-issue/git.test.ts scripts/agent-issue/pipeline.test.ts
+git add src/git scripts/agent-issue/git.ts scripts/agent-issue/pipeline.ts src/config
+git commit -m "feat(git): add configurable worktree strategy"
+```
+
+## Task 12: Replace hard-coded Tilt cleanup with cleanup hooks
+
+**Files:**
+- Create: `src/cleanup/types.ts`
+- Create: `src/cleanup/hooks.ts`
+- Create: `src/cleanup/hooks.test.ts`
+- Modify: `scripts/agent-issue/tilt-cleanup.ts`
+- Modify: `scripts/agent-issue/pipeline.ts`
+- Modify: related cleanup and pipeline tests
+
+- [ ] **Step 1: Add cleanup hook config**
+
+Add cleanup config with safe defaults:
+
+```ts
+export type CleanupHookConfig = {
+  name: string;
+  whenPathExists?: string;
+  terminateProcessPatterns?: string[];
+  command?: string;
+  args?: string[];
+};
+```
+
+Default `cleanupHooks` should be empty for generic Patchmill. Add a compatibility Croprun/Tilt preset only when the copied direct scripts are run without `patchmill.config.json`.
+
+- [ ] **Step 2: Preserve Tilt behavior as a named hook**
+
+Move the current `.env` probe, process group termination, and `just tilt-down` invocation behind a hook named `tilt-just`.
+
+- [ ] **Step 3: Update pipeline cleanup call**
+
+Replace `cleanupIssueTilt(...)` with `runCleanupHooks(...)`. Progress events should report skipped/cleaned/failed per hook.
+
+- [ ] **Step 4: Test generic no-op cleanup**
+
+Add tests proving no cleanup command runs when `cleanupHooks: []`.
+
+- [ ] **Step 5: Test Tilt compatibility**
+
+Retain existing Tilt cleanup tests against the `tilt-just` preset.
+
+- [ ] **Step 6: Run tests and commit**
+
+```sh
+node --test src/cleanup/*.test.ts scripts/agent-issue/tilt-cleanup.test.ts scripts/agent-issue/pipeline.test.ts
+git add src/cleanup scripts/agent-issue/tilt-cleanup.ts scripts/agent-issue/pipeline.ts src/config
+git commit -m "feat(cleanup): replace tilt cleanup with hooks"
+```
+
+## Task 13: Extract project policy for validation, toolchain, landing, and prompts
+
+**Files:**
+- Create: `src/policy/types.ts`
+- Create: `src/policy/defaults.ts`
+- Create: `src/policy/defaults.test.ts`
+- Modify: `src/config/types.ts`
+- Modify: `src/config/defaults.ts`
+
+- [ ] **Step 1: Define policy types**
+
+Create policy types for:
+
+- project name used in prompts
+- context file names, defaulting to `["AGENTS.md"]`
+- toolchain instruction, defaulting to a neutral string such as “Use the repository's documented development toolchain.”
+- validation rules as named categories and commands
+- forbidden validation substitutions
+- direct-land policy text and target branch
+- visual evidence policy
+- host tooling instruction
+- Pi todo and subagent workflow instruction snippets
+
+- [ ] **Step 2: Add Croprun compatibility policy**
+
+Create a `CROPRUN_COMPAT_POLICY` that preserves current prompt wording and commands for compatibility tests.
+
+- [ ] **Step 3: Add generic default policy**
+
+Create `DEFAULT_PATCHMILL_POLICY` with no Croprun name, no Tilt assumptions, and neutral validation guidance.
+
+- [ ] **Step 4: Wire policy into config defaults**
+
+Make `DEFAULT_PATCHMILL_CONFIG.projectPolicy` reference the generic policy shape. Keep direct copied scripts on the Croprun compatibility policy until full migration is complete.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+node --test src/policy/*.test.ts src/config/*.test.ts
+git add src/policy src/config
+git commit -m "feat(policy): define configurable project workflow policy"
+```
+
+## Task 14: Rewrite prompt builders to consume policy inputs
+
+**Files:**
+- Modify: `scripts/agent-issue/prompts.ts`
+- Modify: `scripts/agent-issue/prompts.test.ts`
+- Modify: `scripts/agent-issue-triage/agent.ts`
+- Modify: `scripts/agent-issue-triage/agent.test.ts`
+- Modify: `src/pi/runner.ts`
+- Modify: related tests
+
+- [ ] **Step 1: Add tests that generic prompts contain no Croprun-only text**
+
+Add prompt tests asserting generic policy prompts do not include:
+
+- `Croprun`
+- `devenv shell`
+- `just tilt-up`
+- `just tilt-down`
+- `direct kubectl exec`
+- `docs/reference-screenshots/web/`
+- `docs/reference-screenshots/mobile/`
+
+- [ ] **Step 2: Add tests that compatibility prompts preserve old behavior**
+
+Use `CROPRUN_COMPAT_POLICY` to assert the copied validation commands and landing policy still render for compatibility.
+
+- [ ] **Step 3: Add prompt builder input objects**
+
+Extend `buildTriagePrompt`, `buildPlanCreationPrompt`, and `buildImplementationPrompt` to accept policy/template inputs. Avoid reading global defaults inside prompt builders.
+
+- [ ] **Step 4: Replace hard-coded prompt sections**
+
+Move these sections to policy-rendered text:
+
+- project/repository name
+- required context files
+- toolchain instructions
+- validation commands
+- forbidden substitutions
+- Forgejo/tea vs other host tooling instruction
+- landing policy and direct-land target branch
+- visual evidence rules
+- todo/subagent workflow rules
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+node --test scripts/agent-issue/prompts.test.ts scripts/agent-issue-triage/agent.test.ts src/pi/*.test.ts
+git add scripts/agent-issue/prompts.ts scripts/agent-issue-triage/agent.ts src/pi src/policy
+git commit -m "refactor(prompts): render workflow prompts from policy"
+```
+
+## Task 15: Split visual evidence policy from host upload implementation
+
+**Files:**
+- Create: `src/host/visual-evidence.ts`
+- Create: `src/host/forgejo-visual-evidence.ts`
+- Create: `src/host/forgejo-visual-evidence.test.ts`
+- Modify: `scripts/agent-issue/visual-evidence.ts`
+- Modify: `scripts/agent-issue/pipeline.ts`
+- Modify: `scripts/agent-issue/prompts.ts`
+- Modify: related tests
+
+- [ ] **Step 1: Define visual evidence uploader interface**
+
+Create:
+
+```ts
+export type VisualEvidenceUploader = {
+  uploadPrEvidence(input: {
+    repoRoot: string;
+    prUrl: string;
+    evidence: AgentIssueVisualEvidence[] | undefined;
+  }): Promise<AgentIssueVisualEvidence[]>;
+};
+```
+
+- [ ] **Step 2: Wrap Forgejo asset upload**
+
+Move Forgejo-specific API paths and token env names behind `ForgejoVisualEvidenceUploader`. Primary env/config names should be `PATCHMILL_FORGEJO_URL`, `PATCHMILL_FORGEJO_TOKEN`, and `PATCHMILL_FORGEJO_REPO`, with `CROPRUN_AGENT_ISSUE_FORGEJO_*` as compatibility fallbacks.
+
+- [ ] **Step 3: Make uploader optional**
+
+If no uploader is configured, keep `visualEvidence` in final JSON/result but skip host asset upload with a progress message.
+
+- [ ] **Step 4: Move screenshot prompt requirements to policy**
+
+Use policy fields for screenshot skills, reference screenshot paths, and reviewer expectations.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+node --test src/host/*visual*.test.ts scripts/agent-issue/visual-evidence.test.ts scripts/agent-issue/pipeline.test.ts scripts/agent-issue/prompts.test.ts
+git add src/host scripts/agent-issue/visual-evidence.ts scripts/agent-issue/pipeline.ts scripts/agent-issue/prompts.ts src/policy
+git commit -m "feat(host): split visual evidence upload from policy"
+```
+
+## Task 16: Document and parameterize Pi todo and plan-task contracts
+
+**Files:**
+- Create: `src/policy/task-contract.ts`
+- Create: `src/policy/task-contract.test.ts`
+- Modify: `scripts/agent-issue/issue-todos.ts`
+- Modify: `scripts/agent-issue/plan-tasks.ts`
+- Modify: `scripts/agent-issue/prompts.ts`
+- Modify: `docs/providers.md`
+- Create: `docs/task-contracts.md`
+
+- [ ] **Step 1: Define task contract policy**
+
+Represent:
+
+- todo root path, default `.pi/todos`
+- todo title pattern, default `issue-<number>-task-<two-digit-number>-<slug>`
+- done statuses, default `closed`, `completed`, `done`
+- plan task heading pattern, default `## Task N: Label` and deeper headings
+- whether open task todos block final handoff, default `true`
+
+- [ ] **Step 2: Update readers to accept the contract**
+
+Pass task contract policy into `readIssueTodoTasks`, `issueTodoProgress`, `assertIssueTodosComplete`, and `readPlanTaskLabels`.
+
+- [ ] **Step 3: Update prompts from task contract**
+
+Render todo naming, tags, body requirements, and completion gate instructions from the task contract policy.
+
+- [ ] **Step 4: Add task contract docs**
+
+Create `docs/task-contracts.md` documenting the default Pi todo and plan task conventions and how projects may override them.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+node --test src/policy/task-contract.test.ts scripts/agent-issue/issue-todos.test.ts scripts/agent-issue/plan-tasks.test.ts scripts/agent-issue/prompts.test.ts
+git add src/policy scripts/agent-issue/issue-todos.ts scripts/agent-issue/plan-tasks.ts scripts/agent-issue/prompts.ts docs/task-contracts.md docs/providers.md
+git commit -m "feat(policy): document pi task contracts"
+```
+
+## Task 17: Generalize triage taxonomy and decision policy
+
+**Files:**
+- Modify: `src/policy/labels.ts`
+- Create: `src/policy/triage.ts`
+- Create: `src/policy/triage.test.ts`
+- Modify: `scripts/agent-issue-triage/agent.ts`
+- Modify: `scripts/agent-issue-triage/labels.ts`
+- Modify: `scripts/agent-issue-triage/validation.ts`
+- Modify: `scripts/agent-issue-triage/apply.ts`
+- Modify: `scripts/agent-issue/selection.ts`
+- Modify: related tests
+
+- [ ] **Step 1: Extend label config beyond automation labels**
+
+Add configurable type labels and priority labels instead of hard-coding `bug`, `enhancement`, `docs`, `chore`, `test`, and `priority:*` in copied modules.
+
+- [ ] **Step 2: Create triage policy**
+
+Represent:
+
+- primary buckets
+- allowed labels
+- excluded/protection labels
+- confidence values
+- ambiguity rule text
+- needs-info comment behavior
+- priority ordering for run-once selection
+
+- [ ] **Step 3: Update triage prompt and validation**
+
+Make `buildTriagePrompt` and `validateTriageDocument` consume triage policy. Preserve default statuses: `agent-ready`, `needs-info`, `agent-unsuitable`.
+
+- [ ] **Step 4: Update selection policy**
+
+Make run-once issue selection use configured ready label, protection labels, and priority ordering.
+
+- [ ] **Step 5: Run tests and commit**
+
+```sh
+node --test src/policy/*.test.ts scripts/agent-issue-triage/*.test.ts scripts/agent-issue/selection.test.ts
+git add src/policy scripts/agent-issue-triage scripts/agent-issue/selection.ts
+git commit -m "feat(policy): generalize triage taxonomy"
+```
+
+## Task 18: Final Croprun-specific audit and compatibility documentation
+
+**Files:**
+- Modify: `README.md`
+- Modify: `docs/providers.md`
+- Modify: `docs/task-contracts.md`
+- Create: `docs/migration-from-croprun-scripts.md`
+- Modify: tests as needed
+
+- [ ] **Step 1: Add an audit test/script**
+
+Add a lightweight grep-based verification command documented in `package.json`, for example:
+
+```sh
+npm run audit:generalization
+```
+
+It should report remaining occurrences of `Croprun`, `CROPRUN_`, `tilt`, `devenv`, `just tilt`, `.pi/agent-issue`, and `docs/reference-screenshots` in source files. Allowed occurrences must be documented as compatibility fixtures, tests, or migration docs.
+
+- [ ] **Step 2: Document compatibility behavior**
+
+Create `docs/migration-from-croprun-scripts.md` explaining:
+
+- old command names and new Patchmill commands
+- old environment variables and new `PATCHMILL_*` names
+- default state path migration from `.pi/agent-issue` to `.patchmill`
+- how to enable the legacy Tilt cleanup hook
+- how to preserve Croprun prompt policy with config
+
+- [ ] **Step 3: Verify no stale generic-path regressions**
+
+Run:
+
+```sh
+npm test
+npm run audit:generalization
+```
+
+Expected: tests pass and the audit lists only documented compatibility references.
+
+- [ ] **Step 4: Commit**
+
+```sh
+git add README.md docs package.json '*test.ts'
+git commit -m "docs: document patchmill migration and generalization audit"
+```
+
 ## Final verification
 
 - [ ] Run all tests:
@@ -995,7 +1475,7 @@ Expected: no uncommitted changes after the final commit.
 
 ## Self-review notes
 
-- Spec coverage: the plan covers CLI bootstrap, config, host provider, concrete Pi runner contracts, env-name generalization, label policy, and host/runtime docs.
+- Spec coverage: the plan now covers CLI bootstrap, config, host provider, concrete Pi runner contracts, env-name generalization, label policy, workflow config wiring, path migration, git worktree strategy, cleanup hooks, project policy/prompt templates, visual evidence upload boundaries, Pi todo/plan-task contracts, triage taxonomy, and final Croprun-specific audit documentation.
 - The plan intentionally does not implement GitHub/GitLab because the design marks those as future host-provider extensions.
 - The plan intentionally does not abstract or implement non-Pi coding agents; Pi remains the concrete workflow runtime.
-- The copied Croprun prompts remain until a later policy-template extraction task; this plan first creates the seams needed to move them safely.
+- Croprun compatibility remains available through explicit compatibility policy, environment fallbacks, migration docs, and tests; generic Patchmill defaults should not depend on Croprun, Tilt, Just, or Forgejo-only visual evidence behavior.
