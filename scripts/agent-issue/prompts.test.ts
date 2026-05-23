@@ -41,6 +41,11 @@ const croprunOnlyPhrases = [
   "docs/reference-screenshots/mobile/",
 ] as const;
 
+function countMatches(text: string, pattern: RegExp): number {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  return (text.match(new RegExp(pattern.source, flags)) ?? []).length;
+}
+
 test("buildPlanCreationPrompt includes issue context, workflow rules, and result contracts", () => {
   const prompt = buildPlanCreationPrompt({
     issue,
@@ -179,6 +184,18 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /A worktree-local screenshot path alone is not sufficient PR evidence/);
   assert.match(prompt, /If visuals intentionally change, update the relevant committed reference screenshots/);
   assert.match(prompt, /Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing Croprun styling/);
+  assert.equal(
+    countMatches(prompt, /If visuals intentionally change, update the relevant committed reference screenshots/g),
+    1,
+  );
+  assert.equal(
+    countMatches(prompt, /Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing Croprun styling/g),
+    1,
+  );
+  assert.equal(
+    countMatches(prompt, /The reviewer summary must state whether screenshot review passed when visual changes exist/g),
+    1,
+  );
   assert.match(prompt, /Visual UI changes require fresh screenshots and reviewer screenshot approval before direct squash-land/);
   assert.match(prompt, /Landing policy:/);
   assert.match(prompt, /Default to direct squash-landing on `main`/);
@@ -321,6 +338,44 @@ test("Croprun compatibility prompts render validation and landing policy text fr
     implementationPrompt,
     /Default to sentinel landing on `release\/9\.9` via `upstream` for issue #42 from `patchmill\/issue-42-add-once-runner-helpers`\./,
   );
+});
+
+test("buildImplementationPrompt renders structured visual evidence policy fields", () => {
+  const prompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    branch: "patchmill/issue-42-add-once-runner-helpers",
+    worktreePath: ".patchmill/worktrees/pm-issue-42-add-once-runner-helpers",
+    agentTeam,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
+    projectPolicy: {
+      ...DEFAULT_PATCHMILL_POLICY,
+      projectName: "Sentinel",
+      visualEvidence: {
+        policyText: "Visual-change evidence:\n- Capture fresh after-change screenshots after implementation and validation.",
+        webScreenshotSkill: "sentinel-web-screenshots",
+        mobileScreenshotSkill: "sentinel-mobile-screenshots",
+        referenceScreenshotPaths: ["docs/sentinel/web/", "docs/sentinel/mobile/"],
+        reviewerExpectations: ["The reviewer summary must confirm screenshot comparison approval."],
+        prEvidenceExample: {
+          screenshotPath: ".tmp/issue-42-sentinel-after.png",
+          caption: "Sentinel after the change",
+          referencePaths: ["docs/sentinel/web/hero.png"],
+        },
+      },
+    },
+  });
+
+  assert.match(prompt, /`sentinel-web-screenshots`/);
+  assert.match(prompt, /`sentinel-mobile-screenshots`/);
+  assert.match(prompt, /Look under `docs\/sentinel\/web\/` and `docs\/sentinel\/mobile\/`/);
+  assert.match(prompt, /The reviewer summary must confirm screenshot comparison approval\./);
+  assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/);
+  assert.match(prompt, /"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/);
 });
 
 test("buildImplementationPrompt removes direct-land eligibility instructions when direct landing is disabled", () => {

@@ -98,18 +98,12 @@ const CROPRUN_COMPAT_DIRECT_LAND_POLICY = [
 
 const CROPRUN_COMPAT_VISUAL_EVIDENCE_POLICY = [
   "Visual-change evidence:",
-  "- If the implementation changes visible web UI, invoke the `capturing-proof-screenshots` skill before capturing proof screenshots.",
-  "- If the implementation changes visible Android or mobile UI, invoke the `mobile-app-screenshots` skill before capturing app screenshots.",
-  "- Use existing committed reference screenshots, when available, as the styling baseline for changed or new screens. Look under `docs/reference-screenshots/web/` and `docs/reference-screenshots/mobile/`.",
   "- For new screens without a direct before state, compare against adjacent or analogous reference screenshots from the same app area.",
   "- Capture fresh after-change screenshots after implementation and required validation.",
   "- Record after-change screenshot paths, relevant reference screenshot paths, and what each screenshot proves in `validation`.",
   "- Return structured `visualEvidence` entries for PR fallback so the orchestrator can upload screenshots to the Forgejo PR.",
   "- Do not upload visual evidence to Forgejo yourself; the orchestrator handles the upload after parsing your final JSON.",
   "- A worktree-local screenshot path alone is not sufficient PR evidence; include it in `visualEvidence` so it can be uploaded.",
-  "- If visuals intentionally change, update the relevant committed reference screenshots as part of the change.",
-  "- Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing Croprun styling.",
-  "- The reviewer summary must state whether screenshot review passed when visual changes exist.",
   "- If required screenshots cannot be captured, do not direct-land; return blocked or create a PR with the exact reason.",
 ].join("\n");
 
@@ -165,6 +159,19 @@ export const CROPRUN_COMPAT_POLICY: PatchmillProjectPolicy = {
   },
   visualEvidence: {
     policyText: CROPRUN_COMPAT_VISUAL_EVIDENCE_POLICY,
+    webScreenshotSkill: "capturing-proof-screenshots",
+    mobileScreenshotSkill: "mobile-app-screenshots",
+    referenceScreenshotPaths: ["docs/reference-screenshots/web/", "docs/reference-screenshots/mobile/"],
+    reviewerExpectations: [
+      "If visuals intentionally change, update the relevant committed reference screenshots as part of the change.",
+      "Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing Croprun styling.",
+      "The reviewer summary must state whether screenshot review passed when visual changes exist.",
+    ],
+    prEvidenceExample: {
+      screenshotPath: ".tmp/issue-42-dashboard-after.png",
+      caption: "Dashboard after selecting last 8 weeks",
+      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+    },
   },
   hostToolingInstruction: "Use Forgejo `tea` for repository-hosting actions. Do not use `gh`.",
   pi: {
@@ -191,6 +198,10 @@ export const DEFAULT_PATCHMILL_POLICY: PatchmillProjectPolicy = {
   },
   visualEvidence: {
     policyText: "Capture the visual evidence required by the repository whenever visible UI changes.",
+    prEvidenceExample: {
+      screenshotPath: ".tmp/issue-42-after.png",
+      caption: "Visible UI state after the change",
+    },
   },
   hostToolingInstruction: "Use the repository's configured host tooling for issue and pull-request actions.",
   pi: {

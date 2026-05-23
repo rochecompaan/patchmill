@@ -1,4 +1,5 @@
 import type { CleanupHookConfig } from "../../src/cleanup/types.ts";
+import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 
 export type {
@@ -27,6 +28,7 @@ export type AgentIssueConfig = {
   worktreeDir: string;
   cleanStatusIgnorePrefixes?: string[];
   cleanupHooks: CleanupHookConfig[];
+  projectPolicy: PatchmillProjectPolicy;
   readyLabel: string;
   issueLimit: 1;
   requirePlanApproval: boolean;

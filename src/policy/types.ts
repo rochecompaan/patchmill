@@ -15,6 +15,15 @@ export type PatchmillDirectLandPolicy = {
 
 export type PatchmillVisualEvidencePolicy = {
   policyText: string;
+  webScreenshotSkill?: string;
+  mobileScreenshotSkill?: string;
+  referenceScreenshotPaths?: string[];
+  reviewerExpectations?: string[];
+  prEvidenceExample?: {
+    screenshotPath: string;
+    caption?: string;
+    referencePaths?: string[];
+  };
 };
 
 export type PatchmillPiWorkflowPolicy = {

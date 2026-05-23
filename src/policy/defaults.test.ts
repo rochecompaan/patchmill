@@ -36,10 +36,12 @@ test("CROPRUN_COMPAT_POLICY preserves the current Croprun prompt policy", () => 
   assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Update local `<target-branch>` from the `<remote>` remote/);
   assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /"branch": "<implementation-branch>"/);
   assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Successful final response for human-review PR fallback:/);
-  assert.match(CROPRUN_COMPAT_POLICY.visualEvidence.policyText, /capturing-proof-screenshots/);
-  assert.match(CROPRUN_COMPAT_POLICY.visualEvidence.policyText, /mobile-app-screenshots/);
-  assert.match(CROPRUN_COMPAT_POLICY.visualEvidence.policyText, /docs\/reference-screenshots\/web\//);
-  assert.match(CROPRUN_COMPAT_POLICY.visualEvidence.policyText, /docs\/reference-screenshots\/mobile\//);
+  assert.equal(CROPRUN_COMPAT_POLICY.visualEvidence.webScreenshotSkill, "capturing-proof-screenshots");
+  assert.equal(CROPRUN_COMPAT_POLICY.visualEvidence.mobileScreenshotSkill, "mobile-app-screenshots");
+  assert.deepEqual(CROPRUN_COMPAT_POLICY.visualEvidence.referenceScreenshotPaths, [
+    "docs/reference-screenshots/web/",
+    "docs/reference-screenshots/mobile/",
+  ]);
   assert.match(
     CROPRUN_COMPAT_POLICY.visualEvidence.policyText,
     /Do not upload visual evidence to Forgejo yourself; the orchestrator handles the upload after parsing your final JSON/,
@@ -48,8 +50,20 @@ test("CROPRUN_COMPAT_POLICY preserves the current Croprun prompt policy", () => 
     CROPRUN_COMPAT_POLICY.visualEvidence.policyText,
     /A worktree-local screenshot path alone is not sufficient PR evidence/,
   );
-  assert.match(
+  assert.doesNotMatch(
     CROPRUN_COMPAT_POLICY.visualEvidence.policyText,
+    /If visuals intentionally change, update the relevant committed reference screenshots/,
+  );
+  assert.doesNotMatch(
+    CROPRUN_COMPAT_POLICY.visualEvidence.policyText,
+    /Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing Croprun styling/,
+  );
+  assert.doesNotMatch(
+    CROPRUN_COMPAT_POLICY.visualEvidence.policyText,
+    /The reviewer summary must state whether screenshot review passed when visual changes exist/,
+  );
+  assert.match(
+    CROPRUN_COMPAT_POLICY.visualEvidence.reviewerExpectations?.join("\n") ?? "",
     /The reviewer summary must state whether screenshot review passed when visual changes exist/,
   );
   assert.equal(
@@ -93,6 +107,10 @@ test("DEFAULT_PATCHMILL_POLICY stays generic", () => {
     DEFAULT_PATCHMILL_POLICY.visualEvidence.policyText,
     "Capture the visual evidence required by the repository whenever visible UI changes.",
   );
+  assert.deepEqual(DEFAULT_PATCHMILL_POLICY.visualEvidence.prEvidenceExample, {
+    screenshotPath: ".tmp/issue-42-after.png",
+    caption: "Visible UI state after the change",
+  });
   assert.equal(
     DEFAULT_PATCHMILL_POLICY.hostToolingInstruction,
     "Use the repository's configured host tooling for issue and pull-request actions.",

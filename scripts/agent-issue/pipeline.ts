@@ -31,11 +31,11 @@ import {
   buildImplementationPrompt,
   buildPlanCreationPrompt,
 } from "./prompts.ts";
-import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
+import type { ForgejoVisualEvidenceEnv } from "../../src/host/forgejo-visual-evidence.ts";
+import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
 import { isResumableRunState, readRunState, writeRunState } from "./run-state.ts";
 import { selectIssue } from "./selection.ts";
-import { uploadPrVisualEvidence } from "./visual-evidence.ts";
-import type { VisualEvidenceEnv } from "./visual-evidence.ts";
+import { defaultVisualEvidenceUploader, uploadPrVisualEvidence } from "./visual-evidence.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type {
   AgentIssueBlockedResult,
@@ -57,7 +57,8 @@ export type RunOneIssueOptions = {
   verbosePiOutput?: boolean;
   heartbeatMs?: number;
   fetchImpl?: typeof fetch;
-  visualEvidenceEnv?: VisualEvidenceEnv;
+  visualEvidenceEnv?: ForgejoVisualEvidenceEnv;
+  visualEvidenceUploader?: VisualEvidenceUploader;
 };
 
 async function progress(
@@ -851,7 +852,7 @@ export async function runOneIssue(
           buildPlanCreationPrompt({
             issue,
             planPath,
-            projectPolicy: CROPRUN_COMPAT_POLICY,
+            projectPolicy: config.projectPolicy,
           }),
           {
             progress: options.progress,
@@ -1170,9 +1171,9 @@ export async function runOneIssue(
             agentTeam,
             git: worktreeStrategy,
             projectPolicy: {
-              ...CROPRUN_COMPAT_POLICY,
+              ...config.projectPolicy,
               directLand: {
-                ...CROPRUN_COMPAT_POLICY.directLand,
+                ...config.projectPolicy.directLand,
                 targetBranch: worktreeStrategy.baseBranch,
               },
             },
@@ -1265,13 +1266,22 @@ export async function runOneIssue(
       (implemented.visualEvidence?.length ?? 0) > 0 &&
       !checkpoints.visualEvidenceUploaded
     ) {
+      const visualEvidenceUploader = options.visualEvidenceUploader
+        ?? defaultVisualEvidenceUploader({
+          runner,
+          env: options.visualEvidenceEnv,
+          fetchImpl: options.fetchImpl,
+        });
       const uploadedEvidence = await uploadPrVisualEvidence({
-        runner,
         repoRoot: join(config.repoRoot, worktreePath),
         prUrl: implemented.prUrl,
         evidence: implemented.visualEvidence,
-        env: options.visualEvidenceEnv,
-        fetchImpl: options.fetchImpl,
+        uploader: visualEvidenceUploader,
+        onProgress: async (message) => {
+          await progress(options, "info", "visual-evidence", message, {
+            issueNumber: issue.number,
+          });
+        },
       });
       implemented = { ...implemented, visualEvidence: uploadedEvidence };
       await writeRunState(

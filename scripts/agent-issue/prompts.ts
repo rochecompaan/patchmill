@@ -235,10 +235,39 @@ function renderImplementationValidationStep(policy: PatchmillProjectPolicy): str
   return renderGenericImplementationValidationStep(policy);
 }
 
+function formatCodeList(entries: string[]): string {
+  if (entries.length === 0) return "";
+  if (entries.length === 1) return `\`${entries[0]}\``;
+  if (entries.length === 2) return `\`${entries[0]}\` and \`${entries[1]}\``;
+  return `${entries.slice(0, -1).map((entry) => `\`${entry}\``).join(", ")}, and \`${entries[entries.length - 1]}\``;
+}
+
 function renderVisualEvidenceSection(policy: PatchmillProjectPolicy): string {
   const text = policy.visualEvidence.policyText.trim();
-  if (text.startsWith("Visual-change evidence:")) return text;
-  return `Visual-change evidence:\n- ${text}`;
+  const lines = text.startsWith("Visual-change evidence:")
+    ? text.split("\n")
+    : ["Visual-change evidence:", `- ${text}`];
+
+  if (policy.visualEvidence.webScreenshotSkill) {
+    lines.splice(1, 0, `- If the implementation changes visible web UI, invoke the \`${policy.visualEvidence.webScreenshotSkill}\` skill before capturing proof screenshots.`);
+  }
+  if (policy.visualEvidence.mobileScreenshotSkill) {
+    lines.splice(
+      policy.visualEvidence.webScreenshotSkill ? 2 : 1,
+      0,
+      `- If the implementation changes visible Android or mobile UI, invoke the \`${policy.visualEvidence.mobileScreenshotSkill}\` skill before capturing app screenshots.`,
+    );
+  }
+  if ((policy.visualEvidence.referenceScreenshotPaths?.length ?? 0) > 0) {
+    const insertIndex = 1 + Number(Boolean(policy.visualEvidence.webScreenshotSkill)) + Number(Boolean(policy.visualEvidence.mobileScreenshotSkill));
+    lines.splice(
+      insertIndex,
+      0,
+      `- Use existing committed reference screenshots, when available, as the styling baseline for changed or new screens. Look under ${formatCodeList(policy.visualEvidence.referenceScreenshotPaths ?? [])}.`,
+    );
+  }
+  lines.push(...(policy.visualEvidence.reviewerExpectations ?? []).map((entry) => `- ${entry}`));
+  return lines.join("\n");
 }
 
 function renderPrCreationInstruction(policy: PatchmillProjectPolicy, remote: string): string {
@@ -267,20 +296,14 @@ If human input is required, stop safely, leave committed work as-is, keep the re
 
 function renderPrCreatedContract(policy: PatchmillProjectPolicy, branch: string): string {
   const prUrlLabel = isCroprunCompatPolicy(policy) ? "<Forgejo PR URL>" : "<pull request URL>";
-  const visualEvidence = isCroprunCompatPolicy(policy)
-    ? `  "visualEvidence": [
-    {
-      "screenshotPath": ".tmp/issue-42-dashboard-after.png",
-      "caption": "Dashboard after selecting last 8 weeks",
-      "referencePaths": ["docs/reference-screenshots/web/01-dashboard.png"]
-    }
-  ],`
-    : `  "visualEvidence": [
-    {
-      "screenshotPath": ".tmp/issue-42-after.png",
-      "caption": "Visible UI state after the change"
-    }
-  ],`;
+  const visualEvidenceExample = policy.visualEvidence.prEvidenceExample ?? {
+    screenshotPath: ".tmp/issue-42-after.png",
+    caption: "Visible UI state after the change",
+  };
+  const visualEvidenceLines = JSON.stringify([visualEvidenceExample], null, 4)
+    .split("\n")
+    .map((line, index) => index === 0 ? `  "visualEvidence": ${line}` : `  ${line}`)
+    .join("\n").concat(",");
 
   return `Successful final response for human-review PR fallback:
 Return this exact JSON object after PR handoff succeeds:
@@ -290,7 +313,7 @@ Return this exact JSON object after PR handoff succeeds:
   "branch": "${branch}",
   "commits": ["<sha>"],
   "validation": ["command and result summary"],
-${visualEvidence}
+${visualEvidenceLines}
   "reviewSummary": "short reviewer/fix summary",
   "landingDecision": "PR required: <reason>"
 }`;

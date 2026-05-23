@@ -7,6 +7,7 @@ import {
   DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
   LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
 } from "../../src/git/worktree-strategy.ts";
+import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import type { PatchmillConfig } from "../../src/config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
@@ -70,6 +71,7 @@ export function parseArgs(
   const fallbackStrategy = normalizedConfig
     ? DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG
     : LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG;
+  const projectPolicy = normalizedConfig?.projectPolicy ?? CROPRUN_COMPAT_POLICY;
   const config: AgentIssueConfig = {
     repoRoot,
     dryRun: true,
@@ -83,9 +85,10 @@ export function parseArgs(
     worktreeDir: normalizedConfig?.paths.worktreeDir ?? join(repoRoot, ".worktrees"),
     cleanStatusIgnorePrefixes: [...(normalizedConfig?.paths.cleanStatusIgnorePrefixes ?? DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES)],
     cleanupHooks: cloneCleanupHooks(normalizedConfig?.cleanupHooks ?? LEGACY_CROPRUN_CLEANUP_HOOKS),
+    projectPolicy,
     readyLabel: normalizedConfig?.labels.ready ?? "agent-ready",
     issueLimit: 1,
-    requirePlanApproval: normalizedConfig?.projectPolicy.planRequiresApproval ?? false,
+    requirePlanApproval: projectPolicy.planRequiresApproval,
     baseBranch: normalizedConfig?.git.baseBranch ?? fallbackStrategy.baseBranch,
     baseRef: normalizedConfig?.git.baseRef ?? fallbackStrategy.baseRef,
     remote: normalizedConfig?.git.remote ?? fallbackStrategy.remote,

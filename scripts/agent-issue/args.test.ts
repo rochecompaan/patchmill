@@ -6,6 +6,7 @@ import { cwd } from "node:process";
 import { join } from "node:path";
 import { HELP_TEXT, loadCliConfig, summarizeResult } from "../agent-issue-once.ts";
 import { LEGACY_CROPRUN_CLEANUP_HOOKS } from "../../src/cleanup/hooks.ts";
+import { CROPRUN_COMPAT_POLICY, DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { parseArgs } from "./args.ts";
 
 test("parseArgs shows help when no args are provided", () => {
@@ -24,6 +25,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.worktreePrefix, "agent-issue-");
   assert.deepEqual(config.cleanStatusIgnorePrefixes, [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"]);
   assert.deepEqual(config.cleanupHooks, LEGACY_CROPRUN_CLEANUP_HOOKS);
+  assert.deepEqual(config.projectPolicy, CROPRUN_COMPAT_POLICY);
   assert.equal(config.readyLabel, "agent-ready");
   assert.equal(config.issueLimit, 1);
   assert.equal(config.requirePlanApproval, false);
@@ -85,9 +87,13 @@ test("help text documents verbose Pi output", () => {
 });
 
 test("help text documents Forgejo visual evidence upload environment", () => {
+  assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_URL/);
+  assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_TOKEN/);
+  assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_REPO/);
   assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_FORGEJO_URL/);
   assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN/);
   assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_FORGEJO_REPO/);
+  assert.match(HELP_TEXT, /Compatibility fallback/);
 });
 
 test("summarizeResult includes merged issue handoff fields", () => {
@@ -222,6 +228,7 @@ test("loadCliConfig preserves Croprun compatibility defaults when no patchmill c
   assert.equal(config.worktreeDir, join(repoRoot, ".worktrees"));
   assert.equal(config.worktreePrefix, "agent-issue-");
   assert.deepEqual(config.cleanupHooks, LEGACY_CROPRUN_CLEANUP_HOOKS);
+  assert.deepEqual(config.projectPolicy, CROPRUN_COMPAT_POLICY);
 });
 
 test("loadCliConfig applies normalized patchmill defaults for run-once", async () => {
@@ -251,6 +258,35 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.equal(config.worktreePrefix, "patchmill-issue-");
   assert.deepEqual(config.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
   assert.deepEqual(config.cleanupHooks, []);
+  assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
+});
+
+test("loadCliConfig passes configured project policy through to run-once prompts", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    projectPolicy: {
+      ...DEFAULT_PATCHMILL_POLICY,
+      projectName: "Sentinel",
+      visualEvidence: {
+        policyText: "Visual-change evidence:\n- Capture Sentinel screenshots.",
+        webScreenshotSkill: "sentinel-web-screenshots",
+        referenceScreenshotPaths: ["docs/sentinel/web/"],
+        reviewerExpectations: ["Reviewer must confirm Sentinel screenshot approval."],
+        prEvidenceExample: {
+          screenshotPath: ".tmp/issue-42-sentinel-after.png",
+          caption: "Sentinel after the change",
+        },
+      },
+    },
+  }));
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {});
+
+  assert.equal(config.projectPolicy.projectName, "Sentinel");
+  assert.equal(config.projectPolicy.visualEvidence.webScreenshotSkill, "sentinel-web-screenshots");
+  assert.deepEqual(config.projectPolicy.visualEvidence.referenceScreenshotPaths, ["docs/sentinel/web/"]);
+  assert.deepEqual(config.projectPolicy.visualEvidence.reviewerExpectations, ["Reviewer must confirm Sentinel screenshot approval."]);
+  assert.equal(config.projectPolicy.visualEvidence.prEvidenceExample?.screenshotPath, ".tmp/issue-42-sentinel-after.png");
 });
 
 test("loadCliConfig preserves Croprun tea login when patchmill config only customizes paths", async () => {

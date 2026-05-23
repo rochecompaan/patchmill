@@ -39,6 +39,16 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
   assert.notStrictEqual(first.projectPolicy.validation.forbiddenSubstitutions, second.projectPolicy.validation.forbiddenSubstitutions);
   assert.notStrictEqual(first.projectPolicy.directLand, DEFAULT_PATCHMILL_CONFIG.projectPolicy.directLand);
   assert.notStrictEqual(first.projectPolicy.directLand, second.projectPolicy.directLand);
+  assert.notStrictEqual(first.projectPolicy.visualEvidence, DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence);
+  assert.notStrictEqual(first.projectPolicy.visualEvidence, second.projectPolicy.visualEvidence);
+  assert.notStrictEqual(
+    first.projectPolicy.visualEvidence.prEvidenceExample,
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence.prEvidenceExample,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.visualEvidence.prEvidenceExample,
+    second.projectPolicy.visualEvidence.prEvidenceExample,
+  );
   assert.notStrictEqual(first.projectPolicy.pi, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi);
   assert.notStrictEqual(first.projectPolicy.pi, second.projectPolicy.pi);
   assert.notStrictEqual(first.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
@@ -62,8 +72,65 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
     DEFAULT_PATCHMILL_CONFIG.projectPolicy.validation.forbiddenSubstitutions,
   );
   assert.equal(second.projectPolicy.directLand.targetBranch, DEFAULT_PATCHMILL_CONFIG.projectPolicy.directLand.targetBranch);
+  assert.deepEqual(
+    second.projectPolicy.visualEvidence.prEvidenceExample,
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence.prEvidenceExample,
+  );
   assert.equal(second.projectPolicy.pi.todoWorkflowInstruction, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.todoWorkflowInstruction);
   assert.deepEqual(second.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
+});
+
+test("loadPatchmillConfig clones configured visual evidence fields for each load", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
+    projectPolicy: {
+      visualEvidence: {
+        policyText: "Capture screenshots for visible UI changes.",
+        webScreenshotSkill: "capture-web-ui",
+        mobileScreenshotSkill: "capture-mobile-ui",
+        referenceScreenshotPaths: ["docs/reference/web/", "docs/reference/mobile/"],
+        reviewerExpectations: ["Confirm screenshot comparison approval in the review summary."],
+        prEvidenceExample: {
+          screenshotPath: ".tmp/factory-after.png",
+          caption: "Factory dashboard after the change",
+          referencePaths: ["docs/reference/web/dashboard.png"],
+        },
+      },
+    },
+  }));
+
+  const first = await loadPatchmillConfig(dir, {}, []);
+  const second = await loadPatchmillConfig(dir, {}, []);
+
+  assert.notStrictEqual(first.projectPolicy.visualEvidence, second.projectPolicy.visualEvidence);
+  assert.notStrictEqual(
+    first.projectPolicy.visualEvidence.referenceScreenshotPaths,
+    second.projectPolicy.visualEvidence.referenceScreenshotPaths,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.visualEvidence.reviewerExpectations,
+    second.projectPolicy.visualEvidence.reviewerExpectations,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.visualEvidence.prEvidenceExample,
+    second.projectPolicy.visualEvidence.prEvidenceExample,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.visualEvidence.prEvidenceExample?.referencePaths,
+    second.projectPolicy.visualEvidence.prEvidenceExample?.referencePaths,
+  );
+
+  first.projectPolicy.visualEvidence.referenceScreenshotPaths?.push("docs/reference/tablet/");
+  first.projectPolicy.visualEvidence.reviewerExpectations?.push("Attach reviewer approval.");
+  first.projectPolicy.visualEvidence.prEvidenceExample?.referencePaths?.push("docs/reference/web/secondary.png");
+
+  assert.deepEqual(second.projectPolicy.visualEvidence.referenceScreenshotPaths, ["docs/reference/web/", "docs/reference/mobile/"]);
+  assert.deepEqual(second.projectPolicy.visualEvidence.reviewerExpectations, ["Confirm screenshot comparison approval in the review summary."]);
+  assert.deepEqual(second.projectPolicy.visualEvidence.prEvidenceExample, {
+    screenshotPath: ".tmp/factory-after.png",
+    caption: "Factory dashboard after the change",
+    referencePaths: ["docs/reference/web/dashboard.png"],
+  });
 });
 
 test("loadPatchmillConfig applies patchmill.config.json", async () => {
@@ -104,6 +171,15 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
       },
       visualEvidence: {
         policyText: "Capture screenshots for visible UI changes.",
+        webScreenshotSkill: "capture-web-ui",
+        mobileScreenshotSkill: "capture-mobile-ui",
+        referenceScreenshotPaths: ["docs/reference/web/", "docs/reference/mobile/"],
+        reviewerExpectations: ["Confirm screenshot comparison approval in the review summary."],
+        prEvidenceExample: {
+          screenshotPath: ".tmp/factory-after.png",
+          caption: "Factory dashboard after the change",
+          referencePaths: ["docs/reference/web/dashboard.png"],
+        },
       },
       hostToolingInstruction: "Use the configured repository host tooling.",
       pi: {
@@ -142,6 +218,15 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   );
   assert.equal(config.projectPolicy.directLand.targetBranch, "release/1.2");
   assert.equal(config.projectPolicy.visualEvidence.policyText, "Capture screenshots for visible UI changes.");
+  assert.equal(config.projectPolicy.visualEvidence.webScreenshotSkill, "capture-web-ui");
+  assert.equal(config.projectPolicy.visualEvidence.mobileScreenshotSkill, "capture-mobile-ui");
+  assert.deepEqual(config.projectPolicy.visualEvidence.referenceScreenshotPaths, ["docs/reference/web/", "docs/reference/mobile/"]);
+  assert.deepEqual(config.projectPolicy.visualEvidence.reviewerExpectations, ["Confirm screenshot comparison approval in the review summary."]);
+  assert.deepEqual(config.projectPolicy.visualEvidence.prEvidenceExample, {
+    screenshotPath: ".tmp/factory-after.png",
+    caption: "Factory dashboard after the change",
+    referencePaths: ["docs/reference/web/dashboard.png"],
+  });
   assert.equal(config.projectPolicy.hostToolingInstruction, "Use the configured repository host tooling.");
   assert.equal(config.projectPolicy.pi.todoWorkflowInstruction, "Track implementation tasks with Pi todos.");
   assert.equal(
@@ -273,6 +358,30 @@ test("loadPatchmillConfig reports invalid project policy validation rules", asyn
       assert.match(
         error.message,
         /Invalid patchmill\.config\.json: projectPolicy\.validation\.rules\[0\]\.commands must be an array of strings/,
+      );
+      return true;
+    }
+  );
+});
+
+test("loadPatchmillConfig reports invalid visual evidence example types", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
+    projectPolicy: {
+      visualEvidence: {
+        prEvidenceExample: { screenshotPath: 17 },
+      },
+    },
+  }));
+
+  await assert.rejects(
+    loadPatchmillConfig(dir, {}, []),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.equal(error.name, "Error");
+      assert.match(
+        error.message,
+        /Invalid patchmill\.config\.json: projectPolicy\.visualEvidence\.prEvidenceExample\.screenshotPath must be a string/,
       );
       return true;
     }

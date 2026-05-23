@@ -39,12 +39,15 @@ Options:
 Environment:
   PATCHMILL_HOST_LOGIN               Override the default host login name.
   PATCHMILL_AGENT_TEAM               Override the default Pi agent-team preset.
+  PATCHMILL_FORGEJO_URL              Primary Forgejo base URL for PR visual evidence uploads.
+  PATCHMILL_FORGEJO_TOKEN            Primary Forgejo API token for PR visual evidence uploads.
+  PATCHMILL_FORGEJO_REPO             Primary optional owner/repo override when git remote parsing is insufficient.
   CROPRUN_AGENT_ISSUE_TEA_LOGIN      Compatibility override for the default tea login name.
   CROPRUN_TRIAGE_TEA_LOGIN           Compatibility fallback default tea login name.
   CROPRUN_AGENT_ISSUE_AGENT_TEAM     Compatibility override for implementation agent-team.
-  CROPRUN_AGENT_ISSUE_FORGEJO_URL    Forgejo base URL for PR visual evidence uploads.
-  CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN  Forgejo API token for PR visual evidence uploads.
-  CROPRUN_AGENT_ISSUE_FORGEJO_REPO   Optional owner/repo override when git remote parsing is insufficient.
+  CROPRUN_AGENT_ISSUE_FORGEJO_URL    Compatibility fallback for PATCHMILL_FORGEJO_URL.
+  CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN  Compatibility fallback for PATCHMILL_FORGEJO_TOKEN.
+  CROPRUN_AGENT_ISSUE_FORGEJO_REPO   Compatibility fallback for PATCHMILL_FORGEJO_REPO.
 `;
 
 type Env = Record<string, string | undefined>;

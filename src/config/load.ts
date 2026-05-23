@@ -50,6 +50,73 @@ function cloneValidationRules(
   }));
 }
 
+function cloneVisualEvidenceExample(
+  example: NonNullable<PatchmillConfig["projectPolicy"]["visualEvidence"]["prEvidenceExample"]>,
+): NonNullable<PatchmillConfig["projectPolicy"]["visualEvidence"]["prEvidenceExample"]> {
+  return {
+    screenshotPath: example.screenshotPath,
+    ...(example.caption !== undefined ? { caption: example.caption } : {}),
+    ...(example.referencePaths !== undefined ? { referencePaths: cloneStringArray(example.referencePaths) } : {}),
+  };
+}
+
+function cloneVisualEvidencePolicy(
+  visualEvidence: PatchmillConfig["projectPolicy"]["visualEvidence"],
+): PatchmillConfig["projectPolicy"]["visualEvidence"] {
+  return {
+    policyText: visualEvidence.policyText,
+    ...(visualEvidence.webScreenshotSkill !== undefined
+      ? { webScreenshotSkill: visualEvidence.webScreenshotSkill }
+      : {}),
+    ...(visualEvidence.mobileScreenshotSkill !== undefined
+      ? { mobileScreenshotSkill: visualEvidence.mobileScreenshotSkill }
+      : {}),
+    ...(visualEvidence.referenceScreenshotPaths !== undefined
+      ? { referenceScreenshotPaths: cloneStringArray(visualEvidence.referenceScreenshotPaths) }
+      : {}),
+    ...(visualEvidence.reviewerExpectations !== undefined
+      ? { reviewerExpectations: cloneStringArray(visualEvidence.reviewerExpectations) }
+      : {}),
+    ...(visualEvidence.prEvidenceExample !== undefined
+      ? { prEvidenceExample: cloneVisualEvidenceExample(visualEvidence.prEvidenceExample) }
+      : {}),
+  };
+}
+
+function mergeVisualEvidencePolicy(
+  base: PatchmillConfig["projectPolicy"]["visualEvidence"],
+  update: PartialProjectPolicy["visualEvidence"] | undefined,
+): PatchmillConfig["projectPolicy"]["visualEvidence"] {
+  return {
+    policyText: update?.policyText ?? base.policyText,
+    ...(update?.webScreenshotSkill !== undefined
+      ? { webScreenshotSkill: update.webScreenshotSkill }
+      : base.webScreenshotSkill !== undefined
+        ? { webScreenshotSkill: base.webScreenshotSkill }
+        : {}),
+    ...(update?.mobileScreenshotSkill !== undefined
+      ? { mobileScreenshotSkill: update.mobileScreenshotSkill }
+      : base.mobileScreenshotSkill !== undefined
+        ? { mobileScreenshotSkill: base.mobileScreenshotSkill }
+        : {}),
+    ...(update?.referenceScreenshotPaths !== undefined
+      ? { referenceScreenshotPaths: cloneStringArray(update.referenceScreenshotPaths) }
+      : base.referenceScreenshotPaths !== undefined
+        ? { referenceScreenshotPaths: cloneStringArray(base.referenceScreenshotPaths) }
+        : {}),
+    ...(update?.reviewerExpectations !== undefined
+      ? { reviewerExpectations: cloneStringArray(update.reviewerExpectations) }
+      : base.reviewerExpectations !== undefined
+        ? { reviewerExpectations: cloneStringArray(base.reviewerExpectations) }
+        : {}),
+    ...(update?.prEvidenceExample !== undefined
+      ? { prEvidenceExample: cloneVisualEvidenceExample(update.prEvidenceExample) }
+      : base.prEvidenceExample !== undefined
+        ? { prEvidenceExample: cloneVisualEvidenceExample(base.prEvidenceExample) }
+        : {}),
+  };
+}
+
 function cloneProjectPolicy(projectPolicy: PatchmillConfig["projectPolicy"]): PatchmillConfig["projectPolicy"] {
   return {
     ...(projectPolicy.projectName !== undefined ? { projectName: projectPolicy.projectName } : {}),
@@ -60,7 +127,7 @@ function cloneProjectPolicy(projectPolicy: PatchmillConfig["projectPolicy"]): Pa
       forbiddenSubstitutions: cloneStringArray(projectPolicy.validation.forbiddenSubstitutions),
     },
     directLand: { ...projectPolicy.directLand },
-    visualEvidence: { ...projectPolicy.visualEvidence },
+    visualEvidence: cloneVisualEvidencePolicy(projectPolicy.visualEvidence),
     hostToolingInstruction: projectPolicy.hostToolingInstruction,
     pi: { ...projectPolicy.pi },
     planRequiresApproval: projectPolicy.planRequiresApproval,
@@ -82,7 +149,7 @@ function mergeProjectPolicy(
       ),
     },
     directLand: { ...base.directLand, ...update?.directLand },
-    visualEvidence: { ...base.visualEvidence, ...update?.visualEvidence },
+    visualEvidence: mergeVisualEvidencePolicy(base.visualEvidence, update?.visualEvidence),
     hostToolingInstruction: update?.hostToolingInstruction ?? base.hostToolingInstruction,
     pi: { ...base.pi, ...update?.pi },
     planRequiresApproval: update?.planRequiresApproval ?? base.planRequiresApproval,
@@ -265,6 +332,30 @@ function readValidationRules(
   });
 }
 
+function readOptionalVisualEvidenceExample(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+): PatchmillConfig["projectPolicy"]["visualEvidence"]["prEvidenceExample"] | undefined {
+  const value = source[key];
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw configError(path, "an object", value);
+
+  const screenshotPath = readOptionalString(value, "screenshotPath", `${path}.screenshotPath`);
+  if (screenshotPath === undefined) {
+    throw configError(`${path}.screenshotPath`, "a string", value.screenshotPath);
+  }
+
+  const caption = readOptionalString(value, "caption", `${path}.caption`);
+  const referencePaths = readOptionalStringArray(value, "referencePaths", `${path}.referencePaths`);
+
+  return {
+    screenshotPath,
+    ...(caption !== undefined ? { caption } : {}),
+    ...(referencePaths !== undefined ? { referencePaths } : {}),
+  };
+}
+
 function hasEntries(value: object): boolean {
   return Object.keys(value).length > 0;
 }
@@ -405,7 +496,37 @@ function parseConfigFile(data: unknown): PartialConfig {
         "policyText",
         "projectPolicy.visualEvidence.policyText",
       );
+      const webScreenshotSkill = readOptionalString(
+        visualEvidence,
+        "webScreenshotSkill",
+        "projectPolicy.visualEvidence.webScreenshotSkill",
+      );
+      const mobileScreenshotSkill = readOptionalString(
+        visualEvidence,
+        "mobileScreenshotSkill",
+        "projectPolicy.visualEvidence.mobileScreenshotSkill",
+      );
+      const referenceScreenshotPaths = readOptionalStringArray(
+        visualEvidence,
+        "referenceScreenshotPaths",
+        "projectPolicy.visualEvidence.referenceScreenshotPaths",
+      );
+      const reviewerExpectations = readOptionalStringArray(
+        visualEvidence,
+        "reviewerExpectations",
+        "projectPolicy.visualEvidence.reviewerExpectations",
+      );
+      const prEvidenceExample = readOptionalVisualEvidenceExample(
+        visualEvidence,
+        "prEvidenceExample",
+        "projectPolicy.visualEvidence.prEvidenceExample",
+      );
       if (policyText !== undefined) parsedVisualEvidence.policyText = policyText;
+      if (webScreenshotSkill !== undefined) parsedVisualEvidence.webScreenshotSkill = webScreenshotSkill;
+      if (mobileScreenshotSkill !== undefined) parsedVisualEvidence.mobileScreenshotSkill = mobileScreenshotSkill;
+      if (referenceScreenshotPaths !== undefined) parsedVisualEvidence.referenceScreenshotPaths = referenceScreenshotPaths;
+      if (reviewerExpectations !== undefined) parsedVisualEvidence.reviewerExpectations = reviewerExpectations;
+      if (prEvidenceExample !== undefined) parsedVisualEvidence.prEvidenceExample = prEvidenceExample;
       if (hasEntries(parsedVisualEvidence)) parsed.visualEvidence = parsedVisualEvidence;
     }
     const hostToolingInstruction = readOptionalString(

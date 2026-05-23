@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { appendFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CROPRUN_COMPAT_POLICY, DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { TILT_JUST_CLEANUP_HOOK } from "./tilt-cleanup.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
@@ -24,6 +25,7 @@ type Call = {
 };
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
+const MINIMAL_PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 type MockRunner = CommandRunner & { calls: Call[] };
 
@@ -244,6 +246,7 @@ async function makeConfig(
     worktreeDir: join(repoRoot, ".worktrees"),
     cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"],
     cleanupHooks: [],
+    projectPolicy: CROPRUN_COMPAT_POLICY,
     readyLabel: "agent-ready",
     issueLimit: 1,
     requirePlanApproval: false,
@@ -2262,6 +2265,8 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
         totalTokens: 21000,
       });
       assert.match(prompt, /Implement Croprun Forgejo issue #15/);
+      assert.match(prompt, /capturing-proof-screenshots/);
+      assert.match(prompt, /docs\/reference-screenshots\/web\//);
       assert.match(prompt, /Branch: agent\/issue-15-ship-automation-pipeline/);
       assert.match(prompt, /Authoritative agent team: economy/);
       assert.match(prompt, /worker: model=openai-codex\/gpt-5\.4, thinking=medium/);
@@ -2365,6 +2370,98 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
     ".worktrees/agent-issue-15-ship-automation-pipeline",
   );
   assert.equal(runState.implementingAt, NOW.toISOString());
+});
+
+test("runOneIssue renders configured project policy visual evidence fields in the implementation prompt", async () => {
+  const baseConfig = await makeConfig({ dryRun: false, execute: true });
+  const config = {
+    ...baseConfig,
+    baseBranch: "release/2.0",
+    remote: "upstream",
+    projectPolicy: {
+      ...DEFAULT_PATCHMILL_POLICY,
+      projectName: "Sentinel",
+      directLand: {
+        targetBranch: "ignored-by-runner",
+        policyText: "Land to `<target-branch>` via `<remote>` from `<implementation-branch>` for issue #<n>.",
+      },
+      visualEvidence: {
+        policyText: "Visual-change evidence:\n- Capture Sentinel screenshots after validation.",
+        webScreenshotSkill: "sentinel-web-screenshots",
+        mobileScreenshotSkill: "sentinel-mobile-screenshots",
+        referenceScreenshotPaths: ["docs/sentinel/web/", "docs/sentinel/mobile/"],
+        reviewerExpectations: ["Reviewer must confirm Sentinel screenshot approval."],
+        prEvidenceExample: {
+          screenshotPath: ".tmp/issue-42-sentinel-after.png",
+          caption: "Sentinel after the change",
+          referencePaths: ["docs/sentinel/web/hero.png"],
+        },
+      },
+    },
+  };
+  const selected = issue(16, ["agent-ready"], "Render configured policy prompt");
+  const planPath = "docs/plans/2026-05-09-issue-16-render-configured-policy-prompt.md";
+  const worktreeRoot = join(config.repoRoot, ".worktrees/agent-issue-16-render-configured-policy-prompt");
+
+  let piCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCalls += 1;
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      if (piCalls === 1) {
+        assert.match(prompt, /Create an implementation plan for Sentinel issue #16/);
+        return {
+          code: 0,
+          stdout: `{"status":"plan-created","planPath":"${planPath}","commit":"abc123"}`,
+          stderr: "",
+        };
+      }
+
+      await writeTodo(worktreeRoot, "task-1", "issue-16-task-01-render-configured-policy-prompt", "closed");
+      assert.match(prompt, /Implement Sentinel issue #16/);
+      assert.match(prompt, /`sentinel-web-screenshots`/);
+      assert.match(prompt, /`sentinel-mobile-screenshots`/);
+      assert.match(prompt, /Look under `docs\/sentinel\/web\/` and `docs\/sentinel\/mobile\/`/);
+      assert.match(prompt, /Reviewer must confirm Sentinel screenshot approval\./);
+      assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/);
+      assert.match(prompt, /Land to `release\/2\.0` via `upstream` from `agent\/issue-16-render-configured-policy-prompt` for issue #16\./);
+      assert.doesNotMatch(prompt, /capturing-proof-screenshots/);
+      assert.doesNotMatch(prompt, /docs\/reference-screenshots\/web\//);
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/16",
+          branch: "agent/issue-16-render-configured-policy-prompt",
+          commits: ["def456"],
+          validation: ["node --test ok"],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(piCalls, 2);
 });
 
 test("runOneIssue uses the configured worktree strategy for workspace names and prompt instructions", async () => {
@@ -2819,6 +2916,7 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
   const worktreePath = ".worktrees/agent-issue-31-dashboard-visual-evidence";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   const commentBodies: string[] = [];
+  const uploadCalls: Array<{ repoRoot: string; prUrl: string; evidence: unknown }> = [];
 
   const runner = createMockRunner(async (call) => {
     if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
@@ -2835,11 +2933,10 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "config" && call.args[1] === "--get") return { code: 0, stdout: "https://forgejo.example/owner/croprun.git\n", stderr: "" };
     if (call.command === "pi") {
       await writeTodo(worktreeRoot, "task-1", "issue-31-task-01-dashboard-visual-evidence", "closed");
       await mkdir(join(worktreeRoot, ".tmp"), { recursive: true });
-      await writeFile(join(worktreeRoot, ".tmp", "dashboard.png"), "png bytes", "utf8");
+      await writeFile(join(worktreeRoot, ".tmp", "dashboard.png"), MINIMAL_PNG_BYTES);
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -2864,35 +2961,96 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
 
-  const fetchUrls: string[] = [];
-  const fetchImpl = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    fetchUrls.push(String(url));
-    if (String(url).endsWith("/assets")) {
-      assert.equal(init?.method, "POST");
-      return Response.json({ browser_download_url: "https://forgejo.example/attachments/dashboard.png" });
-    }
-    assert.equal(String(url), "https://forgejo.example/api/v1/repos/owner/croprun/issues/77/comments");
-    const payload = JSON.parse(String(init?.body));
-    assert.match(payload.body, /!\[Dashboard after selecting last 8 weeks\]\(https:\/\/forgejo\.example\/attachments\/dashboard\.png\)/);
-    return Response.json({ id: 456 });
+  const visualEvidenceUploader = {
+    async uploadPrEvidence(input: { repoRoot: string; prUrl: string; evidence: Array<{ screenshotPath: string; caption?: string; referencePaths?: string[] }> | undefined }) {
+      uploadCalls.push(input);
+      return input.evidence?.map((entry) => ({ ...entry, url: "https://forgejo.example/attachments/dashboard.png" })) ?? [];
+    },
   };
 
   const result = await runOneIssue(runner, config, {
     now: NOW,
-    visualEvidenceEnv: {
-      CROPRUN_AGENT_ISSUE_FORGEJO_URL: "https://forgejo.example",
-      CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN: "secret-token",
-    },
-    fetchImpl,
+    visualEvidenceUploader,
   });
 
   assert.equal(result.status, "pr-created", JSON.stringify(result));
-  assert.deepEqual(fetchUrls, [
-    "https://forgejo.example/api/v1/repos/owner/croprun/issues/77/assets",
-    "https://forgejo.example/api/v1/repos/owner/croprun/issues/77/comments",
+  assert.deepEqual(uploadCalls, [
+    {
+      repoRoot: worktreeRoot,
+      prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+      evidence: [
+        {
+          screenshotPath: ".tmp/dashboard.png",
+          caption: "Dashboard after selecting last 8 weeks",
+          referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+        },
+      ],
+    },
   ]);
   assert.match(commentBodies.find((body) => body.includes("Automation handoff ready")) ?? "", /PR: https:\/\/forgejo\.example\/owner\/croprun\/pulls\/77/);
   assert.equal(commentBodies.some((body) => body.includes(".tmp/dashboard.png") && body.includes("Visual evidence")), false);
+});
+
+test("runOneIssue keeps visual evidence when no uploader is configured", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
+  const planPath = join(config.plansDir, "2026-05-22-issue-32-dashboard-visual-evidence.md");
+  await writeFile(planPath, "# plan\n", "utf8");
+  const worktreePath = ".worktrees/agent-issue-32-dashboard-visual-evidence";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return { code: 0, stdout: page === "1" ? issueListPayload([issue(32, ["agent-ready"], "Dashboard visual evidence without uploader")]) : "[]", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      await writeTodo(worktreeRoot, "task-1", "issue-32-task-01-dashboard-visual-evidence", "closed");
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/owner/croprun/pulls/88",
+          branch: "agent/issue-32-dashboard-visual-evidence",
+          commits: ["def456"],
+          validation: ["just playwright-test ok"],
+          reviewSummary: "Fresh reviewer screenshot review: passed",
+          visualEvidence: [
+            {
+              screenshotPath: ".tmp/dashboard.png",
+              caption: "Dashboard after selecting last 8 weeks",
+              referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+            },
+          ],
+        }),
+        stderr: "",
+      };
+    }
+    if (call.command === "just" && call.args[0] === "tilt-down") return { code: 0, stdout: "", stderr: "" };
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.deepEqual(result.visualEvidence, [
+    {
+      screenshotPath: ".tmp/dashboard.png",
+      caption: "Dashboard after selecting last 8 weeks",
+      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+    },
+  ]);
+  assert.ok(
+    events.some((event) => event.stage === "visual-evidence" && event.message === "visual evidence present but no uploader configured; skipping host asset upload"),
+    JSON.stringify(events, null, 2),
+  );
 });
 
 test("runOneIssue keeps implementation task totals anchored to the plan when transient todos differ", async () => {
