@@ -2,20 +2,21 @@
 
 ## Summary
 
-Patchmill is an agent-driven software factory that turns repository issues into reviewed diffs, pull requests, or safe direct landings. The first implementation is extracted from Croprun's `agent-issue-triage` and `agent-issue-once` scripts and keeps the initial Forgejo + Pi path working while introducing boundaries for host providers, coding agents, project policy, and prompt templates.
+Patchmill is a Pi-driven software factory that turns repository issues into reviewed diffs, pull requests, or safe direct landings. The first implementation is extracted from Croprun's `agent-issue-triage` and `agent-issue-once` scripts and keeps the initial Forgejo + Pi path working while introducing boundaries for issue hosts, project policy, and prompt templates.
 
 ## Goals
 
-- Preserve the current Forgejo + Pi workflow as the first supported provider combination.
+- Preserve the current Forgejo + Pi workflow as the first supported host/runtime combination.
 - Provide a first-class `patchmill` CLI with subcommands for triage and single-issue processing.
 - Move Croprun-specific labels, validation commands, plan paths, landing policy, prompts, and environment variable names into configuration.
-- Define stable interfaces for issue hosts and coding agents so GitHub/GitLab and non-Pi agents can be added later.
+- Define stable interfaces for issue hosts so GitHub/GitLab can be added later.
+- Treat Pi as the built-in execution environment for planning, implementation, skills, todos, subagents, and TUI-driven review.
 - Keep run-state, resumability, progress logs, structured output validation, and untrusted issue-content handling as core Patchmill features.
 
 ## Non-goals for the first generalization pass
 
 - Implement GitHub or GitLab providers.
-- Implement non-Pi agent providers.
+- Abstract Pi behind a generic coding-agent interface or implement non-Pi agents.
 - Build a daemon, scheduler, or multi-worker queue runner.
 - Replace the copied implementation wholesale.
 - Change the current direct-land policy behavior beyond moving it into configuration/templates.
@@ -36,10 +37,10 @@ This baseline is intentionally not yet fully generic. It gives the new project a
 
 ```sh
 patchmill triage --dry-run
-patchmill triage --execute --limit 10
+patchmill triage --limit 10
 patchmill run-once --dry-run
-patchmill run-once --execute --agent-team openai-only
-patchmill run-once --execute --plan-only --issue 123
+patchmill run-once --agent-team openai-only
+patchmill run-once --plan-only --issue 123
 ```
 
 Future commands may include:
@@ -68,8 +69,7 @@ Initial config should cover:
     "provider": "forgejo-tea",
     "login": "triage-agent"
   },
-  "agent": {
-    "provider": "pi",
+  "pi": {
     "team": "openai-only",
     "triageThinking": "high"
   },
@@ -117,12 +117,12 @@ Responsible for orchestration:
 - select issues
 - create/apply run-state checkpoints
 - call the host provider
-- call the agent provider
+- run Pi prompts for triage, planning, and implementation
 - validate structured outputs
 - update labels/comments
 - report progress
 
-The core should depend on interfaces, not on `tea` or `pi` directly.
+The core should depend on the host interface instead of `tea` directly. Pi is a first-class runtime dependency, not a replaceable coding-agent provider.
 
 ### Host provider interface
 
@@ -141,19 +141,18 @@ export type IssueHostProvider = {
 
 The first implementation is `ForgejoTeaHostProvider`, built from the copied `forgejo.ts` functions.
 
-### Coding agent provider interface
+### Pi runner and prompt contracts
 
-Initial interface:
+Patchmill should keep Pi integration concrete. The copied Pi prompt runner and prompt result parser become a `PiRunner`/prompt module used directly by the workflows instead of being hidden behind a generic coding-agent provider interface.
 
-```ts
-export type CodingAgentProvider = {
-  runTriage(input: TriageAgentInput): Promise<RawTriageDocument>;
-  runPlan(input: PlanAgentInput): Promise<AgentPlanResult>;
-  runImplementation(input: ImplementationAgentInput): Promise<AgentImplementationResult>;
-};
-```
+The boundary to preserve is the prompt contract, not agent replaceability:
 
-The first implementation is `PiAgentProvider`, built from the copied Pi prompt runner and prompt result parser.
+- triage input and raw triage JSON output
+- plan input and plan result output
+- implementation input and implementation result output
+- Pi team, thinking, skill, todo, subagent, and TUI instructions
+
+This keeps the implementation aligned with the real operating model: Patchmill prepares repository and issue context, then drives Pi through a TUI-oriented workflow where a human can review, steer, or resume runs.
 
 ### Policy and prompt templates
 
@@ -166,7 +165,7 @@ Project-specific behavior should move out of hard-coded strings and into named p
 - direct-land eligibility
 - proof screenshot requirements
 - host-tooling instructions, such as `tea` versus `gh`
-- agent-tooling instructions, such as Pi skills, todos, and subagents
+- Pi-tooling instructions, such as skills, todos, subagents, and TUI handoff/review steps
 
 The first pass can keep templates as TypeScript string builders, but the inputs must come from config/policy objects rather than Croprun constants.
 
@@ -182,7 +181,7 @@ The copied implementation uses git worktrees and branch-per-issue. Keep this as 
 
 ## Data and output contracts
 
-Keep strict validation around all agent output. Agents are untrusted and must return one of the documented JSON statuses.
+Keep strict validation around all Pi output. Pi prompt results are untrusted and must return one of the documented JSON statuses.
 
 Triage statuses remain:
 
@@ -204,7 +203,7 @@ Final CLI output for `run-once` remains single-line JSON on stdout so schedulers
 
 ## Security and safety
 
-- Preserve the untrusted issue-content boundary in every agent prompt.
+- Preserve the untrusted issue-content boundary in every Pi prompt.
 - Do not allow issue titles, bodies, comments, labels, authors, or metadata to override workflow policy.
 - Preserve clean-worktree checks before mutation.
 - Preserve checkpointed run-state before/after host mutations so re-runs are safe.
@@ -217,16 +216,14 @@ Final CLI output for `run-once` remains single-line JSON on stdout so schedulers
 2. Add the `patchmill` dispatcher CLI as a compatibility shell.
 3. Introduce config loading with defaults matching the copied behavior.
 4. Extract host provider interface and wrap Forgejo/tea.
-5. Extract coding agent provider interface and wrap Pi.
-6. Move labels, paths, and selection policy to config.
-7. Move prompt/policy text to project policy objects.
-8. Rename public files and commands from `agent-issue` to Patchmill terminology after behavior is covered by tests.
+5. Move labels, paths, and selection policy to config.
+6. Move prompt/policy text to project policy objects while keeping Pi integration concrete.
+7. Rename public files and commands from `agent-issue` to Patchmill terminology after behavior is covered by tests.
 
 ## Open future extensions
 
 - GitHub provider using `gh`.
 - GitLab provider using `glab` or REST.
-- Claude Code/Codex/Gemini agent providers.
 - Queue runner with concurrency limits.
 - Web dashboard for run status.
 - Provider conformance test fixtures.

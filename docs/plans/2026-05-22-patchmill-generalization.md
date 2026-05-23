@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn the copied Croprun Forgejo + Pi automation into a configurable Patchmill CLI with provider boundaries.
+**Goal:** Turn the copied Croprun Forgejo + Pi automation into a configurable Patchmill CLI with an issue-host provider boundary and concrete Pi runtime support.
 
-**Architecture:** Keep the copied workflow green while extracting thin interfaces around host access, agent execution, configuration, and policy. Each task introduces one seam, wraps the current behavior as the default, and updates tests before moving the next responsibility.
+**Architecture:** Keep the copied workflow green while extracting thin interfaces around host access, configuration, and policy. Pi remains a first-class runtime dependency: the plan preserves concrete Pi runner and prompt contracts instead of hiding Pi behind a generic coding-agent provider. Each task introduces one seam, wraps the current behavior as the default, and updates tests before moving the next responsibility.
 
 **Tech Stack:** Node 24 native TypeScript, Node test runner, Forgejo `tea` CLI adapter, Pi CLI adapter, JSON config.
 
@@ -18,11 +18,11 @@
 - `src/config/load.ts`: config-file, environment, and CLI override loading.
 - `src/host/types.ts`: issue-host provider contract.
 - `src/host/forgejo-tea.ts`: Forgejo provider wrapping copied `tea` command functions.
-- `src/agent/types.ts`: coding-agent provider contract and shared result types.
-- `src/agent/pi.ts`: Pi provider wrapping copied prompt execution.
+- `src/pi/types.ts`: concrete Pi prompt input and output contract types.
+- `src/pi/runner.ts`: Pi runner wrapping copied prompt execution without a generic agent-provider layer.
 - `src/policy/types.ts`: labels, selection, landing, validation, and prompt policy types.
-- `src/workflows/triage.ts`: provider-driven triage orchestration.
-- `src/workflows/run-once.ts`: provider-driven single-issue orchestration.
+- `src/workflows/triage.ts`: host-provider + Pi-runner triage orchestration.
+- `src/workflows/run-once.ts`: host-provider + Pi-runner single-issue orchestration.
 - `scripts/agent-issue-*`: compatibility entrypoints retained until the new workflows fully replace them.
 - `docs/specs/2026-05-22-patchmill-generalization-design.md`: design source for this plan.
 
@@ -192,8 +192,7 @@ export type PatchmillHostConfig = {
   login: string;
 };
 
-export type PatchmillAgentConfig = {
-  provider: "pi";
+export type PatchmillPiConfig = {
   team?: string;
   triageThinking: string;
 };
@@ -224,12 +223,13 @@ export type PatchmillGitConfig = {
 
 export type PatchmillProjectPolicyConfig = {
   validationCommands: string[];
+  landingPolicy: "project-default";
   planRequiresApproval: boolean;
 };
 
 export type PatchmillConfig = {
   host: PatchmillHostConfig;
-  agent: PatchmillAgentConfig;
+  pi: PatchmillPiConfig;
   labels: PatchmillLabelsConfig;
   paths: PatchmillPathsConfig;
   git: PatchmillGitConfig;
@@ -249,8 +249,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     provider: "forgejo-tea",
     login: "triage-agent",
   },
-  agent: {
-    provider: "pi",
+  pi: {
     triageThinking: "high",
   },
   labels: {
@@ -276,6 +275,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
   },
   projectPolicy: {
     validationCommands: [],
+    landingPolicy: "project-default",
     planRequiresApproval: false,
   },
 };
@@ -290,9 +290,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
 
-test("defaults preserve the initial Forgejo and Pi provider choices", () => {
+test("defaults preserve the initial Forgejo host and Pi runtime choices", () => {
   assert.equal(DEFAULT_PATCHMILL_CONFIG.host.provider, "forgejo-tea");
-  assert.equal(DEFAULT_PATCHMILL_CONFIG.agent.provider, "pi");
+  assert.equal(DEFAULT_PATCHMILL_CONFIG.pi.triageThinking, "high");
 });
 
 test("defaults keep agent-ready label vocabulary", () => {
@@ -349,12 +349,12 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
     host: { login: "bot-login" },
-    agent: { team: "fast-team" },
+    pi: { team: "fast-team" },
     paths: { plansDir: "engineering/plans" }
   }));
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "bot-login");
-  assert.equal(config.agent.team, "fast-team");
+  assert.equal(config.pi.team, "fast-team");
   assert.equal(config.paths.plansDir, join(dir, "engineering/plans"));
 });
 
@@ -363,10 +363,10 @@ test("loadPatchmillConfig applies env and CLI overrides last", async () => {
   const config = await loadPatchmillConfig(
     dir,
     { PATCHMILL_HOST_LOGIN: "env-login", PATCHMILL_AGENT_TEAM: "env-team" },
-    ["--host-login", "cli-login"]
+    ["--host-login", "cli-login", "--agent-team", "cli-team"]
   );
   assert.equal(config.host.login, "cli-login");
-  assert.equal(config.agent.team, "env-team");
+  assert.equal(config.pi.team, "cli-team");
 });
 ```
 
@@ -383,7 +383,7 @@ import type { PatchmillConfig } from "./types.ts";
 type Env = Record<string, string | undefined>;
 type PartialConfig = Partial<{
   host: Partial<PatchmillConfig["host"]>;
-  agent: Partial<PatchmillConfig["agent"]>;
+  pi: Partial<PatchmillConfig["pi"]>;
   paths: Partial<PatchmillConfig["paths"]>;
   labels: Partial<PatchmillConfig["labels"]>;
   git: Partial<PatchmillConfig["git"]>;
@@ -393,7 +393,7 @@ type PartialConfig = Partial<{
 function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillConfig {
   return {
     host: { ...base.host, ...update.host },
-    agent: { ...base.agent, ...update.agent },
+    pi: { ...base.pi, ...update.pi },
     labels: { ...base.labels, ...update.labels },
     paths: { ...base.paths, ...update.paths },
     git: { ...base.git, ...update.git },
@@ -429,7 +429,7 @@ async function readConfigFile(repoRoot: string): Promise<PartialConfig> {
 function envConfig(env: Env): PartialConfig {
   return {
     host: env.PATCHMILL_HOST_LOGIN ? { login: env.PATCHMILL_HOST_LOGIN } : {},
-    agent: env.PATCHMILL_AGENT_TEAM ? { team: env.PATCHMILL_AGENT_TEAM } : {},
+    pi: env.PATCHMILL_AGENT_TEAM ? { team: env.PATCHMILL_AGENT_TEAM } : {},
   };
 }
 
@@ -440,6 +440,11 @@ function cliConfig(args: string[]): PartialConfig {
       const value = args[index + 1];
       if (!value || value.startsWith("--")) throw new Error("--host-login requires a value");
       config.host = { ...(config.host ?? {}), login: value };
+      index += 1;
+    } else if (args[index] === "--agent-team") {
+      const value = args[index + 1];
+      if (!value || value.startsWith("--")) throw new Error("--agent-team requires a value");
+      config.pi = { ...(config.pi ?? {}), team: value };
       index += 1;
     }
   }
@@ -612,34 +617,34 @@ git add src/host/types.ts src/host/forgejo-tea.ts src/host/forgejo-tea.test.ts
 git commit -m "feat(host): add forgejo tea provider"
 ```
 
-## Task 5: Extract agent provider contract and Pi adapter
+## Task 5: Preserve concrete Pi runner and prompt contracts
 
 **Files:**
-- Create: `src/agent/types.ts`
-- Create: `src/agent/pi.ts`
-- Create: `src/agent/pi.test.ts`
+- Create: `src/pi/types.ts`
+- Create: `src/pi/runner.ts`
+- Create: `src/pi/runner.test.ts`
 
-- [ ] **Step 1: Define the agent contract**
+- [ ] **Step 1: Define concrete Pi prompt contract types**
 
-Create `src/agent/types.ts`:
+Create `src/pi/types.ts`:
 
 ```ts
 import type { RawTriageDocument } from "../../scripts/agent-issue-triage/types.ts";
 import type { AgentIssuePiResult, IssueSummary } from "../../scripts/agent-issue/types.ts";
 import type { ResolvedAgentTeam } from "../../scripts/agent-issue/agent-team.ts";
 
-export type TriageAgentInput = {
+export type TriagePiInput = {
   repoRoot: string;
   issues: IssueSummary[];
 };
 
-export type PlanAgentInput = {
+export type PlanPiInput = {
   repoRoot: string;
   issue: IssueSummary;
   planPath: string;
 };
 
-export type ImplementationAgentInput = {
+export type ImplementationPiInput = {
   repoRoot: string;
   issue: IssueSummary;
   planPath: string;
@@ -648,32 +653,32 @@ export type ImplementationAgentInput = {
   agentTeam: ResolvedAgentTeam;
 };
 
-export type CodingAgentProvider = {
-  runTriage(input: TriageAgentInput): Promise<RawTriageDocument>;
-  runPlan(input: PlanAgentInput): Promise<AgentIssuePiResult>;
-  runImplementation(input: ImplementationAgentInput): Promise<AgentIssuePiResult>;
+export type PiPromptContracts = {
+  triage(input: TriagePiInput): Promise<RawTriageDocument>;
+  plan(input: PlanPiInput): Promise<AgentIssuePiResult>;
+  implementation(input: ImplementationPiInput): Promise<AgentIssuePiResult>;
 };
 ```
 
-- [ ] **Step 2: Wrap Pi functions**
+- [ ] **Step 2: Wrap Pi functions without a generic provider interface**
 
-Create `src/agent/pi.ts`:
+Create `src/pi/runner.ts`:
 
 ```ts
 import { runTriageAgent } from "../../scripts/agent-issue-triage/agent.ts";
 import type { CommandRunner } from "../../scripts/agent-issue-triage/types.ts";
 import { runPiPrompt } from "../../scripts/agent-issue/pi.ts";
 import { buildImplementationPrompt, buildPlanCreationPrompt } from "../../scripts/agent-issue/prompts.ts";
-import type { CodingAgentProvider, ImplementationAgentInput, PlanAgentInput, TriageAgentInput } from "./types.ts";
+import type { ImplementationPiInput, PiPromptContracts, PlanPiInput, TriagePiInput } from "./types.ts";
 
-export class PiAgentProvider implements CodingAgentProvider {
+export class PiRunner implements PiPromptContracts {
   constructor(private readonly runner: CommandRunner) {}
 
-  runTriage(input: TriageAgentInput) {
+  triage(input: TriagePiInput) {
     return runTriageAgent(this.runner, input.repoRoot, input.issues);
   }
 
-  runPlan(input: PlanAgentInput) {
+  plan(input: PlanPiInput) {
     return runPiPrompt(this.runner, input.repoRoot, buildPlanCreationPrompt(input.issue, input.planPath), {
       stage: "pi-plan",
       issueNumber: input.issue.number,
@@ -681,7 +686,7 @@ export class PiAgentProvider implements CodingAgentProvider {
     });
   }
 
-  runImplementation(input: ImplementationAgentInput) {
+  implementation(input: ImplementationPiInput) {
     return runPiPrompt(
       this.runner,
       input.repoRoot,
@@ -702,9 +707,9 @@ export class PiAgentProvider implements CodingAgentProvider {
 }
 ```
 
-- [ ] **Step 3: Add Pi adapter parse test**
+- [ ] **Step 3: Add Pi runner parse test**
 
-Create `src/agent/pi.test.ts`:
+Create `src/pi/runner.test.ts`:
 
 ```ts
 import assert from "node:assert/strict";
@@ -732,21 +737,21 @@ test("Pi result parser accepts merged status", () => {
 });
 ```
 
-- [ ] **Step 4: Run agent tests**
+- [ ] **Step 4: Run Pi tests**
 
 Run:
 
 ```sh
-node --test src/agent/*.test.ts
+node --test src/pi/*.test.ts
 ```
 
-Expected: agent adapter tests pass.
+Expected: Pi runner tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```sh
-git add src/agent/types.ts src/agent/pi.ts src/agent/pi.test.ts
-git commit -m "feat(agent): add pi provider"
+git add src/pi/types.ts src/pi/runner.ts src/pi/runner.test.ts
+git commit -m "feat(pi): add concrete pi runner"
 ```
 
 ## Task 6: Replace Croprun env names with Patchmill config while preserving compatibility
@@ -911,7 +916,7 @@ git add src/policy/labels.ts src/policy/labels.test.ts scripts/agent-issue-triag
 git commit -m "refactor(policy): derive labels from config"
 ```
 
-## Task 8: Document the first supported provider matrix
+## Task 8: Document the first supported host/runtime combination
 
 **Files:**
 - Modify: `README.md`
@@ -924,14 +929,14 @@ Create `docs/providers.md`:
 ```md
 # Patchmill Providers
 
-Patchmill separates orchestration from integrations.
+Patchmill separates orchestration from issue-host integrations. Pi is the built-in runtime for planning, implementation, skills, todos, subagents, and TUI-driven review.
 
 ## Supported now
 
-| Area | Provider | Backing tool | Status |
+| Area | Name | Backing tool | Status |
 | --- | --- | --- | --- |
 | Issue host | `forgejo-tea` | `tea` CLI | supported seed provider |
-| Coding agent | `pi` | `pi` CLI | supported seed provider |
+| Runtime | Pi | `pi` CLI/TUI | built-in runtime |
 
 ## Planned later
 
@@ -939,11 +944,8 @@ Patchmill separates orchestration from integrations.
 | --- | --- | --- |
 | Issue host | `github-gh` | `gh` CLI |
 | Issue host | `gitlab-glab` | `glab` CLI or GitLab REST |
-| Coding agent | `claude-code` | Claude Code CLI |
-| Coding agent | `codex` | Codex CLI |
-| Coding agent | `gemini` | Gemini CLI |
 
-Provider implementations must preserve Patchmill's safety rules: strict structured output, untrusted issue-content boundaries, checkpointed host mutations, and clean worktree checks.
+Host provider implementations and Pi prompt contracts must preserve Patchmill's safety rules: strict structured output, untrusted issue-content boundaries, checkpointed host mutations, and clean worktree checks.
 ```
 
 - [ ] **Step 2: Link provider docs from README**
@@ -953,7 +955,7 @@ Add this section to `README.md`:
 ```md
 ## Providers
 
-The seed provider matrix is Forgejo via `tea` and Pi via `pi`. See `docs/providers.md` for the provider boundary and planned adapters.
+The first supported host/runtime combination is Forgejo via `tea` and Pi via `pi`. See `docs/providers.md` for the host-provider boundary and Pi runtime contract.
 ```
 
 - [ ] **Step 3: Verify docs contain no stale Croprun-only claim**
@@ -970,7 +972,7 @@ Expected: Croprun appears only where the bootstrap origin is intentionally descr
 
 ```sh
 git add README.md docs/providers.md
-git commit -m "docs: describe patchmill provider matrix"
+git commit -m "docs: describe patchmill host and pi runtime"
 ```
 
 ## Final verification
@@ -993,6 +995,7 @@ Expected: no uncommitted changes after the final commit.
 
 ## Self-review notes
 
-- Spec coverage: the plan covers CLI bootstrap, config, host provider, Pi agent provider, env-name generalization, label policy, and provider docs.
-- The plan intentionally does not implement GitHub/GitLab or non-Pi agents because the design marks those as future extensions.
+- Spec coverage: the plan covers CLI bootstrap, config, host provider, concrete Pi runner contracts, env-name generalization, label policy, and host/runtime docs.
+- The plan intentionally does not implement GitHub/GitLab because the design marks those as future host-provider extensions.
+- The plan intentionally does not abstract or implement non-Pi coding agents; Pi remains the concrete workflow runtime.
 - The copied Croprun prompts remain until a later policy-template extraction task; this plan first creates the seams needed to move them safely.
