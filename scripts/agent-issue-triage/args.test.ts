@@ -16,6 +16,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.limit, undefined);
   assert.equal(config.teaLogin, "triage-agent");
+  assert.equal(config.triageThinking, "high");
   assert.equal(config.logDir, "/repo/.pi/agent-issue/triage-runs");
 });
 
@@ -53,6 +54,7 @@ test("parseArgs accepts execute, issue, limit, and log dir", () => {
   assert.equal(config.limit, 5);
   assert.equal(config.logDir, "/tmp/triage-logs");
   assert.equal(config.teaLogin, "triage-agent");
+  assert.equal(config.triageThinking, "high");
 });
 
 test("parseArgs accepts host-login as the primary tea login flag", () => {
@@ -101,7 +103,7 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-config-"));
   await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
     host: { login: "config-bot" },
-    pi: { team: "config-team" },
+    pi: { team: "config-team", triageThinking: "medium" },
     paths: {
       plansDir: "pm-plans",
       runStateDir: ".patchmill/runs",
@@ -123,6 +125,7 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
 
   assert.equal(config.teaLogin, "config-bot");
   assert.equal(config.logDir, join(repoRoot, ".patchmill/triage-runs"));
+  assert.equal(config.triageThinking, "medium");
   assert.equal(config.triagePolicy?.primaryBuckets[0]?.label, "ready-for-bots");
   assert.ok(config.triagePolicy?.triageAllowedLabels.some((label) => label.name === "incident"));
 });

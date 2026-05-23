@@ -10,6 +10,7 @@ export type TriagePromptInput = {
   issues: IssueSummary[];
   projectPolicy: PatchmillProjectPolicy;
   triagePolicy?: PatchmillTriagePolicy;
+  thinking?: string;
 };
 
 function issuePayload(issues: IssueSummary[]): string {
@@ -39,6 +40,7 @@ function formatRepositoryLabel(projectPolicy: PatchmillProjectPolicy): string {
 export function buildTriagePrompt(input: TriagePromptInput): string {
   const { issues, projectPolicy } = input;
   const triagePolicy = input.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+  const thinking = input.thinking ?? "high";
   const readyLabel = labelForPrimaryBucket(triagePolicy, "agent-ready");
   const needsInfoLabel = labelForPrimaryBucket(triagePolicy, "needs-info");
   const exampleTypeLabel = triagePolicy.labels.types[0];
@@ -53,7 +55,7 @@ export function buildTriagePrompt(input: TriagePromptInput): string {
     .join("\n");
   const labels = triagePolicy.triageAllowedLabels.map((label) => `- ${label.name}: ${label.description}`).join("\n");
 
-  return `You are a high-thinking issue triage agent for the ${formatRepositoryLabel(projectPolicy)}.
+  return `You are a ${thinking}-thinking issue triage agent for the ${formatRepositoryLabel(projectPolicy)}.
 
 Classify every provided open issue for automation suitability. Return JSON only. Do not use markdown outside the JSON. Do not run commands.
 
@@ -130,6 +132,7 @@ export async function runTriageAgent(
   input: TriagePromptInput,
 ): Promise<RawTriageDocument> {
   const prompt = buildTriagePrompt(input);
+  const thinking = input.thinking ?? "high";
   const dir = await mkdtemp(join(tmpdir(), "agent-triage-prompt-"));
   const promptPath = join(dir, "prompt.md");
   await writeFile(promptPath, prompt, "utf8");
@@ -137,7 +140,7 @@ export async function runTriageAgent(
   try {
     const result = await runner.run(
       "pi",
-      ["--no-tools", "--no-context-files", "--no-session", "--thinking", "high", "-p", `@${promptPath}`],
+      ["--no-tools", "--no-context-files", "--no-session", "--thinking", thinking, "-p", `@${promptPath}`],
       { cwd: repoRoot },
     );
 

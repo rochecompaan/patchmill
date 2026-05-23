@@ -943,7 +943,7 @@ export async function runOneIssue(
       });
     }
 
-    if (config.planOnly) {
+    if (config.planOnly || config.requirePlanApproval) {
       const finalLabels = nextLabels(
         labels,
         [inProgress],

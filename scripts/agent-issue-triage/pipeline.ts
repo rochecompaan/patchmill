@@ -2,6 +2,7 @@ import { ApplyDecisionError, applyDecisions, createLogEntries } from "./apply.ts
 import { runTriageAgent } from "./agent.ts";
 import { createLabel, hydrateIssueComments, listLabels, listOpenIssues } from "./forgejo.ts";
 import { DEFAULT_TRIAGE_POLICY, missingLabelDefinitions } from "./labels.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import { writeTriageLog } from "./log.ts";
 import { validateTriageDocument } from "./validation.ts";
@@ -118,6 +119,7 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
       issues,
       projectPolicy,
       triagePolicy,
+      thinking: config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
     }), issues, triagePolicy);
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);

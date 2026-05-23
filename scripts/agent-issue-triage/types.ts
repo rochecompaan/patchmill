@@ -9,6 +9,7 @@ export type TriageConfig = {
   repoRoot: string;
   dryRun: boolean;
   execute: boolean;
+  triageThinking: string;
   showHelp?: boolean;
   teaLogin?: string;
   issueNumber?: number;

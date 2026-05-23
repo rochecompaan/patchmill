@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createStaticCommandRunner } from "./command.ts";
 import { buildTriagePrompt, parseAgentJson, runTriageAgent } from "./agent.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
@@ -165,13 +166,27 @@ test("parseAgentJson rejects invalid JSON", () => {
 });
 
 test("runTriageAgent invokes pi with restricted flags and prompt file", async () => {
-  const runner = createStaticCommandRunner([{ code: 0, stdout: '{"decisions":[]}', stderr: "" }]);
+  const runner = {
+    calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
+    async run(command: string, args: string[], options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const promptPath = args[6]?.slice(1);
+      assert.ok(promptPath);
+      const prompt = await readFile(promptPath, "utf8");
+      assert.match(prompt, /You are a medium-thinking issue triage agent/);
+      return { code: 0, stdout: '{"decisions":[]}', stderr: "" };
+    },
+  };
 
-  const document = await runTriageAgent(runner, "/repo", { issues, projectPolicy: CROPRUN_COMPAT_POLICY });
+  const document = await runTriageAgent(runner, "/repo", {
+    issues,
+    projectPolicy: CROPRUN_COMPAT_POLICY,
+    thinking: "medium",
+  });
 
   assert.deepEqual(document, { decisions: [] });
   assert.equal(runner.calls[0].command, "pi");
-  assert.deepEqual(runner.calls[0].args.slice(0, 6), ["--no-tools", "--no-context-files", "--no-session", "--thinking", "high", "-p"]);
+  assert.deepEqual(runner.calls[0].args.slice(0, 6), ["--no-tools", "--no-context-files", "--no-session", "--thinking", "medium", "-p"]);
   assert.match(runner.calls[0].args[6], /^@/);
 });
 
@@ -179,7 +194,7 @@ test("runTriageAgent throws when pi exits non-zero", async () => {
   const runner = createStaticCommandRunner([{ code: 1, stdout: "pi failed", stderr: "" }]);
 
   await assert.rejects(
-    () => runTriageAgent(runner, "/repo", { issues, projectPolicy: CROPRUN_COMPAT_POLICY }),
+    () => runTriageAgent(runner, "/repo", { issues, projectPolicy: CROPRUN_COMPAT_POLICY, thinking: "high" }),
     /pi triage failed/,
   );
 });

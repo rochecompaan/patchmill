@@ -868,6 +868,74 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
   assert.doesNotMatch(commentBody(comments[0]), /Existing plan ready/);
 });
 
+test("runOneIssue stops after finding an existing plan when plan approval is required", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true, requirePlanApproval: true });
+  const planPath = "docs/plans/2026-05-14-issue-47-approval-existing-plan.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(47, ["agent-ready", "bug"], "Approval existing plan");
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-found");
+  assert.equal(result.planPath, planPath);
+  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
+  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
+  const comments = runner.calls.filter((call) => call.command === "tea" && call.args[0] === "comment");
+  assert.equal(comments.length, 2);
+  assert.match(commentBody(comments[1]), /Existing plan ready/);
+});
+
+test("runOneIssue stops after creating a plan when plan approval is required", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true, requirePlanApproval: true });
+  const selected = issue(48, ["agent-ready", "bug"], "Approval created plan");
+  const expectedPlanPath = "docs/plans/2026-05-09-issue-48-approval-created-plan.md";
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create an implementation plan/);
+      return {
+        code: 0,
+        stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, expectedPlanPath);
+  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
+  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "show-ref"), false);
+});
+
 test("runOneIssue claims the issue, comments automation start, writes run state, and exits plan-created for plan-only mode", async () => {
   const config = await makeConfig({
     dryRun: false,

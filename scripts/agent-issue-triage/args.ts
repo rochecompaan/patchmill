@@ -44,6 +44,7 @@ export function parseArgs(
     repoRoot,
     dryRun: true,
     execute: false,
+    triageThinking: normalizedConfig?.pi.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
     showHelp: args.length === 0,
     teaLogin: defaultTeaLogin(env, normalizedConfig),
     logDir: normalizedConfig?.paths.triageLogDir ?? join(repoRoot, ".pi", "agent-issue", "triage-runs"),
