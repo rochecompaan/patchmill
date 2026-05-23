@@ -1,5 +1,7 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
+import { LEGACY_CROPRUN_CLEANUP_HOOKS } from "../../src/cleanup/hooks.ts";
+import type { CleanupHookConfig } from "../../src/cleanup/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import {
   DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
@@ -11,6 +13,18 @@ import type { AgentIssueConfig } from "./types.ts";
 type Env = Record<string, string | undefined>;
 const DEFAULT_TEA_LOGIN = "triage-agent";
 const DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES = DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes;
+
+function cloneCleanupHooks(hooks: CleanupHookConfig[]): CleanupHookConfig[] {
+  return hooks.map((hook) => ({
+    name: hook.name,
+    ...(hook.whenPathExists !== undefined ? { whenPathExists: hook.whenPathExists } : {}),
+    ...(hook.terminateProcessPatterns !== undefined
+      ? { terminateProcessPatterns: [...hook.terminateProcessPatterns] }
+      : {}),
+    ...(hook.command !== undefined ? { command: hook.command } : {}),
+    ...(hook.args !== undefined ? { args: [...hook.args] } : {}),
+  }));
+}
 
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -68,6 +82,7 @@ export function parseArgs(
     runStateDir: normalizedConfig?.paths.runStateDir ?? join(repoRoot, ".pi", "agent-issue", "runs"),
     worktreeDir: normalizedConfig?.paths.worktreeDir ?? join(repoRoot, ".worktrees"),
     cleanStatusIgnorePrefixes: [...(normalizedConfig?.paths.cleanStatusIgnorePrefixes ?? DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES)],
+    cleanupHooks: cloneCleanupHooks(normalizedConfig?.cleanupHooks ?? LEGACY_CROPRUN_CLEANUP_HOOKS),
     readyLabel: normalizedConfig?.labels.ready ?? "agent-ready",
     issueLimit: 1,
     requirePlanApproval: normalizedConfig?.projectPolicy.planRequiresApproval ?? false,

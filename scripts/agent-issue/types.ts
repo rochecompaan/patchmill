@@ -1,3 +1,4 @@
+import type { CleanupHookConfig } from "../../src/cleanup/types.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 
 export type {
@@ -25,6 +26,7 @@ export type AgentIssueConfig = {
   runStateDir: string;
   worktreeDir: string;
   cleanStatusIgnorePrefixes?: string[];
+  cleanupHooks: CleanupHookConfig[];
   readyLabel: string;
   issueLimit: 1;
   requirePlanApproval: boolean;

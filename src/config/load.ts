@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
+import type { CleanupHookConfig } from "../cleanup/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
 import type { PatchmillConfig } from "./types.ts";
 
@@ -12,11 +13,24 @@ type PartialConfig = Partial<{
   paths: Partial<PatchmillConfig["paths"]>;
   labels: Partial<PatchmillConfig["labels"]>;
   git: Partial<PatchmillConfig["git"]>;
+  cleanupHooks: CleanupHookConfig[];
   projectPolicy: Partial<PatchmillConfig["projectPolicy"]>;
 }>;
 
 function cloneStringArray(values: string[]): string[] {
   return [...values];
+}
+
+function cloneCleanupHooks(hooks: CleanupHookConfig[]): CleanupHookConfig[] {
+  return hooks.map((hook) => ({
+    name: hook.name,
+    ...(hook.whenPathExists !== undefined ? { whenPathExists: hook.whenPathExists } : {}),
+    ...(hook.terminateProcessPatterns !== undefined
+      ? { terminateProcessPatterns: cloneStringArray(hook.terminateProcessPatterns) }
+      : {}),
+    ...(hook.command !== undefined ? { command: hook.command } : {}),
+    ...(hook.args !== undefined ? { args: cloneStringArray(hook.args) } : {}),
+  }));
 }
 
 function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillConfig {
@@ -38,6 +52,7 @@ function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillCon
       ),
     },
     git: { ...base.git, ...update.git },
+    cleanupHooks: cloneCleanupHooks(update.cleanupHooks ?? base.cleanupHooks),
     projectPolicy: {
       ...projectPolicy,
       validationCommands: cloneStringArray(
@@ -61,6 +76,7 @@ function absolutizePaths(root: string, config: PatchmillConfig): PatchmillConfig
       worktreeDir: absolutize(root, config.paths.worktreeDir),
       cleanStatusIgnorePrefixes: cloneStringArray(config.paths.cleanStatusIgnorePrefixes),
     },
+    cleanupHooks: cloneCleanupHooks(config.cleanupHooks),
   };
 }
 
@@ -135,6 +151,37 @@ function readOptionalLiteral<T extends string>(
     throw configError(path, expected, value);
   }
   return value as T;
+}
+
+function readCleanupHooks(source: Record<string, unknown>): CleanupHookConfig[] | undefined {
+  const value = source.cleanupHooks;
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw configError("cleanupHooks", "an array of cleanup hook objects", value);
+  }
+
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw configError(`cleanupHooks[${index}]`, "an object", entry);
+    }
+
+    const name = readOptionalString(entry, "name", `cleanupHooks[${index}].name`);
+    if (name === undefined) {
+      throw configError(`cleanupHooks[${index}].name`, "a string", entry.name);
+    }
+
+    return {
+      name,
+      whenPathExists: readOptionalString(entry, "whenPathExists", `cleanupHooks[${index}].whenPathExists`),
+      terminateProcessPatterns: readOptionalStringArray(
+        entry,
+        "terminateProcessPatterns",
+        `cleanupHooks[${index}].terminateProcessPatterns`,
+      ),
+      command: readOptionalString(entry, "command", `cleanupHooks[${index}].command`),
+      args: readOptionalStringArray(entry, "args", `cleanupHooks[${index}].args`),
+    };
+  });
 }
 
 function hasEntries(value: object): boolean {
@@ -226,6 +273,11 @@ function parseConfigFile(data: unknown): PartialConfig {
     if (slugLength !== undefined) parsed.slugLength = slugLength;
     if (allowDirectLand !== undefined) parsed.allowDirectLand = allowDirectLand;
     if (hasEntries(parsed)) config.git = parsed;
+  }
+
+  const cleanupHooks = readCleanupHooks(data);
+  if (cleanupHooks !== undefined) {
+    config.cleanupHooks = cleanupHooks;
   }
 
   const projectPolicy = readOptionalSection(data, "projectPolicy");

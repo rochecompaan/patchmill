@@ -36,6 +36,7 @@ test("defaults match the current patchmill baseline configuration", () => {
       slugLength: 48,
       allowDirectLand: true,
     },
+    cleanupHooks: [],
     projectPolicy: {
       validationCommands: [],
       landingPolicy: "project-default",

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { appendFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TILT_JUST_CLEANUP_HOOK } from "./tilt-cleanup.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { JsonlProgressReporter } from "./progress.ts";
@@ -242,6 +243,7 @@ async function makeConfig(
     runStateDir,
     worktreeDir: join(repoRoot, ".worktrees"),
     cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"],
+    cleanupHooks: [],
     readyLabel: "agent-ready",
     issueLimit: 1,
     requirePlanApproval: false,
@@ -1285,7 +1287,7 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
   assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit" && call.args.includes("agent-done")));
 });
 
-test("runOneIssue cleans up the issue Tilt environment after a successful handoff", async () => {
+test("runOneIssue does not run cleanup commands when cleanup hooks are not configured", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -1340,7 +1342,75 @@ test("runOneIssue cleans up the issue Tilt environment after a successful handof
     if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
     if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
     if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "bash" && call.args[0] === "-c" && call.args[2] === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(runner.calls.some((call) => call.command === "bash" && call.args[0] === "-c"), false);
+  assert.equal(runner.calls.some((call) => call.command === "just" && call.args[0] === "tilt-down"), false);
+  assert.equal(events.some((event) => event.stage === "cleanup"), false);
+});
+
+test("runOneIssue preserves tilt-just cleanup compatibility when configured", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: undefined,
+    agentTeamName: undefined,
+    cleanupHooks: [TILT_JUST_CLEANUP_HOOK],
+  });
+  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-tilt.md";
+  const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+  await mkdir(worktreeRoot, { recursive: true });
+  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=croprun-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Cleanup Tilt",
+      status: "implementing",
+      planPath,
+      branch: "agent/issue-45-cleanup-tilt",
+      worktreePath,
+      implementationStatus: "pr-created",
+      prUrl: "https://forgejo/pr/45",
+      commits: ["abc123"],
+      validation: ["just agent-issue-test ok"],
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+        worktreeReady: true,
+        implementationCompleted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Tilt")]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
+      return { code: 0, stdout: "agent/issue-45-cleanup-tilt\n", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "bash" && call.args[0] === "-c" && call.args[3] === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
     if (call.command === "just" && call.args[0] === "tilt-down" && call.cwd === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
@@ -1361,7 +1431,89 @@ test("runOneIssue cleans up the issue Tilt environment after a successful handof
       ["just", "tilt-down", worktreeRoot],
     ],
   );
-  assert.ok(events.some((event) => event.stage === "cleanup" && event.message.includes("stopped Tilt")));
+  assert.ok(events.some((event) => event.stage === "cleanup" && event.message.includes("tilt-just")));
+});
+
+test("runOneIssue reports cleanup hook failures when process termination is unsafe", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: undefined,
+    agentTeamName: undefined,
+    cleanupHooks: [TILT_JUST_CLEANUP_HOOK],
+  });
+  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-tilt.md";
+  const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+  await mkdir(worktreeRoot, { recursive: true });
+  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=croprun-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Cleanup Tilt",
+      status: "implementing",
+      planPath,
+      branch: "agent/issue-45-cleanup-tilt",
+      worktreePath,
+      implementationStatus: "pr-created",
+      prUrl: "https://forgejo/pr/45",
+      commits: ["abc123"],
+      validation: ["just agent-issue-test ok"],
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+        worktreeReady: true,
+        implementationCompleted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Tilt")]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
+      return { code: 0, stdout: "agent/issue-45-cleanup-tilt\n", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "bash" && call.args[0] === "-c" && call.args[3] === worktreeRoot) {
+      return {
+        code: 1,
+        stdout: "",
+        stderr: "Refusing to terminate process group 4321 for cleanup hook tilt-just because it matches the current cleanup shell process group",
+      };
+    }
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(runner.calls.some((call) => call.command === "just" && call.args[0] === "tilt-down"), false);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.stage === "cleanup"
+        && event.level === "error"
+        && event.message.includes("Tilt process cleanup failed")
+        && event.message.includes("Refusing to terminate process group 4321"),
+    ),
+  );
 });
 
 test("runOneIssue finishes saved merged handoff without requiring an agent team", async () => {

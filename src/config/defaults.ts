@@ -34,6 +34,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     slugLength: DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.slugLength,
     allowDirectLand: DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.allowDirectLand,
   },
+  cleanupHooks: [],
   projectPolicy: {
     validationCommands: [],
     landingPolicy: "project-default",

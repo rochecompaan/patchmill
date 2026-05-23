@@ -1,5 +1,6 @@
 import { access } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
+import { runCleanupHooks } from "../../src/cleanup/hooks.ts";
 import {
   buildIssueBranchName,
   buildIssueWorktreePath,
@@ -32,7 +33,6 @@ import {
 } from "./prompts.ts";
 import { isResumableRunState, readRunState, writeRunState } from "./run-state.ts";
 import { selectIssue } from "./selection.ts";
-import { cleanupIssueTilt } from "./tilt-cleanup.ts";
 import { uploadPrVisualEvidence } from "./visual-evidence.ts";
 import type { VisualEvidenceEnv } from "./visual-evidence.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
@@ -1372,14 +1372,22 @@ export async function runOneIssue(
       timestamp,
     );
 
-    const cleanup = await cleanupIssueTilt(runner, config.repoRoot, worktreePath);
-    if (cleanup.status !== "skipped") {
+    const cleanupResults = await runCleanupHooks(
+      runner,
+      config.repoRoot,
+      worktreePath,
+      config.cleanupHooks,
+    );
+    for (const cleanup of cleanupResults) {
       await progress(
         options,
-        cleanup.status === "cleaned" ? "info" : "error",
+        cleanup.status === "failed" ? "error" : "info",
         "cleanup",
         cleanup.message,
-        { issueNumber: issue.number },
+        {
+          issueNumber: issue.number,
+          data: { hook: cleanup.name, status: cleanup.status },
+        },
       );
     }
 

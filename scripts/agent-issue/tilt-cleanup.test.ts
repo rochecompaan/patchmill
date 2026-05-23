@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cleanupIssueTilt } from "./tilt-cleanup.ts";
+import { runCleanupHooks } from "../../src/cleanup/hooks.ts";
+import { TILT_JUST_CLEANUP_HOOK } from "./tilt-cleanup.ts";
 import type { CommandRunOptions, CommandRunner, CommandResult } from "./types.ts";
 
 type RecordedCall = {
@@ -27,7 +28,7 @@ function recordingRunner(): { runner: CommandRunner; calls: RecordedCall[] } {
   return { runner, calls };
 }
 
-test("cleanupIssueTilt runs process cleanup in a non-login shell", async () => {
+test("tilt-just cleanup hook runs process cleanup in a non-login shell", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-tilt-cleanup-"));
   const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
   const worktreeRoot = join(repoRoot, worktreePath);
@@ -36,11 +37,15 @@ test("cleanupIssueTilt runs process cleanup in a non-login shell", async () => {
 
   const { runner, calls } = recordingRunner();
 
-  const result = await cleanupIssueTilt(runner, repoRoot, worktreePath);
+  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, [TILT_JUST_CLEANUP_HOOK]);
 
-  assert.equal(result.status, "cleaned");
+  assert.equal(result?.name, "tilt-just");
+  assert.equal(result?.status, "cleaned");
   assert.equal(calls[0]?.command, "bash");
   assert.equal(calls[0]?.args[0], "-c");
   assert.equal(calls[0]?.cwd, repoRoot);
-  assert.equal(calls[0]?.args[2], worktreeRoot);
+  assert.match(calls[0]?.args[1] ?? "", /current_pgid="\$\(ps -o pgid= -p "\$\$"/);
+  assert.match(calls[0]?.args[1] ?? "", /Refusing to terminate process group \$pgid/);
+  assert.equal(calls[0]?.args[2], "tilt-just");
+  assert.equal(calls[0]?.args[3], worktreeRoot);
 });

@@ -1,3 +1,4 @@
+import type { CleanupHookConfig } from "../cleanup/types.ts";
 import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 
 export type PatchmillHostConfig = {
@@ -42,5 +43,6 @@ export type PatchmillConfig = {
   labels: PatchmillLabelsConfig;
   paths: PatchmillPathsConfig;
   git: PatchmillGitConfig;
+  cleanupHooks: CleanupHookConfig[];
   projectPolicy: PatchmillProjectPolicyConfig;
 };

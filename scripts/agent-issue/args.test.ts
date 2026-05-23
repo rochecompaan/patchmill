@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { cwd } from "node:process";
 import { join } from "node:path";
 import { HELP_TEXT, loadCliConfig, summarizeResult } from "../agent-issue-once.ts";
+import { LEGACY_CROPRUN_CLEANUP_HOOKS } from "../../src/cleanup/hooks.ts";
 import { parseArgs } from "./args.ts";
 
 test("parseArgs shows help when no args are provided", () => {
@@ -22,6 +23,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
   assert.equal(config.worktreePrefix, "agent-issue-");
   assert.deepEqual(config.cleanStatusIgnorePrefixes, [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"]);
+  assert.deepEqual(config.cleanupHooks, LEGACY_CROPRUN_CLEANUP_HOOKS);
   assert.equal(config.readyLabel, "agent-ready");
   assert.equal(config.issueLimit, 1);
   assert.equal(config.requirePlanApproval, false);
@@ -219,6 +221,7 @@ test("loadCliConfig preserves Croprun compatibility defaults when no patchmill c
   assert.equal(config.runStateDir, join(repoRoot, ".pi/agent-issue/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".worktrees"));
   assert.equal(config.worktreePrefix, "agent-issue-");
+  assert.deepEqual(config.cleanupHooks, LEGACY_CROPRUN_CLEANUP_HOOKS);
 });
 
 test("loadCliConfig applies normalized patchmill defaults for run-once", async () => {
@@ -247,6 +250,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
   assert.equal(config.worktreePrefix, "patchmill-issue-");
   assert.deepEqual(config.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
+  assert.deepEqual(config.cleanupHooks, []);
 });
 
 test("loadCliConfig preserves Croprun tea login when patchmill config only customizes paths", async () => {

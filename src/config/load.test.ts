@@ -12,6 +12,7 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   assert.equal(config.host.login, "triage-agent");
   assert.equal(config.paths.runStateDir, join(dir, ".patchmill/runs"));
   assert.equal(config.git.worktreePrefix, "patchmill-issue-");
+  assert.deepEqual(config.cleanupHooks, []);
 });
 
 test("loadPatchmillConfig clones default arrays for each load", async () => {
@@ -25,14 +26,18 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
   assert.notStrictEqual(first.paths.cleanStatusIgnorePrefixes, second.paths.cleanStatusIgnorePrefixes);
   assert.notStrictEqual(first.projectPolicy.validationCommands, DEFAULT_PATCHMILL_CONFIG.projectPolicy.validationCommands);
   assert.notStrictEqual(first.projectPolicy.validationCommands, second.projectPolicy.validationCommands);
+  assert.notStrictEqual(first.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
+  assert.notStrictEqual(first.cleanupHooks, second.cleanupHooks);
 
   first.labels.priorities.push("priority:urgent");
   first.paths.cleanStatusIgnorePrefixes.push("scratch/");
   first.projectPolicy.validationCommands.push("npm test");
+  first.cleanupHooks.push({ name: "custom-cleanup" });
 
   assert.deepEqual(second.labels.priorities, DEFAULT_PATCHMILL_CONFIG.labels.priorities);
   assert.deepEqual(second.paths.cleanStatusIgnorePrefixes, DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes);
   assert.deepEqual(second.projectPolicy.validationCommands, DEFAULT_PATCHMILL_CONFIG.projectPolicy.validationCommands);
+  assert.deepEqual(second.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
 });
 
 test("loadPatchmillConfig applies patchmill.config.json", async () => {
@@ -50,7 +55,15 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
       branchPrefix: "patchmill/issue-",
       worktreePrefix: "pm-issue-",
       slugLength: 32,
-    }
+    },
+    cleanupHooks: [
+      {
+        name: "custom-cleanup",
+        whenPathExists: ".env",
+        command: "just",
+        args: ["cleanup"],
+      },
+    ],
   }));
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "bot-login");
@@ -62,6 +75,14 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   assert.equal(config.git.branchPrefix, "patchmill/issue-");
   assert.equal(config.git.worktreePrefix, "pm-issue-");
   assert.equal(config.git.slugLength, 32);
+  assert.deepEqual(config.cleanupHooks, [
+    {
+      name: "custom-cleanup",
+      whenPathExists: ".env",
+      command: "just",
+      args: ["cleanup"],
+    },
+  ]);
 });
 
 test("loadPatchmillConfig applies env overrides without CLI", async () => {
