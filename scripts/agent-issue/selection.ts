@@ -1,37 +1,52 @@
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import { DEFAULT_TRIAGE_EXCLUDED_LABELS } from "../agent-issue-triage/labels.ts";
 import type { IssueSelectionOptions, IssueSummary } from "./types.ts";
 
-const PRIORITY_LABELS = [
-  "priority:critical",
-  "priority:high",
-  "priority:medium",
-  "priority:low",
-] as const;
+type ResolvedIssueSelectionOptions = {
+  issueNumber?: number;
+  readyLabel: IssueSelectionOptions["readyLabel"];
+  priorityLabels: readonly string[];
+  excludedLabels: Set<string>;
+};
 
-const EXCLUDED_LABELS = new Set<string>(
-  [...DEFAULT_TRIAGE_EXCLUDED_LABELS].filter((label) => label !== "agent-ready"),
-);
+function defaultExcludedLabels(): string[] {
+  return [...DEFAULT_TRIAGE_EXCLUDED_LABELS].filter((label) => label !== DEFAULT_PATCHMILL_CONFIG.labels.ready);
+}
 
-function priorityRank(labels: string[]): number {
-  for (const [index, label] of PRIORITY_LABELS.entries()) {
+function resolveSelectionOptions(options: IssueSelectionOptions): ResolvedIssueSelectionOptions {
+  return {
+    issueNumber: options.issueNumber,
+    readyLabel: options.readyLabel,
+    priorityLabels: options.priorityLabels ?? DEFAULT_PATCHMILL_CONFIG.labels.priorities,
+    excludedLabels: new Set(options.excludedLabels ?? defaultExcludedLabels()),
+  };
+}
+
+function priorityRank(labels: string[], priorityLabels: readonly string[]): number {
+  for (const [index, label] of priorityLabels.entries()) {
     if (labels.includes(label)) return index;
   }
 
-  return PRIORITY_LABELS.length;
+  return priorityLabels.length;
 }
 
-function blockingLabels(labels: string[]): string[] {
-  return labels.filter((label) => EXCLUDED_LABELS.has(label));
+function blockingLabels(labels: string[], excludedLabels: Set<string>): string[] {
+  return labels.filter((label) => excludedLabels.has(label));
 }
 
-function isEligible(issue: IssueSummary, readyLabel: string): boolean {
+function isEligible(issue: IssueSummary, options: ResolvedIssueSelectionOptions): boolean {
   return issue.state === "open"
-    && issue.labels.includes(readyLabel)
-    && blockingLabels(issue.labels).length === 0;
+    && issue.labels.includes(options.readyLabel)
+    && blockingLabels(issue.labels, options.excludedLabels).length === 0;
 }
 
-function compareIssues(left: IssueSummary, right: IssueSummary): number {
-  const priorityDifference = priorityRank(left.labels) - priorityRank(right.labels);
+function compareIssues(
+  left: IssueSummary,
+  right: IssueSummary,
+  options: ResolvedIssueSelectionOptions,
+): number {
+  const priorityDifference = priorityRank(left.labels, options.priorityLabels)
+    - priorityRank(right.labels, options.priorityLabels);
   if (priorityDifference !== 0) return priorityDifference;
   return left.number - right.number;
 }
@@ -40,14 +55,16 @@ export function selectIssue(
   issues: IssueSummary[],
   options: IssueSelectionOptions,
 ): IssueSummary | undefined {
-  if (options.issueNumber !== undefined) {
-    const issue = issues.find((candidate) => candidate.number === options.issueNumber && candidate.state === "open");
+  const resolved = resolveSelectionOptions(options);
+
+  if (resolved.issueNumber !== undefined) {
+    const issue = issues.find((candidate) => candidate.number === resolved.issueNumber && candidate.state === "open");
     if (!issue) return undefined;
-    if (!issue.labels.includes(options.readyLabel)) {
-      throw new Error(`Issue #${issue.number} is open but not labeled ${options.readyLabel}`);
+    if (!issue.labels.includes(resolved.readyLabel)) {
+      throw new Error(`Issue #${issue.number} is open but not labeled ${resolved.readyLabel}`);
     }
 
-    const blockedBy = blockingLabels(issue.labels);
+    const blockedBy = blockingLabels(issue.labels, resolved.excludedLabels);
     if (blockedBy.length > 0) {
       throw new Error(`Issue #${issue.number} is open but not eligible because it has ${blockedBy.join(", ")}`);
     }
@@ -57,8 +74,8 @@ export function selectIssue(
 
   let selected: IssueSummary | undefined;
   for (const issue of issues) {
-    if (!isEligible(issue, options.readyLabel)) continue;
-    if (!selected || compareIssues(issue, selected) < 0) {
+    if (!isEligible(issue, resolved)) continue;
+    if (!selected || compareIssues(issue, selected, resolved) < 0) {
       selected = issue;
     }
   }

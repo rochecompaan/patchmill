@@ -31,7 +31,10 @@ export type AgentIssueConfig = {
 export type IssueSelectionOptions = Pick<
   AgentIssueConfig,
   "issueNumber" | "readyLabel"
->;
+> & {
+  priorityLabels?: readonly string[];
+  excludedLabels?: readonly string[];
+};
 
 export type AgentIssuePlan = {
   issueNumber: number;

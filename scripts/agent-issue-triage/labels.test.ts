@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import {
   ALLOWED_LABEL_NAMES,
   PRIMARY_BUCKETS,
@@ -9,30 +10,32 @@ import {
   planLabelChange,
 } from "./labels.ts";
 
+const { blocked, done, inProgress, needsInfo, ready, unsuitable } = DEFAULT_PATCHMILL_CONFIG.labels;
+
 test("label vocabulary includes buckets, automation, type labels, and priority labels", () => {
-  assert.deepEqual(PRIMARY_BUCKETS, ["agent-ready", "needs-info", "agent-unsuitable"]);
-  assert.equal(PRIMARY_BUCKETS.some((label) => label === "in-progress"), false);
-  assert.equal(PRIMARY_BUCKETS.some((label) => label === "agent-done"), false);
-  assert.ok(ALLOWED_LABEL_NAMES.has("agent-ready"));
-  assert.ok(ALLOWED_LABEL_NAMES.has("needs-info"));
-  assert.ok(ALLOWED_LABEL_NAMES.has("in-progress"));
-  assert.ok(ALLOWED_LABEL_NAMES.has("agent-done"));
-  assert.ok(ALLOWED_LABEL_NAMES.has("blocked"));
-  assert.equal(TRIAGE_ALLOWED_LABEL_NAMES.has("in-progress"), false);
-  assert.equal(TRIAGE_ALLOWED_LABEL_NAMES.has("agent-done"), false);
-  assert.equal(TRIAGE_ALLOWED_LABEL_NAMES.has("blocked"), false);
+  assert.deepEqual(PRIMARY_BUCKETS, [ready, needsInfo, unsuitable]);
+  assert.equal(PRIMARY_BUCKETS.some((label) => label === inProgress), false);
+  assert.equal(PRIMARY_BUCKETS.some((label) => label === done), false);
+  assert.ok(ALLOWED_LABEL_NAMES.has(ready));
+  assert.ok(ALLOWED_LABEL_NAMES.has(needsInfo));
+  assert.ok(ALLOWED_LABEL_NAMES.has(inProgress));
+  assert.ok(ALLOWED_LABEL_NAMES.has(done));
+  assert.ok(ALLOWED_LABEL_NAMES.has(blocked));
+  assert.equal(TRIAGE_ALLOWED_LABEL_NAMES.has(inProgress), false);
+  assert.equal(TRIAGE_ALLOWED_LABEL_NAMES.has(done), false);
+  assert.equal(TRIAGE_ALLOWED_LABEL_NAMES.has(blocked), false);
   assert.equal(ALLOWED_LABEL_NAMES.has("needs-plan"), false);
   assert.ok(ALLOWED_LABEL_NAMES.has("bug"));
   assert.ok(ALLOWED_LABEL_NAMES.has("priority:critical"));
-  const inProgress = REQUIRED_LABELS.find((label) => label.name === "in-progress");
-  assert.ok(inProgress);
-  assert.match(inProgress.description, /currently being processed by automation/i);
-  const agentDone = REQUIRED_LABELS.find((label) => label.name === "agent-done");
-  assert.ok(agentDone);
-  assert.match(agentDone.description, /completed by automation/i);
-  const blocked = REQUIRED_LABELS.find((label) => label.name === "blocked");
-  assert.ok(blocked);
-  assert.match(blocked.description, /blocked by another issue or dependency/i);
+  const inProgressLabel = REQUIRED_LABELS.find((label) => label.name === inProgress);
+  assert.ok(inProgressLabel);
+  assert.match(inProgressLabel.description, /currently being processed by automation/i);
+  const doneLabel = REQUIRED_LABELS.find((label) => label.name === done);
+  assert.ok(doneLabel);
+  assert.match(doneLabel.description, /completed by automation/i);
+  const blockedLabel = REQUIRED_LABELS.find((label) => label.name === blocked);
+  assert.ok(blockedLabel);
+  assert.match(blockedLabel.description, /blocked by another issue or dependency/i);
   assert.equal(REQUIRED_LABELS.some((label) => label.name === "agent-easy"), false);
   assert.equal(REQUIRED_LABELS.some((label) => label.name === "agent-mechanical"), false);
   assert.equal(REQUIRED_LABELS.some((label) => label.name === "agent-needs-human-decision"), false);

@@ -1,34 +1,36 @@
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
+import {
+  automationProtectionLabels,
+  requiredLabels,
+} from "../../src/policy/labels.ts";
 import type { LabelChangePlan, LabelDefinition, PrimaryBucket } from "./types.ts";
 
+const DEFAULT_LABELS = DEFAULT_PATCHMILL_CONFIG.labels;
+
+function asPrimaryBucket(label: string): PrimaryBucket {
+  if (label !== "agent-ready" && label !== "needs-info" && label !== "agent-unsuitable") {
+    throw new Error(`Default primary bucket drifted from PrimaryBucket type: ${label}`);
+  }
+
+  return label;
+}
+
 export const PRIMARY_BUCKETS: PrimaryBucket[] = [
-  "agent-ready",
-  "needs-info",
-  "agent-unsuitable",
+  asPrimaryBucket(DEFAULT_LABELS.ready),
+  asPrimaryBucket(DEFAULT_LABELS.needsInfo),
+  asPrimaryBucket(DEFAULT_LABELS.unsuitable),
 ];
 
-export const REQUIRED_LABELS: LabelDefinition[] = [
-  { name: "agent-ready", color: "#2ea043", description: "Ready for automated agent processing" },
-  { name: "needs-info", color: "#8957e5", description: "Needs reporter information or human decision before planning" },
-  { name: "agent-unsuitable", color: "#8b949e", description: "Not suitable for automated implementation" },
-  { name: "in-progress", color: "#fbca04", description: "Issue is currently being processed by automation" },
-  { name: "agent-done", color: "#0e8a16", description: "Issue was completed by automation" },
-  { name: "blocked", color: "#d876e3", description: "Blocked by another issue or dependency" },
-  { name: "bug", color: "#d73a4a", description: "Something is broken" },
-  { name: "enhancement", color: "#a2eeef", description: "Feature request or improvement" },
-  { name: "docs", color: "#0075ca", description: "Documentation work" },
-  { name: "chore", color: "#cfd3d7", description: "Maintenance work" },
-  { name: "test", color: "#bfdadc", description: "Test-only or test-focused work" },
-  { name: "priority:low", color: "#8b949e", description: "Low priority" },
-  { name: "priority:medium", color: "#d29922", description: "Medium priority" },
-  { name: "priority:high", color: "#db6d28", description: "High priority" },
-  { name: "priority:critical", color: "#cf222e", description: "Critical priority" },
-];
+export const REQUIRED_LABELS: LabelDefinition[] = requiredLabels(DEFAULT_LABELS);
 
 export const ALLOWED_LABEL_NAMES = new Set(REQUIRED_LABELS.map((label) => label.name));
-export const TRIAGE_ALLOWED_LABELS = REQUIRED_LABELS.filter((label) => !["in-progress", "agent-done", "blocked"].includes(label.name));
-export const TRIAGE_ALLOWED_LABEL_NAMES = new Set(TRIAGE_ALLOWED_LABELS.map((label) => label.name));
 export const PRIMARY_BUCKET_SET = new Set<string>(PRIMARY_BUCKETS);
-export const DEFAULT_TRIAGE_EXCLUDED_LABELS = new Set<string>([...PRIMARY_BUCKETS, "in-progress", "agent-done", "blocked"]);
+const AUTOMATION_PROTECTION_LABELS = automationProtectionLabels(DEFAULT_LABELS);
+export const TRIAGE_ALLOWED_LABELS = REQUIRED_LABELS.filter(
+  (label) => !AUTOMATION_PROTECTION_LABELS.has(label.name) || PRIMARY_BUCKET_SET.has(label.name),
+);
+export const TRIAGE_ALLOWED_LABEL_NAMES = new Set(TRIAGE_ALLOWED_LABELS.map((label) => label.name));
+export const DEFAULT_TRIAGE_EXCLUDED_LABELS = new Set<string>(AUTOMATION_PROTECTION_LABELS);
 
 export function uniqueSorted(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
