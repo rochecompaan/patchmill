@@ -11,6 +11,7 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "triage-agent");
   assert.equal(config.paths.runStateDir, join(dir, ".patchmill/runs"));
+  assert.equal(config.git.worktreePrefix, "patchmill-issue-");
 });
 
 test("loadPatchmillConfig clones default arrays for each load", async () => {
@@ -42,6 +43,13 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
     paths: {
       plansDir: "engineering/plans",
       cleanStatusIgnorePrefixes: ["scratch/", ".patchmill/custom-runs/"],
+    },
+    git: {
+      baseRef: "refs/remotes/upstream/release/1.2",
+      remote: "upstream",
+      branchPrefix: "patchmill/issue-",
+      worktreePrefix: "pm-issue-",
+      slugLength: 32,
     }
   }));
   const config = await loadPatchmillConfig(dir, {}, []);
@@ -49,6 +57,11 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   assert.equal(config.pi.team, "fast-team");
   assert.equal(config.paths.plansDir, join(dir, "engineering/plans"));
   assert.deepEqual(config.paths.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
+  assert.equal(config.git.baseRef, "refs/remotes/upstream/release/1.2");
+  assert.equal(config.git.remote, "upstream");
+  assert.equal(config.git.branchPrefix, "patchmill/issue-");
+  assert.equal(config.git.worktreePrefix, "pm-issue-");
+  assert.equal(config.git.slugLength, 32);
 });
 
 test("loadPatchmillConfig applies env overrides without CLI", async () => {
@@ -129,6 +142,26 @@ test("loadPatchmillConfig reports invalid clean-status ignore prefixes", async (
       assert.match(
         error.message,
         /Invalid patchmill\.config\.json: paths\.cleanStatusIgnorePrefixes must be an array of strings/,
+      );
+      return true;
+    }
+  );
+});
+
+test("loadPatchmillConfig reports invalid git slug lengths", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
+    git: { slugLength: 0 }
+  }));
+
+  await assert.rejects(
+    loadPatchmillConfig(dir, {}, []),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.equal(error.name, "Error");
+      assert.match(
+        error.message,
+        /Invalid patchmill\.config\.json: git\.slugLength must be a positive integer/,
       );
       return true;
     }

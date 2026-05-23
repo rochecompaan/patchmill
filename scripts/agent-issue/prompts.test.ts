@@ -94,6 +94,11 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
     agentTeam,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
   });
 
   assert.match(prompt, /Use the Pi `todo` tool to manage this issue/);
@@ -152,12 +157,15 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Visual UI changes require fresh screenshots and reviewer screenshot approval before direct squash-land/);
   assert.match(prompt, /Landing policy:/);
   assert.match(prompt, /Default to direct squash-landing on `main`/);
+  assert.match(prompt, /Update local `main` from the `origin` remote\./);
+  assert.match(prompt, /Push `main` to `origin` without force-pushing\./);
+  assert.match(prompt, /Push the branch to `origin` and open a Forgejo PR with `tea`\./);
   assert.match(prompt, /Only create a PR when human code review is required before landing/);
   assert.match(prompt, /Direct squash-land eligibility/);
   assert.match(prompt, /Human-review-required exclusions/);
   assert.match(prompt, /Do not create a PR/);
   assert.match(prompt, /Squash-merge the implementation branch into `main`/);
-  assert.match(prompt, /Push the branch and open a Forgejo PR with `tea`/);
+  assert.match(prompt, /Push the branch to `origin` and open a Forgejo PR with `tea`/);
   assert.match(prompt, /keep the reason and questions concise enough to post directly as a `needs-info` comment/i);
   assert.match(prompt, /"status": "blocked"/);
   assert.match(prompt, /"recommendedAnswer": "recommended answer and reasoning"/);
@@ -184,6 +192,45 @@ test("AGENTS.md directs workers to use devenv instead of nix develop", (t) => {
   assert.doesNotMatch(agents, /enter the complete toolchain with `nix develop`/);
 });
 
+test("buildImplementationPrompt uses configured base branch in direct-land workflow instructions", () => {
+  const prompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    branch: "patchmill/issue-42-add-once-runner-helpers",
+    worktreePath: ".patchmill/worktrees/pm-issue-42-add-once-runner-helpers",
+    agentTeam,
+    git: {
+      baseBranch: "release/1.2",
+      remote: "upstream",
+      allowDirectLand: true,
+    },
+  });
+
+  assert.match(prompt, /Default to direct squash-landing on `release\/1\.2`/);
+  assert.match(prompt, /Update local `release\/1\.2` from the `upstream` remote\./);
+  assert.doesNotMatch(prompt, /Default to direct squash-landing on `main`/);
+});
+
+test("buildImplementationPrompt removes direct-land eligibility instructions when direct landing is disabled", () => {
+  const prompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    branch: "agent/issue-42-add-once-runner-helpers",
+    worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
+    agentTeam,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: false,
+    },
+  });
+
+  assert.match(prompt, /Direct squash-landing is disabled for this repository\./);
+  assert.doesNotMatch(prompt, /Direct squash-land eligible changes go to `main` without a PR\./);
+  assert.doesNotMatch(prompt, /If eligible for direct squash-land:/);
+  assert.doesNotMatch(prompt, /Successful final response for direct squash-land:/);
+});
+
 test("buildImplementationPrompt includes resume context when resuming existing work", () => {
   const prompt = buildImplementationPrompt({
     issue,
@@ -191,6 +238,11 @@ test("buildImplementationPrompt includes resume context when resuming existing w
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
     agentTeam,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
     resume: {
       resumed: true,
       worktreeCreated: false,
@@ -211,6 +263,11 @@ test("buildImplementationPrompt includes resume context when existing commits ar
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
     agentTeam,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
     resume: {
       resumed: false,
       worktreeCreated: true,

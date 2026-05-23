@@ -37,6 +37,7 @@ export class PiRunner implements PiPromptContracts {
         branch: input.branch,
         worktreePath: input.worktreePath,
         agentTeam: input.agentTeam,
+        git: input.git,
         resume: input.resume,
       }),
       {

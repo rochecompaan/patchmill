@@ -1,35 +1,50 @@
 import { access } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
+import {
+  LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+  buildIssueBranchName as buildIssueBranchNameFromStrategy,
+  buildIssueBranchSlug,
+  buildIssueWorktreePath as buildIssueWorktreePathFromStrategy,
+} from "../../src/git/worktree-strategy.ts";
+import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
 import type { CommandResult, CommandRunner } from "./types.ts";
 
-const BRANCH_SLUG_LENGTH = 48;
+export { buildIssueBranchSlug };
 
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function resolveStrategy(
+  strategyOrBaseRef: GitWorktreeStrategyConfig | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.baseRef,
+  worktreeDir = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.worktreeDir,
+): GitWorktreeStrategyConfig {
+  if (typeof strategyOrBaseRef === "string") {
+    return {
+      ...LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+      baseRef: strategyOrBaseRef,
+      worktreeDir,
+    };
+  }
 
-  return slug || "untitled";
+  return strategyOrBaseRef;
 }
 
-function truncateSlug(value: string, limit = BRANCH_SLUG_LENGTH): string {
-  if (value.length <= limit) return value;
-
-  const truncated = value.slice(0, limit).replace(/-+$/g, "");
-  return truncated || value.slice(0, limit);
+export function buildIssueBranchName(
+  issueNumber: number,
+  title: string,
+  strategy: Pick<GitWorktreeStrategyConfig, "branchPrefix" | "slugLength"> = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+): string {
+  return buildIssueBranchNameFromStrategy(issueNumber, title, strategy);
 }
 
-export function buildIssueBranchSlug(title: string): string {
-  return truncateSlug(slugify(title));
-}
-
-export function buildIssueBranchName(issueNumber: number, title: string): string {
-  return `agent/issue-${issueNumber}-${buildIssueBranchSlug(title)}`;
-}
-
-export function buildIssueWorktreePath(issueNumber: number, title: string, worktreeDir = ".worktrees"): string {
-  return join(worktreeDir, `agent-issue-${issueNumber}-${buildIssueBranchSlug(title)}`);
+export function buildIssueWorktreePath(
+  issueNumber: number,
+  title: string,
+  strategyOrWorktreeDir:
+    | Pick<GitWorktreeStrategyConfig, "worktreeDir" | "worktreePrefix" | "slugLength">
+    | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+): string {
+  const strategy = typeof strategyOrWorktreeDir === "string"
+    ? { ...LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG, worktreeDir: strategyOrWorktreeDir }
+    : strategyOrWorktreeDir;
+  return buildIssueWorktreePathFromStrategy(issueNumber, title, strategy);
 }
 
 function formatCommandFailure(message: string, result: CommandResult): string {
@@ -87,12 +102,15 @@ export async function createIssueWorktree(
   repoRoot: string,
   issueNumber: number,
   title: string,
-  baseRef = "HEAD",
-  worktreeDir = ".worktrees",
+  strategyOrBaseRef: GitWorktreeStrategyConfig | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.baseRef,
+  worktreeDir = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.worktreeDir,
 ): Promise<{ branch: string; worktreePath: string }> {
-  const branch = buildIssueBranchName(issueNumber, title);
-  const worktreePath = buildIssueWorktreePath(issueNumber, title, worktreeDir);
-  const result = await runner.run("git", ["worktree", "add", "-b", branch, worktreePath, baseRef], { cwd: repoRoot });
+  const strategy = resolveStrategy(strategyOrBaseRef, worktreeDir);
+  const branch = buildIssueBranchName(issueNumber, title, strategy);
+  const worktreePath = buildIssueWorktreePath(issueNumber, title, strategy);
+  const result = await runner.run("git", ["worktree", "add", "-b", branch, worktreePath, strategy.baseRef], {
+    cwd: repoRoot,
+  });
   if (result.code !== 0) {
     throw new Error(formatCommandFailure(`git worktree add failed for issue #${issueNumber}`, result));
   }
@@ -129,8 +147,13 @@ async function branchExists(runner: CommandRunner, repoRoot: string, branch: str
   throw new Error(formatCommandFailure(`git show-ref failed for ${branch}`, result));
 }
 
-async function existingCommitLines(runner: CommandRunner, repoRoot: string, branch: string): Promise<string[]> {
-  const result = await runner.run("git", ["log", "--oneline", `HEAD..${branch}`], { cwd: repoRoot });
+async function existingCommitLines(
+  runner: CommandRunner,
+  repoRoot: string,
+  branch: string,
+  baseRef: string,
+): Promise<string[]> {
+  const result = await runner.run("git", ["log", "--oneline", `${baseRef}..${branch}`], { cwd: repoRoot });
   if (result.code !== 0) {
     throw new Error(formatCommandFailure(`git log failed for ${branch}`, result));
   }
@@ -159,11 +182,12 @@ export async function ensureIssueWorktree(
   repoRoot: string,
   issueNumber: number,
   title: string,
-  baseRef = "HEAD",
-  worktreeDir = ".worktrees",
+  strategyOrBaseRef: GitWorktreeStrategyConfig | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.baseRef,
+  worktreeDir = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.worktreeDir,
 ): Promise<IssueWorktreeResult> {
-  const branch = buildIssueBranchName(issueNumber, title);
-  const worktreePath = buildIssueWorktreePath(issueNumber, title, worktreeDir);
+  const strategy = resolveStrategy(strategyOrBaseRef, worktreeDir);
+  const branch = buildIssueBranchName(issueNumber, title, strategy);
+  const worktreePath = buildIssueWorktreePath(issueNumber, title, strategy);
   const listed = await commandOutput(runner, repoRoot, ["worktree", "list", "--porcelain"], "git worktree list failed");
   const expectedWorktreePath = resolve(repoRoot, worktreePath);
   const hasWorktree = porcelainWorktreePaths(listed).includes(expectedWorktreePath);
@@ -180,7 +204,7 @@ export async function ensureIssueWorktree(
     }
 
     await assertCleanWorktree(runner, resolve(repoRoot, worktreePath));
-    const existingCommits = await existingCommitLines(runner, repoRoot, branch);
+    const existingCommits = await existingCommitLines(runner, repoRoot, branch, strategy.baseRef);
     return {
       branch,
       worktreePath,
@@ -200,7 +224,7 @@ export async function ensureIssueWorktree(
       throw new Error(formatCommandFailure(`git worktree add failed for issue #${issueNumber}`, result));
     }
 
-    const existingCommits = await existingCommitLines(runner, repoRoot, branch);
+    const existingCommits = await existingCommitLines(runner, repoRoot, branch, strategy.baseRef);
     return {
       branch,
       worktreePath,
@@ -210,7 +234,7 @@ export async function ensureIssueWorktree(
     };
   }
 
-  const created = await createIssueWorktree(runner, repoRoot, issueNumber, title, baseRef, worktreeDir);
+  const created = await createIssueWorktree(runner, repoRoot, issueNumber, title, strategy);
   return {
     ...created,
     created: true,

@@ -1,6 +1,11 @@
 import { access } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import {
+  buildIssueBranchName,
+  buildIssueWorktreePath,
+} from "../../src/git/worktree-strategy.ts";
+import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
+import {
   applyIssueLabels,
   commentIssue,
   createLabel,
@@ -15,8 +20,6 @@ import { resolveAgentTeam } from "./agent-team.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 import {
   assertCleanWorktree,
-  buildIssueBranchName,
-  buildIssueWorktreePath,
   ensureIssueWorktree,
 } from "./git.ts";
 import { assertIssueTodosComplete, issueTodoProgress, readIssueTodoTasks } from "./issue-todos.ts";
@@ -131,13 +134,28 @@ function configuredWorktreeDir(config: Pick<AgentIssueConfig, "repoRoot" | "work
   return relative(config.repoRoot, config.worktreeDir) || ".";
 }
 
-function expectedIssueWorkspace(issueNumber: number, title: string, worktreeDir = ".worktrees"): {
+function configuredWorktreeStrategy(
+  config: Pick<AgentIssueConfig, keyof GitWorktreeStrategyConfig | "repoRoot" | "worktreeDir">,
+): GitWorktreeStrategyConfig {
+  return {
+    baseBranch: config.baseBranch,
+    baseRef: config.baseRef,
+    remote: config.remote,
+    branchPrefix: config.branchPrefix,
+    worktreeDir: configuredWorktreeDir(config),
+    worktreePrefix: config.worktreePrefix,
+    slugLength: config.slugLength,
+    allowDirectLand: config.allowDirectLand,
+  };
+}
+
+function expectedIssueWorkspace(issueNumber: number, title: string, strategy: GitWorktreeStrategyConfig): {
   branch: string;
   worktreePath: string;
 } {
   return {
-    branch: buildIssueBranchName(issueNumber, title),
-    worktreePath: buildIssueWorktreePath(issueNumber, title, worktreeDir),
+    branch: buildIssueBranchName(issueNumber, title, strategy),
+    worktreePath: buildIssueWorktreePath(issueNumber, title, strategy),
   };
 }
 
@@ -196,6 +214,7 @@ function planComment(planPath: string, created: boolean): string {
 function handoffComment(
   planPath: string,
   result: Extract<AgentIssuePiResult, { status: "pr-created" | "merged" }>,
+  baseBranch: string,
 ): string {
   const lines = [
     `Automation handoff ready.`,
@@ -207,7 +226,7 @@ function handoffComment(
   if (result.status === "pr-created") {
     lines.push(`- PR: ${result.prUrl}`);
   } else {
-    lines.push(`- Merged to \`main\`: ${result.mergeCommit}`);
+    lines.push(`- Merged to \`${baseBranch}\`: ${result.mergeCommit}`);
   }
 
   if (result.landingDecision) {
@@ -317,6 +336,18 @@ function successfulImplementationFromState(
   }
 
   return undefined;
+}
+
+function assertDirectLandAllowed(
+  result: Extract<AgentIssuePiResult, { status: "pr-created" | "merged" }>,
+  config: Pick<AgentIssueConfig, "allowDirectLand">,
+  source: string,
+): void {
+  if (result.status === "merged" && !config.allowDirectLand) {
+    throw new AgentIssueSafetyError(
+      `${source} returned merged while git.allowDirectLand is false`,
+    );
+  }
 }
 
 function agentTeamQuestion(): AgentIssueQuestion {
@@ -956,6 +987,9 @@ export async function runOneIssue(
         landingDecision?: unknown;
       }) | undefined)
       : undefined;
+    if (implemented) {
+      assertDirectLandAllowed(implemented, config, "Saved implementation state");
+    }
 
     let agentTeam: ResolvedAgentTeam | undefined;
     if (!implemented) {
@@ -973,8 +1007,8 @@ export async function runOneIssue(
         );
       }
     }
-    const worktreeDir = configuredWorktreeDir(config);
-    const expectedWorkspace = expectedIssueWorkspace(issue.number, issue.title, worktreeDir);
+    const worktreeStrategy = configuredWorktreeStrategy(config);
+    const expectedWorkspace = expectedIssueWorkspace(issue.number, issue.title, worktreeStrategy);
     if (resumableState && existingState?.branch && existingState.branch !== expectedWorkspace.branch) {
       throw new AgentIssueSafetyError(
         `Saved branch ${existingState.branch} does not match expected branch ${expectedWorkspace.branch}`,
@@ -994,8 +1028,7 @@ export async function runOneIssue(
       config.repoRoot,
       issue.number,
       issue.title,
-      "HEAD",
-      worktreeDir,
+      worktreeStrategy,
     );
     await emitSimpleStep(options, issue.number, worktree.created ? "create worktree" : "reuse worktree");
     if (resumableState && existingState?.branch && existingState.branch !== worktree.branch) {
@@ -1130,6 +1163,7 @@ export async function runOneIssue(
             branch,
             worktreePath,
             agentTeam,
+            git: worktreeStrategy,
             resume: {
               resumed: resumableState,
               worktreeCreated: worktree.created,
@@ -1184,6 +1218,7 @@ export async function runOneIssue(
         );
       }
 
+      assertDirectLandAllowed(piResult, config, "Pi");
       implemented = piResult;
     }
 
@@ -1255,7 +1290,7 @@ export async function runOneIssue(
         runner,
         config.repoRoot,
         issue.number,
-        handoffComment(planPath, implemented),
+        handoffComment(planPath, implemented, config.baseBranch),
         config.teaLogin,
       );
       await writeRunState(
@@ -1321,7 +1356,7 @@ export async function runOneIssue(
       implemented.status === "pr-created" ? "pr" : "merge",
       implemented.status === "pr-created"
         ? `PR created: ${implemented.prUrl}`
-        : `Merged to main: ${implemented.mergeCommit}`,
+        : `Merged to ${config.baseBranch}: ${implemented.mergeCommit}`,
       { issueNumber: issue.number },
     );
     await writeRunState(

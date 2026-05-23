@@ -29,8 +29,11 @@ test("defaults match the current patchmill baseline configuration", () => {
     },
     git: {
       baseBranch: "main",
+      baseRef: "HEAD",
+      remote: "origin",
       branchPrefix: "agent/issue-",
       worktreePrefix: "patchmill-issue-",
+      slugLength: 48,
       allowDirectLand: true,
     },
     projectPolicy: {

@@ -28,6 +28,13 @@ export type AgentIssueConfig = {
   readyLabel: string;
   issueLimit: 1;
   requirePlanApproval: boolean;
+  baseBranch: string;
+  baseRef: string;
+  remote: string;
+  branchPrefix: string;
+  worktreePrefix: string;
+  slugLength: number;
+  allowDirectLand: boolean;
 };
 
 export type IssueSelectionOptions = Pick<

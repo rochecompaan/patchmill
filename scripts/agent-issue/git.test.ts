@@ -12,6 +12,7 @@ import {
   ensureIssueWorktree,
   pushBranch,
 } from "./git.ts";
+import { DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG } from "../../src/git/worktree-strategy.ts";
 
 test("buildIssueBranchName creates safe issue branches", () => {
   assert.equal(buildIssueBranchName(42, "Add user tags"), "agent/issue-42-add-user-tags");
@@ -131,14 +132,20 @@ test("createIssueWorktree creates a dedicated branch and worktree", async () => 
   }]);
 });
 
-test("createIssueWorktree accepts a configured worktree directory", async () => {
+test("createIssueWorktree accepts a configured worktree strategy", async () => {
   const runner = createStaticCommandRunner([{ code: 0, stdout: "", stderr: "" }]);
 
-  const created = await createIssueWorktree(runner, "/repo", 42, "Add user tags", "HEAD", ".patchmill/worktrees");
+  const created = await createIssueWorktree(runner, "/repo", 42, "Add user tags", {
+    ...DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
+    baseRef: "refs/remotes/upstream/release/1.2",
+    branchPrefix: "patchmill/issue-",
+    worktreeDir: ".patchmill/worktrees",
+    worktreePrefix: "pm-issue-",
+  });
 
   assert.deepEqual(created, {
-    branch: "agent/issue-42-add-user-tags",
-    worktreePath: ".patchmill/worktrees/agent-issue-42-add-user-tags",
+    branch: "patchmill/issue-42-add-user-tags",
+    worktreePath: ".patchmill/worktrees/pm-issue-42-add-user-tags",
   });
   assert.deepEqual(runner.calls, [{
     command: "git",
@@ -146,9 +153,9 @@ test("createIssueWorktree accepts a configured worktree directory", async () => 
       "worktree",
       "add",
       "-b",
-      "agent/issue-42-add-user-tags",
-      ".patchmill/worktrees/agent-issue-42-add-user-tags",
-      "HEAD",
+      "patchmill/issue-42-add-user-tags",
+      ".patchmill/worktrees/pm-issue-42-add-user-tags",
+      "refs/remotes/upstream/release/1.2",
     ],
     cwd: "/repo",
   }]);
@@ -216,37 +223,43 @@ test("ensureIssueWorktree reuses an existing worktree for the expected branch", 
   ]);
 });
 
-test("ensureIssueWorktree reuses configured worktree directories from porcelain output", async () => {
+test("ensureIssueWorktree uses the configured base ref when reading existing commits", async () => {
   const runner = createStaticCommandRunner([
     {
       code: 0,
       stdout: [
-        "worktree /repo/.patchmill/worktrees/agent-issue-45-resume-feature",
+        "worktree /repo/.patchmill/worktrees/pm-issue-45-resume-feature",
         "HEAD abcdef1234567890",
-        "branch refs/heads/agent/issue-45-resume-feature",
+        "branch refs/heads/patchmill/issue-45-resume-feature",
         "",
       ].join("\n"),
       stderr: "",
     },
-    { code: 0, stdout: "agent/issue-45-resume-feature\n", stderr: "" },
+    { code: 0, stdout: "patchmill/issue-45-resume-feature\n", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: "abc123 existing work\n", stderr: "" },
   ]);
 
-  const result = await ensureIssueWorktree(runner, "/repo", 45, "Resume feature", "HEAD", ".patchmill/worktrees");
+  const result = await ensureIssueWorktree(runner, "/repo", 45, "Resume feature", {
+    ...DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
+    baseRef: "refs/remotes/upstream/release/1.2",
+    branchPrefix: "patchmill/issue-",
+    worktreeDir: ".patchmill/worktrees",
+    worktreePrefix: "pm-issue-",
+  });
 
   assert.deepEqual(result, {
-    branch: "agent/issue-45-resume-feature",
-    worktreePath: ".patchmill/worktrees/agent-issue-45-resume-feature",
+    branch: "patchmill/issue-45-resume-feature",
+    worktreePath: ".patchmill/worktrees/pm-issue-45-resume-feature",
     created: false,
     hasExistingCommits: true,
     existingCommits: ["abc123 existing work"],
   });
   assert.deepEqual(runner.calls.map((call) => call.args.slice(0, 3)), [
     ["worktree", "list", "--porcelain"],
-    ["-C", ".patchmill/worktrees/agent-issue-45-resume-feature", "branch"],
+    ["-C", ".patchmill/worktrees/pm-issue-45-resume-feature", "branch"],
     ["status", "--porcelain=v1", "--untracked-files=all"],
-    ["log", "--oneline", "HEAD..agent/issue-45-resume-feature"],
+    ["log", "--oneline", "refs/remotes/upstream/release/1.2..patchmill/issue-45-resume-feature"],
   ]);
 });
 
@@ -313,14 +326,14 @@ test("ensureIssueWorktree stops when the deterministic path exists outside git w
   assert.deepEqual(runner.calls.map((call) => call.args), [["worktree", "list", "--porcelain"]]);
 });
 
-test("pushBranch sets the upstream on origin", async () => {
+test("pushBranch sets the upstream on the configured remote", async () => {
   const runner = createStaticCommandRunner([{ code: 0, stdout: "", stderr: "" }]);
 
-  await pushBranch(runner, "/repo", "agent/issue-42-add-user-tags");
+  await pushBranch(runner, "/repo", "agent/issue-42-add-user-tags", "upstream");
 
   assert.deepEqual(runner.calls, [{
     command: "git",
-    args: ["push", "--set-upstream", "origin", "agent/issue-42-add-user-tags"],
+    args: ["push", "--set-upstream", "upstream", "agent/issue-42-add-user-tags"],
     cwd: "/repo",
   }]);
 });

@@ -1,4 +1,5 @@
 import type { ResolvedAgentTeam } from "./agent-team.ts";
+import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
 import type { AgentIssueImplementationResumeContext, IssueSummary } from "./types.ts";
 
 export type ImplementationPromptInput = {
@@ -7,6 +8,7 @@ export type ImplementationPromptInput = {
   branch: string;
   worktreePath: string;
   agentTeam: ResolvedAgentTeam;
+  git: Pick<GitWorktreeStrategyConfig, "baseBranch" | "remote" | "allowDirectLand">;
   resume?: AgentIssueImplementationResumeContext;
 };
 
@@ -186,7 +188,142 @@ Return this exact JSON object after the plan commit succeeds:
 }
 
 export function buildImplementationPrompt(input: ImplementationPromptInput): string {
-  const { issue, planPath, branch, worktreePath, agentTeam, resume } = input;
+  const { issue, planPath, branch, worktreePath, agentTeam, git, resume } = input;
+  const directLandPolicy = git.allowDirectLand
+    ? `Landing policy:
+Default to direct squash-landing on \`${git.baseBranch}\` when the completed change is safe for asynchronous human QA on staging. Only create a PR when human code review is required before landing.
+
+Direct squash-land eligibility — all must be true:
+- The issue is a simple bug fix or mechanical change.
+- The implementation exactly matches the issue and plan; no opportunistic refactor or extra behavior change.
+- The final diff is localized and easy to review after the fact.
+- All required validation from AGENTS.md passed using the approved commands.
+- A fresh reviewer agent reviewed the final diff and found no unresolved concerns.
+- Visual UI changes require fresh screenshots and reviewer screenshot approval before direct squash-land.
+- The branch contains only commits from this automation run.
+- You can update \`${git.baseBranch}\`, squash the branch cleanly, and push without force-pushing.
+
+Simple bug fix means:
+- The incorrect behavior and intended behavior are clear.
+- The fix is narrowly scoped.
+- Regression coverage was added or updated when practical.
+- No product, UX, architecture, schema, compatibility, security, or release decision is required.
+
+Mechanical change means:
+- The change is deterministic and repetitive.
+- Runtime behavior is unchanged, unless the issue explicitly requests the behavior change.
+- Examples: typo fixes, formatting, import cleanup, generated snapshot updates, straightforward renames, small test expectation updates caused by an intentional nearby change.
+
+Human-review-required exclusions — create a PR instead of landing directly if any are true:
+- Database migrations, schema changes, or persistent data-format changes.
+- Auth, security, privacy, permissions, secrets, billing, or data-loss risk.
+- Public API, mobile/server contract, offline sync, conflict resolution, scanner/camera, or device/instrumentation behavior.
+- Dependency, Nix, CI, deployment, release, or infrastructure changes.
+- Broad refactors, large diffs, or changes spanning unrelated areas.
+- Any validation was skipped, failed, flaky, unavailable, or substituted.
+- Reviewer raised unresolved concerns.
+- You are uncertain whether direct landing is appropriate.
+
+If eligible for direct squash-land:
+1. Do not create a PR.
+2. Update local \`${git.baseBranch}\` from the \`${git.remote}\` remote.
+3. Squash-merge the implementation branch into \`${git.baseBranch}\`.
+4. Create one Conventional Commit that references issue #${issue.number}.
+5. Push \`${git.baseBranch}\` to \`${git.remote}\` without force-pushing.
+6. Do not create a PR or post the issue handoff comment yourself; the runner will comment after it parses the final response.
+7. Return the \`merged\` final response.
+
+If human review is required:
+1. Push the branch to \`${git.remote}\` and open a Forgejo PR with \`tea\`.
+2. Explain briefly why human review is required.
+3. Return the \`pr-created\` final response.
+
+Blocker contract:
+If human input is required, stop safely, leave committed work as-is, keep the reason and questions concise enough to post directly as a \`needs-info\` comment, and return this exact JSON object as the final response:
+{
+  "status": "blocked",
+  "reason": "short reason",
+  "questions": [
+    {
+      "question": "question a human must answer",
+      "recommendedAnswer": "recommended answer and reasoning"
+    }
+  ],
+  "commits": ["<sha>"],
+  "validation": ["command and result summary"]
+}
+
+Successful final response for direct squash-land:
+Return this exact JSON object after \`${git.baseBranch}\` is pushed successfully:
+{
+  "status": "merged",
+  "branch": "${branch}",
+  "mergeCommit": "<squash commit sha on ${git.baseBranch}>",
+  "commits": ["<implementation commit sha>"],
+  "validation": ["command and result summary"],
+  "reviewSummary": "short reviewer/fix summary",
+  "landingDecision": "direct squash-landed: simple localized bug fix"
+}
+
+Successful final response for human-review PR fallback:
+Return this exact JSON object after PR handoff succeeds:
+{
+  "status": "pr-created",
+  "prUrl": "<Forgejo PR URL>",
+  "branch": "${branch}",
+  "commits": ["<sha>"],
+  "validation": ["command and result summary"],
+  "visualEvidence": [
+    {
+      "screenshotPath": ".tmp/issue-42-dashboard-after.png",
+      "caption": "Dashboard after selecting last 8 weeks",
+      "referencePaths": ["docs/reference-screenshots/web/01-dashboard.png"]
+    }
+  ],
+  "reviewSummary": "short reviewer/fix summary",
+  "landingDecision": "PR required: <reason>"
+}`
+    : `Landing policy:
+Direct squash-landing is disabled for this repository. Always push the branch to \`${git.remote}\` and open a Forgejo PR with \`tea\`; do not land directly on \`${git.baseBranch}\`.
+
+If human review is required:
+1. Push the branch to \`${git.remote}\` and open a Forgejo PR with \`tea\`.
+2. Explain briefly why human review is required.
+3. Return the \`pr-created\` final response.
+
+Blocker contract:
+If human input is required, stop safely, leave committed work as-is, keep the reason and questions concise enough to post directly as a \`needs-info\` comment, and return this exact JSON object as the final response:
+{
+  "status": "blocked",
+  "reason": "short reason",
+  "questions": [
+    {
+      "question": "question a human must answer",
+      "recommendedAnswer": "recommended answer and reasoning"
+    }
+  ],
+  "commits": ["<sha>"],
+  "validation": ["command and result summary"]
+}
+
+Successful final response for human-review PR fallback:
+Return this exact JSON object after PR handoff succeeds:
+{
+  "status": "pr-created",
+  "prUrl": "<Forgejo PR URL>",
+  "branch": "${branch}",
+  "commits": ["<sha>"],
+  "validation": ["command and result summary"],
+  "visualEvidence": [
+    {
+      "screenshotPath": ".tmp/issue-42-dashboard-after.png",
+      "caption": "Dashboard after selecting last 8 weeks",
+      "referencePaths": ["docs/reference-screenshots/web/01-dashboard.png"]
+    }
+  ],
+  "reviewSummary": "short reviewer/fix summary",
+  "landingDecision": "PR required: <reason>"
+}`;
 
   return `Implement Croprun Forgejo issue #${issue.number}: ${issue.title}
 
@@ -236,7 +373,7 @@ Required workflow:
    - Android instrumentation/device behavior: \`just mobile-instrumentation-test\`.
    - Do not run host \`go test\`, host \`playwright test\`, ad-hoc servers, or direct \`kubectl exec\` as substitutes.
 10. Follow the visual-change evidence requirements below whenever the issue changes visible UI.
-11. Apply the landing policy below. Direct squash-land eligible changes go to \`main\` without a PR. Human-review-required changes must be pushed and opened as a Forgejo PR with \`tea\`, or report the exact blocker if PR creation is impossible.
+11. Apply the landing policy below. Follow its direct-land and PR handoff requirements, or report the exact blocker if PR creation is impossible.
 
 Visual-change evidence:
 - If the implementation changes visible web UI, invoke the \`capturing-proof-screenshots\` skill before capturing proof screenshots.
@@ -253,98 +390,6 @@ Visual-change evidence:
 - The reviewer summary must state whether screenshot review passed when visual changes exist.
 - If required screenshots cannot be captured, do not direct-land; return blocked or create a PR with the exact reason.
 
-Landing policy:
-Default to direct squash-landing on \`main\` when the completed change is safe for asynchronous human QA on staging. Only create a PR when human code review is required before landing.
-
-Direct squash-land eligibility — all must be true:
-- The issue is a simple bug fix or mechanical change.
-- The implementation exactly matches the issue and plan; no opportunistic refactor or extra behavior change.
-- The final diff is localized and easy to review after the fact.
-- All required validation from AGENTS.md passed using the approved commands.
-- A fresh reviewer agent reviewed the final diff and found no unresolved concerns.
-- Visual UI changes require fresh screenshots and reviewer screenshot approval before direct squash-land.
-- The branch contains only commits from this automation run.
-- You can update \`main\`, squash the branch cleanly, and push without force-pushing.
-
-Simple bug fix means:
-- The incorrect behavior and intended behavior are clear.
-- The fix is narrowly scoped.
-- Regression coverage was added or updated when practical.
-- No product, UX, architecture, schema, compatibility, security, or release decision is required.
-
-Mechanical change means:
-- The change is deterministic and repetitive.
-- Runtime behavior is unchanged, unless the issue explicitly requests the behavior change.
-- Examples: typo fixes, formatting, import cleanup, generated snapshot updates, straightforward renames, small test expectation updates caused by an intentional nearby change.
-
-Human-review-required exclusions — create a PR instead of landing directly if any are true:
-- Database migrations, schema changes, or persistent data-format changes.
-- Auth, security, privacy, permissions, secrets, billing, or data-loss risk.
-- Public API, mobile/server contract, offline sync, conflict resolution, scanner/camera, or device/instrumentation behavior.
-- Dependency, Nix, CI, deployment, release, or infrastructure changes.
-- Broad refactors, large diffs, or changes spanning unrelated areas.
-- Any validation was skipped, failed, flaky, unavailable, or substituted.
-- Reviewer raised unresolved concerns.
-- You are uncertain whether direct landing is appropriate.
-
-If eligible for direct squash-land:
-1. Do not create a PR.
-2. Update local \`main\` from the remote.
-3. Squash-merge the implementation branch into \`main\`.
-4. Create one Conventional Commit that references issue #${issue.number}.
-5. Push \`main\` without force-pushing.
-6. Do not create a PR or post the issue handoff comment yourself; the runner will comment after it parses the final response.
-7. Return the \`merged\` final response.
-
-If human review is required:
-1. Push the branch and open a Forgejo PR with \`tea\`.
-2. Explain briefly why human review is required.
-3. Return the \`pr-created\` final response.
-
-Blocker contract:
-If human input is required, stop safely, leave committed work as-is, keep the reason and questions concise enough to post directly as a \`needs-info\` comment, and return this exact JSON object as the final response:
-{
-  "status": "blocked",
-  "reason": "short reason",
-  "questions": [
-    {
-      "question": "question a human must answer",
-      "recommendedAnswer": "recommended answer and reasoning"
-    }
-  ],
-  "commits": ["<sha>"],
-  "validation": ["command and result summary"]
-}
-
-Successful final response for direct squash-land:
-Return this exact JSON object after \`main\` is pushed successfully:
-{
-  "status": "merged",
-  "branch": "${branch}",
-  "mergeCommit": "<squash commit sha on main>",
-  "commits": ["<implementation commit sha>"],
-  "validation": ["command and result summary"],
-  "reviewSummary": "short reviewer/fix summary",
-  "landingDecision": "direct squash-landed: simple localized bug fix"
-}
-
-Successful final response for human-review PR fallback:
-Return this exact JSON object after PR handoff succeeds:
-{
-  "status": "pr-created",
-  "prUrl": "<Forgejo PR URL>",
-  "branch": "${branch}",
-  "commits": ["<sha>"],
-  "validation": ["command and result summary"],
-  "visualEvidence": [
-    {
-      "screenshotPath": ".tmp/issue-42-dashboard-after.png",
-      "caption": "Dashboard after selecting last 8 weeks",
-      "referencePaths": ["docs/reference-screenshots/web/01-dashboard.png"]
-    }
-  ],
-  "reviewSummary": "short reviewer/fix summary",
-  "landingDecision": "PR required: <reason>"
-}
+${directLandPolicy}
 `;
 }

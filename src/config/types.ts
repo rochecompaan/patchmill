@@ -1,3 +1,5 @@
+import type { GitWorktreeStrategyConfig } from "../git/types.ts";
+
 export type PatchmillHostConfig = {
   provider: "forgejo-tea";
   login: string;
@@ -26,12 +28,7 @@ export type PatchmillPathsConfig = {
   cleanStatusIgnorePrefixes: string[];
 };
 
-export type PatchmillGitConfig = {
-  baseBranch: string;
-  branchPrefix: string;
-  worktreePrefix: string;
-  allowDirectLand: boolean;
-};
+export type PatchmillGitConfig = Omit<GitWorktreeStrategyConfig, "worktreeDir">;
 
 export type PatchmillProjectPolicyConfig = {
   validationCommands: string[];

@@ -101,6 +101,15 @@ function readOptionalBoolean(source: Record<string, unknown>, key: string, path:
   return value;
 }
 
+function readOptionalPositiveInteger(source: Record<string, unknown>, key: string, path: string): number | undefined {
+  const value = source[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw configError(path, "a positive integer", value);
+  }
+  return value;
+}
+
 function readOptionalStringArray(source: Record<string, unknown>, key: string, path: string): string[] | undefined {
   const value = source[key];
   if (value === undefined) return undefined;
@@ -203,12 +212,18 @@ function parseConfigFile(data: unknown): PartialConfig {
   if (git) {
     const parsed: Partial<PatchmillConfig["git"]> = {};
     const baseBranch = readOptionalString(git, "baseBranch", "git.baseBranch");
+    const baseRef = readOptionalString(git, "baseRef", "git.baseRef");
+    const remote = readOptionalString(git, "remote", "git.remote");
     const branchPrefix = readOptionalString(git, "branchPrefix", "git.branchPrefix");
     const worktreePrefix = readOptionalString(git, "worktreePrefix", "git.worktreePrefix");
+    const slugLength = readOptionalPositiveInteger(git, "slugLength", "git.slugLength");
     const allowDirectLand = readOptionalBoolean(git, "allowDirectLand", "git.allowDirectLand");
     if (baseBranch !== undefined) parsed.baseBranch = baseBranch;
+    if (baseRef !== undefined) parsed.baseRef = baseRef;
+    if (remote !== undefined) parsed.remote = remote;
     if (branchPrefix !== undefined) parsed.branchPrefix = branchPrefix;
     if (worktreePrefix !== undefined) parsed.worktreePrefix = worktreePrefix;
+    if (slugLength !== undefined) parsed.slugLength = slugLength;
     if (allowDirectLand !== undefined) parsed.allowDirectLand = allowDirectLand;
     if (hasEntries(parsed)) config.git = parsed;
   }

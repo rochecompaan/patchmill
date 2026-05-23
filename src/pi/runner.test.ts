@@ -173,6 +173,11 @@ test("PiRunner implementation uses the worktree root, preserves resume context, 
     branch: "agent/issue-42-fix",
     worktreePath,
     agentTeam,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
     resume: {
       resumed: true,
       worktreeCreated: false,

@@ -5,6 +5,7 @@ import type {
   AgentIssuePiResult,
   IssueSummary,
 } from "../../scripts/agent-issue/types.ts";
+import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 import type { RawTriageDocument } from "../../scripts/agent-issue-triage/types.ts";
 
 export type TriagePiInput = {
@@ -28,6 +29,7 @@ export type ImplementationPiInput = {
   branch: string;
   worktreePath: string;
   agentTeam: ResolvedAgentTeam;
+  git: Pick<GitWorktreeStrategyConfig, "baseBranch" | "remote" | "allowDirectLand">;
   resume?: AgentIssueImplementationResumeContext;
   runOptions?: PiRunnerRunOptions;
 };

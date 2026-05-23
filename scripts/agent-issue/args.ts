@@ -1,6 +1,10 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
+import {
+  DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
+  LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+} from "../../src/git/worktree-strategy.ts";
 import type { PatchmillConfig } from "../../src/config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
@@ -49,6 +53,9 @@ export function parseArgs(
   env: Env = process.env,
   normalizedConfig?: PatchmillConfig,
 ): AgentIssueConfig {
+  const fallbackStrategy = normalizedConfig
+    ? DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG
+    : LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG;
   const config: AgentIssueConfig = {
     repoRoot,
     dryRun: true,
@@ -64,6 +71,13 @@ export function parseArgs(
     readyLabel: normalizedConfig?.labels.ready ?? "agent-ready",
     issueLimit: 1,
     requirePlanApproval: normalizedConfig?.projectPolicy.planRequiresApproval ?? false,
+    baseBranch: normalizedConfig?.git.baseBranch ?? fallbackStrategy.baseBranch,
+    baseRef: normalizedConfig?.git.baseRef ?? fallbackStrategy.baseRef,
+    remote: normalizedConfig?.git.remote ?? fallbackStrategy.remote,
+    branchPrefix: normalizedConfig?.git.branchPrefix ?? fallbackStrategy.branchPrefix,
+    worktreePrefix: normalizedConfig?.git.worktreePrefix ?? fallbackStrategy.worktreePrefix,
+    slugLength: normalizedConfig?.git.slugLength ?? fallbackStrategy.slugLength,
+    allowDirectLand: normalizedConfig?.git.allowDirectLand ?? fallbackStrategy.allowDirectLand,
   };
 
   for (let index = 0; index < args.length; index += 1) {
