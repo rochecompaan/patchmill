@@ -1,8 +1,12 @@
 # Patchmill
 
-Patchmill is an agent-driven software factory: it turns issues into reviewed diffs using configurable issue-host providers, coding-agent providers, and project policy.
+Patchmill is an agent-driven software factory: it turns issues into reviewed diffs using configurable issue-host providers, the built-in Pi runtime, and project policy.
 
 This repository is bootstrapped from Croprun's Forgejo + Pi automation scripts. The initial code still carries Croprun-specific names and policy in several modules; the generalization spec and implementation plan document how to extract those assumptions.
+
+## Providers
+
+The first supported host/runtime combination is Forgejo via `tea` and Pi via `pi`. See `docs/providers.md` for the host-provider boundary and Pi runtime contract.
 
 ## Current commands
 
@@ -11,7 +15,7 @@ node bin/patchmill.ts triage --dry-run
 node bin/patchmill.ts run-once --dry-run
 ```
 
-Compatibility aliases copied from Croprun are still available:
+Compatibility aliases copied from the bootstrap scripts are still available:
 
 ```sh
 node scripts/agent-issue-triage.ts --dry-run
