@@ -2,6 +2,7 @@ import { ApplyDecisionError, applyDecisions, createLogEntries } from "./apply.ts
 import { runTriageAgent } from "./agent.ts";
 import { createLabel, hydrateIssueComments, listLabels, listOpenIssues } from "./forgejo.ts";
 import { DEFAULT_TRIAGE_EXCLUDED_LABELS, missingLabelDefinitions } from "./labels.ts";
+import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import { writeTriageLog } from "./log.ts";
 import { validateTriageDocument } from "./validation.ts";
 import type { CommandRunner, IssueSummary, TriageConfig, TriageDecision, TriageLogIssueEntry, TriageResult } from "./types.ts";
@@ -109,7 +110,10 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
 
   let decisions: TriageDecision[];
   try {
-    decisions = validateTriageDocument(await runTriageAgent(runner, config.repoRoot, issues), issues);
+    decisions = validateTriageDocument(await runTriageAgent(runner, config.repoRoot, {
+      issues,
+      projectPolicy: CROPRUN_COMPAT_POLICY,
+    }), issues);
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;

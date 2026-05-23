@@ -22,7 +22,7 @@ test("CROPRUN_COMPAT_POLICY preserves the current Croprun prompt policy", () => 
     "Do not run direct `kubectl exec` as a substitute.",
   ]);
   assert.equal(CROPRUN_COMPAT_POLICY.directLand.targetBranch, "main");
-  assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Default to direct squash-landing on `main`/);
+  assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Default to direct squash-landing on `<target-branch>`/);
   assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Simple bug fix means:/);
   assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Mechanical change means:/);
   assert.match(
@@ -33,6 +33,8 @@ test("CROPRUN_COMPAT_POLICY preserves the current Croprun prompt policy", () => 
     CROPRUN_COMPAT_POLICY.directLand.policyText,
     /Do not create a PR or post the issue handoff comment yourself; the runner will comment after it parses the final response/,
   );
+  assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Update local `<target-branch>` from the `<remote>` remote/);
+  assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /"branch": "<implementation-branch>"/);
   assert.match(CROPRUN_COMPAT_POLICY.directLand.policyText, /Successful final response for human-review PR fallback:/);
   assert.match(CROPRUN_COMPAT_POLICY.visualEvidence.policyText, /capturing-proof-screenshots/);
   assert.match(CROPRUN_COMPAT_POLICY.visualEvidence.policyText, /mobile-app-screenshots/);

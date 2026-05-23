@@ -88,6 +88,25 @@ test("Pi result parser accepts merged status", () => {
   });
 });
 
+test("PiRunner triage defaults to the generic project policy", async () => {
+  const runner = createFakeRunner((call) => {
+    assert.equal(call.command, "pi");
+    assert.equal(call.cwd, "/repo");
+    assert.match(call.prompt, /issue triage agent/);
+    assert.doesNotMatch(call.prompt, /Croprun/);
+    assert.doesNotMatch(call.prompt, /devenv shell/);
+    assert.doesNotMatch(call.prompt, /direct kubectl exec/);
+    return { code: 0, stdout: '{"decisions":[]}', stderr: "" };
+  });
+
+  const result = await new PiRunner(runner).triage({
+    repoRoot: "/repo",
+    issues: [issue],
+  });
+
+  assert.deepEqual(result, { decisions: [] });
+});
+
 test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
   const repoRoot = "/repo";
   const planPath = "docs/plans/2026-05-23-pi-runner.md";
@@ -99,6 +118,9 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
     assert.ok(call.args.includes("--session-dir"));
     assert.match(call.prompt, /Create an implementation plan/);
     assert.match(call.prompt, new RegExp(planPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(call.prompt, /Croprun/);
+    assert.doesNotMatch(call.prompt, /devenv shell/);
+    assert.doesNotMatch(call.prompt, /direct kubectl exec/);
     return {
       code: 0,
       stdout: JSON.stringify({ status: "plan-created", planPath, commit: "abc123" }),
@@ -125,7 +147,7 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
   assert.ok(events.some((event) => event.stage === "pi-plan" && event.message === "started pi"));
 });
 
-test("PiRunner implementation uses the worktree root, preserves resume context, and keeps runner metadata authoritative", async () => {
+test("PiRunner implementation uses the worktree root, derives the default landing branch from git.baseBranch, preserves resume context, and keeps runner metadata authoritative", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-"));
   const worktreePath = "worktrees/issue-42-fix";
   const worktreeRoot = join(repoRoot, worktreePath);
@@ -145,6 +167,11 @@ test("PiRunner implementation uses the worktree root, preserves resume context, 
     assert.match(call.prompt, /Resume context:/);
     assert.match(call.prompt, /Existing commit: abc123/);
     assert.match(call.prompt, /Worktree: worktrees\/issue-42-fix/);
+    assert.match(call.prompt, /Update local `release\/1\.2` from the `origin` remote\./);
+    assert.doesNotMatch(call.prompt, /Update local `main` from the `origin` remote\./);
+    assert.doesNotMatch(call.prompt, /Croprun/);
+    assert.doesNotMatch(call.prompt, /devenv shell/);
+    assert.doesNotMatch(call.prompt, /direct kubectl exec/);
     await new Promise((resolve) => setTimeout(resolve, 30));
     return {
       code: 0,
@@ -174,7 +201,7 @@ test("PiRunner implementation uses the worktree root, preserves resume context, 
     worktreePath,
     agentTeam,
     git: {
-      baseBranch: "main",
+      baseBranch: "release/1.2",
       remote: "origin",
       allowDirectLand: true,
     },

@@ -1,8 +1,14 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
 import { PRIMARY_BUCKETS, TRIAGE_ALLOWED_LABELS } from "./labels.ts";
 import type { CommandRunner, IssueSummary, RawTriageDocument } from "./types.ts";
+
+export type TriagePromptInput = {
+  issues: IssueSummary[];
+  projectPolicy: PatchmillProjectPolicy;
+};
 
 function issuePayload(issues: IssueSummary[]): string {
   return JSON.stringify(
@@ -20,13 +26,26 @@ function issuePayload(issues: IssueSummary[]): string {
   );
 }
 
-export function buildTriagePrompt(issues: IssueSummary[]): string {
+function formatRepositoryLabel(projectPolicy: PatchmillProjectPolicy): string {
+  if (projectPolicy.projectName && projectPolicy.hostToolingInstruction.includes("Forgejo")) {
+    return `${projectPolicy.projectName} Forgejo repository`;
+  }
+  if (projectPolicy.projectName) return `${projectPolicy.projectName} repository`;
+  return "repository";
+}
+
+export function buildTriagePrompt(input: TriagePromptInput): string {
+  const { issues, projectPolicy } = input;
   const buckets = PRIMARY_BUCKETS.map((bucket) => `- ${bucket}`).join("\n");
   const labels = TRIAGE_ALLOWED_LABELS.map((label) => `- ${label.name}: ${label.description}`).join("\n");
 
-  return `You are a high-thinking issue triage agent for the Croprun Forgejo repository.
+  return `You are a high-thinking issue triage agent for the ${formatRepositoryLabel(projectPolicy)}.
 
-Classify every provided open issue for automation suitability. Return JSON only. Do not use markdown outside the JSON. Do not run commands. Do not mutate Forgejo.
+Classify every provided open issue for automation suitability. Return JSON only. Do not use markdown outside the JSON. Do not run commands.
+
+Repository-hosting policy:
+- ${projectPolicy.hostToolingInstruction}
+- Do not mutate repository-hosting state while triaging.
 
 Primary bucket rules:
 ${buckets}
@@ -93,9 +112,9 @@ export function parseAgentJson(stdout: string): RawTriageDocument {
 export async function runTriageAgent(
   runner: CommandRunner,
   repoRoot: string,
-  issues: IssueSummary[],
+  input: TriagePromptInput,
 ): Promise<RawTriageDocument> {
-  const prompt = buildTriagePrompt(issues);
+  const prompt = buildTriagePrompt(input);
   const dir = await mkdtemp(join(tmpdir(), "agent-triage-prompt-"));
   const promptPath = join(dir, "prompt.md");
   await writeFile(promptPath, prompt, "utf8");

@@ -31,6 +31,7 @@ import {
   buildImplementationPrompt,
   buildPlanCreationPrompt,
 } from "./prompts.ts";
+import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import { isResumableRunState, readRunState, writeRunState } from "./run-state.ts";
 import { selectIssue } from "./selection.ts";
 import { uploadPrVisualEvidence } from "./visual-evidence.ts";
@@ -847,7 +848,11 @@ export async function runOneIssue(
         return await runPiPrompt(
           runner,
           config.repoRoot,
-          buildPlanCreationPrompt(issue, planPath),
+          buildPlanCreationPrompt({
+            issue,
+            planPath,
+            projectPolicy: CROPRUN_COMPAT_POLICY,
+          }),
           {
             progress: options.progress,
             stage: "pi-plan",
@@ -1164,6 +1169,13 @@ export async function runOneIssue(
             worktreePath,
             agentTeam,
             git: worktreeStrategy,
+            projectPolicy: {
+              ...CROPRUN_COMPAT_POLICY,
+              directLand: {
+                ...CROPRUN_COMPAT_POLICY.directLand,
+                targetBranch: worktreeStrategy.baseBranch,
+              },
+            },
             resume: {
               resumed: resumableState,
               worktreeCreated: worktree.created,

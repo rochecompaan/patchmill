@@ -1,9 +1,21 @@
 import { resolve } from "node:path";
+import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
 import { runTriageAgent } from "../../scripts/agent-issue-triage/agent.ts";
 import { runPiPrompt } from "../../scripts/agent-issue/pi.ts";
 import { buildImplementationPrompt, buildPlanCreationPrompt } from "../../scripts/agent-issue/prompts.ts";
 import type { CommandRunner } from "../../scripts/agent-issue-triage/types.ts";
+import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type { ImplementationPiInput, PiPromptContracts, PlanPiInput, TriagePiInput } from "./types.ts";
+
+function defaultImplementationPolicy(baseBranch: string): PatchmillProjectPolicy {
+  return {
+    ...DEFAULT_PATCHMILL_POLICY,
+    directLand: {
+      ...DEFAULT_PATCHMILL_POLICY.directLand,
+      targetBranch: baseBranch,
+    },
+  };
+}
 
 export class PiRunner implements PiPromptContracts {
   private readonly runner: CommandRunner;
@@ -13,11 +25,18 @@ export class PiRunner implements PiPromptContracts {
   }
 
   triage(input: TriagePiInput) {
-    return runTriageAgent(this.runner, input.repoRoot, input.issues);
+    return runTriageAgent(this.runner, input.repoRoot, {
+      issues: input.issues,
+      projectPolicy: input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY,
+    });
   }
 
   plan(input: PlanPiInput) {
-    return runPiPrompt(this.runner, input.repoRoot, buildPlanCreationPrompt(input.issue, input.planPath), {
+    return runPiPrompt(this.runner, input.repoRoot, buildPlanCreationPrompt({
+      issue: input.issue,
+      planPath: input.planPath,
+      projectPolicy: input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY,
+    }), {
       ...input.runOptions,
       stage: "pi-plan",
       issueNumber: input.issue.number,
@@ -38,6 +57,7 @@ export class PiRunner implements PiPromptContracts {
         worktreePath: input.worktreePath,
         agentTeam: input.agentTeam,
         git: input.git,
+        projectPolicy: input.projectPolicy ?? defaultImplementationPolicy(input.git.baseBranch),
         resume: input.resume,
       }),
       {
