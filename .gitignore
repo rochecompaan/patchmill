@@ -8,3 +8,8 @@ coverage/
 .pi/agent-issue/triage-runs/
 .worktrees/
 .tmp/
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
