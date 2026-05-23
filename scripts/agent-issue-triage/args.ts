@@ -26,7 +26,7 @@ export function parseArgs(args: string[], repoRoot = cwd(), env: Env = process.e
     dryRun: true,
     execute: false,
     showHelp: args.length === 0,
-    teaLogin: env.CROPRUN_TRIAGE_TEA_LOGIN ?? "triage-agent",
+    teaLogin: env.PATCHMILL_HOST_LOGIN ?? env.CROPRUN_TRIAGE_TEA_LOGIN ?? "triage-agent",
     logDir: join(repoRoot, ".pi", "agent-issue", "triage-runs"),
   };
 

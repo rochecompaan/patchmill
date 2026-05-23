@@ -22,6 +22,7 @@ function parsePositiveInteger(flag: string, value: string): number {
 
 function defaultTeaLogin(env: Env): string {
   return (
+    env.PATCHMILL_HOST_LOGIN ??
     env.CROPRUN_AGENT_ISSUE_TEA_LOGIN ??
     env.CROPRUN_TRIAGE_TEA_LOGIN ??
     "triage-agent"
@@ -29,7 +30,7 @@ function defaultTeaLogin(env: Env): string {
 }
 
 function defaultAgentTeam(env: Env): string | undefined {
-  return env.CROPRUN_AGENT_ISSUE_AGENT_TEAM;
+  return env.PATCHMILL_AGENT_TEAM ?? env.CROPRUN_AGENT_ISSUE_AGENT_TEAM;
 }
 
 export function parseArgs(

@@ -156,13 +156,31 @@ test("parseArgs reads agent team from CROPRUN_AGENT_ISSUE_AGENT_TEAM", () => {
   assert.equal(config.agentTeamName, "economy");
 });
 
-test("parseArgs reads tea login from CROPRUN_AGENT_ISSUE_TEA_LOGIN first", () => {
+test("parseArgs prefers PATCHMILL_AGENT_TEAM over Croprun agent team", () => {
+  const config = parseArgs(["--dry-run"], "/repo", {
+    PATCHMILL_AGENT_TEAM: "patchmill-team",
+    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "croprun-team",
+  });
+  assert.equal(config.agentTeamName, "patchmill-team");
+});
+
+test("parseArgs falls back to CROPRUN_AGENT_ISSUE_TEA_LOGIN when PATCHMILL_HOST_LOGIN is unset", () => {
   const config = parseArgs([], "/repo", {
     CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
     CROPRUN_TRIAGE_TEA_LOGIN: "triage-agent",
   });
 
   assert.equal(config.teaLogin, "issue-agent");
+});
+
+test("parseArgs prefers PATCHMILL_HOST_LOGIN over Croprun tea login fallbacks", () => {
+  const config = parseArgs([], "/repo", {
+    PATCHMILL_HOST_LOGIN: "patchmill-bot",
+    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
+    CROPRUN_TRIAGE_TEA_LOGIN: "triage-agent",
+  });
+
+  assert.equal(config.teaLogin, "patchmill-bot");
 });
 
 test("parseArgs falls back to CROPRUN_TRIAGE_TEA_LOGIN", () => {

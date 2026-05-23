@@ -57,6 +57,14 @@ test("parseArgs reads the default tea login from the environment", () => {
   assert.equal(config.teaLogin, "triage-agent");
 });
 
+test("parseArgs prefers PATCHMILL_HOST_LOGIN over Croprun triage login", () => {
+  const config = parseArgs(["--dry-run"], "/repo", {
+    PATCHMILL_HOST_LOGIN: "patchmill-bot",
+    CROPRUN_TRIAGE_TEA_LOGIN: "croprun-bot",
+  });
+  assert.equal(config.teaLogin, "patchmill-bot");
+});
+
 test("parseArgs defaults to the triage-agent tea login", () => {
   const config = parseArgs(["--dry-run"], "/repo", {});
 
