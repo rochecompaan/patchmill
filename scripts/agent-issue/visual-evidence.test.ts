@@ -16,7 +16,7 @@ test("uploadPrVisualEvidence keeps evidence when no uploader is configured", asy
 
   const uploaded = await uploadPrVisualEvidence({
     repoRoot: "/repo",
-    prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
     evidence,
     onProgress: async (message) => {
       events.push(message);
@@ -64,14 +64,14 @@ test("uploadPrVisualEvidence delegates to the configured uploader", async () => 
 
   const uploaded = await uploadPrVisualEvidence({
     repoRoot: "/repo",
-    prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
     evidence,
     uploader,
   });
 
   assert.deepEqual(received, {
     repoRoot: "/repo",
-    prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
     evidence,
   });
   assert.deepEqual(uploaded, [

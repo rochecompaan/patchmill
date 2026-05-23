@@ -389,7 +389,7 @@ test("ensureIssueWorktree ignores porcelain entries for similar absolute paths",
 });
 
 test("ensureIssueWorktree stops when the deterministic path exists outside git worktree registration", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "croprun-agent-issue-"));
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-agent-issue-"));
   await mkdir(join(repoRoot, ".worktrees/agent-issue-45-resume-feature"), { recursive: true });
   const runner = createStaticCommandRunner([{ code: 0, stdout: "", stderr: "" }]);
 

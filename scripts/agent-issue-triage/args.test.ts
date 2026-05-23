@@ -70,7 +70,7 @@ test("parseArgs reads the default tea login from the environment", () => {
 test("parseArgs prefers PATCHMILL_HOST_LOGIN over Croprun triage login", () => {
   const config = parseArgs(["--dry-run"], "/repo", {
     PATCHMILL_HOST_LOGIN: "patchmill-bot",
-    CROPRUN_TRIAGE_TEA_LOGIN: "croprun-bot",
+    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
   });
   assert.equal(config.teaLogin, "patchmill-bot");
 });
@@ -90,10 +90,10 @@ test("loadCliConfig preserves Croprun tea login compatibility when no patchmill 
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-config-"));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_TRIAGE_TEA_LOGIN: "croprun-bot",
+    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
   });
 
-  assert.equal(config.teaLogin, "croprun-bot");
+  assert.equal(config.teaLogin, "compat-bot");
   assert.equal(config.logDir, join(repoRoot, ".pi/agent-issue/triage-runs"));
 });
 
@@ -118,7 +118,7 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
   }));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_TRIAGE_TEA_LOGIN: "croprun-bot",
+    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
   });
 
   assert.equal(config.teaLogin, "config-bot");
@@ -139,10 +139,10 @@ test("loadCliConfig preserves Croprun tea login when patchmill config only custo
   }));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_TRIAGE_TEA_LOGIN: "croprun-bot",
+    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
   });
 
-  assert.equal(config.teaLogin, "croprun-bot");
+  assert.equal(config.teaLogin, "compat-bot");
   assert.equal(config.logDir, join(repoRoot, ".patchmill/triage-runs"));
 });
 

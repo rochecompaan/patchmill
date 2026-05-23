@@ -60,15 +60,15 @@ test("command runner captures non-zero exit code and stderr", async () => {
 
 test("command runner reports spawn errors for missing commands", async () => {
   const runner = createCommandRunner();
-  const result = await runner.run("definitely-not-a-real-croprun-command", []);
+  const result = await runner.run("definitely-not-a-real-patchmill-command", []);
 
   assert.equal(result.code, 1);
-  assert.match(result.stderr, /definitely-not-a-real-croprun-command|ENOENT/);
+  assert.match(result.stderr, /definitely-not-a-real-patchmill-command|ENOENT/);
 });
 
 test("command runner uses the provided cwd", async () => {
   const runner = createCommandRunner();
-  const cwd = await mkdtemp(join(tmpdir(), "croprun-command-runner-"));
+  const cwd = await mkdtemp(join(tmpdir(), "patchmill-command-runner-"));
   const result = await runner.run(process.execPath, ["-e", "console.log(process.cwd())"], { cwd });
 
   assert.equal(result.code, 0);

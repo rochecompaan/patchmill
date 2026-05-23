@@ -490,7 +490,7 @@ test("sessionEntryToObservations reports assistant tool calls with arguments", (
           id: "call-2",
           name: "read",
           arguments: {
-            path: "mobile/app/src/main/java/com/croprun/PickingLogRepository.kt",
+            path: "mobile/app/src/main/java/com/patchmill/PickingLogRepository.kt",
             offset: 500,
             limit: 35,
           },
@@ -514,7 +514,7 @@ test("sessionEntryToObservations reports assistant tool calls with arguments", (
       toolName: "read",
       toolCallId: "call-2",
       arguments: {
-        path: "mobile/app/src/main/java/com/croprun/PickingLogRepository.kt",
+        path: "mobile/app/src/main/java/com/patchmill/PickingLogRepository.kt",
         offset: 500,
         limit: 35,
       },

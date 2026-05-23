@@ -20,7 +20,7 @@ const issues: IssueSummary[] = [
   },
 ];
 
-const croprunOnlyPhrases = [
+const compatOnlyPhrases = [
   "Croprun",
   "devenv shell",
   "just tilt-up",
@@ -143,7 +143,7 @@ test("generic triage prompt does not include Croprun-only text", () => {
   assert.match(prompt, /Use the repository's configured host tooling for issue and pull-request actions\./);
   assert.match(prompt, /Do not mutate repository-hosting state while triaging\./);
 
-  for (const phrase of croprunOnlyPhrases) {
+  for (const phrase of compatOnlyPhrases) {
     assert.doesNotMatch(prompt, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });

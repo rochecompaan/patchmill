@@ -46,6 +46,13 @@ Default behavior:
 - Plan readers preserve the legacy default heading matcher: `## Task N: Label` plus deeper headings with flexible internal whitespace still count as executable task headings.
 - Open issue task todos block final `pr-created` and `merged` handoff checks.
 
+## Compatibility notes
+
+- Patchmill keeps the default Pi todo root at `.pi/todos`, so existing task todos do not need a path migration.
+- The run-state and triage-log defaults moved from `.pi/agent-issue/*` to `.patchmill/*`; that path migration is separate from the Pi task contract.
+- The copied Croprun-compatible entrypoints — including the `patchmill` CLI commands that dispatch to them — still fall back to the legacy run-state paths when no `patchmill.config.json` is loaded. Create `patchmill.config.json` (even `{}`) to activate normalized `.patchmill/*` defaults, or set `paths.runStateDir` and `paths.triageLogDir` explicitly for a single explicit setup.
+- For the full command, environment, and cleanup-hook migration checklist, see [docs/migration-from-croprun-scripts.md](./migration-from-croprun-scripts.md).
+
 ## Supported placeholders
 
 `todoTitlePattern` supports:

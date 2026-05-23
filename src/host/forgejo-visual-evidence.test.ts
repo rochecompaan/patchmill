@@ -41,7 +41,7 @@ test("ForgejoVisualEvidenceUploader uploads screenshots and posts a PR comment",
         browser_download_url: "https://forgejo.example/attachments/dashboard.png",
       });
     }
-    assert.equal(String(url), "https://forgejo.example/api/v1/repos/owner/croprun/issues/77/comments");
+    assert.equal(String(url), "https://forgejo.example/api/v1/repos/owner/patchmill/issues/77/comments");
     assert.equal(init?.method, "POST");
     assert.equal(init?.headers instanceof Headers ? init.headers.get("Content-Type") : undefined, "application/json");
     const payload = JSON.parse(String(init?.body));
@@ -60,7 +60,7 @@ test("ForgejoVisualEvidenceUploader uploads screenshots and posts a PR comment",
   ];
 
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -70,7 +70,7 @@ test("ForgejoVisualEvidenceUploader uploads screenshots and posts a PR comment",
 
   const uploaded = await uploader.uploadPrEvidence({
     repoRoot,
-    prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
     evidence,
   });
 
@@ -91,7 +91,7 @@ test("ForgejoVisualEvidenceUploader preserves Croprun env compatibility fallback
   await writeMinimalPng(join(repoRoot, ".tmp", "compat.png"));
 
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "   ",
       PATCHMILL_FORGEJO_TOKEN: "",
@@ -127,7 +127,7 @@ test("ForgejoVisualEvidenceUploader escapes attachment URLs for Markdown destina
 
   let commentBody = "";
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -145,7 +145,7 @@ test("ForgejoVisualEvidenceUploader escapes attachment URLs for Markdown destina
 
   const uploaded = await uploader.uploadPrEvidence({
     repoRoot,
-    prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
     evidence: [{ screenshotPath: ".tmp/dashboard.png", caption: "Dashboard after change" }],
   });
 
@@ -163,7 +163,7 @@ test("ForgejoVisualEvidenceUploader rejects non-http attachment URLs returned by
   await writeMinimalPng(join(repoRoot, ".tmp", "dashboard.png"));
 
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -179,7 +179,7 @@ test("ForgejoVisualEvidenceUploader rejects non-http attachment URLs returned by
   await assert.rejects(
     () => uploader.uploadPrEvidence({
       repoRoot,
-      prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+      prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
       evidence: [{ screenshotPath: ".tmp/dashboard.png" }],
     }),
     /valid http\(s\) attachment URL/,
@@ -193,7 +193,7 @@ test("ForgejoVisualEvidenceUploader rejects screenshots outside the repo root", 
 
   let fetchCalls = 0;
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -209,7 +209,7 @@ test("ForgejoVisualEvidenceUploader rejects screenshots outside the repo root", 
       () =>
         uploader.uploadPrEvidence({
           repoRoot,
-          prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+          prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
           evidence: [{ screenshotPath }],
         }),
       /Visual evidence screenshot path must stay within the repo root/,
@@ -228,7 +228,7 @@ test("ForgejoVisualEvidenceUploader rejects symlink escapes outside the repo roo
 
   let fetchCalls = 0;
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -243,7 +243,7 @@ test("ForgejoVisualEvidenceUploader rejects symlink escapes outside the repo roo
     () =>
       uploader.uploadPrEvidence({
         repoRoot,
-        prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+        prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
         evidence: [{ screenshotPath: ".tmp/escape.png" }],
       }),
     /Visual evidence screenshot path must stay within the repo root/,
@@ -254,7 +254,7 @@ test("ForgejoVisualEvidenceUploader rejects symlink escapes outside the repo roo
 
 test("ForgejoVisualEvidenceUploader rejects evidence when Forgejo config is missing", async () => {
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {},
     fetchImpl: async () => Response.json({}),
   });
@@ -263,7 +263,7 @@ test("ForgejoVisualEvidenceUploader rejects evidence when Forgejo config is miss
     () =>
       uploader.uploadPrEvidence({
         repoRoot: "/repo",
-        prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+        prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
         evidence: [{ screenshotPath: ".tmp/dashboard.png" }],
       }),
     /PATCHMILL_FORGEJO_URL and PATCHMILL_FORGEJO_TOKEN/,
@@ -276,7 +276,7 @@ test("ForgejoVisualEvidenceUploader rejects non-image screenshot paths such as .
 
   let fetchCalls = 0;
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -291,7 +291,7 @@ test("ForgejoVisualEvidenceUploader rejects non-image screenshot paths such as .
     () =>
       uploader.uploadPrEvidence({
         repoRoot,
-        prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+        prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
         evidence: [{ screenshotPath: ".env" }],
       }),
     /Visual evidence screenshot must use one of \.png, \.jpg, \.jpeg, \.gif, \.webp: \.env/,
@@ -307,7 +307,7 @@ test("ForgejoVisualEvidenceUploader rejects text files renamed with an image ext
 
   let fetchCalls = 0;
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -322,7 +322,7 @@ test("ForgejoVisualEvidenceUploader rejects text files renamed with an image ext
     () =>
       uploader.uploadPrEvidence({
         repoRoot,
-        prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+        prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
         evidence: [{ screenshotPath: ".tmp/notes.png" }],
       }),
     /Visual evidence screenshot must contain PNG, JPEG, GIF, or WebP image bytes: \.tmp\/notes\.png/,
@@ -338,7 +338,7 @@ test("ForgejoVisualEvidenceUploader sanitizes model-supplied PR comment fields",
 
   const requests: Array<{ url: string; body: unknown }> = [];
   const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/croprun.git"),
+    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
     env: {
       PATCHMILL_FORGEJO_URL: "https://forgejo.example",
       PATCHMILL_FORGEJO_TOKEN: "secret-token",
@@ -354,7 +354,7 @@ test("ForgejoVisualEvidenceUploader sanitizes model-supplied PR comment fields",
 
   await uploader.uploadPrEvidence({
     repoRoot,
-    prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
     evidence: [{
       screenshotPath: ".tmp/dashboard.png",
       caption: "Looks good\n- injected bullet\n[click me](https://evil.example) `inline code`",

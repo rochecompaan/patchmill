@@ -24,7 +24,7 @@ test("console reporter renders numbered steps with tool-call summaries and outpu
 
   reporter.event(event({ message: "issue #19 · Add filters", step: { type: "run-start", issueNumber: 19, title: "Add filters" } }));
   reporter.event(event({ message: "create plan", step: { type: "step-start", label: "create plan" } }));
-  reporter.event(event({ level: "debug", stage: "pi-plan", message: "tool", observation: { type: "tool-call", toolName: "read", arguments: { path: "mobile/app/src/main/java/com/croprun/PickingLogRepository.kt", offset: 500, limit: 35 } } }));
+  reporter.event(event({ level: "debug", stage: "pi-plan", message: "tool", observation: { type: "tool-call", toolName: "read", arguments: { path: "mobile/app/src/main/java/com/patchmill/PickingLogRepository.kt", offset: 500, limit: 35 } } }));
   reporter.event(event({ level: "debug", stage: "pi-plan", message: "tool", observation: { type: "tool-call", toolName: "bash", arguments: { command: "rg -n \"Picking Log|Trimming Log|Container Assignments\" mobile", timeout: 15 } } }));
   reporter.event(event({ level: "debug", stage: "pi-plan", message: "usage", observation: { type: "assistant-usage", outputTokens: 4200 } }));
   reporter.event(event({ time: "2026-05-22T10:01:12.000Z", message: "create plan", step: { type: "step-complete", label: "create plan" } }));
@@ -32,7 +32,7 @@ test("console reporter renders numbered steps with tool-call summaries and outpu
   assert.deepEqual(lines, [
     "issue #19 · Add filters",
     "01 create plan",
-    "   🔧 read (path=mobile/app/src/main/java/com/croprun/PickingLog..., offset=500, limit=35)",
+    "   🔧 read (path=mobile/app/src/main/java/com/patchmill/PickingL..., offset=500, limit=35)",
     "   🔧 bash (command=rg -n \"Picking Log|Trimming Log|Container Assig..., timeout=15)",
     "   tokens: task 4.2k total 4.2k   time elapsed: 1m12s",
   ]);
@@ -46,18 +46,18 @@ test("console reporter writes tool-call summaries as observations arrive", () =>
   });
 
   reporter.event(event({ message: "create plan", step: { type: "step-start", label: "create plan" } }));
-  reporter.event(event({ level: "debug", stage: "pi-plan", message: "tool", observation: { type: "tool-call", toolName: "read", arguments: { path: "mobile/app/src/main/java/com/croprun/PickingLogRepository.kt", offset: 500, limit: 35 } } }));
+  reporter.event(event({ level: "debug", stage: "pi-plan", message: "tool", observation: { type: "tool-call", toolName: "read", arguments: { path: "mobile/app/src/main/java/com/patchmill/PickingLogRepository.kt", offset: 500, limit: 35 } } }));
 
   assert.deepEqual(chunks, [
     "01 create plan\n",
-    "   🔧 read (path=mobile/app/src/main/java/com/croprun/PickingLog..., offset=500, limit=35)\n",
+    "   🔧 read (path=mobile/app/src/main/java/com/patchmill/PickingL..., offset=500, limit=35)\n",
   ]);
 
   reporter.event(event({ level: "debug", stage: "pi-plan", message: "tool", observation: { type: "tool-call", toolName: "bash", arguments: { command: "rg -n \"Picking Log|Trimming Log|Container Assignments\" mobile", timeout: 15 } } }));
 
   assert.deepEqual(chunks, [
     "01 create plan\n",
-    "   🔧 read (path=mobile/app/src/main/java/com/croprun/PickingLog..., offset=500, limit=35)\n",
+    "   🔧 read (path=mobile/app/src/main/java/com/patchmill/PickingL..., offset=500, limit=35)\n",
     "   🔧 bash (command=rg -n \"Picking Log|Trimming Log|Container Assig..., timeout=15)\n",
   ]);
 
@@ -66,7 +66,7 @@ test("console reporter writes tool-call summaries as observations arrive", () =>
 
   assert.deepEqual(chunks, [
     "01 create plan\n",
-    "   🔧 read (path=mobile/app/src/main/java/com/croprun/PickingLog..., offset=500, limit=35)\n",
+    "   🔧 read (path=mobile/app/src/main/java/com/patchmill/PickingL..., offset=500, limit=35)\n",
     "   🔧 bash (command=rg -n \"Picking Log|Trimming Log|Container Assig..., timeout=15)\n",
     "   tokens: task 4.2k total 4.2k   time elapsed: 1m12s\n",
   ]);

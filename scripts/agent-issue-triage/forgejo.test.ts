@@ -126,7 +126,7 @@ test("Forgejo commands use the origin repository slug for repository overrides",
   await mkdir(join(repoRoot, ".git"));
   await writeFile(
     join(repoRoot, ".git", "config"),
-    `[remote "origin"]\n\turl = ssh://git@git.compaan/roche/croprun.git\n`,
+    `[remote "origin"]\n\turl = ssh://git@git.compaan/roche/patchmill.git\n`,
     "utf8",
   );
   const runner = createStaticCommandRunner([
@@ -135,7 +135,7 @@ test("Forgejo commands use the origin repository slug for repository overrides",
 
   await listLabels(runner, repoRoot);
 
-  assert.deepEqual(runner.calls[0]?.args.slice(-2), ["--repo", "roche/croprun"]);
+  assert.deepEqual(runner.calls[0]?.args.slice(-2), ["--repo", "roche/patchmill"]);
 });
 
 test("Forgejo commands use the common git config for worktree repository overrides", async () => {
@@ -149,7 +149,7 @@ test("Forgejo commands use the common git config for worktree repository overrid
   await writeFile(join(gitDir, "commondir"), `../..\n`, "utf8");
   await writeFile(
     join(commonDir, "config"),
-    `[remote "origin"]\n\turl = git@git.compaan:roche/croprun.git\n`,
+    `[remote "origin"]\n\turl = git@git.compaan:roche/patchmill.git\n`,
     "utf8",
   );
   const runner = createStaticCommandRunner([
@@ -158,7 +158,7 @@ test("Forgejo commands use the common git config for worktree repository overrid
 
   await listLabels(runner, repoRoot);
 
-  assert.deepEqual(runner.calls[0]?.args.slice(-2), ["--repo", "roche/croprun"]);
+  assert.deepEqual(runner.calls[0]?.args.slice(-2), ["--repo", "roche/patchmill"]);
 });
 
 test("Forgejo commands pass an explicit repository override", async () => {

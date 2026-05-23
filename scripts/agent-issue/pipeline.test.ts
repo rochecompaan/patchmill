@@ -1408,7 +1408,7 @@ test("runOneIssue does not run cleanup commands when cleanup hooks are not confi
   const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
-  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=croprun-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=patchmill-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -1476,7 +1476,7 @@ test("runOneIssue preserves tilt-just cleanup compatibility when configured", as
   const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
-  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=croprun-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=patchmill-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -1556,7 +1556,7 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
   const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
-  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=croprun-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=patchmill-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -3237,7 +3237,7 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
         code: 0,
         stdout: JSON.stringify({
           status: "pr-created",
-          prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+          prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
           branch: "agent/issue-31-dashboard-visual-evidence",
           commits: ["def456"],
           validation: ["just playwright-test ok"],
@@ -3273,7 +3273,7 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
   assert.deepEqual(uploadCalls, [
     {
       repoRoot: worktreeRoot,
-      prUrl: "https://forgejo.example/owner/croprun/pulls/77",
+      prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
       evidence: [
         {
           screenshotPath: ".tmp/dashboard.png",
@@ -3283,7 +3283,7 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
       ],
     },
   ]);
-  assert.match(commentBodies.find((body) => body.includes("Automation handoff ready")) ?? "", /PR: https:\/\/forgejo\.example\/owner\/croprun\/pulls\/77/);
+  assert.match(commentBodies.find((body) => body.includes("Automation handoff ready")) ?? "", /PR: https:\/\/forgejo\.example\/owner\/patchmill\/pulls\/77/);
   assert.equal(commentBodies.some((body) => body.includes(".tmp/dashboard.png") && body.includes("Visual evidence")), false);
 });
 
@@ -3312,7 +3312,7 @@ test("runOneIssue keeps visual evidence when no uploader is configured", async (
         code: 0,
         stdout: JSON.stringify({
           status: "pr-created",
-          prUrl: "https://forgejo.example/owner/croprun/pulls/88",
+          prUrl: "https://forgejo.example/owner/patchmill/pulls/88",
           branch: "agent/issue-32-dashboard-visual-evidence",
           commits: ["def456"],
           validation: ["just playwright-test ok"],

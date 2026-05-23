@@ -181,7 +181,7 @@ test("parseArgs reads agent team from CROPRUN_AGENT_ISSUE_AGENT_TEAM", () => {
 test("parseArgs prefers PATCHMILL_AGENT_TEAM over Croprun agent team", () => {
   const config = parseArgs(["--dry-run"], "/repo", {
     PATCHMILL_AGENT_TEAM: "patchmill-team",
-    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "croprun-team",
+    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "compat-team",
   });
   assert.equal(config.agentTeamName, "patchmill-team");
 });
