@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
+import { loadPatchmillConfigState } from "../src/config/load.ts";
 import { parseArgs } from "./agent-issue-triage/args.ts";
 import { createCommandRunner } from "./agent-issue-triage/command.ts";
 import { runTriage } from "./agent-issue-triage/pipeline.ts";
@@ -20,11 +22,19 @@ Options:
   --all               Re-triage all selected open issues, including issues already carrying triage or protection labels such as in-progress or blocked.
   --limit <number>    Triage only the first N selected open issues.
   --log-dir <path>    Write triage logs to a custom directory.
-  --tea-login <name>   Use a named tea login for Forgejo issue updates (default: triage-agent).
+  --host-login <name> Use a named host login for Forgejo issue updates.
+  --tea-login <name>  Compatibility alias for --host-login.
 
 Environment:
-  CROPRUN_TRIAGE_TEA_LOGIN  Override the default tea login name.
+  PATCHMILL_HOST_LOGIN      Override the default host login name.
+  CROPRUN_TRIAGE_TEA_LOGIN  Compatibility override for the default tea login name.
 `;
+
+type Env = Record<string, string | undefined>;
+
+function isHelpOnlyInvocation(args: string[]): boolean {
+  return args.length === 0 || args.includes("--help") || args.includes("-h");
+}
 
 function formatLabels(labels: string[]): string {
   return labels.length > 0 ? labels.join(", ") : "(none)";
@@ -51,8 +61,21 @@ export function formatResultLines(result: TriageResult): string[] {
   });
 }
 
+export async function loadCliConfig(
+  args: string[],
+  repoRoot = cwd(),
+  env: Env = process.env,
+) {
+  if (isHelpOnlyInvocation(args)) {
+    return parseArgs(args, repoRoot, env);
+  }
+
+  const { config: patchmillConfig, hasConfigFile } = await loadPatchmillConfigState(repoRoot, env, args);
+  return parseArgs(args, repoRoot, env, hasConfigFile ? patchmillConfig : undefined);
+}
+
 async function main(): Promise<void> {
-  const config = parseArgs(process.argv.slice(2));
+  const config = await loadCliConfig(process.argv.slice(2));
   if (config.showHelp) {
     console.log(HELP_TEXT);
     return;

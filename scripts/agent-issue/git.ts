@@ -1,8 +1,9 @@
 import { access } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type { CommandResult, CommandRunner } from "./types.ts";
 
 const BRANCH_SLUG_LENGTH = 48;
+const LEGACY_RUN_LOG_DIR = ".pi/agent-issue/runs";
 
 function slugify(value: string): string {
   const slug = value
@@ -28,8 +29,8 @@ export function buildIssueBranchName(issueNumber: number, title: string): string
   return `agent/issue-${issueNumber}-${buildIssueBranchSlug(title)}`;
 }
 
-export function buildIssueWorktreePath(issueNumber: number, title: string): string {
-  return `.worktrees/agent-issue-${issueNumber}-${buildIssueBranchSlug(title)}`;
+export function buildIssueWorktreePath(issueNumber: number, title: string, worktreeDir = ".worktrees"): string {
+  return join(worktreeDir, `agent-issue-${issueNumber}-${buildIssueBranchSlug(title)}`);
 }
 
 function formatCommandFailure(message: string, result: CommandResult): string {
@@ -37,24 +38,46 @@ function formatCommandFailure(message: string, result: CommandResult): string {
   return `${message} with exit code ${result.code}: ${output}`;
 }
 
-function isAgentIssueRunLogStatus(line: string): boolean {
-  return line.slice(3).startsWith(".pi/agent-issue/runs/");
+function normalizeGitPath(path: string): string {
+  return path.replaceAll("\\", "/").replace(/\/+$/u, "");
 }
 
-function blockingStatusOutput(stdout: string): string {
+function ignoredStatusPrefixes(repoRoot: string, ignoredPaths: string[]): string[] {
+  const prefixes = new Set<string>([LEGACY_RUN_LOG_DIR]);
+
+  for (const ignoredPath of ignoredPaths) {
+    const relativePath = normalizeGitPath(relative(repoRoot, resolve(repoRoot, ignoredPath)));
+    if (relativePath === "" || relativePath.startsWith("../") || relativePath === "..") continue;
+    prefixes.add(relativePath);
+  }
+
+  return [...prefixes];
+}
+
+function isIgnoredStatusPath(path: string, ignoredPrefixes: string[]): boolean {
+  const normalizedPath = normalizeGitPath(path.trim());
+  return ignoredPrefixes.some((prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`));
+}
+
+function blockingStatusOutput(stdout: string, repoRoot: string, ignoredPaths: string[] = []): string {
+  const ignoredPrefixes = ignoredStatusPrefixes(repoRoot, ignoredPaths);
   return stdout
     .split("\n")
-    .filter((line) => line.trim() !== "" && !isAgentIssueRunLogStatus(line))
+    .filter((line) => line.trim() !== "" && !isIgnoredStatusPath(line.slice(3), ignoredPrefixes))
     .join("\n");
 }
 
-export async function assertCleanWorktree(runner: CommandRunner, repoRoot: string): Promise<void> {
+export async function assertCleanWorktree(
+  runner: CommandRunner,
+  repoRoot: string,
+  ignoredPaths: string[] = [],
+): Promise<void> {
   const result = await runner.run("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd: repoRoot });
   if (result.code !== 0) {
     throw new Error(formatCommandFailure("git status failed", result));
   }
 
-  const dirtyOutput = blockingStatusOutput(result.stdout);
+  const dirtyOutput = blockingStatusOutput(result.stdout, repoRoot, ignoredPaths);
   if (dirtyOutput !== "") {
     throw new Error(`Repository worktree is not clean: ${dirtyOutput}`);
   }
@@ -66,9 +89,10 @@ export async function createIssueWorktree(
   issueNumber: number,
   title: string,
   baseRef = "HEAD",
+  worktreeDir = ".worktrees",
 ): Promise<{ branch: string; worktreePath: string }> {
   const branch = buildIssueBranchName(issueNumber, title);
-  const worktreePath = buildIssueWorktreePath(issueNumber, title);
+  const worktreePath = buildIssueWorktreePath(issueNumber, title, worktreeDir);
   const result = await runner.run("git", ["worktree", "add", "-b", branch, worktreePath, baseRef], { cwd: repoRoot });
   if (result.code !== 0) {
     throw new Error(formatCommandFailure(`git worktree add failed for issue #${issueNumber}`, result));
@@ -137,9 +161,10 @@ export async function ensureIssueWorktree(
   issueNumber: number,
   title: string,
   baseRef = "HEAD",
+  worktreeDir = ".worktrees",
 ): Promise<IssueWorktreeResult> {
   const branch = buildIssueBranchName(issueNumber, title);
-  const worktreePath = buildIssueWorktreePath(issueNumber, title);
+  const worktreePath = buildIssueWorktreePath(issueNumber, title, worktreeDir);
   const listed = await commandOutput(runner, repoRoot, ["worktree", "list", "--porcelain"], "git worktree list failed");
   const expectedWorktreePath = resolve(repoRoot, worktreePath);
   const hasWorktree = porcelainWorktreePaths(listed).includes(expectedWorktreePath);
@@ -155,7 +180,7 @@ export async function ensureIssueWorktree(
       throw new Error(`Existing worktree ${worktreePath} is on ${currentBranch}, expected ${branch}`);
     }
 
-    await assertCleanWorktree(runner, join(repoRoot, worktreePath));
+    await assertCleanWorktree(runner, resolve(repoRoot, worktreePath));
     const existingCommits = await existingCommitLines(runner, repoRoot, branch);
     return {
       branch,
@@ -186,7 +211,7 @@ export async function ensureIssueWorktree(
     };
   }
 
-  const created = await createIssueWorktree(runner, repoRoot, issueNumber, title, baseRef);
+  const created = await createIssueWorktree(runner, repoRoot, issueNumber, title, baseRef, worktreeDir);
   return {
     ...created,
     created: true,

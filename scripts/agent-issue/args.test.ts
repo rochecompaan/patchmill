@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { cwd } from "node:process";
 import { join } from "node:path";
-import { HELP_TEXT, summarizeResult } from "../agent-issue-once.ts";
+import { HELP_TEXT, loadCliConfig, summarizeResult } from "../agent-issue-once.ts";
 import { parseArgs } from "./args.ts";
 
 test("parseArgs shows help when no args are provided", () => {
@@ -17,6 +19,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.teaLogin, "triage-agent");
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
   assert.equal(config.runStateDir, join(cwd(), ".pi", "agent-issue", "runs"));
+  assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
   assert.equal(config.readyLabel, "agent-ready");
   assert.equal(config.issueLimit, 1);
   assert.equal(config.requirePlanApproval, false);
@@ -39,6 +42,7 @@ test("HELP_TEXT documents one-issue usage and options", () => {
   assert.match(HELP_TEXT, /--execute/);
   assert.match(HELP_TEXT, /--plan-only/);
   assert.match(HELP_TEXT, /--issue <number>/);
+  assert.match(HELP_TEXT, /--host-login <name>/);
   assert.match(HELP_TEXT, /--tea-login <name>/);
   assert.match(HELP_TEXT, /--agent-team <name>/);
   assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_TEA_LOGIN/);
@@ -69,7 +73,7 @@ test("parseArgs enables verbose Pi output", () => {
 test("HELP_TEXT documents quiet mode and run logs", () => {
   assert.match(HELP_TEXT, /--quiet/);
   assert.match(HELP_TEXT, /stderr/);
-  assert.match(HELP_TEXT, /\.pi\/agent-issue\/runs/);
+  assert.match(HELP_TEXT, /\.patchmill\/runs/);
 });
 
 test("help text documents verbose Pi output", () => {
@@ -140,6 +144,14 @@ test("parseArgs accepts an explicit tea login", () => {
   assert.equal(config.teaLogin, "operator");
 });
 
+test("parseArgs accepts host-login as the primary tea login flag", () => {
+  const config = parseArgs(["--host-login", "operator"], "/repo", {
+    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
+  });
+
+  assert.equal(config.teaLogin, "operator");
+});
+
 test("parseArgs accepts an explicit agent team", () => {
   const config = parseArgs(["--agent-team", "economy"], "/repo", {
     CROPRUN_AGENT_ISSUE_AGENT_TEAM: "premium",
@@ -189,6 +201,103 @@ test("parseArgs falls back to CROPRUN_TRIAGE_TEA_LOGIN", () => {
   });
 
   assert.equal(config.teaLogin, "triage-agent");
+});
+
+test("loadCliConfig preserves Croprun compatibility defaults when no patchmill config file exists", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {
+    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
+    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "economy",
+  });
+
+  assert.equal(config.teaLogin, "issue-agent");
+  assert.equal(config.agentTeamName, "economy");
+  assert.equal(config.plansDir, join(repoRoot, "docs/plans"));
+  assert.equal(config.runStateDir, join(repoRoot, ".pi/agent-issue/runs"));
+  assert.equal(config.worktreeDir, join(repoRoot, ".worktrees"));
+});
+
+test("loadCliConfig applies normalized patchmill defaults for run-once", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    host: { login: "config-bot" },
+    pi: { team: "config-team" },
+    paths: {
+      plansDir: "pm-plans",
+      runStateDir: ".patchmill/runs",
+      triageLogDir: ".patchmill/triage-runs",
+      worktreeDir: ".patchmill/worktrees",
+    },
+  }));
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {
+    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
+    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "economy",
+  });
+
+  assert.equal(config.teaLogin, "config-bot");
+  assert.equal(config.agentTeamName, "config-team");
+  assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
+  assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
+  assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
+});
+
+test("loadCliConfig preserves Croprun tea login when patchmill config only customizes paths", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    paths: {
+      plansDir: "pm-plans",
+      runStateDir: ".patchmill/runs",
+      triageLogDir: ".patchmill/triage-runs",
+      worktreeDir: ".patchmill/worktrees",
+    },
+  }));
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {
+    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
+  });
+
+  assert.equal(config.teaLogin, "issue-agent");
+  assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
+  assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
+});
+
+test("loadCliConfig lets run-once login and agent-team flags override patchmill config", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    host: { login: "config-bot" },
+    pi: { team: "config-team" },
+  }));
+
+  const hostLogin = await loadCliConfig(
+    ["--dry-run", "--host-login", "host-bot", "--agent-team", "cli-team"],
+    repoRoot,
+    {},
+  );
+  const teaLogin = await loadCliConfig(
+    ["--dry-run", "--tea-login", "tea-bot", "--agent-team", "legacy-team"],
+    repoRoot,
+    {},
+  );
+
+  assert.equal(hostLogin.teaLogin, "host-bot");
+  assert.equal(hostLogin.agentTeamName, "cli-team");
+  assert.equal(teaLogin.teaLogin, "tea-bot");
+  assert.equal(teaLogin.agentTeamName, "legacy-team");
+});
+
+test("loadCliConfig shows help without reading malformed patchmill config", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), "{not valid json", "utf8");
+
+  const noArgs = await loadCliConfig([], repoRoot, {});
+  const helpLong = await loadCliConfig(["--help"], repoRoot, {});
+  const helpShort = await loadCliConfig(["-h"], repoRoot, {});
+
+  assert.equal(noArgs.showHelp, true);
+  assert.equal(helpLong.showHelp, true);
+  assert.equal(helpShort.showHelp, true);
 });
 
 test("parseArgs accepts dry-run after execute", () => {

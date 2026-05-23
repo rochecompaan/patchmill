@@ -1,8 +1,10 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
+import type { PatchmillConfig } from "../../src/config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
+const DEFAULT_TEA_LOGIN = "triage-agent";
 
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -20,23 +22,30 @@ function parsePositiveInteger(flag: string, value: string): number {
   return parsed;
 }
 
-function defaultTeaLogin(env: Env): string {
-  return (
-    env.PATCHMILL_HOST_LOGIN ??
-    env.CROPRUN_AGENT_ISSUE_TEA_LOGIN ??
-    env.CROPRUN_TRIAGE_TEA_LOGIN ??
-    "triage-agent"
-  );
+function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
+  if (env.PATCHMILL_HOST_LOGIN) return env.PATCHMILL_HOST_LOGIN;
+  if (normalizedConfig?.host.login && normalizedConfig.host.login !== DEFAULT_TEA_LOGIN) {
+    return normalizedConfig.host.login;
+  }
+
+  return env.CROPRUN_AGENT_ISSUE_TEA_LOGIN
+    ?? env.CROPRUN_TRIAGE_TEA_LOGIN
+    ?? normalizedConfig?.host.login
+    ?? DEFAULT_TEA_LOGIN;
 }
 
-function defaultAgentTeam(env: Env): string | undefined {
-  return env.PATCHMILL_AGENT_TEAM ?? env.CROPRUN_AGENT_ISSUE_AGENT_TEAM;
+function defaultAgentTeam(
+  env: Env,
+  normalizedConfig?: PatchmillConfig,
+): string | undefined {
+  return normalizedConfig?.pi.team ?? env.PATCHMILL_AGENT_TEAM ?? env.CROPRUN_AGENT_ISSUE_AGENT_TEAM;
 }
 
 export function parseArgs(
   args: string[],
   repoRoot = cwd(),
   env: Env = process.env,
+  normalizedConfig?: PatchmillConfig,
 ): AgentIssueConfig {
   const config: AgentIssueConfig = {
     repoRoot,
@@ -44,13 +53,14 @@ export function parseArgs(
     execute: false,
     showHelp: args.length === 0,
     planOnly: false,
-    teaLogin: defaultTeaLogin(env),
-    agentTeamName: defaultAgentTeam(env),
-    plansDir: join(repoRoot, "docs", "plans"),
-    runStateDir: join(repoRoot, ".pi", "agent-issue", "runs"),
-    readyLabel: "agent-ready",
+    teaLogin: defaultTeaLogin(env, normalizedConfig),
+    agentTeamName: defaultAgentTeam(env, normalizedConfig),
+    plansDir: normalizedConfig?.paths.plansDir ?? join(repoRoot, "docs", "plans"),
+    runStateDir: normalizedConfig?.paths.runStateDir ?? join(repoRoot, ".pi", "agent-issue", "runs"),
+    worktreeDir: normalizedConfig?.paths.worktreeDir ?? join(repoRoot, ".worktrees"),
+    readyLabel: normalizedConfig?.labels.ready ?? "agent-ready",
     issueLimit: 1,
-    requirePlanApproval: false,
+    requirePlanApproval: normalizedConfig?.projectPolicy.planRequiresApproval ?? false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -78,7 +88,7 @@ export function parseArgs(
       index += 1;
     } else if (arg === "--plan-only") {
       config.planOnly = true;
-    } else if (arg === "--tea-login") {
+    } else if (arg === "--tea-login" || arg === "--host-login") {
       config.teaLogin = requireValue(args, index, arg);
       index += 1;
     } else if (arg === "--agent-team") {

@@ -116,13 +116,17 @@ function repoPath(
   return { absolute: join(repoRoot, path), relative: path };
 }
 
-function expectedIssueWorkspace(issueNumber: number, title: string): {
+function configuredWorktreeDir(config: Pick<AgentIssueConfig, "repoRoot" | "worktreeDir">): string {
+  return relative(config.repoRoot, config.worktreeDir) || ".";
+}
+
+function expectedIssueWorkspace(issueNumber: number, title: string, worktreeDir = ".worktrees"): {
   branch: string;
   worktreePath: string;
 } {
   return {
     branch: buildIssueBranchName(issueNumber, title),
-    worktreePath: buildIssueWorktreePath(issueNumber, title),
+    worktreePath: buildIssueWorktreePath(issueNumber, title, worktreeDir),
   };
 }
 
@@ -671,7 +675,11 @@ export async function runOneIssue(
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
-  await assertCleanWorktree(runner, config.repoRoot);
+  await assertCleanWorktree(
+    runner,
+    config.repoRoot,
+    [config.runStateDir, options.logPath].filter((path): path is string => Boolean(path)),
+  );
   let labels = resumed
     ? (issue.labels.includes("in-progress")
       ? issue.labels
@@ -954,7 +962,8 @@ export async function runOneIssue(
         );
       }
     }
-    const expectedWorkspace = expectedIssueWorkspace(issue.number, issue.title);
+    const worktreeDir = configuredWorktreeDir(config);
+    const expectedWorkspace = expectedIssueWorkspace(issue.number, issue.title, worktreeDir);
     if (resumableState && existingState?.branch && existingState.branch !== expectedWorkspace.branch) {
       throw new AgentIssueSafetyError(
         `Saved branch ${existingState.branch} does not match expected branch ${expectedWorkspace.branch}`,
@@ -974,6 +983,8 @@ export async function runOneIssue(
       config.repoRoot,
       issue.number,
       issue.title,
+      "HEAD",
+      worktreeDir,
     );
     await emitSimpleStep(options, issue.number, worktree.created ? "create worktree" : "reuse worktree");
     if (resumableState && existingState?.branch && existingState.branch !== worktree.branch) {

@@ -21,6 +21,13 @@ test("buildIssueWorktreePath creates stable issue worktree paths", () => {
   assert.equal(buildIssueWorktreePath(42, "Add user tags"), ".worktrees/agent-issue-42-add-user-tags");
 });
 
+test("buildIssueWorktreePath accepts a configured worktree directory", () => {
+  assert.equal(
+    buildIssueWorktreePath(42, "Add user tags", ".patchmill/worktrees"),
+    ".patchmill/worktrees/agent-issue-42-add-user-tags",
+  );
+});
+
 test("issue branch and worktree slugs truncate deterministically", () => {
   const title = "abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz";
 
@@ -62,6 +69,23 @@ test("assertCleanWorktree ignores agent issue run logs", async () => {
   await assertCleanWorktree(runner, "/repo");
 });
 
+test("assertCleanWorktree ignores configured run-state logs", async () => {
+  const runner = createStaticCommandRunner([{
+    code: 0,
+    stdout: [
+      "?? .patchmill/runs/run-2026-05-10T04-19-08-934Z.jsonl",
+      "?? .patchmill/runs/issue-45/run-2026-05-10T04-19-08-934Z.jsonl",
+      "",
+    ].join("\n"),
+    stderr: "",
+  }]);
+
+  await assertCleanWorktree(runner, "/repo", [
+    "/repo/.patchmill/runs",
+    "/repo/.patchmill/runs/run-2026-05-10T04-19-08-934Z.jsonl",
+  ]);
+});
+
 test("assertCleanWorktree rejects git status failures with exit code and command output", async () => {
   const runner = createStaticCommandRunner([{ code: 7, stdout: "index refresh failed", stderr: "fatal: bad index file" }]);
 
@@ -100,6 +124,29 @@ test("createIssueWorktree creates a dedicated branch and worktree", async () => 
       "-b",
       "agent/issue-42-add-user-tags",
       ".worktrees/agent-issue-42-add-user-tags",
+      "HEAD",
+    ],
+    cwd: "/repo",
+  }]);
+});
+
+test("createIssueWorktree accepts a configured worktree directory", async () => {
+  const runner = createStaticCommandRunner([{ code: 0, stdout: "", stderr: "" }]);
+
+  const created = await createIssueWorktree(runner, "/repo", 42, "Add user tags", "HEAD", ".patchmill/worktrees");
+
+  assert.deepEqual(created, {
+    branch: "agent/issue-42-add-user-tags",
+    worktreePath: ".patchmill/worktrees/agent-issue-42-add-user-tags",
+  });
+  assert.deepEqual(runner.calls, [{
+    command: "git",
+    args: [
+      "worktree",
+      "add",
+      "-b",
+      "agent/issue-42-add-user-tags",
+      ".patchmill/worktrees/agent-issue-42-add-user-tags",
       "HEAD",
     ],
     cwd: "/repo",
@@ -163,6 +210,40 @@ test("ensureIssueWorktree reuses an existing worktree for the expected branch", 
   assert.deepEqual(runner.calls.map((call) => call.args.slice(0, 3)), [
     ["worktree", "list", "--porcelain"],
     ["-C", ".worktrees/agent-issue-45-resume-feature", "branch"],
+    ["status", "--porcelain=v1", "--untracked-files=all"],
+    ["log", "--oneline", "HEAD..agent/issue-45-resume-feature"],
+  ]);
+});
+
+test("ensureIssueWorktree reuses configured worktree directories from porcelain output", async () => {
+  const runner = createStaticCommandRunner([
+    {
+      code: 0,
+      stdout: [
+        "worktree /repo/.patchmill/worktrees/agent-issue-45-resume-feature",
+        "HEAD abcdef1234567890",
+        "branch refs/heads/agent/issue-45-resume-feature",
+        "",
+      ].join("\n"),
+      stderr: "",
+    },
+    { code: 0, stdout: "agent/issue-45-resume-feature\n", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+    { code: 0, stdout: "abc123 existing work\n", stderr: "" },
+  ]);
+
+  const result = await ensureIssueWorktree(runner, "/repo", 45, "Resume feature", "HEAD", ".patchmill/worktrees");
+
+  assert.deepEqual(result, {
+    branch: "agent/issue-45-resume-feature",
+    worktreePath: ".patchmill/worktrees/agent-issue-45-resume-feature",
+    created: false,
+    hasExistingCommits: true,
+    existingCommits: ["abc123 existing work"],
+  });
+  assert.deepEqual(runner.calls.map((call) => call.args.slice(0, 3)), [
+    ["worktree", "list", "--porcelain"],
+    ["-C", ".patchmill/worktrees/agent-issue-45-resume-feature", "branch"],
     ["status", "--porcelain=v1", "--untracked-files=all"],
     ["log", "--oneline", "HEAD..agent/issue-45-resume-feature"],
   ]);

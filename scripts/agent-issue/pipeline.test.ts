@@ -239,6 +239,7 @@ async function makeConfig(
     planOnly: false,
     plansDir,
     runStateDir,
+    worktreeDir: join(repoRoot, ".worktrees"),
     readyLabel: "agent-ready",
     issueLimit: 1,
     requirePlanApproval: false,
@@ -2086,6 +2087,126 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
     ".worktrees/agent-issue-15-ship-automation-pipeline",
   );
   assert.equal(runState.implementingAt, NOW.toISOString());
+});
+
+test("runOneIssue uses configured worktreeDir for compatibility worktree paths", async () => {
+  const baseConfig = await makeConfig({ dryRun: false, execute: true });
+  const config = {
+    ...baseConfig,
+    worktreeDir: join(baseConfig.repoRoot, ".patchmill", "worktrees"),
+  };
+  const selected = issue(16, ["agent-ready"], "Use custom worktrees");
+  const planPath = join(config.plansDir, "2026-05-09-issue-16-use-custom-worktrees.md");
+  await writeFile(planPath, "# Plan\n", "utf8");
+
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+      assert.deepEqual(call.args, [
+        "worktree",
+        "add",
+        "-b",
+        "agent/issue-16-use-custom-worktrees",
+        ".patchmill/worktrees/agent-issue-16-use-custom-worktrees",
+        "HEAD",
+      ]);
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      assert.equal(call.cwd, join(config.repoRoot, ".patchmill/worktrees/agent-issue-16-use-custom-worktrees"));
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/16",
+          branch: "agent/issue-16-use-custom-worktrees",
+          commits: ["abc123"],
+          validation: ["node --test ok"],
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(result.worktreePath, ".patchmill/worktrees/agent-issue-16-use-custom-worktrees");
+  const runState = JSON.parse(await readFile(runStatePath(config.runStateDir, 16), "utf8")) as Record<string, unknown>;
+  assert.equal(runState.worktreePath, ".patchmill/worktrees/agent-issue-16-use-custom-worktrees");
+});
+
+test("runOneIssue ignores configured run-state logs during the clean-worktree check", async () => {
+  const baseConfig = await makeConfig({ dryRun: false, execute: true });
+  const config = {
+    ...baseConfig,
+    runStateDir: join(baseConfig.repoRoot, ".patchmill", "runs"),
+  };
+  const selected = issue(17, ["agent-ready"], "Ignore configured run logs");
+  const planPath = join(config.plansDir, "2026-05-09-issue-17-ignore-configured-run-logs.md");
+  await writeFile(planPath, "# Plan\n", "utf8");
+
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status") {
+      return {
+        code: 0,
+        stdout: "?? .patchmill/runs/run-2026-05-09T12-00-00-000Z.jsonl\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/17",
+          branch: "agent/issue-17-ignore-configured-run-logs",
+          commits: ["abc123"],
+          validation: ["node --test ok"],
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, {
+    now: NOW,
+    logPath: join(config.runStateDir, "run-2026-05-09T12-00-00-000Z.jsonl"),
+  });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(result.worktreePath, ".worktrees/agent-issue-17-ignore-configured-run-logs");
 });
 
 test("runOneIssue implementation heartbeat reads task progress from the issue worktree", async () => {

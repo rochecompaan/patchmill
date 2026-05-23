@@ -1,8 +1,10 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
+import type { PatchmillConfig } from "../../src/config/types.ts";
 import type { TriageConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
+const DEFAULT_TEA_LOGIN = "triage-agent";
 
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -20,14 +22,28 @@ function parsePositiveInteger(flag: string, value: string): number {
   return parsed;
 }
 
-export function parseArgs(args: string[], repoRoot = cwd(), env: Env = process.env): TriageConfig {
+function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
+  if (env.PATCHMILL_HOST_LOGIN) return env.PATCHMILL_HOST_LOGIN;
+  if (normalizedConfig?.host.login && normalizedConfig.host.login !== DEFAULT_TEA_LOGIN) {
+    return normalizedConfig.host.login;
+  }
+
+  return env.CROPRUN_TRIAGE_TEA_LOGIN ?? normalizedConfig?.host.login ?? DEFAULT_TEA_LOGIN;
+}
+
+export function parseArgs(
+  args: string[],
+  repoRoot = cwd(),
+  env: Env = process.env,
+  normalizedConfig?: PatchmillConfig,
+): TriageConfig {
   const config: TriageConfig = {
     repoRoot,
     dryRun: true,
     execute: false,
     showHelp: args.length === 0,
-    teaLogin: env.PATCHMILL_HOST_LOGIN ?? env.CROPRUN_TRIAGE_TEA_LOGIN ?? "triage-agent",
-    logDir: join(repoRoot, ".pi", "agent-issue", "triage-runs"),
+    teaLogin: defaultTeaLogin(env, normalizedConfig),
+    logDir: normalizedConfig?.paths.triageLogDir ?? join(repoRoot, ".pi", "agent-issue", "triage-runs"),
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -51,7 +67,7 @@ export function parseArgs(args: string[], repoRoot = cwd(), env: Env = process.e
     } else if (arg === "--log-dir") {
       config.logDir = requireValue(args, index, arg);
       index += 1;
-    } else if (arg === "--tea-login") {
+    } else if (arg === "--tea-login" || arg === "--host-login") {
       config.teaLogin = requireValue(args, index, arg);
       index += 1;
     } else {

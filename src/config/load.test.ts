@@ -69,6 +69,12 @@ test("loadPatchmillConfig applies CLI overrides last", async () => {
   assert.equal(config.pi.team, "cli-team");
 });
 
+test("loadPatchmillConfig accepts tea-login as a host-login alias", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  const config = await loadPatchmillConfig(dir, {}, ["--tea-login", "cli-login"]);
+  assert.equal(config.host.login, "cli-login");
+});
+
 test("loadPatchmillConfig absolutizes paths from a relative repo root", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({

@@ -228,17 +228,27 @@ function parseConfigFile(data: unknown): PartialConfig {
   return config;
 }
 
-async function readConfigFile(repoRoot: string): Promise<PartialConfig> {
+type LoadedConfigFile = {
+  config: PartialConfig;
+  hasConfigFile: boolean;
+};
+
+async function readConfigFile(repoRoot: string): Promise<LoadedConfigFile> {
   let text: string;
   try {
     text = await readFile(join(repoRoot, CONFIG_FILE_NAME), "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { config: {}, hasConfigFile: false };
+    }
     throw error;
   }
 
   try {
-    return parseConfigFile(JSON.parse(text) as unknown);
+    return {
+      config: parseConfigFile(JSON.parse(text) as unknown),
+      hasConfigFile: true,
+    };
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Invalid ${CONFIG_FILE_NAME}: ${error.message}`);
@@ -257,9 +267,10 @@ function envConfig(env: Env): PartialConfig {
 function cliConfig(args: string[]): PartialConfig {
   const config: PartialConfig = {};
   for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === "--host-login") {
+    if (args[index] === "--host-login" || args[index] === "--tea-login") {
+      const flag = args[index]!;
       const value = args[index + 1];
-      if (!value || value.startsWith("--")) throw new Error("--host-login requires a value");
+      if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
       config.host = { ...(config.host ?? {}), login: value };
       index += 1;
     } else if (args[index] === "--agent-team") {
@@ -272,8 +283,19 @@ function cliConfig(args: string[]): PartialConfig {
   return config;
 }
 
-export async function loadPatchmillConfig(repoRoot: string, env: Env = process.env, args: string[] = []): Promise<PatchmillConfig> {
-  const fromFile = await readConfigFile(repoRoot);
+export async function loadPatchmillConfigState(
+  repoRoot: string,
+  env: Env = process.env,
+  args: string[] = [],
+): Promise<{ config: PatchmillConfig; hasConfigFile: boolean }> {
+  const { config: fromFile, hasConfigFile } = await readConfigFile(repoRoot);
   const merged = mergeConfig(mergeConfig(mergeConfig(DEFAULT_PATCHMILL_CONFIG, fromFile), envConfig(env)), cliConfig(args));
-  return absolutizePaths(repoRoot, merged);
+  return {
+    config: absolutizePaths(repoRoot, merged),
+    hasConfigFile,
+  };
+}
+
+export async function loadPatchmillConfig(repoRoot: string, env: Env = process.env, args: string[] = []): Promise<PatchmillConfig> {
+  return (await loadPatchmillConfigState(repoRoot, env, args)).config;
 }

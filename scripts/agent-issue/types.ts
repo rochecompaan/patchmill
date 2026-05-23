@@ -23,9 +23,10 @@ export type AgentIssueConfig = {
   agentTeam?: ResolvedAgentTeam;
   plansDir: string;
   runStateDir: string;
-  readyLabel: "agent-ready";
+  worktreeDir: string;
+  readyLabel: string;
   issueLimit: 1;
-  requirePlanApproval: false;
+  requirePlanApproval: boolean;
 };
 
 export type IssueSelectionOptions = Pick<

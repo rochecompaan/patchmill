@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
+import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
+import { loadPatchmillConfigState } from "../src/config/load.ts";
 import { parseArgs } from "./agent-issue/args.ts";
 import { AgentIssueConsoleProgressReporter } from "./agent-issue/console-progress.ts";
 import { runOneIssue } from "./agent-issue/pipeline.ts";
@@ -20,7 +22,7 @@ export const HELP_TEXT = `Usage:
 Process one Forgejo issue labeled agent-ready. Defaults to showing this help when no options are provided.
 Use --dry-run to preview the next eligible issue without mutating Forgejo or git.
 Progress is written to stderr by default. Final JSON is written to stdout.
-Run logs are written under .pi/agent-issue/runs/.
+Run logs are written under the configured run state directory (default: .patchmill/runs/).
 
 Options:
   --help, -h          Show this help and exit.
@@ -30,17 +32,22 @@ Options:
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
   --issue <number>    Process one specific open agent-ready issue.
-  --tea-login <name>  Use a named tea login for Forgejo issue updates (default: triage-agent).
+  --host-login <name> Use a named host login for Forgejo issue updates.
+  --tea-login <name>  Compatibility alias for --host-login.
   --agent-team <name> Use the named Pi agent-team preset for worker/reviewer subagents.
 
 Environment:
-  CROPRUN_AGENT_ISSUE_TEA_LOGIN      Override the default tea login name.
-  CROPRUN_TRIAGE_TEA_LOGIN           Fallback default tea login name.
-  CROPRUN_AGENT_ISSUE_AGENT_TEAM     Agent-team preset required for implementation runs.
+  PATCHMILL_HOST_LOGIN               Override the default host login name.
+  PATCHMILL_AGENT_TEAM               Override the default Pi agent-team preset.
+  CROPRUN_AGENT_ISSUE_TEA_LOGIN      Compatibility override for the default tea login name.
+  CROPRUN_TRIAGE_TEA_LOGIN           Compatibility fallback default tea login name.
+  CROPRUN_AGENT_ISSUE_AGENT_TEAM     Compatibility override for implementation agent-team.
   CROPRUN_AGENT_ISSUE_FORGEJO_URL    Forgejo base URL for PR visual evidence uploads.
   CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN  Forgejo API token for PR visual evidence uploads.
   CROPRUN_AGENT_ISSUE_FORGEJO_REPO   Optional owner/repo override when git remote parsing is insufficient.
 `;
+
+type Env = Record<string, string | undefined>;
 
 type JsonResultLog = { logPath?: string };
 
@@ -85,6 +92,10 @@ type JsonResult = JsonResultLog &
         questions: string[];
       }
   );
+
+function isHelpOnlyInvocation(args: string[]): boolean {
+  return args.length === 0 || args.includes("--help") || args.includes("-h");
+}
 
 function questionText(
   question: string | { question: string; recommendedAnswer?: string },
@@ -180,8 +191,21 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
   }
 }
 
+export async function loadCliConfig(
+  args: string[],
+  repoRoot = cwd(),
+  env: Env = process.env,
+) {
+  if (isHelpOnlyInvocation(args)) {
+    return parseArgs(args, repoRoot, env);
+  }
+
+  const { config: patchmillConfig, hasConfigFile } = await loadPatchmillConfigState(repoRoot, env, args);
+  return parseArgs(args, repoRoot, env, hasConfigFile ? patchmillConfig : undefined);
+}
+
 async function main(): Promise<void> {
-  const config = parseArgs(process.argv.slice(2));
+  const config = await loadCliConfig(process.argv.slice(2));
   if (config.showHelp) {
     console.log(HELP_TEXT);
     return;
