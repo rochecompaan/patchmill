@@ -70,21 +70,27 @@ test("CROPRUN_COMPAT_POLICY preserves the current Croprun prompt policy", () => 
     CROPRUN_COMPAT_POLICY.hostToolingInstruction,
     "Use Forgejo `tea` for repository-hosting actions. Do not use `gh`.",
   );
-  assert.match(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, /Read existing todos tagged `agent-issue` and `issue-<n>`/);
-  assert.match(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, /Create one todo for each actionable task in the implementation plan/);
-  assert.match(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, /issue-<n>-task-<two-digit-number>-<slug>/);
-  assert.match(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, /Each task todo body must include: purpose, the source plan checklist item, checkpoint details/);
-  assert.match(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, /Do not create a single broad implementation todo/);
-  assert.match(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, /Claim or update the current task todo before doing work on that task/);
-  assert.match(
-    CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction,
-    /Mark a task todo complete only after code, tests, review, fixes, and verification for that task are done/,
-  );
-  assert.match(
-    CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction,
-    /Keep review tracking and final handoff tracking separate from implementation task todos/,
-  );
-  assert.match(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, /Do not commit `\.pi\/todos`/);
+  assert.equal(CROPRUN_COMPAT_POLICY.pi.todoWorkflowInstruction, "");
+  assert.deepEqual(CROPRUN_COMPAT_POLICY.pi.taskContract, {
+    todoRoot: ".pi/todos",
+    todoTitlePattern: "issue-<number>-task-<two-digit-number>-<slug>",
+    todoTags: ["agent-issue", "issue-<number>"],
+    planTodoBodyRequirements: [
+      "purpose",
+      "the source plan checklist item",
+      "checkpoint details",
+      "any last error or validation notes known at planning time",
+    ],
+    implementationTodoBodyRequirements: [
+      "purpose",
+      "the source plan checklist item",
+      "checkpoint details",
+      "the latest last error or validation notes",
+    ],
+    doneStatuses: ["closed", "completed", "done"],
+    planTaskHeadingPattern: "## Task <number>: <label>",
+    openTaskTodosBlockFinalHandoff: true,
+  });
   assert.match(CROPRUN_COMPAT_POLICY.pi.subagentWorkflowInstruction, /superpowers:subagent-driven-development/);
   assert.equal(CROPRUN_COMPAT_POLICY.planRequiresApproval, false);
 });
@@ -115,14 +121,31 @@ test("DEFAULT_PATCHMILL_POLICY stays generic", () => {
     DEFAULT_PATCHMILL_POLICY.hostToolingInstruction,
     "Use the repository's configured host tooling for issue and pull-request actions.",
   );
-  assert.equal(
-    DEFAULT_PATCHMILL_POLICY.pi.todoWorkflowInstruction,
-    "Use the Pi `todo` tool to track plan and implementation tasks. Do not commit `.pi/todos` or todo files.",
-  );
+  assert.equal(DEFAULT_PATCHMILL_POLICY.pi.todoWorkflowInstruction, "");
   assert.equal(
     DEFAULT_PATCHMILL_POLICY.pi.subagentWorkflowInstruction,
     "Use the repository's documented Pi subagent workflow for implementation and review.",
   );
+  assert.deepEqual(DEFAULT_PATCHMILL_POLICY.pi.taskContract, {
+    todoRoot: ".pi/todos",
+    todoTitlePattern: "issue-<number>-task-<two-digit-number>-<slug>",
+    todoTags: ["agent-issue", "issue-<number>"],
+    planTodoBodyRequirements: [
+      "purpose",
+      "the source plan checklist item",
+      "checkpoint details",
+      "any last error or validation notes known at planning time",
+    ],
+    implementationTodoBodyRequirements: [
+      "purpose",
+      "the source plan checklist item",
+      "checkpoint details",
+      "the latest last error or validation notes",
+    ],
+    doneStatuses: ["closed", "completed", "done"],
+    planTaskHeadingPattern: "## Task <number>: <label>",
+    openTaskTodosBlockFinalHandoff: true,
+  });
   assert.equal(DEFAULT_PATCHMILL_POLICY.planRequiresApproval, false);
   assert.doesNotMatch(
     JSON.stringify(DEFAULT_PATCHMILL_POLICY),

@@ -1,6 +1,12 @@
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
 import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
+import {
+  renderIssueTodoTags,
+  renderIssueTodoTitleGlob,
+  renderIssueTodoTitlePattern,
+  type PatchmillPiTaskContract,
+} from "../../src/policy/task-contract.ts";
 import type { AgentIssueImplementationResumeContext, IssueSummary } from "./types.ts";
 
 export type PlanCreationPromptInput = {
@@ -195,13 +201,92 @@ function renderNumberedStepText(text: string): string {
   return `${normalizedFirst}\n${rest.map((line) => line.length > 0 ? `   ${line}` : "").join("\n")}`;
 }
 
+function renderConjoinedList(values: string[]): string {
+  if (values.length === 0) return "";
+  if (values.length === 1) return values[0] ?? "";
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+function renderTaskTodoTags(taskContract: PatchmillPiTaskContract, issueNumber: number): string {
+  return renderConjoinedList(renderIssueTodoTags(taskContract, issueNumber).map((tag) => `\`${tag}\``));
+}
+
+function renderTaskTodoBodyRequirements(requirements: string[]): string {
+  return renderConjoinedList(requirements);
+}
+
+function renderTaskContractTodoWorkflowLines(
+  taskContract: PatchmillPiTaskContract,
+  stage: "plan" | "implementation",
+  issueNumber: number,
+): string[] {
+  const todoTitlePattern = renderIssueTodoTitlePattern(taskContract, issueNumber);
+  const todoTitleGlob = renderIssueTodoTitleGlob(taskContract, issueNumber);
+  const todoTags = renderTaskTodoTags(taskContract, issueNumber);
+  const sharedLines = [
+    `- Store issue task todos under \`${taskContract.todoRoot}\`.`,
+    ...(todoTags.length > 0 ? [`- Tag each task todo with ${todoTags}.`] : []),
+    `- Do not commit \`${taskContract.todoRoot}\` or todo files; they are local operator state.`,
+  ];
+
+  if (stage === "plan") {
+    return [
+      "- Create or update todos using the Pi `todo` tool for each implementation plan task.",
+      "- Use one todo per actionable plan task.",
+      "- Do not represent all implementation work as one todo.",
+      `- Use the naming convention \`${todoTitlePattern}\`.`,
+      ...sharedLines,
+      ...(taskContract.planTodoBodyRequirements.length > 0
+        ? [
+            `- Each task todo body must include: ${renderTaskTodoBodyRequirements(taskContract.planTodoBodyRequirements)}.`,
+          ]
+        : []),
+      "- After the plan document is committed, mark the plan-related task todos complete so they reflect the committed plan state.",
+    ];
+  }
+
+  const lines = [
+    "- Use the Pi `todo` tool to manage this issue.",
+    ...(todoTags.length > 0
+      ? [`- Read existing todos tagged ${todoTags} before starting implementation work.`]
+      : []),
+    "- Create one todo for each actionable task in the implementation plan.",
+    `- Create or update missing per-plan-task todos using the naming convention \`${todoTitlePattern}\`.`,
+    ...sharedLines,
+    ...(taskContract.implementationTodoBodyRequirements.length > 0
+      ? [
+          `- Each task todo body must include: ${renderTaskTodoBodyRequirements(taskContract.implementationTodoBodyRequirements)}.`,
+        ]
+      : []),
+    "- Do not create a single broad implementation todo.",
+    "- Claim or update the current task todo before doing work on that task.",
+    "- Mark a task todo complete only after code, tests, review, fixes, and verification for that task are done.",
+  ];
+
+  if (taskContract.openTaskTodosBlockFinalHandoff) {
+    lines.push(`- Complete every \`${todoTitleGlob}\` todo before creating a PR, merging, or returning final JSON.`);
+    lines.push("- The orchestrator rejects `pr-created` or `merged` results while any issue task todo remains open.");
+  } else {
+    lines.push("- Open issue task todos do not block final handoff for this project.");
+  }
+
+  lines.push("- Keep review tracking and final handoff tracking separate from implementation task todos.");
+  return lines;
+}
+
 function renderTodoWorkflowStep(
   policy: PatchmillProjectPolicy,
   stage: "plan" | "implementation",
   issueNumber: number,
 ): string {
-  const section = extractTodoWorkflowSection(policy.pi.todoWorkflowInstruction, stage);
-  return renderNumberedStepText(replaceIssuePlaceholders(section, issueNumber));
+  const lines = renderTaskContractTodoWorkflowLines(policy.pi.taskContract, stage, issueNumber);
+  const supplementalSection = replaceIssuePlaceholders(
+    extractTodoWorkflowSection(policy.pi.todoWorkflowInstruction, stage),
+    issueNumber,
+  );
+  if (supplementalSection.length > 0) lines.push(supplementalSection);
+  return renderNumberedStepText(lines.join("\n"));
 }
 
 function renderValidationRules(rules: PatchmillProjectPolicy["validation"]["rules"]): string[] {
@@ -425,7 +510,10 @@ function renderDirectLandPolicy(input: {
 }
 
 function numberedWorkflow(steps: string[]): string {
-  return steps.map((step, index) => `${index + 1}. ${step}`).join("\n");
+  return steps
+    .filter((step) => step.trim().length > 0)
+    .map((step, index) => `${index + 1}. ${step}`)
+    .join("\n");
 }
 
 export function buildPlanCreationPrompt(input: PlanCreationPromptInput): string {

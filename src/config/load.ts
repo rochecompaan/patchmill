@@ -8,11 +8,17 @@ const CONFIG_FILE_NAME = "patchmill.config.json";
 
 type Env = Record<string, string | undefined>;
 
+type PartialPiTaskContract = Partial<PatchmillConfig["projectPolicy"]["pi"]["taskContract"]>;
+
+type PartialPiWorkflowPolicy = Partial<Omit<PatchmillConfig["projectPolicy"]["pi"], "taskContract">> & {
+  taskContract?: PartialPiTaskContract;
+};
+
 type PartialProjectPolicy = Partial<Omit<PatchmillConfig["projectPolicy"], "validation" | "directLand" | "visualEvidence" | "pi">> & {
   validation?: Partial<PatchmillConfig["projectPolicy"]["validation"]>;
   directLand?: Partial<PatchmillConfig["projectPolicy"]["directLand"]>;
   visualEvidence?: Partial<PatchmillConfig["projectPolicy"]["visualEvidence"]>;
-  pi?: Partial<PatchmillConfig["projectPolicy"]["pi"]>;
+  pi?: PartialPiWorkflowPolicy;
 };
 
 type PartialConfig = Partial<{
@@ -117,6 +123,52 @@ function mergeVisualEvidencePolicy(
   };
 }
 
+function clonePiTaskContract(
+  taskContract: PatchmillConfig["projectPolicy"]["pi"]["taskContract"],
+): PatchmillConfig["projectPolicy"]["pi"]["taskContract"] {
+  return {
+    todoRoot: taskContract.todoRoot,
+    todoTitlePattern: taskContract.todoTitlePattern,
+    todoTags: cloneStringArray(taskContract.todoTags),
+    planTodoBodyRequirements: cloneStringArray(taskContract.planTodoBodyRequirements),
+    implementationTodoBodyRequirements: cloneStringArray(taskContract.implementationTodoBodyRequirements),
+    doneStatuses: cloneStringArray(taskContract.doneStatuses),
+    planTaskHeadingPattern: taskContract.planTaskHeadingPattern,
+    openTaskTodosBlockFinalHandoff: taskContract.openTaskTodosBlockFinalHandoff,
+  };
+}
+
+function mergePiTaskContract(
+  base: PatchmillConfig["projectPolicy"]["pi"]["taskContract"],
+  update: PartialPiTaskContract | undefined,
+): PatchmillConfig["projectPolicy"]["pi"]["taskContract"] {
+  return {
+    todoRoot: update?.todoRoot ?? base.todoRoot,
+    todoTitlePattern: update?.todoTitlePattern ?? base.todoTitlePattern,
+    todoTags: cloneStringArray(update?.todoTags ?? base.todoTags),
+    planTodoBodyRequirements: cloneStringArray(
+      update?.planTodoBodyRequirements ?? base.planTodoBodyRequirements,
+    ),
+    implementationTodoBodyRequirements: cloneStringArray(
+      update?.implementationTodoBodyRequirements ?? base.implementationTodoBodyRequirements,
+    ),
+    doneStatuses: cloneStringArray(update?.doneStatuses ?? base.doneStatuses),
+    planTaskHeadingPattern: update?.planTaskHeadingPattern ?? base.planTaskHeadingPattern,
+    openTaskTodosBlockFinalHandoff:
+      update?.openTaskTodosBlockFinalHandoff ?? base.openTaskTodosBlockFinalHandoff,
+  };
+}
+
+function clonePiWorkflowPolicy(
+  pi: PatchmillConfig["projectPolicy"]["pi"],
+): PatchmillConfig["projectPolicy"]["pi"] {
+  return {
+    todoWorkflowInstruction: pi.todoWorkflowInstruction,
+    subagentWorkflowInstruction: pi.subagentWorkflowInstruction,
+    taskContract: clonePiTaskContract(pi.taskContract),
+  };
+}
+
 function cloneProjectPolicy(projectPolicy: PatchmillConfig["projectPolicy"]): PatchmillConfig["projectPolicy"] {
   return {
     ...(projectPolicy.projectName !== undefined ? { projectName: projectPolicy.projectName } : {}),
@@ -129,7 +181,7 @@ function cloneProjectPolicy(projectPolicy: PatchmillConfig["projectPolicy"]): Pa
     directLand: { ...projectPolicy.directLand },
     visualEvidence: cloneVisualEvidencePolicy(projectPolicy.visualEvidence),
     hostToolingInstruction: projectPolicy.hostToolingInstruction,
-    pi: { ...projectPolicy.pi },
+    pi: clonePiWorkflowPolicy(projectPolicy.pi),
     planRequiresApproval: projectPolicy.planRequiresApproval,
   };
 }
@@ -151,7 +203,12 @@ function mergeProjectPolicy(
     directLand: { ...base.directLand, ...update?.directLand },
     visualEvidence: mergeVisualEvidencePolicy(base.visualEvidence, update?.visualEvidence),
     hostToolingInstruction: update?.hostToolingInstruction ?? base.hostToolingInstruction,
-    pi: { ...base.pi, ...update?.pi },
+    pi: {
+      todoWorkflowInstruction: update?.pi?.todoWorkflowInstruction ?? base.pi.todoWorkflowInstruction,
+      subagentWorkflowInstruction:
+        update?.pi?.subagentWorkflowInstruction ?? base.pi.subagentWorkflowInstruction,
+      taskContract: mergePiTaskContract(base.pi.taskContract, update?.pi?.taskContract),
+    },
     planRequiresApproval: update?.planRequiresApproval ?? base.planRequiresApproval,
   };
 }
@@ -547,9 +604,66 @@ function parseConfigFile(data: unknown): PartialConfig {
         "subagentWorkflowInstruction",
         "projectPolicy.pi.subagentWorkflowInstruction",
       );
+      const taskContract = readOptionalSection(piWorkflow, "taskContract");
       if (todoWorkflowInstruction !== undefined) parsedPi.todoWorkflowInstruction = todoWorkflowInstruction;
       if (subagentWorkflowInstruction !== undefined) {
         parsedPi.subagentWorkflowInstruction = subagentWorkflowInstruction;
+      }
+      if (taskContract) {
+        const parsedTaskContract: PartialPiTaskContract = {};
+        const todoRoot = readOptionalString(taskContract, "todoRoot", "projectPolicy.pi.taskContract.todoRoot");
+        const todoTitlePattern = readOptionalString(
+          taskContract,
+          "todoTitlePattern",
+          "projectPolicy.pi.taskContract.todoTitlePattern",
+        );
+        const todoTags = readOptionalStringArray(
+          taskContract,
+          "todoTags",
+          "projectPolicy.pi.taskContract.todoTags",
+        );
+        const planTodoBodyRequirements = readOptionalStringArray(
+          taskContract,
+          "planTodoBodyRequirements",
+          "projectPolicy.pi.taskContract.planTodoBodyRequirements",
+        );
+        const implementationTodoBodyRequirements = readOptionalStringArray(
+          taskContract,
+          "implementationTodoBodyRequirements",
+          "projectPolicy.pi.taskContract.implementationTodoBodyRequirements",
+        );
+        const doneStatuses = readOptionalStringArray(
+          taskContract,
+          "doneStatuses",
+          "projectPolicy.pi.taskContract.doneStatuses",
+        );
+        const planTaskHeadingPattern = readOptionalString(
+          taskContract,
+          "planTaskHeadingPattern",
+          "projectPolicy.pi.taskContract.planTaskHeadingPattern",
+        );
+        const openTaskTodosBlockFinalHandoff = readOptionalBoolean(
+          taskContract,
+          "openTaskTodosBlockFinalHandoff",
+          "projectPolicy.pi.taskContract.openTaskTodosBlockFinalHandoff",
+        );
+        if (todoRoot !== undefined) parsedTaskContract.todoRoot = todoRoot;
+        if (todoTitlePattern !== undefined) parsedTaskContract.todoTitlePattern = todoTitlePattern;
+        if (todoTags !== undefined) parsedTaskContract.todoTags = todoTags;
+        if (planTodoBodyRequirements !== undefined) {
+          parsedTaskContract.planTodoBodyRequirements = planTodoBodyRequirements;
+        }
+        if (implementationTodoBodyRequirements !== undefined) {
+          parsedTaskContract.implementationTodoBodyRequirements = implementationTodoBodyRequirements;
+        }
+        if (doneStatuses !== undefined) parsedTaskContract.doneStatuses = doneStatuses;
+        if (planTaskHeadingPattern !== undefined) {
+          parsedTaskContract.planTaskHeadingPattern = planTaskHeadingPattern;
+        }
+        if (openTaskTodosBlockFinalHandoff !== undefined) {
+          parsedTaskContract.openTaskTodosBlockFinalHandoff = openTaskTodosBlockFinalHandoff;
+        }
+        if (hasEntries(parsedTaskContract)) parsedPi.taskContract = parsedTaskContract;
       }
       if (hasEntries(parsedPi)) parsed.pi = parsedPi;
     }

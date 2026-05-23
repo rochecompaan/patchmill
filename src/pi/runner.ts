@@ -32,20 +32,23 @@ export class PiRunner implements PiPromptContracts {
   }
 
   plan(input: PlanPiInput) {
+    const projectPolicy = input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY;
     return runPiPrompt(this.runner, input.repoRoot, buildPlanCreationPrompt({
       issue: input.issue,
       planPath: input.planPath,
-      projectPolicy: input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY,
+      projectPolicy,
     }), {
       ...input.runOptions,
       stage: "pi-plan",
       issueNumber: input.issue.number,
       repoRoot: input.repoRoot,
+      taskContract: projectPolicy.pi.taskContract,
     });
   }
 
   implementation(input: ImplementationPiInput) {
     const worktreeRoot = resolve(input.repoRoot, input.worktreePath);
+    const projectPolicy = input.projectPolicy ?? defaultImplementationPolicy(input.git.baseBranch);
 
     return runPiPrompt(
       this.runner,
@@ -57,7 +60,7 @@ export class PiRunner implements PiPromptContracts {
         worktreePath: input.worktreePath,
         agentTeam: input.agentTeam,
         git: input.git,
-        projectPolicy: input.projectPolicy ?? defaultImplementationPolicy(input.git.baseBranch),
+        projectPolicy,
         resume: input.resume,
       }),
       {
@@ -65,6 +68,7 @@ export class PiRunner implements PiPromptContracts {
         stage: "pi-implementation",
         issueNumber: input.issue.number,
         repoRoot: worktreeRoot,
+        taskContract: projectPolicy.pi.taskContract,
       },
     );
   }

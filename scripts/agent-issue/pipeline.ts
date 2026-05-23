@@ -111,11 +111,12 @@ function withLogPath<T extends AgentIssuePipelineResult>(
 }
 
 function cleanStatusIgnoredPaths(
-  config: Pick<AgentIssueConfig, "runStateDir" | "cleanStatusIgnorePrefixes">,
+  config: Pick<AgentIssueConfig, "runStateDir" | "cleanStatusIgnorePrefixes" | "projectPolicy">,
   options: Pick<RunOneIssueOptions, "logPath">,
 ): string[] {
   return [...new Set([
     ...(config.cleanStatusIgnorePrefixes ?? []),
+    config.projectPolicy.pi.taskContract.todoRoot,
     config.runStateDir,
     ...(options.logPath ? [options.logPath] : []),
   ])];
@@ -719,10 +720,11 @@ export async function runOneIssue(
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
+  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
   await assertCleanWorktree(
     runner,
     config.repoRoot,
-    cleanStatusIgnoredPaths(config, options),
+    ignoredPaths,
   );
   let labels = resumed
     ? (issue.labels.includes("in-progress")
@@ -865,6 +867,7 @@ export async function runOneIssue(
             observeSession: true,
             verbosePiOutput: options.verbosePiOutput,
             onObservation: observePi("pi-plan"),
+            taskContract: config.projectPolicy.pi.taskContract,
           },
         );
       });
@@ -1035,6 +1038,8 @@ export async function runOneIssue(
       issue.number,
       issue.title,
       worktreeStrategy,
+      undefined,
+      ignoredPaths,
     );
     await emitSimpleStep(options, issue.number, worktree.created ? "create worktree" : "reuse worktree");
     if (resumableState && existingState?.branch && existingState.branch !== worktree.branch) {
@@ -1080,7 +1085,8 @@ export async function runOneIssue(
         { issueNumber: issue.number },
       );
       const worktreeRoot = join(config.repoRoot, worktreePath);
-      const planTaskLabels = await readPlanTaskLabels(config.repoRoot, planPath);
+      const taskContract = config.projectPolicy.pi.taskContract;
+      const planTaskLabels = await readPlanTaskLabels(config.repoRoot, planPath, taskContract);
       let activeImplementationTask: { current: number; total: number; label: string } | undefined;
       let finalImplementationStepActive = false;
       const finalImplementationStepLabel = "final review and landing";
@@ -1134,7 +1140,7 @@ export async function runOneIssue(
       };
 
       const issueTasksComplete = async (): Promise<boolean> => {
-        const tasks = await readIssueTodoTasks(worktreeRoot, issue.number);
+        const tasks = await readIssueTodoTasks(worktreeRoot, issue.number, taskContract);
         return tasks.length > 0 && tasks.every((task) => task.done);
       };
 
@@ -1143,7 +1149,7 @@ export async function runOneIssue(
           await startFinalImplementationStep();
           return;
         }
-        const runtimeProgress = await issueTodoProgress(worktreeRoot, issue.number);
+        const runtimeProgress = await issueTodoProgress(worktreeRoot, issue.number, taskContract);
         if (runtimeProgress) {
           await switchImplementationTask(runtimeProgress.current, runtimeProgress.total, runtimeProgress.label);
         }
@@ -1160,6 +1166,14 @@ export async function runOneIssue(
           await switchImplementationTask(1, planTaskLabels.length, planTaskLabels[0]?.label);
         }
 
+        const projectPolicy = {
+          ...config.projectPolicy,
+          directLand: {
+            ...config.projectPolicy.directLand,
+            targetBranch: worktreeStrategy.baseBranch,
+          },
+        };
+
         piResult = await runPiPrompt(
           runner,
           worktreeRoot,
@@ -1170,13 +1184,7 @@ export async function runOneIssue(
             worktreePath,
             agentTeam,
             git: worktreeStrategy,
-            projectPolicy: {
-              ...config.projectPolicy,
-              directLand: {
-                ...config.projectPolicy.directLand,
-                targetBranch: worktreeStrategy.baseBranch,
-              },
-            },
+            projectPolicy,
             resume: {
               resumed: resumableState,
               worktreeCreated: worktree.created,
@@ -1194,6 +1202,7 @@ export async function runOneIssue(
             observeSession: true,
             verbosePiOutput: options.verbosePiOutput,
             onObservation: observeImplementation,
+            taskContract: projectPolicy.pi.taskContract,
             onTaskProgress: async (progress) => {
               await switchImplementationTask(progress.current, progress.total, progress.label);
             },
@@ -1235,7 +1244,11 @@ export async function runOneIssue(
       implemented = piResult;
     }
 
-    await assertIssueTodosComplete(join(config.repoRoot, worktreePath), issue.number);
+    await assertIssueTodosComplete(
+      join(config.repoRoot, worktreePath),
+      issue.number,
+      config.projectPolicy.pi.taskContract,
+    );
 
     await writeRunState(
       config.runStateDir,

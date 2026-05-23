@@ -6,6 +6,7 @@ coverage/
 !.env.example
 .pi/agent-issue/runs/
 .pi/agent-issue/triage-runs/
+.pi/todos/
 .worktrees/
 .tmp/
 

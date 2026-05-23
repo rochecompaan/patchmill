@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
 import { parsePiResult, runPiPrompt } from "./pi.ts";
 import {
   sessionEntryToObservations,
@@ -632,6 +633,75 @@ test("runPiPrompt reads issue task progress from the configured worktree root", 
       (event) =>
         event.level === "heartbeat" &&
         event.message.includes("implementing task 7/8"),
+    ),
+  );
+});
+
+test("runPiPrompt reads planning task progress from the configured task contract", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-plan-progress-"));
+  const contract = {
+    ...DEFAULT_PI_TASK_CONTRACT,
+    todoRoot: ".patchmill/todos",
+    todoTitlePattern: "work-<number>-step-<two-digit-number>-<slug>",
+    doneStatuses: ["shipped"],
+  };
+  await mkdir(join(repoRoot, ".patchmill", "todos"), { recursive: true });
+  await writeFile(
+    join(repoRoot, ".patchmill", "todos", "a.md"),
+    `${JSON.stringify({ id: "a", title: "work-14-step-01-date-range-model", status: "shipped" })}\n\nbody\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(repoRoot, ".patchmill", "todos", "b.md"),
+    `${JSON.stringify({ id: "b", title: "work-14-step-02-dashboard-wiring", status: "started" })}\n\nbody\n`,
+    "utf8",
+  );
+
+  const events: AgentIssueProgressEvent[] = [];
+  const taskProgress: Array<{ current: number; total: number; label?: string }> = [];
+  let finishRun: (result: CommandResult) => void = () => undefined;
+  const runner = createMockRunner(
+    () =>
+      new Promise<CommandResult>((resolve) => {
+        finishRun = resolve;
+      }),
+  );
+
+  const run = runPiPrompt(runner, repoRoot, "prompt", {
+    progress: {
+      event: (event) => {
+        events.push(event);
+      },
+    },
+    stage: "pi-plan",
+    heartbeatMs: 10,
+    issueNumber: 14,
+    repoRoot,
+    taskContract: contract,
+    onTaskProgress: (progress) => {
+      taskProgress.push(progress);
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  finishRun({
+    code: 0,
+    stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+    stderr: "",
+  });
+  await run;
+
+  assert.ok(
+    events.some(
+      (event) =>
+        event.level === "heartbeat" &&
+        /^\[issue #14\] planning \| tok: task=\? total=\? \| elapsed \d+s$/.test(event.message),
+    ),
+  );
+  assert.ok(
+    taskProgress.some(
+      (progress) =>
+        progress.current === 2 && progress.total === 2 && progress.label === "dashboard wiring",
     ),
   );
 });

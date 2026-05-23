@@ -1,5 +1,14 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  compileIssueTodoTitlePattern,
+  DEFAULT_PI_TASK_CONTRACT,
+  issueTodoStatusDone,
+  renderIssueTodoTags,
+  resolveTodoRoot,
+  todoTitlePatternIncludesIssueNumber,
+  type PatchmillPiTaskContract,
+} from "../../src/policy/task-contract.ts";
 
 export type IssueTodoSummary = {
   total: number;
@@ -21,23 +30,24 @@ export type IssueTodoTask = {
   done: boolean;
 };
 
-function issueTaskPattern(issueNumber: number): RegExp {
-  return new RegExp(`^issue-${issueNumber}-task-(\\d{2})-(.+)$`);
-}
-
 function labelFromSlug(slug: string): string {
   return slug.replaceAll("-", " ").trim();
 }
 
-function todoStatusDone(status: string | undefined): boolean {
-  return status === "closed" || status === "completed" || status === "done";
+function readCapture(match: RegExpMatchArray, groupName: string, index: number): string | undefined {
+  return match.groups?.[groupName] ?? match[index];
+}
+
+function readTodoTags(tags: unknown): string[] {
+  return Array.isArray(tags) ? tags.filter((tag): tag is string => typeof tag === "string") : [];
 }
 
 export async function readIssueTodoSummary(
   repoRoot: string,
   issueNumber: number,
+  taskContract: PatchmillPiTaskContract = DEFAULT_PI_TASK_CONTRACT,
 ): Promise<IssueTodoSummary> {
-  const tasks = await readIssueTodoTasks(repoRoot, issueNumber);
+  const tasks = await readIssueTodoTasks(repoRoot, issueNumber, taskContract);
   return {
     total: tasks.length,
     done: tasks.filter((task) => task.done).length,
@@ -48,35 +58,45 @@ export async function readIssueTodoSummary(
 export async function readIssueTodoTasks(
   repoRoot: string,
   issueNumber: number,
+  taskContract: PatchmillPiTaskContract = DEFAULT_PI_TASK_CONTRACT,
 ): Promise<IssueTodoTask[]> {
+  const todoRoot = resolveTodoRoot(repoRoot, taskContract);
+  const requireIssueTags = !todoTitlePatternIncludesIssueNumber(taskContract);
+  const requiredIssueTags = requireIssueTags ? renderIssueTodoTags(taskContract, issueNumber) : [];
   let entries;
   try {
-    entries = await readdir(join(repoRoot, ".pi", "todos"), { withFileTypes: true });
+    entries = await readdir(todoRoot, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
 
-  const pattern = issueTaskPattern(issueNumber);
+  const pattern = compileIssueTodoTitlePattern(taskContract, issueNumber);
   const tasks: Array<Omit<IssueTodoTask, "total">> = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-    const content = await readFile(join(repoRoot, ".pi", "todos", entry.name), "utf8");
+    const content = await readFile(join(todoRoot, entry.name), "utf8");
     const headerEnd = content.indexOf("}\n");
     if (headerEnd < 0) continue;
-    let header: { title?: string; status?: string };
+    let header: { title?: string; status?: string; tags?: unknown };
     try {
-      header = JSON.parse(content.slice(0, headerEnd + 1)) as { title?: string; status?: string };
+      header = JSON.parse(content.slice(0, headerEnd + 1)) as { title?: string; status?: string; tags?: unknown };
     } catch {
       continue;
     }
+    if (requireIssueTags) {
+      const headerTags = new Set(readTodoTags(header.tags));
+      if (!requiredIssueTags.every((tag) => headerTags.has(tag))) continue;
+    }
     const match = header.title?.match(pattern);
     if (!match) continue;
+    const taskNumber = readCapture(match, "taskNumber", 1);
+    if (!taskNumber) continue;
     tasks.push({
-      number: Number(match[1]),
+      number: Number(taskNumber),
       title: header.title,
-      label: labelFromSlug(match[2] ?? "task"),
-      done: todoStatusDone(header.status),
+      label: labelFromSlug(readCapture(match, "taskSlug", 2) ?? "task"),
+      done: issueTodoStatusDone(taskContract, header.status),
     });
   }
 
@@ -88,8 +108,9 @@ export async function readIssueTodoTasks(
 export async function issueTodoProgress(
   repoRoot: string,
   issueNumber: number,
+  taskContract: PatchmillPiTaskContract = DEFAULT_PI_TASK_CONTRACT,
 ): Promise<IssueTodoProgress | undefined> {
-  const tasks = await readIssueTodoTasks(repoRoot, issueNumber);
+  const tasks = await readIssueTodoTasks(repoRoot, issueNumber, taskContract);
   if (tasks.length === 0) return undefined;
   const currentTask = tasks.find((task) => !task.done) ?? tasks.at(-1);
   if (!currentTask) return undefined;
@@ -103,8 +124,11 @@ export async function issueTodoProgress(
 export async function assertIssueTodosComplete(
   repoRoot: string,
   issueNumber: number,
+  taskContract: PatchmillPiTaskContract = DEFAULT_PI_TASK_CONTRACT,
 ): Promise<void> {
-  const summary = await readIssueTodoSummary(repoRoot, issueNumber);
+  if (!taskContract.openTaskTodosBlockFinalHandoff) return;
+
+  const summary = await readIssueTodoSummary(repoRoot, issueNumber, taskContract);
   if (summary.total === 0 || summary.openTitles.length === 0) return;
 
   throw new Error(

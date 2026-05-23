@@ -184,6 +184,7 @@ export async function ensureIssueWorktree(
   title: string,
   strategyOrBaseRef: GitWorktreeStrategyConfig | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.baseRef,
   worktreeDir = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.worktreeDir,
+  ignoredPaths: string[] = [],
 ): Promise<IssueWorktreeResult> {
   const strategy = resolveStrategy(strategyOrBaseRef, worktreeDir);
   const branch = buildIssueBranchName(issueNumber, title, strategy);
@@ -203,7 +204,7 @@ export async function ensureIssueWorktree(
       throw new Error(`Existing worktree ${worktreePath} is on ${currentBranch}, expected ${branch}`);
     }
 
-    await assertCleanWorktree(runner, resolve(repoRoot, worktreePath));
+    await assertCleanWorktree(runner, resolve(repoRoot, worktreePath), ignoredPaths);
     const existingCommits = await existingCommitLines(runner, repoRoot, branch, strategy.baseRef);
     return {
       branch,

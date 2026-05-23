@@ -1,3 +1,4 @@
+import { DEFAULT_PI_TASK_CONTRACT } from "./task-contract.ts";
 import type { PatchmillProjectPolicy } from "./types.ts";
 
 const CROPRUN_COMPAT_DIRECT_LAND_POLICY = [
@@ -107,32 +108,6 @@ const CROPRUN_COMPAT_VISUAL_EVIDENCE_POLICY = [
   "- If required screenshots cannot be captured, do not direct-land; return blocked or create a PR with the exact reason.",
 ].join("\n");
 
-const CROPRUN_COMPAT_PI_TODO_WORKFLOW_INSTRUCTION = [
-  "Plan-creation todo workflow:",
-  "- Create or update todos using the Pi `todo` tool for each implementation plan task.",
-  "- Use one todo per actionable plan task.",
-  "- Do not represent all implementation work as one todo.",
-  "- Use the naming convention `issue-<n>-task-<two-digit-number>-<slug>`.",
-  "- Tag each task todo with `agent-issue` and `issue-<n>`.",
-  "- Do not commit `.pi/todos` or todo files; they are local operator state.",
-  "- Each task todo body must include: purpose, the source plan checklist item, checkpoint details, and any last error or validation notes known at planning time.",
-  "- After the plan document is committed, mark the plan-related task todos complete so they reflect the committed plan state.",
-  "",
-  "Implementation todo workflow:",
-  "- Use the Pi `todo` tool to manage this issue.",
-  "- Read existing todos tagged `agent-issue` and `issue-<n>` before starting implementation work.",
-  "- Create one todo for each actionable task in the implementation plan.",
-  "- Create or update missing per-plan-task todos using the naming convention `issue-<n>-task-<two-digit-number>-<slug>`.",
-  "- Tag each task todo with `agent-issue` and `issue-<n>`.",
-  "- Do not commit `.pi/todos` or todo files; they are local operator state.",
-  "- Each task todo body must include: purpose, the source plan checklist item, checkpoint details, and the latest last error or validation notes.",
-  "- Do not create a single broad implementation todo.",
-  "- Claim or update the current task todo before doing work on that task.",
-  "- Mark a task todo complete only after code, tests, review, fixes, and verification for that task are done.",
-  "- Complete every `issue-<n>-task-*` todo before creating a PR, merging, or returning final JSON.",
-  "- The orchestrator rejects `pr-created` or `merged` results while any issue task todo remains open.",
-  "- Keep review tracking and final handoff tracking separate from implementation task todos.",
-].join("\n");
 
 export const CROPRUN_COMPAT_POLICY: PatchmillProjectPolicy = {
   projectName: "Croprun",
@@ -175,12 +150,13 @@ export const CROPRUN_COMPAT_POLICY: PatchmillProjectPolicy = {
   },
   hostToolingInstruction: "Use Forgejo `tea` for repository-hosting actions. Do not use `gh`.",
   pi: {
-    todoWorkflowInstruction: CROPRUN_COMPAT_PI_TODO_WORKFLOW_INSTRUCTION,
+    todoWorkflowInstruction: "",
     subagentWorkflowInstruction: [
       "Use `superpowers:subagent-driven-development` to execute the plan task by task. Do not substitute an ad-hoc implementation loop for this skill.",
       "Before dispatching implementation or review subagents, use `superpowers:selecting-subagent-models` and apply the authoritative agent team mappings.",
       "Use fresh reviewer agents for each review pass and follow the skill's required worker/reviewer/checkpoint workflow, including its TDD, verification, review, and fix/re-verify expectations.",
     ].join("\n"),
+    taskContract: DEFAULT_PI_TASK_CONTRACT,
   },
   planRequiresApproval: false,
 };
@@ -205,10 +181,10 @@ export const DEFAULT_PATCHMILL_POLICY: PatchmillProjectPolicy = {
   },
   hostToolingInstruction: "Use the repository's configured host tooling for issue and pull-request actions.",
   pi: {
-    todoWorkflowInstruction:
-      "Use the Pi `todo` tool to track plan and implementation tasks. Do not commit `.pi/todos` or todo files.",
+    todoWorkflowInstruction: "",
     subagentWorkflowInstruction:
       "Use the repository's documented Pi subagent workflow for implementation and review.",
+    taskContract: DEFAULT_PI_TASK_CONTRACT,
   },
   planRequiresApproval: false,
 };

@@ -1,3 +1,5 @@
+import type { PatchmillPiTaskContract } from "./task-contract.ts";
+
 export type PatchmillValidationRule = {
   category: string;
   commands: string[];
@@ -29,6 +31,7 @@ export type PatchmillVisualEvidencePolicy = {
 export type PatchmillPiWorkflowPolicy = {
   todoWorkflowInstruction: string;
   subagentWorkflowInstruction: string;
+  taskContract: PatchmillPiTaskContract;
 };
 
 export type PatchmillProjectPolicy = {

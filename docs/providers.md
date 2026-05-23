@@ -17,3 +17,5 @@ Patchmill separates orchestration from issue-host integrations. Pi is the built-
 | Issue host | `gitlab-glab` | `glab` CLI or GitLab REST |
 
 Host provider implementations and Pi prompt contracts must preserve Patchmill's safety rules: strict structured output, untrusted issue-content boundaries, checkpointed host mutations, and clean worktree checks.
+
+Pi task and plan naming conventions are documented in [docs/task-contracts.md](./task-contracts.md). Projects can override those defaults through `projectPolicy.pi.taskContract` so prompt text, todo readers, and plan-task readers stay in sync.

@@ -1,6 +1,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  DEFAULT_PI_TASK_CONTRACT,
+  type PatchmillPiTaskContract,
+} from "../../src/policy/task-contract.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   createPiSessionMessageStreamer,
@@ -161,6 +165,7 @@ export type RunPiPromptOptions = {
   observeSession?: boolean;
   onObservation?: (observation: PiSessionObservation) => void | Promise<void>;
   verbosePiOutput?: boolean;
+  taskContract?: PatchmillPiTaskContract;
 };
 
 function stageStatus(stage: RunPiPromptOptions["stage"]): string {
@@ -194,7 +199,11 @@ async function heartbeatStatusLine(
   const taskProgress =
     (await options.taskProgress?.()) ??
     (options.repoRoot !== undefined && options.issueNumber !== undefined
-      ? await issueTodoProgress(options.repoRoot, options.issueNumber)
+      ? await issueTodoProgress(
+          options.repoRoot,
+          options.issueNumber,
+          options.taskContract ?? DEFAULT_PI_TASK_CONTRACT,
+        )
       : undefined);
   if (taskProgress) await options.onTaskProgress?.(taskProgress);
   return statusLine(

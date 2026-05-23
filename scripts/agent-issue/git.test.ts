@@ -88,6 +88,23 @@ test("assertCleanWorktree ignores configured run-state logs", async () => {
   ]);
 });
 
+test("assertCleanWorktree ignores configured todo roots", async () => {
+  const runner = createStaticCommandRunner([{
+    code: 0,
+    stdout: [
+      "?? .pi/todos/issue-45-task-01-date-range-model.md",
+      "?? .patchmill/todos/work-45-step-01-date-range-model.md",
+      "",
+    ].join("\n"),
+    stderr: "",
+  }]);
+
+  await assertCleanWorktree(runner, "/repo", [
+    ".pi/todos",
+    ".patchmill/todos",
+  ]);
+});
+
 test("assertCleanWorktree rejects git status failures with exit code and command output", async () => {
   const runner = createStaticCommandRunner([{ code: 7, stdout: "index refresh failed", stderr: "fatal: bad index file" }]);
 
@@ -260,6 +277,64 @@ test("ensureIssueWorktree uses the configured base ref when reading existing com
     ["-C", ".patchmill/worktrees/pm-issue-45-resume-feature", "branch"],
     ["status", "--porcelain=v1", "--untracked-files=all"],
     ["log", "--oneline", "refs/remotes/upstream/release/1.2..patchmill/issue-45-resume-feature"],
+  ]);
+});
+
+test("ensureIssueWorktree ignores configured todo roots when reusing an existing worktree", async () => {
+  const runner = createStaticCommandRunner([
+    {
+      code: 0,
+      stdout: [
+        "worktree /repo/.worktrees/agent-issue-45-resume-feature",
+        "HEAD abcdef1234567890",
+        "branch refs/heads/agent/issue-45-resume-feature",
+        "",
+      ].join("\n"),
+      stderr: "",
+    },
+    { code: 0, stdout: "agent/issue-45-resume-feature\n", stderr: "" },
+    { code: 0, stdout: "?? .patchmill/todos/work-45-step-01-date-range-model.md\n", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  const result = await ensureIssueWorktree(
+    runner,
+    "/repo",
+    45,
+    "Resume feature",
+    undefined,
+    undefined,
+    [".patchmill/todos"],
+  );
+
+  assert.deepEqual(result, {
+    branch: "agent/issue-45-resume-feature",
+    worktreePath: ".worktrees/agent-issue-45-resume-feature",
+    created: false,
+    hasExistingCommits: false,
+    existingCommits: [],
+  });
+  assert.deepEqual(runner.calls, [
+    {
+      command: "git",
+      args: ["worktree", "list", "--porcelain"],
+      cwd: "/repo",
+    },
+    {
+      command: "git",
+      args: ["-C", ".worktrees/agent-issue-45-resume-feature", "branch", "--show-current"],
+      cwd: "/repo",
+    },
+    {
+      command: "git",
+      args: ["status", "--porcelain=v1", "--untracked-files=all"],
+      cwd: "/repo/.worktrees/agent-issue-45-resume-feature",
+    },
+    {
+      command: "git",
+      args: ["log", "--oneline", "HEAD..agent/issue-45-resume-feature"],
+      cwd: "/repo",
+    },
   ]);
 });
 

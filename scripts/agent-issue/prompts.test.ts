@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { buildImplementationPrompt, buildPlanCreationPrompt } from "./prompts.ts";
 import { CROPRUN_COMPAT_POLICY, DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
 import type { IssueSummary } from "./types.ts";
 
 const issue: IssueSummary = {
@@ -453,4 +454,54 @@ test("buildImplementationPrompt includes resume context when existing commits ar
   assert.match(prompt, /def456 prior branch progress/);
   assert.match(prompt, /Continue from current branch state/);
   assert.match(prompt, /was created\/recreated during this run/);
+});
+
+test("task contract overrides drive todo instructions in plan and implementation prompts", () => {
+  const projectPolicy = {
+    ...DEFAULT_PATCHMILL_POLICY,
+    pi: {
+      ...DEFAULT_PATCHMILL_POLICY.pi,
+      taskContract: {
+        ...DEFAULT_PI_TASK_CONTRACT,
+        todoRoot: ".patchmill/todos",
+        todoTitlePattern: "work-<number>-step-<two-digit-number>-<slug>",
+        todoTags: ["delivery", "work-<number>"],
+        planTodoBodyRequirements: ["purpose", "plan checklist item", "checkpoint details"],
+        implementationTodoBodyRequirements: ["purpose", "plan checklist item", "checkpoint details", "latest validation"],
+        doneStatuses: ["shipped"],
+        planTaskHeadingPattern: "### Step <number> - <label>",
+        openTaskTodosBlockFinalHandoff: false,
+      },
+    },
+  };
+
+  const planPrompt = buildPlanCreationPrompt({
+    issue,
+    planPath,
+    projectPolicy,
+  });
+  const implementationPrompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    branch: "agent/issue-42-add-once-runner-helpers",
+    worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
+    agentTeam,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
+    projectPolicy,
+  });
+
+  assert.match(planPrompt, /Store issue task todos under `\.patchmill\/todos`/);
+  assert.match(planPrompt, /Tag each task todo with `delivery` and `work-42`/);
+  assert.match(planPrompt, /Each task todo body must include: purpose, plan checklist item, and checkpoint details/);
+  assert.match(planPrompt, /work-42-step-<two-digit-number>-<slug>/);
+  assert.match(implementationPrompt, /Store issue task todos under `\.patchmill\/todos`/);
+  assert.match(implementationPrompt, /Read existing todos tagged `delivery` and `work-42` before starting implementation work/);
+  assert.match(implementationPrompt, /Each task todo body must include: purpose, plan checklist item, checkpoint details, and latest validation/);
+  assert.match(implementationPrompt, /work-42-step-<two-digit-number>-<slug>/);
+  assert.match(implementationPrompt, /Open issue task todos do not block final handoff for this project/);
+  assert.doesNotMatch(implementationPrompt, /orchestrator rejects `pr-created` or `merged` results while any issue task todo remains open/);
 });

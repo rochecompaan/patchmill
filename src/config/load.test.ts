@@ -51,6 +51,34 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
   );
   assert.notStrictEqual(first.projectPolicy.pi, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi);
   assert.notStrictEqual(first.projectPolicy.pi, second.projectPolicy.pi);
+  assert.notStrictEqual(first.projectPolicy.pi.taskContract, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract);
+  assert.notStrictEqual(first.projectPolicy.pi.taskContract, second.projectPolicy.pi.taskContract);
+  assert.notStrictEqual(
+    first.projectPolicy.pi.taskContract.todoTags,
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract.todoTags,
+  );
+  assert.notStrictEqual(first.projectPolicy.pi.taskContract.todoTags, second.projectPolicy.pi.taskContract.todoTags);
+  assert.notStrictEqual(
+    first.projectPolicy.pi.taskContract.planTodoBodyRequirements,
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract.planTodoBodyRequirements,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.pi.taskContract.planTodoBodyRequirements,
+    second.projectPolicy.pi.taskContract.planTodoBodyRequirements,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.pi.taskContract.implementationTodoBodyRequirements,
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract.implementationTodoBodyRequirements,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.pi.taskContract.implementationTodoBodyRequirements,
+    second.projectPolicy.pi.taskContract.implementationTodoBodyRequirements,
+  );
+  assert.notStrictEqual(
+    first.projectPolicy.pi.taskContract.doneStatuses,
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract.doneStatuses,
+  );
+  assert.notStrictEqual(first.projectPolicy.pi.taskContract.doneStatuses, second.projectPolicy.pi.taskContract.doneStatuses);
   assert.notStrictEqual(first.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
   assert.notStrictEqual(first.cleanupHooks, second.cleanupHooks);
 
@@ -61,6 +89,11 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
   first.projectPolicy.validation.forbiddenSubstitutions.push("Do not skip tests.");
   first.projectPolicy.directLand.targetBranch = "release";
   first.projectPolicy.pi.todoWorkflowInstruction = "Custom todo guidance";
+  first.projectPolicy.pi.taskContract.todoRoot = ".patchmill/todos";
+  first.projectPolicy.pi.taskContract.todoTags.push("custom-tag");
+  first.projectPolicy.pi.taskContract.planTodoBodyRequirements.push("owner");
+  first.projectPolicy.pi.taskContract.implementationTodoBodyRequirements.push("result");
+  first.projectPolicy.pi.taskContract.doneStatuses.push("verified");
   first.cleanupHooks.push({ name: "custom-cleanup" });
 
   assert.deepEqual(second.labels.priorities, DEFAULT_PATCHMILL_CONFIG.labels.priorities);
@@ -77,6 +110,7 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
     DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence.prEvidenceExample,
   );
   assert.equal(second.projectPolicy.pi.todoWorkflowInstruction, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.todoWorkflowInstruction);
+  assert.deepEqual(second.projectPolicy.pi.taskContract, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract);
   assert.deepEqual(second.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
 });
 
@@ -185,6 +219,16 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
       pi: {
         todoWorkflowInstruction: "Track implementation tasks with Pi todos.",
         subagentWorkflowInstruction: "Use Pi subagents for implementation and review.",
+        taskContract: {
+          todoRoot: ".patchmill/todos",
+          todoTitlePattern: "work-<number>-step-<two-digit-number>-<slug>",
+          todoTags: ["delivery", "work-<number>"],
+          planTodoBodyRequirements: ["purpose", "plan checklist item", "checkpoints"],
+          implementationTodoBodyRequirements: ["purpose", "plan checklist item", "checkpoints", "latest validation"],
+          doneStatuses: ["shipped", "verified"],
+          planTaskHeadingPattern: "### Step <number> - <label>",
+          openTaskTodosBlockFinalHandoff: false,
+        },
       },
       planRequiresApproval: true,
     },
@@ -233,6 +277,16 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
     config.projectPolicy.pi.subagentWorkflowInstruction,
     "Use Pi subagents for implementation and review.",
   );
+  assert.deepEqual(config.projectPolicy.pi.taskContract, {
+    todoRoot: ".patchmill/todos",
+    todoTitlePattern: "work-<number>-step-<two-digit-number>-<slug>",
+    todoTags: ["delivery", "work-<number>"],
+    planTodoBodyRequirements: ["purpose", "plan checklist item", "checkpoints"],
+    implementationTodoBodyRequirements: ["purpose", "plan checklist item", "checkpoints", "latest validation"],
+    doneStatuses: ["shipped", "verified"],
+    planTaskHeadingPattern: "### Step <number> - <label>",
+    openTaskTodosBlockFinalHandoff: false,
+  });
   assert.equal(config.projectPolicy.planRequiresApproval, true);
 });
 
@@ -358,6 +412,32 @@ test("loadPatchmillConfig reports invalid project policy validation rules", asyn
       assert.match(
         error.message,
         /Invalid patchmill\.config\.json: projectPolicy\.validation\.rules\[0\]\.commands must be an array of strings/,
+      );
+      return true;
+    }
+  );
+});
+
+test("loadPatchmillConfig reports invalid task contract todo tags", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
+    projectPolicy: {
+      pi: {
+        taskContract: {
+          todoTags: ["agent-issue", 17],
+        },
+      },
+    },
+  }));
+
+  await assert.rejects(
+    loadPatchmillConfig(dir, {}, []),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.equal(error.name, "Error");
+      assert.match(
+        error.message,
+        /Invalid patchmill\.config\.json: projectPolicy\.pi\.taskContract\.todoTags must be an array of strings/,
       );
       return true;
     }
