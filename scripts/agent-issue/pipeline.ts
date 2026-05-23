@@ -105,6 +105,17 @@ function withLogPath<T extends AgentIssuePipelineResult>(
   return options.logPath ? { ...result, logPath: options.logPath } : result;
 }
 
+function cleanStatusIgnoredPaths(
+  config: Pick<AgentIssueConfig, "runStateDir" | "cleanStatusIgnorePrefixes">,
+  options: Pick<RunOneIssueOptions, "logPath">,
+): string[] {
+  return [...new Set([
+    ...(config.cleanStatusIgnorePrefixes ?? []),
+    config.runStateDir,
+    ...(options.logPath ? [options.logPath] : []),
+  ])];
+}
+
 function repoPath(
   repoRoot: string,
   path: string,
@@ -678,7 +689,7 @@ export async function runOneIssue(
   await assertCleanWorktree(
     runner,
     config.repoRoot,
-    [config.runStateDir, options.logPath].filter((path): path is string => Boolean(path)),
+    cleanStatusIgnoredPaths(config, options),
   );
   let labels = resumed
     ? (issue.labels.includes("in-progress")

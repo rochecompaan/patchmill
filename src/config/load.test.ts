@@ -19,14 +19,18 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
   const second = await loadPatchmillConfig(dir, {}, []);
 
   assert.notStrictEqual(first.labels.priorities, DEFAULT_PATCHMILL_CONFIG.labels.priorities);
+  assert.notStrictEqual(first.paths.cleanStatusIgnorePrefixes, DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes);
   assert.notStrictEqual(first.labels.priorities, second.labels.priorities);
+  assert.notStrictEqual(first.paths.cleanStatusIgnorePrefixes, second.paths.cleanStatusIgnorePrefixes);
   assert.notStrictEqual(first.projectPolicy.validationCommands, DEFAULT_PATCHMILL_CONFIG.projectPolicy.validationCommands);
   assert.notStrictEqual(first.projectPolicy.validationCommands, second.projectPolicy.validationCommands);
 
   first.labels.priorities.push("priority:urgent");
+  first.paths.cleanStatusIgnorePrefixes.push("scratch/");
   first.projectPolicy.validationCommands.push("npm test");
 
   assert.deepEqual(second.labels.priorities, DEFAULT_PATCHMILL_CONFIG.labels.priorities);
+  assert.deepEqual(second.paths.cleanStatusIgnorePrefixes, DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes);
   assert.deepEqual(second.projectPolicy.validationCommands, DEFAULT_PATCHMILL_CONFIG.projectPolicy.validationCommands);
 });
 
@@ -35,12 +39,16 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
     host: { login: "bot-login" },
     pi: { team: "fast-team" },
-    paths: { plansDir: "engineering/plans" }
+    paths: {
+      plansDir: "engineering/plans",
+      cleanStatusIgnorePrefixes: ["scratch/", ".patchmill/custom-runs/"],
+    }
   }));
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "bot-login");
   assert.equal(config.pi.team, "fast-team");
   assert.equal(config.paths.plansDir, join(dir, "engineering/plans"));
+  assert.deepEqual(config.paths.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
 });
 
 test("loadPatchmillConfig applies env overrides without CLI", async () => {
@@ -78,12 +86,16 @@ test("loadPatchmillConfig accepts tea-login as a host-login alias", async () => 
 test("loadPatchmillConfig absolutizes paths from a relative repo root", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
-    paths: { worktreeDir: "custom/../trees" }
+    paths: {
+      worktreeDir: "custom/../trees",
+      cleanStatusIgnorePrefixes: ["scratch/", "logs/run-state/"],
+    }
   }));
   const relativeRoot = relative(process.cwd(), dir);
   const config = await loadPatchmillConfig(relativeRoot, {}, []);
   assert.equal(config.paths.runStateDir, resolve(relativeRoot, ".patchmill/runs"));
   assert.equal(config.paths.worktreeDir, resolve(relativeRoot, "custom/../trees"));
+  assert.deepEqual(config.paths.cleanStatusIgnorePrefixes, ["scratch/", "logs/run-state/"]);
 });
 
 test("loadPatchmillConfig reports invalid config field types", async () => {
@@ -98,6 +110,26 @@ test("loadPatchmillConfig reports invalid config field types", async () => {
       assert(error instanceof Error);
       assert.equal(error.name, "Error");
       assert.match(error.message, /Invalid patchmill\.config\.json: paths\.plansDir must be a string; received null/);
+      return true;
+    }
+  );
+});
+
+test("loadPatchmillConfig reports invalid clean-status ignore prefixes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
+    paths: { cleanStatusIgnorePrefixes: [".patchmill/runs/", 17] }
+  }));
+
+  await assert.rejects(
+    loadPatchmillConfig(dir, {}, []),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.equal(error.name, "Error");
+      assert.match(
+        error.message,
+        /Invalid patchmill\.config\.json: paths\.cleanStatusIgnorePrefixes must be an array of strings/,
+      );
       return true;
     }
   );

@@ -1,10 +1,12 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import type { PatchmillConfig } from "../../src/config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
 const DEFAULT_TEA_LOGIN = "triage-agent";
+const DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES = DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes;
 
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -58,6 +60,7 @@ export function parseArgs(
     plansDir: normalizedConfig?.paths.plansDir ?? join(repoRoot, "docs", "plans"),
     runStateDir: normalizedConfig?.paths.runStateDir ?? join(repoRoot, ".pi", "agent-issue", "runs"),
     worktreeDir: normalizedConfig?.paths.worktreeDir ?? join(repoRoot, ".worktrees"),
+    cleanStatusIgnorePrefixes: [...(normalizedConfig?.paths.cleanStatusIgnorePrefixes ?? DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES)],
     readyLabel: normalizedConfig?.labels.ready ?? "agent-ready",
     issueLimit: 1,
     requirePlanApproval: normalizedConfig?.projectPolicy.planRequiresApproval ?? false,

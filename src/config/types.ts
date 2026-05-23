@@ -23,6 +23,7 @@ export type PatchmillPathsConfig = {
   runStateDir: string;
   triageLogDir: string;
   worktreeDir: string;
+  cleanStatusIgnorePrefixes: string[];
 };
 
 export type PatchmillGitConfig = {

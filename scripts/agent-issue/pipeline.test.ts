@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
+import { JsonlProgressReporter } from "./progress.ts";
 import type {
   AgentIssueConfig,
   AgentIssueProgressEvent,
@@ -240,6 +241,7 @@ async function makeConfig(
     plansDir,
     runStateDir,
     worktreeDir: join(repoRoot, ".worktrees"),
+    cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"],
     readyLabel: "agent-ready",
     issueLimit: 1,
     requirePlanApproval: false,
@@ -462,6 +464,62 @@ test("runOneIssue resumes a single in-progress issue with run state before selec
   );
   assert.equal(comments.length, 1);
   assert.doesNotMatch(commentBody(comments[0]), /Automation started/);
+});
+
+test("runOneIssue ignores its own log file in a non-default run-state directory", async () => {
+  const baseConfig = await makeConfig({ dryRun: false, execute: true, planOnly: true });
+  const config = {
+    ...baseConfig,
+    runStateDir: join(baseConfig.repoRoot, "logs", "run-state"),
+  };
+  const planPath = "docs/plans/2026-05-14-issue-45-resume-in-progress-issue.md";
+  const logPath = join(config.runStateDir, "run.jsonl");
+  assert.ok(!config.cleanStatusIgnorePrefixes?.includes("logs/run-state/"));
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Resume in-progress issue",
+      status: "planning",
+      planPath,
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const inProgress = issue(45, ["in-progress", "bug"], "Resume in-progress issue");
+  const ready = issue(46, ["agent-ready", "bug"], "New ready issue");
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return { code: 0, stdout: page === "1" ? issueListPayload([inProgress, ready]) : "[]", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "?? logs/run-state/run.jsonl\n", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, {
+    now: NOW,
+    progress: new JsonlProgressReporter(logPath),
+    logPath,
+  });
+
+  assert.equal(result.status, "plan-found");
+  assert.equal(result.issue.number, 45);
+  assert.equal(result.logPath, logPath);
+  assert.match(await readFile(logPath, "utf8"), /checking repository status/);
 });
 
 test("runOneIssue rejects multiple resumable in-progress issues", async () => {
@@ -2207,6 +2265,66 @@ test("runOneIssue ignores configured run-state logs during the clean-worktree ch
 
   assert.equal(result.status, "pr-created");
   assert.equal(result.worktreePath, ".worktrees/agent-issue-17-ignore-configured-run-logs");
+});
+
+test("runOneIssue honors configured clean-status ignore prefixes", async () => {
+  const baseConfig = await makeConfig({ dryRun: false, execute: true });
+  const config = {
+    ...baseConfig,
+    runStateDir: join(baseConfig.repoRoot, ".patchmill", "runs"),
+    cleanStatusIgnorePrefixes: ["scratch-logs/"],
+  };
+  const selected = issue(18, ["agent-ready"], "Ignore configured scratch logs");
+  const planPath = join(config.plansDir, "2026-05-09-issue-18-ignore-configured-scratch-logs.md");
+  await writeFile(planPath, "# Plan\n", "utf8");
+
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status") {
+      return {
+        code: 0,
+        stdout: "?? scratch-logs/run-2026-05-09T12-00-00-000Z.jsonl\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/18",
+          branch: "agent/issue-18-ignore-configured-scratch-logs",
+          commits: ["abc123"],
+          validation: ["node --test ok"],
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  const result = await runOneIssue(runner, config, {
+    now: NOW,
+    logPath: join(config.runStateDir, "run-2026-05-09T12-00-00-000Z.jsonl"),
+  });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(result.worktreePath, ".worktrees/agent-issue-18-ignore-configured-scratch-logs");
 });
 
 test("runOneIssue implementation heartbeat reads task progress from the issue worktree", async () => {

@@ -66,7 +66,7 @@ test("assertCleanWorktree ignores agent issue run logs", async () => {
     stderr: "",
   }]);
 
-  await assertCleanWorktree(runner, "/repo");
+  await assertCleanWorktree(runner, "/repo", [".pi/agent-issue/runs/"]);
 });
 
 test("assertCleanWorktree ignores configured run-state logs", async () => {
@@ -75,14 +75,15 @@ test("assertCleanWorktree ignores configured run-state logs", async () => {
     stdout: [
       "?? .patchmill/runs/run-2026-05-10T04-19-08-934Z.jsonl",
       "?? .patchmill/runs/issue-45/run-2026-05-10T04-19-08-934Z.jsonl",
+      "?? .patchmill/triage-runs/run-2026-05-10T04-19-08-934Z.jsonl",
       "",
     ].join("\n"),
     stderr: "",
   }]);
 
   await assertCleanWorktree(runner, "/repo", [
-    "/repo/.patchmill/runs",
-    "/repo/.patchmill/runs/run-2026-05-10T04-19-08-934Z.jsonl",
+    ".patchmill/runs/",
+    ".patchmill/triage-runs/",
   ]);
 });
 

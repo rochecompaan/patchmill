@@ -24,6 +24,7 @@ export type AgentIssueConfig = {
   plansDir: string;
   runStateDir: string;
   worktreeDir: string;
+  cleanStatusIgnorePrefixes?: string[];
   readyLabel: string;
   issueLimit: 1;
   requirePlanApproval: boolean;

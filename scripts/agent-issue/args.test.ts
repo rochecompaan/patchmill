@@ -20,6 +20,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
   assert.equal(config.runStateDir, join(cwd(), ".pi", "agent-issue", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
+  assert.deepEqual(config.cleanStatusIgnorePrefixes, [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"]);
   assert.equal(config.readyLabel, "agent-ready");
   assert.equal(config.issueLimit, 1);
   assert.equal(config.requirePlanApproval, false);
@@ -228,6 +229,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
       runStateDir: ".patchmill/runs",
       triageLogDir: ".patchmill/triage-runs",
       worktreeDir: ".patchmill/worktrees",
+      cleanStatusIgnorePrefixes: ["scratch/", ".patchmill/custom-runs/"],
     },
   }));
 
@@ -241,6 +243,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
+  assert.deepEqual(config.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
 });
 
 test("loadCliConfig preserves Croprun tea login when patchmill config only customizes paths", async () => {

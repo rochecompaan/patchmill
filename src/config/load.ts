@@ -21,6 +21,7 @@ function cloneStringArray(values: string[]): string[] {
 
 function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillConfig {
   const labels = { ...base.labels, ...update.labels };
+  const paths = { ...base.paths, ...update.paths };
   const projectPolicy = { ...base.projectPolicy, ...update.projectPolicy };
 
   return {
@@ -30,7 +31,12 @@ function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillCon
       ...labels,
       priorities: cloneStringArray(update.labels?.priorities ?? base.labels.priorities),
     },
-    paths: { ...base.paths, ...update.paths },
+    paths: {
+      ...paths,
+      cleanStatusIgnorePrefixes: cloneStringArray(
+        update.paths?.cleanStatusIgnorePrefixes ?? base.paths.cleanStatusIgnorePrefixes,
+      ),
+    },
     git: { ...base.git, ...update.git },
     projectPolicy: {
       ...projectPolicy,
@@ -53,6 +59,7 @@ function absolutizePaths(root: string, config: PatchmillConfig): PatchmillConfig
       runStateDir: absolutize(root, config.paths.runStateDir),
       triageLogDir: absolutize(root, config.paths.triageLogDir),
       worktreeDir: absolutize(root, config.paths.worktreeDir),
+      cleanStatusIgnorePrefixes: cloneStringArray(config.paths.cleanStatusIgnorePrefixes),
     },
   };
 }
@@ -179,10 +186,16 @@ function parseConfigFile(data: unknown): PartialConfig {
     const runStateDir = readOptionalString(paths, "runStateDir", "paths.runStateDir");
     const triageLogDir = readOptionalString(paths, "triageLogDir", "paths.triageLogDir");
     const worktreeDir = readOptionalString(paths, "worktreeDir", "paths.worktreeDir");
+    const cleanStatusIgnorePrefixes = readOptionalStringArray(
+      paths,
+      "cleanStatusIgnorePrefixes",
+      "paths.cleanStatusIgnorePrefixes",
+    );
     if (plansDir !== undefined) parsed.plansDir = plansDir;
     if (runStateDir !== undefined) parsed.runStateDir = runStateDir;
     if (triageLogDir !== undefined) parsed.triageLogDir = triageLogDir;
     if (worktreeDir !== undefined) parsed.worktreeDir = worktreeDir;
+    if (cleanStatusIgnorePrefixes !== undefined) parsed.cleanStatusIgnorePrefixes = cleanStatusIgnorePrefixes;
     if (hasEntries(parsed)) config.paths = parsed;
   }
 

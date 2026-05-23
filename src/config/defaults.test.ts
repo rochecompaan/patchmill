@@ -25,6 +25,7 @@ test("defaults match the current patchmill baseline configuration", () => {
       runStateDir: ".patchmill/runs",
       triageLogDir: ".patchmill/triage-runs",
       worktreeDir: ".worktrees",
+      cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"],
     },
     git: {
       baseBranch: "main",

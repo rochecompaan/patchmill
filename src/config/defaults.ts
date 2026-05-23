@@ -22,6 +22,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     runStateDir: ".patchmill/runs",
     triageLogDir: ".patchmill/triage-runs",
     worktreeDir: ".worktrees",
+    cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"],
   },
   git: {
     baseBranch: "main",

@@ -3,7 +3,6 @@ import { join, relative, resolve } from "node:path";
 import type { CommandResult, CommandRunner } from "./types.ts";
 
 const BRANCH_SLUG_LENGTH = 48;
-const LEGACY_RUN_LOG_DIR = ".pi/agent-issue/runs";
 
 function slugify(value: string): string {
   const slug = value
@@ -43,7 +42,7 @@ function normalizeGitPath(path: string): string {
 }
 
 function ignoredStatusPrefixes(repoRoot: string, ignoredPaths: string[]): string[] {
-  const prefixes = new Set<string>([LEGACY_RUN_LOG_DIR]);
+  const prefixes = new Set<string>();
 
   for (const ignoredPath of ignoredPaths) {
     const relativePath = normalizeGitPath(relative(repoRoot, resolve(repoRoot, ignoredPath)));
