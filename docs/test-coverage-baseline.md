@@ -11,7 +11,7 @@ npm run test:coverage
 - Date: 2026-05-24
 - Runner: Node built-in `node:test` coverage
 - Line coverage: 94.24
-- Branch coverage: 84.40
+- Branch coverage: 84.40-84.41 observed across repeated local runs
 - Function coverage: 96.33
 
 ## Initial observations
@@ -21,8 +21,9 @@ npm run test:coverage
 - Direct unit tests should remain close to the modules they exercise.
 - Pipeline tests should be retained when they cover unique workflow transitions,
   resume behavior, or safety boundaries not asserted elsewhere.
-- No coverage threshold is enforced yet; thresholds should be considered after
-  the cleanup pass stabilizes the baseline.
+- No coverage threshold is enforced yet; branch coverage varied slightly across
+  repeated full-suite runs (84.40-84.41), so thresholds should be considered
+  after the cleanup pass stabilizes the baseline.
 
 ## First audit targets
 
