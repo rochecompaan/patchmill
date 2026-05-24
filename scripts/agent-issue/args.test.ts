@@ -274,17 +274,19 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.deepEqual(config.triagePolicy?.runOnceSelection.excludedLabels, ["needs-clarification", "manual-only", "claimed", "done-by-bot", "waiting"]);
 });
 
-test("loadCliConfig passes configured project policy through to run-once prompts", async () => {
+test("loadCliConfig passes configured skills and project policy through to run-once prompts", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
   await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    skills: {
+      implementation: "sentinel-implementation",
+      visualEvidence: "sentinel-screenshots",
+      landing: "sentinel-landing",
+    },
     projectPolicy: {
       ...DEFAULT_PATCHMILL_POLICY,
       projectName: "Sentinel",
       visualEvidence: {
-        policyText: "Visual-change evidence:\n- Capture Sentinel screenshots.",
-        webScreenshotSkill: "sentinel-web-screenshots",
         referenceScreenshotPaths: ["docs/sentinel/web/"],
-        reviewerExpectations: ["Reviewer must confirm Sentinel screenshot approval."],
         prEvidenceExample: {
           screenshotPath: ".tmp/issue-42-sentinel-after.png",
           caption: "Sentinel after the change",
@@ -296,9 +298,10 @@ test("loadCliConfig passes configured project policy through to run-once prompts
   const config = await loadCliConfig(["--dry-run"], repoRoot, {});
 
   assert.equal(config.projectPolicy.projectName, "Sentinel");
-  assert.equal(config.projectPolicy.visualEvidence.webScreenshotSkill, "sentinel-web-screenshots");
+  assert.equal(config.skills.implementation, "sentinel-implementation");
+  assert.equal(config.skills.visualEvidence, "sentinel-screenshots");
+  assert.equal(config.skills.landing, "sentinel-landing");
   assert.deepEqual(config.projectPolicy.visualEvidence.referenceScreenshotPaths, ["docs/sentinel/web/"]);
-  assert.deepEqual(config.projectPolicy.visualEvidence.reviewerExpectations, ["Reviewer must confirm Sentinel screenshot approval."]);
   assert.equal(config.projectPolicy.visualEvidence.prEvidenceExample?.screenshotPath, ".tmp/issue-42-sentinel-after.png");
 });
 

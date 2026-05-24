@@ -2575,19 +2575,19 @@ test("runOneIssue renders configured project policy visual evidence fields in th
     ...baseConfig,
     baseBranch: "release/2.0",
     remote: "upstream",
+    skills: {
+      ...baseConfig.skills,
+      visualEvidence: "sentinel-screenshots",
+      landing: "sentinel-landing",
+    },
     projectPolicy: {
       ...DEFAULT_PATCHMILL_POLICY,
       projectName: "Sentinel",
       directLand: {
         targetBranch: "ignored-by-runner",
-        policyText: "Land to `<target-branch>` via `<remote>` from `<implementation-branch>` for issue #<n>.",
       },
       visualEvidence: {
-        policyText: "Visual-change evidence:\n- Capture Sentinel screenshots after validation.",
-        webScreenshotSkill: "sentinel-web-screenshots",
-        mobileScreenshotSkill: "sentinel-mobile-screenshots",
         referenceScreenshotPaths: ["docs/sentinel/web/", "docs/sentinel/mobile/"],
-        reviewerExpectations: ["Reviewer must confirm Sentinel screenshot approval."],
         prEvidenceExample: {
           screenshotPath: ".tmp/issue-42-sentinel-after.png",
           caption: "Sentinel after the change",
@@ -2632,13 +2632,12 @@ test("runOneIssue renders configured project policy visual evidence fields in th
 
       await writeTodo(worktreeRoot, "task-1", "issue-16-task-01-render-configured-policy-prompt", "closed");
       assert.match(prompt, /Implement Sentinel issue #16/);
-      assert.match(prompt, /`sentinel-web-screenshots`/);
-      assert.match(prompt, /`sentinel-mobile-screenshots`/);
+      assert.match(prompt, /If the issue changes visible UI, use the configured visual evidence skill: `sentinel-screenshots`\./);
+      assert.match(prompt, /Use the configured landing skill for the direct-land versus PR decision: `sentinel-landing`\./);
       assert.match(prompt, /Look under `docs\/sentinel\/web\/` and `docs\/sentinel\/mobile\/`/);
-      assert.match(prompt, /Reviewer must confirm Sentinel screenshot approval\./);
       assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/);
-      assert.match(prompt, /Land to `release\/2\.0` via `upstream` from `agent\/issue-16-render-configured-policy-prompt` for issue #16\./);
-      assert.doesNotMatch(prompt, /capturing-proof-screenshots/);
+      assert.match(prompt, /Update local `release\/2\.0` from the `upstream` remote\./);
+      assert.doesNotMatch(prompt, /capturing proof screenshots|Reviewer must confirm Sentinel screenshot approval|policyText|webScreenshotSkill|mobileScreenshotSkill/);
       assertNoLegacyProjectText(prompt);
       return {
         code: 0,

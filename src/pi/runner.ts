@@ -28,6 +28,7 @@ export class PiRunner implements PiPromptContracts {
     return runTriageAgent(this.runner, input.repoRoot, {
       issues: input.issues,
       projectPolicy: input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY,
+      skills: input.skills,
     });
   }
 
@@ -37,6 +38,7 @@ export class PiRunner implements PiPromptContracts {
       issue: input.issue,
       planPath: input.planPath,
       projectPolicy,
+      skills: input.skills,
       triageLabels: input.triageLabels,
     }), {
       ...input.runOptions,
@@ -62,6 +64,7 @@ export class PiRunner implements PiPromptContracts {
         agentTeam: input.agentTeam,
         git: input.git,
         projectPolicy,
+        skills: input.skills,
         resume: input.resume,
       }),
       {

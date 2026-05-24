@@ -9,11 +9,13 @@ import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 import type { RawTriageDocument } from "../../scripts/agent-issue-triage/types.ts";
 import type { PromptTriageLabels } from "../../scripts/agent-issue/prompts.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
+import type { PatchmillSkillsConfig } from "../workflow/skills.ts";
 
 export type TriagePiInput = {
   repoRoot: string;
   issues: IssueSummary[];
   projectPolicy?: PatchmillProjectPolicy;
+  skills?: PatchmillSkillsConfig;
 };
 
 type PiRunnerRunOptions = Omit<RunPiPromptOptions, "stage" | "issueNumber" | "repoRoot">;
@@ -23,6 +25,7 @@ export type PlanPiInput = {
   issue: IssueSummary;
   planPath: string;
   projectPolicy?: PatchmillProjectPolicy;
+  skills?: PatchmillSkillsConfig;
   triageLabels?: Partial<PromptTriageLabels>;
   runOptions?: PiRunnerRunOptions;
 };
@@ -36,6 +39,7 @@ export type ImplementationPiInput = {
   agentTeam: ResolvedAgentTeam;
   git: Pick<GitWorktreeStrategyConfig, "baseBranch" | "remote" | "allowDirectLand">;
   projectPolicy?: PatchmillProjectPolicy;
+  skills?: PatchmillSkillsConfig;
   resume?: AgentIssueImplementationResumeContext;
   runOptions?: PiRunnerRunOptions;
 };

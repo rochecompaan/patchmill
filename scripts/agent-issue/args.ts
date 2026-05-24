@@ -57,6 +57,7 @@ export function parseArgs(
     cleanStatusIgnorePrefixes: [...patchmillConfig.paths.cleanStatusIgnorePrefixes],
     cleanupHooks: [...patchmillConfig.cleanupHooks],
     projectPolicy,
+    skills: patchmillConfig.skills,
     triagePolicy: createTriagePolicy(patchmillConfig.labels),
     readyLabel: patchmillConfig.labels.ready,
     issueLimit: 1,

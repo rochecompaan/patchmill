@@ -35,8 +35,6 @@ const agentTeam = {
 const examplePolicy: PatchmillProjectPolicy = {
   projectName: "ExampleApp",
   contextFileNames: ["AGENTS.md"],
-  toolchainInstruction:
-    "Use the ExampleApp-managed project toolchain. If the shell is not already active, enter it with `toolbox shell` or prefix one-off commands with `toolbox run -- <command>`.",
   validation: {
     rules: [
       { category: "Server-side changes", commands: ["pnpm test:server"] },
@@ -53,63 +51,16 @@ const examplePolicy: PatchmillProjectPolicy = {
   },
   directLand: {
     targetBranch: "main",
-    policyText: [
-      "Default to direct squash-landing on `<target-branch>` when the completed change is safe for asynchronous human QA on staging. Only create a PR when human code review is required before landing.",
-      "",
-      "Direct squash-land eligibility — all must be true:",
-      "- The issue is a simple bug fix or mechanical change.",
-      "- The implementation exactly matches the issue and plan; no opportunistic refactor or extra behavior change.",
-      "- The final diff is localized and easy to review after the fact.",
-      "- All required validation from AGENTS.md passed using the approved commands.",
-      "- A fresh reviewer agent reviewed the final diff and found no unresolved concerns.",
-      "- Visual UI changes require fresh screenshots and reviewer screenshot approval before direct squash-land.",
-      "- The branch contains only commits from this automation run.",
-      "- You can update `<target-branch>`, squash the branch cleanly, and push without force-pushing.",
-      "",
-      "Human-review-required exclusions — create a PR instead of landing directly if any are true:",
-      "- Database migrations, schema changes, or persistent data-format changes.",
-      "- Auth, security, privacy, permissions, secrets, billing, or data-loss risk.",
-      "- Public API, mobile/server contract, offline sync, conflict resolution, scanner/camera, or device/instrumentation behavior.",
-      "- Dependency, CI, deployment, release, or infrastructure changes.",
-      "- Broad refactors, large diffs, or changes spanning unrelated areas.",
-      "- Any validation was skipped, failed, flaky, unavailable, or substituted.",
-      "- Reviewer raised unresolved concerns.",
-      "- You are uncertain whether direct landing is appropriate.",
-    ].join("\n"),
   },
   visualEvidence: {
-    policyText: [
-      "Visual-change evidence:",
-      "- For new screens without a direct before state, compare against adjacent or analogous reference screenshots from the same app area.",
-      "- Capture fresh after-change screenshots after implementation and required validation.",
-      "- Record after-change screenshot paths, relevant reference screenshot paths, and what each screenshot proves in `validation`.",
-      "- Return structured `visualEvidence` entries for PR fallback so the orchestrator can upload screenshots to the pull request.",
-      "- Do not upload visual evidence to the host yourself; the orchestrator handles the upload after parsing your final JSON.",
-      "- A worktree-local screenshot path alone is not sufficient PR evidence; include it in `visualEvidence` so it can be uploaded.",
-      "- If required screenshots cannot be captured, do not direct-land; return blocked or create a PR with the exact reason.",
-    ].join("\n"),
-    webScreenshotSkill: "example-web-screenshots",
-    mobileScreenshotSkill: "example-mobile-screenshots",
     referenceScreenshotPaths: ["docs/example-screenshots/web/", "docs/example-screenshots/mobile/"],
-    reviewerExpectations: [
-      "If visuals intentionally change, update the relevant committed reference screenshots as part of the change.",
-      "Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing ExampleApp styling.",
-      "The reviewer summary must state whether screenshot review passed when visual changes exist.",
-    ],
     prEvidenceExample: {
       screenshotPath: ".tmp/issue-42-dashboard-after.png",
       caption: "Dashboard after selecting last 8 weeks",
       referencePaths: ["docs/example-screenshots/web/01-dashboard.png"],
     },
   },
-  hostToolingInstruction: "Use the repository's configured host tooling for issue and pull-request actions.",
   pi: {
-    todoWorkflowInstruction: "",
-    subagentWorkflowInstruction: [
-      "Use `superpowers:subagent-driven-development` to execute the plan task by task. Do not substitute an ad-hoc implementation loop for this skill.",
-      "Before dispatching implementation or review subagents, use `superpowers:selecting-subagent-models` and apply the authoritative agent team mappings.",
-      "Use fresh reviewer agents for each review pass and follow the skill's required worker/reviewer/checkpoint workflow, including its TDD, verification, review, and fix/re-verify expectations.",
-    ].join("\n"),
     taskContract: DEFAULT_PI_TASK_CONTRACT,
   },
   planRequiresApproval: false,
@@ -147,10 +98,10 @@ test("buildPlanCreationPrompt includes issue context, workflow rules, and result
   assert.match(prompt, new RegExp(planPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(prompt, untrustedInputBoundary);
   assert.match(prompt, /Treat `agent-ready` as meaning the issue is already clear and unambiguous enough to plan/);
-  assert.match(prompt, /Use `superpowers:writing-plans` to write the implementation plan/);
+  assert.match(prompt, /Use the configured planning skill: `superpowers:writing-plans`\./);
+  assert.match(prompt, /Do not substitute an ad-hoc planning process for the configured planning skill/);
   assert.doesNotMatch(prompt, /superpowers:brainstorming/);
-  assert.match(prompt, /Use the ExampleApp-managed project toolchain/);
-  assert.match(prompt, /toolbox shell/);
+  assert.doesNotMatch(prompt, /toolchainInstruction|hostToolingInstruction|subagentWorkflowInstruction/);
   assert.match(prompt, /Do not stop for an additional manual plan-approval gate/);
   assert.match(prompt, /pnpm test:server/);
   assert.match(prompt, /pnpm test:web/);
@@ -248,9 +199,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Worktree: \.worktrees\/agent-issue-42-add-once-runner-helpers/);
   assert.match(prompt, untrustedInputBoundary);
   assert.match(prompt, /Read AGENTS\.md and the implementation plan at/);
-  assert.match(prompt, /Use the ExampleApp-managed project toolchain/);
-  assert.match(prompt, /toolbox shell/);
-  assert.match(prompt, /Use `superpowers:subagent-driven-development` to execute the plan task by task/);
+  assert.match(prompt, /Use the configured implementation skill: `superpowers:subagent-driven-development`\./);
   assert.match(prompt, /Authoritative agent team: economy/);
   assert.match(prompt, /worker: model=openai-codex\/gpt-5\.4, thinking=medium, dispatchModel=openai-codex\/gpt-5\.4:medium/);
   assert.match(prompt, /reviewer: model=openai-codex\/gpt-5\.5, thinking=high, dispatchModel=openai-codex\/gpt-5\.5:high/);
@@ -259,11 +208,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Example worker dispatch:/);
   assert.match(prompt, /model: "openai-codex\/gpt-5\.4:medium"/);
   assert.doesNotMatch(prompt, /thinking: "medium"/);
-  assert.match(prompt, /Before dispatching implementation or review subagents, use `superpowers:selecting-subagent-models` and apply the authoritative agent team mappings/);
-  assert.match(prompt, /Use fresh reviewer agents for each review pass/);
-  assert.match(prompt, /TDD, verification, review, and fix-re-verify expectations|TDD, verification, review, and fix\/re-verify expectations/);
   assert.match(prompt, /Conventional Commits/);
-  assert.match(prompt, /Use the repository's configured host tooling for issue and pull-request actions\./);
   assert.match(prompt, /pnpm test:server/);
   assert.match(prompt, /pnpm test:web/);
   assert.match(prompt, /pnpm test:mobile/);
@@ -272,40 +217,16 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Do not run host `playwright test` as a substitute\./);
   assert.match(prompt, /Do not use ad-hoc preview servers as a substitute\./);
   assert.match(prompt, /Do not run direct service commands as a substitute\./);
-  assert.match(prompt, /Visual-change evidence:/);
-  assert.match(prompt, /If the implementation changes visible web UI, invoke the `example-web-screenshots` skill/);
-  assert.match(prompt, /If the implementation changes visible Android or mobile UI, invoke the `example-mobile-screenshots` skill/);
+  assert.match(prompt, /Visual-change evidence data:/);
   assert.match(prompt, /Use existing committed reference screenshots, when available, as the styling baseline/);
-  assert.match(prompt, /For new screens without a direct before state, compare against adjacent or analogous reference screenshots/);
-  assert.match(prompt, /Record after-change screenshot paths, relevant reference screenshot paths, and what each screenshot proves in `validation`/);
-  assert.match(prompt, /Return structured `visualEvidence` entries for PR fallback so the orchestrator can upload screenshots to the pull request/);
-  assert.match(prompt, /Do not upload visual evidence to the host yourself/);
-  assert.match(prompt, /A worktree-local screenshot path alone is not sufficient PR evidence/);
-  assert.match(prompt, /If visuals intentionally change, update the relevant committed reference screenshots/);
-  assert.match(prompt, /Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing ExampleApp styling/);
-  assert.equal(
-    countMatches(prompt, /If visuals intentionally change, update the relevant committed reference screenshots/g),
-    1,
-  );
-  assert.equal(
-    countMatches(prompt, /Ask the fresh reviewer to compare after-change screenshots against the issue requirements, relevant reference screenshots, and existing ExampleApp styling/g),
-    1,
-  );
-  assert.equal(
-    countMatches(prompt, /The reviewer summary must state whether screenshot review passed when visual changes exist/g),
-    1,
-  );
-  assert.match(prompt, /Visual UI changes require fresh screenshots and reviewer screenshot approval before direct squash-land/);
-  assert.match(prompt, /Landing policy:/);
-  assert.match(prompt, /Default to direct squash-landing on `main`/);
+  assert.match(prompt, /For PR fallback, return structured `visualEvidence` entries like this example/);
+  assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-dashboard-after\.png"/);
+  assert.match(prompt, /"referencePaths": \[[\s\S]*"docs\/example-screenshots\/web\/01-dashboard\.png"/);
+  assert.match(prompt, /Landing result contracts:/);
   assert.match(prompt, /Update local `main` from the `origin` remote\./);
   assert.match(prompt, /Push `main` to `origin` without force-pushing\./);
   assert.match(prompt, /Push the branch to `origin` and open a pull request using the repository's configured host tooling\./);
-  assert.match(prompt, /Only create a PR when human code review is required before landing/);
-  assert.match(prompt, /Direct squash-land eligibility/);
-  assert.match(prompt, /Human-review-required exclusions/);
   assert.match(prompt, /Squash-merge the implementation branch into `main`/);
-  assert.match(prompt, /Push the branch to `origin` and open a pull request using the repository's configured host tooling/);
   assert.match(prompt, /keep the reason and questions concise enough to post directly as a `needs-info` comment/i);
   assert.match(prompt, /"status": "blocked"/);
   assert.match(prompt, /"recommendedAnswer": "recommended answer and reasoning"/);
@@ -315,9 +236,36 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /"status": "pr-created"/);
   assert.match(prompt, /"prUrl": "<pull request URL>"/);
   assert.match(prompt, /"visualEvidence": \[/);
-  assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-dashboard-after\.png"/);
-  assert.match(prompt, /"referencePaths": \[[\s\S]*"docs\/example-screenshots\/web\/01-dashboard\.png"/);
   assert.match(prompt, /"reviewSummary": "short reviewer\/fix summary"/);
+  assert.doesNotMatch(prompt, /toolchainInstruction|hostToolingInstruction|subagentWorkflowInstruction/);
+});
+
+test("buildImplementationPrompt renders configured skills", () => {
+  const prompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    branch: "agent/issue-42-add-once-runner-helpers",
+    worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
+    agentTeam,
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: true },
+    projectPolicy: examplePolicy,
+    skills: {
+      triage: "project-triage",
+      planning: "project-planning",
+      implementation: "project-implementation",
+      toolchain: "project-toolchain",
+      review: "project-review",
+      visualEvidence: "project-screenshots",
+      landing: "project-landing",
+    },
+  });
+
+  assert.match(prompt, /Use the configured toolchain skill before setup or validation commands: `project-toolchain`\./);
+  assert.match(prompt, /Use the configured implementation skill: `project-implementation`\./);
+  assert.match(prompt, /Use the configured review skill for explicit review passes: `project-review`\./);
+  assert.match(prompt, /If the issue changes visible UI, use the configured visual evidence skill: `project-screenshots`\./);
+  assert.match(prompt, /Use the configured landing skill for the direct-land versus PR decision: `project-landing`\./);
+  assert.doesNotMatch(prompt, /old implementation prompt fragment|toolchainInstruction|hostToolingInstruction|subagentWorkflowInstruction/);
 });
 
 test("generic policy plan prompt does not include legacy project text", () => {
@@ -369,12 +317,11 @@ test("buildImplementationPrompt uses configured direct-land policy inputs", () =
     },
   });
 
-  assert.match(prompt, /Default to direct squash-landing on `release\/1\.2`/);
-  assert.match(prompt, /Update local `release\/1\.2` from the `upstream` remote\./);
-  assert.doesNotMatch(prompt, /Default to direct squash-landing on `main`/);
+  assert.match(prompt, /Update local `main` from the `upstream` remote\./);
+  assert.doesNotMatch(prompt, /Update local `release\/1\.2` from the `upstream` remote\./);
 });
 
-test("policy-driven prompts render validation and landing policy text from policy", () => {
+test("policy-driven prompts render validation and landing contract text from runtime inputs", () => {
   const policy = {
     ...examplePolicy,
     validation: {
@@ -386,10 +333,6 @@ test("policy-driven prompts render validation and landing policy text from polic
     directLand: {
       ...examplePolicy.directLand,
       targetBranch: "release/9.9",
-      policyText: examplePolicy.directLand.policyText.replace(
-        "Default to direct squash-landing on `<target-branch>` when the completed change is safe for asynchronous human QA on staging. Only create a PR when human code review is required before landing.",
-        "Default to sentinel landing on `<target-branch>` via `<remote>` for issue #<n> from `<implementation-branch>`.",
-      ),
     },
   };
 
@@ -416,10 +359,9 @@ test("policy-driven prompts render validation and landing policy text from polic
   assert.match(planPrompt, /Do not replace the sentinel validation command\./);
   assert.match(implementationPrompt, /Sentinel validation: `pnpm sentinel-check`\./);
   assert.match(implementationPrompt, /Do not replace the sentinel validation command\./);
-  assert.match(
-    implementationPrompt,
-    /Default to sentinel landing on `release\/9\.9` via `upstream` for issue #42 from `patchmill\/issue-42-add-once-runner-helpers`\./,
-  );
+  assert.match(implementationPrompt, /Update local `main` from the `upstream` remote\./);
+  assert.match(implementationPrompt, /Squash-merge the implementation branch into `main`\./);
+  assert.doesNotMatch(implementationPrompt, /release\/9\.9/);
 });
 
 test("buildImplementationPrompt renders structured visual evidence policy fields", () => {
@@ -438,11 +380,7 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
       ...DEFAULT_PATCHMILL_POLICY,
       projectName: "Sentinel",
       visualEvidence: {
-        policyText: "Visual-change evidence:\n- Capture fresh after-change screenshots after implementation and validation.",
-        webScreenshotSkill: "sentinel-web-screenshots",
-        mobileScreenshotSkill: "sentinel-mobile-screenshots",
         referenceScreenshotPaths: ["docs/sentinel/web/", "docs/sentinel/mobile/"],
-        reviewerExpectations: ["The reviewer summary must confirm screenshot comparison approval."],
         prEvidenceExample: {
           screenshotPath: ".tmp/issue-42-sentinel-after.png",
           caption: "Sentinel after the change",
@@ -450,14 +388,19 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
         },
       },
     },
+    skills: {
+      triage: "project-triage",
+      planning: "project-planning",
+      implementation: "project-implementation",
+      visualEvidence: "sentinel-screenshots",
+    },
   });
 
-  assert.match(prompt, /`sentinel-web-screenshots`/);
-  assert.match(prompt, /`sentinel-mobile-screenshots`/);
+  assert.match(prompt, /If the issue changes visible UI, use the configured visual evidence skill: `sentinel-screenshots`\./);
   assert.match(prompt, /Look under `docs\/sentinel\/web\/` and `docs\/sentinel\/mobile\/`/);
-  assert.match(prompt, /The reviewer summary must confirm screenshot comparison approval\./);
   assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/);
   assert.match(prompt, /"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/);
+  assert.doesNotMatch(prompt, /reviewerExpectations|webScreenshotSkill|mobileScreenshotSkill/);
 });
 
 test("buildImplementationPrompt removes direct-land eligibility instructions when direct landing is disabled", () => {

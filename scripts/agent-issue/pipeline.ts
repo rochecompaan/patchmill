@@ -880,6 +880,7 @@ export async function runOneIssue(
             issue,
             planPath,
             projectPolicy: config.projectPolicy,
+            skills: config.skills,
             triageLabels: { ready, needsInfo },
           }),
           {
@@ -1211,6 +1212,7 @@ export async function runOneIssue(
             agentTeam,
             git: worktreeStrategy,
             projectPolicy,
+            skills: config.skills,
             resume: {
               resumed: resumableState,
               worktreeCreated: worktree.created,
