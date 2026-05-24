@@ -1,12 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createStaticCommandRunner } from "./command.ts";
-import { ApplyDecisionError, applyDecisions, buildNeedsInfoComment, createLogEntries } from "./apply.ts";
+import {
+  ApplyDecisionError,
+  applyDecisions,
+  buildNeedsInfoComment,
+  createLogEntries,
+} from "./apply.ts";
 import type { IssueSummary, TriageDecision } from "./types.ts";
 
 const issues: IssueSummary[] = [
-  { number: 1, title: "Missing info", body: "Broken", labels: ["bug"], state: "open" },
-  { number: 2, title: "Easy", body: "Clear", labels: ["enhancement"], state: "open" },
+  {
+    number: 1,
+    title: "Missing info",
+    body: "Broken",
+    labels: ["bug"],
+    state: "open",
+  },
+  {
+    number: 2,
+    title: "Easy",
+    body: "Clear",
+    labels: ["enhancement"],
+    state: "open",
+  },
 ];
 
 const needsInfo: TriageDecision = {
@@ -34,15 +51,18 @@ const humanDecision: TriageDecision = {
   primaryBucket: "needs-info",
   labels: ["enhancement", "needs-info", "priority:medium"],
   confidence: "high",
-  rationale: "Expected report behavior is ambiguous and needs product direction.",
+  rationale:
+    "Expected report behavior is ambiguous and needs product direction.",
   questions: [
     {
       question: "Which report columns are required?",
-      recommendedAnswer: "Include the same columns visible in the dashboard first, then add extra fields in a follow-up issue.",
+      recommendedAnswer:
+        "Include the same columns visible in the dashboard first, then add extra fields in a follow-up issue.",
     },
     {
       question: "Who should be able to export the report?",
-      recommendedAnswer: "Allow admins and managers only, matching existing dashboard export permissions.",
+      recommendedAnswer:
+        "Allow admins and managers only, matching existing dashboard export permissions.",
     },
   ],
   comment: null,
@@ -63,7 +83,10 @@ test("buildNeedsInfoComment formats rationale, questions, and recommended answer
   assert.match(comment, /Rationale:\nExpected report behavior is ambiguous/);
   assert.match(comment, /Follow-up questions and recommended answers:/);
   assert.match(comment, /1\. Which report columns are required\?/);
-  assert.match(comment, /Recommended answer: Include the same columns visible in the dashboard first/);
+  assert.match(
+    comment,
+    /Recommended answer: Include the same columns visible in the dashboard first/,
+  );
   assert.match(comment, /2\. Who should be able to export the report\?/);
   assert.match(comment, /Recommended answer: Allow admins and managers only/);
 });
@@ -95,7 +118,12 @@ test("createLogEntries records generated comments for needs-info entries with re
 });
 
 test("createLogEntries records optional errors on failed entries", () => {
-  const entries = createLogEntries(issues, [easy], "applied", new Map([[2, "tea comment failed"]]));
+  const entries = createLogEntries(
+    issues,
+    [easy],
+    "applied",
+    new Map([[2, "tea comment failed"]]),
+  );
 
   assert.equal(entries[0].mutationStatus, "failed");
   assert.equal(entries[0].error, "tea comment failed");
@@ -111,13 +139,33 @@ test("applyDecisions applies issue labels and comments for needs-info and discre
 
   await applyDecisions(runner, "/repo", issues, [needsInfo, easy]);
 
-  const commands = runner.calls.map((call) => `${call.command} ${call.args.join(" ")}`);
+  const commands = runner.calls.map(
+    (call) => `${call.command} ${call.args.join(" ")}`,
+  );
   assert.ok(commands.some((command) => command.includes("issues edit 1")));
   assert.ok(commands.some((command) => command.includes("issues edit 2")));
-  assert.ok(commands.some((command) => command.includes("comment 1 --repo /repo -- Automated triage needs more information")));
-  assert.ok(commands.some((command) => command.includes("1. Which screen fails?")));
-  assert.ok(commands.some((command) => command.includes("2. What exact steps reproduce it?")));
-  assert.ok(commands.some((command) => command.includes("comment 2 --repo /repo -- Automated triage marked this as easy.")));
+  assert.ok(
+    commands.some((command) =>
+      command.includes(
+        "comment 1 --repo /repo -- Automated triage needs more information",
+      ),
+    ),
+  );
+  assert.ok(
+    commands.some((command) => command.includes("1. Which screen fails?")),
+  );
+  assert.ok(
+    commands.some((command) =>
+      command.includes("2. What exact steps reproduce it?"),
+    ),
+  );
+  assert.ok(
+    commands.some((command) =>
+      command.includes(
+        "comment 2 --repo /repo -- Automated triage marked this as easy.",
+      ),
+    ),
+  );
 });
 
 test("applyDecisions applies generated needs-info comments with recommended answers", async () => {
@@ -128,12 +176,30 @@ test("applyDecisions applies generated needs-info comments with recommended answ
 
   await applyDecisions(runner, "/repo", issues, [humanDecision]);
 
-  const commands = runner.calls.map((call) => `${call.command} ${call.args.join(" ")}`);
+  const commands = runner.calls.map(
+    (call) => `${call.command} ${call.args.join(" ")}`,
+  );
   assert.ok(commands.some((command) => command.includes("issues edit 2")));
-  assert.ok(commands.some((command) => command.includes("comment 2 --repo /repo -- Automated triage needs more information")));
+  assert.ok(
+    commands.some((command) =>
+      command.includes(
+        "comment 2 --repo /repo -- Automated triage needs more information",
+      ),
+    ),
+  );
   assert.ok(commands.some((command) => command.includes("Rationale:")));
-  assert.ok(commands.some((command) => command.includes("1. Which report columns are required?")));
-  assert.ok(commands.some((command) => command.includes("Recommended answer: Include the same columns visible in the dashboard first")));
+  assert.ok(
+    commands.some((command) =>
+      command.includes("1. Which report columns are required?"),
+    ),
+  );
+  assert.ok(
+    commands.some((command) =>
+      command.includes(
+        "Recommended answer: Include the same columns visible in the dashboard first",
+      ),
+    ),
+  );
 });
 
 test("applyDecisions wraps label failures with issue context and stops before comments or later issues", async () => {

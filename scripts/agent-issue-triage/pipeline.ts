@@ -1,13 +1,32 @@
-import { ApplyDecisionError, applyDecisions, createLogEntries } from "./apply.ts";
+import {
+  ApplyDecisionError,
+  applyDecisions,
+  createLogEntries,
+} from "./apply.ts";
 import { runTriageAgent } from "./agent.ts";
-import { createLabel, hydrateIssueComments, listLabels, listOpenIssues } from "./forgejo.ts";
+import {
+  createLabel,
+  hydrateIssueComments,
+  listLabels,
+  listOpenIssues,
+} from "./forgejo.ts";
 import { DEFAULT_TRIAGE_POLICY, missingLabelDefinitions } from "./labels.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import { writeTriageLog } from "./log.ts";
 import { validateTriageDocument } from "./validation.ts";
-import type { CommandRunner, IssueSummary, TriageConfig, TriageDecision, TriageLogIssueEntry, TriageResult } from "./types.ts";
+import type {
+  CommandRunner,
+  IssueSummary,
+  TriageConfig,
+  TriageDecision,
+  TriageLogIssueEntry,
+  TriageResult,
+} from "./types.ts";
 
-function selectIssues(issues: IssueSummary[], config: TriageConfig): IssueSummary[] {
+function selectIssues(
+  issues: IssueSummary[],
+  config: TriageConfig,
+): IssueSummary[] {
   let selected = issues;
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
   const excludedLabels = new Set(triagePolicy.excludedLabels);
@@ -15,7 +34,9 @@ function selectIssues(issues: IssueSummary[], config: TriageConfig): IssueSummar
   if (config.issueNumber !== undefined) {
     selected = selected.filter((issue) => issue.number === config.issueNumber);
   } else if (!config.all) {
-    selected = selected.filter((issue) => !issue.labels.some((label) => excludedLabels.has(label)));
+    selected = selected.filter(
+      (issue) => !issue.labels.some((label) => excludedLabels.has(label)),
+    );
   }
 
   if (config.limit !== undefined) {
@@ -29,8 +50,13 @@ function logMode(config: TriageConfig): "dry-run" | "execute" {
   return config.execute ? "execute" : "dry-run";
 }
 
-function decisionsThroughFailure(decisions: TriageDecision[], issueNumber: number): TriageDecision[] {
-  const failedIndex = decisions.findIndex((decision) => decision.issueNumber === issueNumber);
+function decisionsThroughFailure(
+  decisions: TriageDecision[],
+  issueNumber: number,
+): TriageDecision[] {
+  const failedIndex = decisions.findIndex(
+    (decision) => decision.issueNumber === issueNumber,
+  );
   if (failedIndex < 0) return decisions;
   return decisions.slice(0, failedIndex + 1);
 }
@@ -53,14 +79,22 @@ async function tryWriteFailureLog(
   }).catch(() => undefined);
 }
 
-export async function runTriage(runner: CommandRunner, config: TriageConfig): Promise<TriageResult> {
+export async function runTriage(
+  runner: CommandRunner,
+  config: TriageConfig,
+): Promise<TriageResult> {
   const createdAt = new Date().toISOString();
-  const projectPolicy = config.projectPolicy ?? DEFAULT_PATCHMILL_CONFIG.projectPolicy;
+  const projectPolicy =
+    config.projectPolicy ?? DEFAULT_PATCHMILL_CONFIG.projectPolicy;
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
 
   let listedIssues: IssueSummary[];
   try {
-    listedIssues = await listOpenIssues(runner, config.repoRoot, config.teaLogin);
+    listedIssues = await listOpenIssues(
+      runner,
+      config.repoRoot,
+      config.teaLogin,
+    );
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
@@ -69,7 +103,9 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
   const issues = selectIssues(listedIssues, config);
 
   if (config.issueNumber !== undefined && issues.length === 0) {
-    const error = new Error(`Issue #${config.issueNumber} is not open or was not found`);
+    const error = new Error(
+      `Issue #${config.issueNumber} is not open or was not found`,
+    );
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
   }
@@ -85,7 +121,12 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
   }
 
   try {
-    await hydrateIssueComments(runner, config.repoRoot, issues, config.teaLogin);
+    await hydrateIssueComments(
+      runner,
+      config.repoRoot,
+      issues,
+      config.teaLogin,
+    );
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
@@ -114,31 +155,54 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
 
   let decisions: TriageDecision[];
   try {
-    decisions = validateTriageDocument(await runTriageAgent(runner, config.repoRoot, {
+    decisions = validateTriageDocument(
+      await runTriageAgent(runner, config.repoRoot, {
+        issues,
+        projectPolicy,
+        triagePolicy,
+        skills: config.skills,
+        thinking:
+          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+      }),
       issues,
-      projectPolicy,
       triagePolicy,
-      skills: config.skills,
-      thinking: config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-    }), issues, triagePolicy);
+    );
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
   }
 
   if (!config.execute) {
-    const logIssues = createLogEntries(issues, decisions, "planned", new Map(), triagePolicy);
+    const logIssues = createLogEntries(
+      issues,
+      decisions,
+      "planned",
+      new Map(),
+      triagePolicy,
+    );
     const logPath = await writeTriageLog(config.logDir, {
       mode: "dry-run",
       createdAt,
       issues: logIssues,
     });
 
-    return { status: "dry-run", issueCount: issues.length, logPath, issues: logIssues };
+    return {
+      status: "dry-run",
+      issueCount: issues.length,
+      logPath,
+      issues: logIssues,
+    };
   }
 
   try {
-    await applyDecisions(runner, config.repoRoot, issues, decisions, config.teaLogin, triagePolicy);
+    await applyDecisions(
+      runner,
+      config.repoRoot,
+      issues,
+      decisions,
+      config.teaLogin,
+      triagePolicy,
+    );
   } catch (error) {
     if (error instanceof ApplyDecisionError) {
       await tryWriteFailureLog(
@@ -160,12 +224,23 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
     throw error;
   }
 
-  const logIssues = createLogEntries(issues, decisions, "applied", new Map(), triagePolicy);
+  const logIssues = createLogEntries(
+    issues,
+    decisions,
+    "applied",
+    new Map(),
+    triagePolicy,
+  );
   const logPath = await writeTriageLog(config.logDir, {
     mode: "execute",
     createdAt,
     issues: logIssues,
   });
 
-  return { status: "applied", issueCount: issues.length, logPath, issues: logIssues };
+  return {
+    status: "applied",
+    issueCount: issues.length,
+    logPath,
+    issues: logIssues,
+  };
 }

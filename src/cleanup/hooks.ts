@@ -76,7 +76,11 @@ function hookLabel(hook: CleanupHookConfig): string {
 }
 
 function skippedNoWorktree(hook: CleanupHookConfig): CleanupHookResult {
-  return { status: "skipped", name: hook.name, message: `${hookLabel(hook)}: no worktree path` };
+  return {
+    status: "skipped",
+    name: hook.name,
+    message: `${hookLabel(hook)}: no worktree path`,
+  };
 }
 
 function skippedMissingPath(hook: CleanupHookConfig): CleanupHookResult {
@@ -102,7 +106,13 @@ async function terminateMatchingProcesses(
 
   const result = await runner.run(
     "bash",
-    ["-c", TERMINATE_PROCESSES_BY_CWD_AND_PATTERN_SCRIPT, hook.name, worktreeRoot, ...patterns],
+    [
+      "-c",
+      TERMINATE_PROCESSES_BY_CWD_AND_PATTERN_SCRIPT,
+      hook.name,
+      worktreeRoot,
+      ...patterns,
+    ],
     { cwd: repoRoot },
   );
   if (result.code === 0) return undefined;
@@ -110,7 +120,11 @@ async function terminateMatchingProcesses(
   return {
     status: "failed",
     name: hook.name,
-    message: failureMessage(`${hookLabel(hook)}: process cleanup failed`, result.stderr, result.stdout),
+    message: failureMessage(
+      `${hookLabel(hook)}: process cleanup failed`,
+      result.stderr,
+      result.stdout,
+    ),
   };
 }
 
@@ -121,13 +135,19 @@ async function runHookCommand(
 ): Promise<CleanupHookResult | undefined> {
   if (!hook.command) return undefined;
 
-  const result = await runner.run(hook.command, hook.args ?? [], { cwd: worktreeRoot });
+  const result = await runner.run(hook.command, hook.args ?? [], {
+    cwd: worktreeRoot,
+  });
   if (result.code === 0) return undefined;
 
   return {
     status: "failed",
     name: hook.name,
-    message: failureMessage(`${hookLabel(hook)}: command failed`, result.stderr, result.stdout),
+    message: failureMessage(
+      `${hookLabel(hook)}: command failed`,
+      result.stderr,
+      result.stdout,
+    ),
   };
 }
 
@@ -140,7 +160,10 @@ async function runCleanupHook(
   if (!worktreePath) return skippedNoWorktree(hook);
 
   const worktreeRoot = join(repoRoot, worktreePath);
-  if (hook.whenPathExists && !(await pathExists(join(worktreeRoot, hook.whenPathExists)))) {
+  if (
+    hook.whenPathExists &&
+    !(await pathExists(join(worktreeRoot, hook.whenPathExists)))
+  ) {
     return skippedMissingPath(hook);
   }
 

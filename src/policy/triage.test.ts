@@ -22,14 +22,31 @@ test("createTriagePolicy keeps default bucket statuses while mapping configured 
     { status: "agent-unsuitable", label: "manual-only" },
   ]);
   assert.equal(labelForPrimaryBucket(policy, "agent-ready"), "ready-for-bots");
-  assert.equal(labelForPrimaryBucket(policy, "needs-info"), "needs-clarification");
-  assert.equal(labelForPrimaryBucket(policy, "agent-unsuitable"), "manual-only");
+  assert.equal(
+    labelForPrimaryBucket(policy, "needs-info"),
+    "needs-clarification",
+  );
+  assert.equal(
+    labelForPrimaryBucket(policy, "agent-unsuitable"),
+    "manual-only",
+  );
   assert.ok(policy.allowedLabels.some((label) => label.name === "incident"));
-  assert.ok(policy.triageAllowedLabels.some((label) => label.name === "ready-for-bots"));
-  assert.equal(policy.triageAllowedLabels.some((label) => label.name === "claimed"), false);
+  assert.ok(
+    policy.triageAllowedLabels.some((label) => label.name === "ready-for-bots"),
+  );
+  assert.equal(
+    policy.triageAllowedLabels.some((label) => label.name === "claimed"),
+    false,
+  );
   assert.deepEqual(policy.runOnceSelection, {
     readyLabel: "ready-for-bots",
-    excludedLabels: ["needs-clarification", "manual-only", "claimed", "done-by-bot", "waiting"],
+    excludedLabels: [
+      "needs-clarification",
+      "manual-only",
+      "claimed",
+      "done-by-bot",
+      "waiting",
+    ],
     priorityOrder: ["priority:p1", "priority:p2"],
   });
 });
@@ -39,5 +56,8 @@ test("createTriagePolicy exposes shared confidence, ambiguity, and comment behav
 
   assert.deepEqual(policy.confidenceValues, ["low", "medium", "high"]);
   assert.match(policy.ambiguityRuleText, /Any ambiguity in issue intent/);
-  assert.equal(policy.needsInfo.commentBehavior, "generated-from-rationale-and-questions");
+  assert.equal(
+    policy.needsInfo.commentBehavior,
+    "generated-from-rationale-and-questions",
+  );
 });

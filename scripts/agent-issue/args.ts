@@ -25,7 +25,11 @@ function parsePositiveInteger(flag: string, value: string): number {
 }
 
 function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
-  return env.PATCHMILL_HOST_LOGIN ?? normalizedConfig?.host.login ?? DEFAULT_TEA_LOGIN;
+  return (
+    env.PATCHMILL_HOST_LOGIN ??
+    normalizedConfig?.host.login ??
+    DEFAULT_TEA_LOGIN
+  );
 }
 
 function defaultAgentTeam(
@@ -51,10 +55,18 @@ export function parseArgs(
     planOnly: false,
     teaLogin: defaultTeaLogin(env, normalizedConfig),
     agentTeamName: defaultAgentTeam(env, normalizedConfig),
-    plansDir: normalizedConfig?.paths.plansDir ?? join(repoRoot, patchmillConfig.paths.plansDir),
-    runStateDir: normalizedConfig?.paths.runStateDir ?? join(repoRoot, patchmillConfig.paths.runStateDir),
-    worktreeDir: normalizedConfig?.paths.worktreeDir ?? join(repoRoot, patchmillConfig.paths.worktreeDir),
-    cleanStatusIgnorePrefixes: [...patchmillConfig.paths.cleanStatusIgnorePrefixes],
+    plansDir:
+      normalizedConfig?.paths.plansDir ??
+      join(repoRoot, patchmillConfig.paths.plansDir),
+    runStateDir:
+      normalizedConfig?.paths.runStateDir ??
+      join(repoRoot, patchmillConfig.paths.runStateDir),
+    worktreeDir:
+      normalizedConfig?.paths.worktreeDir ??
+      join(repoRoot, patchmillConfig.paths.worktreeDir),
+    cleanStatusIgnorePrefixes: [
+      ...patchmillConfig.paths.cleanStatusIgnorePrefixes,
+    ],
     cleanupHooks: [...patchmillConfig.cleanupHooks],
     projectPolicy,
     skills: patchmillConfig.skills,

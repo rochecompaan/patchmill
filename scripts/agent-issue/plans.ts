@@ -18,7 +18,11 @@ function datePrefix(value: string | Date): string {
   return value.slice(0, 10);
 }
 
-export function buildPlanFilename(issueNumber: number, title: string, date: string | Date): string {
+export function buildPlanFilename(
+  issueNumber: number,
+  title: string,
+  date: string | Date,
+): string {
   return `${datePrefix(date)}-issue-${issueNumber}-${slugify(title)}.md`;
 }
 
@@ -31,7 +35,10 @@ export function buildPlanPath(
   return join(plansDir, buildPlanFilename(issueNumber, title, date));
 }
 
-export async function findIssuePlan(plansDir: string, issueNumber: number): Promise<string | undefined> {
+export async function findIssuePlan(
+  plansDir: string,
+  issueNumber: number,
+): Promise<string | undefined> {
   let entries;
   try {
     entries = await readdir(plansDir, { withFileTypes: true });

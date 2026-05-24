@@ -1,4 +1,7 @@
-import { labelForPrimaryBucket, type PatchmillTriagePolicy } from "../../src/policy/triage.ts";
+import {
+  labelForPrimaryBucket,
+  type PatchmillTriagePolicy,
+} from "../../src/policy/triage.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
   primaryBucketLabelMap,
@@ -6,7 +9,15 @@ import {
   primaryBucketSet,
   triageAllowedLabelNames,
 } from "./labels.ts";
-import type { Confidence, IssueSummary, PrimaryBucket, RawTriageDecision, RawTriageDocument, TriageQuestion, TriageDecision } from "./types.ts";
+import type {
+  Confidence,
+  IssueSummary,
+  PrimaryBucket,
+  RawTriageDecision,
+  RawTriageDocument,
+  TriageQuestion,
+  TriageDecision,
+} from "./types.ts";
 
 function asRecord(value: unknown, context: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -30,12 +41,17 @@ function asStringArray(value: unknown, context: string): string[] {
 function asQuestion(value: unknown, context: string): TriageQuestion {
   if (typeof value === "string") return asString(value, context);
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${context} must be a non-empty string or include question and recommendedAnswer`);
+    throw new Error(
+      `${context} must be a non-empty string or include question and recommendedAnswer`,
+    );
   }
   const record = value as Record<string, unknown>;
   return {
     question: asString(record.question, `${context}.question`),
-    recommendedAnswer: asString(record.recommendedAnswer, `${context}.recommendedAnswer`),
+    recommendedAnswer: asString(
+      record.recommendedAnswer,
+      `${context}.recommendedAnswer`,
+    ),
   };
 }
 
@@ -76,7 +92,9 @@ function validateOne(
   for (const label of labels) {
     if (!allowedLabelNames.has(label)) {
       if (label === triagePolicy.labels.inProgress) {
-        throw new Error(`${triagePolicy.labels.inProgress} is not allowed in triage decisions`);
+        throw new Error(
+          `${triagePolicy.labels.inProgress} is not allowed in triage decisions`,
+        );
       }
       throw new Error(`Unknown label ${label}`);
     }
@@ -90,11 +108,16 @@ function validateOne(
     throw new Error(`${readyLabel} is only allowed for the agent-ready bucket`);
   }
 
-  const requiredBucketLabel = bucketLabelsByStatus.get(primaryBucket as PrimaryBucket);
-  if (!requiredBucketLabel) throw new Error(`Missing primary bucket label for ${primaryBucket}`);
+  const requiredBucketLabel = bucketLabelsByStatus.get(
+    primaryBucket as PrimaryBucket,
+  );
+  if (!requiredBucketLabel)
+    throw new Error(`Missing primary bucket label for ${primaryBucket}`);
   const bucketLabels = labels.filter((label) => bucketLabelNames.has(label));
   if (bucketLabels.length !== 1 || bucketLabels[0] !== requiredBucketLabel) {
-    throw new Error(`Issue ${issueNumber} must include exactly its primary bucket label ${requiredBucketLabel}`);
+    throw new Error(
+      `Issue ${issueNumber} must include exactly its primary bucket label ${requiredBucketLabel}`,
+    );
   }
 
   const confidence = asString(raw.confidence, "confidence");
@@ -102,8 +125,14 @@ function validateOne(
     throw new Error(`Invalid confidence ${confidence}`);
   }
 
-  const rationale = asString(raw.rationale, `rationale for issue ${issueNumber}`);
-  const questions = asQuestions(raw.questions, `questions for issue ${issueNumber}`);
+  const rationale = asString(
+    raw.rationale,
+    `rationale for issue ${issueNumber}`,
+  );
+  const questions = asQuestions(
+    raw.questions,
+    `questions for issue ${issueNumber}`,
+  );
   if (primaryBucket === "needs-info" && questions.length === 0) {
     throw new Error(`${primaryBucket} requires at least one question`);
   }
@@ -125,9 +154,12 @@ export function validateTriageDocument(
   triagePolicy: PatchmillTriagePolicy = DEFAULT_TRIAGE_POLICY,
 ): TriageDecision[] {
   const record = asRecord(document, "triage document");
-  if (!Array.isArray(record.decisions)) throw new Error("decisions must be an array");
+  if (!Array.isArray(record.decisions))
+    throw new Error("decisions must be an array");
   if (record.decisions.length !== issues.length) {
-    throw new Error(`Expected ${issues.length} decisions but received ${record.decisions.length}`);
+    throw new Error(
+      `Expected ${issues.length} decisions but received ${record.decisions.length}`,
+    );
   }
 
   const issueNumbers = new Set(issues.map((issue) => issue.number));
@@ -138,7 +170,8 @@ export function validateTriageDocument(
       issueNumbers,
       triagePolicy,
     );
-    if (seen.has(decision.issueNumber)) throw new Error(`Duplicate decision for issue ${decision.issueNumber}`);
+    if (seen.has(decision.issueNumber))
+      throw new Error(`Duplicate decision for issue ${decision.issueNumber}`);
     seen.add(decision.issueNumber);
     return decision;
   });

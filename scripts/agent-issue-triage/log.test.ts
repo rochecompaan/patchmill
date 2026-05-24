@@ -10,18 +10,20 @@ test("writeTriageLog writes timestamped JSON", async () => {
   const path = await writeTriageLog(dir, {
     mode: "dry-run",
     createdAt: "2026-05-08T12:00:00.000Z",
-    issues: [{
-      issueNumber: 1,
-      title: "Issue",
-      previousLabels: ["bug"],
-      finalLabels: ["bug", "agent-ready"],
-      primaryBucket: "agent-ready",
-      confidence: "high",
-      rationale: "Clear issue.",
-      questions: [],
-      comment: null,
-      mutationStatus: "planned",
-    }],
+    issues: [
+      {
+        issueNumber: 1,
+        title: "Issue",
+        previousLabels: ["bug"],
+        finalLabels: ["bug", "agent-ready"],
+        primaryBucket: "agent-ready",
+        confidence: "high",
+        rationale: "Clear issue.",
+        questions: [],
+        comment: null,
+        mutationStatus: "planned",
+      },
+    ],
   });
 
   assert.match(path, /triage-2026-05-08T12-00-00-000Z\.json$/);

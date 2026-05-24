@@ -34,12 +34,18 @@ function labelFromSlug(slug: string): string {
   return slug.replaceAll("-", " ").trim();
 }
 
-function readCapture(match: RegExpMatchArray, groupName: string, index: number): string | undefined {
+function readCapture(
+  match: RegExpMatchArray,
+  groupName: string,
+  index: number,
+): string | undefined {
   return match.groups?.[groupName] ?? match[index];
 }
 
 function readTodoTags(tags: unknown): string[] {
-  return Array.isArray(tags) ? tags.filter((tag): tag is string => typeof tag === "string") : [];
+  return Array.isArray(tags)
+    ? tags.filter((tag): tag is string => typeof tag === "string")
+    : [];
 }
 
 export async function readIssueTodoSummary(
@@ -62,7 +68,9 @@ export async function readIssueTodoTasks(
 ): Promise<IssueTodoTask[]> {
   const todoRoot = resolveTodoRoot(repoRoot, taskContract);
   const requireIssueTags = !todoTitlePatternIncludesIssueNumber(taskContract);
-  const requiredIssueTags = requireIssueTags ? renderIssueTodoTags(taskContract, issueNumber) : [];
+  const requiredIssueTags = requireIssueTags
+    ? renderIssueTodoTags(taskContract, issueNumber)
+    : [];
   let entries;
   try {
     entries = await readdir(todoRoot, { withFileTypes: true });
@@ -80,7 +88,11 @@ export async function readIssueTodoTasks(
     if (headerEnd < 0) continue;
     let header: { title?: string; status?: string; tags?: unknown };
     try {
-      header = JSON.parse(content.slice(0, headerEnd + 1)) as { title?: string; status?: string; tags?: unknown };
+      header = JSON.parse(content.slice(0, headerEnd + 1)) as {
+        title?: string;
+        status?: string;
+        tags?: unknown;
+      };
     } catch {
       continue;
     }
@@ -128,7 +140,11 @@ export async function assertIssueTodosComplete(
 ): Promise<void> {
   if (!taskContract.openTaskTodosBlockFinalHandoff) return;
 
-  const summary = await readIssueTodoSummary(repoRoot, issueNumber, taskContract);
+  const summary = await readIssueTodoSummary(
+    repoRoot,
+    issueNumber,
+    taskContract,
+  );
   if (summary.total === 0 || summary.openTitles.length === 0) return;
 
   throw new Error(

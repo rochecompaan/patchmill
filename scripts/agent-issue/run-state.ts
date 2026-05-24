@@ -1,8 +1,15 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentIssueRunState, AgentIssueRunStateStatus, AgentIssueRunStateUpdate } from "./types.ts";
+import type {
+  AgentIssueRunState,
+  AgentIssueRunStateStatus,
+  AgentIssueRunStateUpdate,
+} from "./types.ts";
 
-const STATUS_TIMESTAMPS: Record<AgentIssueRunStateStatus, keyof AgentIssueRunState> = {
+const STATUS_TIMESTAMPS: Record<
+  AgentIssueRunStateStatus,
+  keyof AgentIssueRunState
+> = {
   claimed: "claimedAt",
   planning: "planningAt",
   implementing: "implementingAt",
@@ -19,7 +26,10 @@ export async function readRunState(
   issueNumber: number,
 ): Promise<AgentIssueRunState | undefined> {
   try {
-    const content = await readFile(runStatePath(runStateDir, issueNumber), "utf8");
+    const content = await readFile(
+      runStatePath(runStateDir, issueNumber),
+      "utf8",
+    );
     return JSON.parse(content) as AgentIssueRunState;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -39,7 +49,9 @@ function mergeCheckpoints(
 
   for (const [checkpoint, completed] of Object.entries(update ?? {})) {
     if (completed === true) {
-      merged[checkpoint as keyof NonNullable<AgentIssueRunState["checkpoints"]>] = true;
+      merged[
+        checkpoint as keyof NonNullable<AgentIssueRunState["checkpoints"]>
+      ] = true;
     }
   }
 
@@ -61,7 +73,9 @@ function mergeRunState(
 ): AgentIssueRunState {
   const title = update.title ?? existing?.title;
   if (!title) {
-    throw new Error(`Run state for issue #${update.issueNumber} requires a title`);
+    throw new Error(
+      `Run state for issue #${update.issueNumber} requires a title`,
+    );
   }
 
   let checkpoints = mergeCheckpoints(
@@ -82,31 +96,41 @@ function mergeRunState(
   const implementationStatus = hasImplementationUpdate
     ? update.implementationStatus
     : existingImplementation?.implementationStatus;
-  const prUrl = update.implementationStatus === "merged"
-    ? undefined
-    : hasImplementationUpdate
-    ? update.prUrl
-    : existingImplementation?.prUrl;
-  const mergeCommit = update.implementationStatus === "pr-created"
-    ? undefined
-    : hasImplementationUpdate
-    ? update.mergeCommit
-    : existingImplementation?.mergeCommit;
-  const commits = hasImplementationUpdate ? update.commits : existingImplementation?.commits;
-  const validation = hasImplementationUpdate ? update.validation : existingImplementation?.validation;
-  const reviewSummary = hasImplementationUpdate ? update.reviewSummary : existingImplementation?.reviewSummary;
-  const landingDecision = hasImplementationUpdate ? update.landingDecision : existingImplementation?.landingDecision;
-  const visualEvidence = hasImplementationUpdate ? update.visualEvidence : existingImplementation?.visualEvidence;
+  const prUrl =
+    update.implementationStatus === "merged"
+      ? undefined
+      : hasImplementationUpdate
+        ? update.prUrl
+        : existingImplementation?.prUrl;
+  const mergeCommit =
+    update.implementationStatus === "pr-created"
+      ? undefined
+      : hasImplementationUpdate
+        ? update.mergeCommit
+        : existingImplementation?.mergeCommit;
+  const commits = hasImplementationUpdate
+    ? update.commits
+    : existingImplementation?.commits;
+  const validation = hasImplementationUpdate
+    ? update.validation
+    : existingImplementation?.validation;
+  const reviewSummary = hasImplementationUpdate
+    ? update.reviewSummary
+    : existingImplementation?.reviewSummary;
+  const landingDecision = hasImplementationUpdate
+    ? update.landingDecision
+    : existingImplementation?.landingDecision;
+  const visualEvidence = hasImplementationUpdate
+    ? update.visualEvidence
+    : existingImplementation?.visualEvidence;
   const existingHandoffCommentPosted =
-    !update.resetCheckpoints
-    && (
-      existing?.handoffCommentPosted === true
-      || existing?.checkpoints?.handoffCommentPosted === true
-    );
+    !update.resetCheckpoints &&
+    (existing?.handoffCommentPosted === true ||
+      existing?.checkpoints?.handoffCommentPosted === true);
   const handoffCommentPosted =
-    update.handoffCommentPosted === true
-    || update.checkpoints?.handoffCommentPosted === true
-    || existingHandoffCommentPosted;
+    update.handoffCommentPosted === true ||
+    update.checkpoints?.handoffCommentPosted === true ||
+    existingHandoffCommentPosted;
   const failureCommentKeys = mergeUniqueKeys(
     update.resetCheckpoints ? undefined : existing?.failureCommentKeys,
     update.failureCommentKeys,
@@ -124,8 +148,11 @@ function mergeRunState(
     issueNumber: update.issueNumber,
     title,
     status: update.status,
-    branch: update.branch ?? (update.resetCheckpoints ? undefined : existing?.branch),
-    worktreePath: update.worktreePath ?? (update.resetCheckpoints ? undefined : existing?.worktreePath),
+    branch:
+      update.branch ?? (update.resetCheckpoints ? undefined : existing?.branch),
+    worktreePath:
+      update.worktreePath ??
+      (update.resetCheckpoints ? undefined : existing?.worktreePath),
     planPath: update.planPath ?? existing?.planPath,
     planCommit: update.planCommit ?? existing?.planCommit,
     checkpoints,
@@ -193,7 +220,11 @@ function mergeRunState(
 }
 
 export function isResumableRunState(state: AgentIssueRunState): boolean {
-  return state.status === "claimed" || state.status === "planning" || state.status === "implementing";
+  return (
+    state.status === "claimed" ||
+    state.status === "planning" ||
+    state.status === "implementing"
+  );
 }
 
 export async function writeRunState(

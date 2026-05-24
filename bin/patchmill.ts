@@ -22,9 +22,18 @@ const COMMAND_SCRIPTS = new Map<string, string>([
   ["run-once", "agent-issue-once.ts"],
 ]);
 
-export function resolveCommand(root: string, argv: string[]): ResolvedCommand | "help" {
+export function resolveCommand(
+  root: string,
+  argv: string[],
+): ResolvedCommand | "help" {
   const command = argv[0];
-  if (!command || command === "--help" || command === "-h" || command === "help") return "help";
+  if (
+    !command ||
+    command === "--help" ||
+    command === "-h" ||
+    command === "help"
+  )
+    return "help";
 
   const scriptName = COMMAND_SCRIPTS.get(command);
   if (!scriptName) throw new Error(`Unknown command: ${command}`);
@@ -47,10 +56,14 @@ export function main(argv = process.argv.slice(2)): number {
     return 0;
   }
 
-  const result = spawnSync(process.execPath, [resolved.script, ...resolved.args], {
-    cwd: process.cwd(),
-    stdio: "inherit",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [resolved.script, ...resolved.args],
+    {
+      cwd: process.cwd(),
+      stdio: "inherit",
+    },
+  );
   if (result.error) {
     console.error(result.error.message);
     return 1;

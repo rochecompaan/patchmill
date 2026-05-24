@@ -79,7 +79,9 @@ export type AgentIssueRunCheckpoint =
   | "doneLabelEnsured"
   | "doneLabelApplied";
 
-export type AgentIssueRunCheckpoints = Partial<Record<AgentIssueRunCheckpoint, true>>;
+export type AgentIssueRunCheckpoints = Partial<
+  Record<AgentIssueRunCheckpoint, true>
+>;
 
 export type AgentIssueRunState = {
   issueNumber: number;

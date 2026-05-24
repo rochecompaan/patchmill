@@ -14,68 +14,105 @@ test("writeRunState creates issue run-state files", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-"));
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
-  const state = await writeRunState(runStateDir, {
-    issueNumber: 42,
-    title: "Add once runner helpers",
-    status: "claimed",
-    branch: "agent/issue-42-add-once-runner-helpers",
-    worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    planPath: "docs/plans/2026-05-09-issue-42-add-once-runner-helpers.md",
-    planCommit: "abc123",
-  }, "2026-05-09T12:00:00.000Z");
+  const state = await writeRunState(
+    runStateDir,
+    {
+      issueNumber: 42,
+      title: "Add once runner helpers",
+      status: "claimed",
+      branch: "agent/issue-42-add-once-runner-helpers",
+      worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
+      planPath: "docs/plans/2026-05-09-issue-42-add-once-runner-helpers.md",
+      planCommit: "abc123",
+    },
+    "2026-05-09T12:00:00.000Z",
+  );
 
-  assert.equal(runStatePath(runStateDir, 42), join(runStateDir, "issue-42.json"));
+  assert.equal(
+    runStatePath(runStateDir, 42),
+    join(runStateDir, "issue-42.json"),
+  );
   assert.equal(state.status, "claimed");
   assert.equal(state.createdAt, "2026-05-09T12:00:00.000Z");
   assert.equal(state.updatedAt, "2026-05-09T12:00:00.000Z");
   assert.equal(state.claimedAt, "2026-05-09T12:00:00.000Z");
   assert.equal(state.planCommit, "abc123");
 
-  const saved = JSON.parse(await readFile(runStatePath(runStateDir, 42), "utf8"));
+  const saved = JSON.parse(
+    await readFile(runStatePath(runStateDir, 42), "utf8"),
+  );
   assert.equal(saved.issueNumber, 42);
   assert.equal(saved.status, "claimed");
 });
 
 test("writeRunState preserves issue details, timestamps, and last error across status updates", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-updates-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-updates-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
-  await writeRunState(runStateDir, {
-    issueNumber: 42,
-    title: "Add once runner helpers",
-    status: "claimed",
-    branch: "agent/issue-42-add-once-runner-helpers",
-    worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-  }, "2026-05-09T12:00:00.000Z");
+  await writeRunState(
+    runStateDir,
+    {
+      issueNumber: 42,
+      title: "Add once runner helpers",
+      status: "claimed",
+      branch: "agent/issue-42-add-once-runner-helpers",
+      worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
+    },
+    "2026-05-09T12:00:00.000Z",
+  );
 
-  await writeRunState(runStateDir, {
-    issueNumber: 42,
-    status: "planning",
-    planPath: "docs/plans/2026-05-09-issue-42-add-once-runner-helpers.md",
-    planCommit: "abc123",
-  }, "2026-05-09T12:05:00.000Z");
+  await writeRunState(
+    runStateDir,
+    {
+      issueNumber: 42,
+      status: "planning",
+      planPath: "docs/plans/2026-05-09-issue-42-add-once-runner-helpers.md",
+      planCommit: "abc123",
+    },
+    "2026-05-09T12:05:00.000Z",
+  );
 
-  await writeRunState(runStateDir, {
-    issueNumber: 42,
-    status: "implementing",
-  }, "2026-05-09T12:10:00.000Z");
+  await writeRunState(
+    runStateDir,
+    {
+      issueNumber: 42,
+      status: "implementing",
+    },
+    "2026-05-09T12:10:00.000Z",
+  );
 
-  await writeRunState(runStateDir, {
-    issueNumber: 42,
-    status: "blocked",
-    lastError: "Waiting for API clarification",
-  }, "2026-05-09T12:15:00.000Z");
+  await writeRunState(
+    runStateDir,
+    {
+      issueNumber: 42,
+      status: "blocked",
+      lastError: "Waiting for API clarification",
+    },
+    "2026-05-09T12:15:00.000Z",
+  );
 
-  const finished = await writeRunState(runStateDir, {
-    issueNumber: 42,
-    status: "finished",
-  }, "2026-05-09T12:20:00.000Z");
+  const finished = await writeRunState(
+    runStateDir,
+    {
+      issueNumber: 42,
+      status: "finished",
+    },
+    "2026-05-09T12:20:00.000Z",
+  );
 
   assert.equal(finished.issueNumber, 42);
   assert.equal(finished.title, "Add once runner helpers");
   assert.equal(finished.branch, "agent/issue-42-add-once-runner-helpers");
-  assert.equal(finished.worktreePath, ".worktrees/agent-issue-42-add-once-runner-helpers");
-  assert.equal(finished.planPath, "docs/plans/2026-05-09-issue-42-add-once-runner-helpers.md");
+  assert.equal(
+    finished.worktreePath,
+    ".worktrees/agent-issue-42-add-once-runner-helpers",
+  );
+  assert.equal(
+    finished.planPath,
+    "docs/plans/2026-05-09-issue-42-add-once-runner-helpers.md",
+  );
   assert.equal(finished.planCommit, "abc123");
   assert.equal(finished.createdAt, "2026-05-09T12:00:00.000Z");
   assert.equal(finished.claimedAt, "2026-05-09T12:00:00.000Z");
@@ -91,7 +128,9 @@ test("writeRunState preserves issue details, timestamps, and last error across s
 });
 
 test("writeRunState merges checkpoint updates", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-checkpoints-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-checkpoints-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   await writeRunState(
@@ -125,7 +164,9 @@ test("writeRunState merges checkpoint updates", async () => {
 });
 
 test("writeRunState keeps completed checkpoints monotonic", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-monotonic-checkpoints-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-monotonic-checkpoints-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   await writeRunState(
@@ -155,7 +196,9 @@ test("writeRunState keeps completed checkpoints monotonic", async () => {
 });
 
 test("writeRunState merges failure comment keys uniquely", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-failure-comment-keys-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-failure-comment-keys-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   await writeRunState(
@@ -174,7 +217,10 @@ test("writeRunState merges failure comment keys uniquely", async () => {
     {
       issueNumber: 52,
       status: "planning",
-      failureCommentKeys: ["unexpected-failure:planning", "unexpected-failure:implementing"],
+      failureCommentKeys: [
+        "unexpected-failure:planning",
+        "unexpected-failure:implementing",
+      ],
     },
     "2026-05-14T07:05:00.000Z",
   );
@@ -186,7 +232,9 @@ test("writeRunState merges failure comment keys uniquely", async () => {
 });
 
 test("writeRunState can reset stale checkpoints while clearing stale worktree and implementation fields", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-reset-checkpoints-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-reset-checkpoints-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   await writeRunState(
@@ -232,7 +280,9 @@ test("writeRunState can reset stale checkpoints while clearing stale worktree an
 });
 
 test("writeRunState clears stale handoff comment state when resetting checkpoints", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-reset-handoff-comment-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-reset-handoff-comment-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   await writeRunState(
@@ -265,7 +315,9 @@ test("writeRunState clears stale handoff comment state when resetting checkpoint
 });
 
 test("writeRunState synchronizes handoff comment checkpoint and top-level flag", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-handoff-comment-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-handoff-comment-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   const topLevelState = await writeRunState(
@@ -298,7 +350,9 @@ test("writeRunState synchronizes handoff comment checkpoint and top-level flag",
 });
 
 test("writeRunState persists implementation result fields needed for resume", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-implementation-result-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-implementation-result-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   const state = await writeRunState(
@@ -329,7 +383,9 @@ test("writeRunState persists implementation result fields needed for resume", as
 });
 
 test("writeRunState treats implementation result state atomically across status transitions", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-implementation-atomic-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-implementation-atomic-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   const prState = await writeRunState(
@@ -369,7 +425,9 @@ test("writeRunState treats implementation result state atomically across status 
 });
 
 test("writeRunState clears stale optional implementation fields when replacing implementation results", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-implementation-replacement-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-run-state-implementation-replacement-"),
+  );
   const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
 
   await writeRunState(

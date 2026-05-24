@@ -58,10 +58,10 @@ The default skills keep the workflow small and explicit:
 
 Customize `skills` when your repository needs different procedures. Optional
 skill hooks include `toolchain`, `review`, `visualEvidence`, and `landing`; see
-[skills configuration](docs/skills.md) for details and [configuration
-examples](docs/configuration.md) for a fuller `patchmill.config.json`. For full
-implementation runs, also set `pi.team` or `PATCHMILL_AGENT_TEAM` to a Pi
-agent-team preset available on your machine.
+[skills configuration](docs/skills.md) for details and
+[configuration examples](docs/configuration.md) for a fuller
+`patchmill.config.json`. For full implementation runs, also set `pi.team` or
+`PATCHMILL_AGENT_TEAM` to a Pi agent-team preset available on your machine.
 
 ## Environment variables
 
@@ -92,10 +92,11 @@ These paths are local workflow state, not source documentation.
 
 ## Issue-agent workflows
 
-For a deeper newcomer-friendly walkthrough, [issue-agent
-workflows](docs/issue-agent-workflows.md) explains how triage selects and labels
-issues, how `run-once` claims work, how Pi planning and implementation prompts
-are shaped, and where Patchmill records progress and safety checkpoints.
+For a deeper newcomer-friendly walkthrough,
+[issue-agent workflows](docs/issue-agent-workflows.md) explains how triage
+selects and labels issues, how `run-once` claims work, how Pi planning and
+implementation prompts are shaped, and where Patchmill records progress and
+safety checkpoints.
 
 ## Reference docs
 

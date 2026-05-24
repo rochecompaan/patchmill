@@ -15,7 +15,11 @@ function normalizeLabel(text: string): string {
   return text.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function readCapture(match: RegExpMatchArray, groupName: string, index: number): string | undefined {
+function readCapture(
+  match: RegExpMatchArray,
+  groupName: string,
+  index: number,
+): string | undefined {
   return match.groups?.[groupName] ?? match[index];
 }
 
@@ -24,7 +28,9 @@ export async function readPlanTaskLabels(
   planPath: string,
   taskContract: PatchmillPiTaskContract = DEFAULT_PI_TASK_CONTRACT,
 ): Promise<PlanTaskLabel[]> {
-  const absolutePath = isAbsolute(planPath) ? planPath : join(repoRoot, planPath);
+  const absolutePath = isAbsolute(planPath)
+    ? planPath
+    : join(repoRoot, planPath);
   let content: string;
   try {
     content = await readFile(absolutePath, "utf8");

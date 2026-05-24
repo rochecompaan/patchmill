@@ -12,12 +12,33 @@
     "triage": "node scripts/agent-issue-triage.ts",
     "run-once": "node scripts/agent-issue-once.ts",
     "audit:generalization": "bash ./scripts/audit-generalization.sh",
+    "lint": "npm run format:check && npm run lint:ts && npm run lint:md",
+    "lint:ts": "eslint \"{bin,scripts,src,test-support}/**/*.ts\" --max-warnings=0",
+    "lint:md": "markdownlint-cli2",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky",
     "test": "node --test \"bin/*.test.ts\" \"scripts/agent-issue-triage/*.test.ts\" \"scripts/agent-issue/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
     "test:cli": "node --test bin/*.test.ts",
     "test:triage": "node --test scripts/agent-issue-triage/*.test.ts",
     "test:run-once": "node --test scripts/agent-issue/*.test.ts"
   },
+  "lint-staged": {
+    "*.{ts,js,json,md}": "prettier --write",
+    "*.ts": "eslint --max-warnings=0",
+    "*.md": "markdownlint-cli2"
+  },
   "engines": {
     "node": ">=24"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.0",
+    "globals": "^17.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
+    "markdownlint-cli2": "^0.22.1",
+    "prettier": "^3.8.3",
+    "typescript-eslint": "^8.59.4"
   }
 }

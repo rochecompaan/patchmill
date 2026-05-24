@@ -1,6 +1,11 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { CommandRunner, IssueSummary, LabelChangePlan, LabelDefinition } from "./types.ts";
+import type {
+  CommandRunner,
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "./types.ts";
 
 const ISSUE_PAGE_SIZE = 1000;
 
@@ -64,13 +69,19 @@ function teaRepo(repoRoot: string): string {
     const configPath = gitConfigPath(repoRoot);
     if (!configPath || !existsSync(configPath)) return repoRoot;
     const remoteUrl = originRemoteUrl(readFileSync(configPath, "utf8"));
-    return remoteUrl ? (repoSlugFromRemoteUrl(remoteUrl) ?? repoRoot) : repoRoot;
+    return remoteUrl
+      ? (repoSlugFromRemoteUrl(remoteUrl) ?? repoRoot)
+      : repoRoot;
   } catch {
     return repoRoot;
   }
 }
 
-function withTeaContext(args: string[], repoRoot: string, teaLogin?: string): string[] {
+function withTeaContext(
+  args: string[],
+  repoRoot: string,
+  teaLogin?: string,
+): string[] {
   const repoArgs = insertBeforeSeparator(args, ["--repo", teaRepo(repoRoot)]);
   if (!teaLogin) return repoArgs;
   return insertBeforeSeparator(repoArgs, ["--login", teaLogin]);
@@ -80,7 +91,10 @@ function parseJson(stdout: string, context: string): unknown {
   try {
     return JSON.parse(stdout);
   } catch (error) {
-    throw new Error(`${context} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `${context} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 }
 
@@ -96,7 +110,13 @@ function labelNames(labels: unknown): string[] {
   return labels
     .map((label) => {
       if (typeof label === "string") return label;
-      if (label && typeof label === "object" && "name" in label && typeof label.name === "string") return label.name;
+      if (
+        label &&
+        typeof label === "object" &&
+        "name" in label &&
+        typeof label.name === "string"
+      )
+        return label.name;
       throw new Error(`Unexpected label payload: ${JSON.stringify(label)}`);
     })
     .sort((a, b) => a.localeCompare(b));
@@ -104,13 +124,20 @@ function labelNames(labels: unknown): string[] {
 
 function issueNumber(value: unknown): number | undefined {
   if (Number.isInteger(value) && Number(value) > 0) return Number(value);
-  if (typeof value === "string" && /^[1-9]\d*$/.test(value)) return Number(value);
+  if (typeof value === "string" && /^[1-9]\d*$/.test(value))
+    return Number(value);
   return undefined;
 }
 
 function authorName(author: unknown): string | undefined {
   if (typeof author === "string") return author;
-  if (author && typeof author === "object" && "login" in author && typeof author.login === "string") return author.login;
+  if (
+    author &&
+    typeof author === "object" &&
+    "login" in author &&
+    typeof author.login === "string"
+  )
+    return author.login;
   return undefined;
 }
 
@@ -119,23 +146,30 @@ function stripAnsi(value: string): string {
 }
 
 function normalizeTeaLine(line: string): string {
-  return stripAnsi(line).replace(/\s+$/u, "").replace(/^ {0,2}/u, "");
+  return stripAnsi(line)
+    .replace(/\s+$/u, "")
+    .replace(/^ {0,2}/u, "");
 }
 
 function trimBlankEdges(lines: string[]): string[] {
   const trimmed = [...lines];
   while (trimmed.length > 0 && trimmed[0].trim().length === 0) trimmed.shift();
-  while (trimmed.length > 0 && trimmed[trimmed.length - 1].trim().length === 0) trimmed.pop();
+  while (trimmed.length > 0 && trimmed[trimmed.length - 1].trim().length === 0)
+    trimmed.pop();
   return trimmed;
 }
 
 function parseIssueComments(stdout: string): unknown[] {
   const lines = stdout.split(/\r?\n/u).map(normalizeTeaLine);
-  const commentsStart = lines.findIndex((line) => line.trim() === "## Comments");
+  const commentsStart = lines.findIndex(
+    (line) => line.trim() === "## Comments",
+  );
   if (commentsStart < 0) return [];
 
   const comments: Array<{ author: string; created: string; body: string }> = [];
-  let current: { author: string; created: string; bodyLines: string[] } | undefined;
+  let current:
+    | { author: string; created: string; bodyLines: string[] }
+    | undefined;
 
   const flush = () => {
     if (!current) return;
@@ -148,7 +182,9 @@ function parseIssueComments(stdout: string): unknown[] {
   };
 
   for (const line of lines.slice(commentsStart + 1)) {
-    const header = /^\*\*@([^*]+)\*\* wrote on ([^:]+:\d{2}):$/u.exec(line.trim());
+    const header = /^\*\*@([^*]+)\*\* wrote on ([^:]+:\d{2}):$/u.exec(
+      line.trim(),
+    );
     if (header) {
       flush();
       current = { author: header[1], created: header[2], bodyLines: [] };
@@ -167,50 +203,85 @@ function parseIssueComments(stdout: string): unknown[] {
   return comments;
 }
 
-async function fetchIssueComments(runner: CommandRunner, repoRoot: string, issueNumber: number, teaLogin?: string): Promise<unknown[]> {
+async function fetchIssueComments(
+  runner: CommandRunner,
+  repoRoot: string,
+  issueNumber: number,
+  teaLogin?: string,
+): Promise<unknown[]> {
   const result = await runner.run(
     "tea",
-    withTeaContext(["issues", String(issueNumber), "--comments"], repoRoot, teaLogin),
+    withTeaContext(
+      ["issues", String(issueNumber), "--comments"],
+      repoRoot,
+      teaLogin,
+    ),
     { cwd: repoRoot },
   );
-  if (result.code !== 0) throw new Error(`tea issue comments failed for #${issueNumber}: ${result.stderr || result.stdout}`);
+  if (result.code !== 0)
+    throw new Error(
+      `tea issue comments failed for #${issueNumber}: ${result.stderr || result.stdout}`,
+    );
   return parseIssueComments(result.stdout);
 }
 
-export async function hydrateIssueComments(runner: CommandRunner, repoRoot: string, issues: IssueSummary[], teaLogin?: string): Promise<void> {
+export async function hydrateIssueComments(
+  runner: CommandRunner,
+  repoRoot: string,
+  issues: IssueSummary[],
+  teaLogin?: string,
+): Promise<void> {
   for (const issue of issues) {
-    issue.comments = await fetchIssueComments(runner, repoRoot, issue.number, teaLogin);
+    issue.comments = await fetchIssueComments(
+      runner,
+      repoRoot,
+      issue.number,
+      teaLogin,
+    );
   }
 }
 
-export async function listOpenIssues(runner: CommandRunner, repoRoot: string, teaLogin?: string): Promise<IssueSummary[]> {
+export async function listOpenIssues(
+  runner: CommandRunner,
+  repoRoot: string,
+  teaLogin?: string,
+): Promise<IssueSummary[]> {
   const issues: IssueSummary[] = [];
 
   for (let page = 1; ; page += 1) {
     const result = await runner.run(
       "tea",
-      withTeaContext([
-        "issues",
-        "list",
-        "--state",
-        "open",
-        "--fields",
-        "index,title,body,state,labels,author,updated,comments",
-        "--page",
-        String(page),
-        "--limit",
-        String(ISSUE_PAGE_SIZE),
-        "--output",
-        "json",
-      ], repoRoot, teaLogin),
+      withTeaContext(
+        [
+          "issues",
+          "list",
+          "--state",
+          "open",
+          "--fields",
+          "index,title,body,state,labels,author,updated,comments",
+          "--page",
+          String(page),
+          "--limit",
+          String(ISSUE_PAGE_SIZE),
+          "--output",
+          "json",
+        ],
+        repoRoot,
+        teaLogin,
+      ),
       { cwd: repoRoot },
     );
-    if (result.code !== 0) throw new Error(`tea issues list failed: ${result.stderr || result.stdout}`);
+    if (result.code !== 0)
+      throw new Error(
+        `tea issues list failed: ${result.stderr || result.stdout}`,
+      );
     const parsed = parseJson(result.stdout, "tea issues list");
-    if (!Array.isArray(parsed)) throw new Error("tea issues list returned a non-array payload");
+    if (!Array.isArray(parsed))
+      throw new Error("tea issues list returned a non-array payload");
 
     const pageIssues = parsed.map((entry) => {
-      if (!entry || typeof entry !== "object") throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
+      if (!entry || typeof entry !== "object")
+        throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
       const issue = entry as Record<string, unknown>;
       const number = issueNumber(issue.index);
       if (number === undefined || typeof issue.title !== "string") {
@@ -236,31 +307,79 @@ export async function listOpenIssues(runner: CommandRunner, repoRoot: string, te
   return issues.sort((a, b) => a.number - b.number);
 }
 
-export async function listLabels(runner: CommandRunner, repoRoot: string, teaLogin?: string): Promise<string[]> {
-  const result = await runner.run("tea", withTeaContext(["labels", "list", "--limit", "1000", "--output", "json"], repoRoot, teaLogin), { cwd: repoRoot });
-  if (result.code !== 0) throw new Error(`tea labels list failed: ${result.stderr || result.stdout}`);
+export async function listLabels(
+  runner: CommandRunner,
+  repoRoot: string,
+  teaLogin?: string,
+): Promise<string[]> {
+  const result = await runner.run(
+    "tea",
+    withTeaContext(
+      ["labels", "list", "--limit", "1000", "--output", "json"],
+      repoRoot,
+      teaLogin,
+    ),
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0)
+    throw new Error(
+      `tea labels list failed: ${result.stderr || result.stdout}`,
+    );
   const parsed = parseJson(result.stdout, "tea labels list");
-  if (!Array.isArray(parsed)) throw new Error("tea labels list returned a non-array payload");
+  if (!Array.isArray(parsed))
+    throw new Error("tea labels list returned a non-array payload");
 
   return parsed
     .map((entry) => {
       if (typeof entry === "string") return entry;
-      if (entry && typeof entry === "object" && "name" in entry && typeof entry.name === "string") return entry.name;
+      if (
+        entry &&
+        typeof entry === "object" &&
+        "name" in entry &&
+        typeof entry.name === "string"
+      )
+        return entry.name;
       throw new Error(`Unexpected label payload: ${JSON.stringify(entry)}`);
     })
     .sort((a, b) => a.localeCompare(b));
 }
 
-export async function createLabel(runner: CommandRunner, repoRoot: string, label: LabelDefinition, teaLogin?: string): Promise<void> {
+export async function createLabel(
+  runner: CommandRunner,
+  repoRoot: string,
+  label: LabelDefinition,
+  teaLogin?: string,
+): Promise<void> {
   const result = await runner.run(
     "tea",
-    withTeaContext(["labels", "create", "--name", label.name, "--color", label.color, "--description", label.description], repoRoot, teaLogin),
+    withTeaContext(
+      [
+        "labels",
+        "create",
+        "--name",
+        label.name,
+        "--color",
+        label.color,
+        "--description",
+        label.description,
+      ],
+      repoRoot,
+      teaLogin,
+    ),
     { cwd: repoRoot },
   );
-  if (result.code !== 0) throw new Error(`tea labels create failed for ${label.name}: ${result.stderr || result.stdout}`);
+  if (result.code !== 0)
+    throw new Error(
+      `tea labels create failed for ${label.name}: ${result.stderr || result.stdout}`,
+    );
 }
 
-export async function applyIssueLabels(runner: CommandRunner, repoRoot: string, change: LabelChangePlan, teaLogin?: string): Promise<void> {
+export async function applyIssueLabels(
+  runner: CommandRunner,
+  repoRoot: string,
+  change: LabelChangePlan,
+  teaLogin?: string,
+): Promise<void> {
   if (change.addLabels.length === 0 && change.removeLabels.length === 0) return;
 
   const args = ["issues", "edit", String(change.issueNumber)];
@@ -271,13 +390,36 @@ export async function applyIssueLabels(runner: CommandRunner, repoRoot: string, 
     args.push("--add-labels", change.addLabels.join(","));
   }
 
-  const result = await runner.run("tea", withTeaContext(args, repoRoot, teaLogin), { cwd: repoRoot });
+  const result = await runner.run(
+    "tea",
+    withTeaContext(args, repoRoot, teaLogin),
+    { cwd: repoRoot },
+  );
   if (result.code !== 0) {
-    throw new Error(`tea issues edit labels failed for #${change.issueNumber}: ${result.stderr || result.stdout}`);
+    throw new Error(
+      `tea issues edit labels failed for #${change.issueNumber}: ${result.stderr || result.stdout}`,
+    );
   }
 }
 
-export async function commentIssue(runner: CommandRunner, repoRoot: string, issueNumber: number, body: string, teaLogin?: string): Promise<void> {
-  const result = await runner.run("tea", withTeaContext(["comment", String(issueNumber), "--", body], repoRoot, teaLogin), { cwd: repoRoot });
-  if (result.code !== 0) throw new Error(`tea comment failed for #${issueNumber}: ${result.stderr || result.stdout}`);
+export async function commentIssue(
+  runner: CommandRunner,
+  repoRoot: string,
+  issueNumber: number,
+  body: string,
+  teaLogin?: string,
+): Promise<void> {
+  const result = await runner.run(
+    "tea",
+    withTeaContext(
+      ["comment", String(issueNumber), "--", body],
+      repoRoot,
+      teaLogin,
+    ),
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0)
+    throw new Error(
+      `tea comment failed for #${issueNumber}: ${result.stderr || result.stdout}`,
+    );
 }

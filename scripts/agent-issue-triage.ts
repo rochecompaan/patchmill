@@ -69,7 +69,11 @@ export async function loadCliConfig(
     return parseArgs(args, repoRoot, env);
   }
 
-  const { config: patchmillConfig } = await loadPatchmillConfigState(repoRoot, env, args);
+  const { config: patchmillConfig } = await loadPatchmillConfigState(
+    repoRoot,
+    env,
+    args,
+  );
   return parseArgs(args, repoRoot, env, patchmillConfig);
 }
 
@@ -89,7 +93,9 @@ async function main(): Promise<void> {
   }
 }
 
-const isMain = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
+const isMain = process.argv[1]
+  ? import.meta.url === pathToFileURL(process.argv[1]).href
+  : false;
 
 if (isMain) {
   main().catch((error) => {

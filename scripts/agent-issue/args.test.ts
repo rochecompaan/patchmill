@@ -4,7 +4,11 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { cwd } from "node:process";
 import { join } from "node:path";
-import { HELP_TEXT, loadCliConfig, summarizeResult } from "../agent-issue-once.ts";
+import {
+  HELP_TEXT,
+  loadCliConfig,
+  summarizeResult,
+} from "../agent-issue-once.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import {
   LEGACY_AGENT_TEAM_ENV,
@@ -32,7 +36,10 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.runStateDir, join(cwd(), ".patchmill", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
   assert.equal(config.worktreePrefix, "patchmill-issue-");
-  assert.deepEqual(config.cleanStatusIgnorePrefixes, [".patchmill/runs/", ".patchmill/triage-runs/"]);
+  assert.deepEqual(config.cleanStatusIgnorePrefixes, [
+    ".patchmill/runs/",
+    ".patchmill/triage-runs/",
+  ]);
   assert.deepEqual(config.cleanupHooks, []);
   assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
   assert.equal(config.readyLabel, "agent-ready");
@@ -234,26 +241,29 @@ test("loadCliConfig uses normalized Patchmill defaults when no config file exist
 
 test("loadCliConfig applies normalized patchmill defaults for run-once", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
-  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
-    host: { login: "config-bot" },
-    pi: { team: "config-team" },
-    labels: {
-      ready: "ready-for-bots",
-      needsInfo: "needs-clarification",
-      unsuitable: "manual-only",
-      inProgress: "claimed",
-      done: "done-by-bot",
-      blocked: "waiting",
-      priorities: ["priority:p1", "priority:p2"],
-    },
-    paths: {
-      plansDir: "pm-plans",
-      runStateDir: ".patchmill/runs",
-      triageLogDir: ".patchmill/triage-runs",
-      worktreeDir: ".patchmill/worktrees",
-      cleanStatusIgnorePrefixes: ["scratch/", ".patchmill/custom-runs/"],
-    },
-  }));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      host: { login: "config-bot" },
+      pi: { team: "config-team" },
+      labels: {
+        ready: "ready-for-bots",
+        needsInfo: "needs-clarification",
+        unsuitable: "manual-only",
+        inProgress: "claimed",
+        done: "done-by-bot",
+        blocked: "waiting",
+        priorities: ["priority:p1", "priority:p2"],
+      },
+      paths: {
+        plansDir: "pm-plans",
+        runStateDir: ".patchmill/runs",
+        triageLogDir: ".patchmill/triage-runs",
+        worktreeDir: ".patchmill/worktrees",
+        cleanStatusIgnorePrefixes: ["scratch/", ".patchmill/custom-runs/"],
+      },
+    }),
+  );
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
     [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
@@ -266,34 +276,49 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
   assert.equal(config.worktreePrefix, "patchmill-issue-");
-  assert.deepEqual(config.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
+  assert.deepEqual(config.cleanStatusIgnorePrefixes, [
+    "scratch/",
+    ".patchmill/custom-runs/",
+  ]);
   assert.deepEqual(config.cleanupHooks, []);
   assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
   assert.equal(config.readyLabel, "ready-for-bots");
-  assert.deepEqual(config.triagePolicy?.runOnceSelection.priorityOrder, ["priority:p1", "priority:p2"]);
-  assert.deepEqual(config.triagePolicy?.runOnceSelection.excludedLabels, ["needs-clarification", "manual-only", "claimed", "done-by-bot", "waiting"]);
+  assert.deepEqual(config.triagePolicy?.runOnceSelection.priorityOrder, [
+    "priority:p1",
+    "priority:p2",
+  ]);
+  assert.deepEqual(config.triagePolicy?.runOnceSelection.excludedLabels, [
+    "needs-clarification",
+    "manual-only",
+    "claimed",
+    "done-by-bot",
+    "waiting",
+  ]);
 });
 
 test("loadCliConfig passes configured skills and project policy through to run-once prompts", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
-  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
-    skills: {
-      implementation: "sentinel-implementation",
-      visualEvidence: "sentinel-screenshots",
-      landing: "sentinel-landing",
-    },
-    projectPolicy: {
-      ...DEFAULT_PATCHMILL_POLICY,
-      projectName: "Sentinel",
-      visualEvidence: {
-        referenceScreenshotPaths: ["docs/sentinel/web/"],
-        prEvidenceExample: {
-          screenshotPath: ".tmp/issue-42-sentinel-after.png",
-          caption: "Sentinel after the change",
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      skills: {
+        implementation: "sentinel-implementation",
+        visualEvidence: "sentinel-screenshots",
+        landing: "sentinel-landing",
+      },
+      projectPolicy: {
+        ...DEFAULT_PATCHMILL_POLICY,
+        projectName: "Sentinel",
+        visualEvidence: {
+          referenceScreenshotPaths: ["docs/sentinel/web/"],
+          prEvidenceExample: {
+            screenshotPath: ".tmp/issue-42-sentinel-after.png",
+            caption: "Sentinel after the change",
+          },
         },
       },
-    },
-  }));
+    }),
+  );
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {});
 
@@ -301,20 +326,29 @@ test("loadCliConfig passes configured skills and project policy through to run-o
   assert.equal(config.skills.implementation, "sentinel-implementation");
   assert.equal(config.skills.visualEvidence, "sentinel-screenshots");
   assert.equal(config.skills.landing, "sentinel-landing");
-  assert.deepEqual(config.projectPolicy.visualEvidence.referenceScreenshotPaths, ["docs/sentinel/web/"]);
-  assert.equal(config.projectPolicy.visualEvidence.prEvidenceExample?.screenshotPath, ".tmp/issue-42-sentinel-after.png");
+  assert.deepEqual(
+    config.projectPolicy.visualEvidence.referenceScreenshotPaths,
+    ["docs/sentinel/web/"],
+  );
+  assert.equal(
+    config.projectPolicy.visualEvidence.prEvidenceExample?.screenshotPath,
+    ".tmp/issue-42-sentinel-after.png",
+  );
 });
 
 test("loadCliConfig ignores removed legacy tea login when patchmill config only customizes paths", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
-  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
-    paths: {
-      plansDir: "pm-plans",
-      runStateDir: ".patchmill/runs",
-      triageLogDir: ".patchmill/triage-runs",
-      worktreeDir: ".patchmill/worktrees",
-    },
-  }));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      paths: {
+        plansDir: "pm-plans",
+        runStateDir: ".patchmill/runs",
+        triageLogDir: ".patchmill/triage-runs",
+        worktreeDir: ".patchmill/worktrees",
+      },
+    }),
+  );
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
     [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
@@ -327,10 +361,13 @@ test("loadCliConfig ignores removed legacy tea login when patchmill config only 
 
 test("loadCliConfig lets run-once login and agent-team flags override patchmill config", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
-  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
-    host: { login: "config-bot" },
-    pi: { team: "config-team" },
-  }));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      host: { login: "config-bot" },
+      pi: { team: "config-team" },
+    }),
+  );
 
   const hostLogin = await loadCliConfig(
     ["--dry-run", "--host-login", "host-bot", "--agent-team", "cli-team"],
@@ -351,7 +388,11 @@ test("loadCliConfig lets run-once login and agent-team flags override patchmill 
 
 test("loadCliConfig shows help without reading malformed patchmill config", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
-  await writeFile(join(repoRoot, "patchmill.config.json"), "{not valid json", "utf8");
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    "{not valid json",
+    "utf8",
+  );
 
   const noArgs = await loadCliConfig([], repoRoot, {});
   const helpLong = await loadCliConfig(["--help"], repoRoot, {});

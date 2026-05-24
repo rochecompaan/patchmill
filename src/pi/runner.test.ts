@@ -7,8 +7,15 @@ import { PiRunner } from "./runner.ts";
 import { parsePiResult } from "../../scripts/agent-issue/pi.ts";
 import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
 import type { ResolvedAgentTeam } from "../../scripts/agent-issue/agent-team.ts";
-import type { AgentIssueProgressEvent, ProgressReporter } from "../../scripts/agent-issue/progress.ts";
-import type { CommandResult, CommandRunner, IssueSummary } from "../../scripts/agent-issue-triage/types.ts";
+import type {
+  AgentIssueProgressEvent,
+  ProgressReporter,
+} from "../../scripts/agent-issue/progress.ts";
+import type {
+  CommandResult,
+  CommandRunner,
+  IssueSummary,
+} from "../../scripts/agent-issue-triage/types.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
 import type { ImplementationPiInput } from "./types.ts";
 
@@ -27,7 +34,13 @@ const issue: IssueSummary = {
   state: "open",
   author: "ana",
   updated: "2026-05-23T12:00:00Z",
-  comments: [{ author: "sam", created: "2026-05-23T12:30:00Z", body: "Please preserve resume context." }],
+  comments: [
+    {
+      author: "sam",
+      created: "2026-05-23T12:30:00Z",
+      body: "Please preserve resume context.",
+    },
+  ],
 };
 
 const agentTeam: ResolvedAgentTeam = {
@@ -47,7 +60,9 @@ function createFakeRunner(
     calls,
     async run(command, args, options = {}) {
       const promptArg = args.find((arg) => arg.startsWith("@"));
-      const prompt = promptArg ? await readFile(promptArg.slice(1), "utf8") : "";
+      const prompt = promptArg
+        ? await readFile(promptArg.slice(1), "utf8")
+        : "";
       const call = { command, args: [...args], cwd: options.cwd, prompt };
       calls.push(call);
       return await respond(call);
@@ -71,23 +86,28 @@ function createProgressRecorder(): {
 }
 
 test("Pi result parser accepts merged status", () => {
-  assert.deepEqual(parsePiResult(JSON.stringify({
-    status: "merged",
-    branch: "agent/issue-1-fix",
-    mergeCommit: "abc123",
-    commits: ["def456"],
-    validation: ["npm test passed"],
-    reviewSummary: "review passed",
-    landingDecision: "direct squash-landed: simple localized bug fix",
-  })), {
-    status: "merged",
-    branch: "agent/issue-1-fix",
-    mergeCommit: "abc123",
-    commits: ["def456"],
-    validation: ["npm test passed"],
-    reviewSummary: "review passed",
-    landingDecision: "direct squash-landed: simple localized bug fix",
-  });
+  assert.deepEqual(
+    parsePiResult(
+      JSON.stringify({
+        status: "merged",
+        branch: "agent/issue-1-fix",
+        mergeCommit: "abc123",
+        commits: ["def456"],
+        validation: ["npm test passed"],
+        reviewSummary: "review passed",
+        landingDecision: "direct squash-landed: simple localized bug fix",
+      }),
+    ),
+    {
+      status: "merged",
+      branch: "agent/issue-1-fix",
+      mergeCommit: "abc123",
+      commits: ["def456"],
+      validation: ["npm test passed"],
+      reviewSummary: "review passed",
+      landingDecision: "direct squash-landed: simple localized bug fix",
+    },
+  );
 });
 
 test("PiRunner triage defaults to the generic project policy", async () => {
@@ -117,11 +137,18 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
     assert.ok(call.args.includes("-p"));
     assert.ok(call.args.includes("--session-dir"));
     assert.match(call.prompt, /Create an implementation plan/);
-    assert.match(call.prompt, new RegExp(planPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(
+      call.prompt,
+      new RegExp(planPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
     assertNoLegacyProjectText(call.prompt);
     return {
       code: 0,
-      stdout: JSON.stringify({ status: "plan-created", planPath, commit: "abc123" }),
+      stdout: JSON.stringify({
+        status: "plan-created",
+        planPath,
+        commit: "abc123",
+      }),
       stderr: "",
     };
   });
@@ -142,7 +169,11 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
     commit: "abc123",
   });
   assert.equal(runner.calls.length, 1);
-  assert.ok(events.some((event) => event.stage === "pi-plan" && event.message === "started pi"));
+  assert.ok(
+    events.some(
+      (event) => event.stage === "pi-plan" && event.message === "started pi",
+    ),
+  );
 });
 
 test("PiRunner plan passes configured ready and needs-info labels into the prompt", async () => {
@@ -150,13 +181,26 @@ test("PiRunner plan passes configured ready and needs-info labels into the promp
   const planPath = "docs/plans/2026-05-23-pi-runner-custom-labels.md";
   const runner = createFakeRunner((call) => {
     assert.equal(call.command, "pi");
-    assert.match(call.prompt, /Treat `ready-for-bots` as meaning the issue is already clear and unambiguous enough to plan/);
-    assert.match(call.prompt, /post directly as a `needs-clarification` comment/);
-    assert.doesNotMatch(call.prompt, /Treat `agent-ready` as meaning the issue is already clear and unambiguous enough to plan/);
+    assert.match(
+      call.prompt,
+      /Treat `ready-for-bots` as meaning the issue is already clear and unambiguous enough to plan/,
+    );
+    assert.match(
+      call.prompt,
+      /post directly as a `needs-clarification` comment/,
+    );
+    assert.doesNotMatch(
+      call.prompt,
+      /Treat `agent-ready` as meaning the issue is already clear and unambiguous enough to plan/,
+    );
     assert.doesNotMatch(call.prompt, /post directly as a `needs-info` comment/);
     return {
       code: 0,
-      stdout: JSON.stringify({ status: "plan-created", planPath, commit: "def456" }),
+      stdout: JSON.stringify({
+        status: "plan-created",
+        planPath,
+        commit: "def456",
+      }),
       stderr: "",
     };
   });
@@ -168,7 +212,13 @@ test("PiRunner plan passes configured ready and needs-info labels into the promp
       title: "Use configured workflow labels",
       body: "This issue is already clear enough for planning.",
       labels: ["ready-for-bots", "bug"],
-      comments: [{ author: "sam", created: "2026-05-23T12:30:00Z", body: "Please use the configured workflow labels." }],
+      comments: [
+        {
+          author: "sam",
+          created: "2026-05-23T12:30:00Z",
+          body: "Please use the configured workflow labels.",
+        },
+      ],
     },
     planPath,
     triageLabels: {
@@ -204,8 +254,14 @@ test("PiRunner implementation uses the worktree root, derives the default landin
     assert.match(call.prompt, /Resume context:/);
     assert.match(call.prompt, /Existing commit: abc123/);
     assert.match(call.prompt, /Worktree: worktrees\/issue-42-fix/);
-    assert.match(call.prompt, /Update local `release\/1\.2` from the `origin` remote\./);
-    assert.doesNotMatch(call.prompt, /Update local `main` from the `origin` remote\./);
+    assert.match(
+      call.prompt,
+      /Update local `release\/1\.2` from the `origin` remote\./,
+    );
+    assert.doesNotMatch(
+      call.prompt,
+      /Update local `main` from the `origin` remote\./,
+    );
     assertNoLegacyProjectText(call.prompt);
     await new Promise((resolve) => setTimeout(resolve, 30));
     return {
@@ -215,7 +271,7 @@ test("PiRunner implementation uses the worktree root, derives the default landin
         branch: "agent/issue-42-fix",
         mergeCommit: "merge123",
         commits: ["commit123"],
-        validation: ["node --test src\/pi\/*.test.ts"],
+        validation: ["node --test src/pi/*.test.ts"],
       }),
       stderr: "",
     };
@@ -257,11 +313,23 @@ test("PiRunner implementation uses the worktree root, derives the default landin
     branch: "agent/issue-42-fix",
     mergeCommit: "merge123",
     commits: ["commit123"],
-    validation: ["node --test src\/pi\/*.test.ts"],
+    validation: ["node --test src/pi/*.test.ts"],
     reviewSummary: undefined,
     landingDecision: undefined,
   });
   assert.equal(runner.calls.length, 1);
-  assert.ok(events.some((event) => event.stage === "pi-implementation" && event.message === "started pi"));
-  assert.ok(events.some((event) => event.stage === "pi-implementation" && event.level === "heartbeat" && event.message.includes("task 1/1")));
+  assert.ok(
+    events.some(
+      (event) =>
+        event.stage === "pi-implementation" && event.message === "started pi",
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.stage === "pi-implementation" &&
+        event.level === "heartbeat" &&
+        event.message.includes("task 1/1"),
+    ),
+  );
 });

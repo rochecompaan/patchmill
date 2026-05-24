@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
@@ -27,14 +33,21 @@ type Call = {
 };
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
-const MINIMAL_PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MINIMAL_PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 
 type MockRunner = CommandRunner & { calls: Call[] };
 
 function withRepo(args: string[], repoRoot: string): string[] {
   const separator = args.indexOf("--");
   if (separator === -1) return [...args, "--repo", repoRoot];
-  return [...args.slice(0, separator), "--repo", repoRoot, ...args.slice(separator)];
+  return [
+    ...args.slice(0, separator),
+    "--repo",
+    repoRoot,
+    ...args.slice(separator),
+  ];
 }
 
 function commentBody(call: Call | undefined): string {
@@ -168,7 +181,10 @@ async function writePiSessionMessage(
   usage?: { input: number; output: number; totalTokens: number },
 ): Promise<void> {
   const sessionDirIndex = call.args.indexOf("--session-dir");
-  assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${call.args.join(" ")}`);
+  assert.ok(
+    sessionDirIndex >= 0,
+    `expected --session-dir in ${call.args.join(" ")}`,
+  );
   const sessionDir = call.args[sessionDirIndex + 1];
   assert.ok(sessionDir);
   const sessionSubdir = join(sessionDir, "--repo--");
@@ -176,13 +192,22 @@ async function writePiSessionMessage(
   await writeFile(
     join(sessionSubdir, "session.jsonl"),
     [
-      JSON.stringify({ type: "session", version: 3, id: "session-1", cwd: call.cwd }),
+      JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "session-1",
+        cwd: call.cwd,
+      }),
       JSON.stringify({
         type: "message",
         id: "assistant-1",
         parentId: null,
         timestamp: "2026-05-09T12:00:00.000Z",
-        message: { role: "assistant", content: [{ type: "text", text }], usage },
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text }],
+          usage,
+        },
       }),
     ].join("\n") + "\n",
     "utf8",
@@ -191,7 +216,10 @@ async function writePiSessionMessage(
 
 async function piSessionPath(call: Call): Promise<string> {
   const sessionDirIndex = call.args.indexOf("--session-dir");
-  assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${call.args.join(" ")}`);
+  assert.ok(
+    sessionDirIndex >= 0,
+    `expected --session-dir in ${call.args.join(" ")}`,
+  );
   const sessionDir = call.args[sessionDirIndex + 1];
   assert.ok(sessionDir);
   const sessionSubdir = join(sessionDir, "--repo--");
@@ -200,7 +228,11 @@ async function piSessionPath(call: Call): Promise<string> {
 }
 
 async function appendPiSessionEntry(call: Call, entry: unknown): Promise<void> {
-  await appendFile(await piSessionPath(call), `${JSON.stringify(entry)}\n`, "utf8");
+  await appendFile(
+    await piSessionPath(call),
+    `${JSON.stringify(entry)}\n`,
+    "utf8",
+  );
 }
 
 async function initializePiSession(call: Call): Promise<void> {
@@ -211,7 +243,11 @@ async function initializePiSession(call: Call): Promise<void> {
   );
 }
 
-function assistantToolCall(toolCallId: string, toolName: string, args: Record<string, unknown>): unknown {
+function assistantToolCall(
+  toolCallId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): unknown {
   return {
     type: "message",
     id: `assistant-${toolCallId}`,
@@ -219,7 +255,9 @@ function assistantToolCall(toolCallId: string, toolName: string, args: Record<st
     timestamp: "2026-05-09T12:00:00.000Z",
     message: {
       role: "assistant",
-      content: [{ type: "toolCall", id: toolCallId, name: toolName, arguments: args }],
+      content: [
+        { type: "toolCall", id: toolCallId, name: toolName, arguments: args },
+      ],
     },
   };
 }
@@ -337,19 +375,20 @@ test("runOneIssue dry-run ignores resumable in-progress issues and previews the 
   );
   const runner = createMockRunner((call) => {
     if (
-      call.command === "tea"
-      && call.args[0] === "issues"
-      && call.args[1] === "list"
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
     ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1"
-          ? issueListPayload([
-            issue(45, ["in-progress", "bug"], "Resume me"),
-            issue(46, ["agent-ready", "priority:high"], "Ready next"),
-          ])
-          : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Resume me"),
+                issue(46, ["agent-ready", "priority:high"], "Ready next"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
@@ -380,16 +419,23 @@ test("runOneIssue dry-run previews agent-ready issues even when saved state has 
   );
   const runner = createMockRunner((call) => {
     if (
-      call.command === "tea"
-      && call.args[0] === "issues"
-      && call.args[1] === "list"
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
     ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1"
-          ? issueListPayload([issue(45, ["agent-ready", "priority:high"], "Stale finished preview")])
-          : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(
+                  45,
+                  ["agent-ready", "priority:high"],
+                  "Stale finished preview",
+                ),
+              ])
+            : "[]",
         stderr: "",
       };
     }
@@ -439,7 +485,11 @@ test("runOneIssue returns no-issue when no eligible issue exists and performs no
 });
 
 test("runOneIssue resumes a single in-progress issue with run state before selecting ready issues", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, planOnly: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
   await writeRunState(
     config.runStateDir,
     {
@@ -465,26 +515,56 @@ test("runOneIssue resumes a single in-progress issue with run state before selec
     "# plan\n",
     "utf8",
   );
-  const inProgress = issue(45, ["in-progress", "bug"], "Resume in-progress issue");
+  const inProgress = issue(
+    45,
+    ["in-progress", "bug"],
+    "Resume in-progress issue",
+  );
   const ready = issue(46, ["agent-ready", "bug"], "New ready issue");
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([inProgress, ready]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([inProgress, ready]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "plan-found");
   assert.equal(result.issue.number, 45);
-  assert.equal(result.planPath, "docs/plans/2026-05-14-issue-45-resume-in-progress-issue.md");
+  assert.equal(
+    result.planPath,
+    "docs/plans/2026-05-14-issue-45-resume-in-progress-issue.md",
+  );
   const editCalls = runner.calls.filter(
-    (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit",
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
   );
   assert.equal(editCalls.length, 1);
   const comments = runner.calls.filter(
@@ -495,7 +575,11 @@ test("runOneIssue resumes a single in-progress issue with run state before selec
 });
 
 test("runOneIssue ignores its own log file in a non-default run-state directory", async () => {
-  const baseConfig = await makeConfig({ dryRun: false, execute: true, planOnly: true });
+  const baseConfig = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
   const config = {
     ...baseConfig,
     runStateDir: join(baseConfig.repoRoot, "logs", "run-state"),
@@ -519,23 +603,44 @@ test("runOneIssue ignores its own log file in a non-default run-state directory"
     NOW.toISOString(),
   );
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
-  const inProgress = issue(45, ["in-progress", "bug"], "Resume in-progress issue");
+  const inProgress = issue(
+    45,
+    ["in-progress", "bug"],
+    "Resume in-progress issue",
+  );
   const ready = issue(46, ["agent-ready", "bug"], "New ready issue");
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([inProgress, ready]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([inProgress, ready]) : "[]",
+        stderr: "",
+      };
     }
     if (call.command === "git" && call.args[0] === "status") {
       return { code: 0, stdout: "?? logs/run-state/run.jsonl\n", stderr: "" };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) {
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, {
@@ -563,15 +668,27 @@ test("runOneIssue rejects multiple resumable in-progress issues", async () => {
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"]), issue(46, ["in-progress"])]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress"]),
+                issue(46, ["in-progress"]),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   await assert.rejects(
@@ -613,7 +730,11 @@ test("runOneIssue rejects an explicit open issue that is not agent-ready with a 
 });
 
 test("runOneIssue rejects a different explicit issue when a resumable run exists", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, issueNumber: 46 });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 46,
+  });
   await writeRunState(
     config.runStateDir,
     { issueNumber: 45, title: "Resume first", status: "planning" },
@@ -621,19 +742,20 @@ test("runOneIssue rejects a different explicit issue when a resumable run exists
   );
   const runner = createMockRunner((call) => {
     if (
-      call.command === "tea"
-      && call.args[0] === "issues"
-      && call.args[1] === "list"
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
     ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1"
-          ? issueListPayload([
-            issue(45, ["in-progress", "bug"], "Resume first"),
-            issue(46, ["agent-ready", "bug"], "Requested issue"),
-          ])
-          : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Resume first"),
+                issue(46, ["agent-ready", "bug"], "Requested issue"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
@@ -650,7 +772,12 @@ test("runOneIssue rejects a different explicit issue when a resumable run exists
 });
 
 test("runOneIssue allows an explicit resumable issue", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, planOnly: true, issueNumber: 45 });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+    issueNumber: 45,
+  });
   await writeRunState(
     config.runStateDir,
     {
@@ -676,14 +803,36 @@ test("runOneIssue allows an explicit resumable issue", async () => {
     "utf8",
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([issue(45, ["in-progress", "bug"], "Resume in-progress issue")]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Resume in-progress issue"),
+              ])
+            : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -691,7 +840,10 @@ test("runOneIssue allows an explicit resumable issue", async () => {
   assert.equal(result.status, "plan-found");
   assert.equal(result.issue.number, 45);
   const editCalls = runner.calls.filter(
-    (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit",
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
   );
   assert.equal(editCalls.length, 1);
   const comments = runner.calls.filter(
@@ -732,30 +884,58 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["agent-ready", "bug"], "Finished plan-only")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["agent-ready", "bug"], "Finished plan-only"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
-  const { events, progress } = collectProgressEvents();
+  const { progress } = collectProgressEvents();
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "blocked");
   const claimCall = runner.calls.find(
-    (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit" && call.args.includes("in-progress"),
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit" &&
+      call.args.includes("in-progress"),
   );
   assert.ok(claimCall);
   const startComment = runner.calls.find(
-    (call) => call.command === "tea" && call.args[0] === "comment" && /Automation started/.test(commentBody(call)),
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      /Automation started/.test(commentBody(call)),
   );
   assert.ok(startComment);
 
@@ -773,7 +953,11 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
 });
 
 test("runOneIssue does not duplicate claim or plan-only comments on resume", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, planOnly: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
   await writeFile(
     join(config.plansDir, "2026-05-14-issue-45-resume-plan-only.md"),
     "# plan\n",
@@ -797,18 +981,37 @@ test("runOneIssue does not duplicate claim or plan-only comments on resume", asy
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Resume plan only")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Resume plan only")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -816,11 +1019,18 @@ test("runOneIssue does not duplicate claim or plan-only comments on resume", asy
   assert.equal(result.status, "plan-found");
   assert.equal(result.issue.number, 45);
   assert.equal(
-    runner.calls.filter((call) => call.command === "tea" && call.args[0] === "comment").length,
+    runner.calls.filter(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ).length,
     0,
   );
   assert.equal(
-    runner.calls.filter((call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit").length,
+    runner.calls.filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    ).length,
     0,
   );
 
@@ -838,7 +1048,11 @@ test("runOneIssue does not duplicate claim or plan-only comments on resume", asy
 });
 
 test("runOneIssue reuses a saved created plan as plan-created in plan-only mode", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, planOnly: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
   const planPath = "docs/plans/2026-05-14-issue-45-saved-created-plan.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
@@ -857,18 +1071,36 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress", "bug"], "Saved created plan")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Saved created plan"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -883,12 +1115,20 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
 });
 
 test("runOneIssue stops after finding an existing plan when plan approval is required", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, requirePlanApproval: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    requirePlanApproval: true,
+  });
   const planPath = "docs/plans/2026-05-14-issue-47-approval-existing-plan.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   const selected = issue(47, ["agent-ready", "bug"], "Approval existing plan");
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
@@ -896,29 +1136,60 @@ test("runOneIssue stops after finding an existing plan when plan approval is req
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "plan-found");
   assert.equal(result.planPath, planPath);
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
-  const comments = runner.calls.filter((call) => call.command === "tea" && call.args[0] === "comment");
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  const comments = runner.calls.filter(
+    (call) => call.command === "tea" && call.args[0] === "comment",
+  );
   assert.equal(comments.length, 2);
   assert.match(commentBody(comments[1]), /Existing plan ready/);
 });
 
 test("runOneIssue stops after creating a plan when plan approval is required", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, requirePlanApproval: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    requirePlanApproval: true,
+  });
   const selected = issue(48, ["agent-ready", "bug"], "Approval created plan");
-  const expectedPlanPath = "docs/plans/2026-05-09-issue-48-approval-created-plan.md";
+  const expectedPlanPath =
+    "docs/plans/2026-05-09-issue-48-approval-created-plan.md";
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
@@ -926,9 +1197,19 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       assert.match(prompt, /Create an implementation plan/);
@@ -938,7 +1219,9 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -946,8 +1229,18 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
   assert.equal(result.status, "plan-created");
   assert.equal(result.planPath, expectedPlanPath);
   assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "show-ref"), false);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "show-ref",
+    ),
+    false,
+  );
 });
 
 test("runOneIssue claims the issue, comments automation start, writes run state, and exits plan-created for plan-only mode", async () => {
@@ -1036,24 +1329,36 @@ test("runOneIssue claims the issue, comments automation start, writes run state,
       call.args[1] === "edit",
   );
   assert.equal(editCalls.length, 2);
-  assert.deepEqual(editCalls[0]?.args, withRepo([
-    "issues",
-    "edit",
-    "12",
-    "--remove-labels",
-    "agent-ready",
-    "--add-labels",
-    "in-progress",
-  ], config.repoRoot));
-  assert.deepEqual(editCalls[1]?.args, withRepo([
-    "issues",
-    "edit",
-    "12",
-    "--remove-labels",
-    "in-progress",
-    "--add-labels",
-    "agent-ready",
-  ], config.repoRoot));
+  assert.deepEqual(
+    editCalls[0]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "12",
+        "--remove-labels",
+        "agent-ready",
+        "--add-labels",
+        "in-progress",
+      ],
+      config.repoRoot,
+    ),
+  );
+  assert.deepEqual(
+    editCalls[1]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "12",
+        "--remove-labels",
+        "in-progress",
+        "--add-labels",
+        "agent-ready",
+      ],
+      config.repoRoot,
+    ),
+  );
   const addedLabels = editCalls.flatMap((call) => {
     const index = call.args.indexOf("--add-labels");
     return index >= 0 ? [call.args[index + 1]] : [];
@@ -1167,7 +1472,10 @@ test("runOneIssue plan-only keeps planning resumable when the plan-ready comment
   assert.ok(failedCommentIndex >= 0);
   assert.equal(
     runner.calls.filter(
-      (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit",
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
     ).length,
     1,
   );
@@ -1182,7 +1490,11 @@ test("runOneIssue plan-only keeps planning resumable when the plan-ready comment
 });
 
 test("runOneIssue reuses existing implementation worktree on resume", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
   const planPath = "docs/plans/2026-05-14-issue-45-resume-worktree.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
@@ -1204,26 +1516,59 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Resume worktree")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Resume worktree")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-resume-worktree")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-resume-worktree")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-resume-worktree\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-resume-worktree\n",
+        stderr: "",
+      };
     }
     if (call.command === "git" && call.args[0] === "log") {
       return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       assert.match(prompt, /Resume context:/);
@@ -1240,18 +1585,29 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created", JSON.stringify(result));
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args.includes("-b")), false);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args.includes("-b"),
+    ),
+    false,
+  );
   assert.ok(runner.calls.find((call) => call.command === "pi"));
 });
 
 test("runOneIssue reuses existing implementation result on resume without rerunning pi", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
   const planPath = "docs/plans/2026-05-14-issue-45-reuse-implementation.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
@@ -1280,25 +1636,63 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Reuse implementation")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress"], "Reuse implementation"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-reuse-implementation")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-reuse-implementation")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-reuse-implementation\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-reuse-implementation\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -1308,8 +1702,14 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
   assert.deepEqual(result.commits, ["abc123"]);
   assert.deepEqual(result.validation, ["just issue-runner-test ok"]);
   assert.equal(result.reviewSummary, "reviewed");
-  assert.equal(result.landingDecision, "PR required: needs manual verification");
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
+  assert.equal(
+    result.landingDecision,
+    "PR required: needs manual verification",
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
 });
 
 test("runOneIssue finishes saved pr-created handoff without requiring an agent team", async () => {
@@ -1345,33 +1745,86 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Complete PR created")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress"], "Complete PR created"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-pr-created")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-pr-created")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-complete-pr-created\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-complete-pr-created\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
-  assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"));
-  assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit" && call.args.includes("agent-done")));
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args.includes("agent-done"),
+    ),
+  );
 });
 
 test("runOneIssue resumes and completes saved handoff with configured lifecycle labels", async () => {
@@ -1389,7 +1842,8 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
     triagePolicy,
     readyLabel: triagePolicy.labels.ready,
   });
-  const planPath = "docs/plans/2026-05-14-issue-45-complete-custom-lifecycle-labels.md";
+  const planPath =
+    "docs/plans/2026-05-14-issue-45-complete-custom-lifecycle-labels.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -1399,7 +1853,8 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
       status: "implementing",
       planPath,
       branch: "agent/issue-45-complete-custom-lifecycle-labels",
-      worktreePath: ".worktrees/patchmill-issue-45-complete-custom-lifecycle-labels",
+      worktreePath:
+        ".worktrees/patchmill-issue-45-complete-custom-lifecycle-labels",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/45",
       commits: ["abc123"],
@@ -1415,68 +1870,119 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1"
-          ? issueListPayload([issue(45, ["claimed"], "Complete custom lifecycle labels")])
-          : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["claimed"], "Complete custom lifecycle labels"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return {
         code: 0,
         stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-custom-lifecycle-labels")}\n`,
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-complete-custom-lifecycle-labels\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-complete-custom-lifecycle-labels\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return {
         code: 0,
         stdout: labelListPayload([
-          ...DEFAULT_LABEL_NAMES.filter((label) => !["in-progress", "needs-info", "agent-done"].includes(label)),
+          ...DEFAULT_LABEL_NAMES.filter(
+            (label) =>
+              !["in-progress", "needs-info", "agent-done"].includes(label),
+          ),
           "claimed",
           "info-needed",
         ]),
         stderr: "",
       };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "create") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "create"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
   const doneLabelCreate = runner.calls.find(
     (call) =>
-      call.command === "tea"
-      && call.args[0] === "labels"
-      && call.args[1] === "create"
-      && call.args.includes("completed-by-bot"),
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "create" &&
+      call.args.includes("completed-by-bot"),
   );
   assert.ok(doneLabelCreate);
   const editCalls = runner.calls.filter(
-    (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit",
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
   );
-  assert.deepEqual(editCalls[0]?.args, withRepo([
-    "issues",
-    "edit",
-    "45",
-    "--remove-labels",
-    "claimed",
-    "--add-labels",
-    "completed-by-bot",
-  ], config.repoRoot));
+  assert.deepEqual(
+    editCalls[0]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "45",
+        "--remove-labels",
+        "claimed",
+        "--add-labels",
+        "completed-by-bot",
+      ],
+      config.repoRoot,
+    ),
+  );
 });
 
 test("runOneIssue does not run cleanup commands when cleanup hooks are not configured", async () => {
@@ -1517,34 +2023,79 @@ test("runOneIssue does not run cleanup commands when cleanup hooks are not confi
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-cleanup-example\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-cleanup-example\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const { events, progress } = collectProgressEvents();
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(runner.calls.some((call) => call.command === "bash" && call.args[0] === "-c"), false);
-  assert.equal(runner.calls.some((call) => call.command === "npm" && call.args[0] === "run"), false);
-  assert.equal(events.some((event) => event.stage === "cleanup"), false);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "bash" && call.args[0] === "-c",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "npm" && call.args[0] === "run",
+    ),
+    false,
+  );
+  assert.equal(
+    events.some((event) => event.stage === "cleanup"),
+    false,
+  );
 });
 
 test("runOneIssue runs configured generic cleanup hooks", async () => {
@@ -1586,27 +2137,70 @@ test("runOneIssue runs configured generic cleanup hooks", async () => {
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-cleanup-example\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-cleanup-example\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "bash" && call.args[0] === "-c" && call.args[3] === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "npm" && call.args[0] === "run" && call.args[1] === "cleanup:example" && call.cwd === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "bash" &&
+      call.args[0] === "-c" &&
+      call.args[3] === worktreeRoot
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "npm" &&
+      call.args[0] === "run" &&
+      call.args[1] === "cleanup:example" &&
+      call.cwd === worktreeRoot
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const { events, progress } = collectProgressEvents();
@@ -1634,8 +2228,9 @@ test("runOneIssue runs configured generic cleanup hooks", async () => {
   assert.ok(
     events.some(
       (event) =>
-        event.stage === "cleanup"
-        && event.message === "cleanup hook example-cleanup: completed for .worktrees/patchmill-issue-45-cleanup-example",
+        event.stage === "cleanup" &&
+        event.message ===
+          "cleanup hook example-cleanup: completed for .worktrees/patchmill-issue-45-cleanup-example",
     ),
   );
 });
@@ -1679,46 +2274,90 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-cleanup-example\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-cleanup-example\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "bash" && call.args[0] === "-c" && call.args[3] === worktreeRoot) {
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "bash" &&
+      call.args[0] === "-c" &&
+      call.args[3] === worktreeRoot
+    ) {
       return {
         code: 1,
         stdout: "",
-        stderr: "Refusing to terminate process group 4321 for cleanup hook example-cleanup because it matches the current cleanup shell process group",
+        stderr:
+          "Refusing to terminate process group 4321 for cleanup hook example-cleanup because it matches the current cleanup shell process group",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const { events, progress } = collectProgressEvents();
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(runner.calls.some((call) => call.command === "npm" && call.args[0] === "run"), false);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "npm" && call.args[0] === "run",
+    ),
+    false,
+  );
   assert.ok(
     events.some(
       (event) =>
-        event.stage === "cleanup"
-        && event.level === "error"
-        && event.message.includes("cleanup hook example-cleanup: process cleanup failed")
-        && event.message.includes("Refusing to terminate process group 4321"),
+        event.stage === "cleanup" &&
+        event.level === "error" &&
+        event.message.includes(
+          "cleanup hook example-cleanup: process cleanup failed",
+        ) &&
+        event.message.includes("Refusing to terminate process group 4321"),
     ),
   );
 });
@@ -1757,33 +2396,84 @@ test("runOneIssue finishes saved merged handoff when direct landing is enabled a
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Complete merged")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Complete merged")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-complete-merged\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-complete-merged\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "merged");
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
-  assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"));
-  assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit" && call.args.includes("agent-done")));
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args.includes("agent-done"),
+    ),
+  );
 });
 
 test("runOneIssue rejects saved merged handoff when skills.landing is not configured", async () => {
@@ -1819,31 +2509,66 @@ test("runOneIssue rejects saved merged handoff when skills.landing is not config
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Complete merged")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Complete merged")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-complete-merged\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-complete-merged\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
     /Saved implementation state returned merged but direct landing requires git\.allowDirectLand=true and configured skills\.landing/,
   );
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
 });
 
 test("runOneIssue rejects saved merged handoff when direct landing is disabled", async () => {
@@ -1880,31 +2605,66 @@ test("runOneIssue rejects saved merged handoff when direct landing is disabled",
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Complete merged")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Complete merged")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-complete-merged\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-complete-merged\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
     /Saved implementation state returned merged while git\.allowDirectLand is false/,
   );
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
 });
 
 test("runOneIssue rejects stale finished implementationCompleted state before relabel without an agent team", async () => {
@@ -1914,7 +2674,8 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
     agentTeam: undefined,
     agentTeamName: undefined,
   });
-  const planPath = "docs/plans/2026-05-14-issue-45-stale-finished-implementation.md";
+  const planPath =
+    "docs/plans/2026-05-14-issue-45-stale-finished-implementation.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -1924,7 +2685,8 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
       status: "finished",
       planPath,
       branch: "agent/issue-45-stale-finished-implementation",
-      worktreePath: ".worktrees/patchmill-issue-45-stale-finished-implementation",
+      worktreePath:
+        ".worktrees/patchmill-issue-45-stale-finished-implementation",
       implementationStatus: "merged",
       mergeCommit: "stale123",
       commits: ["abc123"],
@@ -1943,30 +2705,71 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["agent-ready"], "Stale finished implementation")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["agent-ready"], "Stale finished implementation"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
     /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
   );
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "labels"), false);
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"), false);
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "labels",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+    false,
+  );
 
-  const runState = JSON.parse(await readFile(runStatePath(config.runStateDir, 45), "utf8")) as Record<string, unknown> & {
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  ) as Record<string, unknown> & {
     checkpoints?: Record<string, unknown>;
   };
   assert.equal(runState.status, "finished");
@@ -1974,12 +2777,20 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
   assert.equal(runState.prUrl, undefined);
   assert.equal(runState.checkpoints?.implementationCompleted, true);
   assert.equal(runState.branch, "agent/issue-45-stale-finished-implementation");
-  assert.equal(runState.worktreePath, ".worktrees/patchmill-issue-45-stale-finished-implementation");
+  assert.equal(
+    runState.worktreePath,
+    ".worktrees/patchmill-issue-45-stale-finished-implementation",
+  );
 });
 
 test("runOneIssue rejects stale finished branch and worktree before resetting state", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
-  const planPath = "docs/plans/2026-05-14-issue-45-stale-finished-same-title.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
+  const planPath =
+    "docs/plans/2026-05-14-issue-45-stale-finished-same-title.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -2005,18 +2816,39 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["agent-ready"], "Stale finished same title")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["agent-ready"], "Stale finished same title"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   await assert.rejects(
@@ -2027,8 +2859,14 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   ) as Record<string, unknown>;
   assert.equal(firstRunState.status, "finished");
-  assert.equal(firstRunState.branch, "agent/issue-45-stale-finished-same-title");
-  assert.equal(firstRunState.worktreePath, ".worktrees/patchmill-issue-45-stale-finished-same-title");
+  assert.equal(
+    firstRunState.branch,
+    "agent/issue-45-stale-finished-same-title",
+  );
+  assert.equal(
+    firstRunState.worktreePath,
+    ".worktrees/patchmill-issue-45-stale-finished-same-title",
+  );
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
@@ -2039,14 +2877,46 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   ) as Record<string, unknown>;
   assert.equal(secondRunState.status, "finished");
-  assert.equal(secondRunState.branch, "agent/issue-45-stale-finished-same-title");
-  assert.equal(secondRunState.worktreePath, ".worktrees/patchmill-issue-45-stale-finished-same-title");
+  assert.equal(
+    secondRunState.branch,
+    "agent/issue-45-stale-finished-same-title",
+  );
+  assert.equal(
+    secondRunState.worktreePath,
+    ".worktrees/patchmill-issue-45-stale-finished-same-title",
+  );
 
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment" && /Unexpected failure/.test(commentBody(call))), false);
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"), false);
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "labels"), false);
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "comment" &&
+        /Unexpected failure/.test(commentBody(call)),
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "labels",
+    ),
+    false,
+  );
 });
 
 test("runOneIssue rejects stale finished branch and worktree when title changed", async () => {
@@ -2082,35 +2952,71 @@ test("runOneIssue rejects stale finished branch and worktree when title changed"
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["agent-ready"], "Renamed finished title")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["agent-ready"], "Renamed finished title"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
     /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
   );
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
 
-  const runState = JSON.parse(await readFile(runStatePath(config.runStateDir, 45), "utf8")) as Record<string, unknown>;
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  ) as Record<string, unknown>;
   assert.equal(runState.status, "finished");
   assert.equal(runState.branch, "agent/issue-45-old-finished-title");
-  assert.equal(runState.worktreePath, ".worktrees/patchmill-issue-45-old-finished-title");
+  assert.equal(
+    runState.worktreePath,
+    ".worktrees/patchmill-issue-45-old-finished-title",
+  );
 });
 
 test("runOneIssue reruns Pi when implementationCompleted state is missing required saved fields", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
-  const planPath = "docs/plans/2026-05-14-issue-45-incomplete-implementation-state.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
+  const planPath =
+    "docs/plans/2026-05-14-issue-45-incomplete-implementation-state.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -2120,7 +3026,8 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
       status: "implementing",
       planPath,
       branch: "agent/issue-45-incomplete-implementation-state",
-      worktreePath: ".worktrees/patchmill-issue-45-incomplete-implementation-state",
+      worktreePath:
+        ".worktrees/patchmill-issue-45-incomplete-implementation-state",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/stale-45",
       commits: ["abc123"],
@@ -2135,24 +3042,60 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Incomplete implementation state")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress"], "Incomplete implementation state"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-incomplete-implementation-state")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-incomplete-implementation-state")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-incomplete-implementation-state\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-incomplete-implementation-state\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       assert.match(prompt, /Authoritative agent team: economy/);
@@ -2170,7 +3113,9 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -2182,7 +3127,11 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
 });
 
 test("runOneIssue rejects resumable saved branch/worktree mismatch before worktree commands", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
   const planPath = "docs/plans/2026-05-14-issue-45-branch-mismatch.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
@@ -2204,16 +3153,26 @@ test("runOneIssue rejects resumable saved branch/worktree mismatch before worktr
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Branch mismatch")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Branch mismatch")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   await assert.rejects(
@@ -2221,19 +3180,42 @@ test("runOneIssue rejects resumable saved branch/worktree mismatch before worktr
     /Saved branch agent\/issue-45-old-branch-mismatch does not match expected branch agent\/issue-45-branch-mismatch/,
   );
   assert.equal(
-    runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list"),
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "list",
+    ),
     false,
   );
   assert.equal(
-    runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add"),
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
     false,
   );
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"), false);
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+    false,
+  );
 });
 
 test("runOneIssue skips handoff and done labels when checkpoints are complete", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM, skills: LANDING_SKILLS });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+    skills: LANDING_SKILLS,
+  });
   const planPath = "docs/plans/2026-05-14-issue-45-finished-handoff.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
@@ -2263,32 +3245,77 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Finished handoff")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Finished handoff")])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-finished-handoff")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-finished-handoff")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-finished-handoff\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-finished-handoff\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "merged");
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"), false);
-  assert.equal(runner.calls.some((call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit"), false);
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
-  const runState = JSON.parse(await readFile(runStatePath(config.runStateDir, 45), "utf8")) as Record<string, unknown> & {
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  ) as Record<string, unknown> & {
     checkpoints?: Record<string, unknown>;
   };
   assert.equal(runState.status, "finished");
@@ -2307,7 +3334,11 @@ test("runOneIssue blocks implementation before Pi when no agent team is configur
     config.plansDir,
     "2026-05-01-issue-14-needs-explicit-team.md",
   );
-  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  await writeFile(
+    existingPlanPath,
+    "# plan\n\n### Task 1: Blocker Task\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -2346,25 +3377,40 @@ test("runOneIssue blocks implementation before Pi when no agent team is configur
     );
   });
 
-  const { events, progress } = collectProgressEvents();
+  const { progress } = collectProgressEvents();
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "blocked");
   assert.match(result.reason, /Agent team is required for implementation/);
   assert.deepEqual(result.questions, [
     {
-      question: "Which agent-team preset should the run-once workflow use for worker and reviewer subagents?",
+      question:
+        "Which agent-team preset should the run-once workflow use for worker and reviewer subagents?",
       recommendedAnswer:
         "Run with --agent-team <name> or set PATCHMILL_AGENT_TEAM=<name> so worker/reviewer model and thinking are explicit.",
     },
   ]);
-  assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
-  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
 });
 
 test("runOneIssue replaces stale implementation result fields when Pi changes implementationStatus", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM, skills: LANDING_SKILLS });
-  const planPath = "docs/plans/2026-05-14-issue-45-implementation-status-transition.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+    skills: LANDING_SKILLS,
+  });
+  const planPath =
+    "docs/plans/2026-05-14-issue-45-implementation-status-transition.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -2374,7 +3420,8 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
       status: "implementing",
       planPath,
       branch: "agent/issue-45-implementation-status-transition",
-      worktreePath: ".worktrees/patchmill-issue-45-implementation-status-transition",
+      worktreePath:
+        ".worktrees/patchmill-issue-45-implementation-status-transition",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/stale-45",
       commits: ["abc123"],
@@ -2391,24 +3438,60 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
     NOW.toISOString(),
   );
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Implementation status transition")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress"], "Implementation status transition"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-implementation-status-transition")}\n`, stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-implementation-status-transition")}\n`,
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-implementation-status-transition\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-implementation-status-transition\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       return {
         code: 0,
@@ -2422,13 +3505,17 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "merged");
-  const runState = JSON.parse(await readFile(runStatePath(config.runStateDir, 45), "utf8")) as Record<string, unknown>;
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  ) as Record<string, unknown>;
   assert.equal(runState.implementationStatus, "merged");
   assert.equal(runState.mergeCommit, "def456");
   assert.equal(runState.prUrl, undefined);
@@ -2533,8 +3620,14 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       assertNoLegacyProjectText(prompt);
       assert.match(prompt, /Branch: agent\/issue-15-ship-automation-pipeline/);
       assert.match(prompt, /Authoritative agent team: economy/);
-      assert.match(prompt, /worker: model=openai-codex\/gpt-5\.4, thinking=medium/);
-      assert.match(prompt, /reviewer: model=openai-codex\/gpt-5\.5, thinking=high/);
+      assert.match(
+        prompt,
+        /worker: model=openai-codex\/gpt-5\.4, thinking=medium/,
+      );
+      assert.match(
+        prompt,
+        /reviewer: model=openai-codex\/gpt-5\.5, thinking=high/,
+      );
       return { code: 0, stdout: finalText, stderr: "" };
     }
 
@@ -2555,14 +3648,24 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
 
   assert.equal(result.status, "pr-created");
   assert.equal(result.logPath, logPath);
-  const stepLabels = events.flatMap((event) => event.step?.type === "step-start" ? [event.step.label] : []);
+  const stepLabels = events.flatMap((event) =>
+    event.step?.type === "step-start" ? [event.step.label] : [],
+  );
   assert.ok(stepLabels.includes("select issue"), stepLabels.join("\n"));
   assert.ok(stepLabels.includes("commit plan"), stepLabels.join("\n"));
   assert.ok(stepLabels.includes("create worktree"), stepLabels.join("\n"));
-  assert.ok(stepLabels.includes("final result pr-created"), stepLabels.join("\n"));
+  assert.ok(
+    stepLabels.includes("final result pr-created"),
+    stepLabels.join("\n"),
+  );
   assert.deepEqual(
     events
-      .filter((event) => event.level !== "debug" && event.stage !== "step" && event.stage !== "run")
+      .filter(
+        (event) =>
+          event.level !== "debug" &&
+          event.stage !== "step" &&
+          event.stage !== "run",
+      )
       .map((event) => event.message),
     [
       "listing open issues",
@@ -2594,24 +3697,36 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       call.args[1] === "edit",
   );
   assert.equal(editCalls.length, 2);
-  assert.deepEqual(editCalls[0]?.args, withRepo([
-    "issues",
-    "edit",
-    "15",
-    "--remove-labels",
-    "agent-ready",
-    "--add-labels",
-    "in-progress",
-  ], config.repoRoot));
-  assert.deepEqual(editCalls[1]?.args, withRepo([
-    "issues",
-    "edit",
-    "15",
-    "--remove-labels",
-    "in-progress",
-    "--add-labels",
-    "agent-done",
-  ], config.repoRoot));
+  assert.deepEqual(
+    editCalls[0]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "15",
+        "--remove-labels",
+        "agent-ready",
+        "--add-labels",
+        "in-progress",
+      ],
+      config.repoRoot,
+    ),
+  );
+  assert.deepEqual(
+    editCalls[1]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "15",
+        "--remove-labels",
+        "in-progress",
+        "--add-labels",
+        "agent-done",
+      ],
+      config.repoRoot,
+    ),
+  );
 
   const doneLabelCreate = runner.calls.find(
     (call) =>
@@ -2654,7 +3769,10 @@ test("runOneIssue renders configured project policy visual evidence fields in th
         targetBranch: "ignored-by-runner",
       },
       visualEvidence: {
-        referenceScreenshotPaths: ["docs/sentinel/web/", "docs/sentinel/mobile/"],
+        referenceScreenshotPaths: [
+          "docs/sentinel/web/",
+          "docs/sentinel/mobile/",
+        ],
         prEvidenceExample: {
           screenshotPath: ".tmp/issue-42-sentinel-after.png",
           caption: "Sentinel after the change",
@@ -2663,33 +3781,66 @@ test("runOneIssue renders configured project policy visual evidence fields in th
       },
     },
   };
-  const selected = issue(16, ["agent-ready"], "Render configured policy prompt");
-  const planPath = "docs/plans/2026-05-09-issue-16-render-configured-policy-prompt.md";
-  const worktreeRoot = join(config.repoRoot, ".worktrees/patchmill-issue-16-render-configured-policy-prompt");
+  const selected = issue(
+    16,
+    ["agent-ready"],
+    "Render configured policy prompt",
+  );
+  const planPath =
+    "docs/plans/2026-05-09-issue-16-render-configured-policy-prompt.md";
+  const worktreeRoot = join(
+    config.repoRoot,
+    ".worktrees/patchmill-issue-16-render-configured-policy-prompt",
+  );
 
   let piCalls = 0;
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "pi") {
       piCalls += 1;
       const prompt = await readFile(promptPath(call.args), "utf8");
       if (piCalls === 1) {
-        assert.match(prompt, /Create an implementation plan for Sentinel issue #16/);
+        assert.match(
+          prompt,
+          /Create an implementation plan for Sentinel issue #16/,
+        );
         return {
           code: 0,
           stdout: `{"status":"plan-created","planPath":"${planPath}","commit":"abc123"}`,
@@ -2697,14 +3848,37 @@ test("runOneIssue renders configured project policy visual evidence fields in th
         };
       }
 
-      await writeTodo(worktreeRoot, "task-1", "issue-16-task-01-render-configured-policy-prompt", "closed");
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-16-task-01-render-configured-policy-prompt",
+        "closed",
+      );
       assert.match(prompt, /Implement Sentinel issue #16/);
-      assert.match(prompt, /If the issue changes visible UI, use the configured visual evidence skill: `sentinel-screenshots`\./);
-      assert.match(prompt, /Use the configured landing skill for the direct-land versus PR decision: `sentinel-landing`\./);
-      assert.match(prompt, /Look under `docs\/sentinel\/web\/` and `docs\/sentinel\/mobile\/`/);
-      assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/);
-      assert.match(prompt, /Update local `release\/2\.0` from the `upstream` remote\./);
-      assert.doesNotMatch(prompt, /capturing proof screenshots|Reviewer must confirm Sentinel screenshot approval|policyText|webScreenshotSkill|mobileScreenshotSkill/);
+      assert.match(
+        prompt,
+        /If the issue changes visible UI, use the configured visual evidence skill: `sentinel-screenshots`\./,
+      );
+      assert.match(
+        prompt,
+        /Use the configured landing skill for the direct-land versus PR decision: `sentinel-landing`\./,
+      );
+      assert.match(
+        prompt,
+        /Look under `docs\/sentinel\/web\/` and `docs\/sentinel\/mobile\/`/,
+      );
+      assert.match(
+        prompt,
+        /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/,
+      );
+      assert.match(
+        prompt,
+        /Update local `release\/2\.0` from the `upstream` remote\./,
+      );
+      assert.doesNotMatch(
+        prompt,
+        /capturing proof screenshots|Reviewer must confirm Sentinel screenshot approval|policyText|webScreenshotSkill|mobileScreenshotSkill/,
+      );
       assertNoLegacyProjectText(prompt);
       return {
         code: 0,
@@ -2718,7 +3892,9 @@ test("runOneIssue renders configured project policy visual evidence fields in th
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -2743,24 +3919,49 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
     worktreePrefix: "pm-issue-",
   };
   const selected = issue(16, ["agent-ready"], "Use custom worktrees");
-  const planPath = join(config.plansDir, "2026-05-09-issue-16-use-custom-worktrees.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-09-issue-16-use-custom-worktrees.md",
+  );
   await writeFile(planPath, "# Plan\n", "utf8");
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       assert.deepEqual(call.args, [
         "worktree",
         "add",
@@ -2776,11 +3977,29 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
       assert.ok(promptPath);
       const prompt = await readFile(promptPath, "utf8");
       assert.match(prompt, /Branch: patchmill\/issue-16-use-custom-worktrees/);
-      assert.match(prompt, /Worktree: \.patchmill\/worktrees\/pm-issue-16-use-custom-worktrees/);
-      assert.match(prompt, /Update local `release\/1\.2` from the `upstream` remote\./);
-      assert.match(prompt, /Push `release\/1\.2` to `upstream` without force-pushing\./);
-      assert.match(prompt, /Push the branch to `upstream` and open a pull request using the repository's configured host tooling\./);
-      assert.equal(call.cwd, join(config.repoRoot, ".patchmill/worktrees/pm-issue-16-use-custom-worktrees"));
+      assert.match(
+        prompt,
+        /Worktree: \.patchmill\/worktrees\/pm-issue-16-use-custom-worktrees/,
+      );
+      assert.match(
+        prompt,
+        /Update local `release\/1\.2` from the `upstream` remote\./,
+      );
+      assert.match(
+        prompt,
+        /Push `release\/1\.2` to `upstream` without force-pushing\./,
+      );
+      assert.match(
+        prompt,
+        /Push the branch to `upstream` and open a pull request using the repository's configured host tooling\./,
+      );
+      assert.equal(
+        call.cwd,
+        join(
+          config.repoRoot,
+          ".patchmill/worktrees/pm-issue-16-use-custom-worktrees",
+        ),
+      );
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -2794,17 +4013,27 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
       };
     }
 
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
   assert.equal(result.branch, "patchmill/issue-16-use-custom-worktrees");
-  assert.equal(result.worktreePath, ".patchmill/worktrees/pm-issue-16-use-custom-worktrees");
-  const runState = JSON.parse(await readFile(runStatePath(config.runStateDir, 16), "utf8")) as Record<string, unknown>;
+  assert.equal(
+    result.worktreePath,
+    ".patchmill/worktrees/pm-issue-16-use-custom-worktrees",
+  );
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 16), "utf8"),
+  ) as Record<string, unknown>;
   assert.equal(runState.branch, "patchmill/issue-16-use-custom-worktrees");
-  assert.equal(runState.worktreePath, ".patchmill/worktrees/pm-issue-16-use-custom-worktrees");
+  assert.equal(
+    runState.worktreePath,
+    ".patchmill/worktrees/pm-issue-16-use-custom-worktrees",
+  );
 });
 
 test("runOneIssue ignores configured run-state logs during the clean-worktree check", async () => {
@@ -2814,15 +4043,30 @@ test("runOneIssue ignores configured run-state logs during the clean-worktree ch
     runStateDir: join(baseConfig.repoRoot, ".patchmill", "runs"),
   };
   const selected = issue(17, ["agent-ready"], "Ignore configured run logs");
-  const planPath = join(config.plansDir, "2026-05-09-issue-17-ignore-configured-run-logs.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-09-issue-17-ignore-configured-run-logs.md",
+  );
   await writeFile(planPath, "# Plan\n", "utf8");
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
@@ -2833,11 +4077,20 @@ test("runOneIssue ignores configured run-state logs during the clean-worktree ch
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "pi") {
@@ -2854,7 +4107,9 @@ test("runOneIssue ignores configured run-state logs during the clean-worktree ch
       };
     }
 
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, {
@@ -2863,21 +4118,39 @@ test("runOneIssue ignores configured run-state logs during the clean-worktree ch
   });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-17-ignore-configured-run-logs");
+  assert.equal(
+    result.worktreePath,
+    ".worktrees/patchmill-issue-17-ignore-configured-run-logs",
+  );
 });
 
 test("runOneIssue ignores the default Pi todo root during the clean-worktree check", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const selected = issue(18, ["agent-ready"], "Ignore default task todos");
-  const planPath = join(config.plansDir, "2026-05-09-issue-18-ignore-default-task-todos.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-09-issue-18-ignore-default-task-todos.md",
+  );
   await writeFile(planPath, "# Plan\n", "utf8");
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
@@ -2888,11 +4161,20 @@ test("runOneIssue ignores the default Pi todo root during the clean-worktree che
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "pi") {
@@ -2909,13 +4191,18 @@ test("runOneIssue ignores the default Pi todo root during the clean-worktree che
       };
     }
 
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-18-ignore-default-task-todos");
+  assert.equal(
+    result.worktreePath,
+    ".worktrees/patchmill-issue-18-ignore-default-task-todos",
+  );
 });
 
 test("runOneIssue ignores a custom Pi todo root during the clean-worktree check", async () => {
@@ -2934,15 +4221,30 @@ test("runOneIssue ignores a custom Pi todo root during the clean-worktree check"
     },
   });
   const selected = issue(19, ["agent-ready"], "Ignore custom task todos");
-  const planPath = join(config.plansDir, "2026-05-09-issue-19-ignore-custom-task-todos.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-09-issue-19-ignore-custom-task-todos.md",
+  );
   await writeFile(planPath, "# Plan\n", "utf8");
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
@@ -2953,11 +4255,20 @@ test("runOneIssue ignores a custom Pi todo root during the clean-worktree check"
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "pi") {
@@ -2974,13 +4285,18 @@ test("runOneIssue ignores a custom Pi todo root during the clean-worktree check"
       };
     }
 
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-19-ignore-custom-task-todos");
+  assert.equal(
+    result.worktreePath,
+    ".worktrees/patchmill-issue-19-ignore-custom-task-todos",
+  );
 });
 
 test("runOneIssue ignores a custom Pi todo root when reusing an existing worktree", async () => {
@@ -2999,35 +4315,67 @@ test("runOneIssue ignores a custom Pi todo root when reusing an existing worktre
     },
   });
   const selected = issue(20, ["agent-ready"], "Reuse custom task todos");
-  const worktreeRoot = join(config.repoRoot, ".worktrees/patchmill-issue-20-reuse-custom-task-todos");
-  const planPath = join(config.plansDir, "2026-05-09-issue-20-reuse-custom-task-todos.md");
+  const worktreeRoot = join(
+    config.repoRoot,
+    ".worktrees/patchmill-issue-20-reuse-custom-task-todos",
+  );
+  const planPath = join(
+    config.plansDir,
+    "2026-05-09-issue-20-reuse-custom-task-todos.md",
+  );
   await writeFile(planPath, "# Plan\n", "utf8");
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "status") {
       return {
         code: 0,
-        stdout: call.cwd === worktreeRoot
-          ? "?? .patchmill/todos/work-20-step-01-date-range-model.md\n"
-          : "",
+        stdout:
+          call.cwd === worktreeRoot
+            ? "?? .patchmill/todos/work-20-step-01-date-range-model.md\n"
+            : "",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-20-reuse-custom-task-todos\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-20-reuse-custom-task-todos\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       return {
         code: 0,
@@ -3042,15 +4390,25 @@ test("runOneIssue ignores a custom Pi todo root when reusing an existing worktre
       };
     }
 
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-20-reuse-custom-task-todos");
   assert.equal(
-    runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add"),
+    result.worktreePath,
+    ".worktrees/patchmill-issue-20-reuse-custom-task-todos",
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
     false,
   );
 });
@@ -3063,15 +4421,30 @@ test("runOneIssue honors configured clean-status ignore prefixes", async () => {
     cleanStatusIgnorePrefixes: ["scratch-logs/"],
   };
   const selected = issue(18, ["agent-ready"], "Ignore configured scratch logs");
-  const planPath = join(config.plansDir, "2026-05-09-issue-18-ignore-configured-scratch-logs.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-09-issue-18-ignore-configured-scratch-logs.md",
+  );
   await writeFile(planPath, "# Plan\n", "utf8");
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
@@ -3082,11 +4455,20 @@ test("runOneIssue honors configured clean-status ignore prefixes", async () => {
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "pi") {
@@ -3103,7 +4485,9 @@ test("runOneIssue honors configured clean-status ignore prefixes", async () => {
       };
     }
 
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, {
@@ -3112,13 +4496,19 @@ test("runOneIssue honors configured clean-status ignore prefixes", async () => {
   });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-18-ignore-configured-scratch-logs");
+  assert.equal(
+    result.worktreePath,
+    ".worktrees/patchmill-issue-18-ignore-configured-scratch-logs",
+  );
 });
 
 test("runOneIssue implementation heartbeat reads task progress from the issue worktree", async () => {
   const selected = issue(14, ["agent-ready"], "Progress Root");
   const config = await makeConfig({ dryRun: false, execute: true });
-  const planPath = join(config.plansDir, "2026-05-09-issue-14-progress-root.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-09-issue-14-progress-root.md",
+  );
   await writeFile(planPath, "# Plan\n", "utf8");
 
   const worktreePath = ".worktrees/patchmill-issue-14-progress-root";
@@ -3140,7 +4530,11 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
       call.args[1] === "list"
     ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([selected]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
     }
 
     if (call.command === "git" && call.args[0] === "status") {
@@ -3155,7 +4549,11 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
 
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
 
@@ -3163,7 +4561,11 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
       return { code: 1, stdout: "", stderr: "" };
     }
 
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       for (let index = 1; index <= 8; index += 1) {
         await writeTodo(
           worktreeRoot,
@@ -3218,7 +4620,10 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
 
 test("runOneIssue emits visible implementation subtask step labels", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
-  const planPath = join(config.plansDir, "2026-05-22-issue-15-ship-automation-pipeline.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-22-issue-15-ship-automation-pipeline.md",
+  );
   await writeFile(
     planPath,
     [
@@ -3236,44 +4641,113 @@ test("runOneIssue emits visible implementation subtask step labels", async () =>
 
   let implementationCall: Call | undefined;
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([issue(15, ["agent-ready"], "Ship automation pipeline")]) : "[]", stderr: "" };
-    }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "pi") {
-      implementationCall = call;
-      await writeTodo(worktreeRoot, "task-1", "issue-15-task-01-date-range-model", "closed");
-      await writeTodo(worktreeRoot, "task-2", "issue-15-task-02-dashboard-wiring", "closed");
-      await writePiSessionMessage(call, "done", { input: 999999, output: 2200, totalTokens: 999999 });
       return {
         code: 0,
-        stdout: '{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(15, ["agent-ready"], "Ship automation pipeline"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      implementationCall = call;
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-15-task-01-date-range-model",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-2",
+        "issue-15-task-02-dashboard-wiring",
+        "closed",
+      );
+      await writePiSessionMessage(call, "done", {
+        input: 999999,
+        output: 2200,
+        totalTokens: 999999,
+      });
+      return {
+        code: 0,
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const { events, progress } = collectProgressEvents();
-  const result = await runOneIssue(runner, config, { now: NOW, progress, heartbeatMs: 1 });
+  const result = await runOneIssue(runner, config, {
+    now: NOW,
+    progress,
+    heartbeatMs: 1,
+  });
 
   assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.ok(implementationCall);
-  const labels = events.flatMap((event) => event.step?.type === "step-start" ? [event.step.label] : []);
-  assert.ok(labels.includes("implement task 1/2 date range model"), labels.join("\n"));
-  assert.ok(labels.includes("implement task 2/2 dashboard wiring"), labels.join("\n"));
+  const labels = events.flatMap((event) =>
+    event.step?.type === "step-start" ? [event.step.label] : [],
+  );
+  assert.ok(
+    labels.includes("implement task 1/2 date range model"),
+    labels.join("\n"),
+  );
+  assert.ok(
+    labels.includes("implement task 2/2 dashboard wiring"),
+    labels.join("\n"),
+  );
   assert.equal(labels.includes("implement issue"), false);
 });
 
 test("runOneIssue moves streamed tool calls under the active implementation task", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
   const planPath = join(config.plansDir, "2026-05-22-issue-77-agent-output.md");
   await writeFile(
     planPath,
@@ -3293,104 +4767,269 @@ test("runOneIssue moves streamed tool calls under the active implementation task
   const worktreeRoot = join(config.repoRoot, worktreePath);
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([issue(77, ["agent-ready"], "Agent output")]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(77, ["agent-ready"], "Agent output")])
+            : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
-      await writeTodo(worktreeRoot, "task-1", "issue-77-task-01-first-cycle", "in-progress");
-      await writeTodo(worktreeRoot, "task-2", "issue-77-task-02-second-cycle", "open");
-      await writeTodo(worktreeRoot, "task-3", "issue-77-task-03-third-cycle", "open");
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-77-task-01-first-cycle",
+        "in-progress",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-2",
+        "issue-77-task-02-second-cycle",
+        "open",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-3",
+        "issue-77-task-03-third-cycle",
+        "open",
+      );
       await initializePiSession(call);
 
-      await appendPiSessionEntry(call, assistantToolCall("call-1", "subagent", { agent: "worker" }));
+      await appendPiSessionEntry(
+        call,
+        assistantToolCall("call-1", "subagent", { agent: "worker" }),
+      );
       await delay(150);
 
-      await writeTodo(worktreeRoot, "task-1", "issue-77-task-01-first-cycle", "closed");
-      await writeTodo(worktreeRoot, "task-2", "issue-77-task-02-second-cycle", "in-progress");
-      await appendPiSessionEntry(call, assistantToolCall("call-2", "subagent", { agent: "worker" }));
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-77-task-01-first-cycle",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-2",
+        "issue-77-task-02-second-cycle",
+        "in-progress",
+      );
+      await appendPiSessionEntry(
+        call,
+        assistantToolCall("call-2", "subagent", { agent: "worker" }),
+      );
       await delay(150);
 
-      await writeTodo(worktreeRoot, "task-2", "issue-77-task-02-second-cycle", "closed");
-      await writeTodo(worktreeRoot, "task-3", "issue-77-task-03-third-cycle", "in-progress");
-      await appendPiSessionEntry(call, assistantToolCall("call-3", "subagent", { agent: "worker" }));
+      await writeTodo(
+        worktreeRoot,
+        "task-2",
+        "issue-77-task-02-second-cycle",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-3",
+        "issue-77-task-03-third-cycle",
+        "in-progress",
+      );
+      await appendPiSessionEntry(
+        call,
+        assistantToolCall("call-3", "subagent", { agent: "worker" }),
+      );
       await delay(150);
 
-      await writeTodo(worktreeRoot, "task-3", "issue-77-task-03-third-cycle", "closed");
-      await appendPiSessionEntry(call, assistantToolCall("call-4", "subagent", { agent: "reviewer" }));
+      await writeTodo(
+        worktreeRoot,
+        "task-3",
+        "issue-77-task-03-third-cycle",
+        "closed",
+      );
+      await appendPiSessionEntry(
+        call,
+        assistantToolCall("call-4", "subagent", { agent: "reviewer" }),
+      );
       await delay(150);
 
       return {
         code: 0,
-        stdout: '{"status":"pr-created","prUrl":"https://forgejo.example/pr/77","branch":"agent/issue-77-agent-output","commits":["def456"],"validation":["ok"],"reviewSummary":"reviewed"}',
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/77","branch":"agent/issue-77-agent-output","commits":["def456"],"validation":["ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const { events, progress } = collectProgressEvents();
-  const result = await runOneIssue(runner, config, { now: NOW, progress, heartbeatMs: 10_000 });
+  const result = await runOneIssue(runner, config, {
+    now: NOW,
+    progress,
+    heartbeatMs: 10_000,
+  });
 
   assert.equal(result.status, "pr-created", JSON.stringify(result));
-  const rendered = events.map((event) => {
-    if (event.step?.type === "step-start") return `start:${event.step.label}`;
-    if (event.step?.type === "step-complete") return `complete:${event.step.label}`;
-    if (event.observation?.type === "tool-call" && event.observation.toolName === "subagent") return `tool:${event.observation.toolCallId}`;
-    return undefined;
-  }).filter((line): line is string => line !== undefined);
+  const rendered = events
+    .map((event) => {
+      if (event.step?.type === "step-start") return `start:${event.step.label}`;
+      if (event.step?.type === "step-complete")
+        return `complete:${event.step.label}`;
+      if (
+        event.observation?.type === "tool-call" &&
+        event.observation.toolName === "subagent"
+      )
+        return `tool:${event.observation.toolCallId}`;
+      return undefined;
+    })
+    .filter((line): line is string => line !== undefined);
 
-  assert.deepEqual(rendered.filter((line) => line.startsWith("start:implement task") || line.startsWith("complete:implement task") || line === "start:final review and landing" || line === "complete:final review and landing" || line.startsWith("tool:call-")), [
-    "start:implement task 1/3 first cycle",
-    "tool:call-1",
-    "complete:implement task 1/3 first cycle",
-    "start:implement task 2/3 second cycle",
-    "tool:call-2",
-    "complete:implement task 2/3 second cycle",
-    "start:implement task 3/3 third cycle",
-    "tool:call-3",
-    "complete:implement task 3/3 third cycle",
-    "start:final review and landing",
-    "tool:call-4",
-    "complete:final review and landing",
-  ]);
+  assert.deepEqual(
+    rendered.filter(
+      (line) =>
+        line.startsWith("start:implement task") ||
+        line.startsWith("complete:implement task") ||
+        line === "start:final review and landing" ||
+        line === "complete:final review and landing" ||
+        line.startsWith("tool:call-"),
+    ),
+    [
+      "start:implement task 1/3 first cycle",
+      "tool:call-1",
+      "complete:implement task 1/3 first cycle",
+      "start:implement task 2/3 second cycle",
+      "tool:call-2",
+      "complete:implement task 2/3 second cycle",
+      "start:implement task 3/3 third cycle",
+      "tool:call-3",
+      "complete:implement task 3/3 third cycle",
+      "start:final review and landing",
+      "tool:call-4",
+      "complete:final review and landing",
+    ],
+  );
 });
 
 test("runOneIssue uploads visual evidence to the PR before posting the issue handoff", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
-  const planPath = join(config.plansDir, "2026-05-22-issue-31-dashboard-visual-evidence.md");
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
+  const planPath = join(
+    config.plansDir,
+    "2026-05-22-issue-31-dashboard-visual-evidence.md",
+  );
   await writeFile(planPath, "# plan\n", "utf8");
-  const worktreePath = ".worktrees/patchmill-issue-31-dashboard-visual-evidence";
+  const worktreePath =
+    ".worktrees/patchmill-issue-31-dashboard-visual-evidence";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   const commentBodies: string[] = [];
-  const uploadCalls: Array<{ repoRoot: string; prUrl: string; evidence: unknown }> = [];
+  const uploadCalls: Array<{
+    repoRoot: string;
+    prUrl: string;
+    evidence: unknown;
+  }> = [];
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([issue(31, ["agent-ready"], "Dashboard visual evidence")]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(31, ["agent-ready"], "Dashboard visual evidence"),
+              ])
+            : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "tea" && call.args[0] === "comment") {
       commentBodies.push(commentBody(call));
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
-      await writeTodo(worktreeRoot, "task-1", "issue-31-task-01-dashboard-visual-evidence", "closed");
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-31-task-01-dashboard-visual-evidence",
+        "closed",
+      );
       await mkdir(join(worktreeRoot, ".tmp"), { recursive: true });
-      await writeFile(join(worktreeRoot, ".tmp", "dashboard.png"), MINIMAL_PNG_BYTES);
+      await writeFile(
+        join(worktreeRoot, ".tmp", "dashboard.png"),
+        MINIMAL_PNG_BYTES,
+      );
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -3411,13 +5050,30 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const visualEvidenceUploader = {
-    async uploadPrEvidence(input: { repoRoot: string; prUrl: string; evidence: Array<{ screenshotPath: string; caption?: string; referencePaths?: string[] }> | undefined }) {
+    async uploadPrEvidence(input: {
+      repoRoot: string;
+      prUrl: string;
+      evidence:
+        | Array<{
+            screenshotPath: string;
+            caption?: string;
+            referencePaths?: string[];
+          }>
+        | undefined;
+    }) {
       uploadCalls.push(input);
-      return input.evidence?.map((entry) => ({ ...entry, url: "https://forgejo.example/attachments/dashboard.png" })) ?? [];
+      return (
+        input.evidence?.map((entry) => ({
+          ...entry,
+          url: "https://forgejo.example/attachments/dashboard.png",
+        })) ?? []
+      );
     },
   };
 
@@ -3440,31 +5096,94 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
       ],
     },
   ]);
-  assert.match(commentBodies.find((body) => body.includes("Automation handoff ready")) ?? "", /PR: https:\/\/forgejo\.example\/owner\/patchmill\/pulls\/77/);
-  assert.equal(commentBodies.some((body) => body.includes(".tmp/dashboard.png") && body.includes("Visual evidence")), false);
+  assert.match(
+    commentBodies.find((body) => body.includes("Automation handoff ready")) ??
+      "",
+    /PR: https:\/\/forgejo\.example\/owner\/patchmill\/pulls\/77/,
+  );
+  assert.equal(
+    commentBodies.some(
+      (body) =>
+        body.includes(".tmp/dashboard.png") && body.includes("Visual evidence"),
+    ),
+    false,
+  );
 });
 
 test("runOneIssue keeps visual evidence when no uploader is configured", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
-  const planPath = join(config.plansDir, "2026-05-22-issue-32-dashboard-visual-evidence.md");
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: AGENT_TEAM,
+  });
+  const planPath = join(
+    config.plansDir,
+    "2026-05-22-issue-32-dashboard-visual-evidence.md",
+  );
   await writeFile(planPath, "# plan\n", "utf8");
-  const worktreePath = ".worktrees/patchmill-issue-32-dashboard-visual-evidence";
+  const worktreePath =
+    ".worktrees/patchmill-issue-32-dashboard-visual-evidence";
   const worktreeRoot = join(config.repoRoot, worktreePath);
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([issue(32, ["agent-ready"], "Dashboard visual evidence without uploader")]) : "[]", stderr: "" };
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(
+                  32,
+                  ["agent-ready"],
+                  "Dashboard visual evidence without uploader",
+                ),
+              ])
+            : "[]",
+        stderr: "",
+      };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
-      await writeTodo(worktreeRoot, "task-1", "issue-32-task-01-dashboard-visual-evidence", "closed");
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-32-task-01-dashboard-visual-evidence",
+        "closed",
+      );
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -3485,7 +5204,9 @@ test("runOneIssue keeps visual evidence when no uploader is configured", async (
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const { events, progress } = collectProgressEvents();
@@ -3500,14 +5221,22 @@ test("runOneIssue keeps visual evidence when no uploader is configured", async (
     },
   ]);
   assert.ok(
-    events.some((event) => event.stage === "visual-evidence" && event.message === "visual evidence present but no uploader configured; skipping host asset upload"),
+    events.some(
+      (event) =>
+        event.stage === "visual-evidence" &&
+        event.message ===
+          "visual evidence present but no uploader configured; skipping host asset upload",
+    ),
     JSON.stringify(events, null, 2),
   );
 });
 
 test("runOneIssue keeps implementation task totals anchored to the plan when transient todos differ", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
-  const planPath = join(config.plansDir, "2026-05-22-issue-19-dashboard-date-ranges.md");
+  const planPath = join(
+    config.plansDir,
+    "2026-05-22-issue-19-dashboard-date-ranges.md",
+  );
   await writeFile(
     planPath,
     [
@@ -3530,49 +5259,168 @@ test("runOneIssue keeps implementation task totals anchored to the plan when tra
   const worktreeRoot = join(config.repoRoot, worktreePath);
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
-      return { code: 0, stdout: page === "1" ? issueListPayload([issue(19, ["agent-ready"], "Dashboard date ranges")]) : "[]", stderr: "" };
-    }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "show-ref") return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "pi") {
-      await writeTodo(worktreeRoot, "task-1", "issue-19-task-01-dashboard-range-primitives", "open");
-      await writeTodo(worktreeRoot, "task-2", "issue-19-task-02-aggregate-range-threading", "open");
-      await writeTodo(worktreeRoot, "task-3", "issue-19-task-03-render-global-filter-ui", "open");
-      await writeTodo(worktreeRoot, "task-4", "issue-19-task-04-dashboard-csv-excel-exports", "open");
-      await writeTodo(worktreeRoot, "task-5", "issue-19-task-05-playwright-coverage", "open");
-      await writeTodo(worktreeRoot, "task-6", "issue-19-task-06-final-verification-cleanup", "open");
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      await writeTodo(worktreeRoot, "task-1", "issue-19-task-01-dashboard-range-primitives", "closed");
-      await writeTodo(worktreeRoot, "task-2", "issue-19-task-02-aggregate-range-threading", "closed");
-      await writeTodo(worktreeRoot, "task-3", "issue-19-task-03-render-global-filter-ui", "closed");
-      await writeTodo(worktreeRoot, "task-4", "issue-19-task-04-playwright-coverage", "closed");
-      await writeTodo(worktreeRoot, "task-5", "issue-19-task-05-final-verification-cleanup", "closed");
-      await writeTodo(worktreeRoot, "task-6", "issue-19-task-06-final-verification-cleanup", "closed");
-      await writePiSessionMessage(call, "done", { input: 999999, output: 2200, totalTokens: 999999 });
       return {
         code: 0,
-        stdout: '{"status":"pr-created","prUrl":"https://forgejo.example/pr/19","branch":"agent/issue-19-dashboard-date-ranges","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(19, ["agent-ready"], "Dashboard date ranges"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-19-task-01-dashboard-range-primitives",
+        "open",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-2",
+        "issue-19-task-02-aggregate-range-threading",
+        "open",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-3",
+        "issue-19-task-03-render-global-filter-ui",
+        "open",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-4",
+        "issue-19-task-04-dashboard-csv-excel-exports",
+        "open",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-5",
+        "issue-19-task-05-playwright-coverage",
+        "open",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-6",
+        "issue-19-task-06-final-verification-cleanup",
+        "open",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-19-task-01-dashboard-range-primitives",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-2",
+        "issue-19-task-02-aggregate-range-threading",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-3",
+        "issue-19-task-03-render-global-filter-ui",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-4",
+        "issue-19-task-04-playwright-coverage",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-5",
+        "issue-19-task-05-final-verification-cleanup",
+        "closed",
+      );
+      await writeTodo(
+        worktreeRoot,
+        "task-6",
+        "issue-19-task-06-final-verification-cleanup",
+        "closed",
+      );
+      await writePiSessionMessage(call, "done", {
+        input: 999999,
+        output: 2200,
+        totalTokens: 999999,
+      });
+      return {
+        code: 0,
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/19","branch":"agent/issue-19-dashboard-date-ranges","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const { events, progress } = collectProgressEvents();
-  const result = await runOneIssue(runner, config, { now: NOW, progress, heartbeatMs: 1 });
+  const result = await runOneIssue(runner, config, {
+    now: NOW,
+    progress,
+    heartbeatMs: 1,
+  });
 
   assert.equal(result.status, "pr-created", JSON.stringify(result));
-  const labels = events.flatMap((event) => event.step?.type === "step-start" ? [event.step.label] : []);
-  assert.ok(labels.includes("implement task 1/5 dashboard range primitives"), labels.join("\n"));
-  assert.ok(labels.includes("implement task 5/5 final verification cleanup"), labels.join("\n"));
-  assert.equal(labels.some((label) => label.includes("/6")), false, labels.join("\n"));
+  const labels = events.flatMap((event) =>
+    event.step?.type === "step-start" ? [event.step.label] : [],
+  );
+  assert.ok(
+    labels.includes("implement task 1/5 dashboard range primitives"),
+    labels.join("\n"),
+  );
+  assert.ok(
+    labels.includes("implement task 5/5 final verification cleanup"),
+    labels.join("\n"),
+  );
+  assert.equal(
+    labels.some((label) => label.includes("/6")),
+    false,
+    labels.join("\n"),
+  );
 });
 
 test("runOneIssue resolves a named agent team when using an existing plan", async () => {
@@ -3659,8 +5507,14 @@ test("runOneIssue resolves a named agent team when using an existing plan", asyn
         /Read AGENTS\.md and the implementation plan at docs\/plans\/2026-05-01-issue-21-fix-isolated-issue-runner\.md/,
       );
       assert.match(prompt, /Authoritative agent team: economy/);
-      assert.match(prompt, /worker: model=openai-codex\/gpt-5\.4, thinking=medium/);
-      assert.match(prompt, /reviewer: model=openai-codex\/gpt-5\.5, thinking=high/);
+      assert.match(
+        prompt,
+        /worker: model=openai-codex\/gpt-5\.4, thinking=medium/,
+      );
+      assert.match(
+        prompt,
+        /reviewer: model=openai-codex\/gpt-5\.5, thinking=high/,
+      );
       return {
         code: 0,
         stdout:
@@ -3695,7 +5549,8 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
     config.plansDir,
     "2026-05-01-issue-23-reject-stale-todo-progress.md",
   );
-  const worktreePath = ".worktrees/patchmill-issue-23-reject-stale-todo-progress";
+  const worktreePath =
+    ".worktrees/patchmill-issue-23-reject-stale-todo-progress";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
   await writeFile(existingPlanPath, "# plan\n", "utf8");
@@ -3725,16 +5580,39 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-23-reject-stale-todo-progress\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-23-reject-stale-todo-progress\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       return {
         code: 0,
@@ -3743,7 +5621,9 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -3751,27 +5631,47 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
   assert.equal(result.status, "blocked");
   assert.match(result.reason, /Issue task todos remain open/);
   assert.match(result.reason, /issue-23-task-01-server-duplicate-guard/);
-  const state = JSON.parse(await readFile(runStatePath(config.runStateDir, 23), "utf8"));
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 23), "utf8"),
+  );
   assert.equal(state.status, "implementing");
   assert.match(state.lastError, /Issue task todos remain open/);
   assert.equal(
-    runner.calls.some((call) => call.command === "npm" && call.args[0] === "run" && call.args[1] === "cleanup:example"),
+    runner.calls.some(
+      (call) =>
+        call.command === "npm" &&
+        call.args[0] === "run" &&
+        call.args[1] === "cleanup:example",
+    ),
     false,
   );
   assert.equal(
-    runner.calls.some((call) => call.command === "tea" && call.args[0] === "issues" && call.args.includes("agent-done")),
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args.includes("agent-done"),
+    ),
     false,
   );
 });
 
 test("runOneIssue accepts direct squash-landed implementation results when skills.landing is configured", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, skills: LANDING_SKILLS });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    skills: LANDING_SKILLS,
+  });
   const selected = issue(22, ["agent-ready", "bug"], "Fix direct landing");
   const existingPlanPath = join(
     config.plansDir,
     "2026-05-01-issue-22-fix-direct-landing.md",
   );
-  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  await writeFile(
+    existingPlanPath,
+    "# plan\n\n### Task 1: Blocker Task\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -3846,9 +5746,7 @@ test("runOneIssue accepts direct squash-landed implementation results when skill
     result.landingDecision,
     "direct squash-landed: simple localized bug fix",
   );
-  assert.ok(
-    events.some((event) => event.message === "Merged to main: abc999"),
-  );
+  assert.ok(events.some((event) => event.message === "Merged to main: abc999"));
 
   const editCalls = runner.calls.filter(
     (call) =>
@@ -3857,15 +5755,21 @@ test("runOneIssue accepts direct squash-landed implementation results when skill
       call.args[1] === "edit",
   );
   assert.equal(editCalls.length, 2);
-  assert.deepEqual(editCalls[1]?.args, withRepo([
-    "issues",
-    "edit",
-    "22",
-    "--remove-labels",
-    "in-progress",
-    "--add-labels",
-    "agent-done",
-  ], config.repoRoot));
+  assert.deepEqual(
+    editCalls[1]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "22",
+        "--remove-labels",
+        "in-progress",
+        "--add-labels",
+        "agent-done",
+      ],
+      config.repoRoot,
+    ),
+  );
 
   const comments = runner.calls.filter(
     (call) => call.command === "tea" && call.args[0] === "comment",
@@ -3886,7 +5790,11 @@ test("runOneIssue rejects Pi merged results when skills.landing is not configure
     config.plansDir,
     "2026-05-01-issue-22-fix-direct-landing.md",
   );
-  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  await writeFile(
+    existingPlanPath,
+    "# plan\n\n### Task 1: Blocker Task\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -3948,13 +5856,21 @@ test("runOneIssue rejects Pi merged results when skills.landing is not configure
 });
 
 test("runOneIssue rejects Pi merged results when direct landing is disabled", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, allowDirectLand: false });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    allowDirectLand: false,
+  });
   const selected = issue(22, ["agent-ready", "bug"], "Fix direct landing");
   const existingPlanPath = join(
     config.plansDir,
     "2026-05-01-issue-22-fix-direct-landing.md",
   );
-  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  await writeFile(
+    existingPlanPath,
+    "# plan\n\n### Task 1: Blocker Task\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -4026,7 +5942,11 @@ test("runOneIssue marks deterministic blockers as needs-info without restoring a
     config.plansDir,
     "2026-05-01-issue-31-clarify-pipeline-blocker-path.md",
   );
-  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  await writeFile(
+    existingPlanPath,
+    "# plan\n\n### Task 1: Blocker Task\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -4088,8 +6008,13 @@ test("runOneIssue marks deterministic blockers as needs-info without restoring a
   assert.equal(result.reason, "Need API ownership decision");
   const stepEvents = events
     .filter((event) => event.step)
-    .map((event) => `${event.step?.type}:${event.step && "label" in event.step ? event.step.label : event.message}`);
-  const taskComplete = stepEvents.indexOf("step-complete:implement task 1/1 blocker task");
+    .map(
+      (event) =>
+        `${event.step?.type}:${event.step && "label" in event.step ? event.step.label : event.message}`,
+    );
+  const taskComplete = stepEvents.indexOf(
+    "step-complete:implement task 1/1 blocker task",
+  );
   const finalStart = stepEvents.indexOf("step-start:final result blocked");
   assert.ok(taskComplete >= 0, stepEvents.join("\n"));
   assert.ok(finalStart > taskComplete, stepEvents.join("\n"));
@@ -4099,15 +6024,21 @@ test("runOneIssue marks deterministic blockers as needs-info without restoring a
       call.args[0] === "issues" &&
       call.args[1] === "edit",
   );
-  assert.deepEqual(editCalls[1]?.args, withRepo([
-    "issues",
-    "edit",
-    "31",
-    "--remove-labels",
-    "in-progress",
-    "--add-labels",
-    "needs-info",
-  ], config.repoRoot));
+  assert.deepEqual(
+    editCalls[1]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "31",
+        "--remove-labels",
+        "in-progress",
+        "--add-labels",
+        "needs-info",
+      ],
+      config.repoRoot,
+    ),
+  );
   assert.equal(
     editCalls.some(
       (call) => call.args.includes("agent-ready") && call !== editCalls[0],
@@ -4155,12 +6086,16 @@ test("runOneIssue uses configured claim and blocker labels", async () => {
     config.plansDir,
     "2026-05-01-issue-32-clarify-custom-lifecycle-labels.md",
   );
-  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  await writeFile(
+    existingPlanPath,
+    "# plan\n\n### Task 1: Blocker Task\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
-      call.command === "tea"
-      && call.args[0] === "issues"
-      && call.args[1] === "list"
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
     ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
@@ -4171,8 +6106,8 @@ test("runOneIssue uses configured claim and blocker labels", async () => {
     }
 
     if (
-      call.command === "git"
-      && (call.args[0] === "status" || call.args[0] === "worktree")
+      call.command === "git" &&
+      (call.args[0] === "status" || call.args[0] === "worktree")
     ) {
       return { code: 0, stdout: "", stderr: "" };
     }
@@ -4182,30 +6117,33 @@ test("runOneIssue uses configured claim and blocker labels", async () => {
     }
 
     if (
-      call.command === "tea"
-      && call.args[0] === "labels"
-      && call.args[1] === "list"
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
     ) {
       return {
         code: 0,
         stdout: labelListPayload(
-          DEFAULT_LABEL_NAMES.filter((label) => !["in-progress", "needs-info", "agent-done"].includes(label)),
+          DEFAULT_LABEL_NAMES.filter(
+            (label) =>
+              !["in-progress", "needs-info", "agent-done"].includes(label),
+          ),
         ),
         stderr: "",
       };
     }
 
     if (
-      call.command === "tea"
-      && call.args[0] === "labels"
-      && call.args[1] === "create"
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "create"
     ) {
       return { code: 0, stdout: "", stderr: "" };
     }
 
     if (
-      call.command === "tea"
-      && (call.args[0] === "issues" || call.args[0] === "comment")
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
     ) {
       return { code: 0, stdout: "", stderr: "" };
     }
@@ -4229,33 +6167,48 @@ test("runOneIssue uses configured claim and blocker labels", async () => {
   assert.equal(result.status, "blocked");
   const claimedLabelCreate = runner.calls.find(
     (call) =>
-      call.command === "tea"
-      && call.args[0] === "labels"
-      && call.args[1] === "create"
-      && call.args.includes("claimed"),
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "create" &&
+      call.args.includes("claimed"),
   );
   assert.ok(claimedLabelCreate);
   const editCalls = runner.calls.filter(
-    (call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit",
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
   );
-  assert.deepEqual(editCalls[0]?.args, withRepo([
-    "issues",
-    "edit",
-    "32",
-    "--remove-labels",
-    triagePolicy.labels.ready,
-    "--add-labels",
-    "claimed",
-  ], config.repoRoot));
-  assert.deepEqual(editCalls[1]?.args, withRepo([
-    "issues",
-    "edit",
-    "32",
-    "--remove-labels",
-    "claimed",
-    "--add-labels",
-    "info-needed",
-  ], config.repoRoot));
+  assert.deepEqual(
+    editCalls[0]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "32",
+        "--remove-labels",
+        triagePolicy.labels.ready,
+        "--add-labels",
+        "claimed",
+      ],
+      config.repoRoot,
+    ),
+  );
+  assert.deepEqual(
+    editCalls[1]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "32",
+        "--remove-labels",
+        "claimed",
+        "--add-labels",
+        "info-needed",
+      ],
+      config.repoRoot,
+    ),
+  );
 });
 
 test("runOneIssue ensures a missing configured blocker label before applying it", async () => {
@@ -4278,12 +6231,16 @@ test("runOneIssue ensures a missing configured blocker label before applying it"
     config.plansDir,
     "2026-05-01-issue-33-create-missing-blocker-label-before-applying-it.md",
   );
-  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  await writeFile(
+    existingPlanPath,
+    "# plan\n\n### Task 1: Blocker Task\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
-      call.command === "tea"
-      && call.args[0] === "issues"
-      && call.args[1] === "list"
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
     ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
@@ -4294,8 +6251,8 @@ test("runOneIssue ensures a missing configured blocker label before applying it"
     }
 
     if (
-      call.command === "git"
-      && (call.args[0] === "status" || call.args[0] === "worktree")
+      call.command === "git" &&
+      (call.args[0] === "status" || call.args[0] === "worktree")
     ) {
       return { code: 0, stdout: "", stderr: "" };
     }
@@ -4305,28 +6262,30 @@ test("runOneIssue ensures a missing configured blocker label before applying it"
     }
 
     if (
-      call.command === "tea"
-      && call.args[0] === "labels"
-      && call.args[1] === "list"
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
     ) {
       return {
         code: 0,
-        stdout: labelListPayload(DEFAULT_LABEL_NAMES.filter((label) => label !== "needs-info")),
+        stdout: labelListPayload(
+          DEFAULT_LABEL_NAMES.filter((label) => label !== "needs-info"),
+        ),
         stderr: "",
       };
     }
 
     if (
-      call.command === "tea"
-      && call.args[0] === "labels"
-      && call.args[1] === "create"
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "create"
     ) {
       return { code: 0, stdout: "", stderr: "" };
     }
 
     if (
-      call.command === "tea"
-      && (call.args[0] === "issues" || call.args[0] === "comment")
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
     ) {
       return { code: 0, stdout: "", stderr: "" };
     }
@@ -4350,39 +6309,51 @@ test("runOneIssue ensures a missing configured blocker label before applying it"
   assert.equal(result.status, "blocked");
   const blockerLabelCreateIndex = runner.calls.findIndex(
     (call) =>
-      call.command === "tea"
-      && call.args[0] === "labels"
-      && call.args[1] === "create"
-      && call.args.includes("info-needed"),
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "create" &&
+      call.args.includes("info-needed"),
   );
   const blockerEditIndex = runner.calls.findIndex(
     (call) =>
-      call.command === "tea"
-      && call.args[0] === "issues"
-      && call.args[1] === "edit"
-      && call.args.includes("info-needed"),
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit" &&
+      call.args.includes("info-needed"),
   );
   assert.ok(blockerLabelCreateIndex >= 0);
   assert.ok(blockerEditIndex > blockerLabelCreateIndex);
-  assert.deepEqual(runner.calls[blockerLabelCreateIndex]?.args, withRepo([
-    "labels",
-    "create",
-    "--name",
-    "info-needed",
-    "--color",
-    "#8957e5",
-    "--description",
-    "Needs reporter information or human decision before planning",
-  ], config.repoRoot));
-  assert.deepEqual(runner.calls[blockerEditIndex]?.args, withRepo([
-    "issues",
-    "edit",
-    "33",
-    "--remove-labels",
-    triagePolicy.labels.inProgress,
-    "--add-labels",
-    "info-needed",
-  ], config.repoRoot));
+  assert.deepEqual(
+    runner.calls[blockerLabelCreateIndex]?.args,
+    withRepo(
+      [
+        "labels",
+        "create",
+        "--name",
+        "info-needed",
+        "--color",
+        "#8957e5",
+        "--description",
+        "Needs reporter information or human decision before planning",
+      ],
+      config.repoRoot,
+    ),
+  );
+  assert.deepEqual(
+    runner.calls[blockerEditIndex]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "33",
+        "--remove-labels",
+        triagePolicy.labels.inProgress,
+        "--add-labels",
+        "info-needed",
+      ],
+      config.repoRoot,
+    ),
+  );
 });
 
 test("runOneIssue records and comments unexpected planning failures without replacing in-progress", async () => {
@@ -4484,34 +6455,62 @@ test("runOneIssue records and comments unexpected planning failures without repl
   );
 
   const resumeRunner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1"
-          ? issueListPayload([
-              issue(41, ["in-progress", "bug"], "Handle planning failure state"),
-              issue(99, ["agent-ready", "bug"], "Do not select me"),
-            ])
-          : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(
+                  41,
+                  ["in-progress", "bug"],
+                  "Handle planning failure state",
+                ),
+                issue(99, ["agent-ready", "bug"], "Do not select me"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "comment") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       return {
         code: 0,
-        stdout: '{"status":"plan-created","planPath":"docs/plans/2026-05-09-issue-41-handle-planning-failure-state.md","commit":"abc123"}',
+        stdout:
+          '{"status":"plan-created","planPath":"docs/plans/2026-05-09-issue-41-handle-planning-failure-state.md","commit":"abc123"}',
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
-  const resumed = await runOneIssue(resumeRunner, { ...config, planOnly: true }, { now: NOW });
+  const resumed = await runOneIssue(
+    resumeRunner,
+    { ...config, planOnly: true },
+    { now: NOW },
+  );
 
   assert.equal(resumed.status, "plan-created");
   assert.equal(resumed.issue.number, 41);
@@ -4617,20 +6616,30 @@ test("runOneIssue records and comments unexpected implementation failures withou
   assert.match(runState.lastError, /supported final JSON status/);
 
   const resumeRunner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1"
-          ? issueListPayload([
-              issue(42, ["in-progress", "enhancement"], "Handle implementation parse failure"),
-              issue(100, ["agent-ready", "bug"], "Do not select me either"),
-            ])
-          : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(
+                  42,
+                  ["in-progress", "enhancement"],
+                  "Handle implementation parse failure",
+                ),
+                issue(100, ["agent-ready", "bug"], "Do not select me either"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree") {
       return {
         code: 0,
@@ -4638,14 +6647,31 @@ test("runOneIssue records and comments unexpected implementation failures withou
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-42-handle-implementation-parse-failure\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-42-handle-implementation-parse-failure\n",
+        stderr: "",
+      };
     }
     if (call.command === "git" && call.args[0] === "log") {
       return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
     }
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       return {
         code: 0,
@@ -4659,7 +6685,9 @@ test("runOneIssue records and comments unexpected implementation failures withou
         stderr: "",
       };
     }
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const resumed = await runOneIssue(resumeRunner, config, { now: NOW });
@@ -4669,7 +6697,11 @@ test("runOneIssue records and comments unexpected implementation failures withou
 });
 
 test("runOneIssue does not duplicate unexpected planning failure comments on rerun and still updates lastError", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, planOnly: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
   await writeRunState(
     config.runStateDir,
     {
@@ -4677,7 +6709,11 @@ test("runOneIssue does not duplicate unexpected planning failure comments on rer
       title: "Retry planning failure",
       status: "planning",
       planPath: "docs/plans/2026-05-09-issue-61-retry-planning-failure.md",
-      checkpoints: { claimed: true, startedCommentPosted: true, planPathResolved: true },
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+      },
       failureCommentKeys: ["unexpected-failure:planning"],
       lastError: "old planning error",
     },
@@ -4685,25 +6721,45 @@ test("runOneIssue does not duplicate unexpected planning failure comments on rer
   );
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(61, ["in-progress", "bug"], "Retry planning failure")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(61, ["in-progress", "bug"], "Retry planning failure"),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "pi") return { code: 1, stdout: "", stderr: "different planning failure" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "pi")
+      return { code: 1, stdout: "", stderr: "different planning failure" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "blocked");
   assert.equal(
-    runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"),
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
     false,
   );
 
@@ -4712,7 +6768,9 @@ test("runOneIssue does not duplicate unexpected planning failure comments on rer
   );
   assert.equal(runState.status, "planning");
   assert.equal(runState.lastError, "pi failed: different planning failure");
-  assert.deepEqual(runState.failureCommentKeys, ["unexpected-failure:planning"]);
+  assert.deepEqual(runState.failureCommentKeys, [
+    "unexpected-failure:planning",
+  ]);
 });
 
 test("runOneIssue does not duplicate unexpected implementation failure comments on rerun and still updates lastError", async () => {
@@ -4728,10 +6786,17 @@ test("runOneIssue does not duplicate unexpected implementation failure comments 
       issueNumber: 62,
       title: "Retry implementation failure",
       status: "implementing",
-      planPath: "docs/plans/2026-05-09-issue-62-retry-implementation-failure.md",
+      planPath:
+        "docs/plans/2026-05-09-issue-62-retry-implementation-failure.md",
       branch: "agent/issue-62-retry-implementation-failure",
-      worktreePath: ".worktrees/patchmill-issue-62-retry-implementation-failure",
-      checkpoints: { claimed: true, startedCommentPosted: true, planPathResolved: true, worktreeReady: true },
+      worktreePath:
+        ".worktrees/patchmill-issue-62-retry-implementation-failure",
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+        worktreeReady: true,
+      },
       failureCommentKeys: ["unexpected-failure:implementing"],
       lastError: "old implementation error",
     },
@@ -4739,15 +6804,29 @@ test("runOneIssue does not duplicate unexpected implementation failure comments 
   );
 
   const runner = createMockRunner(async (call) => {
-    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(62, ["in-progress", "bug"], "Retry implementation failure")]) : "[]",
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(
+                  62,
+                  ["in-progress", "bug"],
+                  "Retry implementation failure",
+                ),
+              ])
+            : "[]",
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree") {
       return {
         code: 0,
@@ -4755,20 +6834,39 @@ test("runOneIssue does not duplicate unexpected implementation failure comments 
         stderr: "",
       };
     }
-    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-62-retry-implementation-failure\n", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-62-retry-implementation-failure\n",
+        stderr: "",
+      };
     }
-    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
-    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
-    if (call.command === "pi") return { code: 0, stdout: '{"status":"unknown"}', stderr: "" };
-    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "pi")
+      return { code: 0, stdout: '{"status":"unknown"}', stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "blocked");
   assert.equal(
-    runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"),
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
     false,
   );
 
@@ -4777,7 +6875,9 @@ test("runOneIssue does not duplicate unexpected implementation failure comments 
   );
   assert.equal(runState.status, "implementing");
   assert.match(runState.lastError, /supported final JSON status/);
-  assert.deepEqual(runState.failureCommentKeys, ["unexpected-failure:implementing"]);
+  assert.deepEqual(runState.failureCommentKeys, [
+    "unexpected-failure:implementing",
+  ]);
 });
 
 test("runOneIssue records unexpected start-comment failures after claim", async () => {
@@ -5046,14 +7146,20 @@ test("runOneIssue creates the in-progress label before claiming when Forgejo is 
   );
   assert.ok(createIndex >= 0);
   assert.ok(claimIndex > createIndex);
-  assert.deepEqual(runner.calls[createIndex]?.args, withRepo([
-    "labels",
-    "create",
-    "--name",
-    "in-progress",
-    "--color",
-    "#fbca04",
-    "--description",
-    "Issue is currently being processed by automation",
-  ], config.repoRoot));
+  assert.deepEqual(
+    runner.calls[createIndex]?.args,
+    withRepo(
+      [
+        "labels",
+        "create",
+        "--name",
+        "in-progress",
+        "--color",
+        "#fbca04",
+        "--description",
+        "Issue is currently being processed by automation",
+      ],
+      config.repoRoot,
+    ),
+  );
 });

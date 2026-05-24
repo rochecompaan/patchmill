@@ -83,7 +83,11 @@ test("resolveAgentTeam prefers a project-local team over a global team", async (
     "economy",
     validTeam("openai-codex/gpt-5.4-project"),
   );
-  await writeGlobalTeam(home, "economy", validTeam("openai-codex/gpt-5.4-global"));
+  await writeGlobalTeam(
+    home,
+    "economy",
+    validTeam("openai-codex/gpt-5.4-global"),
+  );
 
   const team = await resolveAgentTeam(root, "economy", home);
 

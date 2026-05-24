@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assertIssueTodosComplete, issueTodoProgress, readIssueTodoTasks } from "./issue-todos.ts";
+import {
+  assertIssueTodosComplete,
+  issueTodoProgress,
+  readIssueTodoTasks,
+} from "./issue-todos.ts";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
 
 async function writeTodo(
@@ -15,7 +19,11 @@ async function writeTodo(
 ): Promise<void> {
   const dir = join(repoRoot, ".pi", "todos");
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${id}.md`), `${JSON.stringify({ id, title, status, tags })}\n\nbody\n`, "utf8");
+  await writeFile(
+    join(dir, `${id}.md`),
+    `${JSON.stringify({ id, title, status, tags })}\n\nbody\n`,
+    "utf8",
+  );
 }
 
 test("readIssueTodoTasks returns sorted implementation task labels", async () => {
@@ -27,8 +35,20 @@ test("readIssueTodoTasks returns sorted implementation task labels", async () =>
   const tasks = await readIssueTodoTasks(repoRoot, 19);
 
   assert.deepEqual(tasks, [
-    { number: 1, total: 2, title: "issue-19-task-01-date-range-model", label: "date range model", done: true },
-    { number: 2, total: 2, title: "issue-19-task-02-dashboard-wiring", label: "dashboard wiring", done: false },
+    {
+      number: 1,
+      total: 2,
+      title: "issue-19-task-01-date-range-model",
+      label: "date range model",
+      done: true,
+    },
+    {
+      number: 2,
+      total: 2,
+      title: "issue-19-task-02-dashboard-wiring",
+      label: "dashboard wiring",
+      done: false,
+    },
   ]);
 });
 
@@ -45,7 +65,9 @@ test("issueTodoProgress includes the current task label", async () => {
 });
 
 test("issue todo readers accept a custom task contract", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-custom-progress-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-custom-progress-"),
+  );
   const contract = {
     ...DEFAULT_PI_TASK_CONTRACT,
     todoRoot: ".patchmill/todos",
@@ -66,8 +88,20 @@ test("issue todo readers accept a custom task contract", async () => {
   );
 
   assert.deepEqual(await readIssueTodoTasks(repoRoot, 19, contract), [
-    { number: 1, total: 2, title: "work-19-step-01-date-range-model", label: "date range model", done: true },
-    { number: 2, total: 2, title: "work-19-step-02-dashboard-wiring", label: "dashboard wiring", done: false },
+    {
+      number: 1,
+      total: 2,
+      title: "work-19-step-01-date-range-model",
+      label: "date range model",
+      done: true,
+    },
+    {
+      number: 2,
+      total: 2,
+      title: "work-19-step-02-dashboard-wiring",
+      label: "dashboard wiring",
+      done: false,
+    },
   ]);
   assert.deepEqual(await issueTodoProgress(repoRoot, 19, contract), {
     current: 2,
@@ -87,8 +121,20 @@ test("readIssueTodoTasks supports reordered custom todo title placeholders", asy
   await writeTodo(repoRoot, "b", "issue-19-dashboard-wiring-task-02", "open");
 
   assert.deepEqual(await readIssueTodoTasks(repoRoot, 19, contract), [
-    { number: 1, total: 2, title: "issue-19-date-range-model-task-01", label: "date range model", done: true },
-    { number: 2, total: 2, title: "issue-19-dashboard-wiring-task-02", label: "dashboard wiring", done: false },
+    {
+      number: 1,
+      total: 2,
+      title: "issue-19-date-range-model-task-01",
+      label: "date range model",
+      done: true,
+    },
+    {
+      number: 2,
+      total: 2,
+      title: "issue-19-dashboard-wiring-task-02",
+      label: "dashboard wiring",
+      done: false,
+    },
   ]);
 });
 
@@ -99,13 +145,34 @@ test("readIssueTodoTasks requires matching issue tags when the todo title omits 
     todoTitlePattern: "task-<two-digit-number>-<slug>",
   };
 
-  await writeTodo(repoRoot, "a", "task-01-date-range-model", "closed", ["agent-issue", "issue-19"]);
-  await writeTodo(repoRoot, "b", "task-02-dashboard-wiring", "open", ["agent-issue", "issue-19"]);
-  await writeTodo(repoRoot, "c", "task-01-date-range-model", "open", ["agent-issue", "issue-20"]);
+  await writeTodo(repoRoot, "a", "task-01-date-range-model", "closed", [
+    "agent-issue",
+    "issue-19",
+  ]);
+  await writeTodo(repoRoot, "b", "task-02-dashboard-wiring", "open", [
+    "agent-issue",
+    "issue-19",
+  ]);
+  await writeTodo(repoRoot, "c", "task-01-date-range-model", "open", [
+    "agent-issue",
+    "issue-20",
+  ]);
 
   assert.deepEqual(await readIssueTodoTasks(repoRoot, 19, contract), [
-    { number: 1, total: 2, title: "task-01-date-range-model", label: "date range model", done: true },
-    { number: 2, total: 2, title: "task-02-dashboard-wiring", label: "dashboard wiring", done: false },
+    {
+      number: 1,
+      total: 2,
+      title: "task-01-date-range-model",
+      label: "date range model",
+      done: true,
+    },
+    {
+      number: 2,
+      total: 2,
+      title: "task-02-dashboard-wiring",
+      label: "dashboard wiring",
+      done: false,
+    },
   ]);
   assert.deepEqual(await issueTodoProgress(repoRoot, 19, contract), {
     current: 2,

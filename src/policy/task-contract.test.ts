@@ -11,7 +11,9 @@ import {
   todoTitlePatternIncludesIssueNumber,
 } from "./task-contract.ts";
 
-function plainGroups(groups: Record<string, string> | undefined): Record<string, string> | undefined {
+function plainGroups(
+  groups: Record<string, string> | undefined,
+): Record<string, string> | undefined {
   return groups ? Object.fromEntries(Object.entries(groups)) : undefined;
 }
 
@@ -43,15 +45,30 @@ test("task contract helpers render and compile default issue todo patterns", () 
     renderIssueTodoTitlePattern(DEFAULT_PI_TASK_CONTRACT, 42),
     "issue-42-task-<two-digit-number>-<slug>",
   );
-  assert.deepEqual(renderIssueTodoTags(DEFAULT_PI_TASK_CONTRACT, 42), ["agent-issue", "issue-42"]);
-  assert.equal(todoTitlePatternIncludesIssueNumber(DEFAULT_PI_TASK_CONTRACT), true);
-  assert.equal(renderIssueTodoTitleGlob(DEFAULT_PI_TASK_CONTRACT, 42), "issue-42-task-*");
+  assert.deepEqual(renderIssueTodoTags(DEFAULT_PI_TASK_CONTRACT, 42), [
+    "agent-issue",
+    "issue-42",
+  ]);
+  assert.equal(
+    todoTitlePatternIncludesIssueNumber(DEFAULT_PI_TASK_CONTRACT),
+    true,
+  );
+  assert.equal(
+    renderIssueTodoTitleGlob(DEFAULT_PI_TASK_CONTRACT, 42),
+    "issue-42-task-*",
+  );
 
   const pattern = compileIssueTodoTitlePattern(DEFAULT_PI_TASK_CONTRACT, 42);
   const match = "issue-42-task-07-dashboard-wiring".match(pattern);
   assert.deepEqual(match?.slice(1), ["07", "dashboard-wiring"]);
-  assert.deepEqual(plainGroups(match?.groups), { taskNumber: "07", taskSlug: "dashboard-wiring" });
-  assert.equal(issueTodoStatusDone(DEFAULT_PI_TASK_CONTRACT, "completed"), true);
+  assert.deepEqual(plainGroups(match?.groups), {
+    taskNumber: "07",
+    taskSlug: "dashboard-wiring",
+  });
+  assert.equal(
+    issueTodoStatusDone(DEFAULT_PI_TASK_CONTRACT, "completed"),
+    true,
+  );
   assert.equal(issueTodoStatusDone(DEFAULT_PI_TASK_CONTRACT, "open"), false);
 });
 
@@ -61,7 +78,10 @@ test("task contract helpers compile default and custom plan heading patterns", (
       compilePlanTaskHeadingPattern(DEFAULT_PI_TASK_CONTRACT),
     ),
   ].map((match) => match.slice(1));
-  assert.deepEqual(defaultMatches, [["1", "Date Range Model"], ["2", "Dashboard Wiring"]]);
+  assert.deepEqual(defaultMatches, [
+    ["1", "Date Range Model"],
+    ["2", "Dashboard Wiring"],
+  ]);
   const defaultGroups = [
     ..."## Task 1: Date Range Model\n### Task 2: Dashboard Wiring".matchAll(
       compilePlanTaskHeadingPattern(DEFAULT_PI_TASK_CONTRACT),
@@ -88,7 +108,10 @@ test("task contract helpers compile default and custom plan heading patterns", (
       compilePlanTaskHeadingPattern(customContract),
     ),
   ].map((match) => match.slice(1));
-  assert.deepEqual(customMatches, [["2", "Dashboard Wiring"], ["10", "Final Verification"]]);
+  assert.deepEqual(customMatches, [
+    ["2", "Dashboard Wiring"],
+    ["10", "Final Verification"],
+  ]);
   const customGroups = [
     ..."### Step 2 - Dashboard Wiring\n#### Step 10 - Final Verification".matchAll(
       compilePlanTaskHeadingPattern(customContract),
@@ -108,16 +131,21 @@ test("task contract helpers preserve named captures for reordered placeholders",
     },
     42,
   );
-  assert.deepEqual(plainGroups("issue-42-dashboard-wiring-task-07".match(todoPattern)?.groups), {
-    taskNumber: "07",
-    taskSlug: "dashboard-wiring",
-  });
+  assert.deepEqual(
+    plainGroups("issue-42-dashboard-wiring-task-07".match(todoPattern)?.groups),
+    {
+      taskNumber: "07",
+      taskSlug: "dashboard-wiring",
+    },
+  );
 
   const headingPattern = compilePlanTaskHeadingPattern({
     ...DEFAULT_PI_TASK_CONTRACT,
     planTaskHeadingPattern: "### <label> as step <number>",
   });
-  const [headingMatch] = [..."### Dashboard Wiring as step 2".matchAll(headingPattern)];
+  const [headingMatch] = [
+    ..."### Dashboard Wiring as step 2".matchAll(headingPattern),
+  ];
   assert.deepEqual(plainGroups(headingMatch?.groups), {
     taskLabel: "Dashboard Wiring",
     taskNumber: "2",

@@ -2,9 +2,12 @@
 
 > Archived plan summary for the initial generalization pass.
 
-**Goal:** Turn the seed Forgejo + Pi automation into a configurable Patchmill CLI with an issue-host provider boundary and a concrete Pi runtime.
+**Goal:** Turn the seed Forgejo + Pi automation into a configurable Patchmill
+CLI with an issue-host provider boundary and a concrete Pi runtime.
 
-**Architecture:** Keep the workflow green while extracting thin interfaces around host access, configuration, policy, and git strategy. Pi remains the built-in runtime.
+**Architecture:** Keep the workflow green while extracting thin interfaces
+around host access, configuration, policy, and git strategy. Pi remains the
+built-in runtime.
 
 ## Workstreams
 
@@ -29,7 +32,8 @@
 
 ### 4. Policy and prompts
 
-- move labels, validation guidance, landing policy, and prompt text into project policy
+- move labels, validation guidance, landing policy, and prompt text into project
+  policy
 - document task-contract settings used by Pi prompts and plan readers
 - keep prompt output validation strict
 
@@ -53,8 +57,10 @@
 ### 8. Documentation and audit
 
 - document the Patchmill CLI, provider surface, and task contracts
-- keep docs focused on `patchmill triage`, `patchmill run-once`, `PATCHMILL_*`, `.patchmill/*`, and `patchmill.config.json`
-- add an audit command that flags removed seed-era tokens in tracked product files
+- keep docs focused on `patchmill triage`, `patchmill run-once`, `PATCHMILL_*`,
+  `.patchmill/*`, and `patchmill.config.json`
+- add an audit command that flags removed seed-era tokens in tracked product
+  files
 
 ## Verification goals
 
@@ -65,4 +71,6 @@
 
 ## Notes
 
-This archive keeps the implementation themes from the original plan while removing obsolete compatibility guidance that no longer matches the product surface.
+This archive keeps the implementation themes from the original plan while
+removing obsolete compatibility guidance that no longer matches the product
+surface.

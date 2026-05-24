@@ -1,4 +1,7 @@
-import { ForgejoVisualEvidenceUploader, hasForgejoVisualEvidenceConfig } from "../../src/host/forgejo-visual-evidence.ts";
+import {
+  ForgejoVisualEvidenceUploader,
+  hasForgejoVisualEvidenceConfig,
+} from "../../src/host/forgejo-visual-evidence.ts";
 import type { ForgejoVisualEvidenceEnv } from "../../src/host/forgejo-visual-evidence.ts";
 import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
 import type { AgentIssueVisualEvidence, CommandRunner } from "./types.ts";
@@ -29,11 +32,15 @@ export function defaultVisualEvidenceUploader(
   });
 }
 
-export async function uploadPrVisualEvidence(input: UploadPrVisualEvidenceInput): Promise<AgentIssueVisualEvidence[]> {
+export async function uploadPrVisualEvidence(
+  input: UploadPrVisualEvidenceInput,
+): Promise<AgentIssueVisualEvidence[]> {
   const evidence = input.evidence ?? [];
   if (evidence.length === 0) return [];
   if (!input.uploader) {
-    await input.onProgress?.("visual evidence present but no uploader configured; skipping host asset upload");
+    await input.onProgress?.(
+      "visual evidence present but no uploader configured; skipping host asset upload",
+    );
     return evidence;
   }
   return input.uploader.uploadPrEvidence({

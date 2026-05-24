@@ -33,10 +33,9 @@ test("mergeSkillsConfig replaces only configured stages", () => {
 });
 
 test("mergeSkillsConfig preserves defaults when update contains explicit undefined", () => {
-  const merged = mergeSkillsConfig(
-    DEFAULT_PATCHMILL_SKILLS,
-    { triage: undefined } as PartialPatchmillSkillsConfig,
-  );
+  const merged = mergeSkillsConfig(DEFAULT_PATCHMILL_SKILLS, {
+    triage: undefined,
+  } as PartialPatchmillSkillsConfig);
 
   assert.equal(merged.triage, "patchmill-issue-triage");
 });
@@ -50,13 +49,18 @@ test("cloneSkillsConfig returns an independent object", () => {
 
 test("renderConfiguredSkillLine renders direct stage-to-skill wording", () => {
   assert.equal(
-    renderConfiguredSkillLine("Use the configured planning skill", "superpowers:writing-plans"),
+    renderConfiguredSkillLine(
+      "Use the configured planning skill",
+      "superpowers:writing-plans",
+    ),
     "Use the configured planning skill: `superpowers:writing-plans`.",
   );
 });
 
 test("bundledTriageSkillPath points at the bundled SKILL.md file", () => {
   assert.ok(
-    bundledTriageSkillPath().endsWith(join("skills", "patchmill-issue-triage", "SKILL.md")),
+    bundledTriageSkillPath().endsWith(
+      join("skills", "patchmill-issue-triage", "SKILL.md"),
+    ),
   );
 });

@@ -191,7 +191,10 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
     assert.equal(call.args[0], "-p");
     assert.equal(call.args.includes("--mode"), false);
     const sessionDirIndex = call.args.indexOf("--session-dir");
-    assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${call.args.join(" ")}`);
+    assert.ok(
+      sessionDirIndex >= 0,
+      `expected --session-dir in ${call.args.join(" ")}`,
+    );
     const sessionDir = call.args[sessionDirIndex + 1];
     assert.ok(sessionDir);
 
@@ -200,7 +203,12 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
     await writeFile(
       sessionPath,
       [
-        JSON.stringify({ type: "session", version: 3, id: "session-1", cwd: "/repo" }),
+        JSON.stringify({
+          type: "session",
+          version: 3,
+          id: "session-1",
+          cwd: "/repo",
+        }),
         JSON.stringify({
           type: "message",
           id: "user-1",
@@ -236,7 +244,13 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
               cacheRead: 0,
               cacheWrite: 0,
               totalTokens: 45444,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
             },
             content: [
               {
@@ -261,7 +275,13 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
               cacheRead: 0,
               cacheWrite: 0,
               totalTokens: 45444,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
             },
             content: [
               {
@@ -277,7 +297,8 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
     call.onStderr?.("planning warning\n");
     return {
       code: 0,
-      stdout: 'planning output\n{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stdout:
+        'planning output\n{"status":"plan-created","planPath":"docs/plans/p.md"}',
       stderr: "",
     };
   });
@@ -300,11 +321,19 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
 });
 
 test("runPiPrompt emits structured observations and suppresses raw text unless streamOutput is provided", async () => {
-  const observations: Array<{ type: string; outputTokens?: number; toolName?: string; text?: string }> = [];
+  const observations: Array<{
+    type: string;
+    outputTokens?: number;
+    toolName?: string;
+    text?: string;
+  }> = [];
   const streamed: string[] = [];
   const runner = createMockRunner(async (call) => {
     const sessionDirIndex = call.args.indexOf("--session-dir");
-    assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${call.args.join(" ")}`);
+    assert.ok(
+      sessionDirIndex >= 0,
+      `expected --session-dir in ${call.args.join(" ")}`,
+    );
     const sessionDir = call.args[sessionDirIndex + 1];
     assert.ok(sessionDir);
     const sessionPath = join(sessionDir, "--repo--", "session.jsonl");
@@ -312,23 +341,42 @@ test("runPiPrompt emits structured observations and suppresses raw text unless s
     await writeFile(
       sessionPath,
       [
-        JSON.stringify({ type: "session", version: 3, id: "session-1", cwd: "/repo" }),
+        JSON.stringify({
+          type: "session",
+          version: 3,
+          id: "session-1",
+          cwd: "/repo",
+        }),
         JSON.stringify({
           type: "message",
-          message: { role: "toolResult", toolName: "read", content: [{ type: "text", text: "large file body" }] },
+          message: {
+            role: "toolResult",
+            toolName: "read",
+            content: [{ type: "text", text: "large file body" }],
+          },
         }),
         JSON.stringify({
           type: "message",
           message: {
             role: "assistant",
-            usage: { input: 90000, output: 1234, cacheRead: 80000, cacheWrite: 70000, totalTokens: 241234 },
+            usage: {
+              input: 90000,
+              output: 1234,
+              cacheRead: 80000,
+              cacheWrite: 70000,
+              totalTokens: 241234,
+            },
             content: [{ type: "text", text: "assistant narration" }],
           },
         }),
       ].join("\n") + "\n",
       "utf8",
     );
-    return { code: 0, stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}', stderr: "" };
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
   });
 
   await runPiPrompt(runner, "/repo", "prompt", {
@@ -358,11 +406,18 @@ test("runPiPrompt streams raw text in verbose mode", async () => {
       join(sessionDir, "--repo--", "session.jsonl"),
       JSON.stringify({
         type: "message",
-        message: { role: "assistant", content: [{ type: "text", text: "verbose narration" }] },
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "verbose narration" }],
+        },
       }) + "\n",
       "utf8",
     );
-    return { code: 0, stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}', stderr: "" };
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
   });
 
   await runPiPrompt(runner, "/repo", "prompt", {
@@ -395,7 +450,11 @@ test("runPiPrompt verbose mode does not append synthetic token lines", async () 
       }) + "\n",
       "utf8",
     );
-    return { code: 0, stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}', stderr: "" };
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
   });
 
   await runPiPrompt(runner, "/repo", "prompt", {
@@ -443,7 +502,9 @@ test("runPiPrompt emits heartbeat events while pi is pending", async () => {
     events.some(
       (event) =>
         event.level === "heartbeat" &&
-        /^\[issue #45\] implementing task 3\/7 \| tok: task=45k total=272k \| elapsed \d+s$/.test(event.message),
+        /^\[issue #45\] implementing task 3\/7 \| tok: task=45k total=272k \| elapsed \d+s$/.test(
+          event.message,
+        ),
     ),
   );
 });
@@ -481,7 +542,8 @@ test("sessionEntryToObservations reports assistant tool calls with arguments", (
           id: "call-1",
           name: "bash",
           arguments: {
-            command: "rg -n \"Picking Log|Trimming Log|Container Assignments\" mobile",
+            command:
+              'rg -n "Picking Log|Trimming Log|Container Assignments" mobile',
             timeout: 15,
           },
         },
@@ -505,7 +567,8 @@ test("sessionEntryToObservations reports assistant tool calls with arguments", (
       toolName: "bash",
       toolCallId: "call-1",
       arguments: {
-        command: "rg -n \"Picking Log|Trimming Log|Container Assignments\" mobile",
+        command:
+          'rg -n "Picking Log|Trimming Log|Container Assignments" mobile',
         timeout: 15,
       },
     },
@@ -533,7 +596,9 @@ test("sessionEntryToObservations reports tool calls without streaming tool resul
     },
   });
 
-  assert.deepEqual(observations, [{ type: "tool-call", toolName: "bash", toolCallId: "call-1" }]);
+  assert.deepEqual(observations, [
+    { type: "tool-call", toolName: "bash", toolCallId: "call-1" },
+  ]);
 });
 
 test("sessionEntryToObservations ignores input-only usage for token accounting", () => {
@@ -550,18 +615,16 @@ test("sessionEntryToObservations ignores input-only usage for token accounting",
 });
 
 test("sessionEntryToStreamText reports task and total tokens", () => {
-  const text = sessionEntryToStreamText(
-    {
-      type: "message",
-      message: {
-        role: "assistant",
-        provider: "openai-codex",
-        model: "gpt-5.5:high",
-        usage: { input: 45123, totalTokens: 45987 },
-        content: [{ type: "text", text: "progress\n" }],
-      },
+  const text = sessionEntryToStreamText({
+    type: "message",
+    message: {
+      role: "assistant",
+      provider: "openai-codex",
+      model: "gpt-5.5:high",
+      usage: { input: 45123, totalTokens: 45987 },
+      content: [{ type: "text", text: "progress\n" }],
     },
-  );
+  });
 
   assert.equal(text, "progress\ntok: task=45k total=46k\n");
 });
@@ -581,7 +644,11 @@ test("sessionEntryToStreamText falls back to input and output when total tokens 
 
 test("runPiPrompt reads issue task progress from the configured worktree root", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-issue-main-"));
-  const worktreeRoot = join(repoRoot, ".worktrees", "patchmill-issue-14-example");
+  const worktreeRoot = join(
+    repoRoot,
+    ".worktrees",
+    "patchmill-issue-14-example",
+  );
 
   for (let index = 1; index <= 8; index += 1) {
     await writeTodo(
@@ -638,7 +705,9 @@ test("runPiPrompt reads issue task progress from the configured worktree root", 
 });
 
 test("runPiPrompt reads planning task progress from the configured task contract", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-issue-plan-progress-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-issue-plan-progress-"),
+  );
   const contract = {
     ...DEFAULT_PI_TASK_CONTRACT,
     todoRoot: ".patchmill/todos",
@@ -658,7 +727,11 @@ test("runPiPrompt reads planning task progress from the configured task contract
   );
 
   const events: AgentIssueProgressEvent[] = [];
-  const taskProgress: Array<{ current: number; total: number; label?: string }> = [];
+  const taskProgress: Array<{
+    current: number;
+    total: number;
+    label?: string;
+  }> = [];
   let finishRun: (result: CommandResult) => void = () => undefined;
   const runner = createMockRunner(
     () =>
@@ -695,13 +768,17 @@ test("runPiPrompt reads planning task progress from the configured task contract
     events.some(
       (event) =>
         event.level === "heartbeat" &&
-        /^\[issue #14\] planning \| tok: task=\? total=\? \| elapsed \d+s$/.test(event.message),
+        /^\[issue #14\] planning \| tok: task=\? total=\? \| elapsed \d+s$/.test(
+          event.message,
+        ),
     ),
   );
   assert.ok(
     taskProgress.some(
       (progress) =>
-        progress.current === 2 && progress.total === 2 && progress.label === "dashboard wiring",
+        progress.current === 2 &&
+        progress.total === 2 &&
+        progress.label === "dashboard wiring",
     ),
   );
 });

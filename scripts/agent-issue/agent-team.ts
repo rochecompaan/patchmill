@@ -73,7 +73,12 @@ function parseTeam(
     parsed = JSON.parse(content) as TeamFile;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Agent team ${requestedName} contains invalid JSON: ${message}`);
+    throw new Error(
+      `Agent team ${requestedName} contains invalid JSON: ${message}`,
+      {
+        cause: error,
+      },
+    );
   }
 
   const agents = objectRecord(parsed.agents);

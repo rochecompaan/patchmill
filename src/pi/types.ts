@@ -18,7 +18,10 @@ export type TriagePiInput = {
   skills?: PatchmillSkillsConfig;
 };
 
-type PiRunnerRunOptions = Omit<RunPiPromptOptions, "stage" | "issueNumber" | "repoRoot">;
+type PiRunnerRunOptions = Omit<
+  RunPiPromptOptions,
+  "stage" | "issueNumber" | "repoRoot"
+>;
 
 export type PlanPiInput = {
   repoRoot: string;
@@ -37,7 +40,10 @@ export type ImplementationPiInput = {
   branch: string;
   worktreePath: string;
   agentTeam: ResolvedAgentTeam;
-  git: Pick<GitWorktreeStrategyConfig, "baseBranch" | "remote" | "allowDirectLand">;
+  git: Pick<
+    GitWorktreeStrategyConfig,
+    "baseBranch" | "remote" | "allowDirectLand"
+  >;
   projectPolicy?: PatchmillProjectPolicy;
   skills?: PatchmillSkillsConfig;
   resume?: AgentIssueImplementationResumeContext;

@@ -1,0 +1,20 @@
+{
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD024": {
+      "siblings_only": true,
+    },
+  },
+  "globs": ["README.md", "docs/**/*.md", "skills/**/*.md"],
+  "ignores": [
+    "node_modules/**",
+    "coverage/**",
+    ".devenv/**",
+    ".direnv/**",
+    ".patchmill/**",
+    ".pi/**",
+    ".tmp/**",
+    ".worktrees/**",
+  ],
+}

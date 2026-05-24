@@ -6,7 +6,10 @@ function safeTimestamp(timestamp: string): string {
   return timestamp.replaceAll(":", "-").replaceAll(".", "-");
 }
 
-export async function writeTriageLog(logDir: string, log: TriageLog): Promise<string> {
+export async function writeTriageLog(
+  logDir: string,
+  log: TriageLog,
+): Promise<string> {
   await mkdir(logDir, { recursive: true });
   const path = join(logDir, `triage-${safeTimestamp(log.createdAt)}.json`);
   await writeFile(path, `${JSON.stringify(log, null, 2)}\n`, "utf8");

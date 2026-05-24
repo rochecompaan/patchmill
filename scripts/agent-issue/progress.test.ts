@@ -21,7 +21,12 @@ test("console reporter writes concise messages without agent-issue prefix", () =
   const lines: string[] = [];
   const reporter = new ConsoleProgressReporter((line) => lines.push(line));
 
-  reporter.event({ time: "2026-05-10T03:12:40.000Z", level: "info", stage: "select", message: "selected #33" });
+  reporter.event({
+    time: "2026-05-10T03:12:40.000Z",
+    level: "info",
+    stage: "select",
+    message: "selected #33",
+  });
 
   assert.deepEqual(lines, ["selected #33"]);
 });
@@ -31,7 +36,13 @@ test("jsonl reporter writes one JSON object per event", async () => {
   const path = join(dir, "run.jsonl");
   const reporter = new JsonlProgressReporter(path);
 
-  await reporter.event({ time: "2026-05-10T03:12:40.000Z", level: "info", stage: "claim", message: "claimed issue", issueNumber: 33 });
+  await reporter.event({
+    time: "2026-05-10T03:12:40.000Z",
+    level: "info",
+    stage: "claim",
+    message: "claimed issue",
+    issueNumber: 33,
+  });
 
   const lines = (await readFile(path, "utf8")).trim().split("\n");
   assert.equal(lines.length, 1);
@@ -49,7 +60,14 @@ test("jsonl reporter preserves step completion accounting fields", async () => {
     stage: "pi-plan",
     message: "step completed",
     issueNumber: 19,
-    step: { type: "step-complete", label: "create plan", taskOutputTokens: 4200, totalOutputTokens: 4200, toolCalls: 12, elapsedSeconds: 72 },
+    step: {
+      type: "step-complete",
+      label: "create plan",
+      taskOutputTokens: 4200,
+      totalOutputTokens: 4200,
+      toolCalls: 12,
+      elapsedSeconds: 72,
+    },
     taskOutputTokens: 4200,
     totalOutputTokens: 4200,
     toolCalls: 12,
@@ -68,11 +86,24 @@ test("jsonl reporter preserves step completion accounting fields", async () => {
 test("composite reporter sends events to all reporters", async () => {
   const seen: string[] = [];
   const reporter = compositeProgressReporter([
-    { event: (event) => { seen.push(`a:${event.stage}`); } },
-    { event: (event) => { seen.push(`b:${event.stage}`); } },
+    {
+      event: (event) => {
+        seen.push(`a:${event.stage}`);
+      },
+    },
+    {
+      event: (event) => {
+        seen.push(`b:${event.stage}`);
+      },
+    },
   ]);
 
-  await reporter.event({ time: "2026-05-10T03:12:40.000Z", level: "info", stage: "select", message: "selected" });
+  await reporter.event({
+    time: "2026-05-10T03:12:40.000Z",
+    level: "info",
+    stage: "select",
+    message: "selected",
+  });
 
   assert.deepEqual(seen, ["a:select", "b:select"]);
 });

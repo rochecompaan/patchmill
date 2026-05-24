@@ -19,7 +19,12 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     done: "agent-done",
     blocked: "blocked",
     types: ["bug", "enhancement", "docs", "chore", "test"],
-    priorities: ["priority:critical", "priority:high", "priority:medium", "priority:low"],
+    priorities: [
+      "priority:critical",
+      "priority:high",
+      "priority:medium",
+      "priority:low",
+    ],
   },
   skills: DEFAULT_PATCHMILL_SKILLS,
   paths: {

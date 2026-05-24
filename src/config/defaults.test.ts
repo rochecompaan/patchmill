@@ -5,7 +5,10 @@ import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
 
 test("defaults match the current patchmill baseline configuration", () => {
-  assert.equal(DEFAULT_PATCHMILL_CONFIG.projectPolicy, DEFAULT_PATCHMILL_POLICY);
+  assert.equal(
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy,
+    DEFAULT_PATCHMILL_POLICY,
+  );
   assert.equal(DEFAULT_PATCHMILL_CONFIG.skills, DEFAULT_PATCHMILL_SKILLS);
   assert.deepEqual(DEFAULT_PATCHMILL_CONFIG, {
     host: {
@@ -23,7 +26,12 @@ test("defaults match the current patchmill baseline configuration", () => {
       done: "agent-done",
       blocked: "blocked",
       types: ["bug", "enhancement", "docs", "chore", "test"],
-      priorities: ["priority:critical", "priority:high", "priority:medium", "priority:low"],
+      priorities: [
+        "priority:critical",
+        "priority:high",
+        "priority:medium",
+        "priority:low",
+      ],
     },
     skills: DEFAULT_PATCHMILL_SKILLS,
     paths: {
@@ -31,7 +39,10 @@ test("defaults match the current patchmill baseline configuration", () => {
       runStateDir: ".patchmill/runs",
       triageLogDir: ".patchmill/triage-runs",
       worktreeDir: ".worktrees",
-      cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/"],
+      cleanStatusIgnorePrefixes: [
+        ".patchmill/runs/",
+        ".patchmill/triage-runs/",
+      ],
     },
     git: {
       baseBranch: "main",

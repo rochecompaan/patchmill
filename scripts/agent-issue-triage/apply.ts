@@ -1,15 +1,28 @@
 import type { PatchmillTriagePolicy } from "../../src/policy/triage.ts";
 import { applyIssueLabels, commentIssue } from "./forgejo.ts";
 import { planLabelChange } from "./labels.ts";
-import type { CommandRunner, TriageQuestion, IssueSummary, TriageDecision, TriageLogIssueEntry } from "./types.ts";
+import type {
+  CommandRunner,
+  TriageQuestion,
+  IssueSummary,
+  TriageDecision,
+  TriageLogIssueEntry,
+} from "./types.ts";
 
 export class ApplyDecisionError extends Error {
   readonly issueNumber: number;
   readonly operation: "labels" | "comment";
 
-  constructor(issueNumber: number, operation: "labels" | "comment", cause: unknown) {
+  constructor(
+    issueNumber: number,
+    operation: "labels" | "comment",
+    cause: unknown,
+  ) {
     const causeMessage = cause instanceof Error ? cause.message : String(cause);
-    super(`Failed to apply ${operation} for issue #${issueNumber}: ${causeMessage}`, { cause });
+    super(
+      `Failed to apply ${operation} for issue #${issueNumber}: ${causeMessage}`,
+      { cause },
+    );
     this.name = "ApplyDecisionError";
     this.issueNumber = issueNumber;
     this.operation = operation;
@@ -31,8 +44,10 @@ function hasRecommendedAnswers(questions: TriageQuestion[]): boolean {
 
 export function buildNeedsInfoComment(decision: TriageDecision): string {
   const questions = decision.questions.map(formatQuestion).join("\n");
-  const header = "Automated triage needs more information before this can be planned:";
-  if (!hasRecommendedAnswers(decision.questions)) return `${header}\n\n${questions}`;
+  const header =
+    "Automated triage needs more information before this can be planned:";
+  if (!hasRecommendedAnswers(decision.questions))
+    return `${header}\n\n${questions}`;
 
   return `${header}\n\nRationale:\n${decision.rationale}\n\nFollow-up questions and recommended answers:\n${questions}`;
 }
@@ -42,7 +57,11 @@ function commentForDecision(
   triagePolicy?: PatchmillTriagePolicy,
 ): string | null {
   if (decision.primaryBucket === "needs-info") {
-    if (!triagePolicy || triagePolicy.needsInfo.commentBehavior === "generated-from-rationale-and-questions") {
+    if (
+      !triagePolicy ||
+      triagePolicy.needsInfo.commentBehavior ===
+        "generated-from-rationale-and-questions"
+    ) {
       return buildNeedsInfoComment(decision);
     }
   }
@@ -60,7 +79,8 @@ export function createLogEntries(
 
   return decisions.map((decision) => {
     const issue = issuesByNumber.get(decision.issueNumber);
-    if (!issue) throw new Error(`No issue found for decision #${decision.issueNumber}`);
+    if (!issue)
+      throw new Error(`No issue found for decision #${decision.issueNumber}`);
 
     const error = errorByIssue.get(decision.issueNumber);
     return {
@@ -91,10 +111,16 @@ export async function applyDecisions(
 
   for (const decision of decisions) {
     const issue = issuesByNumber.get(decision.issueNumber);
-    if (!issue) throw new Error(`No issue found for decision #${decision.issueNumber}`);
+    if (!issue)
+      throw new Error(`No issue found for decision #${decision.issueNumber}`);
 
     try {
-      await applyIssueLabels(runner, repoRoot, planLabelChange(issue.number, issue.labels, decision.labels), teaLogin);
+      await applyIssueLabels(
+        runner,
+        repoRoot,
+        planLabelChange(issue.number, issue.labels, decision.labels),
+        teaLogin,
+      );
     } catch (error) {
       throw new ApplyDecisionError(issue.number, "labels", error);
     }

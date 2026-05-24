@@ -43,19 +43,25 @@ export function createCommandRunner(): CommandRunner {
   };
 }
 
-export function createDryRunCommandRunner(): CommandRunner & { commands: string[] } {
+export function createDryRunCommandRunner(): CommandRunner & {
+  commands: string[];
+} {
   const commands: string[] = [];
   return {
     commands,
     async run(command, args, options = {}) {
       const rendered = [command, ...args].map(shellQuote).join(" ");
-      commands.push(options.cwd ? `cd ${shellQuote(options.cwd)} && ${rendered}` : rendered);
+      commands.push(
+        options.cwd ? `cd ${shellQuote(options.cwd)} && ${rendered}` : rendered,
+      );
       return { code: 0, stdout: "", stderr: "" };
     },
   };
 }
 
-export function createStaticCommandRunner(results: CommandResult[]): CommandRunner & {
+export function createStaticCommandRunner(
+  results: CommandResult[],
+): CommandRunner & {
   calls: Array<{ command: string; args: string[]; cwd?: string }>;
 } {
   const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];

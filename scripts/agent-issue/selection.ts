@@ -2,7 +2,9 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import { createTriagePolicy } from "../../src/policy/triage.ts";
 import type { IssueSelectionOptions, IssueSummary } from "./types.ts";
 
-const DEFAULT_TRIAGE_POLICY = createTriagePolicy(DEFAULT_PATCHMILL_CONFIG.labels);
+const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
+  DEFAULT_PATCHMILL_CONFIG.labels,
+);
 
 type ResolvedIssueSelectionOptions = {
   issueNumber?: number;
@@ -12,21 +14,32 @@ type ResolvedIssueSelectionOptions = {
 };
 
 function defaultExcludedLabels(options: IssueSelectionOptions): string[] {
-  return [...(options.triagePolicy ?? DEFAULT_TRIAGE_POLICY).runOnceSelection.excludedLabels];
+  return [
+    ...(options.triagePolicy ?? DEFAULT_TRIAGE_POLICY).runOnceSelection
+      .excludedLabels,
+  ];
 }
 
-function resolveSelectionOptions(options: IssueSelectionOptions): ResolvedIssueSelectionOptions {
+function resolveSelectionOptions(
+  options: IssueSelectionOptions,
+): ResolvedIssueSelectionOptions {
   const triagePolicy = options.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
 
   return {
     issueNumber: options.issueNumber,
     readyLabel: options.readyLabel,
-    priorityLabels: options.priorityLabels ?? triagePolicy.runOnceSelection.priorityOrder,
-    excludedLabels: new Set(options.excludedLabels ?? defaultExcludedLabels(options)),
+    priorityLabels:
+      options.priorityLabels ?? triagePolicy.runOnceSelection.priorityOrder,
+    excludedLabels: new Set(
+      options.excludedLabels ?? defaultExcludedLabels(options),
+    ),
   };
 }
 
-function priorityRank(labels: string[], priorityLabels: readonly string[]): number {
+function priorityRank(
+  labels: string[],
+  priorityLabels: readonly string[],
+): number {
   for (const [index, label] of priorityLabels.entries()) {
     if (labels.includes(label)) return index;
   }
@@ -34,14 +47,22 @@ function priorityRank(labels: string[], priorityLabels: readonly string[]): numb
   return priorityLabels.length;
 }
 
-function blockingLabels(labels: string[], excludedLabels: Set<string>): string[] {
+function blockingLabels(
+  labels: string[],
+  excludedLabels: Set<string>,
+): string[] {
   return labels.filter((label) => excludedLabels.has(label));
 }
 
-function isEligible(issue: IssueSummary, options: ResolvedIssueSelectionOptions): boolean {
-  return issue.state === "open"
-    && issue.labels.includes(options.readyLabel)
-    && blockingLabels(issue.labels, options.excludedLabels).length === 0;
+function isEligible(
+  issue: IssueSummary,
+  options: ResolvedIssueSelectionOptions,
+): boolean {
+  return (
+    issue.state === "open" &&
+    issue.labels.includes(options.readyLabel) &&
+    blockingLabels(issue.labels, options.excludedLabels).length === 0
+  );
 }
 
 function compareIssues(
@@ -49,8 +70,9 @@ function compareIssues(
   right: IssueSummary,
   options: ResolvedIssueSelectionOptions,
 ): number {
-  const priorityDifference = priorityRank(left.labels, options.priorityLabels)
-    - priorityRank(right.labels, options.priorityLabels);
+  const priorityDifference =
+    priorityRank(left.labels, options.priorityLabels) -
+    priorityRank(right.labels, options.priorityLabels);
   if (priorityDifference !== 0) return priorityDifference;
   return left.number - right.number;
 }
@@ -62,15 +84,22 @@ export function selectIssue(
   const resolved = resolveSelectionOptions(options);
 
   if (resolved.issueNumber !== undefined) {
-    const issue = issues.find((candidate) => candidate.number === resolved.issueNumber && candidate.state === "open");
+    const issue = issues.find(
+      (candidate) =>
+        candidate.number === resolved.issueNumber && candidate.state === "open",
+    );
     if (!issue) return undefined;
     if (!issue.labels.includes(resolved.readyLabel)) {
-      throw new Error(`Issue #${issue.number} is open but not labeled ${resolved.readyLabel}`);
+      throw new Error(
+        `Issue #${issue.number} is open but not labeled ${resolved.readyLabel}`,
+      );
     }
 
     const blockedBy = blockingLabels(issue.labels, resolved.excludedLabels);
     if (blockedBy.length > 0) {
-      throw new Error(`Issue #${issue.number} is open but not eligible because it has ${blockedBy.join(", ")}`);
+      throw new Error(
+        `Issue #${issue.number} is open but not eligible because it has ${blockedBy.join(", ")}`,
+      );
     }
 
     return issue;

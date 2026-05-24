@@ -30,16 +30,25 @@ function questions(value: unknown): AgentIssueQuestion[] {
   return Array.isArray(value) ? (value as AgentIssueQuestion[]) : [];
 }
 
-function visualEvidence(value: unknown): AgentIssueVisualEvidence[] | undefined {
+function visualEvidence(
+  value: unknown,
+): AgentIssueVisualEvidence[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const entries = value.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
     const record = entry as Record<string, unknown>;
-    if (typeof record.screenshotPath !== "string" || record.screenshotPath.trim().length === 0) return [];
+    if (
+      typeof record.screenshotPath !== "string" ||
+      record.screenshotPath.trim().length === 0
+    )
+      return [];
     const evidence: AgentIssueVisualEvidence = {
       screenshotPath: record.screenshotPath,
     };
-    if (typeof record.caption === "string" && record.caption.trim().length > 0) {
+    if (
+      typeof record.caption === "string" &&
+      record.caption.trim().length > 0
+    ) {
       evidence.caption = record.caption;
     }
     const referencePaths = stringArray(record.referencePaths);
@@ -158,7 +167,10 @@ export type RunPiPromptOptions = {
   streamOutput?: (chunk: string) => void;
   issueNumber?: number;
   repoRoot?: string;
-  taskProgress?: () => PiTaskProgress | undefined | Promise<PiTaskProgress | undefined>;
+  taskProgress?: () =>
+    | PiTaskProgress
+    | undefined
+    | Promise<PiTaskProgress | undefined>;
   onTaskProgress?: (progress: PiTaskProgress) => void | Promise<void>;
   tokenUsage?: () => string | undefined;
   tokenUsageState?: { total: number };
@@ -183,7 +195,10 @@ function statusLine(
   tokenUsage: string | undefined,
   taskProgress: PiTaskProgress | undefined,
 ): string {
-  const issue = options.issueNumber === undefined ? "issue ?" : `issue #${options.issueNumber}`;
+  const issue =
+    options.issueNumber === undefined
+      ? "issue ?"
+      : `issue #${options.issueNumber}`;
   const task =
     options.stage === "pi-implementation" && taskProgress !== undefined
       ? ` task ${taskProgress.current}/${taskProgress.total}`
@@ -293,19 +308,28 @@ export async function runPiPrompt(
               }
               if (options?.onObservation) {
                 pendingObservations.push(
-                  Promise.resolve(options.onObservation(observation)).then(() => undefined),
+                  Promise.resolve(options.onObservation(observation)).then(
+                    () => undefined,
+                  ),
                 );
               }
             },
-            { verboseOutput: options.verbosePiOutput ? streamOutput : undefined },
-          )
-        : createPiSessionMessageStreamer(sessionDir, streamOutput ?? (() => undefined), {
-            totalTokensSoFar: options?.tokenUsageState?.total ?? 0,
-            onTokenUsage: (usage) => {
-              latestTokenUsage = usage.text;
-              if (options?.tokenUsageState) options.tokenUsageState.total = usage.total;
+            {
+              verboseOutput: options.verbosePiOutput ? streamOutput : undefined,
             },
-          })
+          )
+        : createPiSessionMessageStreamer(
+            sessionDir,
+            streamOutput ?? (() => undefined),
+            {
+              totalTokensSoFar: options?.tokenUsageState?.total ?? 0,
+              onTokenUsage: (usage) => {
+                latestTokenUsage = usage.text;
+                if (options?.tokenUsageState)
+                  options.tokenUsageState.total = usage.total;
+              },
+            },
+          )
       : undefined;
     sessionStreamer?.start();
     let result: CommandResult;

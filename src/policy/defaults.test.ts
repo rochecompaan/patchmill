@@ -7,7 +7,10 @@ test("DEFAULT_PATCHMILL_POLICY stays generic", () => {
   assert.equal(DEFAULT_PATCHMILL_POLICY.projectName, undefined);
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.contextFileNames, ["AGENTS.md"]);
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.validation.rules, []);
-  assert.deepEqual(DEFAULT_PATCHMILL_POLICY.validation.forbiddenSubstitutions, []);
+  assert.deepEqual(
+    DEFAULT_PATCHMILL_POLICY.validation.forbiddenSubstitutions,
+    [],
+  );
   assert.equal(DEFAULT_PATCHMILL_POLICY.directLand.targetBranch, "main");
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.visualEvidence.prEvidenceExample, {
     screenshotPath: ".tmp/issue-42-after.png",

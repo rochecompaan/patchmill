@@ -7,8 +7,14 @@ import {
 } from "./worktree-strategy.ts";
 
 test("worktree strategy uses patchmill defaults for generic worktree naming", () => {
-  assert.equal(buildIssueBranchName(42, "Add user tags"), "agent/issue-42-add-user-tags");
-  assert.equal(buildIssueWorktreePath(42, "Add user tags"), ".worktrees/patchmill-issue-42-add-user-tags");
+  assert.equal(
+    buildIssueBranchName(42, "Add user tags"),
+    "agent/issue-42-add-user-tags",
+  );
+  assert.equal(
+    buildIssueWorktreePath(42, "Add user tags"),
+    ".worktrees/patchmill-issue-42-add-user-tags",
+  );
   assert.deepEqual(DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG, {
     baseBranch: "main",
     baseRef: "HEAD",

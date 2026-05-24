@@ -12,7 +12,12 @@ export type PiTokenUsage = {
 
 export type PiSessionObservation =
   | { type: "assistant-usage"; outputTokens: number }
-  | { type: "tool-call"; toolName?: string; toolCallId?: string; arguments?: JsonObject }
+  | {
+      type: "tool-call";
+      toolName?: string;
+      toolCallId?: string;
+      arguments?: JsonObject;
+    }
   | { type: "text"; text: string };
 
 type SessionStreamerOptions = {
@@ -60,12 +65,14 @@ function toolCallObservations(content: unknown): PiSessionObservation[] {
     const toolName = typeof part.name === "string" ? part.name : undefined;
     const toolCallId = typeof part.id === "string" ? part.id : undefined;
     const args = isObject(part.arguments) ? part.arguments : undefined;
-    return [{
-      type: "tool-call" as const,
-      ...(toolName ? { toolName } : {}),
-      ...(toolCallId ? { toolCallId } : {}),
-      ...(args ? { arguments: args } : {}),
-    }];
+    return [
+      {
+        type: "tool-call" as const,
+        ...(toolName ? { toolName } : {}),
+        ...(toolCallId ? { toolCallId } : {}),
+        ...(args ? { arguments: args } : {}),
+      },
+    ];
   });
 }
 
@@ -75,7 +82,9 @@ function withTrailingNewline(text: string): string {
 
 function numberField(object: JsonObject, key: string): number | undefined {
   const value = object[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function outputTokens(usage: JsonObject): number | undefined {
@@ -112,13 +121,16 @@ function tokenUsageText(
   const task = numberField(usage, "input");
   if (task === undefined) return undefined;
 
-  const total = (options.totalTokensSoFar ?? 0) + (usageTotalTokens(usage) ?? task);
+  const total =
+    (options.totalTokensSoFar ?? 0) + (usageTotalTokens(usage) ?? task);
   const text = `tok: task=${formatThousands(task)} total=${formatThousands(total)}`;
   options.onTokenUsage?.({ task, text, total });
   return `${text}\n`;
 }
 
-export function sessionEntryToObservations(entry: JsonObject): PiSessionObservation[] {
+export function sessionEntryToObservations(
+  entry: JsonObject,
+): PiSessionObservation[] {
   if (entry.type === "custom_message" && entry.display === true) {
     const text = textContent(entry.content);
     return text === undefined ? [] : [{ type: "text", text }];
@@ -143,15 +155,22 @@ export function sessionEntryToObservations(entry: JsonObject): PiSessionObservat
   }
 
   if (message.role === "toolResult") {
-    const toolName = typeof message.toolName === "string" ? message.toolName : undefined;
-    const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
-    observations.push({ type: "tool-call", ...(toolName ? { toolName } : {}), ...(toolCallId ? { toolCallId } : {}) });
+    const toolName =
+      typeof message.toolName === "string" ? message.toolName : undefined;
+    const toolCallId =
+      typeof message.toolCallId === "string" ? message.toolCallId : undefined;
+    observations.push({
+      type: "tool-call",
+      ...(toolName ? { toolName } : {}),
+      ...(toolCallId ? { toolCallId } : {}),
+    });
     return observations;
   }
 
   if (message.role === "bashExecution") {
     observations.push({ type: "tool-call", toolName: "bash" });
-    if (typeof message.output === "string") observations.push({ type: "text", text: message.output });
+    if (typeof message.output === "string")
+      observations.push({ type: "text", text: message.output });
     return observations;
   }
 

@@ -7,7 +7,11 @@ import { buildPlanFilename, findIssuePlan } from "./plans.ts";
 
 test("buildPlanFilename creates a stable issue plan filename", () => {
   assert.equal(
-    buildPlanFilename(42, "Add once runner helpers", "2026-05-09T12:30:00.000Z"),
+    buildPlanFilename(
+      42,
+      "Add once runner helpers",
+      "2026-05-09T12:30:00.000Z",
+    ),
     "2026-05-09-issue-42-add-once-runner-helpers.md",
   );
 });
@@ -16,8 +20,16 @@ test("findIssuePlan discovers an existing plan by issue marker", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-plans-"));
   const plansDir = join(repoRoot, "docs", "plans");
   await mkdir(plansDir, { recursive: true });
-  await writeFile(join(plansDir, "2026-05-01-issue-42-first-plan.md"), "# plan\n", "utf8");
-  await writeFile(join(plansDir, "2026-05-07-issue-7-other-plan.md"), "# other\n", "utf8");
+  await writeFile(
+    join(plansDir, "2026-05-01-issue-42-first-plan.md"),
+    "# plan\n",
+    "utf8",
+  );
+  await writeFile(
+    join(plansDir, "2026-05-07-issue-7-other-plan.md"),
+    "# other\n",
+    "utf8",
+  );
 
   const found = await findIssuePlan(plansDir, 42);
 

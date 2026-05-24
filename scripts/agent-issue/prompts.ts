@@ -1,14 +1,20 @@
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
 import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
-import { DEFAULT_PATCHMILL_SKILLS, type PatchmillSkillsConfig } from "../../src/workflow/skills.ts";
+import {
+  DEFAULT_PATCHMILL_SKILLS,
+  type PatchmillSkillsConfig,
+} from "../../src/workflow/skills.ts";
 import {
   renderIssueTodoTags,
   renderIssueTodoTitleGlob,
   renderIssueTodoTitlePattern,
   type PatchmillPiTaskContract,
 } from "../../src/policy/task-contract.ts";
-import type { AgentIssueImplementationResumeContext, IssueSummary } from "./types.ts";
+import type {
+  AgentIssueImplementationResumeContext,
+  IssueSummary,
+} from "./types.ts";
 import {
   renderImplementationSkillSteps,
   renderLandingSkillStep,
@@ -35,7 +41,10 @@ export type ImplementationPromptInput = {
   branch: string;
   worktreePath: string;
   agentTeam: ResolvedAgentTeam;
-  git: Pick<GitWorktreeStrategyConfig, "baseBranch" | "remote" | "allowDirectLand">;
+  git: Pick<
+    GitWorktreeStrategyConfig,
+    "baseBranch" | "remote" | "allowDirectLand"
+  >;
   projectPolicy: PatchmillProjectPolicy;
   skills?: PatchmillSkillsConfig;
   resume?: AgentIssueImplementationResumeContext;
@@ -45,7 +54,9 @@ function formatLabels(labels: string[]): string {
   return labels.length > 0 ? labels.join(", ") : "(none)";
 }
 
-function resolvePromptTriageLabels(labels?: Partial<PromptTriageLabels>): PromptTriageLabels {
+function resolvePromptTriageLabels(
+  labels?: Partial<PromptTriageLabels>,
+): PromptTriageLabels {
   return {
     ready: labels?.ready ?? "agent-ready",
     needsInfo: labels?.needsInfo ?? "needs-info",
@@ -56,7 +67,8 @@ function commentAuthor(comment: Record<string, unknown>): string | undefined {
   const author = comment.author;
   if (typeof author === "string") return author;
   if (author && typeof author === "object") {
-    if ("login" in author && typeof author.login === "string") return author.login;
+    if ("login" in author && typeof author.login === "string")
+      return author.login;
     if ("name" in author && typeof author.name === "string") return author.name;
   }
   if ("user" in comment && comment.user && typeof comment.user === "object") {
@@ -67,7 +79,9 @@ function commentAuthor(comment: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
-function commentTimestamp(comment: Record<string, unknown>): string | undefined {
+function commentTimestamp(
+  comment: Record<string, unknown>,
+): string | undefined {
   for (const key of ["updated", "updatedAt", "created", "createdAt"]) {
     if (typeof comment[key] === "string") return comment[key];
   }
@@ -76,7 +90,12 @@ function commentTimestamp(comment: Record<string, unknown>): string | undefined 
 
 function commentBody(comment: unknown): string {
   if (typeof comment === "string") return comment;
-  if (comment && typeof comment === "object" && "body" in comment && typeof comment.body === "string") {
+  if (
+    comment &&
+    typeof comment === "object" &&
+    "body" in comment &&
+    typeof comment.body === "string"
+  ) {
     return comment.body;
   }
   return JSON.stringify(comment) ?? "(unavailable)";
@@ -85,16 +104,24 @@ function commentBody(comment: unknown): string {
 function formatComments(comments?: unknown[]): string {
   if (!comments || comments.length === 0) return "(none available)";
 
-  return comments.map((comment, index) => {
-    const record = comment && typeof comment === "object" ? comment as Record<string, unknown> : undefined;
-    const author = record ? commentAuthor(record) : undefined;
-    const timestamp = record ? commentTimestamp(record) : undefined;
-    const byline = [author ? `by ${author}` : undefined, timestamp ? `(${timestamp})` : undefined]
-      .filter((part) => part)
-      .join(" ");
+  return comments
+    .map((comment, index) => {
+      const record =
+        comment && typeof comment === "object"
+          ? (comment as Record<string, unknown>)
+          : undefined;
+      const author = record ? commentAuthor(record) : undefined;
+      const timestamp = record ? commentTimestamp(record) : undefined;
+      const byline = [
+        author ? `by ${author}` : undefined,
+        timestamp ? `(${timestamp})` : undefined,
+      ]
+        .filter((part) => part)
+        .join(" ");
 
-    return `- Comment ${index + 1}${byline ? ` ${byline}` : ""}: ${commentBody(comment)}`;
-  }).join("\n");
+      return `- Comment ${index + 1}${byline ? ` ${byline}` : ""}: ${commentBody(comment)}`;
+    })
+    .join("\n");
 }
 
 function issueBody(body: string): string {
@@ -109,15 +136,23 @@ function untrustedIssueContentBoundary(): string {
 }
 
 function dispatchModel(model: string, thinking: string): string {
-  return thinking === "off" || model.includes(":") ? model : `${model}:${thinking}`;
+  return thinking === "off" || model.includes(":")
+    ? model
+    : `${model}:${thinking}`;
 }
 
-function formatResumeContext(resume?: AgentIssueImplementationResumeContext): string {
-  if (!resume || (!resume.resumed && resume.existingCommits.length === 0)) return "";
+function formatResumeContext(
+  resume?: AgentIssueImplementationResumeContext,
+): string {
+  if (!resume || (!resume.resumed && resume.existingCommits.length === 0))
+    return "";
 
-  const existingCommits = resume.existingCommits.length > 0
-    ? resume.existingCommits.map((commit) => `- Existing commit: ${commit}`).join("\n")
-    : "- Existing commit: (none recorded)";
+  const existingCommits =
+    resume.existingCommits.length > 0
+      ? resume.existingCommits
+          .map((commit) => `- Existing commit: ${commit}`)
+          .join("\n")
+      : "- Existing commit: (none recorded)";
 
   return [
     "Resume context:",
@@ -145,7 +180,7 @@ function formatAgentTeam(team: ResolvedAgentTeam): string {
     `- worker: model=${team.roles.worker.model}, thinking=${team.roles.worker.thinking}, dispatchModel=${workerDispatchModel}`,
     `- reviewer: model=${team.roles.reviewer.model}, thinking=${team.roles.reviewer.thinking}, dispatchModel=${reviewerDispatchModel}`,
     `Pass the exact \`dispatchModel\` as the subagent \`model\` override for worker and reviewer calls.`,
-    `Do not pass a separate \`thinking\` field to the subagent execution call; pi-subagents encodes thinking as a \":level\" model suffix.`,
+    `Do not pass a separate \`thinking\` field to the subagent execution call; pi-subagents encodes thinking as a ":level" model suffix.`,
     `Do not call worker or reviewer subagents without these exact model overrides; return the blocker JSON instead.`,
     `Example worker dispatch: subagent({ agent: "worker", model: "${workerDispatchModel}", task: "..." })`,
     `Example reviewer dispatch: subagent({ agent: "reviewer", model: "${reviewerDispatchModel}", task: "..." })`,
@@ -173,20 +208,26 @@ function renderPlanContextInstruction(policy: PatchmillProjectPolicy): string {
   return `Read ${contextFiles} and relevant project files before writing the plan.`;
 }
 
-function renderImplementationContextInstruction(policy: PatchmillProjectPolicy, planPath: string): string {
+function renderImplementationContextInstruction(
+  policy: PatchmillProjectPolicy,
+  planPath: string,
+): string {
   const contextFiles = formatFileList(policy.contextFileNames);
   return `Read ${contextFiles} and the implementation plan at ${planPath}.`;
 }
 
 function renderNumberedStepText(text: string): string {
-  const lines = text.split("\n").map((line) => line.trimEnd()).filter((line, index, all) => line.length > 0 || index < all.length - 1);
+  const lines = text
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line, index, all) => line.length > 0 || index < all.length - 1);
   if (lines.length === 0) return "";
 
   const [first, ...rest] = lines;
   const normalizedFirst = first.replace(/^-\s+/, "");
   if (rest.length === 0) return normalizedFirst;
 
-  return `${normalizedFirst}\n${rest.map((line) => line.length > 0 ? `   ${line}` : "").join("\n")}`;
+  return `${normalizedFirst}\n${rest.map((line) => (line.length > 0 ? `   ${line}` : "")).join("\n")}`;
 }
 
 function renderConjoinedList(values: string[]): string {
@@ -196,8 +237,13 @@ function renderConjoinedList(values: string[]): string {
   return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
 }
 
-function renderTaskTodoTags(taskContract: PatchmillPiTaskContract, issueNumber: number): string {
-  return renderConjoinedList(renderIssueTodoTags(taskContract, issueNumber).map((tag) => `\`${tag}\``));
+function renderTaskTodoTags(
+  taskContract: PatchmillPiTaskContract,
+  issueNumber: number,
+): string {
+  return renderConjoinedList(
+    renderIssueTodoTags(taskContract, issueNumber).map((tag) => `\`${tag}\``),
+  );
 }
 
 function renderTaskTodoBodyRequirements(requirements: string[]): string {
@@ -209,7 +255,10 @@ function renderTaskContractTodoWorkflowLines(
   stage: "plan" | "implementation",
   issueNumber: number,
 ): string[] {
-  const todoTitlePattern = renderIssueTodoTitlePattern(taskContract, issueNumber);
+  const todoTitlePattern = renderIssueTodoTitlePattern(
+    taskContract,
+    issueNumber,
+  );
   const todoTitleGlob = renderIssueTodoTitleGlob(taskContract, issueNumber);
   const todoTags = renderTaskTodoTags(taskContract, issueNumber);
   const sharedLines = [
@@ -237,7 +286,9 @@ function renderTaskContractTodoWorkflowLines(
   const lines = [
     "- Use the Pi `todo` tool to manage this issue.",
     ...(todoTags.length > 0
-      ? [`- Read existing todos tagged ${todoTags} before starting implementation work.`]
+      ? [
+          `- Read existing todos tagged ${todoTags} before starting implementation work.`,
+        ]
       : []),
     "- Create one todo for each actionable task in the implementation plan.",
     `- Create or update missing per-plan-task todos using the naming convention \`${todoTitlePattern}\`.`,
@@ -253,13 +304,21 @@ function renderTaskContractTodoWorkflowLines(
   ];
 
   if (taskContract.openTaskTodosBlockFinalHandoff) {
-    lines.push(`- Complete every \`${todoTitleGlob}\` todo before creating a PR, merging, or returning final JSON.`);
-    lines.push("- The orchestrator rejects `pr-created` or `merged` results while any issue task todo remains open.");
+    lines.push(
+      `- Complete every \`${todoTitleGlob}\` todo before creating a PR, merging, or returning final JSON.`,
+    );
+    lines.push(
+      "- The orchestrator rejects `pr-created` or `merged` results while any issue task todo remains open.",
+    );
   } else {
-    lines.push("- Open issue task todos do not block final handoff for this project.");
+    lines.push(
+      "- Open issue task todos do not block final handoff for this project.",
+    );
   }
 
-  lines.push("- Keep review tracking and final handoff tracking separate from implementation task todos.");
+  lines.push(
+    "- Keep review tracking and final handoff tracking separate from implementation task todos.",
+  );
   return lines;
 }
 
@@ -268,30 +327,49 @@ function renderTodoWorkflowStep(
   stage: "plan" | "implementation",
   issueNumber: number,
 ): string {
-  const lines = renderTaskContractTodoWorkflowLines(policy.pi.taskContract, stage, issueNumber);
+  const lines = renderTaskContractTodoWorkflowLines(
+    policy.pi.taskContract,
+    stage,
+    issueNumber,
+  );
   return renderNumberedStepText(lines.join("\n"));
 }
 
-function renderValidationRules(rules: PatchmillProjectPolicy["validation"]["rules"]): string[] {
-  return rules.map((rule) => `- ${rule.category}: ${rule.commands.map((command) => `\`${command}\``).join(" or ")}.`);
+function renderValidationRules(
+  rules: PatchmillProjectPolicy["validation"]["rules"],
+): string[] {
+  return rules.map(
+    (rule) =>
+      `- ${rule.category}: ${rule.commands.map((command) => `\`${command}\``).join(" or ")}.`,
+  );
 }
 
-function renderGenericPlanValidationStep(policy: PatchmillProjectPolicy): string {
+function renderGenericPlanValidationStep(
+  policy: PatchmillProjectPolicy,
+): string {
   const source = firstContextFile(policy);
-  const lines = [`Include exact validation commands selected according to ${source}:`];
+  const lines = [
+    `Include exact validation commands selected according to ${source}:`,
+  ];
   lines.push(...renderValidationRules(policy.validation.rules));
-  lines.push(...policy.validation.forbiddenSubstitutions.map((entry) => `- ${entry}`));
+  lines.push(
+    ...policy.validation.forbiddenSubstitutions.map((entry) => `- ${entry}`),
+  );
   return renderNumberedStepText(lines.join("\n"));
 }
 
-function renderGenericImplementationValidationStep(policy: PatchmillProjectPolicy): string {
+function renderGenericImplementationValidationStep(
+  policy: PatchmillProjectPolicy,
+): string {
   const source = firstContextFile(policy);
   const heading = policy.projectName
     ? `Use ${policy.projectName} validation rules from ${source}:`
     : `Use validation rules from ${source}:`;
   const lines = [heading];
   lines.push(...renderValidationRules(policy.validation.rules));
-  lines.push(...policy.validation.forbiddenSubstitutions.map((entry) => `- ${entry}`));
+  lines.push(
+    ...policy.validation.forbiddenSubstitutions.map((entry) => `- ${entry}`),
+  );
   return renderNumberedStepText(lines.join("\n"));
 }
 
@@ -299,7 +377,9 @@ function renderPlanValidationStep(policy: PatchmillProjectPolicy): string {
   return renderGenericPlanValidationStep(policy);
 }
 
-function renderImplementationValidationStep(policy: PatchmillProjectPolicy): string {
+function renderImplementationValidationStep(
+  policy: PatchmillProjectPolicy,
+): string {
   return renderGenericImplementationValidationStep(policy);
 }
 
@@ -307,10 +387,15 @@ function formatCodeList(entries: string[]): string {
   if (entries.length === 0) return "";
   if (entries.length === 1) return `\`${entries[0]}\``;
   if (entries.length === 2) return `\`${entries[0]}\` and \`${entries[1]}\``;
-  return `${entries.slice(0, -1).map((entry) => `\`${entry}\``).join(", ")}, and \`${entries[entries.length - 1]}\``;
+  return `${entries
+    .slice(0, -1)
+    .map((entry) => `\`${entry}\``)
+    .join(", ")}, and \`${entries[entries.length - 1]}\``;
 }
 
-type PrVisualEvidenceExample = NonNullable<PatchmillProjectPolicy["visualEvidence"]["prEvidenceExample"]>;
+type PrVisualEvidenceExample = NonNullable<
+  PatchmillProjectPolicy["visualEvidence"]["prEvidenceExample"]
+>;
 
 function defaultPrVisualEvidenceExample(): PrVisualEvidenceExample {
   return {
@@ -319,11 +404,17 @@ function defaultPrVisualEvidenceExample(): PrVisualEvidenceExample {
   };
 }
 
-function resolvePrVisualEvidenceExample(policy: PatchmillProjectPolicy): PrVisualEvidenceExample {
-  return policy.visualEvidence.prEvidenceExample ?? defaultPrVisualEvidenceExample();
+function resolvePrVisualEvidenceExample(
+  policy: PatchmillProjectPolicy,
+): PrVisualEvidenceExample {
+  return (
+    policy.visualEvidence.prEvidenceExample ?? defaultPrVisualEvidenceExample()
+  );
 }
 
-function renderVisualEvidenceDataSection(policy: PatchmillProjectPolicy): string {
+function renderVisualEvidenceDataSection(
+  policy: PatchmillProjectPolicy,
+): string {
   const lines = ["Visual-change evidence data:"];
 
   if ((policy.visualEvidence.referenceScreenshotPaths?.length ?? 0) > 0) {
@@ -333,8 +424,14 @@ function renderVisualEvidenceDataSection(policy: PatchmillProjectPolicy): string
   }
 
   const visualEvidenceExample = resolvePrVisualEvidenceExample(policy);
-  lines.push("- For PR fallback, return structured `visualEvidence` entries like this example:");
-  lines.push(...JSON.stringify([visualEvidenceExample], null, 2).split("\n").map((line) => `  ${line}`));
+  lines.push(
+    "- For PR fallback, return structured `visualEvidence` entries like this example:",
+  );
+  lines.push(
+    ...JSON.stringify([visualEvidenceExample], null, 2)
+      .split("\n")
+      .map((line) => `  ${line}`),
+  );
 
   return lines.join("\n");
 }
@@ -360,12 +457,18 @@ If human input is required, stop safely, leave committed work as-is, keep the re
 }`;
 }
 
-function renderPrCreatedContract(branch: string, visualEvidenceExample: PrVisualEvidenceExample): string {
+function renderPrCreatedContract(
+  branch: string,
+  visualEvidenceExample: PrVisualEvidenceExample,
+): string {
   const prUrlLabel = "<pull request URL>";
   const visualEvidenceLines = JSON.stringify([visualEvidenceExample], null, 4)
     .split("\n")
-    .map((line, index) => index === 0 ? `  "visualEvidence": ${line}` : `  ${line}`)
-    .join("\n").concat(",");
+    .map((line, index) =>
+      index === 0 ? `  "visualEvidence": ${line}` : `  ${line}`,
+    )
+    .join("\n")
+    .concat(",");
 
   return `Successful final response for human-review PR fallback:
 Return this exact JSON object after PR handoff succeeds:
@@ -390,7 +493,15 @@ function renderLandingResultContracts(input: {
   branch: string;
   visualEvidenceExample: PrVisualEvidenceExample;
 }): string {
-  const { allowDirectLand, hasLandingSkill, targetBranch, remote, issueNumber, branch, visualEvidenceExample } = input;
+  const {
+    allowDirectLand,
+    hasLandingSkill,
+    targetBranch,
+    remote,
+    issueNumber,
+    branch,
+    visualEvidenceExample,
+  } = input;
   const prInstruction = renderPrCreationInstruction(remote);
 
   if (!allowDirectLand) {
@@ -458,7 +569,9 @@ function numberedWorkflow(steps: string[]): string {
     .join("\n");
 }
 
-export function buildPlanCreationPrompt(input: PlanCreationPromptInput): string {
+export function buildPlanCreationPrompt(
+  input: PlanCreationPromptInput,
+): string {
   const { issue, planPath, projectPolicy } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
@@ -522,8 +635,19 @@ Return this exact JSON object after the plan commit succeeds:
 `;
 }
 
-export function buildImplementationPrompt(input: ImplementationPromptInput): string {
-  const { issue, planPath, branch, worktreePath, agentTeam, git, projectPolicy, resume } = input;
+export function buildImplementationPrompt(
+  input: ImplementationPromptInput,
+): string {
+  const {
+    issue,
+    planPath,
+    branch,
+    worktreePath,
+    agentTeam,
+    git,
+    projectPolicy,
+    resume,
+  } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const visualEvidenceExample = resolvePrVisualEvidenceExample(projectPolicy);
 
@@ -567,13 +691,13 @@ ${renderVisualEvidenceDataSection(projectPolicy)}
 ${renderLandingSkillStep(skills)}
 
 ${renderLandingResultContracts({
-    allowDirectLand: git.allowDirectLand,
-    hasLandingSkill: Boolean(skills.landing),
-    targetBranch: git.baseBranch,
-    remote: git.remote,
-    issueNumber: issue.number,
-    branch,
-    visualEvidenceExample,
-  })}
+  allowDirectLand: git.allowDirectLand,
+  hasLandingSkill: Boolean(skills.landing),
+  targetBranch: git.baseBranch,
+  remote: git.remote,
+  issueNumber: issue.number,
+  branch,
+  visualEvidenceExample,
+})}
 `;
 }

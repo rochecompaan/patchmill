@@ -26,11 +26,17 @@ test("resolveCommand maps run-once to copied runner script", () => {
 });
 
 test("resolveCommand rejects unknown commands", () => {
-  assert.throws(() => resolveCommand("/repo", ["queue"]), /Unknown command: queue/);
+  assert.throws(
+    () => resolveCommand("/repo", ["queue"]),
+    /Unknown command: queue/,
+  );
 });
 
 test("resolveCommand rejects inherited property names", () => {
-  assert.throws(() => resolveCommand("/repo", ["toString"]), /Unknown command: toString/);
+  assert.throws(
+    () => resolveCommand("/repo", ["toString"]),
+    /Unknown command: toString/,
+  );
 });
 
 test("patchmill executes when invoked through a symlink", () => {

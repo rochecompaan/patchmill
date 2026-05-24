@@ -21,7 +21,7 @@ export const PATCHMILL_SKILL_KEYS = [
   "landing",
 ] as const;
 
-export type PatchmillSkillKey = typeof PATCHMILL_SKILL_KEYS[number];
+export type PatchmillSkillKey = (typeof PATCHMILL_SKILL_KEYS)[number];
 
 export type PartialPatchmillSkillsConfig = Partial<PatchmillSkillsConfig>;
 
@@ -31,7 +31,9 @@ export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   implementation: "superpowers:subagent-driven-development",
 };
 
-export function cloneSkillsConfig(config: PatchmillSkillsConfig): PatchmillSkillsConfig {
+export function cloneSkillsConfig(
+  config: PatchmillSkillsConfig,
+): PatchmillSkillsConfig {
   return { ...config };
 }
 
@@ -52,7 +54,10 @@ export function mergeSkillsConfig(
   return merged;
 }
 
-export function renderConfiguredSkillLine(prefix: string, skill: string | undefined): string {
+export function renderConfiguredSkillLine(
+  prefix: string,
+  skill: string | undefined,
+): string {
   if (!skill) return "";
   return `${prefix}: \`${skill}\`.`;
 }

@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+.devenv/
+.direnv/
+.patchmill/
+.pi/
+.tmp/
+.worktrees/
+package-lock.json

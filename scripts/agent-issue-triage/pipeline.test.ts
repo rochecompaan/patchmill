@@ -9,26 +9,38 @@ import { REQUIRED_LABELS } from "./labels.ts";
 import { runTriage } from "./pipeline.ts";
 
 const issueJson = JSON.stringify([
-  { index: 1, title: "Needs info", body: "Broken", state: "open", labels: [{ name: "bug" }] },
+  {
+    index: 1,
+    title: "Needs info",
+    body: "Broken",
+    state: "open",
+    labels: [{ name: "bug" }],
+  },
 ]);
 
-const allLabelsJson = JSON.stringify(REQUIRED_LABELS.map((label) => ({ name: label.name })));
+const allLabelsJson = JSON.stringify(
+  REQUIRED_LABELS.map((label) => ({ name: label.name })),
+);
 const labelsMissingNeedsInfoJson = JSON.stringify(
-  REQUIRED_LABELS
-    .filter((label) => label.name !== "needs-info")
-    .map((label) => ({ name: label.name })),
+  REQUIRED_LABELS.filter((label) => label.name !== "needs-info").map(
+    (label) => ({ name: label.name }),
+  ),
 );
 const noCommentsOutput = { code: 0, stdout: "", stderr: "" };
 
-const needsInfoDecisionJson = JSON.stringify({ decisions: [{
-  issueNumber: 1,
-  primaryBucket: "needs-info",
-  labels: ["bug", "needs-info", "priority:medium"],
-  confidence: "medium",
-  rationale: "Missing reproduction details.",
-  questions: ["What exact steps reproduce the issue?"],
-  comment: null,
-}] });
+const needsInfoDecisionJson = JSON.stringify({
+  decisions: [
+    {
+      issueNumber: 1,
+      primaryBucket: "needs-info",
+      labels: ["bug", "needs-info", "priority:medium"],
+      confidence: "medium",
+      rationale: "Missing reproduction details.",
+      questions: ["What exact steps reproduce the issue?"],
+      comment: null,
+    },
+  ],
+});
 
 test("runTriage dry-run validates and logs without mutating Forgejo", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
@@ -52,8 +64,14 @@ test("runTriage dry-run validates and logs without mutating Forgejo", async () =
   assert.equal(result.issues.length, 1);
   assert.equal(result.issues[0]?.issueNumber, 1);
   assert.equal(result.issues[0]?.primaryBucket, "needs-info");
-  assert.equal(runner.calls.some((call) => call.args.includes("create")), false);
-  assert.equal(runner.calls.some((call) => call.args.includes("edit")), false);
+  assert.equal(
+    runner.calls.some((call) => call.args.includes("create")),
+    false,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.args.includes("edit")),
+    false,
+  );
   const log = JSON.parse(await readFile(result.logPath, "utf8"));
   assert.equal(log.mode, "dry-run");
   assert.equal(log.issues[0].mutationStatus, "planned");
@@ -68,7 +86,10 @@ test("HELP_TEXT documents usage and active triage protection wording", () => {
   assert.match(HELP_TEXT, /--issue <number>/);
   assert.match(HELP_TEXT, /--all/);
   assert.match(HELP_TEXT, /without active triage or protection labels/);
-  assert.match(HELP_TEXT, /including issues already carrying triage or protection labels such as in-progress or blocked/);
+  assert.match(
+    HELP_TEXT,
+    /including issues already carrying triage or protection labels such as in-progress or blocked/,
+  );
 });
 
 test("formatResultLines prints dry-run label and comment changes", () => {
@@ -76,18 +97,21 @@ test("formatResultLines prints dry-run label and comment changes", () => {
     status: "dry-run",
     issueCount: 1,
     logPath: "/tmp/triage.json",
-    issues: [{
-      issueNumber: 1,
-      title: "Needs info",
-      previousLabels: ["bug"],
-      finalLabels: ["bug", "needs-info", "priority:medium"],
-      primaryBucket: "needs-info",
-      confidence: "medium",
-      rationale: "Missing reproduction details.",
-      questions: ["What exact steps reproduce the issue?"],
-      comment: "Automated triage needs more information before this can be planned:\n\n1. What exact steps reproduce the issue?",
-      mutationStatus: "planned",
-    }],
+    issues: [
+      {
+        issueNumber: 1,
+        title: "Needs info",
+        previousLabels: ["bug"],
+        finalLabels: ["bug", "needs-info", "priority:medium"],
+        primaryBucket: "needs-info",
+        confidence: "medium",
+        rationale: "Missing reproduction details.",
+        questions: ["What exact steps reproduce the issue?"],
+        comment:
+          "Automated triage needs more information before this can be planned:\n\n1. What exact steps reproduce the issue?",
+        mutationStatus: "planned",
+      },
+    ],
   });
 
   assert.deepEqual(lines, [
@@ -119,12 +143,24 @@ test("runTriage execute creates missing labels before applying issue labels", as
   });
 
   assert.equal(result.status, "applied");
-  const commands = runner.calls.map((call) => `${call.command} ${call.args.join(" ")}`);
-  const firstCreate = commands.findIndex((command) => command.includes("labels create"));
-  const edit = commands.findIndex((command) => command.includes("issues edit 1"));
+  const commands = runner.calls.map(
+    (call) => `${call.command} ${call.args.join(" ")}`,
+  );
+  const firstCreate = commands.findIndex((command) =>
+    command.includes("labels create"),
+  );
+  const edit = commands.findIndex((command) =>
+    command.includes("issues edit 1"),
+  );
   assert.ok(firstCreate >= 0);
   assert.ok(edit > firstCreate);
-  assert.ok(commands.some((command) => command.includes("comment 1 --repo /repo -- Automated triage needs more information")));
+  assert.ok(
+    commands.some((command) =>
+      command.includes(
+        "comment 1 --repo /repo -- Automated triage needs more information",
+      ),
+    ),
+  );
 });
 
 test("runTriage passes explicit tea login to Forgejo commands only", async () => {
@@ -150,7 +186,12 @@ test("runTriage passes explicit tea login to Forgejo commands only", async () =>
 
   const teaCalls = runner.calls.filter((call) => call.command === "tea");
   assert.ok(teaCalls.length > 0);
-  assert.ok(teaCalls.every((call) => call.args.includes("--login") && call.args.includes("triage-agent")));
+  assert.ok(
+    teaCalls.every(
+      (call) =>
+        call.args.includes("--login") && call.args.includes("triage-agent"),
+    ),
+  );
   const piCall = runner.calls.find((call) => call.command === "pi");
   assert.ok(piCall);
   assert.equal(piCall.args.includes("triage-agent"), false);
@@ -163,16 +204,28 @@ test("runTriage passes configured custom skills through to the triage agent", as
     async run(command: string, args: string[], options = {}) {
       runner.calls.push({ command, args: [...args], cwd: options.cwd });
 
-      if (command === "tea" && args.includes("issues") && args.includes("list")) {
+      if (
+        command === "tea" &&
+        args.includes("issues") &&
+        args.includes("list")
+      ) {
         const page = args[args.indexOf("--page") + 1];
-        return { code: 0, stdout: page === "1" ? issueJson : JSON.stringify([]), stderr: "" };
+        return {
+          code: 0,
+          stdout: page === "1" ? issueJson : JSON.stringify([]),
+          stderr: "",
+        };
       }
 
       if (command === "tea" && args.includes("--comments")) {
         return noCommentsOutput;
       }
 
-      if (command === "tea" && args.includes("labels") && args.includes("list")) {
+      if (
+        command === "tea" &&
+        args.includes("labels") &&
+        args.includes("list")
+      ) {
         return { code: 0, stdout: allLabelsJson, stderr: "" };
       }
 
@@ -181,7 +234,10 @@ test("runTriage passes configured custom skills through to the triage agent", as
         const promptPath = args[args.indexOf("-p") + 1]?.slice(1);
         assert.ok(promptPath);
         const prompt = await readFile(promptPath, "utf8");
-        assert.match(prompt, /Use the configured triage skill: `project-triage`\./);
+        assert.match(
+          prompt,
+          /Use the configured triage skill: `project-triage`\./,
+        );
         return { code: 0, stdout: needsInfoDecisionJson, stderr: "" };
       }
 
@@ -211,15 +267,19 @@ test("runTriage applies limit after listing open issues", async () => {
     { index: 1, title: "One", body: "", state: "open", labels: [] },
     { index: 2, title: "Two", body: "", state: "open", labels: [] },
   ]);
-  const oneDecision = JSON.stringify({ decisions: [{
-    issueNumber: 1,
-    primaryBucket: "agent-unsuitable",
-    labels: ["agent-unsuitable"],
-    confidence: "high",
-    rationale: "Not actionable for automation.",
-    questions: [],
-    comment: null,
-  }] });
+  const oneDecision = JSON.stringify({
+    decisions: [
+      {
+        issueNumber: 1,
+        primaryBucket: "agent-unsuitable",
+        labels: ["agent-unsuitable"],
+        confidence: "high",
+        rationale: "Not actionable for automation.",
+        questions: [],
+        comment: null,
+      },
+    ],
+  });
   const runner = createStaticCommandRunner([
     { code: 0, stdout: twoIssues, stderr: "" },
     { code: 0, stdout: JSON.stringify([]), stderr: "" },
@@ -228,7 +288,13 @@ test("runTriage applies limit after listing open issues", async () => {
     { code: 0, stdout: oneDecision, stderr: "" },
   ]);
 
-  const result = await runTriage(runner, { repoRoot: "/repo", dryRun: true, execute: false, limit: 1, logDir });
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    limit: 1,
+    logDir,
+  });
 
   assert.equal(result.issueCount, 1);
 });
@@ -236,19 +302,41 @@ test("runTriage applies limit after listing open issues", async () => {
 test("runTriage skips already triaged open issues by default before applying limit", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const mixedIssues = JSON.stringify([
-    { index: 1, title: "Already ready", body: "Clear", state: "open", labels: [{ name: "agent-ready" }] },
-    { index: 2, title: "Already blocked", body: "Needs decision", state: "open", labels: [{ name: "needs-info" }] },
-    { index: 3, title: "Untriaged", body: "Broken", state: "open", labels: [{ name: "bug" }] },
+    {
+      index: 1,
+      title: "Already ready",
+      body: "Clear",
+      state: "open",
+      labels: [{ name: "agent-ready" }],
+    },
+    {
+      index: 2,
+      title: "Already blocked",
+      body: "Needs decision",
+      state: "open",
+      labels: [{ name: "needs-info" }],
+    },
+    {
+      index: 3,
+      title: "Untriaged",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "bug" }],
+    },
   ]);
-  const decision = JSON.stringify({ decisions: [{
-    issueNumber: 3,
-    primaryBucket: "agent-ready",
-    labels: ["bug", "agent-ready", "priority:medium"],
-    confidence: "high",
-    rationale: "Clear issue ready for the planning workflow.",
-    questions: [],
-    comment: null,
-  }] });
+  const decision = JSON.stringify({
+    decisions: [
+      {
+        issueNumber: 3,
+        primaryBucket: "agent-ready",
+        labels: ["bug", "agent-ready", "priority:medium"],
+        confidence: "high",
+        rationale: "Clear issue ready for the planning workflow.",
+        questions: [],
+        comment: null,
+      },
+    ],
+  });
   const runner = createStaticCommandRunner([
     { code: 0, stdout: mixedIssues, stderr: "" },
     { code: 0, stdout: JSON.stringify([]), stderr: "" },
@@ -257,7 +345,13 @@ test("runTriage skips already triaged open issues by default before applying lim
     { code: 0, stdout: decision, stderr: "" },
   ]);
 
-  const result = await runTriage(runner, { repoRoot: "/repo", dryRun: true, execute: false, limit: 1, logDir });
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    limit: 1,
+    logDir,
+  });
 
   assert.equal(result.issueCount, 1);
   assert.equal(result.issues[0]?.issueNumber, 3);
@@ -266,18 +360,34 @@ test("runTriage skips already triaged open issues by default before applying lim
 test("runTriage skips in-progress issues by default before applying limit", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const mixedIssues = JSON.stringify([
-    { index: 1, title: "Claimed", body: "Already being worked", state: "open", labels: [{ name: "in-progress" }] },
-    { index: 2, title: "Untriaged", body: "Broken", state: "open", labels: [{ name: "bug" }] },
+    {
+      index: 1,
+      title: "Claimed",
+      body: "Already being worked",
+      state: "open",
+      labels: [{ name: "in-progress" }],
+    },
+    {
+      index: 2,
+      title: "Untriaged",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "bug" }],
+    },
   ]);
-  const decision = JSON.stringify({ decisions: [{
-    issueNumber: 2,
-    primaryBucket: "agent-ready",
-    labels: ["bug", "agent-ready", "priority:medium"],
-    confidence: "high",
-    rationale: "Clear issue ready for the planning workflow.",
-    questions: [],
-    comment: null,
-  }] });
+  const decision = JSON.stringify({
+    decisions: [
+      {
+        issueNumber: 2,
+        primaryBucket: "agent-ready",
+        labels: ["bug", "agent-ready", "priority:medium"],
+        confidence: "high",
+        rationale: "Clear issue ready for the planning workflow.",
+        questions: [],
+        comment: null,
+      },
+    ],
+  });
   const runner = createStaticCommandRunner([
     { code: 0, stdout: mixedIssues, stderr: "" },
     { code: 0, stdout: JSON.stringify([]), stderr: "" },
@@ -286,7 +396,13 @@ test("runTriage skips in-progress issues by default before applying limit", asyn
     { code: 0, stdout: decision, stderr: "" },
   ]);
 
-  const result = await runTriage(runner, { repoRoot: "/repo", dryRun: true, execute: false, limit: 1, logDir });
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    limit: 1,
+    logDir,
+  });
 
   assert.equal(result.issueCount, 1);
   assert.equal(result.issues[0]?.issueNumber, 2);
@@ -295,18 +411,34 @@ test("runTriage skips in-progress issues by default before applying limit", asyn
 test("runTriage skips blocked issues by default before applying limit", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const mixedIssues = JSON.stringify([
-    { index: 1, title: "Blocked", body: "Waiting on dependency", state: "open", labels: [{ name: "blocked" }] },
-    { index: 2, title: "Untriaged", body: "Broken", state: "open", labels: [{ name: "bug" }] },
+    {
+      index: 1,
+      title: "Blocked",
+      body: "Waiting on dependency",
+      state: "open",
+      labels: [{ name: "blocked" }],
+    },
+    {
+      index: 2,
+      title: "Untriaged",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "bug" }],
+    },
   ]);
-  const decision = JSON.stringify({ decisions: [{
-    issueNumber: 2,
-    primaryBucket: "agent-ready",
-    labels: ["bug", "agent-ready", "priority:medium"],
-    confidence: "high",
-    rationale: "Clear issue ready for the planning workflow.",
-    questions: [],
-    comment: null,
-  }] });
+  const decision = JSON.stringify({
+    decisions: [
+      {
+        issueNumber: 2,
+        primaryBucket: "agent-ready",
+        labels: ["bug", "agent-ready", "priority:medium"],
+        confidence: "high",
+        rationale: "Clear issue ready for the planning workflow.",
+        questions: [],
+        comment: null,
+      },
+    ],
+  });
   const runner = createStaticCommandRunner([
     { code: 0, stdout: mixedIssues, stderr: "" },
     { code: 0, stdout: JSON.stringify([]), stderr: "" },
@@ -315,7 +447,13 @@ test("runTriage skips blocked issues by default before applying limit", async ()
     { code: 0, stdout: decision, stderr: "" },
   ]);
 
-  const result = await runTriage(runner, { repoRoot: "/repo", dryRun: true, execute: false, limit: 1, logDir });
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    limit: 1,
+    logDir,
+  });
 
   assert.equal(result.issueCount, 1);
   assert.equal(result.issues[0]?.issueNumber, 2);
@@ -324,17 +462,27 @@ test("runTriage skips blocked issues by default before applying limit", async ()
 test("runTriage --all includes in-progress issues for recovery", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const triagedIssue = JSON.stringify([
-    { index: 1, title: "Claimed", body: "Already being worked", state: "open", labels: [{ name: "in-progress" }] },
+    {
+      index: 1,
+      title: "Claimed",
+      body: "Already being worked",
+      state: "open",
+      labels: [{ name: "in-progress" }],
+    },
   ]);
-  const decision = JSON.stringify({ decisions: [{
-    issueNumber: 1,
-    primaryBucket: "agent-ready",
-    labels: ["agent-ready", "priority:medium"],
-    confidence: "high",
-    rationale: "Clear issue ready for the planning workflow.",
-    questions: [],
-    comment: null,
-  }] });
+  const decision = JSON.stringify({
+    decisions: [
+      {
+        issueNumber: 1,
+        primaryBucket: "agent-ready",
+        labels: ["agent-ready", "priority:medium"],
+        confidence: "high",
+        rationale: "Clear issue ready for the planning workflow.",
+        questions: [],
+        comment: null,
+      },
+    ],
+  });
   const runner = createStaticCommandRunner([
     { code: 0, stdout: triagedIssue, stderr: "" },
     { code: 0, stdout: JSON.stringify([]), stderr: "" },
@@ -343,7 +491,13 @@ test("runTriage --all includes in-progress issues for recovery", async () => {
     { code: 0, stdout: decision, stderr: "" },
   ]);
 
-  const result = await runTriage(runner, { repoRoot: "/repo", dryRun: true, execute: false, all: true, logDir });
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    all: true,
+    logDir,
+  });
 
   assert.equal(result.issueCount, 1);
   assert.equal(result.issues[0]?.issueNumber, 1);
@@ -352,17 +506,27 @@ test("runTriage --all includes in-progress issues for recovery", async () => {
 test("runTriage targeted issue overrides the in-progress default skip", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const triagedIssue = JSON.stringify([
-    { index: 1, title: "Claimed", body: "Already being worked", state: "open", labels: [{ name: "in-progress" }] },
+    {
+      index: 1,
+      title: "Claimed",
+      body: "Already being worked",
+      state: "open",
+      labels: [{ name: "in-progress" }],
+    },
   ]);
-  const decision = JSON.stringify({ decisions: [{
-    issueNumber: 1,
-    primaryBucket: "agent-ready",
-    labels: ["agent-ready", "priority:medium"],
-    confidence: "high",
-    rationale: "Clear issue ready for the planning workflow.",
-    questions: [],
-    comment: null,
-  }] });
+  const decision = JSON.stringify({
+    decisions: [
+      {
+        issueNumber: 1,
+        primaryBucket: "agent-ready",
+        labels: ["agent-ready", "priority:medium"],
+        confidence: "high",
+        rationale: "Clear issue ready for the planning workflow.",
+        questions: [],
+        comment: null,
+      },
+    ],
+  });
   const runner = createStaticCommandRunner([
     { code: 0, stdout: triagedIssue, stderr: "" },
     { code: 0, stdout: JSON.stringify([]), stderr: "" },
@@ -371,7 +535,13 @@ test("runTriage targeted issue overrides the in-progress default skip", async ()
     { code: 0, stdout: decision, stderr: "" },
   ]);
 
-  const result = await runTriage(runner, { repoRoot: "/repo", dryRun: true, execute: false, issueNumber: 1, logDir });
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    issueNumber: 1,
+    logDir,
+  });
 
   assert.equal(result.issueCount, 1);
   assert.equal(result.issues[0]?.issueNumber, 1);
@@ -388,12 +558,14 @@ test("runTriage writes a failed execute log before rethrowing mutation errors", 
     { code: 1, stdout: "", stderr: "labels exploded" },
   ]);
 
-  await assert.rejects(() => runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: false,
-    execute: true,
-    logDir,
-  }));
+  await assert.rejects(() =>
+    runTriage(runner, {
+      repoRoot: "/repo",
+      dryRun: false,
+      execute: true,
+      logDir,
+    }),
+  );
 
   const files = await readdir(logDir);
   assert.equal(files.length, 1);
@@ -415,12 +587,16 @@ test("runTriage writes a failure log when validation fails", async () => {
     { code: 0, stdout: JSON.stringify({ decisions: [] }), stderr: "" },
   ]);
 
-  await assert.rejects(() => runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    logDir,
-  }), /Expected 1 decisions but received 0/);
+  await assert.rejects(
+    () =>
+      runTriage(runner, {
+        repoRoot: "/repo",
+        dryRun: true,
+        execute: false,
+        logDir,
+      }),
+    /Expected 1 decisions but received 0/,
+  );
 
   const files = await readdir(logDir);
   assert.equal(files.length, 1);
@@ -440,12 +616,16 @@ test("runTriage writes a failure log when missing label creation fails", async (
     { code: 1, stdout: "", stderr: "cannot create label" },
   ]);
 
-  await assert.rejects(() => runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: false,
-    execute: true,
-    logDir,
-  }), /cannot create label/);
+  await assert.rejects(
+    () =>
+      runTriage(runner, {
+        repoRoot: "/repo",
+        dryRun: false,
+        execute: true,
+        logDir,
+      }),
+    /cannot create label/,
+  );
 
   const files = await readdir(logDir);
   assert.equal(files.length, 1);
@@ -462,13 +642,17 @@ test("runTriage rejects targeted issues that are not open or not found and logs 
     { code: 0, stdout: JSON.stringify([]), stderr: "" },
   ]);
 
-  await assert.rejects(() => runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    issueNumber: 123,
-    logDir,
-  }), /Issue #123 is not open or was not found/);
+  await assert.rejects(
+    () =>
+      runTriage(runner, {
+        repoRoot: "/repo",
+        dryRun: true,
+        execute: false,
+        issueNumber: 123,
+        logDir,
+      }),
+    /Issue #123 is not open or was not found/,
+  );
 
   const files = await readdir(logDir);
   assert.equal(files.length, 1);

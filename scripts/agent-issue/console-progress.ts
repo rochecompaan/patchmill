@@ -36,7 +36,8 @@ function formatArgumentValue(value: unknown): string {
 }
 
 function subagentLabel(task: unknown): string | undefined {
-  if (typeof task !== "object" || task === null || Array.isArray(task)) return undefined;
+  if (typeof task !== "object" || task === null || Array.isArray(task))
+    return undefined;
   const agent = (task as Record<string, unknown>).agent;
   if (typeof agent !== "string") return undefined;
   const count = (task as Record<string, unknown>).count;
@@ -56,16 +57,22 @@ function subagentLabels(args: Record<string, unknown> | undefined): string[] {
   return [];
 }
 
-function formatSubagentCall(args: Record<string, unknown> | undefined): string | undefined {
+function formatSubagentCall(
+  args: Record<string, unknown> | undefined,
+): string | undefined {
   const agents = subagentLabels(args);
   if (agents.length === 1) return `🤖 subagent (agent=${agents[0]})`;
   if (agents.length > 1) return `🤖 subagent (agents=${agents.join(", ")})`;
   return undefined;
 }
 
-function formatToolCall(toolName: string | undefined, args: Record<string, unknown> | undefined): string {
+function formatToolCall(
+  toolName: string | undefined,
+  args: Record<string, unknown> | undefined,
+): string {
   const name = toolName ?? "tool";
-  const subagentCall = name === "subagent" ? formatSubagentCall(args) : undefined;
+  const subagentCall =
+    name === "subagent" ? formatSubagentCall(args) : undefined;
   if (subagentCall) return subagentCall;
   const argPairs = Object.entries(args ?? {})
     .map(([key, value]) => `${key}=${formatArgumentValue(value)}`)
@@ -102,7 +109,9 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
 
     if (event.observation?.type === "tool-call") {
       if (this.currentStep) {
-        this.writeLine(`   ${formatToolCall(event.observation.toolName, event.observation.arguments)}`);
+        this.writeLine(
+          `   ${formatToolCall(event.observation.toolName, event.observation.arguments)}`,
+        );
       }
       return;
     }
@@ -115,7 +124,9 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
         startOutputTokens: this.totalOutputTokens,
       };
       this.nextStepNumber += 1;
-      this.writeLine(`${String(this.currentStep.number).padStart(2, "0")} ${event.step.label}`);
+      this.writeLine(
+        `${String(this.currentStep.number).padStart(2, "0")} ${event.step.label}`,
+      );
       return;
     }
 
@@ -128,16 +139,29 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
     const step = this.currentStep;
     if (!step) return;
 
-    const taskTokens = event.step?.type === "step-complete" && event.step.taskOutputTokens !== undefined
-      ? event.step.taskOutputTokens
-      : this.totalOutputTokens - step.startOutputTokens;
-    const totalTokens = event.step?.type === "step-complete" && event.step.totalOutputTokens !== undefined
-      ? event.step.totalOutputTokens
-      : this.totalOutputTokens;
-    const elapsedSeconds = event.step?.type === "step-complete" && event.step.elapsedSeconds !== undefined
-      ? event.step.elapsedSeconds
-      : Math.max(0, Math.round((new Date(event.time).getTime() - this.startedAtMs) / 1000));
-    this.writeLine(`   tokens: task ${formatTokens(taskTokens)} total ${formatTokens(totalTokens)}   time elapsed: ${formatElapsed(elapsedSeconds)}`);
+    const taskTokens =
+      event.step?.type === "step-complete" &&
+      event.step.taskOutputTokens !== undefined
+        ? event.step.taskOutputTokens
+        : this.totalOutputTokens - step.startOutputTokens;
+    const totalTokens =
+      event.step?.type === "step-complete" &&
+      event.step.totalOutputTokens !== undefined
+        ? event.step.totalOutputTokens
+        : this.totalOutputTokens;
+    const elapsedSeconds =
+      event.step?.type === "step-complete" &&
+      event.step.elapsedSeconds !== undefined
+        ? event.step.elapsedSeconds
+        : Math.max(
+            0,
+            Math.round(
+              (new Date(event.time).getTime() - this.startedAtMs) / 1000,
+            ),
+          );
+    this.writeLine(
+      `   tokens: task ${formatTokens(taskTokens)} total ${formatTokens(totalTokens)}   time elapsed: ${formatElapsed(elapsedSeconds)}`,
+    );
     this.currentStep = undefined;
   }
 }

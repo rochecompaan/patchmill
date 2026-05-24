@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultVisualEvidenceUploader, uploadPrVisualEvidence } from "./visual-evidence.ts";
-import { LEGACY_FORGEJO_TOKEN_ENV, LEGACY_FORGEJO_URL_ENV } from "../../test-support/legacy-seed.ts";
+import {
+  defaultVisualEvidenceUploader,
+  uploadPrVisualEvidence,
+} from "./visual-evidence.ts";
+import {
+  LEGACY_FORGEJO_TOKEN_ENV,
+  LEGACY_FORGEJO_URL_ENV,
+} from "../../test-support/legacy-seed.ts";
 import type { AgentIssueVisualEvidence } from "./types.ts";
 import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
 
@@ -25,7 +31,9 @@ test("uploadPrVisualEvidence keeps evidence when no uploader is configured", asy
   });
 
   assert.deepEqual(uploaded, evidence);
-  assert.deepEqual(events, ["visual evidence present but no uploader configured; skipping host asset upload"]);
+  assert.deepEqual(events, [
+    "visual evidence present but no uploader configured; skipping host asset upload",
+  ]);
 });
 
 test("defaultVisualEvidenceUploader returns no uploader when only removed legacy env variables are set", () => {
@@ -53,11 +61,18 @@ test("uploadPrVisualEvidence delegates to the configured uploader", async () => 
     },
   ];
 
-  let received: Parameters<VisualEvidenceUploader["uploadPrEvidence"]>[0] | undefined;
+  let received:
+    | Parameters<VisualEvidenceUploader["uploadPrEvidence"]>[0]
+    | undefined;
   const uploader: VisualEvidenceUploader = {
     async uploadPrEvidence(input) {
       received = input;
-      return input.evidence?.map((entry) => ({ ...entry, url: `https://forgejo.example/${entry.screenshotPath}` })) ?? [];
+      return (
+        input.evidence?.map((entry) => ({
+          ...entry,
+          url: `https://forgejo.example/${entry.screenshotPath}`,
+        })) ?? []
+      );
     },
   };
 

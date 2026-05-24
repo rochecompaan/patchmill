@@ -20,11 +20,12 @@ import {
 } from "../agent-issue-triage/labels.ts";
 import { resolveAgentTeam } from "./agent-team.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
+import { assertCleanWorktree, ensureIssueWorktree } from "./git.ts";
 import {
-  assertCleanWorktree,
-  ensureIssueWorktree,
-} from "./git.ts";
-import { assertIssueTodosComplete, issueTodoProgress, readIssueTodoTasks } from "./issue-todos.ts";
+  assertIssueTodosComplete,
+  issueTodoProgress,
+  readIssueTodoTasks,
+} from "./issue-todos.ts";
 import { runPiPrompt } from "./pi.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
@@ -34,9 +35,16 @@ import {
 } from "./prompts.ts";
 import type { ForgejoVisualEvidenceEnv } from "../../src/host/forgejo-visual-evidence.ts";
 import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
-import { isResumableRunState, readRunState, writeRunState } from "./run-state.ts";
+import {
+  isResumableRunState,
+  readRunState,
+  writeRunState,
+} from "./run-state.ts";
 import { selectIssue } from "./selection.ts";
-import { defaultVisualEvidenceUploader, uploadPrVisualEvidence } from "./visual-evidence.ts";
+import {
+  defaultVisualEvidenceUploader,
+  uploadPrVisualEvidence,
+} from "./visual-evidence.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type {
   AgentIssueBlockedResult,
@@ -112,15 +120,20 @@ function withLogPath<T extends AgentIssuePipelineResult>(
 }
 
 function cleanStatusIgnoredPaths(
-  config: Pick<AgentIssueConfig, "runStateDir" | "cleanStatusIgnorePrefixes" | "projectPolicy">,
+  config: Pick<
+    AgentIssueConfig,
+    "runStateDir" | "cleanStatusIgnorePrefixes" | "projectPolicy"
+  >,
   options: Pick<RunOneIssueOptions, "logPath">,
 ): string[] {
-  return [...new Set([
-    ...(config.cleanStatusIgnorePrefixes ?? []),
-    config.projectPolicy.pi.taskContract.todoRoot,
-    config.runStateDir,
-    ...(options.logPath ? [options.logPath] : []),
-  ])];
+  return [
+    ...new Set([
+      ...(config.cleanStatusIgnorePrefixes ?? []),
+      config.projectPolicy.pi.taskContract.todoRoot,
+      config.runStateDir,
+      ...(options.logPath ? [options.logPath] : []),
+    ]),
+  ];
 }
 
 function repoPath(
@@ -134,12 +147,17 @@ function repoPath(
   return { absolute: join(repoRoot, path), relative: path };
 }
 
-function configuredWorktreeDir(config: Pick<AgentIssueConfig, "repoRoot" | "worktreeDir">): string {
+function configuredWorktreeDir(
+  config: Pick<AgentIssueConfig, "repoRoot" | "worktreeDir">,
+): string {
   return relative(config.repoRoot, config.worktreeDir) || ".";
 }
 
 function configuredWorktreeStrategy(
-  config: Pick<AgentIssueConfig, keyof GitWorktreeStrategyConfig | "repoRoot" | "worktreeDir">,
+  config: Pick<
+    AgentIssueConfig,
+    keyof GitWorktreeStrategyConfig | "repoRoot" | "worktreeDir"
+  >,
 ): GitWorktreeStrategyConfig {
   return {
     baseBranch: config.baseBranch,
@@ -153,7 +171,11 @@ function configuredWorktreeStrategy(
   };
 }
 
-function expectedIssueWorkspace(issueNumber: number, title: string, strategy: GitWorktreeStrategyConfig): {
+function expectedIssueWorkspace(
+  issueNumber: number,
+  title: string,
+  strategy: GitWorktreeStrategyConfig,
+): {
   branch: string;
   worktreePath: string;
 } {
@@ -173,7 +195,9 @@ function nextLabels(
   return [...kept, ...add.filter((label) => !kept.includes(label))];
 }
 
-function lifecycleLabels(config: Pick<AgentIssueConfig, "readyLabel" | "triagePolicy">): {
+function lifecycleLabels(
+  config: Pick<AgentIssueConfig, "readyLabel" | "triagePolicy">,
+): {
   ready: string;
   inProgress: string;
   done: string;
@@ -189,7 +213,9 @@ function lifecycleLabels(config: Pick<AgentIssueConfig, "readyLabel" | "triagePo
   };
 }
 
-const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<keyof AgentIssueRunCheckpoints>([
+const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
+  keyof AgentIssueRunCheckpoints
+>([
   "claimed",
   "startedCommentPosted",
   "readyLabelRestored",
@@ -210,7 +236,10 @@ function effectiveCheckpoints(
 
   const filtered = Object.fromEntries(
     Object.entries(checkpoints).filter(
-      ([checkpoint]) => !RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS.has(checkpoint as keyof AgentIssueRunCheckpoints),
+      ([checkpoint]) =>
+        !RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS.has(
+          checkpoint as keyof AgentIssueRunCheckpoints,
+        ),
     ),
   ) as AgentIssueRunCheckpoints;
 
@@ -288,49 +317,67 @@ class AgentIssueSafetyError extends Error {
 
 function stringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const entries = value.filter((entry): entry is string => typeof entry === "string");
+  const entries = value.filter(
+    (entry): entry is string => typeof entry === "string",
+  );
   return entries.length === value.length ? entries : undefined;
 }
 
-function visualEvidenceArray(value: unknown): AgentIssueVisualEvidence[] | undefined {
+function visualEvidenceArray(
+  value: unknown,
+): AgentIssueVisualEvidence[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const entries = value.flatMap((entry): AgentIssueVisualEvidence[] => {
     if (!entry || typeof entry !== "object") return [];
     const record = entry as Record<string, unknown>;
     if (typeof record.screenshotPath !== "string") return [];
-    return [{
-      screenshotPath: record.screenshotPath,
-      caption: typeof record.caption === "string" ? record.caption : undefined,
-      referencePaths: stringArray(record.referencePaths),
-      url: typeof record.url === "string" ? record.url : undefined,
-    }];
+    return [
+      {
+        screenshotPath: record.screenshotPath,
+        caption:
+          typeof record.caption === "string" ? record.caption : undefined,
+        referencePaths: stringArray(record.referencePaths),
+        url: typeof record.url === "string" ? record.url : undefined,
+      },
+    ];
   });
   return entries.length > 0 ? entries : undefined;
 }
 
 function successfulImplementationFromState(
-  state: {
-    implementationStatus?: "pr-created" | "merged";
-    branch?: string;
-    prUrl?: string;
-    mergeCommit?: string;
-    commits?: unknown;
-    validation?: unknown;
-    reviewSummary?: unknown;
-    landingDecision?: unknown;
-    visualEvidence?: unknown;
-  } | undefined,
-): Extract<AgentIssuePiResult, { status: "pr-created" | "merged" }> | undefined {
+  state:
+    | {
+        implementationStatus?: "pr-created" | "merged";
+        branch?: string;
+        prUrl?: string;
+        mergeCommit?: string;
+        commits?: unknown;
+        validation?: unknown;
+        reviewSummary?: unknown;
+        landingDecision?: unknown;
+        visualEvidence?: unknown;
+      }
+    | undefined,
+):
+  | Extract<AgentIssuePiResult, { status: "pr-created" | "merged" }>
+  | undefined {
   if (!state?.implementationStatus || !state.branch) return undefined;
 
   const commits = stringArray(state.commits);
   const validation = stringArray(state.validation);
   if (!commits || !validation) return undefined;
-  const reviewSummary = typeof state.reviewSummary === "string" ? state.reviewSummary : undefined;
-  const landingDecision = typeof state.landingDecision === "string" ? state.landingDecision : undefined;
+  const reviewSummary =
+    typeof state.reviewSummary === "string" ? state.reviewSummary : undefined;
+  const landingDecision =
+    typeof state.landingDecision === "string"
+      ? state.landingDecision
+      : undefined;
   const visualEvidence = visualEvidenceArray(state.visualEvidence);
 
-  if (state.implementationStatus === "pr-created" && typeof state.prUrl === "string") {
+  if (
+    state.implementationStatus === "pr-created" &&
+    typeof state.prUrl === "string"
+  ) {
     return {
       status: "pr-created",
       prUrl: state.prUrl,
@@ -343,7 +390,10 @@ function successfulImplementationFromState(
     };
   }
 
-  if (state.implementationStatus === "merged" && typeof state.mergeCommit === "string") {
+  if (
+    state.implementationStatus === "merged" &&
+    typeof state.mergeCommit === "string"
+  ) {
     return {
       status: "merged",
       branch: state.branch,
@@ -436,7 +486,9 @@ async function selectResumableIssue(
   }
 
   if (config.issueNumber !== undefined) {
-    const resumableSelected = resumable.find((issue) => issue.number === config.issueNumber);
+    const resumableSelected = resumable.find(
+      (issue) => issue.number === config.issueNumber,
+    );
     if (resumableSelected) {
       return { issue: resumableSelected, resumed: true };
     }
@@ -451,7 +503,10 @@ async function selectResumableIssue(
         `Resumable ${inProgress} automation run #${resumable[0]?.number} exists; resume it before processing #${selected.number}`,
       );
     }
-    return { issue: selected, resumed: resumable[0]?.number === selected.number };
+    return {
+      issue: selected,
+      resumed: resumable[0]?.number === selected.number,
+    };
   }
 
   if (resumable.length === 1) {
@@ -466,7 +521,10 @@ async function selectResumableIssue(
   return selected ? { issue: selected, resumed: false } : undefined;
 }
 
-function unexpectedFailureComment(reason: string, inProgressLabel: string): string {
+function unexpectedFailureComment(
+  reason: string,
+  inProgressLabel: string,
+): string {
   return [
     `Automation failed unexpectedly and remains ${inProgressLabel}.`,
     ``,
@@ -476,7 +534,9 @@ function unexpectedFailureComment(reason: string, inProgressLabel: string): stri
   ].join("\n");
 }
 
-function unexpectedFailureCommentKey(status: "claimed" | "planning" | "implementing"): string {
+function unexpectedFailureCommentKey(
+  status: "claimed" | "planning" | "implementing",
+): string {
   return `unexpected-failure:${status}`;
 }
 
@@ -510,12 +570,20 @@ async function unexpectedFailure(
   options: RunOneIssueOptions,
 ): Promise<AgentIssuePipelineResult> {
   const reason = errorMessage(error);
-  const status = details.branch || details.worktreePath || checkpoints.worktreeReady || checkpoints.implementationCompleted
-    ? "implementing"
-    : details.planPath || details.planCommit || checkpoints.planPathResolved || checkpoints.planCreated
-      || checkpoints.planReadyCommentPosted || checkpoints.readyLabelRestored
-    ? "planning"
-    : "claimed";
+  const status =
+    details.branch ||
+    details.worktreePath ||
+    checkpoints.worktreeReady ||
+    checkpoints.implementationCompleted
+      ? "implementing"
+      : details.planPath ||
+          details.planCommit ||
+          checkpoints.planPathResolved ||
+          checkpoints.planCreated ||
+          checkpoints.planReadyCommentPosted ||
+          checkpoints.readyLabelRestored
+        ? "planning"
+        : "claimed";
   await progress(options, "error", "blocked", `blocked: ${reason}`, {
     issueNumber: issue.number,
   });
@@ -543,7 +611,9 @@ async function unexpectedFailure(
       issue.number,
       unexpectedFailureComment(reason, inProgress),
       config.teaLogin,
-    ).then(() => true).catch(() => false);
+    )
+      .then(() => true)
+      .catch(() => false);
     if (commented) {
       await writeRunState(
         config.runStateDir,
@@ -648,9 +718,12 @@ export async function runOneIssue(
 
   const existingState = await readRunState(config.runStateDir, issue.number);
   const resumed = selected?.resumed ?? false;
-  const resumableState = resumed && !!existingState && isResumableRunState(existingState);
+  const resumableState =
+    resumed && !!existingState && isResumableRunState(existingState);
   const resetStaleCheckpoints = !!existingState && !resumableState;
-  const checkpoints = { ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}) };
+  const checkpoints = {
+    ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
+  };
 
   await progress(
     options,
@@ -661,7 +734,10 @@ export async function runOneIssue(
   );
   if (config.dryRun) return withLogPath({ status: "dry-run", issue }, options);
 
-  if (resetStaleCheckpoints && (existingState?.branch || existingState?.worktreePath)) {
+  if (
+    resetStaleCheckpoints &&
+    (existingState?.branch || existingState?.worktreePath)
+  ) {
     throw new AgentIssueSafetyError(
       `Non-resumable run state for issue #${issue.number} has stale branch/worktree; clean up before starting a fresh run`,
     );
@@ -671,7 +747,12 @@ export async function runOneIssue(
   const tokenUsageState = { total: 0 };
   const runStartedAtMs = (options.now ?? new Date()).getTime();
   const stepAccounting: {
-    current?: { label: string; startOutputTokens: number; toolCalls: number; startedAt: number };
+    current?: {
+      label: string;
+      startOutputTokens: number;
+      toolCalls: number;
+      startedAt: number;
+    };
     totalOutputTokens: number;
   } = { totalOutputTokens: 0 };
   const stepStart = async (label: string): Promise<void> => {
@@ -692,12 +773,18 @@ export async function runOneIssue(
     });
   };
   const stepComplete = async (label: string): Promise<void> => {
-    const current = stepAccounting.current?.label === label ? stepAccounting.current : undefined;
+    const current =
+      stepAccounting.current?.label === label
+        ? stepAccounting.current
+        : undefined;
     const taskOutputTokens = current
       ? stepAccounting.totalOutputTokens - current.startOutputTokens
       : 0;
     const toolCalls = current?.toolCalls ?? 0;
-    const elapsedSeconds = Math.max(0, Math.round((Date.now() - runStartedAtMs) / 1000));
+    const elapsedSeconds = Math.max(
+      0,
+      Math.round((Date.now() - runStartedAtMs) / 1000),
+    );
     await options.progress?.event({
       time: new Date().toISOString(),
       level: "info",
@@ -719,7 +806,10 @@ export async function runOneIssue(
     });
     if (current) stepAccounting.current = undefined;
   };
-  const runStep = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+  const runStep = async <T>(
+    label: string,
+    fn: () => Promise<T>,
+  ): Promise<T> => {
     await stepStart(label);
     try {
       return await fn();
@@ -727,19 +817,25 @@ export async function runOneIssue(
       await stepComplete(label);
     }
   };
-  const observePi = (stage: "pi-plan" | "pi-implementation") => async (observation: AgentIssueProgressEvent["observation"]): Promise<void> => {
-    if (!observation) return;
-    if (observation.type === "assistant-usage") stepAccounting.totalOutputTokens += observation.outputTokens;
-    if (observation.type === "tool-call" && stepAccounting.current) stepAccounting.current.toolCalls += 1;
-    await options.progress?.event({
-      time: new Date().toISOString(),
-      level: "debug",
-      stage,
-      message: observation.type,
-      issueNumber: issue.number,
-      observation,
-    });
-  };
+  const observePi =
+    (stage: "pi-plan" | "pi-implementation") =>
+    async (
+      observation: AgentIssueProgressEvent["observation"],
+    ): Promise<void> => {
+      if (!observation) return;
+      if (observation.type === "assistant-usage")
+        stepAccounting.totalOutputTokens += observation.outputTokens;
+      if (observation.type === "tool-call" && stepAccounting.current)
+        stepAccounting.current.toolCalls += 1;
+      await options.progress?.event({
+        time: new Date().toISOString(),
+        level: "debug",
+        stage,
+        message: observation.type,
+        issueNumber: issue.number,
+        observation,
+      });
+    };
   await options.progress?.event({
     time: timestamp,
     level: "info",
@@ -753,16 +849,12 @@ export async function runOneIssue(
     issueNumber: issue.number,
   });
   const ignoredPaths = cleanStatusIgnoredPaths(config, options);
-  await assertCleanWorktree(
-    runner,
-    config.repoRoot,
-    ignoredPaths,
-  );
+  await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
   const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
   let labels = resumed
-    ? (issue.labels.includes(inProgress)
+    ? issue.labels.includes(inProgress)
       ? issue.labels
-      : nextLabels(issue.labels, [ready], [inProgress]))
+      : nextLabels(issue.labels, [ready], [inProgress])
     : nextLabels(issue.labels, [ready], [inProgress]);
   if (!checkpoints.claimed) {
     await runStep("claim issue", async () => {
@@ -939,7 +1031,8 @@ export async function runOneIssue(
         timestamp,
       );
       checkpoints.planCreated = true;
-      if (planCommit) await emitSimpleStep(options, issue.number, "commit plan");
+      if (planCommit)
+        await emitSimpleStep(options, issue.number, "commit plan");
     } else {
       await runStep("use existing plan", async () => {
         await progress(
@@ -953,11 +1046,7 @@ export async function runOneIssue(
     }
 
     if (config.planOnly || config.requirePlanApproval) {
-      const finalLabels = nextLabels(
-        labels,
-        [inProgress],
-        [ready],
-      );
+      const finalLabels = nextLabels(labels, [inProgress], [ready]);
       if (!checkpoints.planReadyCommentPosted) {
         await commentIssue(
           runner,
@@ -1010,7 +1099,11 @@ export async function runOneIssue(
         },
         timestamp,
       );
-      await emitSimpleStep(options, issue.number, `final result ${planCreated ? "plan-created" : "plan-found"}`);
+      await emitSimpleStep(
+        options,
+        issue.number,
+        `final result ${planCreated ? "plan-created" : "plan-found"}`,
+      );
       return withLogPath(
         {
           status: planCreated ? "plan-created" : "plan-found",
@@ -1021,18 +1114,27 @@ export async function runOneIssue(
       );
     }
 
-    let implemented = resumableState && checkpoints.implementationCompleted
-      ? successfulImplementationFromState(existingState as (typeof existingState & {
-        prUrl?: string;
-        mergeCommit?: string;
-        commits?: unknown;
-        validation?: unknown;
-        reviewSummary?: unknown;
-        landingDecision?: unknown;
-      }) | undefined)
-      : undefined;
+    let implemented =
+      resumableState && checkpoints.implementationCompleted
+        ? successfulImplementationFromState(
+            existingState as
+              | (typeof existingState & {
+                  prUrl?: string;
+                  mergeCommit?: string;
+                  commits?: unknown;
+                  validation?: unknown;
+                  reviewSummary?: unknown;
+                  landingDecision?: unknown;
+                })
+              | undefined,
+          )
+        : undefined;
     if (implemented) {
-      assertDirectLandAllowed(implemented, config, "Saved implementation state");
+      assertDirectLandAllowed(
+        implemented,
+        config,
+        "Saved implementation state",
+      );
     }
 
     let agentTeam: ResolvedAgentTeam | undefined;
@@ -1052,8 +1154,16 @@ export async function runOneIssue(
       }
     }
     const worktreeStrategy = configuredWorktreeStrategy(config);
-    const expectedWorkspace = expectedIssueWorkspace(issue.number, issue.title, worktreeStrategy);
-    if (resumableState && existingState?.branch && existingState.branch !== expectedWorkspace.branch) {
+    const expectedWorkspace = expectedIssueWorkspace(
+      issue.number,
+      issue.title,
+      worktreeStrategy,
+    );
+    if (
+      resumableState &&
+      existingState?.branch &&
+      existingState.branch !== expectedWorkspace.branch
+    ) {
       throw new AgentIssueSafetyError(
         `Saved branch ${existingState.branch} does not match expected branch ${expectedWorkspace.branch}`,
       );
@@ -1076,19 +1186,35 @@ export async function runOneIssue(
       undefined,
       ignoredPaths,
     );
-    await emitSimpleStep(options, issue.number, worktree.created ? "create worktree" : "reuse worktree");
-    if (resumableState && existingState?.branch && existingState.branch !== worktree.branch) {
+    await emitSimpleStep(
+      options,
+      issue.number,
+      worktree.created ? "create worktree" : "reuse worktree",
+    );
+    if (
+      resumableState &&
+      existingState?.branch &&
+      existingState.branch !== worktree.branch
+    ) {
       throw new AgentIssueSafetyError(
         `Saved branch ${existingState.branch} does not match ensured worktree branch ${worktree.branch}`,
       );
     }
-    if (resumableState && existingState?.worktreePath && existingState.worktreePath !== worktree.worktreePath) {
+    if (
+      resumableState &&
+      existingState?.worktreePath &&
+      existingState.worktreePath !== worktree.worktreePath
+    ) {
       throw new AgentIssueSafetyError(
         `Saved worktree ${existingState.worktreePath} does not match ensured worktree path ${worktree.worktreePath}`,
       );
     }
-    branch = resumableState ? (existingState?.branch ?? worktree.branch) : worktree.branch;
-    worktreePath = resumableState ? (existingState?.worktreePath ?? worktree.worktreePath) : worktree.worktreePath;
+    branch = resumableState
+      ? (existingState?.branch ?? worktree.branch)
+      : worktree.branch;
+    worktreePath = resumableState
+      ? (existingState?.worktreePath ?? worktree.worktreePath)
+      : worktree.worktreePath;
     await progress(
       options,
       "info",
@@ -1121,13 +1247,21 @@ export async function runOneIssue(
       );
       const worktreeRoot = join(config.repoRoot, worktreePath);
       const taskContract = config.projectPolicy.pi.taskContract;
-      const planTaskLabels = await readPlanTaskLabels(config.repoRoot, planPath, taskContract);
-      let activeImplementationTask: { current: number; total: number; label: string } | undefined;
+      const planTaskLabels = await readPlanTaskLabels(
+        config.repoRoot,
+        planPath,
+        taskContract,
+      );
+      let activeImplementationTask:
+        | { current: number; total: number; label: string }
+        | undefined;
       let finalImplementationStepActive = false;
       const finalImplementationStepLabel = "final review and landing";
 
       const labelForTask = (current: number, runtimeLabel?: string): string => {
-        const planLabel = planTaskLabels.find((task) => task.number === current)?.label;
+        const planLabel = planTaskLabels.find(
+          (task) => task.number === current,
+        )?.label;
         return planLabel ?? runtimeLabel ?? `task ${current}`;
       };
 
@@ -1147,7 +1281,10 @@ export async function runOneIssue(
         rawTotal: number,
         runtimeLabel?: string,
       ): Promise<void> => {
-        const { current, total } = normalizeImplementationTaskProgress(rawCurrent, rawTotal);
+        const { current, total } = normalizeImplementationTaskProgress(
+          rawCurrent,
+          rawTotal,
+        );
         const label = labelForTask(current, runtimeLabel);
         if (
           activeImplementationTask?.current === current &&
@@ -1158,7 +1295,9 @@ export async function runOneIssue(
         }
         if (finalImplementationStepActive) return;
         if (activeImplementationTask) {
-          await stepComplete(`implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`);
+          await stepComplete(
+            `implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`,
+          );
         }
         activeImplementationTask = { current, total, label };
         await stepStart(`implement task ${current}/${total} ${label}`);
@@ -1167,7 +1306,9 @@ export async function runOneIssue(
       const startFinalImplementationStep = async (): Promise<void> => {
         if (finalImplementationStepActive) return;
         if (activeImplementationTask) {
-          await stepComplete(`implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`);
+          await stepComplete(
+            `implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`,
+          );
           activeImplementationTask = undefined;
         }
         finalImplementationStepActive = true;
@@ -1175,30 +1316,51 @@ export async function runOneIssue(
       };
 
       const issueTasksComplete = async (): Promise<boolean> => {
-        const tasks = await readIssueTodoTasks(worktreeRoot, issue.number, taskContract);
+        const tasks = await readIssueTodoTasks(
+          worktreeRoot,
+          issue.number,
+          taskContract,
+        );
         return tasks.length > 0 && tasks.every((task) => task.done);
       };
 
-      const refreshImplementationTask = async (options: { startFinalWhenComplete?: boolean } = {}): Promise<void> => {
-        if (options.startFinalWhenComplete && await issueTasksComplete()) {
+      const refreshImplementationTask = async (
+        options: { startFinalWhenComplete?: boolean } = {},
+      ): Promise<void> => {
+        if (options.startFinalWhenComplete && (await issueTasksComplete())) {
           await startFinalImplementationStep();
           return;
         }
-        const runtimeProgress = await issueTodoProgress(worktreeRoot, issue.number, taskContract);
+        const runtimeProgress = await issueTodoProgress(
+          worktreeRoot,
+          issue.number,
+          taskContract,
+        );
         if (runtimeProgress) {
-          await switchImplementationTask(runtimeProgress.current, runtimeProgress.total, runtimeProgress.label);
+          await switchImplementationTask(
+            runtimeProgress.current,
+            runtimeProgress.total,
+            runtimeProgress.label,
+          );
         }
       };
 
-      const observeImplementation = async (observation: AgentIssueProgressEvent["observation"]): Promise<void> => {
-        if (observation?.type === "tool-call") await refreshImplementationTask({ startFinalWhenComplete: true });
+      const observeImplementation = async (
+        observation: AgentIssueProgressEvent["observation"],
+      ): Promise<void> => {
+        if (observation?.type === "tool-call")
+          await refreshImplementationTask({ startFinalWhenComplete: true });
         await observePi("pi-implementation")(observation);
       };
 
       let piResult: AgentIssuePiResult | undefined;
       try {
         if (planTaskLabels.length > 0) {
-          await switchImplementationTask(1, planTaskLabels.length, planTaskLabels[0]?.label);
+          await switchImplementationTask(
+            1,
+            planTaskLabels.length,
+            planTaskLabels[0]?.label,
+          );
         }
 
         const projectPolicy = {
@@ -1240,7 +1402,11 @@ export async function runOneIssue(
             onObservation: observeImplementation,
             taskContract: projectPolicy.pi.taskContract,
             onTaskProgress: async (progress) => {
-              await switchImplementationTask(progress.current, progress.total, progress.label);
+              await switchImplementationTask(
+                progress.current,
+                progress.total,
+                progress.label,
+              );
             },
           },
         );
@@ -1248,7 +1414,9 @@ export async function runOneIssue(
         await refreshImplementationTask();
       } finally {
         if (activeImplementationTask) {
-          await stepComplete(`implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`);
+          await stepComplete(
+            `implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`,
+          );
           activeImplementationTask = undefined;
         }
         if (finalImplementationStepActive) {
@@ -1257,7 +1425,8 @@ export async function runOneIssue(
         }
       }
 
-      if (!piResult) throw new Error("Pi implementation completed without a result");
+      if (!piResult)
+        throw new Error("Pi implementation completed without a result");
       if (piResult.status === "blocked") {
         return blockIssue(
           runner,
@@ -1296,13 +1465,18 @@ export async function runOneIssue(
         branch,
         worktreePath,
         implementationStatus: implemented.status,
-        prUrl: implemented.status === "pr-created" ? implemented.prUrl : undefined,
-        mergeCommit: implemented.status === "merged" ? implemented.mergeCommit : undefined,
+        prUrl:
+          implemented.status === "pr-created" ? implemented.prUrl : undefined,
+        mergeCommit:
+          implemented.status === "merged" ? implemented.mergeCommit : undefined,
         commits: implemented.commits,
         validation: implemented.validation,
         reviewSummary: implemented.reviewSummary,
         landingDecision: implemented.landingDecision,
-        visualEvidence: implemented.status === "pr-created" ? implemented.visualEvidence : undefined,
+        visualEvidence:
+          implemented.status === "pr-created"
+            ? implemented.visualEvidence
+            : undefined,
         handoffCommentPosted: checkpoints.handoffCommentPosted === true,
         checkpoints: { implementationCompleted: true },
       },
@@ -1315,8 +1489,9 @@ export async function runOneIssue(
       (implemented.visualEvidence?.length ?? 0) > 0 &&
       !checkpoints.visualEvidenceUploaded
     ) {
-      const visualEvidenceUploader = options.visualEvidenceUploader
-        ?? defaultVisualEvidenceUploader({
+      const visualEvidenceUploader =
+        options.visualEvidenceUploader ??
+        defaultVisualEvidenceUploader({
           runner,
           env: options.visualEvidenceEnv,
           fetchImpl: options.fetchImpl,

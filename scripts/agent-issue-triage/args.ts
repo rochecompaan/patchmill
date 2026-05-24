@@ -25,7 +25,11 @@ function parsePositiveInteger(flag: string, value: string): number {
 }
 
 function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
-  return env.PATCHMILL_HOST_LOGIN ?? normalizedConfig?.host.login ?? DEFAULT_TEA_LOGIN;
+  return (
+    env.PATCHMILL_HOST_LOGIN ??
+    normalizedConfig?.host.login ??
+    DEFAULT_TEA_LOGIN
+  );
 }
 
 export function parseArgs(
@@ -42,7 +46,9 @@ export function parseArgs(
     triageThinking: patchmillConfig.pi.triageThinking,
     showHelp: args.length === 0,
     teaLogin: defaultTeaLogin(env, patchmillConfig),
-    logDir: normalizedConfig ? patchmillConfig.paths.triageLogDir : join(repoRoot, patchmillConfig.paths.triageLogDir),
+    logDir: normalizedConfig
+      ? patchmillConfig.paths.triageLogDir
+      : join(repoRoot, patchmillConfig.paths.triageLogDir),
     projectPolicy: patchmillConfig.projectPolicy,
     triagePolicy: createTriagePolicy(patchmillConfig.labels),
     skills: patchmillConfig.skills,
@@ -61,7 +67,10 @@ export function parseArgs(
     } else if (arg === "--all") {
       config.all = true;
     } else if (arg === "--issue") {
-      config.issueNumber = parsePositiveInteger(arg, requireValue(args, index, arg));
+      config.issueNumber = parsePositiveInteger(
+        arg,
+        requireValue(args, index, arg),
+      );
       index += 1;
     } else if (arg === "--limit") {
       config.limit = parsePositiveInteger(arg, requireValue(args, index, arg));

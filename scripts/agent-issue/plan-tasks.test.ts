@@ -59,11 +59,7 @@ test("readPlanTaskLabels preserves default heading compatibility with irregular 
   await mkdir(join(repoRoot, "docs", "plans"), { recursive: true });
   await writeFile(
     join(repoRoot, planPath),
-    [
-      "# Example Plan",
-      "",
-      "####   Task   3  :   Validation Sweep",
-    ].join("\n"),
+    ["# Example Plan", "", "####   Task   3  :   Validation Sweep"].join("\n"),
     "utf8",
   );
 
@@ -106,9 +102,13 @@ test("readPlanTaskLabels supports reordered custom task heading placeholders", a
   await mkdir(join(repoRoot, "docs", "plans"), { recursive: true });
   await writeFile(
     join(repoRoot, planPath),
-    ["# Example Plan", "", "### Dashboard Wiring as step 2", "", "#### Final Verification as step 10"].join(
-      "\n",
-    ),
+    [
+      "# Example Plan",
+      "",
+      "### Dashboard Wiring as step 2",
+      "",
+      "#### Final Verification as step 10",
+    ].join("\n"),
     "utf8",
   );
 

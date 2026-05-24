@@ -5,7 +5,14 @@ import type { PiSessionObservation } from "./pi-session-stream.ts";
 export type AgentIssueStepEvent =
   | { type: "run-start"; issueNumber: number; title: string }
   | { type: "step-start"; label: string }
-  | { type: "step-complete"; label: string; taskOutputTokens?: number; totalOutputTokens?: number; toolCalls?: number; elapsedSeconds?: number };
+  | {
+      type: "step-complete";
+      label: string;
+      taskOutputTokens?: number;
+      totalOutputTokens?: number;
+      toolCalls?: number;
+      elapsedSeconds?: number;
+    };
 
 export type AgentIssueProgressEvent = {
   time: string;
@@ -30,7 +37,11 @@ function safeTimestamp(timestamp: string): string {
   return timestamp.replaceAll(":", "-").replaceAll(".", "-");
 }
 
-export function runLogPath(runStateDir: string, timestamp: string, issueNumber?: number): string {
+export function runLogPath(
+  runStateDir: string,
+  timestamp: string,
+  issueNumber?: number,
+): string {
   const fileName = `run-${safeTimestamp(timestamp)}.jsonl`;
   return issueNumber === undefined
     ? join(runStateDir, fileName)
@@ -40,7 +51,9 @@ export function runLogPath(runStateDir: string, timestamp: string, issueNumber?:
 export class ConsoleProgressReporter implements ProgressReporter {
   private readonly writeLine: (line: string) => void;
 
-  constructor(writeLine: (line: string) => void = (line) => console.error(line)) {
+  constructor(
+    writeLine: (line: string) => void = (line) => console.error(line),
+  ) {
     this.writeLine = writeLine;
   }
 
@@ -63,7 +76,9 @@ export class JsonlProgressReporter implements ProgressReporter {
   }
 }
 
-export function compositeProgressReporter(reporters: ProgressReporter[]): ProgressReporter {
+export function compositeProgressReporter(
+  reporters: ProgressReporter[],
+): ProgressReporter {
   return {
     async event(event) {
       await Promise.all(reporters.map((reporter) => reporter.event(event)));

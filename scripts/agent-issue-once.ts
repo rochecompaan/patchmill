@@ -13,7 +13,10 @@ import {
   runLogPath,
 } from "./agent-issue/progress.ts";
 import { createCommandRunner } from "./agent-issue-triage/command.ts";
-import type { AgentIssuePipelineResult, AgentIssueVisualEvidence } from "./agent-issue/types.ts";
+import type {
+  AgentIssuePipelineResult,
+  AgentIssueVisualEvidence,
+} from "./agent-issue/types.ts";
 
 export const HELP_TEXT = `Usage:
   node scripts/agent-issue-once.ts [options]
@@ -197,7 +200,11 @@ export async function loadCliConfig(
     return parseArgs(args, repoRoot, env);
   }
 
-  const { config: patchmillConfig } = await loadPatchmillConfigState(repoRoot, env, args);
+  const { config: patchmillConfig } = await loadPatchmillConfigState(
+    repoRoot,
+    env,
+    args,
+  );
   return parseArgs(args, repoRoot, env, patchmillConfig);
 }
 
@@ -213,7 +220,9 @@ async function main(): Promise<void> {
   const logPath = runLogPath(config.runStateDir, timestamp);
   const progress = compositeProgressReporter([
     new JsonlProgressReporter(logPath),
-    ...(config.quiet ? [] : [new AgentIssueConsoleProgressReporter({ startedAt })]),
+    ...(config.quiet
+      ? []
+      : [new AgentIssueConsoleProgressReporter({ startedAt })]),
   ]);
 
   let result: AgentIssuePipelineResult;
@@ -223,11 +232,12 @@ async function main(): Promise<void> {
       progress,
       logPath,
       verbosePiOutput: config.verbosePiOutput,
-      streamPiOutput: !config.quiet && config.verbosePiOutput
-        ? (chunk) => {
-            process.stderr.write(chunk);
-          }
-        : undefined,
+      streamPiOutput:
+        !config.quiet && config.verbosePiOutput
+          ? (chunk) => {
+              process.stderr.write(chunk);
+            }
+          : undefined,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

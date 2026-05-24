@@ -30,7 +30,10 @@ function truncateSlug(value: string, limit: number): string {
 
 export function buildIssueBranchSlug(
   title: string,
-  config: Pick<GitWorktreeStrategyConfig, "slugLength"> = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
+  config: Pick<
+    GitWorktreeStrategyConfig,
+    "slugLength"
+  > = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
 ): string {
   return truncateSlug(slugify(title), config.slugLength);
 }
@@ -38,7 +41,10 @@ export function buildIssueBranchSlug(
 export function buildIssueBranchName(
   issueNumber: number,
   title: string,
-  config: Pick<GitWorktreeStrategyConfig, "branchPrefix" | "slugLength"> = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
+  config: Pick<
+    GitWorktreeStrategyConfig,
+    "branchPrefix" | "slugLength"
+  > = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
 ): string {
   return `${config.branchPrefix}${issueNumber}-${buildIssueBranchSlug(title, config)}`;
 }
@@ -46,7 +52,13 @@ export function buildIssueBranchName(
 export function buildIssueWorktreePath(
   issueNumber: number,
   title: string,
-  config: Pick<GitWorktreeStrategyConfig, "worktreeDir" | "worktreePrefix" | "slugLength"> = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
+  config: Pick<
+    GitWorktreeStrategyConfig,
+    "worktreeDir" | "worktreePrefix" | "slugLength"
+  > = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
 ): string {
-  return join(config.worktreeDir, `${config.worktreePrefix}${issueNumber}-${buildIssueBranchSlug(title, config)}`);
+  return join(
+    config.worktreeDir,
+    `${config.worktreePrefix}${issueNumber}-${buildIssueBranchSlug(title, config)}`,
+  );
 }
