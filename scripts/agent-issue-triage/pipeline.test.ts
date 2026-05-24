@@ -156,6 +156,55 @@ test("runTriage passes explicit tea login to Forgejo commands only", async () =>
   assert.equal(piCall.args.includes("triage-agent"), false);
 });
 
+test("runTriage passes configured custom skills through to the triage agent", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const runner = {
+    calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
+    async run(command: string, args: string[], options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+
+      if (command === "tea" && args.includes("issues") && args.includes("list")) {
+        const page = args[args.indexOf("--page") + 1];
+        return { code: 0, stdout: page === "1" ? issueJson : JSON.stringify([]), stderr: "" };
+      }
+
+      if (command === "tea" && args.includes("--comments")) {
+        return noCommentsOutput;
+      }
+
+      if (command === "tea" && args.includes("labels") && args.includes("list")) {
+        return { code: 0, stdout: allLabelsJson, stderr: "" };
+      }
+
+      if (command === "pi") {
+        assert.equal(args.includes("--skill"), false);
+        const promptPath = args[args.indexOf("-p") + 1]?.slice(1);
+        assert.ok(promptPath);
+        const prompt = await readFile(promptPath, "utf8");
+        assert.match(prompt, /Use the configured triage skill: `project-triage`\./);
+        return { code: 0, stdout: needsInfoDecisionJson, stderr: "" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    logDir,
+    skills: {
+      triage: "project-triage",
+      planning: "superpowers:writing-plans",
+      implementation: "superpowers:subagent-driven-development",
+    },
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.ok(runner.calls.some((call) => call.command === "pi"));
+});
+
 test("runTriage applies limit after listing open issues", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const twoIssues = JSON.stringify([

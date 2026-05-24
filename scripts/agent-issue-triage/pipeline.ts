@@ -118,6 +118,7 @@ export async function runTriage(runner: CommandRunner, config: TriageConfig): Pr
       issues,
       projectPolicy,
       triagePolicy,
+      skills: config.skills,
       thinking: config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
     }), issues, triagePolicy);
   } catch (error) {
