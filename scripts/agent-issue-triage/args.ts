@@ -41,10 +41,11 @@ export function parseArgs(
     execute: false,
     triageThinking: patchmillConfig.pi.triageThinking,
     showHelp: args.length === 0,
-    teaLogin: defaultTeaLogin(env, normalizedConfig),
-    logDir: normalizedConfig?.paths.triageLogDir ?? join(repoRoot, patchmillConfig.paths.triageLogDir),
+    teaLogin: defaultTeaLogin(env, patchmillConfig),
+    logDir: normalizedConfig ? patchmillConfig.paths.triageLogDir : join(repoRoot, patchmillConfig.paths.triageLogDir),
     projectPolicy: patchmillConfig.projectPolicy,
     triagePolicy: createTriagePolicy(patchmillConfig.labels),
+    skills: patchmillConfig.skills,
   };
 
   for (let index = 0; index < args.length; index += 1) {

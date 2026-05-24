@@ -4,6 +4,7 @@ import type {
   PatchmillTriagePolicy,
   PatchmillTriagePrimaryBucketStatus,
 } from "../../src/policy/triage.ts";
+import type { PatchmillSkillsConfig } from "../../src/workflow/skills.ts";
 
 export type TriageConfig = {
   repoRoot: string;
@@ -18,6 +19,7 @@ export type TriageConfig = {
   logDir: string;
   projectPolicy?: PatchmillProjectPolicy;
   triagePolicy?: PatchmillTriagePolicy;
+  skills: PatchmillSkillsConfig;
 };
 
 export type CommandResult = {

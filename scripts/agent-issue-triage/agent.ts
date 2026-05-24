@@ -3,6 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { labelForPrimaryBucket, type PatchmillTriagePolicy } from "../../src/policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
+import {
+  DEFAULT_PATCHMILL_SKILLS,
+  bundledTriageSkillPath,
+  type PatchmillSkillsConfig,
+} from "../../src/workflow/skills.ts";
 import { DEFAULT_TRIAGE_POLICY } from "./labels.ts";
 import type { CommandRunner, IssueSummary, RawTriageDocument } from "./types.ts";
 
@@ -10,6 +15,7 @@ export type TriagePromptInput = {
   issues: IssueSummary[];
   projectPolicy: PatchmillProjectPolicy;
   triagePolicy?: PatchmillTriagePolicy;
+  skills?: PatchmillSkillsConfig;
   thinking?: string;
 };
 
@@ -30,16 +36,18 @@ function issuePayload(issues: IssueSummary[]): string {
 }
 
 function formatRepositoryLabel(projectPolicy: PatchmillProjectPolicy): string {
-  if (projectPolicy.projectName && projectPolicy.hostToolingInstruction.includes("Forgejo")) {
-    return `${projectPolicy.projectName} Forgejo repository`;
-  }
   if (projectPolicy.projectName) return `${projectPolicy.projectName} repository`;
   return "repository";
+}
+
+function hostToolingInstruction(): string {
+  return "Use the repository's configured host tooling for issue and pull-request actions.";
 }
 
 export function buildTriagePrompt(input: TriagePromptInput): string {
   const { issues, projectPolicy } = input;
   const triagePolicy = input.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+  const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const thinking = input.thinking ?? "high";
   const readyLabel = labelForPrimaryBucket(triagePolicy, "agent-ready");
   const needsInfoLabel = labelForPrimaryBucket(triagePolicy, "needs-info");
@@ -56,11 +64,12 @@ export function buildTriagePrompt(input: TriagePromptInput): string {
   const labels = triagePolicy.triageAllowedLabels.map((label) => `- ${label.name}: ${label.description}`).join("\n");
 
   return `You are a ${thinking}-thinking issue triage agent for the ${formatRepositoryLabel(projectPolicy)}.
+Use the configured triage skill: \`${skills.triage}\`.
 
 Classify every provided open issue for automation suitability. Return JSON only. Do not use markdown outside the JSON. Do not run commands.
 
 Repository-hosting policy:
-- ${projectPolicy.hostToolingInstruction}
+- ${hostToolingInstruction()}
 - Do not mutate repository-hosting state while triaging.
 
 Primary bucket rules:
@@ -132,6 +141,10 @@ export async function runTriageAgent(
   input: TriagePromptInput,
 ): Promise<RawTriageDocument> {
   const prompt = buildTriagePrompt(input);
+  const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
+  const skillArgs = skills.triage === DEFAULT_PATCHMILL_SKILLS.triage
+    ? ["--skill", bundledTriageSkillPath()]
+    : [];
   const thinking = input.thinking ?? "high";
   const dir = await mkdtemp(join(tmpdir(), "agent-triage-prompt-"));
   const promptPath = join(dir, "prompt.md");
@@ -140,7 +153,17 @@ export async function runTriageAgent(
   try {
     const result = await runner.run(
       "pi",
-      ["--no-tools", "--no-context-files", "--no-session", "--thinking", thinking, "-p", `@${promptPath}`],
+      [
+        "--tools",
+        "read,grep,find,ls",
+        "--no-context-files",
+        "--no-session",
+        ...skillArgs,
+        "--thinking",
+        thinking,
+        "-p",
+        `@${promptPath}`,
+      ],
       { cwd: repoRoot },
     );
 
