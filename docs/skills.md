@@ -42,4 +42,4 @@ Supported keys:
 
 ## Triage
 
-Triage uses `skills.triage` and still receives a strict Patchmill prompt with allowed labels, issue data, and the required JSON response shape. Patchmill runs triage with read-only tools (`read`, `grep`, `find`, `ls`) so Pi can load skills without write/edit/bash access.
+Triage uses `skills.triage` and still receives a strict Patchmill prompt with allowed labels, issue data, and the required JSON response shape. Patchmill runs triage with read-only tools (`read`, `grep`, `find`, `ls`) via `--tools`. For the bundled default triage skill, Patchmill also passes the bundled skill path with `--skill`; when `skills.triage` is configured to a custom skill name, Patchmill names that skill in the prompt instead.

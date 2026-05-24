@@ -55,8 +55,10 @@ flowchart TD
 `buildTriagePrompt()` generates one prompt for the selected issue batch, then `runTriageAgent()` invokes:
 
 ```sh
-pi --allowed-tools read,grep,find,ls --skill <skills.triage> --no-context-files --no-session --thinking <triageThinking> -p @<tmp>/prompt.md
+pi --tools read,grep,find,ls --no-context-files --no-session --thinking <triageThinking> -p @<tmp>/prompt.md
 ```
+
+For the bundled default triage skill, Patchmill also passes `--skill <path-to-bundled-patchmill-issue-triage-skill>`. When `skills.triage` is configured to a custom skill name, Patchmill names that skill in the prompt instead of passing it with `--skill`.
 
 The prompt tells Pi:
 
