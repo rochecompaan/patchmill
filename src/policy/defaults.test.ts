@@ -6,34 +6,13 @@ import { assertNoLegacyProjectText } from "../../test-support/legacy-project-tex
 test("DEFAULT_PATCHMILL_POLICY stays generic", () => {
   assert.equal(DEFAULT_PATCHMILL_POLICY.projectName, undefined);
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.contextFileNames, ["AGENTS.md"]);
-  assert.equal(
-    DEFAULT_PATCHMILL_POLICY.toolchainInstruction,
-    "Use the repository's documented development toolchain.",
-  );
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.validation.rules, []);
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.validation.forbiddenSubstitutions, []);
   assert.equal(DEFAULT_PATCHMILL_POLICY.directLand.targetBranch, "main");
-  assert.equal(
-    DEFAULT_PATCHMILL_POLICY.directLand.policyText,
-    "Apply the repository's configured landing policy for the target branch.",
-  );
-  assert.equal(
-    DEFAULT_PATCHMILL_POLICY.visualEvidence.policyText,
-    "Capture the visual evidence required by the repository whenever visible UI changes.",
-  );
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.visualEvidence.prEvidenceExample, {
     screenshotPath: ".tmp/issue-42-after.png",
     caption: "Visible UI state after the change",
   });
-  assert.equal(
-    DEFAULT_PATCHMILL_POLICY.hostToolingInstruction,
-    "Use the repository's configured host tooling for issue and pull-request actions.",
-  );
-  assert.equal(DEFAULT_PATCHMILL_POLICY.pi.todoWorkflowInstruction, "");
-  assert.equal(
-    DEFAULT_PATCHMILL_POLICY.pi.subagentWorkflowInstruction,
-    "Use the repository's documented Pi subagent workflow for implementation and review.",
-  );
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.pi.taskContract, {
     todoRoot: ".pi/todos",
     todoTitlePattern: "issue-<number>-task-<two-digit-number>-<slug>",

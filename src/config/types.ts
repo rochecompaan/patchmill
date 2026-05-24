@@ -1,6 +1,7 @@
 import type { CleanupHookConfig } from "../cleanup/types.ts";
 import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
+import type { PatchmillSkillsConfig } from "../workflow/skills.ts";
 
 export type PatchmillHostConfig = {
   provider: "forgejo-tea";
@@ -39,6 +40,7 @@ export type PatchmillConfig = {
   host: PatchmillHostConfig;
   pi: PatchmillPiConfig;
   labels: PatchmillLabelsConfig;
+  skills: PatchmillSkillsConfig;
   paths: PatchmillPathsConfig;
   git: PatchmillGitConfig;
   cleanupHooks: CleanupHookConfig[];

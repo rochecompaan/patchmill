@@ -10,6 +10,7 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "triage-agent");
+  assert.deepEqual(config.skills, DEFAULT_PATCHMILL_CONFIG.skills);
   assert.equal(config.paths.runStateDir, join(dir, ".patchmill/runs"));
   assert.equal(config.git.worktreePrefix, "patchmill-issue-");
   assert.deepEqual(config.cleanupHooks, []);
@@ -24,6 +25,8 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
   assert.notStrictEqual(first.paths.cleanStatusIgnorePrefixes, DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes);
   assert.notStrictEqual(first.labels.priorities, second.labels.priorities);
   assert.notStrictEqual(first.paths.cleanStatusIgnorePrefixes, second.paths.cleanStatusIgnorePrefixes);
+  assert.notStrictEqual(first.skills, DEFAULT_PATCHMILL_CONFIG.skills);
+  assert.notStrictEqual(first.skills, second.skills);
   assert.notStrictEqual(first.projectPolicy, DEFAULT_PATCHMILL_CONFIG.projectPolicy);
   assert.notStrictEqual(first.projectPolicy, second.projectPolicy);
   assert.notStrictEqual(first.projectPolicy.contextFileNames, DEFAULT_PATCHMILL_CONFIG.projectPolicy.contextFileNames);
@@ -84,11 +87,12 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
 
   first.labels.priorities.push("priority:urgent");
   first.paths.cleanStatusIgnorePrefixes.push("scratch/");
+  first.skills.planning = "project-planning";
   first.projectPolicy.contextFileNames.push("CONTRIBUTING.md");
   first.projectPolicy.validation.rules.push({ category: "Unit tests", commands: ["npm test"] });
   first.projectPolicy.validation.forbiddenSubstitutions.push("Do not skip tests.");
   first.projectPolicy.directLand.targetBranch = "release";
-  first.projectPolicy.pi.todoWorkflowInstruction = "Custom todo guidance";
+  first.projectPolicy.visualEvidence.prEvidenceExample!.caption = "Changed caption";
   first.projectPolicy.pi.taskContract.todoRoot = ".patchmill/todos";
   first.projectPolicy.pi.taskContract.todoTags.push("custom-tag");
   first.projectPolicy.pi.taskContract.planTodoBodyRequirements.push("owner");
@@ -98,6 +102,7 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
 
   assert.deepEqual(second.labels.priorities, DEFAULT_PATCHMILL_CONFIG.labels.priorities);
   assert.deepEqual(second.paths.cleanStatusIgnorePrefixes, DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes);
+  assert.deepEqual(second.skills, DEFAULT_PATCHMILL_CONFIG.skills);
   assert.deepEqual(second.projectPolicy.contextFileNames, DEFAULT_PATCHMILL_CONFIG.projectPolicy.contextFileNames);
   assert.deepEqual(second.projectPolicy.validation.rules, DEFAULT_PATCHMILL_CONFIG.projectPolicy.validation.rules);
   assert.deepEqual(
@@ -109,7 +114,6 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
     second.projectPolicy.visualEvidence.prEvidenceExample,
     DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence.prEvidenceExample,
   );
-  assert.equal(second.projectPolicy.pi.todoWorkflowInstruction, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.todoWorkflowInstruction);
   assert.deepEqual(second.projectPolicy.pi.taskContract, DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract);
   assert.deepEqual(second.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
 });
@@ -119,11 +123,7 @@ test("loadPatchmillConfig clones configured visual evidence fields for each load
   await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
     projectPolicy: {
       visualEvidence: {
-        policyText: "Capture screenshots for visible UI changes.",
-        webScreenshotSkill: "capture-web-ui",
-        mobileScreenshotSkill: "capture-mobile-ui",
         referenceScreenshotPaths: ["docs/reference/web/", "docs/reference/mobile/"],
-        reviewerExpectations: ["Confirm screenshot comparison approval in the review summary."],
         prEvidenceExample: {
           screenshotPath: ".tmp/factory-after.png",
           caption: "Factory dashboard after the change",
@@ -142,10 +142,6 @@ test("loadPatchmillConfig clones configured visual evidence fields for each load
     second.projectPolicy.visualEvidence.referenceScreenshotPaths,
   );
   assert.notStrictEqual(
-    first.projectPolicy.visualEvidence.reviewerExpectations,
-    second.projectPolicy.visualEvidence.reviewerExpectations,
-  );
-  assert.notStrictEqual(
     first.projectPolicy.visualEvidence.prEvidenceExample,
     second.projectPolicy.visualEvidence.prEvidenceExample,
   );
@@ -155,11 +151,9 @@ test("loadPatchmillConfig clones configured visual evidence fields for each load
   );
 
   first.projectPolicy.visualEvidence.referenceScreenshotPaths?.push("docs/reference/tablet/");
-  first.projectPolicy.visualEvidence.reviewerExpectations?.push("Attach reviewer approval.");
   first.projectPolicy.visualEvidence.prEvidenceExample?.referencePaths?.push("docs/reference/web/secondary.png");
 
   assert.deepEqual(second.projectPolicy.visualEvidence.referenceScreenshotPaths, ["docs/reference/web/", "docs/reference/mobile/"]);
-  assert.deepEqual(second.projectPolicy.visualEvidence.reviewerExpectations, ["Confirm screenshot comparison approval in the review summary."]);
   assert.deepEqual(second.projectPolicy.visualEvidence.prEvidenceExample, {
     screenshotPath: ".tmp/factory-after.png",
     caption: "Factory dashboard after the change",
@@ -167,11 +161,95 @@ test("loadPatchmillConfig clones configured visual evidence fields for each load
   });
 });
 
+test("loadPatchmillConfig parses top-level skills config", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-skills-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    skills: {
+      triage: "project-triage",
+      planning: "project-planning",
+      implementation: "project-implementation",
+      toolchain: "bootstrapping-tilt-worktrees",
+      visualEvidence: "capturing-proof-screenshots",
+    },
+  }), "utf8");
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.deepEqual(config.skills, {
+    triage: "project-triage",
+    planning: "project-planning",
+    implementation: "project-implementation",
+    toolchain: "bootstrapping-tilt-worktrees",
+    visualEvidence: "capturing-proof-screenshots",
+  });
+});
+
+test("loadPatchmillConfig rejects unknown skills keys", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-invalid-skills-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    skills: {
+      planning: "project-planning",
+      extra: "unknown-skill",
+    },
+  }), "utf8");
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /skills\.extra must be a supported skill stage/,
+  );
+});
+
+test("loadPatchmillConfig rejects blank skills", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-blank-skills-config-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    skills: { planning: "" },
+  }), "utf8");
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /skills\.planning must be a non-empty string/,
+  );
+});
+
+test("loadPatchmillConfig rejects removed skill workflow settings", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-removed-skill-settings-"));
+  await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
+    projectPolicy: {
+      toolchainInstruction: "old toolchain prompt fragment",
+      hostToolingInstruction: "old host prompt fragment",
+      directLand: {
+        policyText: "old landing prompt fragment",
+      },
+      visualEvidence: {
+        policyText: "old visual prompt fragment",
+        webScreenshotSkill: "old-web-skill",
+        reviewerExpectations: ["old reviewer prompt fragment"],
+      },
+      pi: {
+        subagentWorkflowInstruction: "old implementation prompt fragment",
+        todoWorkflowInstruction: "old todo prompt fragment",
+      },
+    },
+  }), "utf8");
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /toolchainInstruction|hostToolingInstruction|policyText|webScreenshotSkill|reviewerExpectations|subagentWorkflowInstruction|todoWorkflowInstruction/,
+  );
+});
+
 test("loadPatchmillConfig applies patchmill.config.json", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(join(dir, "patchmill.config.json"), JSON.stringify({
     host: { login: "bot-login" },
     pi: { team: "fast-team" },
+    skills: {
+      triage: "project-triage",
+      planning: "project-planning",
+      implementation: "project-implementation",
+      toolchain: "bootstrapping-tilt-worktrees",
+      visualEvidence: "capturing-proof-screenshots",
+    },
     paths: {
       plansDir: "engineering/plans",
       cleanStatusIgnorePrefixes: ["scratch/", ".patchmill/custom-runs/"],
@@ -194,31 +272,22 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
     projectPolicy: {
       projectName: "Factory",
       contextFileNames: ["AGENTS.md", "CONTRIBUTING.md"],
-      toolchainInstruction: "Use pnpm from the repository toolchain.",
       validation: {
         rules: [{ category: "Unit tests", commands: ["pnpm test"] }],
         forbiddenSubstitutions: ["Do not skip required validation."],
       },
       directLand: {
-        policyText: "Land through a PR unless a human explicitly approves direct landing.",
         targetBranch: "release/1.2",
       },
       visualEvidence: {
-        policyText: "Capture screenshots for visible UI changes.",
-        webScreenshotSkill: "capture-web-ui",
-        mobileScreenshotSkill: "capture-mobile-ui",
         referenceScreenshotPaths: ["docs/reference/web/", "docs/reference/mobile/"],
-        reviewerExpectations: ["Confirm screenshot comparison approval in the review summary."],
         prEvidenceExample: {
           screenshotPath: ".tmp/factory-after.png",
           caption: "Factory dashboard after the change",
           referencePaths: ["docs/reference/web/dashboard.png"],
         },
       },
-      hostToolingInstruction: "Use the configured repository host tooling.",
       pi: {
-        todoWorkflowInstruction: "Track implementation tasks with Pi todos.",
-        subagentWorkflowInstruction: "Use Pi subagents for implementation and review.",
         taskContract: {
           todoRoot: ".patchmill/todos",
           todoTitlePattern: "work-<number>-step-<two-digit-number>-<slug>",
@@ -236,6 +305,13 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "bot-login");
   assert.equal(config.pi.team, "fast-team");
+  assert.deepEqual(config.skills, {
+    triage: "project-triage",
+    planning: "project-planning",
+    implementation: "project-implementation",
+    toolchain: "bootstrapping-tilt-worktrees",
+    visualEvidence: "capturing-proof-screenshots",
+  });
   assert.equal(config.paths.plansDir, join(dir, "engineering/plans"));
   assert.deepEqual(config.paths.cleanStatusIgnorePrefixes, ["scratch/", ".patchmill/custom-runs/"]);
   assert.equal(config.git.baseRef, "refs/remotes/upstream/release/1.2");
@@ -253,30 +329,15 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   ]);
   assert.equal(config.projectPolicy.projectName, "Factory");
   assert.deepEqual(config.projectPolicy.contextFileNames, ["AGENTS.md", "CONTRIBUTING.md"]);
-  assert.equal(config.projectPolicy.toolchainInstruction, "Use pnpm from the repository toolchain.");
   assert.deepEqual(config.projectPolicy.validation.rules, [{ category: "Unit tests", commands: ["pnpm test"] }]);
   assert.deepEqual(config.projectPolicy.validation.forbiddenSubstitutions, ["Do not skip required validation."]);
-  assert.equal(
-    config.projectPolicy.directLand.policyText,
-    "Land through a PR unless a human explicitly approves direct landing.",
-  );
   assert.equal(config.projectPolicy.directLand.targetBranch, "release/1.2");
-  assert.equal(config.projectPolicy.visualEvidence.policyText, "Capture screenshots for visible UI changes.");
-  assert.equal(config.projectPolicy.visualEvidence.webScreenshotSkill, "capture-web-ui");
-  assert.equal(config.projectPolicy.visualEvidence.mobileScreenshotSkill, "capture-mobile-ui");
   assert.deepEqual(config.projectPolicy.visualEvidence.referenceScreenshotPaths, ["docs/reference/web/", "docs/reference/mobile/"]);
-  assert.deepEqual(config.projectPolicy.visualEvidence.reviewerExpectations, ["Confirm screenshot comparison approval in the review summary."]);
   assert.deepEqual(config.projectPolicy.visualEvidence.prEvidenceExample, {
     screenshotPath: ".tmp/factory-after.png",
     caption: "Factory dashboard after the change",
     referencePaths: ["docs/reference/web/dashboard.png"],
   });
-  assert.equal(config.projectPolicy.hostToolingInstruction, "Use the configured repository host tooling.");
-  assert.equal(config.projectPolicy.pi.todoWorkflowInstruction, "Track implementation tasks with Pi todos.");
-  assert.equal(
-    config.projectPolicy.pi.subagentWorkflowInstruction,
-    "Use Pi subagents for implementation and review.",
-  );
   assert.deepEqual(config.projectPolicy.pi.taskContract, {
     todoRoot: ".patchmill/todos",
     todoTitlePattern: "work-<number>-step-<two-digit-number>-<slug>",

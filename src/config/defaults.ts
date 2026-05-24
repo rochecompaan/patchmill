@@ -1,5 +1,6 @@
 import { DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG } from "../git/worktree-strategy.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
+import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
 import type { PatchmillConfig } from "./types.ts";
 
 export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
@@ -20,6 +21,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     types: ["bug", "enhancement", "docs", "chore", "test"],
     priorities: ["priority:critical", "priority:high", "priority:medium", "priority:low"],
   },
+  skills: DEFAULT_PATCHMILL_SKILLS,
   paths: {
     plansDir: "docs/plans",
     runStateDir: ".patchmill/runs",

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
+import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
 
 test("defaults match the current patchmill baseline configuration", () => {
   assert.equal(DEFAULT_PATCHMILL_CONFIG.projectPolicy, DEFAULT_PATCHMILL_POLICY);
+  assert.equal(DEFAULT_PATCHMILL_CONFIG.skills, DEFAULT_PATCHMILL_SKILLS);
   assert.deepEqual(DEFAULT_PATCHMILL_CONFIG, {
     host: {
       provider: "forgejo-tea",
@@ -23,6 +25,7 @@ test("defaults match the current patchmill baseline configuration", () => {
       types: ["bug", "enhancement", "docs", "chore", "test"],
       priorities: ["priority:critical", "priority:high", "priority:medium", "priority:low"],
     },
+    skills: DEFAULT_PATCHMILL_SKILLS,
     paths: {
       plansDir: "docs/plans",
       runStateDir: ".patchmill/runs",

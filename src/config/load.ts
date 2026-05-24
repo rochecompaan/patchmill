@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import type { CleanupHookConfig } from "../cleanup/types.ts";
+import {
+  cloneSkillsConfig,
+  mergeSkillsConfig,
+  PATCHMILL_SKILL_KEYS,
+  type PartialPatchmillSkillsConfig,
+  type PatchmillSkillKey,
+} from "../workflow/skills.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
 import type { PatchmillConfig } from "./types.ts";
 
@@ -26,6 +33,7 @@ type PartialConfig = Partial<{
   pi: Partial<PatchmillConfig["pi"]>;
   paths: Partial<PatchmillConfig["paths"]>;
   labels: Partial<PatchmillConfig["labels"]>;
+  skills: PartialPatchmillSkillsConfig;
   git: Partial<PatchmillConfig["git"]>;
   cleanupHooks: CleanupHookConfig[];
   projectPolicy: PartialProjectPolicy;
@@ -70,18 +78,8 @@ function cloneVisualEvidencePolicy(
   visualEvidence: PatchmillConfig["projectPolicy"]["visualEvidence"],
 ): PatchmillConfig["projectPolicy"]["visualEvidence"] {
   return {
-    policyText: visualEvidence.policyText,
-    ...(visualEvidence.webScreenshotSkill !== undefined
-      ? { webScreenshotSkill: visualEvidence.webScreenshotSkill }
-      : {}),
-    ...(visualEvidence.mobileScreenshotSkill !== undefined
-      ? { mobileScreenshotSkill: visualEvidence.mobileScreenshotSkill }
-      : {}),
     ...(visualEvidence.referenceScreenshotPaths !== undefined
       ? { referenceScreenshotPaths: cloneStringArray(visualEvidence.referenceScreenshotPaths) }
-      : {}),
-    ...(visualEvidence.reviewerExpectations !== undefined
-      ? { reviewerExpectations: cloneStringArray(visualEvidence.reviewerExpectations) }
       : {}),
     ...(visualEvidence.prEvidenceExample !== undefined
       ? { prEvidenceExample: cloneVisualEvidenceExample(visualEvidence.prEvidenceExample) }
@@ -94,26 +92,10 @@ function mergeVisualEvidencePolicy(
   update: PartialProjectPolicy["visualEvidence"] | undefined,
 ): PatchmillConfig["projectPolicy"]["visualEvidence"] {
   return {
-    policyText: update?.policyText ?? base.policyText,
-    ...(update?.webScreenshotSkill !== undefined
-      ? { webScreenshotSkill: update.webScreenshotSkill }
-      : base.webScreenshotSkill !== undefined
-        ? { webScreenshotSkill: base.webScreenshotSkill }
-        : {}),
-    ...(update?.mobileScreenshotSkill !== undefined
-      ? { mobileScreenshotSkill: update.mobileScreenshotSkill }
-      : base.mobileScreenshotSkill !== undefined
-        ? { mobileScreenshotSkill: base.mobileScreenshotSkill }
-        : {}),
     ...(update?.referenceScreenshotPaths !== undefined
       ? { referenceScreenshotPaths: cloneStringArray(update.referenceScreenshotPaths) }
       : base.referenceScreenshotPaths !== undefined
         ? { referenceScreenshotPaths: cloneStringArray(base.referenceScreenshotPaths) }
-        : {}),
-    ...(update?.reviewerExpectations !== undefined
-      ? { reviewerExpectations: cloneStringArray(update.reviewerExpectations) }
-      : base.reviewerExpectations !== undefined
-        ? { reviewerExpectations: cloneStringArray(base.reviewerExpectations) }
         : {}),
     ...(update?.prEvidenceExample !== undefined
       ? { prEvidenceExample: cloneVisualEvidenceExample(update.prEvidenceExample) }
@@ -163,8 +145,6 @@ function clonePiWorkflowPolicy(
   pi: PatchmillConfig["projectPolicy"]["pi"],
 ): PatchmillConfig["projectPolicy"]["pi"] {
   return {
-    todoWorkflowInstruction: pi.todoWorkflowInstruction,
-    subagentWorkflowInstruction: pi.subagentWorkflowInstruction,
     taskContract: clonePiTaskContract(pi.taskContract),
   };
 }
@@ -173,14 +153,12 @@ function cloneProjectPolicy(projectPolicy: PatchmillConfig["projectPolicy"]): Pa
   return {
     ...(projectPolicy.projectName !== undefined ? { projectName: projectPolicy.projectName } : {}),
     contextFileNames: cloneStringArray(projectPolicy.contextFileNames),
-    toolchainInstruction: projectPolicy.toolchainInstruction,
     validation: {
       rules: cloneValidationRules(projectPolicy.validation.rules),
       forbiddenSubstitutions: cloneStringArray(projectPolicy.validation.forbiddenSubstitutions),
     },
     directLand: { ...projectPolicy.directLand },
     visualEvidence: cloneVisualEvidencePolicy(projectPolicy.visualEvidence),
-    hostToolingInstruction: projectPolicy.hostToolingInstruction,
     pi: clonePiWorkflowPolicy(projectPolicy.pi),
     planRequiresApproval: projectPolicy.planRequiresApproval,
   };
@@ -193,7 +171,6 @@ function mergeProjectPolicy(
   return {
     ...(update?.projectName !== undefined ? { projectName: update.projectName } : base.projectName !== undefined ? { projectName: base.projectName } : {}),
     contextFileNames: cloneStringArray(update?.contextFileNames ?? base.contextFileNames),
-    toolchainInstruction: update?.toolchainInstruction ?? base.toolchainInstruction,
     validation: {
       rules: cloneValidationRules(update?.validation?.rules ?? base.validation.rules),
       forbiddenSubstitutions: cloneStringArray(
@@ -202,11 +179,7 @@ function mergeProjectPolicy(
     },
     directLand: { ...base.directLand, ...update?.directLand },
     visualEvidence: mergeVisualEvidencePolicy(base.visualEvidence, update?.visualEvidence),
-    hostToolingInstruction: update?.hostToolingInstruction ?? base.hostToolingInstruction,
     pi: {
-      todoWorkflowInstruction: update?.pi?.todoWorkflowInstruction ?? base.pi.todoWorkflowInstruction,
-      subagentWorkflowInstruction:
-        update?.pi?.subagentWorkflowInstruction ?? base.pi.subagentWorkflowInstruction,
       taskContract: mergePiTaskContract(base.pi.taskContract, update?.pi?.taskContract),
     },
     planRequiresApproval: update?.planRequiresApproval ?? base.planRequiresApproval,
@@ -225,6 +198,7 @@ function mergeConfig(base: PatchmillConfig, update: PartialConfig): PatchmillCon
       types: cloneStringArray(update.labels?.types ?? base.labels.types),
       priorities: cloneStringArray(update.labels?.priorities ?? base.labels.priorities),
     },
+    skills: mergeSkillsConfig(base.skills, update.skills),
     paths: {
       ...paths,
       cleanStatusIgnorePrefixes: cloneStringArray(
@@ -244,6 +218,7 @@ function absolutize(root: string, value: string): string {
 function absolutizePaths(root: string, config: PatchmillConfig): PatchmillConfig {
   return {
     ...config,
+    skills: cloneSkillsConfig(config.skills),
     paths: {
       plansDir: absolutize(root, config.paths.plansDir),
       runStateDir: absolutize(root, config.paths.runStateDir),
@@ -327,6 +302,29 @@ function readOptionalLiteral<T extends string>(
     throw configError(path, expected, value);
   }
   return value as T;
+}
+
+function readSkillsConfig(source: Record<string, unknown>): PartialPatchmillSkillsConfig | undefined {
+  const value = source.skills;
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw configError("skills", "an object", value);
+
+  const parsed: PartialPatchmillSkillsConfig = {};
+  for (const key of PATCHMILL_SKILL_KEYS) {
+    const skill = readOptionalString(value, key, `skills.${key}`);
+    if (skill !== undefined) {
+      if (skill.trim().length === 0) throw configError(`skills.${key}`, "a non-empty string", skill);
+      parsed[key] = skill;
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (!PATCHMILL_SKILL_KEYS.includes(key as PatchmillSkillKey)) {
+      throw configError(`skills.${key}`, "a supported skill stage", value[key]);
+    }
+  }
+
+  return hasEntries(parsed) ? parsed : undefined;
 }
 
 function readCleanupHooks(source: Record<string, unknown>): CleanupHookConfig[] | undefined {
@@ -416,6 +414,78 @@ function readOptionalVisualEvidenceExample(
 
 function hasEntries(value: object): boolean {
   return Object.keys(value).length > 0;
+}
+
+function rejectRemovedWorkflowSettings(projectPolicy: Record<string, unknown>): void {
+  if (projectPolicy.toolchainInstruction !== undefined) {
+    throw configError(
+      "projectPolicy.toolchainInstruction",
+      "removed; use skills.toolchain",
+      projectPolicy.toolchainInstruction,
+    );
+  }
+  if (projectPolicy.hostToolingInstruction !== undefined) {
+    throw configError(
+      "projectPolicy.hostToolingInstruction",
+      "removed; move procedure into skills.implementation or skills.landing",
+      projectPolicy.hostToolingInstruction,
+    );
+  }
+
+  const directLand = readOptionalSection(projectPolicy, "directLand");
+  if (directLand?.policyText !== undefined) {
+    throw configError(
+      "projectPolicy.directLand.policyText",
+      "removed; use skills.landing",
+      directLand.policyText,
+    );
+  }
+
+  const visualEvidence = readOptionalSection(projectPolicy, "visualEvidence");
+  if (visualEvidence?.policyText !== undefined) {
+    throw configError(
+      "projectPolicy.visualEvidence.policyText",
+      "removed; use skills.visualEvidence",
+      visualEvidence.policyText,
+    );
+  }
+  if (visualEvidence?.webScreenshotSkill !== undefined) {
+    throw configError(
+      "projectPolicy.visualEvidence.webScreenshotSkill",
+      "removed; use skills.visualEvidence",
+      visualEvidence.webScreenshotSkill,
+    );
+  }
+  if (visualEvidence?.mobileScreenshotSkill !== undefined) {
+    throw configError(
+      "projectPolicy.visualEvidence.mobileScreenshotSkill",
+      "removed; use skills.visualEvidence",
+      visualEvidence.mobileScreenshotSkill,
+    );
+  }
+  if (visualEvidence?.reviewerExpectations !== undefined) {
+    throw configError(
+      "projectPolicy.visualEvidence.reviewerExpectations",
+      "removed; use skills.visualEvidence",
+      visualEvidence.reviewerExpectations,
+    );
+  }
+
+  const pi = readOptionalSection(projectPolicy, "pi");
+  if (pi?.todoWorkflowInstruction !== undefined) {
+    throw configError(
+      "projectPolicy.pi.todoWorkflowInstruction",
+      "removed; move procedure into a configured skill",
+      pi.todoWorkflowInstruction,
+    );
+  }
+  if (pi?.subagentWorkflowInstruction !== undefined) {
+    throw configError(
+      "projectPolicy.pi.subagentWorkflowInstruction",
+      "removed; use skills.implementation",
+      pi.subagentWorkflowInstruction,
+    );
+  }
 }
 
 function parseConfigFile(data: unknown): PartialConfig {
@@ -512,19 +582,20 @@ function parseConfigFile(data: unknown): PartialConfig {
     config.cleanupHooks = cleanupHooks;
   }
 
+  const skills = readSkillsConfig(data);
+  if (skills !== undefined) {
+    config.skills = skills;
+  }
+
   const projectPolicy = readOptionalSection(data, "projectPolicy");
   if (projectPolicy) {
     const parsed: PartialProjectPolicy = {};
+    rejectRemovedWorkflowSettings(projectPolicy);
     const projectName = readOptionalString(projectPolicy, "projectName", "projectPolicy.projectName");
     const contextFileNames = readOptionalStringArray(
       projectPolicy,
       "contextFileNames",
       "projectPolicy.contextFileNames",
-    );
-    const toolchainInstruction = readOptionalString(
-      projectPolicy,
-      "toolchainInstruction",
-      "projectPolicy.toolchainInstruction",
     );
     const validation = readOptionalSection(projectPolicy, "validation");
     if (validation) {
@@ -542,76 +613,31 @@ function parseConfigFile(data: unknown): PartialConfig {
     const directLand = readOptionalSection(projectPolicy, "directLand");
     if (directLand) {
       const parsedDirectLand: NonNullable<PartialProjectPolicy["directLand"]> = {};
-      const policyText = readOptionalString(directLand, "policyText", "projectPolicy.directLand.policyText");
       const targetBranch = readOptionalString(directLand, "targetBranch", "projectPolicy.directLand.targetBranch");
-      if (policyText !== undefined) parsedDirectLand.policyText = policyText;
       if (targetBranch !== undefined) parsedDirectLand.targetBranch = targetBranch;
       if (hasEntries(parsedDirectLand)) parsed.directLand = parsedDirectLand;
     }
     const visualEvidence = readOptionalSection(projectPolicy, "visualEvidence");
     if (visualEvidence) {
       const parsedVisualEvidence: NonNullable<PartialProjectPolicy["visualEvidence"]> = {};
-      const policyText = readOptionalString(
-        visualEvidence,
-        "policyText",
-        "projectPolicy.visualEvidence.policyText",
-      );
-      const webScreenshotSkill = readOptionalString(
-        visualEvidence,
-        "webScreenshotSkill",
-        "projectPolicy.visualEvidence.webScreenshotSkill",
-      );
-      const mobileScreenshotSkill = readOptionalString(
-        visualEvidence,
-        "mobileScreenshotSkill",
-        "projectPolicy.visualEvidence.mobileScreenshotSkill",
-      );
       const referenceScreenshotPaths = readOptionalStringArray(
         visualEvidence,
         "referenceScreenshotPaths",
         "projectPolicy.visualEvidence.referenceScreenshotPaths",
-      );
-      const reviewerExpectations = readOptionalStringArray(
-        visualEvidence,
-        "reviewerExpectations",
-        "projectPolicy.visualEvidence.reviewerExpectations",
       );
       const prEvidenceExample = readOptionalVisualEvidenceExample(
         visualEvidence,
         "prEvidenceExample",
         "projectPolicy.visualEvidence.prEvidenceExample",
       );
-      if (policyText !== undefined) parsedVisualEvidence.policyText = policyText;
-      if (webScreenshotSkill !== undefined) parsedVisualEvidence.webScreenshotSkill = webScreenshotSkill;
-      if (mobileScreenshotSkill !== undefined) parsedVisualEvidence.mobileScreenshotSkill = mobileScreenshotSkill;
       if (referenceScreenshotPaths !== undefined) parsedVisualEvidence.referenceScreenshotPaths = referenceScreenshotPaths;
-      if (reviewerExpectations !== undefined) parsedVisualEvidence.reviewerExpectations = reviewerExpectations;
       if (prEvidenceExample !== undefined) parsedVisualEvidence.prEvidenceExample = prEvidenceExample;
       if (hasEntries(parsedVisualEvidence)) parsed.visualEvidence = parsedVisualEvidence;
     }
-    const hostToolingInstruction = readOptionalString(
-      projectPolicy,
-      "hostToolingInstruction",
-      "projectPolicy.hostToolingInstruction",
-    );
     const piWorkflow = readOptionalSection(projectPolicy, "pi");
     if (piWorkflow) {
       const parsedPi: NonNullable<PartialProjectPolicy["pi"]> = {};
-      const todoWorkflowInstruction = readOptionalString(
-        piWorkflow,
-        "todoWorkflowInstruction",
-        "projectPolicy.pi.todoWorkflowInstruction",
-      );
-      const subagentWorkflowInstruction = readOptionalString(
-        piWorkflow,
-        "subagentWorkflowInstruction",
-        "projectPolicy.pi.subagentWorkflowInstruction",
-      );
       const taskContract = readOptionalSection(piWorkflow, "taskContract");
-      if (todoWorkflowInstruction !== undefined) parsedPi.todoWorkflowInstruction = todoWorkflowInstruction;
-      if (subagentWorkflowInstruction !== undefined) {
-        parsedPi.subagentWorkflowInstruction = subagentWorkflowInstruction;
-      }
       if (taskContract) {
         const parsedTaskContract: PartialPiTaskContract = {};
         const todoRoot = readOptionalString(taskContract, "todoRoot", "projectPolicy.pi.taskContract.todoRoot");
@@ -677,8 +703,6 @@ function parseConfigFile(data: unknown): PartialConfig {
     );
     if (projectName !== undefined) parsed.projectName = projectName;
     if (contextFileNames !== undefined) parsed.contextFileNames = contextFileNames;
-    if (toolchainInstruction !== undefined) parsed.toolchainInstruction = toolchainInstruction;
-    if (hostToolingInstruction !== undefined) parsed.hostToolingInstruction = hostToolingInstruction;
     if (planRequiresApproval !== undefined) parsed.planRequiresApproval = planRequiresApproval;
     if (hasEntries(parsed)) config.projectPolicy = parsed;
   }
