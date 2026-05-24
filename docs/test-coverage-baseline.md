@@ -79,5 +79,5 @@ Legend:
 - Direct safety coverage remains in `src/cleanup/hooks.test.ts`,
   `scripts/agent-issue/visual-evidence.test.ts`, and
   `src/host/forgejo-visual-evidence.test.ts`.
-- Pipeline test count changed from 64 to 55. Final full-suite coverage after
-  pass 1: line `94.16%`, branch `84.19%`, function `96.15%`.
+- Pipeline test count changed from 64 to 55. Post-pass 1 full-suite coverage:
+  line `94.16%`, branch `84.19%`, function `96.15%`.
