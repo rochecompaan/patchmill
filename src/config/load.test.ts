@@ -223,6 +223,7 @@ test("loadPatchmillConfig rejects removed skill workflow settings", async () => 
       visualEvidence: {
         policyText: "old visual prompt fragment",
         webScreenshotSkill: "old-web-skill",
+        mobileScreenshotSkill: "old-mobile-skill",
         reviewerExpectations: ["old reviewer prompt fragment"],
       },
       pi: {
@@ -234,7 +235,7 @@ test("loadPatchmillConfig rejects removed skill workflow settings", async () => 
 
   await assert.rejects(
     () => loadPatchmillConfig(repoRoot, {}, []),
-    /toolchainInstruction|hostToolingInstruction|policyText|webScreenshotSkill|reviewerExpectations|subagentWorkflowInstruction|todoWorkflowInstruction/,
+    /toolchainInstruction|hostToolingInstruction|policyText|webScreenshotSkill|mobileScreenshotSkill|reviewerExpectations|subagentWorkflowInstruction|todoWorkflowInstruction/,
   );
 });
 
