@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { PiRunner } from "./runner.ts";
 import { parsePiResult } from "../../scripts/agent-issue/pi.ts";
+import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
 import type { ResolvedAgentTeam } from "../../scripts/agent-issue/agent-team.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "../../scripts/agent-issue/progress.ts";
 import type { CommandResult, CommandRunner, IssueSummary } from "../../scripts/agent-issue-triage/types.ts";
@@ -93,9 +94,7 @@ test("PiRunner triage defaults to the generic project policy", async () => {
     assert.equal(call.command, "pi");
     assert.equal(call.cwd, "/repo");
     assert.match(call.prompt, /issue triage agent/);
-    assert.doesNotMatch(call.prompt, /Croprun/);
-    assert.doesNotMatch(call.prompt, /devenv shell/);
-    assert.doesNotMatch(call.prompt, /direct kubectl exec/);
+    assertNoLegacyProjectText(call.prompt);
     return { code: 0, stdout: '{"decisions":[]}', stderr: "" };
   });
 
@@ -118,9 +117,7 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
     assert.ok(call.args.includes("--session-dir"));
     assert.match(call.prompt, /Create an implementation plan/);
     assert.match(call.prompt, new RegExp(planPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.doesNotMatch(call.prompt, /Croprun/);
-    assert.doesNotMatch(call.prompt, /devenv shell/);
-    assert.doesNotMatch(call.prompt, /direct kubectl exec/);
+    assertNoLegacyProjectText(call.prompt);
     return {
       code: 0,
       stdout: JSON.stringify({ status: "plan-created", planPath, commit: "abc123" }),
@@ -208,9 +205,7 @@ test("PiRunner implementation uses the worktree root, derives the default landin
     assert.match(call.prompt, /Worktree: worktrees\/issue-42-fix/);
     assert.match(call.prompt, /Update local `release\/1\.2` from the `origin` remote\./);
     assert.doesNotMatch(call.prompt, /Update local `main` from the `origin` remote\./);
-    assert.doesNotMatch(call.prompt, /Croprun/);
-    assert.doesNotMatch(call.prompt, /devenv shell/);
-    assert.doesNotMatch(call.prompt, /direct kubectl exec/);
+    assertNoLegacyProjectText(call.prompt);
     await new Promise((resolve) => setTimeout(resolve, 30));
     return {
       code: 0,

@@ -9,9 +9,6 @@ export type ForgejoVisualEvidenceEnv = Pick<
   | "PATCHMILL_FORGEJO_URL"
   | "PATCHMILL_FORGEJO_TOKEN"
   | "PATCHMILL_FORGEJO_REPO"
-  | "CROPRUN_AGENT_ISSUE_FORGEJO_URL"
-  | "CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN"
-  | "CROPRUN_AGENT_ISSUE_FORGEJO_REPO"
 >;
 
 export type ForgejoVisualEvidenceUploaderOptions = {
@@ -43,9 +40,8 @@ function trimmedEnvValue(value: string | undefined): string | undefined {
 function envValue(
   env: ForgejoVisualEvidenceEnv,
   primary: "PATCHMILL_FORGEJO_URL" | "PATCHMILL_FORGEJO_TOKEN" | "PATCHMILL_FORGEJO_REPO",
-  fallback: "CROPRUN_AGENT_ISSUE_FORGEJO_URL" | "CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN" | "CROPRUN_AGENT_ISSUE_FORGEJO_REPO",
 ): string | undefined {
-  return trimmedEnvValue(env[primary]) ?? trimmedEnvValue(env[fallback]);
+  return trimmedEnvValue(env[primary]);
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -177,8 +173,8 @@ async function resolveEvidencePath(repoRoot: string, screenshotPath: string): Pr
 }
 
 export function hasForgejoVisualEvidenceConfig(env: ForgejoVisualEvidenceEnv = process.env): boolean {
-  return Boolean(envValue(env, "PATCHMILL_FORGEJO_URL", "CROPRUN_AGENT_ISSUE_FORGEJO_URL"))
-    && Boolean(envValue(env, "PATCHMILL_FORGEJO_TOKEN", "CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN"));
+  return Boolean(envValue(env, "PATCHMILL_FORGEJO_URL"))
+    && Boolean(envValue(env, "PATCHMILL_FORGEJO_TOKEN"));
 }
 
 export class ForgejoVisualEvidenceUploader implements VisualEvidenceUploader {
@@ -209,8 +205,8 @@ export class ForgejoVisualEvidenceUploader implements VisualEvidenceUploader {
 
   private async forgejoConfig(repoRoot: string, prUrl: string): Promise<ForgejoConfig> {
     const env = this.options.env ?? process.env;
-    const baseUrl = envValue(env, "PATCHMILL_FORGEJO_URL", "CROPRUN_AGENT_ISSUE_FORGEJO_URL");
-    const token = envValue(env, "PATCHMILL_FORGEJO_TOKEN", "CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN");
+    const baseUrl = envValue(env, "PATCHMILL_FORGEJO_URL");
+    const token = envValue(env, "PATCHMILL_FORGEJO_TOKEN");
     if (!baseUrl || !token) {
       throw new Error("Visual evidence upload requires PATCHMILL_FORGEJO_URL and PATCHMILL_FORGEJO_TOKEN");
     }
@@ -225,7 +221,7 @@ export class ForgejoVisualEvidenceUploader implements VisualEvidenceUploader {
 
   private async repoSlug(repoRoot: string): Promise<string> {
     const env = this.options.env ?? process.env;
-    const configuredRepo = envValue(env, "PATCHMILL_FORGEJO_REPO", "CROPRUN_AGENT_ISSUE_FORGEJO_REPO");
+    const configuredRepo = envValue(env, "PATCHMILL_FORGEJO_REPO");
     if (configuredRepo) return configuredRepo;
 
     const result = await this.options.runner.run("git", ["config", "--get", "remote.origin.url"], { cwd: repoRoot });

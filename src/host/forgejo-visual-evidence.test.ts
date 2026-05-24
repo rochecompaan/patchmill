@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { ForgejoVisualEvidenceUploader } from "./forgejo-visual-evidence.ts";
-import type { CommandRunner } from "../../scripts/agent-issue-triage/types.ts";
+import { ForgejoVisualEvidenceUploader, hasForgejoVisualEvidenceConfig } from "./forgejo-visual-evidence.ts";
+import { LEGACY_FORGEJO_TOKEN_ENV, LEGACY_FORGEJO_URL_ENV } from "../../test-support/legacy-seed.ts";
+import type { CommandRunner } from "../../scripts/agent-issue/types.ts";
 import type { AgentIssueVisualEvidence } from "../../scripts/agent-issue/types.ts";
 
 const MINIMAL_PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -47,7 +48,7 @@ test("ForgejoVisualEvidenceUploader uploads screenshots and posts a PR comment",
     const payload = JSON.parse(String(init?.body));
     assert.match(payload.body, /Visual evidence/);
     assert.match(payload.body, /!\[Dashboard after selecting last 8 weeks\]\(https:\/\/forgejo\.example\/attachments\/dashboard\.png\)/);
-    assert.match(payload.body, /Reference: docs\/reference-screenshots\/web\/01-dashboard\.png/);
+    assert.match(payload.body, /Reference: docs\/visual-baselines\/web\/01-dashboard\.png/);
     return Response.json({ id: 123 });
   };
 
@@ -55,7 +56,7 @@ test("ForgejoVisualEvidenceUploader uploads screenshots and posts a PR comment",
     {
       screenshotPath: ".tmp/dashboard.png",
       caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
     },
   ];
 
@@ -78,46 +79,18 @@ test("ForgejoVisualEvidenceUploader uploads screenshots and posts a PR comment",
     {
       screenshotPath: ".tmp/dashboard.png",
       caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
       url: "https://forgejo.example/attachments/dashboard.png",
     },
   ]);
   assert.equal(requests.length, 2);
 });
 
-test("ForgejoVisualEvidenceUploader preserves Croprun env compatibility fallbacks", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "forgejo-visual-evidence-compat-"));
-  await mkdir(join(repoRoot, ".tmp"), { recursive: true });
-  await writeMinimalPng(join(repoRoot, ".tmp", "compat.png"));
-
-  const uploader = new ForgejoVisualEvidenceUploader({
-    runner: createGitRunner("https://forgejo.example/owner/patchmill.git"),
-    env: {
-      PATCHMILL_FORGEJO_URL: "   ",
-      PATCHMILL_FORGEJO_TOKEN: "",
-      PATCHMILL_FORGEJO_REPO: "\t",
-      CROPRUN_AGENT_ISSUE_FORGEJO_URL: "https://forgejo.example/",
-      CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN: "compat-token",
-      CROPRUN_AGENT_ISSUE_FORGEJO_REPO: "owner/compat-repo",
-    },
-    fetchImpl: async (url, init) => {
-      if (String(url).endsWith("/assets")) {
-        assert.equal(String(url), "https://forgejo.example/api/v1/repos/owner/compat-repo/issues/88/assets");
-        assert.equal(init?.headers instanceof Headers ? init.headers.get("Authorization") : undefined, "token compat-token");
-        return Response.json({ browser_download_url: "https://forgejo.example/attachments/compat.png" });
-      }
-      assert.equal(String(url), "https://forgejo.example/api/v1/repos/owner/compat-repo/issues/88/comments");
-      return Response.json({ id: 456 });
-    },
-  });
-
-  const uploaded = await uploader.uploadPrEvidence({
-    repoRoot,
-    prUrl: "https://forgejo.example/owner/compat-repo/pulls/88",
-    evidence: [{ screenshotPath: ".tmp/compat.png" }],
-  });
-
-  assert.deepEqual(uploaded, [{ screenshotPath: ".tmp/compat.png", url: "https://forgejo.example/attachments/compat.png" }]);
+test("ForgejoVisualEvidenceUploader ignores removed legacy env variables", async () => {
+  assert.equal(hasForgejoVisualEvidenceConfig({
+    [LEGACY_FORGEJO_URL_ENV]: "https://forgejo.example/",
+    [LEGACY_FORGEJO_TOKEN_ENV]: "legacy-token",
+  } as NodeJS.ProcessEnv), false);
 });
 
 test("ForgejoVisualEvidenceUploader escapes attachment URLs for Markdown destinations", async () => {

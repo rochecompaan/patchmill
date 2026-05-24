@@ -143,12 +143,6 @@ function formatAgentTeam(team: ResolvedAgentTeam): string {
   ].join("\n");
 }
 
-function isCroprunCompatPolicy(policy: PatchmillProjectPolicy): boolean {
-  return policy.projectName === "Croprun"
-    && policy.toolchainInstruction.includes("devenv shell")
-    && policy.hostToolingInstruction.includes("Forgejo `tea`");
-}
-
 function firstContextFile(policy: PatchmillProjectPolicy): string {
   return policy.contextFileNames[0] ?? "AGENTS.md";
 }
@@ -161,7 +155,6 @@ function formatFileList(fileNames: string[]): string {
 }
 
 function formatIssueTarget(policy: PatchmillProjectPolicy): string {
-  if (isCroprunCompatPolicy(policy)) return `${policy.projectName} Forgejo issue`;
   if (policy.projectName) return `${policy.projectName} issue`;
   return "repository issue";
 }
@@ -368,10 +361,7 @@ function renderVisualEvidenceSection(policy: PatchmillProjectPolicy): string {
   return lines.join("\n");
 }
 
-function renderPrCreationInstruction(policy: PatchmillProjectPolicy, remote: string): string {
-  if (isCroprunCompatPolicy(policy)) {
-    return `Push the branch to \`${remote}\` and open a Forgejo PR with \`tea\`.`;
-  }
+function renderPrCreationInstruction(remote: string): string {
   return `Push the branch to \`${remote}\` and open a pull request using the repository's configured host tooling.`;
 }
 
@@ -393,7 +383,7 @@ If human input is required, stop safely, leave committed work as-is, keep the re
 }
 
 function renderPrCreatedContract(policy: PatchmillProjectPolicy, branch: string): string {
-  const prUrlLabel = isCroprunCompatPolicy(policy) ? "<Forgejo PR URL>" : "<pull request URL>";
+  const prUrlLabel = "<pull request URL>";
   const visualEvidenceExample = policy.visualEvidence.prEvidenceExample ?? {
     screenshotPath: ".tmp/issue-42-after.png",
     caption: "Visible UI state after the change",
@@ -443,7 +433,7 @@ function renderGenericDirectLandPolicy(input: {
   policy: PatchmillProjectPolicy;
 }): string {
   const { allowDirectLand, targetBranch, remote, issueNumber, branch, policy } = input;
-  const prInstruction = renderPrCreationInstruction(policy, remote);
+  const prInstruction = renderPrCreationInstruction(remote);
   const renderedPolicyText = replaceDirectLandPlaceholders({
     text: policy.directLand.policyText,
     targetBranch,

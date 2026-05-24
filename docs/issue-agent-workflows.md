@@ -5,7 +5,7 @@ Patchmill has two issue-agent workflows:
 - **Triage** (`agent-issue-triage`) classifies open issues and, when executed, applies labels/comments on the issue host.
 - **Run once** (`agent-issue-once`) claims one automation-ready issue, asks Pi to create or use an implementation plan, asks Pi to implement/review/land the work, then updates the issue host.
 
-The current compatibility entrypoints are `scripts/agent-issue-triage.ts` and `scripts/agent-issue-once.ts`; the generic CLI can dispatch equivalent flows through `bin/patchmill.ts`.
+The current script entrypoints are `scripts/agent-issue-triage.ts` and `scripts/agent-issue-once.ts`; the generic CLI can dispatch the same backing workflows through `bin/patchmill.ts`.
 
 ## Issue triage workflow
 
@@ -245,7 +245,7 @@ Do not pass a separate `thinking` field to the subagent execution call; pi-subag
 Do not call worker or reviewer subagents without these exact model overrides; return the blocker JSON instead.
 ```
 
-The default Croprun-compatibility subagent workflow instructions are:
+The default subagent workflow instructions are:
 
 1. Use `superpowers:subagent-driven-development` to execute the plan task by task.
 2. Before dispatching implementation or review subagents, use `superpowers:selecting-subagent-models` and apply the authoritative agent-team mappings.

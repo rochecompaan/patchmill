@@ -18,6 +18,14 @@ type CommandResult = {
   stderr: string;
 };
 
+const cleanupHook: CleanupHookConfig = {
+  name: "example-cleanup",
+  whenPathExists: ".env",
+  terminateProcessPatterns: ["example dev server"],
+  command: "npm",
+  args: ["run", "cleanup:example"],
+};
+
 function recordingRunner(results: CommandResult[] = []): {
   runner: {
     run(command: string, args: string[], options?: { cwd?: string }): Promise<CommandResult>;
@@ -52,81 +60,69 @@ test("runCleanupHooks is a no-op when no cleanup hooks are configured", async ()
 
 test("runCleanupHooks skips hooks whose probe path is missing", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-cleanup-hooks-"));
-  const worktreePath = ".worktrees/issue-45";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   await mkdir(join(repoRoot, worktreePath), { recursive: true });
   const { runner, calls } = recordingRunner();
-  const hooks: CleanupHookConfig[] = [
-    {
-      name: "custom-cleanup",
-      whenPathExists: ".env",
-      command: "just",
-      args: ["cleanup"],
-    },
-  ];
 
-  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, hooks);
+  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, [{
+    ...cleanupHook,
+    terminateProcessPatterns: undefined,
+  }]);
 
-  assert.equal(result?.name, "custom-cleanup");
+  assert.equal(result?.name, "example-cleanup");
   assert.equal(result?.status, "skipped");
-  assert.match(result?.message ?? "", /custom-cleanup/);
+  assert.equal(
+    result?.message,
+    "cleanup hook example-cleanup: .env not found",
+  );
   assert.equal(calls.length, 0);
 });
 
 test("runCleanupHooks runs generic command hooks from the worktree root", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-cleanup-hooks-"));
-  const worktreePath = ".worktrees/issue-45";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   const worktreeRoot = join(repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
   await writeFile(join(worktreeRoot, ".env"), "READY=1\n", "utf8");
   const { runner, calls } = recordingRunner();
-  const hooks: CleanupHookConfig[] = [
-    {
-      name: "custom-cleanup",
-      whenPathExists: ".env",
-      command: "just",
-      args: ["cleanup"],
-    },
-  ];
 
-  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, hooks);
+  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, [{
+    ...cleanupHook,
+    terminateProcessPatterns: undefined,
+  }]);
 
-  assert.equal(result?.name, "custom-cleanup");
+  assert.equal(result?.name, "example-cleanup");
   assert.equal(result?.status, "cleaned");
-  assert.match(result?.message ?? "", /custom-cleanup/);
-  assert.deepEqual(calls, [{ command: "just", args: ["cleanup"], cwd: worktreeRoot }]);
+  assert.equal(
+    result?.message,
+    "cleanup hook example-cleanup: completed for .worktrees/patchmill-issue-45-cleanup-example",
+  );
+  assert.deepEqual(calls, [{ command: "npm", args: ["run", "cleanup:example"], cwd: worktreeRoot }]);
 });
 
 test("runCleanupHooks runs terminate-pattern cleanup before the hook command", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-cleanup-hooks-"));
-  const worktreePath = ".worktrees/issue-45";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   const worktreeRoot = join(repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
   await writeFile(join(worktreeRoot, ".env"), "READY=1\n", "utf8");
   const { runner, calls } = recordingRunner();
-  const hooks: CleanupHookConfig[] = [
-    {
-      name: "custom-cleanup",
-      whenPathExists: ".env",
-      terminateProcessPatterns: ["tilt up"],
-      command: "just",
-      args: ["cleanup"],
-    },
-  ];
 
-  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, hooks);
+  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, [cleanupHook]);
 
-  assert.equal(result?.name, "custom-cleanup");
+  assert.equal(result?.name, "example-cleanup");
   assert.equal(result?.status, "cleaned");
   assert.equal(calls[0]?.command, "bash");
   assert.equal(calls[0]?.args[0], "-c");
-  assert.equal(calls[0]?.args[2], "custom-cleanup");
+  assert.equal(calls[0]?.args[2], "example-cleanup");
   assert.equal(calls[0]?.args[3], worktreeRoot);
-  assert.deepEqual(calls[1], { command: "just", args: ["cleanup"], cwd: worktreeRoot });
+  assert.equal(calls[0]?.args[4], "example dev server");
+  assert.deepEqual(calls[1], { command: "npm", args: ["run", "cleanup:example"], cwd: worktreeRoot });
 });
 
 test("runCleanupHooks reports process cleanup failures with hook context", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-cleanup-hooks-"));
-  const worktreePath = ".worktrees/issue-45";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   const worktreeRoot = join(repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
   await writeFile(join(worktreeRoot, ".env"), "READY=1\n", "utf8");
@@ -134,24 +130,15 @@ test("runCleanupHooks reports process cleanup failures with hook context", async
     {
       code: 1,
       stdout: "",
-      stderr: "Refusing to terminate process group 4321 for cleanup hook custom-cleanup because it matches the current cleanup shell process group",
+      stderr: "Refusing to terminate process group 4321 for cleanup hook example-cleanup because it matches the current cleanup shell process group",
     },
   ]);
-  const hooks: CleanupHookConfig[] = [
-    {
-      name: "custom-cleanup",
-      whenPathExists: ".env",
-      terminateProcessPatterns: ["tilt up"],
-      command: "just",
-      args: ["cleanup"],
-    },
-  ];
 
-  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, hooks);
+  const [result] = await runCleanupHooks(runner, repoRoot, worktreePath, [cleanupHook]);
 
-  assert.equal(result?.name, "custom-cleanup");
+  assert.equal(result?.name, "example-cleanup");
   assert.equal(result?.status, "failed");
-  assert.match(result?.message ?? "", /cleanup hook custom-cleanup: process cleanup failed/);
+  assert.match(result?.message ?? "", /cleanup hook example-cleanup: process cleanup failed/);
   assert.match(result?.message ?? "", /Refusing to terminate process group 4321/);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.command, "bash");

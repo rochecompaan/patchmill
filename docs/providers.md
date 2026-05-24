@@ -1,23 +1,39 @@
 # Patchmill Providers
 
-Patchmill separates orchestration from issue-host integrations. Pi is the built-in runtime for planning, implementation, skills, todos, subagents, and TUI-driven review.
+Patchmill separates issue-host integrations from the core triage and run-once workflows.
 
-## Supported now
+## Supported workflow
 
-| Area | Name | Backing tool | Status |
-| --- | --- | --- | --- |
-| Issue host | `forgejo-tea` | `tea` CLI | supported seed provider |
-| Runtime | Pi | `pi` CLI/TUI | built-in runtime |
+- `patchmill triage`
+- `patchmill run-once`
 
-## Planned later
+The current built-in runtime is Pi, and the current host integration is Forgejo through `tea`.
 
-| Area | Provider | Backing tool |
-| --- | --- | --- |
-| Issue host | `github-gh` | `gh` CLI |
-| Issue host | `gitlab-glab` | `glab` CLI or GitLab REST |
+## Configuration surface
 
-Host provider implementations and Pi prompt contracts must preserve Patchmill's safety rules: strict structured output, untrusted issue-content boundaries, checkpointed host mutations, and clean worktree checks.
+Patchmill reads provider and workflow settings from `patchmill.config.json` and `PATCHMILL_*` environment variables.
 
-Generic Patchmill configuration should use `PATCHMILL_*` names and the `patchmill` CLI. Create `patchmill.config.json` in the repo root — even `{}` is enough — to make the CLI-dispatched compatibility workflows load normalized Patchmill defaults. Without that file, `bin/patchmill.ts` still dispatches to the copied `agent-issue-*` scripts and their Croprun compatibility fallbacks for login names, agent-team names, visual-evidence upload settings, paths, cleanup, and prompt policy remain active. See [docs/migration-from-croprun-scripts.md](./migration-from-croprun-scripts.md) for the exact command and environment-variable mappings.
+Common settings:
 
-Pi task and plan naming conventions are documented in [docs/task-contracts.md](./task-contracts.md). Projects can override those defaults through `projectPolicy.pi.taskContract` so prompt text, todo readers, and plan-task readers stay in sync.
+- `host.login`
+- `pi.team`
+- `paths.runStateDir`
+- `paths.triageLogDir`
+- `paths.worktreeDir`
+
+Environment variables:
+
+- `PATCHMILL_HOST_LOGIN`
+- `PATCHMILL_AGENT_TEAM`
+- `PATCHMILL_FORGEJO_URL`
+- `PATCHMILL_FORGEJO_TOKEN`
+- `PATCHMILL_FORGEJO_REPO`
+
+## Local state
+
+Patchmill stores workflow state under `.patchmill/`:
+
+- `.patchmill/runs/`
+- `.patchmill/triage-runs/`
+
+Task-contract details are documented in [docs/task-contracts.md](./task-contracts.md).

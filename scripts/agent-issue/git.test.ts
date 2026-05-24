@@ -19,13 +19,13 @@ test("buildIssueBranchName creates safe issue branches", () => {
 });
 
 test("buildIssueWorktreePath creates stable issue worktree paths", () => {
-  assert.equal(buildIssueWorktreePath(42, "Add user tags"), ".worktrees/agent-issue-42-add-user-tags");
+  assert.equal(buildIssueWorktreePath(42, "Add user tags"), ".worktrees/patchmill-issue-42-add-user-tags");
 });
 
 test("buildIssueWorktreePath accepts a configured worktree directory", () => {
   assert.equal(
     buildIssueWorktreePath(42, "Add user tags", ".patchmill/worktrees"),
-    ".patchmill/worktrees/agent-issue-42-add-user-tags",
+    ".patchmill/worktrees/patchmill-issue-42-add-user-tags",
   );
 });
 
@@ -38,7 +38,7 @@ test("issue branch and worktree slugs truncate deterministically", () => {
   );
   assert.equal(
     buildIssueWorktreePath(42, title),
-    ".worktrees/agent-issue-42-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstu",
+    ".worktrees/patchmill-issue-42-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstu",
   );
 });
 
@@ -58,16 +58,6 @@ test("assertCleanWorktree rejects dirty repositories", async () => {
   const runner = createStaticCommandRunner([{ code: 0, stdout: " M scripts/agent-issue/git.ts\n", stderr: "" }]);
 
   await assert.rejects(() => assertCleanWorktree(runner, "/repo"), /Repository worktree is not clean/);
-});
-
-test("assertCleanWorktree ignores agent issue run logs", async () => {
-  const runner = createStaticCommandRunner([{
-    code: 0,
-    stdout: "?? .pi/agent-issue/runs/run-2026-05-10T04-19-08-934Z.jsonl\n",
-    stderr: "",
-  }]);
-
-  await assertCleanWorktree(runner, "/repo", [".pi/agent-issue/runs/"]);
 });
 
 test("assertCleanWorktree ignores configured run-state logs", async () => {
@@ -133,7 +123,7 @@ test("createIssueWorktree creates a dedicated branch and worktree", async () => 
 
   assert.deepEqual(created, {
     branch: "agent/issue-42-add-user-tags",
-    worktreePath: ".worktrees/agent-issue-42-add-user-tags",
+    worktreePath: ".worktrees/patchmill-issue-42-add-user-tags",
   });
   assert.deepEqual(runner.calls, [{
     command: "git",
@@ -142,7 +132,7 @@ test("createIssueWorktree creates a dedicated branch and worktree", async () => 
       "add",
       "-b",
       "agent/issue-42-add-user-tags",
-      ".worktrees/agent-issue-42-add-user-tags",
+      ".worktrees/patchmill-issue-42-add-user-tags",
       "HEAD",
     ],
     cwd: "/repo",
@@ -199,7 +189,7 @@ test("createIssueWorktree rejects git worktree failures with exit code and comma
       "add",
       "-b",
       "agent/issue-42-add-user-tags",
-      ".worktrees/agent-issue-42-add-user-tags",
+      ".worktrees/patchmill-issue-42-add-user-tags",
       "HEAD",
     ],
     cwd: "/repo",
@@ -211,7 +201,7 @@ test("ensureIssueWorktree reuses an existing worktree for the expected branch", 
     {
       code: 0,
       stdout: [
-        "worktree /repo/.worktrees/agent-issue-45-resume-feature",
+        "worktree /repo/.worktrees/patchmill-issue-45-resume-feature",
         "HEAD abcdef1234567890",
         "branch refs/heads/agent/issue-45-resume-feature",
         "",
@@ -227,14 +217,14 @@ test("ensureIssueWorktree reuses an existing worktree for the expected branch", 
 
   assert.deepEqual(result, {
     branch: "agent/issue-45-resume-feature",
-    worktreePath: ".worktrees/agent-issue-45-resume-feature",
+    worktreePath: ".worktrees/patchmill-issue-45-resume-feature",
     created: false,
     hasExistingCommits: true,
     existingCommits: ["abc123 existing work"],
   });
   assert.deepEqual(runner.calls.map((call) => call.args.slice(0, 3)), [
     ["worktree", "list", "--porcelain"],
-    ["-C", ".worktrees/agent-issue-45-resume-feature", "branch"],
+    ["-C", ".worktrees/patchmill-issue-45-resume-feature", "branch"],
     ["status", "--porcelain=v1", "--untracked-files=all"],
     ["log", "--oneline", "HEAD..agent/issue-45-resume-feature"],
   ]);
@@ -285,7 +275,7 @@ test("ensureIssueWorktree ignores configured todo roots when reusing an existing
     {
       code: 0,
       stdout: [
-        "worktree /repo/.worktrees/agent-issue-45-resume-feature",
+        "worktree /repo/.worktrees/patchmill-issue-45-resume-feature",
         "HEAD abcdef1234567890",
         "branch refs/heads/agent/issue-45-resume-feature",
         "",
@@ -309,7 +299,7 @@ test("ensureIssueWorktree ignores configured todo roots when reusing an existing
 
   assert.deepEqual(result, {
     branch: "agent/issue-45-resume-feature",
-    worktreePath: ".worktrees/agent-issue-45-resume-feature",
+    worktreePath: ".worktrees/patchmill-issue-45-resume-feature",
     created: false,
     hasExistingCommits: false,
     existingCommits: [],
@@ -322,13 +312,13 @@ test("ensureIssueWorktree ignores configured todo roots when reusing an existing
     },
     {
       command: "git",
-      args: ["-C", ".worktrees/agent-issue-45-resume-feature", "branch", "--show-current"],
+      args: ["-C", ".worktrees/patchmill-issue-45-resume-feature", "branch", "--show-current"],
       cwd: "/repo",
     },
     {
       command: "git",
       args: ["status", "--porcelain=v1", "--untracked-files=all"],
-      cwd: "/repo/.worktrees/agent-issue-45-resume-feature",
+      cwd: "/repo/.worktrees/patchmill-issue-45-resume-feature",
     },
     {
       command: "git",
@@ -340,7 +330,7 @@ test("ensureIssueWorktree ignores configured todo roots when reusing an existing
 
 test("ensureIssueWorktree recreates a missing worktree from an existing branch", async () => {
   const runner = createStaticCommandRunner([
-    { code: 0, stdout: "worktree /repo/.worktrees/agent-issue-145-resume-feature\nHEAD abcdef1234567890\n", stderr: "" },
+    { code: 0, stdout: "worktree /repo/.worktrees/patchmill-issue-145-resume-feature\nHEAD abcdef1234567890\n", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
@@ -352,7 +342,7 @@ test("ensureIssueWorktree recreates a missing worktree from an existing branch",
   assert.deepEqual(runner.calls[2]?.args, [
     "worktree",
     "add",
-    ".worktrees/agent-issue-45-resume-feature",
+    ".worktrees/patchmill-issue-45-resume-feature",
     "agent/issue-45-resume-feature",
   ]);
 });
@@ -362,10 +352,10 @@ test("ensureIssueWorktree ignores porcelain entries for similar absolute paths",
     {
       code: 0,
       stdout: [
-        "worktree /tmp/repo/.worktrees/agent-issue-45-resume-feature",
+        "worktree /tmp/repo/.worktrees/patchmill-issue-45-resume-feature",
         "HEAD abcdef1234567890",
         "branch refs/heads/agent/issue-45-resume-feature",
-        "worktree /repo/.worktrees/agent-issue-45-resume-feature-copy",
+        "worktree /repo/.worktrees/patchmill-issue-45-resume-feature-copy",
         "HEAD 1234567890abcdef",
         "branch refs/heads/agent/issue-45-resume-feature-copy",
         "",
@@ -383,19 +373,19 @@ test("ensureIssueWorktree ignores porcelain entries for similar absolute paths",
   assert.deepEqual(runner.calls.map((call) => call.args), [
     ["worktree", "list", "--porcelain"],
     ["show-ref", "--verify", "--quiet", "refs/heads/agent/issue-45-resume-feature"],
-    ["worktree", "add", ".worktrees/agent-issue-45-resume-feature", "agent/issue-45-resume-feature"],
+    ["worktree", "add", ".worktrees/patchmill-issue-45-resume-feature", "agent/issue-45-resume-feature"],
     ["log", "--oneline", "HEAD..agent/issue-45-resume-feature"],
   ]);
 });
 
 test("ensureIssueWorktree stops when the deterministic path exists outside git worktree registration", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-agent-issue-"));
-  await mkdir(join(repoRoot, ".worktrees/agent-issue-45-resume-feature"), { recursive: true });
+  await mkdir(join(repoRoot, ".worktrees/patchmill-issue-45-resume-feature"), { recursive: true });
   const runner = createStaticCommandRunner([{ code: 0, stdout: "", stderr: "" }]);
 
   await assert.rejects(
     () => ensureIssueWorktree(runner, repoRoot, 45, "Resume feature"),
-    /Existing path \.worktrees\/agent-issue-45-resume-feature is not a registered git worktree/,
+    /Existing path \.worktrees\/patchmill-issue-45-resume-feature is not a registered git worktree/,
   );
 
   assert.deepEqual(runner.calls.map((call) => call.args), [["worktree", "list", "--porcelain"]]);

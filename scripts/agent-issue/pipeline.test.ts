@@ -4,12 +4,12 @@ import { appendFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { CROPRUN_COMPAT_POLICY, DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { createTriagePolicy } from "../../src/policy/triage.ts";
-import { TILT_JUST_CLEANUP_HOOK } from "./tilt-cleanup.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { JsonlProgressReporter } from "./progress.ts";
+import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
 import type {
   AgentIssueConfig,
   AgentIssueProgressEvent,
@@ -83,6 +83,14 @@ const AGENT_TEAM = {
     worker: { model: "openai-codex/gpt-5.4", thinking: "medium" },
     reviewer: { model: "openai-codex/gpt-5.5", thinking: "high" },
   },
+};
+
+const cleanupHook = {
+  name: "example-cleanup",
+  whenPathExists: ".env",
+  terminateProcessPatterns: ["example dev server"],
+  command: "npm",
+  args: ["run", "cleanup:example"],
 };
 
 const DEFAULT_LABEL_NAMES = [
@@ -233,9 +241,9 @@ async function writeTodo(
 async function makeConfig(
   overrides: Partial<AgentIssueConfig> = {},
 ): Promise<AgentIssueConfig> {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-pipeline-"));
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-issue-pipeline-"));
   const plansDir = join(repoRoot, "docs", "plans");
-  const runStateDir = join(repoRoot, ".pi", "agent-issue", "runs");
+  const runStateDir = join(repoRoot, ".patchmill", "runs");
   await mkdir(plansDir, { recursive: true });
 
   return {
@@ -246,9 +254,9 @@ async function makeConfig(
     plansDir,
     runStateDir,
     worktreeDir: join(repoRoot, ".worktrees"),
-    cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"],
+    cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/"],
     cleanupHooks: [],
-    projectPolicy: CROPRUN_COMPAT_POLICY,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
     readyLabel: "agent-ready",
     issueLimit: 1,
     requirePlanApproval: false,
@@ -256,7 +264,7 @@ async function makeConfig(
     baseRef: "HEAD",
     remote: "origin",
     branchPrefix: "agent/issue-",
-    worktreePrefix: "agent-issue-",
+    worktreePrefix: "patchmill-issue-",
     slugLength: 48,
     allowDirectLand: true,
     agentTeam: AGENT_TEAM,
@@ -360,7 +368,7 @@ test("runOneIssue dry-run previews agent-ready issues even when saved state has 
       title: "Stale finished preview",
       status: "finished",
       branch: "agent/issue-45-stale-finished-preview",
-      worktreePath: ".worktrees/agent-issue-45-stale-finished-preview",
+      worktreePath: ".worktrees/patchmill-issue-45-stale-finished-preview",
     },
     NOW.toISOString(),
   );
@@ -1179,7 +1187,7 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
       status: "implementing",
       planPath,
       branch: "agent/issue-45-resume-worktree",
-      worktreePath: ".worktrees/agent-issue-45-resume-worktree",
+      worktreePath: ".worktrees/patchmill-issue-45-resume-worktree",
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1200,7 +1208,7 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-resume-worktree")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-resume-worktree")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-resume-worktree\n", stderr: "" };
@@ -1221,7 +1229,7 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
           prUrl: "https://forgejo/pr/45",
           branch: "agent/issue-45-resume-worktree",
           commits: ["abc123"],
-          validation: ["just agent-issue-test ok"],
+          validation: ["just issue-runner-test ok"],
         }),
         stderr: "",
       };
@@ -1248,11 +1256,11 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
       status: "implementing",
       planPath,
       branch: "agent/issue-45-reuse-implementation",
-      worktreePath: ".worktrees/agent-issue-45-reuse-implementation",
+      worktreePath: ".worktrees/patchmill-issue-45-reuse-implementation",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/45",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       reviewSummary: "reviewed",
       landingDecision: "PR required: needs manual verification",
       checkpoints: {
@@ -1276,7 +1284,7 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-reuse-implementation")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-reuse-implementation")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-reuse-implementation\n", stderr: "" };
@@ -1292,7 +1300,7 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
   assert.equal(result.status, "pr-created");
   assert.equal(result.prUrl, "https://forgejo/pr/45");
   assert.deepEqual(result.commits, ["abc123"]);
-  assert.deepEqual(result.validation, ["just agent-issue-test ok"]);
+  assert.deepEqual(result.validation, ["just issue-runner-test ok"]);
   assert.equal(result.reviewSummary, "reviewed");
   assert.equal(result.landingDecision, "PR required: needs manual verification");
   assert.equal(runner.calls.some((call) => call.command === "pi"), false);
@@ -1315,11 +1323,11 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
       status: "implementing",
       planPath,
       branch: "agent/issue-45-complete-pr-created",
-      worktreePath: ".worktrees/agent-issue-45-complete-pr-created",
+      worktreePath: ".worktrees/patchmill-issue-45-complete-pr-created",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/45",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1341,7 +1349,7 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-complete-pr-created")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-pr-created")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-complete-pr-created\n", stderr: "" };
@@ -1385,11 +1393,11 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
       status: "implementing",
       planPath,
       branch: "agent/issue-45-complete-custom-lifecycle-labels",
-      worktreePath: ".worktrees/agent-issue-45-complete-custom-lifecycle-labels",
+      worktreePath: ".worktrees/patchmill-issue-45-complete-custom-lifecycle-labels",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/45",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1415,7 +1423,7 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
       return {
         code: 0,
-        stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-complete-custom-lifecycle-labels")}\n`,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-custom-lifecycle-labels")}\n`,
         stderr: "",
       };
     }
@@ -1471,26 +1479,27 @@ test("runOneIssue does not run cleanup commands when cleanup hooks are not confi
     execute: true,
     agentTeam: undefined,
     agentTeamName: undefined,
+    worktreePrefix: "patchmill-issue-",
   });
-  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-tilt.md";
-  const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
+  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-example.md";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
-  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=patchmill-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(worktreeRoot, ".env"), "READY=1\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
     {
       issueNumber: 45,
-      title: "Cleanup Tilt",
+      title: "Cleanup Example",
       status: "implementing",
       planPath,
-      branch: "agent/issue-45-cleanup-tilt",
+      branch: "agent/issue-45-cleanup-example",
       worktreePath,
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/45",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1506,7 +1515,7 @@ test("runOneIssue does not run cleanup commands when cleanup hooks are not confi
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Tilt")]) : "[]",
+        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")]) : "[]",
         stderr: "",
       };
     }
@@ -1515,7 +1524,7 @@ test("runOneIssue does not run cleanup commands when cleanup hooks are not confi
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-cleanup-tilt\n", stderr: "" };
+      return { code: 0, stdout: "agent/issue-45-cleanup-example\n", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
     if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
@@ -1528,37 +1537,38 @@ test("runOneIssue does not run cleanup commands when cleanup hooks are not confi
 
   assert.equal(result.status, "pr-created");
   assert.equal(runner.calls.some((call) => call.command === "bash" && call.args[0] === "-c"), false);
-  assert.equal(runner.calls.some((call) => call.command === "just" && call.args[0] === "tilt-down"), false);
+  assert.equal(runner.calls.some((call) => call.command === "npm" && call.args[0] === "run"), false);
   assert.equal(events.some((event) => event.stage === "cleanup"), false);
 });
 
-test("runOneIssue preserves tilt-just cleanup compatibility when configured", async () => {
+test("runOneIssue runs configured generic cleanup hooks", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     agentTeam: undefined,
     agentTeamName: undefined,
-    cleanupHooks: [TILT_JUST_CLEANUP_HOOK],
+    worktreePrefix: "patchmill-issue-",
+    cleanupHooks: [cleanupHook],
   });
-  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-tilt.md";
-  const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
+  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-example.md";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
-  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=patchmill-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(worktreeRoot, ".env"), "READY=1\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
     {
       issueNumber: 45,
-      title: "Cleanup Tilt",
+      title: "Cleanup Example",
       status: "implementing",
       planPath,
-      branch: "agent/issue-45-cleanup-tilt",
+      branch: "agent/issue-45-cleanup-example",
       worktreePath,
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/45",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1574,7 +1584,7 @@ test("runOneIssue preserves tilt-just cleanup compatibility when configured", as
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Tilt")]) : "[]",
+        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")]) : "[]",
         stderr: "",
       };
     }
@@ -1583,13 +1593,13 @@ test("runOneIssue preserves tilt-just cleanup compatibility when configured", as
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-cleanup-tilt\n", stderr: "" };
+      return { code: 0, stdout: "agent/issue-45-cleanup-example\n", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
     if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
     if (call.command === "tea" && (call.args[0] === "issues" || call.args[0] === "comment")) return { code: 0, stdout: "", stderr: "" };
     if (call.command === "bash" && call.args[0] === "-c" && call.args[3] === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
-    if (call.command === "just" && call.args[0] === "tilt-down" && call.cwd === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "npm" && call.args[0] === "run" && call.args[1] === "cleanup:example" && call.cwd === worktreeRoot) return { code: 0, stdout: "", stderr: "" };
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
 
@@ -1600,16 +1610,28 @@ test("runOneIssue preserves tilt-just cleanup compatibility when configured", as
   const cleanupCalls = runner.calls.filter(
     (call) =>
       (call.command === "bash" && call.args[0] === "-c") ||
-      (call.command === "just" && call.args[0] === "tilt-down"),
+      (call.command === "npm" && call.args[0] === "run"),
   );
-  assert.deepEqual(
-    cleanupCalls.map((call) => [call.command, call.args[0], call.cwd]),
-    [
-      ["bash", "-c", config.repoRoot],
-      ["just", "tilt-down", worktreeRoot],
-    ],
+  assert.equal(cleanupCalls[0]?.command, "bash");
+  assert.equal(cleanupCalls[0]?.args[0], "-c");
+  assert.equal(cleanupCalls[0]?.args[2], "example-cleanup");
+  assert.equal(cleanupCalls[0]?.args[3], worktreeRoot);
+  assert.equal(cleanupCalls[0]?.args[4], "example dev server");
+  assert.equal(cleanupCalls[0]?.cwd, config.repoRoot);
+  assert.deepEqual(cleanupCalls[1], {
+    command: "npm",
+    args: ["run", "cleanup:example"],
+    cwd: worktreeRoot,
+    onStdout: undefined,
+    onStderr: undefined,
+  });
+  assert.ok(
+    events.some(
+      (event) =>
+        event.stage === "cleanup"
+        && event.message === "cleanup hook example-cleanup: completed for .worktrees/patchmill-issue-45-cleanup-example",
+    ),
   );
-  assert.ok(events.some((event) => event.stage === "cleanup" && event.message.includes("tilt-just")));
 });
 
 test("runOneIssue reports cleanup hook failures when process termination is unsafe", async () => {
@@ -1618,27 +1640,28 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
     execute: true,
     agentTeam: undefined,
     agentTeamName: undefined,
-    cleanupHooks: [TILT_JUST_CLEANUP_HOOK],
+    worktreePrefix: "patchmill-issue-",
+    cleanupHooks: [cleanupHook],
   });
-  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-tilt.md";
-  const worktreePath = ".worktrees/agent-issue-45-cleanup-tilt";
+  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-example.md";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
-  await writeFile(join(worktreeRoot, ".env"), "CROPRUN_TILT_NAMESPACE=patchmill-agent-issue-45-cleanup-tilt\nTILT_PORT=10385\n", "utf8");
+  await writeFile(join(worktreeRoot, ".env"), "READY=1\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
     {
       issueNumber: 45,
-      title: "Cleanup Tilt",
+      title: "Cleanup Example",
       status: "implementing",
       planPath,
-      branch: "agent/issue-45-cleanup-tilt",
+      branch: "agent/issue-45-cleanup-example",
       worktreePath,
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/45",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1654,7 +1677,7 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
       const page = call.args[call.args.indexOf("--page") + 1];
       return {
         code: 0,
-        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Tilt")]) : "[]",
+        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Cleanup Example")]) : "[]",
         stderr: "",
       };
     }
@@ -1663,7 +1686,7 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
       return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
-      return { code: 0, stdout: "agent/issue-45-cleanup-tilt\n", stderr: "" };
+      return { code: 0, stdout: "agent/issue-45-cleanup-example\n", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
     if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
@@ -1672,7 +1695,7 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
       return {
         code: 1,
         stdout: "",
-        stderr: "Refusing to terminate process group 4321 for cleanup hook tilt-just because it matches the current cleanup shell process group",
+        stderr: "Refusing to terminate process group 4321 for cleanup hook example-cleanup because it matches the current cleanup shell process group",
       };
     }
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
@@ -1682,13 +1705,13 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(runner.calls.some((call) => call.command === "just" && call.args[0] === "tilt-down"), false);
+  assert.equal(runner.calls.some((call) => call.command === "npm" && call.args[0] === "run"), false);
   assert.ok(
     events.some(
       (event) =>
         event.stage === "cleanup"
         && event.level === "error"
-        && event.message.includes("Tilt process cleanup failed")
+        && event.message.includes("cleanup hook example-cleanup: process cleanup failed")
         && event.message.includes("Refusing to terminate process group 4321"),
     ),
   );
@@ -1711,11 +1734,11 @@ test("runOneIssue finishes saved merged handoff without requiring an agent team"
       status: "implementing",
       planPath,
       branch: "agent/issue-45-complete-merged",
-      worktreePath: ".worktrees/agent-issue-45-complete-merged",
+      worktreePath: ".worktrees/patchmill-issue-45-complete-merged",
       implementationStatus: "merged",
       mergeCommit: "def456",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1737,7 +1760,7 @@ test("runOneIssue finishes saved merged handoff without requiring an agent team"
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-complete-merged")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-complete-merged\n", stderr: "" };
@@ -1774,11 +1797,11 @@ test("runOneIssue rejects saved merged handoff when direct landing is disabled",
       status: "implementing",
       planPath,
       branch: "agent/issue-45-complete-merged",
-      worktreePath: ".worktrees/agent-issue-45-complete-merged",
+      worktreePath: ".worktrees/patchmill-issue-45-complete-merged",
       implementationStatus: "merged",
       mergeCommit: "def456",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1800,7 +1823,7 @@ test("runOneIssue rejects saved merged handoff when direct landing is disabled",
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-complete-merged")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-complete-merged\n", stderr: "" };
@@ -1834,11 +1857,11 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
       status: "finished",
       planPath,
       branch: "agent/issue-45-stale-finished-implementation",
-      worktreePath: ".worktrees/agent-issue-45-stale-finished-implementation",
+      worktreePath: ".worktrees/patchmill-issue-45-stale-finished-implementation",
       implementationStatus: "merged",
       mergeCommit: "stale123",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1884,7 +1907,7 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
   assert.equal(runState.prUrl, undefined);
   assert.equal(runState.checkpoints?.implementationCompleted, true);
   assert.equal(runState.branch, "agent/issue-45-stale-finished-implementation");
-  assert.equal(runState.worktreePath, ".worktrees/agent-issue-45-stale-finished-implementation");
+  assert.equal(runState.worktreePath, ".worktrees/patchmill-issue-45-stale-finished-implementation");
 });
 
 test("runOneIssue rejects stale finished branch and worktree before resetting state", async () => {
@@ -1899,11 +1922,11 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
       status: "finished",
       planPath,
       branch: "agent/issue-45-stale-finished-same-title",
-      worktreePath: ".worktrees/agent-issue-45-stale-finished-same-title",
+      worktreePath: ".worktrees/patchmill-issue-45-stale-finished-same-title",
       implementationStatus: "merged",
       mergeCommit: "stale123",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -1938,7 +1961,7 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
   ) as Record<string, unknown>;
   assert.equal(firstRunState.status, "finished");
   assert.equal(firstRunState.branch, "agent/issue-45-stale-finished-same-title");
-  assert.equal(firstRunState.worktreePath, ".worktrees/agent-issue-45-stale-finished-same-title");
+  assert.equal(firstRunState.worktreePath, ".worktrees/patchmill-issue-45-stale-finished-same-title");
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
@@ -1950,7 +1973,7 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
   ) as Record<string, unknown>;
   assert.equal(secondRunState.status, "finished");
   assert.equal(secondRunState.branch, "agent/issue-45-stale-finished-same-title");
-  assert.equal(secondRunState.worktreePath, ".worktrees/agent-issue-45-stale-finished-same-title");
+  assert.equal(secondRunState.worktreePath, ".worktrees/patchmill-issue-45-stale-finished-same-title");
 
   assert.equal(runner.calls.some((call) => call.command === "pi"), false);
   assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
@@ -1976,11 +1999,11 @@ test("runOneIssue rejects stale finished branch and worktree when title changed"
       status: "finished",
       planPath,
       branch: "agent/issue-45-old-finished-title",
-      worktreePath: ".worktrees/agent-issue-45-old-finished-title",
+      worktreePath: ".worktrees/patchmill-issue-45-old-finished-title",
       implementationStatus: "merged",
       mergeCommit: "stale123",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -2015,7 +2038,7 @@ test("runOneIssue rejects stale finished branch and worktree when title changed"
   const runState = JSON.parse(await readFile(runStatePath(config.runStateDir, 45), "utf8")) as Record<string, unknown>;
   assert.equal(runState.status, "finished");
   assert.equal(runState.branch, "agent/issue-45-old-finished-title");
-  assert.equal(runState.worktreePath, ".worktrees/agent-issue-45-old-finished-title");
+  assert.equal(runState.worktreePath, ".worktrees/patchmill-issue-45-old-finished-title");
 });
 
 test("runOneIssue reruns Pi when implementationCompleted state is missing required saved fields", async () => {
@@ -2030,7 +2053,7 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
       status: "implementing",
       planPath,
       branch: "agent/issue-45-incomplete-implementation-state",
-      worktreePath: ".worktrees/agent-issue-45-incomplete-implementation-state",
+      worktreePath: ".worktrees/patchmill-issue-45-incomplete-implementation-state",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/stale-45",
       commits: ["abc123"],
@@ -2055,7 +2078,7 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-incomplete-implementation-state")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-incomplete-implementation-state")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-incomplete-implementation-state\n", stderr: "" };
@@ -2075,7 +2098,7 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
           prUrl: "https://forgejo/pr/45",
           branch: "agent/issue-45-incomplete-implementation-state",
           commits: ["def456"],
-          validation: ["just agent-issue-test ok"],
+          validation: ["just issue-runner-test ok"],
         }),
         stderr: "",
       };
@@ -2103,7 +2126,7 @@ test("runOneIssue rejects resumable saved branch/worktree mismatch before worktr
       status: "implementing",
       planPath,
       branch: "agent/issue-45-old-branch-mismatch",
-      worktreePath: ".worktrees/agent-issue-45-old-branch-mismatch",
+      worktreePath: ".worktrees/patchmill-issue-45-old-branch-mismatch",
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -2154,11 +2177,11 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
       status: "implementing",
       planPath,
       branch: "agent/issue-45-finished-handoff",
-      worktreePath: ".worktrees/agent-issue-45-finished-handoff",
+      worktreePath: ".worktrees/patchmill-issue-45-finished-handoff",
       implementationStatus: "merged",
       mergeCommit: "abc999",
       commits: ["abc123"],
-      validation: ["just agent-issue-test ok"],
+      validation: ["just issue-runner-test ok"],
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -2183,7 +2206,7 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-finished-handoff")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-finished-handoff")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-finished-handoff\n", stderr: "" };
@@ -2263,9 +2286,9 @@ test("runOneIssue blocks implementation before Pi when no agent team is configur
   assert.match(result.reason, /Agent team is required for implementation/);
   assert.deepEqual(result.questions, [
     {
-      question: "Which agent-team preset should agent-issue-once use for worker and reviewer subagents?",
+      question: "Which agent-team preset should the run-once workflow use for worker and reviewer subagents?",
       recommendedAnswer:
-        "Run with --agent-team <name> or set CROPRUN_AGENT_ISSUE_AGENT_TEAM=<name> so worker/reviewer model and thinking are explicit.",
+        "Run with --agent-team <name> or set PATCHMILL_AGENT_TEAM=<name> so worker/reviewer model and thinking are explicit.",
     },
   ]);
   assert.equal(runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree"), false);
@@ -2284,7 +2307,7 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
       status: "implementing",
       planPath,
       branch: "agent/issue-45-implementation-status-transition",
-      worktreePath: ".worktrees/agent-issue-45-implementation-status-transition",
+      worktreePath: ".worktrees/patchmill-issue-45-implementation-status-transition",
       implementationStatus: "pr-created",
       prUrl: "https://forgejo/pr/stale-45",
       commits: ["abc123"],
@@ -2311,7 +2334,7 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
     }
     if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
-      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-45-implementation-status-transition")}\n`, stderr: "" };
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-implementation-status-transition")}\n`, stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
       return { code: 0, stdout: "agent/issue-45-implementation-status-transition\n", stderr: "" };
@@ -2327,7 +2350,7 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
           branch: "agent/issue-45-implementation-status-transition",
           mergeCommit: "def456",
           commits: ["def456"],
-          validation: ["just agent-issue-test ok"],
+          validation: ["just issue-runner-test ok"],
         }),
         stderr: "",
       };
@@ -2430,7 +2453,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
         call.cwd,
         join(
           config.repoRoot,
-          ".worktrees/agent-issue-15-ship-automation-pipeline",
+          ".worktrees/patchmill-issue-15-ship-automation-pipeline",
         ),
       );
       const finalText = `done\n{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["def456"],"validation":["node --test ok"],"reviewSummary":"reviewed"}`;
@@ -2439,9 +2462,8 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
         output: 1000,
         totalTokens: 21000,
       });
-      assert.match(prompt, /Implement Croprun Forgejo issue #15/);
-      assert.match(prompt, /capturing-proof-screenshots/);
-      assert.match(prompt, /docs\/reference-screenshots\/web\//);
+      assert.match(prompt, /Implement repository issue #15/);
+      assertNoLegacyProjectText(prompt);
       assert.match(prompt, /Branch: agent\/issue-15-ship-automation-pipeline/);
       assert.match(prompt, /Authoritative agent team: economy/);
       assert.match(prompt, /worker: model=openai-codex\/gpt-5\.4, thinking=medium/);
@@ -2483,7 +2505,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       "claimed #15: agent-ready -> in-progress",
       "finding plan",
       "creating plan with pi",
-      "creating worktree .worktrees/agent-issue-15-ship-automation-pipeline",
+      "creating worktree .worktrees/patchmill-issue-15-ship-automation-pipeline",
       "running implementation with pi",
       "PR created: https://forgejo.example/pr/15",
     ],
@@ -2492,7 +2514,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   assert.equal(result.branch, "agent/issue-15-ship-automation-pipeline");
   assert.equal(
     result.worktreePath,
-    ".worktrees/agent-issue-15-ship-automation-pipeline",
+    ".worktrees/patchmill-issue-15-ship-automation-pipeline",
   );
   assert.equal(result.prUrl, "https://forgejo.example/pr/15");
   assert.equal(piCalls, 2);
@@ -2542,7 +2564,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   assert.equal(runState.branch, "agent/issue-15-ship-automation-pipeline");
   assert.equal(
     runState.worktreePath,
-    ".worktrees/agent-issue-15-ship-automation-pipeline",
+    ".worktrees/patchmill-issue-15-ship-automation-pipeline",
   );
   assert.equal(runState.implementingAt, NOW.toISOString());
 });
@@ -2576,7 +2598,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
   };
   const selected = issue(16, ["agent-ready"], "Render configured policy prompt");
   const planPath = "docs/plans/2026-05-09-issue-16-render-configured-policy-prompt.md";
-  const worktreeRoot = join(config.repoRoot, ".worktrees/agent-issue-16-render-configured-policy-prompt");
+  const worktreeRoot = join(config.repoRoot, ".worktrees/patchmill-issue-16-render-configured-policy-prompt");
 
   let piCalls = 0;
   const runner = createMockRunner(async (call) => {
@@ -2617,7 +2639,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
       assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/);
       assert.match(prompt, /Land to `release\/2\.0` via `upstream` from `agent\/issue-16-render-configured-policy-prompt` for issue #16\./);
       assert.doesNotMatch(prompt, /capturing-proof-screenshots/);
-      assert.doesNotMatch(prompt, /docs\/reference-screenshots\/web\//);
+      assertNoLegacyProjectText(prompt);
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -2687,7 +2709,7 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
       assert.match(prompt, /Worktree: \.patchmill\/worktrees\/pm-issue-16-use-custom-worktrees/);
       assert.match(prompt, /Update local `release\/1\.2` from the `upstream` remote\./);
       assert.match(prompt, /Push `release\/1\.2` to `upstream` without force-pushing\./);
-      assert.match(prompt, /Push the branch to `upstream` and open a Forgejo PR with `tea`\./);
+      assert.match(prompt, /Push the branch to `upstream` and open a pull request using the repository's configured host tooling\./);
       assert.equal(call.cwd, join(config.repoRoot, ".patchmill/worktrees/pm-issue-16-use-custom-worktrees"));
       return {
         code: 0,
@@ -2771,7 +2793,7 @@ test("runOneIssue ignores configured run-state logs during the clean-worktree ch
   });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/agent-issue-17-ignore-configured-run-logs");
+  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-17-ignore-configured-run-logs");
 });
 
 test("runOneIssue ignores the default Pi todo root during the clean-worktree check", async () => {
@@ -2823,7 +2845,7 @@ test("runOneIssue ignores the default Pi todo root during the clean-worktree che
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/agent-issue-18-ignore-default-task-todos");
+  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-18-ignore-default-task-todos");
 });
 
 test("runOneIssue ignores a custom Pi todo root during the clean-worktree check", async () => {
@@ -2831,11 +2853,11 @@ test("runOneIssue ignores a custom Pi todo root during the clean-worktree check"
     dryRun: false,
     execute: true,
     projectPolicy: {
-      ...CROPRUN_COMPAT_POLICY,
+      ...DEFAULT_PATCHMILL_POLICY,
       pi: {
-        ...CROPRUN_COMPAT_POLICY.pi,
+        ...DEFAULT_PATCHMILL_POLICY.pi,
         taskContract: {
-          ...CROPRUN_COMPAT_POLICY.pi.taskContract,
+          ...DEFAULT_PATCHMILL_POLICY.pi.taskContract,
           todoRoot: ".patchmill/todos",
         },
       },
@@ -2888,7 +2910,7 @@ test("runOneIssue ignores a custom Pi todo root during the clean-worktree check"
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/agent-issue-19-ignore-custom-task-todos");
+  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-19-ignore-custom-task-todos");
 });
 
 test("runOneIssue ignores a custom Pi todo root when reusing an existing worktree", async () => {
@@ -2896,18 +2918,18 @@ test("runOneIssue ignores a custom Pi todo root when reusing an existing worktre
     dryRun: false,
     execute: true,
     projectPolicy: {
-      ...CROPRUN_COMPAT_POLICY,
+      ...DEFAULT_PATCHMILL_POLICY,
       pi: {
-        ...CROPRUN_COMPAT_POLICY.pi,
+        ...DEFAULT_PATCHMILL_POLICY.pi,
         taskContract: {
-          ...CROPRUN_COMPAT_POLICY.pi.taskContract,
+          ...DEFAULT_PATCHMILL_POLICY.pi.taskContract,
           todoRoot: ".patchmill/todos",
         },
       },
     },
   });
   const selected = issue(20, ["agent-ready"], "Reuse custom task todos");
-  const worktreeRoot = join(config.repoRoot, ".worktrees/agent-issue-20-reuse-custom-task-todos");
+  const worktreeRoot = join(config.repoRoot, ".worktrees/patchmill-issue-20-reuse-custom-task-todos");
   const planPath = join(config.plansDir, "2026-05-09-issue-20-reuse-custom-task-todos.md");
   await writeFile(planPath, "# Plan\n", "utf8");
 
@@ -2956,7 +2978,7 @@ test("runOneIssue ignores a custom Pi todo root when reusing an existing worktre
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/agent-issue-20-reuse-custom-task-todos");
+  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-20-reuse-custom-task-todos");
   assert.equal(
     runner.calls.some((call) => call.command === "git" && call.args[0] === "worktree" && call.args[1] === "add"),
     false,
@@ -3020,7 +3042,7 @@ test("runOneIssue honors configured clean-status ignore prefixes", async () => {
   });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.worktreePath, ".worktrees/agent-issue-18-ignore-configured-scratch-logs");
+  assert.equal(result.worktreePath, ".worktrees/patchmill-issue-18-ignore-configured-scratch-logs");
 });
 
 test("runOneIssue implementation heartbeat reads task progress from the issue worktree", async () => {
@@ -3029,7 +3051,7 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
   const planPath = join(config.plansDir, "2026-05-09-issue-14-progress-root.md");
   await writeFile(planPath, "# Plan\n", "utf8");
 
-  const worktreePath = ".worktrees/agent-issue-14-progress-root";
+  const worktreePath = ".worktrees/patchmill-issue-14-progress-root";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   for (let index = 1; index <= 8; index += 1) {
     await writeTodo(
@@ -3139,7 +3161,7 @@ test("runOneIssue emits visible implementation subtask step labels", async () =>
     "utf8",
   );
 
-  const worktreePath = ".worktrees/agent-issue-15-ship-automation-pipeline";
+  const worktreePath = ".worktrees/patchmill-issue-15-ship-automation-pipeline";
   const worktreeRoot = join(config.repoRoot, worktreePath);
 
   let implementationCall: Call | undefined;
@@ -3162,11 +3184,10 @@ test("runOneIssue emits visible implementation subtask step labels", async () =>
       await writePiSessionMessage(call, "done", { input: 999999, output: 2200, totalTokens: 999999 });
       return {
         code: 0,
-        stdout: '{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["def456"],"validation":["just agent-issue-test ok"],"reviewSummary":"reviewed"}',
+        stdout: '{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
-    if (call.command === "just" && call.args[0] === "tilt-down") return { code: 0, stdout: "", stderr: "" };
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
 
@@ -3198,7 +3219,7 @@ test("runOneIssue moves streamed tool calls under the active implementation task
     "utf8",
   );
 
-  const worktreePath = ".worktrees/agent-issue-77-agent-output";
+  const worktreePath = ".worktrees/patchmill-issue-77-agent-output";
   const worktreeRoot = join(config.repoRoot, worktreePath);
 
   const runner = createMockRunner(async (call) => {
@@ -3242,7 +3263,6 @@ test("runOneIssue moves streamed tool calls under the active implementation task
         stderr: "",
       };
     }
-    if (call.command === "just" && call.args[0] === "tilt-down") return { code: 0, stdout: "", stderr: "" };
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
 
@@ -3277,7 +3297,7 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
   const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
   const planPath = join(config.plansDir, "2026-05-22-issue-31-dashboard-visual-evidence.md");
   await writeFile(planPath, "# plan\n", "utf8");
-  const worktreePath = ".worktrees/agent-issue-31-dashboard-visual-evidence";
+  const worktreePath = ".worktrees/patchmill-issue-31-dashboard-visual-evidence";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   const commentBodies: string[] = [];
   const uploadCalls: Array<{ repoRoot: string; prUrl: string; evidence: unknown }> = [];
@@ -3314,14 +3334,13 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
             {
               screenshotPath: ".tmp/dashboard.png",
               caption: "Dashboard after selecting last 8 weeks",
-              referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+              referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
             },
           ],
         }),
         stderr: "",
       };
     }
-    if (call.command === "just" && call.args[0] === "tilt-down") return { code: 0, stdout: "", stderr: "" };
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
 
@@ -3346,7 +3365,7 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
         {
           screenshotPath: ".tmp/dashboard.png",
           caption: "Dashboard after selecting last 8 weeks",
-          referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+          referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
         },
       ],
     },
@@ -3359,7 +3378,7 @@ test("runOneIssue keeps visual evidence when no uploader is configured", async (
   const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
   const planPath = join(config.plansDir, "2026-05-22-issue-32-dashboard-visual-evidence.md");
   await writeFile(planPath, "# plan\n", "utf8");
-  const worktreePath = ".worktrees/agent-issue-32-dashboard-visual-evidence";
+  const worktreePath = ".worktrees/patchmill-issue-32-dashboard-visual-evidence";
   const worktreeRoot = join(config.repoRoot, worktreePath);
 
   const runner = createMockRunner(async (call) => {
@@ -3389,14 +3408,13 @@ test("runOneIssue keeps visual evidence when no uploader is configured", async (
             {
               screenshotPath: ".tmp/dashboard.png",
               caption: "Dashboard after selecting last 8 weeks",
-              referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+              referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
             },
           ],
         }),
         stderr: "",
       };
     }
-    if (call.command === "just" && call.args[0] === "tilt-down") return { code: 0, stdout: "", stderr: "" };
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
 
@@ -3408,7 +3426,7 @@ test("runOneIssue keeps visual evidence when no uploader is configured", async (
     {
       screenshotPath: ".tmp/dashboard.png",
       caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
     },
   ]);
   assert.ok(
@@ -3438,7 +3456,7 @@ test("runOneIssue keeps implementation task totals anchored to the plan when tra
     "utf8",
   );
 
-  const worktreePath = ".worktrees/agent-issue-19-dashboard-date-ranges";
+  const worktreePath = ".worktrees/patchmill-issue-19-dashboard-date-ranges";
   const worktreeRoot = join(config.repoRoot, worktreePath);
 
   const runner = createMockRunner(async (call) => {
@@ -3470,11 +3488,10 @@ test("runOneIssue keeps implementation task totals anchored to the plan when tra
       await writePiSessionMessage(call, "done", { input: 999999, output: 2200, totalTokens: 999999 });
       return {
         code: 0,
-        stdout: '{"status":"pr-created","prUrl":"https://forgejo.example/pr/19","branch":"agent/issue-19-dashboard-date-ranges","commits":["def456"],"validation":["just agent-issue-test ok"],"reviewSummary":"reviewed"}',
+        stdout: '{"status":"pr-created","prUrl":"https://forgejo.example/pr/19","branch":"agent/issue-19-dashboard-date-ranges","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
-    if (call.command === "just" && call.args[0] === "tilt-down") return { code: 0, stdout: "", stderr: "" };
     throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
   });
 
@@ -3563,7 +3580,7 @@ test("runOneIssue resolves a named agent team when using an existing plan", asyn
         call.cwd,
         join(
           config.repoRoot,
-          ".worktrees/agent-issue-21-fix-isolated-issue-runner",
+          ".worktrees/patchmill-issue-21-fix-isolated-issue-runner",
         ),
       );
       const prompt = await readFile(promptPath(call.args), "utf8");
@@ -3608,7 +3625,7 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
     config.plansDir,
     "2026-05-01-issue-23-reject-stale-todo-progress.md",
   );
-  const worktreePath = ".worktrees/agent-issue-23-reject-stale-todo-progress";
+  const worktreePath = ".worktrees/patchmill-issue-23-reject-stale-todo-progress";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
   await writeFile(existingPlanPath, "# plan\n", "utf8");
@@ -3668,7 +3685,7 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
   assert.equal(state.status, "implementing");
   assert.match(state.lastError, /Issue task todos remain open/);
   assert.equal(
-    runner.calls.some((call) => call.command === "just" && call.args[0] === "tilt-down"),
+    runner.calls.some((call) => call.command === "npm" && call.args[0] === "run" && call.args[1] === "cleanup:example"),
     false,
   );
   assert.equal(
@@ -3729,7 +3746,7 @@ test("runOneIssue accepts direct squash-landed implementation results", async ()
       return {
         code: 0,
         stdout:
-          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just agent-issue-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
+          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
         stderr: "",
       };
     }
@@ -3751,9 +3768,9 @@ test("runOneIssue accepts direct squash-landed implementation results", async ()
   );
   assert.equal(
     result.worktreePath,
-    ".worktrees/agent-issue-22-fix-direct-landing",
+    ".worktrees/patchmill-issue-22-fix-direct-landing",
   );
-  assert.deepEqual(result.validation, ["just agent-issue-test ok"]);
+  assert.deepEqual(result.validation, ["just issue-runner-test ok"]);
   assert.equal(result.reviewSummary, "reviewed");
   assert.equal(
     result.landingDecision,
@@ -3789,7 +3806,7 @@ test("runOneIssue accepts direct squash-landed implementation results", async ()
     commentBody(comments[1]),
     /direct squash-landed: simple localized bug fix/,
   );
-  assert.match(commentBody(comments[1]), /just agent-issue-test ok/);
+  assert.match(commentBody(comments[1]), /just issue-runner-test ok/);
 });
 
 test("runOneIssue rejects Pi merged results when direct landing is disabled", async () => {
@@ -3844,7 +3861,7 @@ test("runOneIssue rejects Pi merged results when direct landing is disabled", as
       return {
         code: 0,
         stdout:
-          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just agent-issue-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
+          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
         stderr: "",
       };
     }
@@ -4457,7 +4474,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
   );
   assert.equal(
     runState.worktreePath,
-    ".worktrees/agent-issue-42-handle-implementation-parse-failure",
+    ".worktrees/patchmill-issue-42-handle-implementation-parse-failure",
   );
   assert.match(runState.lastError, /supported final JSON status/);
 
@@ -4479,7 +4496,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
     if (call.command === "git" && call.args[0] === "worktree") {
       return {
         code: 0,
-        stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-42-handle-implementation-parse-failure")}\n`,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-42-handle-implementation-parse-failure")}\n`,
         stderr: "",
       };
     }
@@ -4499,7 +4516,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
           prUrl: "https://forgejo/pr/42",
           branch: "agent/issue-42-handle-implementation-parse-failure",
           commits: ["abc123"],
-          validation: ["just agent-issue-test ok"],
+          validation: ["just issue-runner-test ok"],
         }),
         stderr: "",
       };
@@ -4575,7 +4592,7 @@ test("runOneIssue does not duplicate unexpected implementation failure comments 
       status: "implementing",
       planPath: "docs/plans/2026-05-09-issue-62-retry-implementation-failure.md",
       branch: "agent/issue-62-retry-implementation-failure",
-      worktreePath: ".worktrees/agent-issue-62-retry-implementation-failure",
+      worktreePath: ".worktrees/patchmill-issue-62-retry-implementation-failure",
       checkpoints: { claimed: true, startedCommentPosted: true, planPathResolved: true, worktreeReady: true },
       failureCommentKeys: ["unexpected-failure:implementing"],
       lastError: "old implementation error",
@@ -4596,7 +4613,7 @@ test("runOneIssue does not duplicate unexpected implementation failure comments 
     if (call.command === "git" && call.args[0] === "worktree") {
       return {
         code: 0,
-        stdout: `worktree ${join(config.repoRoot, ".worktrees/agent-issue-62-retry-implementation-failure")}\n`,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-62-retry-implementation-failure")}\n`,
         stderr: "",
       };
     }

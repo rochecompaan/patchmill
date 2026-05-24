@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { LEGACY_TRIAGE_LOGIN_ENV, literalPattern } from "../../test-support/legacy-seed.ts";
 import { HELP_TEXT, loadCliConfig } from "../agent-issue-triage.ts";
 import { parseArgs } from "./args.ts";
 
@@ -17,7 +19,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.limit, undefined);
   assert.equal(config.teaLogin, "triage-agent");
   assert.equal(config.triageThinking, "high");
-  assert.equal(config.logDir, "/repo/.pi/agent-issue/triage-runs");
+  assert.equal(config.logDir, "/repo/.patchmill/triage-runs");
 });
 
 test("parseArgs shows help for help flags", () => {
@@ -63,17 +65,15 @@ test("parseArgs accepts host-login as the primary tea login flag", () => {
   assert.equal(config.teaLogin, "triage-agent");
 });
 
-test("parseArgs reads the default tea login from the environment", () => {
-  const config = parseArgs(["--dry-run"], "/repo", { CROPRUN_TRIAGE_TEA_LOGIN: "triage-agent" });
+test("parseArgs ignores removed legacy triage login variable", () => {
+  const config = parseArgs(["--dry-run"], "/repo", { [LEGACY_TRIAGE_LOGIN_ENV]: "legacy-bot" });
 
   assert.equal(config.teaLogin, "triage-agent");
 });
 
-test("parseArgs prefers PATCHMILL_HOST_LOGIN over Croprun triage login", () => {
-  const config = parseArgs(["--dry-run"], "/repo", {
-    PATCHMILL_HOST_LOGIN: "patchmill-bot",
-    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
-  });
+test("parseArgs prefers replacement host login env var", () => {
+  const config = parseArgs(["--dry-run"], "/repo", { PATCHMILL_HOST_LOGIN: "patchmill-bot" });
+
   assert.equal(config.teaLogin, "patchmill-bot");
 });
 
@@ -86,17 +86,18 @@ test("parseArgs defaults to the triage-agent tea login", () => {
 test("HELP_TEXT documents host-login and tea-login flags", () => {
   assert.match(HELP_TEXT, /--host-login <name>/);
   assert.match(HELP_TEXT, /--tea-login <name>/);
+  assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
+  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
 });
 
-test("loadCliConfig preserves Croprun tea login compatibility when no patchmill config file exists", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-config-"));
+test("loadCliConfig uses normalized Patchmill triage defaults without config file", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-args-"));
 
-  const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
-  });
+  const config = await loadCliConfig(["--dry-run"], repoRoot, { [LEGACY_TRIAGE_LOGIN_ENV]: "legacy-bot" });
 
-  assert.equal(config.teaLogin, "compat-bot");
-  assert.equal(config.logDir, join(repoRoot, ".pi/agent-issue/triage-runs"));
+  assert.equal(config.teaLogin, "triage-agent");
+  assert.equal(config.logDir, join(repoRoot, ".patchmill", "triage-runs"));
+  assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
 });
 
 test("loadCliConfig applies normalized patchmill defaults for triage", async () => {
@@ -120,7 +121,7 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
   }));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
+    [LEGACY_TRIAGE_LOGIN_ENV]: "compat-bot",
   });
 
   assert.equal(config.teaLogin, "config-bot");
@@ -130,7 +131,7 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
   assert.ok(config.triagePolicy?.triageAllowedLabels.some((label) => label.name === "incident"));
 });
 
-test("loadCliConfig preserves Croprun tea login when patchmill config only customizes paths", async () => {
+test("loadCliConfig ignores removed legacy tea login when patchmill config only customizes paths", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-config-"));
   await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
     paths: {
@@ -142,10 +143,10 @@ test("loadCliConfig preserves Croprun tea login when patchmill config only custo
   }));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_TRIAGE_TEA_LOGIN: "compat-bot",
+    [LEGACY_TRIAGE_LOGIN_ENV]: "compat-bot",
   });
 
-  assert.equal(config.teaLogin, "compat-bot");
+  assert.equal(config.teaLogin, "triage-agent");
   assert.equal(config.logDir, join(repoRoot, ".patchmill/triage-runs"));
 });
 

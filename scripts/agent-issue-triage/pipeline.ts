@@ -3,7 +3,6 @@ import { runTriageAgent } from "./agent.ts";
 import { createLabel, hydrateIssueComments, listLabels, listOpenIssues } from "./forgejo.ts";
 import { DEFAULT_TRIAGE_POLICY, missingLabelDefinitions } from "./labels.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import { writeTriageLog } from "./log.ts";
 import { validateTriageDocument } from "./validation.ts";
 import type { CommandRunner, IssueSummary, TriageConfig, TriageDecision, TriageLogIssueEntry, TriageResult } from "./types.ts";
@@ -56,7 +55,7 @@ async function tryWriteFailureLog(
 
 export async function runTriage(runner: CommandRunner, config: TriageConfig): Promise<TriageResult> {
   const createdAt = new Date().toISOString();
-  const projectPolicy = config.projectPolicy ?? CROPRUN_COMPAT_POLICY;
+  const projectPolicy = config.projectPolicy ?? DEFAULT_PATCHMILL_CONFIG.projectPolicy;
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
 
   let listedIssues: IssueSummary[];

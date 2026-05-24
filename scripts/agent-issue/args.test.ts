@@ -5,8 +5,16 @@ import { tmpdir } from "node:os";
 import { cwd } from "node:process";
 import { join } from "node:path";
 import { HELP_TEXT, loadCliConfig, summarizeResult } from "../agent-issue-once.ts";
-import { LEGACY_CROPRUN_CLEANUP_HOOKS } from "../../src/cleanup/hooks.ts";
-import { CROPRUN_COMPAT_POLICY, DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import {
+  LEGACY_AGENT_TEAM_ENV,
+  LEGACY_FORGEJO_REPO_ENV,
+  LEGACY_FORGEJO_TOKEN_ENV,
+  LEGACY_FORGEJO_URL_ENV,
+  LEGACY_RUN_ONCE_LOGIN_ENV,
+  LEGACY_TRIAGE_LOGIN_ENV,
+  literalPattern,
+} from "../../test-support/legacy-seed.ts";
 import { parseArgs } from "./args.ts";
 
 test("parseArgs shows help when no args are provided", () => {
@@ -19,13 +27,14 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.planOnly, false);
   assert.equal(config.teaLogin, "triage-agent");
+  assert.equal(config.agentTeamName, undefined);
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
-  assert.equal(config.runStateDir, join(cwd(), ".pi", "agent-issue", "runs"));
+  assert.equal(config.runStateDir, join(cwd(), ".patchmill", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
-  assert.equal(config.worktreePrefix, "agent-issue-");
-  assert.deepEqual(config.cleanStatusIgnorePrefixes, [".patchmill/runs/", ".patchmill/triage-runs/", ".pi/agent-issue/runs/"]);
-  assert.deepEqual(config.cleanupHooks, LEGACY_CROPRUN_CLEANUP_HOOKS);
-  assert.deepEqual(config.projectPolicy, CROPRUN_COMPAT_POLICY);
+  assert.equal(config.worktreePrefix, "patchmill-issue-");
+  assert.deepEqual(config.cleanStatusIgnorePrefixes, [".patchmill/runs/", ".patchmill/triage-runs/"]);
+  assert.deepEqual(config.cleanupHooks, []);
+  assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
   assert.equal(config.readyLabel, "agent-ready");
   assert.equal(config.issueLimit, 1);
   assert.equal(config.requirePlanApproval, false);
@@ -51,8 +60,11 @@ test("HELP_TEXT documents one-issue usage and options", () => {
   assert.match(HELP_TEXT, /--host-login <name>/);
   assert.match(HELP_TEXT, /--tea-login <name>/);
   assert.match(HELP_TEXT, /--agent-team <name>/);
-  assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_TEA_LOGIN/);
-  assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_AGENT_TEAM/);
+  assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
+  assert.match(HELP_TEXT, /PATCHMILL_AGENT_TEAM/);
+  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_RUN_ONCE_LOGIN_ENV));
+  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
+  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_AGENT_TEAM_ENV));
 });
 
 test("parseArgs accepts execute mode", () => {
@@ -90,10 +102,10 @@ test("help text documents Forgejo visual evidence upload environment", () => {
   assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_URL/);
   assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_TOKEN/);
   assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_REPO/);
-  assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_FORGEJO_URL/);
-  assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN/);
-  assert.match(HELP_TEXT, /CROPRUN_AGENT_ISSUE_FORGEJO_REPO/);
-  assert.match(HELP_TEXT, /Compatibility fallback/);
+  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_URL_ENV));
+  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_TOKEN_ENV));
+  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_REPO_ENV));
+  assert.doesNotMatch(HELP_TEXT, /Compatibility fallback/);
 });
 
 test("summarizeResult includes merged issue handoff fields", () => {
@@ -115,7 +127,7 @@ test("summarizeResult includes merged issue handoff fields", () => {
       validation: ["just agent-issue-test ok"],
       reviewSummary: "reviewed",
       landingDecision: "direct squash-landed: simple localized bug fix",
-      logPath: ".pi/agent-issue/runs/issue-42/run.jsonl",
+      logPath: ".patchmill/runs/issue-42/run.jsonl",
     }),
     {
       status: "merged",
@@ -128,7 +140,7 @@ test("summarizeResult includes merged issue handoff fields", () => {
       validation: ["just agent-issue-test ok"],
       reviewSummary: "reviewed",
       landingDecision: "direct squash-landed: simple localized bug fix",
-      logPath: ".pi/agent-issue/runs/issue-42/run.jsonl",
+      logPath: ".patchmill/runs/issue-42/run.jsonl",
     },
   );
 });
@@ -147,8 +159,8 @@ test("parseArgs accepts plan-only mode", () => {
 
 test("parseArgs accepts an explicit tea login", () => {
   const config = parseArgs(["--tea-login", "operator"], "/repo", {
-    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
-    CROPRUN_TRIAGE_TEA_LOGIN: "triage-agent",
+    [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
+    [LEGACY_TRIAGE_LOGIN_ENV]: "triage-agent",
   });
 
   assert.equal(config.teaLogin, "operator");
@@ -156,7 +168,7 @@ test("parseArgs accepts an explicit tea login", () => {
 
 test("parseArgs accepts host-login as the primary tea login flag", () => {
   const config = parseArgs(["--host-login", "operator"], "/repo", {
-    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
+    [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
   });
 
   assert.equal(config.teaLogin, "operator");
@@ -164,71 +176,60 @@ test("parseArgs accepts host-login as the primary tea login flag", () => {
 
 test("parseArgs accepts an explicit agent team", () => {
   const config = parseArgs(["--agent-team", "economy"], "/repo", {
-    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "premium",
+    [LEGACY_AGENT_TEAM_ENV]: "premium",
   });
 
   assert.equal(config.agentTeamName, "economy");
 });
 
-test("parseArgs reads agent team from CROPRUN_AGENT_ISSUE_AGENT_TEAM", () => {
-  const config = parseArgs([], "/repo", {
-    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "economy",
-  });
-
-  assert.equal(config.agentTeamName, "economy");
-});
-
-test("parseArgs prefers PATCHMILL_AGENT_TEAM over Croprun agent team", () => {
+test("parseArgs uses PATCHMILL_AGENT_TEAM env value", () => {
   const config = parseArgs(["--dry-run"], "/repo", {
     PATCHMILL_AGENT_TEAM: "patchmill-team",
-    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "compat-team",
   });
+
   assert.equal(config.agentTeamName, "patchmill-team");
 });
 
-test("parseArgs falls back to CROPRUN_AGENT_ISSUE_TEA_LOGIN when PATCHMILL_HOST_LOGIN is unset", () => {
-  const config = parseArgs([], "/repo", {
-    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
-    CROPRUN_TRIAGE_TEA_LOGIN: "triage-agent",
+test("parseArgs ignores removed legacy host login variables", () => {
+  const config = parseArgs(["--dry-run"], "/repo", {
+    [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
+    [LEGACY_TRIAGE_LOGIN_ENV]: "triage-agent-legacy",
   });
-
-  assert.equal(config.teaLogin, "issue-agent");
+  assert.equal(config.teaLogin, "triage-agent");
 });
 
-test("parseArgs prefers PATCHMILL_HOST_LOGIN over Croprun tea login fallbacks", () => {
-  const config = parseArgs([], "/repo", {
+test("parseArgs ignores removed legacy agent team variable", () => {
+  const config = parseArgs(["--dry-run"], "/repo", {
+    [LEGACY_AGENT_TEAM_ENV]: "legacy-team",
+  });
+
+  assert.equal(config.agentTeamName, undefined);
+});
+
+test("parseArgs prefers PATCHMILL_HOST_LOGIN over legacy env values", () => {
+  const config = parseArgs(["--dry-run"], "/repo", {
     PATCHMILL_HOST_LOGIN: "patchmill-bot",
-    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
-    CROPRUN_TRIAGE_TEA_LOGIN: "triage-agent",
+    [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
+    [LEGACY_TRIAGE_LOGIN_ENV]: "triage-agent",
   });
 
   assert.equal(config.teaLogin, "patchmill-bot");
 });
 
-test("parseArgs falls back to CROPRUN_TRIAGE_TEA_LOGIN", () => {
-  const config = parseArgs([], "/repo", {
-    CROPRUN_TRIAGE_TEA_LOGIN: "triage-agent",
+test("loadCliConfig uses normalized Patchmill defaults when no config file exists", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-args-"));
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {
+    [LEGACY_RUN_ONCE_LOGIN_ENV]: "legacy-login",
+    [LEGACY_AGENT_TEAM_ENV]: "legacy-team",
   });
 
   assert.equal(config.teaLogin, "triage-agent");
-});
-
-test("loadCliConfig preserves Croprun compatibility defaults when no patchmill config file exists", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
-
-  const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
-    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "economy",
-  });
-
-  assert.equal(config.teaLogin, "issue-agent");
-  assert.equal(config.agentTeamName, "economy");
-  assert.equal(config.plansDir, join(repoRoot, "docs/plans"));
-  assert.equal(config.runStateDir, join(repoRoot, ".pi/agent-issue/runs"));
-  assert.equal(config.worktreeDir, join(repoRoot, ".worktrees"));
-  assert.equal(config.worktreePrefix, "agent-issue-");
-  assert.deepEqual(config.cleanupHooks, LEGACY_CROPRUN_CLEANUP_HOOKS);
-  assert.deepEqual(config.projectPolicy, CROPRUN_COMPAT_POLICY);
+  assert.equal(config.agentTeamName, undefined);
+  assert.equal(config.runStateDir, join(repoRoot, ".patchmill", "runs"));
+  assert.equal(config.worktreePrefix, "patchmill-issue-");
+  assert.deepEqual(config.cleanupHooks, []);
+  assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
 });
 
 test("loadCliConfig applies normalized patchmill defaults for run-once", async () => {
@@ -255,8 +256,8 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   }));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
-    CROPRUN_AGENT_ISSUE_AGENT_TEAM: "economy",
+    [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
+    [LEGACY_AGENT_TEAM_ENV]: "economy",
   });
 
   assert.equal(config.teaLogin, "config-bot");
@@ -301,7 +302,7 @@ test("loadCliConfig passes configured project policy through to run-once prompts
   assert.equal(config.projectPolicy.visualEvidence.prEvidenceExample?.screenshotPath, ".tmp/issue-42-sentinel-after.png");
 });
 
-test("loadCliConfig preserves Croprun tea login when patchmill config only customizes paths", async () => {
+test("loadCliConfig ignores removed legacy tea login when patchmill config only customizes paths", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
   await writeFile(join(repoRoot, "patchmill.config.json"), JSON.stringify({
     paths: {
@@ -313,10 +314,10 @@ test("loadCliConfig preserves Croprun tea login when patchmill config only custo
   }));
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
-    CROPRUN_AGENT_ISSUE_TEA_LOGIN: "issue-agent",
+    [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
   });
 
-  assert.equal(config.teaLogin, "issue-agent");
+  assert.equal(config.teaLogin, "triage-agent");
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
 });

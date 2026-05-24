@@ -12,11 +12,6 @@ export const DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG: GitWorktreeStrategyConfig = {
   allowDirectLand: true,
 };
 
-export const LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG: GitWorktreeStrategyConfig = {
-  ...DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
-  worktreePrefix: "agent-issue-",
-};
-
 function slugify(value: string): string {
   const slug = value
     .toLowerCase()

@@ -27,7 +27,6 @@ Options:
 
 Environment:
   PATCHMILL_HOST_LOGIN      Override the default host login name.
-  CROPRUN_TRIAGE_TEA_LOGIN  Compatibility override for the default tea login name.
 `;
 
 type Env = Record<string, string | undefined>;
@@ -70,8 +69,8 @@ export async function loadCliConfig(
     return parseArgs(args, repoRoot, env);
   }
 
-  const { config: patchmillConfig, hasConfigFile } = await loadPatchmillConfigState(repoRoot, env, args);
-  return parseArgs(args, repoRoot, env, hasConfigFile ? patchmillConfig : undefined);
+  const { config: patchmillConfig } = await loadPatchmillConfigState(repoRoot, env, args);
+  return parseArgs(args, repoRoot, env, patchmillConfig);
 }
 
 async function main(): Promise<void> {

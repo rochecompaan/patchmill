@@ -1,28 +1,64 @@
 # Patchmill
 
-Patchmill is an agent-driven software factory: it turns issues into reviewed diffs using configurable issue-host providers, the built-in Pi runtime, and project policy.
+Patchmill is an agent-driven software factory that turns repository issues into reviewed diffs.
 
-This repository started from the Croprun Forgejo + Pi automation scripts, but the primary interface is now the generic Patchmill CLI and `PATCHMILL_*` configuration surface. The remaining compatibility fallbacks are documented in [`docs/migration-from-croprun-scripts.md`](./docs/migration-from-croprun-scripts.md).
-
-## Providers
-
-The first supported host/runtime combination is Forgejo via `tea` and Pi via `pi`. See `docs/providers.md` for the host-provider boundary and Pi runtime contract.
-
-## Current commands
+## Commands
 
 ```sh
-node bin/patchmill.ts triage --dry-run
-node bin/patchmill.ts run-once --dry-run
+patchmill triage --dry-run
+patchmill run-once --dry-run
 ```
 
-Compatibility aliases copied from the bootstrap scripts are still available during migration:
+- `patchmill triage` classifies open issues and can apply labels/comments when run with execute mode.
+- `patchmill run-once` selects one ready issue, plans the work, runs implementation, and records the result.
 
-```sh
-node scripts/agent-issue-triage.ts --dry-run
-node scripts/agent-issue-once.ts --dry-run
+## Configuration
+
+Patchmill loads `patchmill.config.json` from the repository root.
+
+Minimal example:
+
+```json
+{}
 ```
 
-Add `patchmill.config.json` at the repo root — even `{}` is enough — to activate normalized Patchmill defaults for the CLI commands above. Without that file, `bin/patchmill.ts` dispatches to the copied compatibility scripts and they keep the legacy Croprun fallbacks for paths, git/worktree settings, cleanup hooks, and prompt policy.
+Common fields:
+
+```json
+{
+  "host": { "login": "triage-agent" },
+  "pi": { "team": "openai-only" },
+  "paths": {
+    "runStateDir": ".patchmill/runs",
+    "triageLogDir": ".patchmill/triage-runs",
+    "worktreeDir": ".worktrees"
+  }
+}
+```
+
+## Environment variables
+
+- `PATCHMILL_HOST_LOGIN`
+- `PATCHMILL_AGENT_TEAM`
+- `PATCHMILL_FORGEJO_URL`
+- `PATCHMILL_FORGEJO_TOKEN`
+- `PATCHMILL_FORGEJO_REPO`
+
+CLI flags override environment variables, and environment variables override `patchmill.config.json`.
+
+## State paths
+
+Patchmill writes local run state under `.patchmill/`:
+
+- `.patchmill/runs/`
+- `.patchmill/triage-runs/`
+
+## Reference docs
+
+- `docs/providers.md`
+- `docs/task-contracts.md`
+- `docs/specs/2026-05-22-patchmill-generalization-design.md`
+- `docs/plans/2026-05-22-patchmill-generalization.md`
 
 ## Validation
 
@@ -31,11 +67,4 @@ npm test
 npm run audit:generalization
 ```
 
-`npm run audit:generalization` reports the remaining documented Croprun compatibility references in runtime code, tests, and migration docs.
-
-The repo currently uses Node's native TypeScript execution support, so Node 24+ is expected.
-
-## Roadmap docs
-
-- Design spec: `docs/specs/2026-05-22-patchmill-generalization-design.md`
-- Implementation plan: `docs/plans/2026-05-22-patchmill-generalization.md`
+Node 24+ is required.

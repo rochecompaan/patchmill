@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import {
-  LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+  DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
   buildIssueBranchName as buildIssueBranchNameFromStrategy,
   buildIssueBranchSlug,
   buildIssueWorktreePath as buildIssueWorktreePathFromStrategy,
@@ -12,12 +12,12 @@ import type { CommandResult, CommandRunner } from "./types.ts";
 export { buildIssueBranchSlug };
 
 function resolveStrategy(
-  strategyOrBaseRef: GitWorktreeStrategyConfig | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.baseRef,
-  worktreeDir = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.worktreeDir,
+  strategyOrBaseRef: GitWorktreeStrategyConfig | string = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.baseRef,
+  worktreeDir = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.worktreeDir,
 ): GitWorktreeStrategyConfig {
   if (typeof strategyOrBaseRef === "string") {
     return {
-      ...LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+      ...DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
       baseRef: strategyOrBaseRef,
       worktreeDir,
     };
@@ -29,7 +29,7 @@ function resolveStrategy(
 export function buildIssueBranchName(
   issueNumber: number,
   title: string,
-  strategy: Pick<GitWorktreeStrategyConfig, "branchPrefix" | "slugLength"> = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+  strategy: Pick<GitWorktreeStrategyConfig, "branchPrefix" | "slugLength"> = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
 ): string {
   return buildIssueBranchNameFromStrategy(issueNumber, title, strategy);
 }
@@ -39,10 +39,10 @@ export function buildIssueWorktreePath(
   title: string,
   strategyOrWorktreeDir:
     | Pick<GitWorktreeStrategyConfig, "worktreeDir" | "worktreePrefix" | "slugLength">
-    | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
+    | string = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
 ): string {
   const strategy = typeof strategyOrWorktreeDir === "string"
-    ? { ...LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG, worktreeDir: strategyOrWorktreeDir }
+    ? { ...DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG, worktreeDir: strategyOrWorktreeDir }
     : strategyOrWorktreeDir;
   return buildIssueWorktreePathFromStrategy(issueNumber, title, strategy);
 }
@@ -102,8 +102,8 @@ export async function createIssueWorktree(
   repoRoot: string,
   issueNumber: number,
   title: string,
-  strategyOrBaseRef: GitWorktreeStrategyConfig | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.baseRef,
-  worktreeDir = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.worktreeDir,
+  strategyOrBaseRef: GitWorktreeStrategyConfig | string = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.baseRef,
+  worktreeDir = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.worktreeDir,
 ): Promise<{ branch: string; worktreePath: string }> {
   const strategy = resolveStrategy(strategyOrBaseRef, worktreeDir);
   const branch = buildIssueBranchName(issueNumber, title, strategy);
@@ -182,8 +182,8 @@ export async function ensureIssueWorktree(
   repoRoot: string,
   issueNumber: number,
   title: string,
-  strategyOrBaseRef: GitWorktreeStrategyConfig | string = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.baseRef,
-  worktreeDir = LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG.worktreeDir,
+  strategyOrBaseRef: GitWorktreeStrategyConfig | string = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.baseRef,
+  worktreeDir = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.worktreeDir,
   ignoredPaths: string[] = [],
 ): Promise<IssueWorktreeResult> {
   const strategy = resolveStrategy(strategyOrBaseRef, worktreeDir);

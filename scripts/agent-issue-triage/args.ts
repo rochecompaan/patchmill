@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import type { PatchmillConfig } from "../../src/config/types.ts";
 import { createTriagePolicy } from "../../src/policy/triage.ts";
-import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import type { TriageConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
@@ -26,12 +25,7 @@ function parsePositiveInteger(flag: string, value: string): number {
 }
 
 function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
-  if (env.PATCHMILL_HOST_LOGIN) return env.PATCHMILL_HOST_LOGIN;
-  if (normalizedConfig?.host.login && normalizedConfig.host.login !== DEFAULT_TEA_LOGIN) {
-    return normalizedConfig.host.login;
-  }
-
-  return env.CROPRUN_TRIAGE_TEA_LOGIN ?? normalizedConfig?.host.login ?? DEFAULT_TEA_LOGIN;
+  return env.PATCHMILL_HOST_LOGIN ?? normalizedConfig?.host.login ?? DEFAULT_TEA_LOGIN;
 }
 
 export function parseArgs(
@@ -40,16 +34,17 @@ export function parseArgs(
   env: Env = process.env,
   normalizedConfig?: PatchmillConfig,
 ): TriageConfig {
+  const patchmillConfig = normalizedConfig ?? DEFAULT_PATCHMILL_CONFIG;
   const config: TriageConfig = {
     repoRoot,
     dryRun: true,
     execute: false,
-    triageThinking: normalizedConfig?.pi.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+    triageThinking: patchmillConfig.pi.triageThinking,
     showHelp: args.length === 0,
     teaLogin: defaultTeaLogin(env, normalizedConfig),
-    logDir: normalizedConfig?.paths.triageLogDir ?? join(repoRoot, ".pi", "agent-issue", "triage-runs"),
-    projectPolicy: normalizedConfig?.projectPolicy ?? CROPRUN_COMPAT_POLICY,
-    triagePolicy: createTriagePolicy(normalizedConfig?.labels ?? DEFAULT_PATCHMILL_CONFIG.labels),
+    logDir: normalizedConfig?.paths.triageLogDir ?? join(repoRoot, patchmillConfig.paths.triageLogDir),
+    projectPolicy: patchmillConfig.projectPolicy,
+    triagePolicy: createTriagePolicy(patchmillConfig.labels),
   };
 
   for (let index = 0; index < args.length; index += 1) {

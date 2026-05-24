@@ -84,7 +84,7 @@ test("parsePiResult extracts a supported status from fenced JSON output", () => 
 
 test("parsePiResult extracts a merged implementation result", () => {
   const result = parsePiResult(
-    'done\n{"status":"merged","branch":"agent/issue-42-add-once-runner-helpers","mergeCommit":"abc123","commits":["def456"],"validation":["just agent-issue-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
+    'done\n{"status":"merged","branch":"agent/issue-42-add-once-runner-helpers","mergeCommit":"abc123","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
   );
 
   assert.deepEqual(result, {
@@ -92,7 +92,7 @@ test("parsePiResult extracts a merged implementation result", () => {
     branch: "agent/issue-42-add-once-runner-helpers",
     mergeCommit: "abc123",
     commits: ["def456"],
-    validation: ["just agent-issue-test ok"],
+    validation: ["just issue-runner-test ok"],
     reviewSummary: "reviewed",
     landingDecision: "direct squash-landed: simple localized bug fix",
   });
@@ -100,7 +100,7 @@ test("parsePiResult extracts a merged implementation result", () => {
 
 test("parsePiResult extracts visual evidence from a pr-created result", () => {
   const result = parsePiResult(
-    'done\n{"status":"pr-created","prUrl":"https://forgejo.example/pulls/42","branch":"agent/issue-42-dashboard","commits":["def456"],"validation":["just playwright-test ok"],"visualEvidence":[{"screenshotPath":".tmp/issue-42-dashboard.png","caption":"Dashboard after selecting last 8 weeks","referencePaths":["docs/reference-screenshots/web/01-dashboard.png"]}]}',
+    'done\n{"status":"pr-created","prUrl":"https://forgejo.example/pulls/42","branch":"agent/issue-42-dashboard","commits":["def456"],"validation":["just playwright-test ok"],"visualEvidence":[{"screenshotPath":".tmp/issue-42-dashboard.png","caption":"Dashboard after selecting last 8 weeks","referencePaths":["docs/visual-baselines/web/01-dashboard.png"]}]}',
   );
 
   assert.deepEqual(result, {
@@ -115,7 +115,7 @@ test("parsePiResult extracts visual evidence from a pr-created result", () => {
       {
         screenshotPath: ".tmp/issue-42-dashboard.png",
         caption: "Dashboard after selecting last 8 weeks",
-        referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+        referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
       },
     ],
   });
@@ -580,8 +580,8 @@ test("sessionEntryToStreamText falls back to input and output when total tokens 
 });
 
 test("runPiPrompt reads issue task progress from the configured worktree root", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-main-"));
-  const worktreeRoot = join(repoRoot, ".worktrees", "agent-issue-14-example");
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-issue-main-"));
+  const worktreeRoot = join(repoRoot, ".worktrees", "patchmill-issue-14-example");
 
   for (let index = 1; index <= 8; index += 1) {
     await writeTodo(
@@ -638,7 +638,7 @@ test("runPiPrompt reads issue task progress from the configured worktree root", 
 });
 
 test("runPiPrompt reads planning task progress from the configured task contract", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-plan-progress-"));
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-issue-plan-progress-"));
   const contract = {
     ...DEFAULT_PI_TASK_CONTRACT,
     todoRoot: ".patchmill/todos",

@@ -373,9 +373,9 @@ function assertDirectLandAllowed(
 function agentTeamQuestion(): AgentIssueQuestion {
   return {
     question:
-      "Which agent-team preset should agent-issue-once use for worker and reviewer subagents?",
+      "Which agent-team preset should the run-once workflow use for worker and reviewer subagents?",
     recommendedAnswer:
-      "Run with --agent-team <name> or set CROPRUN_AGENT_ISSUE_AGENT_TEAM=<name> so worker/reviewer model and thinking are explicit.",
+      "Run with --agent-team <name> or set PATCHMILL_AGENT_TEAM=<name> so worker/reviewer model and thinking are explicit.",
   };
 }
 

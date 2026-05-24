@@ -12,7 +12,7 @@
     "triage": "node scripts/agent-issue-triage.ts",
     "run-once": "node scripts/agent-issue-once.ts",
     "audit:generalization": "bash ./scripts/audit-generalization.sh",
-    "test": "node --test \"bin/*.test.ts\" \"scripts/agent-issue-triage/*.test.ts\" \"scripts/agent-issue/*.test.ts\" \"src/**/*.test.ts\"",
+    "test": "node --test \"bin/*.test.ts\" \"scripts/agent-issue-triage/*.test.ts\" \"scripts/agent-issue/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
     "test:cli": "node --test bin/*.test.ts",
     "test:triage": "node --test scripts/agent-issue-triage/*.test.ts",
     "test:run-once": "node --test scripts/agent-issue/*.test.ts"

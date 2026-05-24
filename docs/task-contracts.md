@@ -1,10 +1,10 @@
-# Pi task contracts
+# Patchmill Task Contracts
 
-Patchmill's Pi integration shares one task-contract policy between prompt rendering, plan parsing, and todo progress checks.
+Patchmill uses one task-contract policy for prompt rendering, plan parsing, and todo progress checks.
 
-## Default contract
+## Where it is configured
 
-Default location in `patchmill.config.json`:
+Set task-contract fields in `patchmill.config.json` under `projectPolicy.pi.taskContract`.
 
 ```json
 {
@@ -35,64 +35,60 @@ Default location in `patchmill.config.json`:
 }
 ```
 
-Default behavior:
+## Field reference
 
-- Issue task todos live under `.pi/todos`.
-- Task todo titles use `issue-<issue-number>-task-<two-digit-number>-<slug>`.
-- Task todo prompts tag each issue todo with `agent-issue` and `issue-<issue-number>`.
-- Plan prompts require todo bodies to include purpose, the source plan checklist item, checkpoint details, and any last error or validation notes known at planning time.
-- Implementation prompts require todo bodies to include purpose, the source plan checklist item, checkpoint details, and the latest last error or validation notes.
-- Todo status values `closed`, `completed`, and `done` count as complete.
-- Plan readers preserve the legacy default heading matcher: `## Task N: Label` plus deeper headings with flexible internal whitespace still count as executable task headings.
-- Open issue task todos block final `pr-created` and `merged` handoff checks.
+- `todoRoot`: directory where Patchmill reads and writes task todo files.
+- `todoTitlePattern`: title template for issue task todos. Patchmill renders issue numbers into this pattern and reads task numbers and slugs back from the named placeholders.
+- `todoTags`: tags applied to issue task todos. Patchmill renders issue numbers into these tags for lookup and continuity.
+- `planTodoBodyRequirements`: required body items for plan-created task todos.
+- `implementationTodoBodyRequirements`: required body items for implementation-updated task todos.
+- `doneStatuses`: todo status values treated as complete.
+- `planTaskHeadingPattern`: heading template used when Patchmill parses tasks from a plan document.
+- `openTaskTodosBlockFinalHandoff`: when `true`, Patchmill blocks final handoff while any matching issue task todo remains open.
 
-## Compatibility notes
+## Supported placeholders and matching rules
 
-- Patchmill keeps the default Pi todo root at `.pi/todos`, so existing task todos do not need a path migration.
-- The run-state and triage-log defaults moved from `.pi/agent-issue/*` to `.patchmill/*`; that path migration is separate from the Pi task contract.
-- The copied Croprun-compatible entrypoints — including the `patchmill` CLI commands that dispatch to them — still fall back to the legacy run-state paths when no `patchmill.config.json` is loaded. Create `patchmill.config.json` (even `{}`) to activate normalized `.patchmill/*` defaults, or set `paths.runStateDir` and `paths.triageLogDir` explicitly for a single explicit setup.
-- For the full command, environment, and cleanup-hook migration checklist, see [docs/migration-from-croprun-scripts.md](./migration-from-croprun-scripts.md).
+### `todoTitlePattern`
 
-## Supported placeholders
+- `<number>`: the issue number.
+- `<issue-number>`: the issue number.
+- `<two-digit-number>`: the zero-padded task number captured from the plan task sequence.
+- `<slug>`: the task slug captured from the task title.
+- Capture placeholders may appear in any order.
 
-`todoTitlePattern` supports:
+### `todoTags`
 
-- `<number>` or `<issue-number>` — issue number
-- `<two-digit-number>` — two-digit task number capture
-- `<slug>` — task slug capture
+- `<number>`: the issue number.
+- `<issue-number>`: the issue number.
+- When `todoTitlePattern` omits the issue number placeholders, Patchmill uses the rendered tags to match task todos to the issue.
 
-Capture placeholders may appear in any order; Patchmill reads task numbers and slugs by placeholder name rather than capture position.
+### `planTaskHeadingPattern`
 
-`todoTags` supports:
+- Leading `##`, `###`, and deeper headings set the minimum heading depth that matches.
+- `<number>`: the task number parsed from the plan heading.
+- `<label>`: the task label parsed from the plan heading.
+- `<number>` and `<label>` may appear in any order within the heading template.
 
-- `<number>` or `<issue-number>` — issue number
+## How Patchmill uses it
 
-When `todoTitlePattern` omits `<number>` and `<issue-number>`, Patchmill falls back to tag-based issue lookup: todo readers only include todos whose header `tags` contain every rendered `todoTags` value for the requested issue.
+- `patchmill triage` reads repository policy but does not create issue-task todos.
+- `patchmill run-once` uses the task contract when it creates prompts, reads plan tasks, and checks issue-task completion before final handoff.
 
-`planTaskHeadingPattern` supports:
+## Related settings
 
-- leading `##`, `###`, and so on — minimum heading depth; deeper headings also match
-- `<number>` — task number capture
-- `<label>` — task label capture
+Other workflow settings live in the same `patchmill.config.json` file:
 
-`<number>` and `<label>` may also appear in either order within the heading template.
+- `host.login`
+- `pi.team`
+- `paths.runStateDir`
+- `paths.triageLogDir`
+- `paths.worktreeDir`
 
-## Override guidance
+Environment-variable overrides use the `PATCHMILL_*` namespace, including `PATCHMILL_HOST_LOGIN` and `PATCHMILL_AGENT_TEAM`.
 
-Projects may override `projectPolicy.pi.taskContract` when their Pi workflow uses different local todo storage, tags, todo body requirements, or plan heading conventions.
+## Local state
 
-Typical override cases:
+Patchmill records run state under `.patchmill/`:
 
-- todos live outside `.pi/todos`
-- task todo names use a different prefix
-- task todos use different tags for lookup and continuity
-- plan and implementation todos require different body fields
-- completed todos use project-specific status words
-- plans use headings such as `### Step 3 - Ship API`
-- final handoff should not fail when issue task todos remain open
-
-When overridden, the same contract is used for:
-
-- todo instructions in Pi prompts
-- reading issue task todos for progress and completion gates
-- reading plan task headings for implementation-task labels
+- `.patchmill/runs/`
+- `.patchmill/triage-runs/`

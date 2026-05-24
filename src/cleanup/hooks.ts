@@ -2,16 +2,6 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 import type { CleanupHookConfig, CleanupHookResult } from "./types.ts";
 
-export const TILT_JUST_CLEANUP_HOOK: CleanupHookConfig = {
-  name: "tilt-just",
-  whenPathExists: ".env",
-  terminateProcessPatterns: ["tilt up", "just tilt-up"],
-  command: "just",
-  args: ["tilt-down"],
-};
-
-export const LEGACY_CROPRUN_CLEANUP_HOOKS: CleanupHookConfig[] = [TILT_JUST_CLEANUP_HOOK];
-
 type CommandResult = {
   code: number;
   stdout: string;
@@ -90,14 +80,6 @@ function skippedNoWorktree(hook: CleanupHookConfig): CleanupHookResult {
 }
 
 function skippedMissingPath(hook: CleanupHookConfig): CleanupHookResult {
-  if (hook.name === "tilt-just" && hook.whenPathExists === ".env") {
-    return {
-      status: "skipped",
-      name: hook.name,
-      message: `${hookLabel(hook)}: worktree has no .env`,
-    };
-  }
-
   return {
     status: "skipped",
     name: hook.name,
@@ -106,10 +88,6 @@ function skippedMissingPath(hook: CleanupHookConfig): CleanupHookResult {
 }
 
 function cleanedMessage(hook: CleanupHookConfig, worktreePath: string): string {
-  if (hook.name === "tilt-just") {
-    return `${hookLabel(hook)}: stopped Tilt and removed namespace for ${worktreePath}`;
-  }
-
   return `${hookLabel(hook)}: completed for ${worktreePath}`;
 }
 
@@ -132,9 +110,7 @@ async function terminateMatchingProcesses(
   return {
     status: "failed",
     name: hook.name,
-    message: hook.name === "tilt-just"
-      ? failureMessage(`${hookLabel(hook)}: Tilt process cleanup failed`, result.stderr, result.stdout)
-      : failureMessage(`${hookLabel(hook)}: process cleanup failed`, result.stderr, result.stdout),
+    message: failureMessage(`${hookLabel(hook)}: process cleanup failed`, result.stderr, result.stdout),
   };
 }
 
@@ -151,9 +127,7 @@ async function runHookCommand(
   return {
     status: "failed",
     name: hook.name,
-    message: hook.name === "tilt-just"
-      ? failureMessage(`${hookLabel(hook)}: Tilt namespace cleanup failed`, result.stderr, result.stdout)
-      : failureMessage(`${hookLabel(hook)}: command failed`, result.stderr, result.stdout),
+    message: failureMessage(`${hookLabel(hook)}: command failed`, result.stderr, result.stdout),
   };
 }
 

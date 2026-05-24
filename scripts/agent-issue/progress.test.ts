@@ -12,8 +12,8 @@ import {
 
 test("runLogPath creates issue-scoped log paths", () => {
   assert.equal(
-    runLogPath("/repo/.pi/agent-issue/runs", "2026-05-10T03:12:40.000Z", 33),
-    "/repo/.pi/agent-issue/runs/issue-33/run-2026-05-10T03-12-40-000Z.jsonl",
+    runLogPath("/repo/.patchmill/runs", "2026-05-10T03:12:40.000Z", 33),
+    "/repo/.patchmill/runs/issue-33/run-2026-05-10T03-12-40-000Z.jsonl",
   );
 });
 

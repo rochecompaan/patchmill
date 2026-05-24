@@ -1,32 +1,12 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
-import { LEGACY_CROPRUN_CLEANUP_HOOKS } from "../../src/cleanup/hooks.ts";
-import type { CleanupHookConfig } from "../../src/cleanup/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import {
-  DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG,
-  LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG,
-} from "../../src/git/worktree-strategy.ts";
-import { CROPRUN_COMPAT_POLICY } from "../../src/policy/defaults.ts";
 import { createTriagePolicy } from "../../src/policy/triage.ts";
 import type { PatchmillConfig } from "../../src/config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
 const DEFAULT_TEA_LOGIN = "triage-agent";
-const DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES = DEFAULT_PATCHMILL_CONFIG.paths.cleanStatusIgnorePrefixes;
-
-function cloneCleanupHooks(hooks: CleanupHookConfig[]): CleanupHookConfig[] {
-  return hooks.map((hook) => ({
-    name: hook.name,
-    ...(hook.whenPathExists !== undefined ? { whenPathExists: hook.whenPathExists } : {}),
-    ...(hook.terminateProcessPatterns !== undefined
-      ? { terminateProcessPatterns: [...hook.terminateProcessPatterns] }
-      : {}),
-    ...(hook.command !== undefined ? { command: hook.command } : {}),
-    ...(hook.args !== undefined ? { args: [...hook.args] } : {}),
-  }));
-}
 
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -45,22 +25,14 @@ function parsePositiveInteger(flag: string, value: string): number {
 }
 
 function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
-  if (env.PATCHMILL_HOST_LOGIN) return env.PATCHMILL_HOST_LOGIN;
-  if (normalizedConfig?.host.login && normalizedConfig.host.login !== DEFAULT_TEA_LOGIN) {
-    return normalizedConfig.host.login;
-  }
-
-  return env.CROPRUN_AGENT_ISSUE_TEA_LOGIN
-    ?? env.CROPRUN_TRIAGE_TEA_LOGIN
-    ?? normalizedConfig?.host.login
-    ?? DEFAULT_TEA_LOGIN;
+  return env.PATCHMILL_HOST_LOGIN ?? normalizedConfig?.host.login ?? DEFAULT_TEA_LOGIN;
 }
 
 function defaultAgentTeam(
   env: Env,
   normalizedConfig?: PatchmillConfig,
 ): string | undefined {
-  return normalizedConfig?.pi.team ?? env.PATCHMILL_AGENT_TEAM ?? env.CROPRUN_AGENT_ISSUE_AGENT_TEAM;
+  return normalizedConfig?.pi.team ?? env.PATCHMILL_AGENT_TEAM;
 }
 
 export function parseArgs(
@@ -69,10 +41,8 @@ export function parseArgs(
   env: Env = process.env,
   normalizedConfig?: PatchmillConfig,
 ): AgentIssueConfig {
-  const fallbackStrategy = normalizedConfig
-    ? DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG
-    : LEGACY_AGENT_ISSUE_WORKTREE_STRATEGY_CONFIG;
-  const projectPolicy = normalizedConfig?.projectPolicy ?? CROPRUN_COMPAT_POLICY;
+  const patchmillConfig = normalizedConfig ?? DEFAULT_PATCHMILL_CONFIG;
+  const projectPolicy = patchmillConfig.projectPolicy;
   const config: AgentIssueConfig = {
     repoRoot,
     dryRun: true,
@@ -81,23 +51,23 @@ export function parseArgs(
     planOnly: false,
     teaLogin: defaultTeaLogin(env, normalizedConfig),
     agentTeamName: defaultAgentTeam(env, normalizedConfig),
-    plansDir: normalizedConfig?.paths.plansDir ?? join(repoRoot, "docs", "plans"),
-    runStateDir: normalizedConfig?.paths.runStateDir ?? join(repoRoot, ".pi", "agent-issue", "runs"),
-    worktreeDir: normalizedConfig?.paths.worktreeDir ?? join(repoRoot, ".worktrees"),
-    cleanStatusIgnorePrefixes: [...(normalizedConfig?.paths.cleanStatusIgnorePrefixes ?? DEFAULT_CLEAN_STATUS_IGNORE_PREFIXES)],
-    cleanupHooks: cloneCleanupHooks(normalizedConfig?.cleanupHooks ?? LEGACY_CROPRUN_CLEANUP_HOOKS),
+    plansDir: normalizedConfig?.paths.plansDir ?? join(repoRoot, patchmillConfig.paths.plansDir),
+    runStateDir: normalizedConfig?.paths.runStateDir ?? join(repoRoot, patchmillConfig.paths.runStateDir),
+    worktreeDir: normalizedConfig?.paths.worktreeDir ?? join(repoRoot, patchmillConfig.paths.worktreeDir),
+    cleanStatusIgnorePrefixes: [...patchmillConfig.paths.cleanStatusIgnorePrefixes],
+    cleanupHooks: [...patchmillConfig.cleanupHooks],
     projectPolicy,
-    triagePolicy: createTriagePolicy(normalizedConfig?.labels ?? DEFAULT_PATCHMILL_CONFIG.labels),
-    readyLabel: normalizedConfig?.labels.ready ?? "agent-ready",
+    triagePolicy: createTriagePolicy(patchmillConfig.labels),
+    readyLabel: patchmillConfig.labels.ready,
     issueLimit: 1,
     requirePlanApproval: projectPolicy.planRequiresApproval,
-    baseBranch: normalizedConfig?.git.baseBranch ?? fallbackStrategy.baseBranch,
-    baseRef: normalizedConfig?.git.baseRef ?? fallbackStrategy.baseRef,
-    remote: normalizedConfig?.git.remote ?? fallbackStrategy.remote,
-    branchPrefix: normalizedConfig?.git.branchPrefix ?? fallbackStrategy.branchPrefix,
-    worktreePrefix: normalizedConfig?.git.worktreePrefix ?? fallbackStrategy.worktreePrefix,
-    slugLength: normalizedConfig?.git.slugLength ?? fallbackStrategy.slugLength,
-    allowDirectLand: normalizedConfig?.git.allowDirectLand ?? fallbackStrategy.allowDirectLand,
+    baseBranch: patchmillConfig.git.baseBranch,
+    baseRef: patchmillConfig.git.baseRef,
+    remote: patchmillConfig.git.remote,
+    branchPrefix: patchmillConfig.git.branchPrefix,
+    worktreePrefix: patchmillConfig.git.worktreePrefix,
+    slugLength: patchmillConfig.git.slugLength,
+    allowDirectLand: patchmillConfig.git.allowDirectLand,
   };
 
   for (let index = 0; index < args.length; index += 1) {

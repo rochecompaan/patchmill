@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultVisualEvidenceUploader, uploadPrVisualEvidence } from "./visual-evidence.ts";
+import { LEGACY_FORGEJO_TOKEN_ENV, LEGACY_FORGEJO_URL_ENV } from "../../test-support/legacy-seed.ts";
 import type { AgentIssueVisualEvidence } from "./types.ts";
 import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
 
@@ -10,7 +11,7 @@ test("uploadPrVisualEvidence keeps evidence when no uploader is configured", asy
     {
       screenshotPath: ".tmp/dashboard.png",
       caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
     },
   ];
 
@@ -27,7 +28,7 @@ test("uploadPrVisualEvidence keeps evidence when no uploader is configured", asy
   assert.deepEqual(events, ["visual evidence present but no uploader configured; skipping host asset upload"]);
 });
 
-test("defaultVisualEvidenceUploader treats blank primary env vars as absent and falls back to Croprun compatibility env", () => {
+test("defaultVisualEvidenceUploader returns no uploader when only removed legacy env variables are set", () => {
   const uploader = defaultVisualEvidenceUploader({
     runner: {
       async run() {
@@ -35,14 +36,12 @@ test("defaultVisualEvidenceUploader treats blank primary env vars as absent and 
       },
     },
     env: {
-      PATCHMILL_FORGEJO_URL: "   ",
-      PATCHMILL_FORGEJO_TOKEN: "",
-      CROPRUN_AGENT_ISSUE_FORGEJO_URL: "https://forgejo.example",
-      CROPRUN_AGENT_ISSUE_FORGEJO_TOKEN: "compat-token",
-    },
+      [LEGACY_FORGEJO_URL_ENV]: "https://forgejo.example",
+      [LEGACY_FORGEJO_TOKEN_ENV]: "compat-token",
+    } as NodeJS.ProcessEnv,
   });
 
-  assert.ok(uploader);
+  assert.equal(uploader, undefined);
 });
 
 test("uploadPrVisualEvidence delegates to the configured uploader", async () => {
@@ -50,7 +49,7 @@ test("uploadPrVisualEvidence delegates to the configured uploader", async () => 
     {
       screenshotPath: ".tmp/dashboard.png",
       caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
     },
   ];
 
@@ -78,7 +77,7 @@ test("uploadPrVisualEvidence delegates to the configured uploader", async () => 
     {
       screenshotPath: ".tmp/dashboard.png",
       caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/reference-screenshots/web/01-dashboard.png"],
+      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
       url: "https://forgejo.example/.tmp/dashboard.png",
     },
   ]);
