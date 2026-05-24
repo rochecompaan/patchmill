@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
     "prepare": "husky",
     "test": "node --test \"bin/*.test.ts\" \"scripts/agent-issue-triage/*.test.ts\" \"scripts/agent-issue/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='bin/**/*.ts' --test-coverage-include='scripts/**/*.ts' --test-coverage-include='src/**/*.ts' --test-coverage-include='test-support/**/*.ts' --test-coverage-exclude='**/*.test.ts' \"bin/*.test.ts\" \"scripts/agent-issue-triage/*.test.ts\" \"scripts/agent-issue/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
     "test:cli": "node --test bin/*.test.ts",
     "test:triage": "node --test scripts/agent-issue-triage/*.test.ts",
     "test:run-once": "node --test scripts/agent-issue/*.test.ts"
