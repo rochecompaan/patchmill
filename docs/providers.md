@@ -1,17 +1,20 @@
 # Patchmill Providers
 
-Patchmill separates issue-host integrations from the core triage and run-once workflows.
+Patchmill separates issue-host integrations from the core triage and run-once
+workflows.
 
 ## Supported workflow
 
 - `patchmill triage`
 - `patchmill run-once`
 
-The current built-in runtime is Pi, and the current host integration is Forgejo through `tea`.
+The current built-in runtime is Pi, and the current host integration is Forgejo
+through `tea`.
 
 ## Configuration surface
 
-Patchmill reads provider and workflow settings from `patchmill.config.json` and `PATCHMILL_*` environment variables.
+Patchmill reads provider and workflow settings from `patchmill.config.json` and
+`PATCHMILL_*` environment variables.
 
 Common settings:
 
@@ -21,13 +24,17 @@ Common settings:
 - `paths.triageLogDir`
 - `paths.worktreeDir`
 
-Environment variables:
+Environment variables are intended for local identity and secrets rather than
+shared repository policy:
 
-- `PATCHMILL_HOST_LOGIN`
-- `PATCHMILL_AGENT_TEAM`
-- `PATCHMILL_FORGEJO_URL`
-- `PATCHMILL_FORGEJO_TOKEN`
-- `PATCHMILL_FORGEJO_REPO`
+- `PATCHMILL_HOST_LOGIN`: host account/login Patchmill uses with `tea`;
+  overrides `host.login`.
+- `PATCHMILL_AGENT_TEAM`: Pi agent-team preset for implementation
+  worker/reviewer models; overrides `pi.team`.
+- `PATCHMILL_FORGEJO_URL`: Forgejo base URL used for visual-evidence uploads.
+- `PATCHMILL_FORGEJO_TOKEN`: Forgejo API token used for visual-evidence uploads.
+- `PATCHMILL_FORGEJO_REPO`: optional `owner/repo` override when git remote
+  parsing is insufficient.
 
 ## Local state
 
@@ -36,4 +43,5 @@ Patchmill stores workflow state under `.patchmill/`:
 - `.patchmill/runs/`
 - `.patchmill/triage-runs/`
 
-Task-contract details are documented in [docs/task-contracts.md](./task-contracts.md).
+Task-contract details are documented in
+[docs/task-contracts.md](./task-contracts.md).
