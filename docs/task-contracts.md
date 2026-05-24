@@ -2,6 +2,10 @@
 
 Patchmill uses one task-contract policy for prompt rendering, plan parsing, and todo progress checks.
 
+## Relationship to skills
+
+The task contract controls how Patchmill and Pi coordinate issue task todos. The top-level `skills` config chooses the skill Pi should use while triaging, planning, implementing, reviewing, collecting evidence, and landing. Keep task naming/status behavior in the task contract and agent procedure inside skills.
+
 ## Where it is configured
 
 Set task-contract fields in `patchmill.config.json` under `projectPolicy.pi.taskContract`.

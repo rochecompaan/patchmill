@@ -16,6 +16,8 @@ patchmill run-once --dry-run
 
 Patchmill loads `patchmill.config.json` from the repository root.
 
+Use top-level `skills` settings to customize agent procedures without editing Patchmill prompt builders; see `docs/skills.md`.
+
 Minimal example:
 
 ```json
