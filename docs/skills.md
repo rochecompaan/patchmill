@@ -5,7 +5,7 @@ Patchmill keeps orchestration safety in code and lets repositories choose the Pi
 ## Core contracts kept in Patchmill
 
 - untrusted issue-content boundaries
-- host mutation only after Patchmill validates model output
+- final-status validation before Patchmill applies host-side status updates
 - clean-worktree checks
 - run-state checkpoints
 - strict final JSON statuses
@@ -38,7 +38,7 @@ Supported keys:
 - `toolchain`: optional skill used before setup or validation commands.
 - `review`: optional skill used for explicit review passes.
 - `visualEvidence`: optional skill used when visible UI changes.
-- `landing`: optional skill used for direct-land versus PR decisions.
+- `landing`: optional skill used for direct-land versus PR decisions. It is required for direct squash-land eligibility; without it, Patchmill uses PR fallback even when direct land is enabled.
 
 ## Triage
 
