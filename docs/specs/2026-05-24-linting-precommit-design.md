@@ -6,7 +6,7 @@ Add repository linting for TypeScript and Markdown, repository formatting with P
 
 ## Current Context
 
-Patchmill is a private Node project with TypeScript source and test files under `bin/`, `scripts/`, `src/`, and `test-support/`. The repository already has npm test scripts but no existing ESLint, Markdown lint, Husky, or lint-staged configuration. There are existing uncommitted documentation changes in the working tree; the linting work should avoid overwriting unrelated edits.
+Patchmill is a Node project intended to be published publicly on GitHub under the MIT license, with TypeScript source and test files under `bin/`, `scripts/`, `src/`, and `test-support/`. The repository already has npm test scripts but no existing ESLint, Markdown lint, Husky, or lint-staged configuration. There are existing uncommitted documentation changes in the working tree; the linting work should avoid overwriting unrelated edits.
 
 ## Chosen Approach
 
