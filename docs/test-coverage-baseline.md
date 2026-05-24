@@ -80,4 +80,5 @@ Legend:
   `scripts/agent-issue/visual-evidence.test.ts`, and
   `src/host/forgejo-visual-evidence.test.ts`.
 - Pipeline test count changed from 64 to 55. Post-pass 1 full-suite coverage:
-  line `94.16%`, branch `84.19%`, function `96.15%`.
+  line `94.16%`, branch about `84.2%` (`84.19%-84.23%` observed), function
+  `96.15%`.
