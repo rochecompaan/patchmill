@@ -40,7 +40,7 @@ flowchart TD
   G -->|no| I[Skip host mutations]
   H --> J[Build triage prompt]
   I --> J
-  J --> K[Run pi triage agent with configured skills.triage, read-only tools, no context, no session]
+  J --> K[Run pi triage agent with configured skills.triage; runtime restricts tools to read, grep, find, ls; no context; no session]
   K --> L[Parse JSON]
   L --> M[Validate decisions against policy and input issue set]
   M --> N{--execute?}
@@ -64,7 +64,7 @@ The prompt tells Pi:
 
 - it is a `<thinking>-thinking issue triage agent` for the configured repository;
 - classify every provided open issue for automation suitability;
-- return **JSON only** and use only the read-only tools Patchmill allows for triage;
+- return **JSON only** and do not run commands; Patchmill separately enforces the triage tool set (`read`, `grep`, `find`, `ls`) at runtime;
 - follow repository-hosting policy and never mutate host state while triaging;
 - choose exactly one primary bucket:
   - `agent-ready`
@@ -182,11 +182,11 @@ The plan prompt includes:
 - issue number, title, labels, author, updated time, body, and recent comments;
 - the untrusted issue-content boundary;
 - the target plan output path;
-- project context-file and toolchain instructions;
+- project context-file instructions;
 - instruction that the ready label means the issue is already clear enough to plan;
 - required use of configured `skills.planning`; the default is `superpowers:writing-plans`;
 - whether to stop for manual plan approval;
-- the project todo workflow contract for one todo per implementation-plan task;
+- the project task-contract instructions for one todo per implementation-plan task;
 - validation command categories from project policy;
 - a strict instruction to keep scope to the issue and not implement code;
 - a requirement to commit only the plan document with a Conventional Commit.
@@ -229,9 +229,10 @@ After a plan exists and implementation is allowed, `buildImplementationPrompt()`
 - authoritative agent-team mappings for `worker` and `reviewer` roles;
 - resume context, when continuing an existing run;
 - issue body and relevant comments;
-- required project context/toolchain instructions;
-- the implementation todo workflow contract;
-- the default Patchmill implementation skill instructions;
+- required project context-file instructions;
+- the implementation task-contract instructions;
+- the configured `skills.implementation` line; the default skill is `superpowers:subagent-driven-development`;
+- when configured, separate lines for `skills.toolchain`, `skills.review`, `skills.visualEvidence`, and `skills.landing`;
 - Conventional Commit expectations;
 - host tooling instructions;
 - validation rules;
@@ -251,15 +252,22 @@ Do not pass a separate `thinking` field to the subagent execution call; pi-subag
 Do not call worker or reviewer subagents without these exact model overrides; return the blocker JSON instead.
 ```
 
-The default Patchmill implementation skill is `skills.implementation`, which defaults to `superpowers:subagent-driven-development`.
+The implementation prompt renders skill lines from runtime configuration rather than hard-coding a repository-local worker/reviewer procedure.
 
-The default Patchmill implementation skill instructions are:
+It always renders:
 
-1. Use `superpowers:subagent-driven-development` to execute the plan task by task.
-2. Before dispatching implementation or review subagents, use `superpowers:selecting-subagent-models` and apply the authoritative agent-team mappings.
-3. Use fresh reviewer agents for each review pass and follow the required worker/reviewer/checkpoint workflow, including TDD, verification, review, and fix/re-verify expectations.
+- `Use the configured implementation skill: <skills.implementation>.`
 
-Patchmill does not hard-code the individual worker/reviewer task prompts in this repository. Instead, the implementation Pi session receives the default Patchmill implementation skill instructions above and dispatches worker/reviewer subagents according to the configured implementation skill and the resolved agent-team mapping. Composite behavior belongs in the configured skill. Patchmill observes those subagent tool calls through the Pi session stream and records concise progress events.
+By default, `skills.implementation` is `superpowers:subagent-driven-development`, so the required workflow names that skill unless repository config overrides it.
+
+When present, the prompt renders these additional configured skill lines separately:
+
+- `Use the configured toolchain skill before setup or validation commands: <skills.toolchain>.`
+- `Use the configured review skill for explicit review passes: <skills.review>.`
+- `If the issue changes visible UI, use the configured visual evidence skill: <skills.visualEvidence>.`
+- `Use the configured landing skill for the direct-land versus PR decision: <skills.landing>.`
+
+Patchmill does not hard-code the individual worker/reviewer task prompts in this repository. Instead, the implementation Pi session follows the configured skill lines together with the resolved agent-team mapping. Composite behavior belongs in the configured skills. Patchmill observes those subagent tool calls through the Pi session stream and records concise progress events.
 
 The implementation prompt accepts these final statuses:
 

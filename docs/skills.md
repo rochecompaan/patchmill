@@ -28,7 +28,7 @@ Use the top-level `skills` key:
 
 Each stage accepts one skill name. If a workflow needs several skills or detailed instructions, create a project skill that references those skills and configure that project skill here.
 
-The old prompt-fragment settings are removed instead of kept for compatibility. Move toolchain, host workflow, landing judgment, visual-evidence procedure, todo workflow, and subagent workflow instructions into skills.
+The old prompt-fragment settings are removed instead of kept for compatibility. Move toolchain, host workflow, landing judgment, visual-evidence procedure, and subagent workflow instructions into skills. For todos, only the removed freeform `todoWorkflowInstruction` procedure moves into planning or implementation skills; task naming, tagging, body requirements, and done-status behavior stay in `projectPolicy.pi.taskContract`.
 
 Supported keys:
 
@@ -42,4 +42,4 @@ Supported keys:
 
 ## Triage
 
-Triage uses `skills.triage` and still receives a strict Patchmill prompt with allowed labels, issue data, and the required JSON response shape. Patchmill runs triage with read-only tools (`read`, `grep`, `find`, `ls`) via `--tools`. For the bundled default triage skill, Patchmill also passes the bundled skill path with `--skill`; when `skills.triage` is configured to a custom skill name, Patchmill names that skill in the prompt instead.
+Triage uses `skills.triage` and still receives a strict Patchmill prompt with allowed labels, issue data, and the required JSON response shape. Patchmill runtime-restricts triage to `read`, `grep`, `find`, and `ls` via `--tools`. For the bundled default triage skill, Patchmill also passes the bundled skill path with `--skill`; when `skills.triage` is configured to a custom skill name, Patchmill names that skill in the prompt instead.

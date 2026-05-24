@@ -58,6 +58,7 @@ Patchmill writes local run state under `.patchmill/`:
 ## Reference docs
 
 - `docs/providers.md`
+- `docs/skills.md`
 - `docs/task-contracts.md`
 - `docs/specs/2026-05-22-patchmill-generalization-design.md`
 - `docs/plans/2026-05-22-patchmill-generalization.md`
