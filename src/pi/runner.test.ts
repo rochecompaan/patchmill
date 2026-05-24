@@ -9,6 +9,7 @@ import { assertNoLegacyProjectText } from "../../test-support/legacy-project-tex
 import type { ResolvedAgentTeam } from "../../scripts/agent-issue/agent-team.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "../../scripts/agent-issue/progress.ts";
 import type { CommandResult, CommandRunner, IssueSummary } from "../../scripts/agent-issue-triage/types.ts";
+import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
 import type { ImplementationPiInput } from "./types.ts";
 
 type RecordedCall = {
@@ -238,6 +239,10 @@ test("PiRunner implementation uses the worktree root, derives the default landin
       baseBranch: "release/1.2",
       remote: "origin",
       allowDirectLand: true,
+    },
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      landing: "project-landing",
     },
     resume: {
       resumed: true,

@@ -2667,6 +2667,10 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
     baseBranch: "release/1.2",
     baseRef: "refs/remotes/upstream/release/1.2",
     remote: "upstream",
+    skills: {
+      ...baseConfig.skills,
+      landing: "project-landing",
+    },
     branchPrefix: "patchmill/issue-",
     worktreeDir: join(baseConfig.repoRoot, ".patchmill", "worktrees"),
     worktreePrefix: "pm-issue-",

@@ -310,6 +310,19 @@ function formatCodeList(entries: string[]): string {
   return `${entries.slice(0, -1).map((entry) => `\`${entry}\``).join(", ")}, and \`${entries[entries.length - 1]}\``;
 }
 
+type PrVisualEvidenceExample = NonNullable<PatchmillProjectPolicy["visualEvidence"]["prEvidenceExample"]>;
+
+function defaultPrVisualEvidenceExample(): PrVisualEvidenceExample {
+  return {
+    screenshotPath: ".tmp/issue-42-after.png",
+    caption: "Visible UI state after the change",
+  };
+}
+
+function resolvePrVisualEvidenceExample(policy: PatchmillProjectPolicy): PrVisualEvidenceExample {
+  return policy.visualEvidence.prEvidenceExample ?? defaultPrVisualEvidenceExample();
+}
+
 function renderVisualEvidenceDataSection(policy: PatchmillProjectPolicy): string {
   const lines = ["Visual-change evidence data:"];
 
@@ -319,10 +332,7 @@ function renderVisualEvidenceDataSection(policy: PatchmillProjectPolicy): string
     );
   }
 
-  const visualEvidenceExample = policy.visualEvidence.prEvidenceExample ?? {
-    screenshotPath: ".tmp/issue-42-after.png",
-    caption: "Visible UI state after the change",
-  };
+  const visualEvidenceExample = resolvePrVisualEvidenceExample(policy);
   lines.push("- For PR fallback, return structured `visualEvidence` entries like this example:");
   lines.push(...JSON.stringify([visualEvidenceExample], null, 2).split("\n").map((line) => `  ${line}`));
 
@@ -350,14 +360,9 @@ If human input is required, stop safely, leave committed work as-is, keep the re
 }`;
 }
 
-function renderPrCreatedContract(branch: string): string {
+function renderPrCreatedContract(branch: string, visualEvidenceExample: PrVisualEvidenceExample): string {
   const prUrlLabel = "<pull request URL>";
-  const visualEvidenceLines = JSON.stringify([
-    {
-      screenshotPath: ".tmp/issue-42-after.png",
-      caption: "Visible UI state after the change",
-    },
-  ], null, 4)
+  const visualEvidenceLines = JSON.stringify([visualEvidenceExample], null, 4)
     .split("\n")
     .map((line, index) => index === 0 ? `  "visualEvidence": ${line}` : `  ${line}`)
     .join("\n").concat(",");
@@ -378,12 +383,14 @@ ${visualEvidenceLines}
 
 function renderLandingResultContracts(input: {
   allowDirectLand: boolean;
+  hasLandingSkill: boolean;
   targetBranch: string;
   remote: string;
   issueNumber: number;
   branch: string;
+  visualEvidenceExample: PrVisualEvidenceExample;
 }): string {
-  const { allowDirectLand, targetBranch, remote, issueNumber, branch } = input;
+  const { allowDirectLand, hasLandingSkill, targetBranch, remote, issueNumber, branch, visualEvidenceExample } = input;
   const prInstruction = renderPrCreationInstruction(remote);
 
   if (!allowDirectLand) {
@@ -397,7 +404,21 @@ If human review is required:
 
 ${renderBlockedContract()}
 
-${renderPrCreatedContract(branch)}`;
+${renderPrCreatedContract(branch, visualEvidenceExample)}`;
+  }
+
+  if (!hasLandingSkill) {
+    return `Landing result contracts:
+Direct squash-landing requires a configured landing skill for this repository. No landing skill is configured, so use PR fallback and do not land directly on \`${targetBranch}\`.
+
+If human review is required:
+1. ${prInstruction}
+2. Explain briefly why human review is required.
+3. Return the \`pr-created\` final response.
+
+${renderBlockedContract()}
+
+${renderPrCreatedContract(branch, visualEvidenceExample)}`;
   }
 
   return `Landing result contracts:
@@ -427,7 +448,7 @@ Return this exact JSON object after \`${targetBranch}\` is pushed successfully:
   "landingDecision": "direct squash-landed: policy-approved change"
 }
 
-${renderPrCreatedContract(branch)}`;
+${renderPrCreatedContract(branch, visualEvidenceExample)}`;
 }
 
 function numberedWorkflow(steps: string[]): string {
@@ -504,6 +525,7 @@ Return this exact JSON object after the plan commit succeeds:
 export function buildImplementationPrompt(input: ImplementationPromptInput): string {
   const { issue, planPath, branch, worktreePath, agentTeam, git, projectPolicy, resume } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
+  const visualEvidenceExample = resolvePrVisualEvidenceExample(projectPolicy);
 
   const workflowSteps = [
     renderImplementationContextInstruction(projectPolicy, planPath),
@@ -546,10 +568,12 @@ ${renderLandingSkillStep(skills)}
 
 ${renderLandingResultContracts({
     allowDirectLand: git.allowDirectLand,
+    hasLandingSkill: Boolean(skills.landing),
     targetBranch: git.baseBranch,
     remote: git.remote,
     issueNumber: issue.number,
     branch,
+    visualEvidenceExample,
   })}
 `;
 }

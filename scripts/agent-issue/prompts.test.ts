@@ -4,6 +4,7 @@ import { buildImplementationPrompt, buildPlanCreationPrompt } from "./prompts.ts
 import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
 import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
+import { DEFAULT_PATCHMILL_SKILLS } from "../../src/workflow/skills.ts";
 import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
 import type { IssueSummary } from "./types.ts";
 
@@ -223,20 +224,19 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-dashboard-after\.png"/);
   assert.match(prompt, /"referencePaths": \[[\s\S]*"docs\/example-screenshots\/web\/01-dashboard\.png"/);
   assert.match(prompt, /Landing result contracts:/);
-  assert.match(prompt, /Update local `main` from the `origin` remote\./);
-  assert.match(prompt, /Push `main` to `origin` without force-pushing\./);
   assert.match(prompt, /Push the branch to `origin` and open a pull request using the repository's configured host tooling\./);
-  assert.match(prompt, /Squash-merge the implementation branch into `main`/);
+  assert.match(prompt, /Direct squash-landing requires a configured landing skill/);
+  assert.match(prompt, /No landing skill is configured, so use PR fallback and do not land directly on `main`\./);
   assert.match(prompt, /keep the reason and questions concise enough to post directly as a `needs-info` comment/i);
   assert.match(prompt, /"status": "blocked"/);
   assert.match(prompt, /"recommendedAnswer": "recommended answer and reasoning"/);
-  assert.match(prompt, /"status": "merged"/);
-  assert.match(prompt, /"mergeCommit": "<squash commit sha on main>"/);
-  assert.match(prompt, /"landingDecision": "direct squash-landed: policy-approved change"/);
   assert.match(prompt, /"status": "pr-created"/);
   assert.match(prompt, /"prUrl": "<pull request URL>"/);
   assert.match(prompt, /"visualEvidence": \[/);
   assert.match(prompt, /"reviewSummary": "short reviewer\/fix summary"/);
+  assert.doesNotMatch(prompt, /If eligible for direct squash-land:/);
+  assert.doesNotMatch(prompt, /Successful final response for direct squash-land:/);
+  assert.doesNotMatch(prompt, /"status": "merged"/);
   assert.doesNotMatch(prompt, /toolchainInstruction|hostToolingInstruction|subagentWorkflowInstruction/);
 });
 
@@ -265,6 +265,9 @@ test("buildImplementationPrompt renders configured skills", () => {
   assert.match(prompt, /Use the configured review skill for explicit review passes: `project-review`\./);
   assert.match(prompt, /If the issue changes visible UI, use the configured visual evidence skill: `project-screenshots`\./);
   assert.match(prompt, /Use the configured landing skill for the direct-land versus PR decision: `project-landing`\./);
+  assert.match(prompt, /If eligible for direct squash-land:/);
+  assert.match(prompt, /Successful final response for direct squash-land:/);
+  assert.match(prompt, /"status": "merged"/);
   assert.doesNotMatch(prompt, /old implementation prompt fragment|toolchainInstruction|hostToolingInstruction|subagentWorkflowInstruction/);
 });
 
@@ -315,6 +318,10 @@ test("buildImplementationPrompt uses configured direct-land policy inputs", () =
         targetBranch: "release/1.2",
       },
     },
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      landing: "project-landing",
+    },
   });
 
   assert.match(prompt, /Update local `main` from the `upstream` remote\./);
@@ -353,6 +360,10 @@ test("policy-driven prompts render validation and landing contract text from run
       allowDirectLand: true,
     },
     projectPolicy: policy,
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      landing: "project-landing",
+    },
   });
 
   assert.match(planPrompt, /Sentinel validation: `pnpm sentinel-check`\./);
@@ -400,6 +411,10 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
   assert.match(prompt, /Look under `docs\/sentinel\/web\/` and `docs\/sentinel\/mobile\/`/);
   assert.match(prompt, /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/);
   assert.match(prompt, /"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/);
+  assert.match(
+    prompt,
+    /Successful final response for human-review PR fallback:[\s\S]*"visualEvidence": \[[\s\S]*"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/,
+  );
   assert.doesNotMatch(prompt, /reviewerExpectations|webScreenshotSkill|mobileScreenshotSkill/);
 });
 
