@@ -85,6 +85,11 @@ const AGENT_TEAM = {
   },
 };
 
+const LANDING_SKILLS = {
+  ...DEFAULT_PATCHMILL_CONFIG.skills,
+  landing: "project-landing",
+};
+
 const cleanupHook = {
   name: "example-cleanup",
   whenPathExists: ".env",
@@ -267,6 +272,7 @@ async function makeConfig(
     worktreePrefix: "patchmill-issue-",
     slugLength: 48,
     allowDirectLand: true,
+    skills: { ...DEFAULT_PATCHMILL_CONFIG.skills },
     agentTeam: AGENT_TEAM,
     ...overrides,
   };
@@ -1717,10 +1723,11 @@ test("runOneIssue reports cleanup hook failures when process termination is unsa
   );
 });
 
-test("runOneIssue finishes saved merged handoff without requiring an agent team", async () => {
+test("runOneIssue finishes saved merged handoff when direct landing is enabled and skills.landing is configured", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
+    skills: LANDING_SKILLS,
     agentTeam: undefined,
     agentTeamName: undefined,
   });
@@ -1777,6 +1784,66 @@ test("runOneIssue finishes saved merged handoff without requiring an agent team"
   assert.equal(runner.calls.some((call) => call.command === "pi"), false);
   assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "comment"));
   assert.ok(runner.calls.some((call) => call.command === "tea" && call.args[0] === "issues" && call.args[1] === "edit" && call.args.includes("agent-done")));
+});
+
+test("runOneIssue rejects saved merged handoff when skills.landing is not configured", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    agentTeam: undefined,
+    agentTeamName: undefined,
+  });
+  const planPath = "docs/plans/2026-05-14-issue-45-complete-merged.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Complete merged",
+      status: "implementing",
+      planPath,
+      branch: "agent/issue-45-complete-merged",
+      worktreePath: ".worktrees/patchmill-issue-45-complete-merged",
+      implementationStatus: "merged",
+      mergeCommit: "def456",
+      commits: ["abc123"],
+      validation: ["just issue-runner-test ok"],
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+        worktreeReady: true,
+        implementationCompleted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (call.command === "tea" && call.args[0] === "issues" && call.args[1] === "list") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([issue(45, ["in-progress"], "Complete merged")]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree" && call.args[1] === "list") {
+      return { code: 0, stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-complete-merged")}\n`, stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "-C" && call.args[2] === "branch") {
+      return { code: 0, stdout: "agent/issue-45-complete-merged\n", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "labels" && call.args[1] === "list") return { code: 0, stdout: labelListPayload(), stderr: "" };
+    throw new Error(`unexpected command: ${call.command} ${call.args.join(" ")}`);
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Saved implementation state returned merged but direct landing requires git\.allowDirectLand=true and configured skills\.landing/,
+  );
+  assert.equal(runner.calls.some((call) => call.command === "pi"), false);
 });
 
 test("runOneIssue rejects saved merged handoff when direct landing is disabled", async () => {
@@ -2166,7 +2233,7 @@ test("runOneIssue rejects resumable saved branch/worktree mismatch before worktr
 });
 
 test("runOneIssue skips handoff and done labels when checkpoints are complete", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
+  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM, skills: LANDING_SKILLS });
   const planPath = "docs/plans/2026-05-14-issue-45-finished-handoff.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
@@ -2296,7 +2363,7 @@ test("runOneIssue blocks implementation before Pi when no agent team is configur
 });
 
 test("runOneIssue replaces stale implementation result fields when Pi changes implementationStatus", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM });
+  const config = await makeConfig({ dryRun: false, execute: true, agentTeam: AGENT_TEAM, skills: LANDING_SKILLS });
   const planPath = "docs/plans/2026-05-14-issue-45-implementation-status-transition.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
@@ -3697,8 +3764,8 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
   );
 });
 
-test("runOneIssue accepts direct squash-landed implementation results", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true });
+test("runOneIssue accepts direct squash-landed implementation results when skills.landing is configured", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true, skills: LANDING_SKILLS });
   const selected = issue(22, ["agent-ready", "bug"], "Fix direct landing");
   const existingPlanPath = join(
     config.plansDir,
@@ -3810,6 +3877,74 @@ test("runOneIssue accepts direct squash-landed implementation results", async ()
     /direct squash-landed: simple localized bug fix/,
   );
   assert.match(commentBody(comments[1]), /just issue-runner-test ok/);
+});
+
+test("runOneIssue rejects Pi merged results when skills.landing is not configured", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const selected = issue(22, ["agent-ready", "bug"], "Fix direct landing");
+  const existingPlanPath = join(
+    config.plansDir,
+    "2026-05-01-issue-22-fix-direct-landing.md",
+  );
+  await writeFile(existingPlanPath, "# plan\n\n### Task 1: Blocker Task\n", "utf8");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "git" &&
+      (call.args[0] === "status" || call.args[0] === "worktree")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout:
+          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Pi returned merged but direct landing requires git\.allowDirectLand=true and configured skills\.landing/,
+  );
 });
 
 test("runOneIssue rejects Pi merged results when direct landing is disabled", async () => {
