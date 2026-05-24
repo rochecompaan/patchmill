@@ -68,7 +68,7 @@ Legend:
   representative dry-run smoke test.
 - Direct safety coverage remains in `scripts/agent-issue/selection.test.ts` and
   `scripts/agent-issue/run-state.test.ts`.
-- Removed two clean-worktree ignore pipeline variants while keeping the
+- Removed four clean-worktree ignore pipeline variants while keeping the
   configured clean-status ignore prefix smoke test.
 - Direct safety coverage remains in `scripts/agent-issue/git.test.ts` for
   run-state log, todo-root, reuse, and similar-path ignore behavior.
