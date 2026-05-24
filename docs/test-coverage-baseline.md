@@ -11,7 +11,8 @@ npm run test:coverage
 - Date: 2026-05-24
 - Runner: Node built-in `node:test` coverage
 - Line coverage: 94.24%
-- Branch coverage: 84.40%-84.41% observed across repeated local runs
+- Branch coverage: about 84.4% (84.37%-84.41% observed across repeated local
+  runs)
 - Function coverage: 96.33%
 
 ## Initial observations
@@ -22,7 +23,7 @@ npm run test:coverage
 - Pipeline tests should be retained when they cover unique workflow transitions,
   resume behavior, or safety boundaries not asserted elsewhere.
 - No coverage threshold is enforced yet; branch coverage varied slightly across
-  repeated full-suite runs (84.40%-84.41%), so thresholds should be considered
+  repeated full-suite runs (84.37%-84.41%), so thresholds should be considered
   after the cleanup pass stabilizes the baseline.
 
 ## First audit targets
