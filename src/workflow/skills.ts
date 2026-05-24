@@ -39,7 +39,17 @@ export function mergeSkillsConfig(
   base: PatchmillSkillsConfig,
   update: PartialPatchmillSkillsConfig | undefined,
 ): PatchmillSkillsConfig {
-  return { ...base, ...update };
+  if (!update) return { ...base };
+
+  const merged = { ...base };
+
+  for (const [key, value] of Object.entries(update)) {
+    if (value !== undefined) {
+      merged[key as PatchmillSkillKey] = value;
+    }
+  }
+
+  return merged;
 }
 
 export function renderConfiguredSkillLine(prefix: string, skill: string | undefined): string {

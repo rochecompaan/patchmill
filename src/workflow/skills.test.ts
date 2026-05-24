@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   cloneSkillsConfig,
@@ -7,6 +8,7 @@ import {
   renderConfiguredSkillLine,
   bundledTriageSkillPath,
 } from "./skills.ts";
+import type { PartialPatchmillSkillsConfig } from "./skills.ts";
 
 test("DEFAULT_PATCHMILL_SKILLS keeps current default workflow skills", () => {
   assert.deepEqual(DEFAULT_PATCHMILL_SKILLS, {
@@ -30,6 +32,15 @@ test("mergeSkillsConfig replaces only configured stages", () => {
   });
 });
 
+test("mergeSkillsConfig preserves defaults when update contains explicit undefined", () => {
+  const merged = mergeSkillsConfig(
+    DEFAULT_PATCHMILL_SKILLS,
+    { triage: undefined } as PartialPatchmillSkillsConfig,
+  );
+
+  assert.equal(merged.triage, "patchmill-issue-triage");
+});
+
 test("cloneSkillsConfig returns an independent object", () => {
   const cloned = cloneSkillsConfig(DEFAULT_PATCHMILL_SKILLS);
   cloned.planning = "changed";
@@ -45,5 +56,7 @@ test("renderConfiguredSkillLine renders direct stage-to-skill wording", () => {
 });
 
 test("bundledTriageSkillPath points at the bundled SKILL.md file", () => {
-  assert.match(bundledTriageSkillPath(), /skills\/patchmill-issue-triage\/SKILL\.md$/);
+  assert.ok(
+    bundledTriageSkillPath().endsWith(join("skills", "patchmill-issue-triage", "SKILL.md")),
+  );
 });
