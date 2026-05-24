@@ -1,0 +1,53 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export type PatchmillSkillsConfig = {
+  triage: string;
+  planning: string;
+  implementation: string;
+  toolchain?: string;
+  review?: string;
+  visualEvidence?: string;
+  landing?: string;
+};
+
+export const PATCHMILL_SKILL_KEYS = [
+  "triage",
+  "planning",
+  "implementation",
+  "toolchain",
+  "review",
+  "visualEvidence",
+  "landing",
+] as const;
+
+export type PatchmillSkillKey = typeof PATCHMILL_SKILL_KEYS[number];
+
+export type PartialPatchmillSkillsConfig = Partial<PatchmillSkillsConfig>;
+
+export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
+  triage: "patchmill-issue-triage",
+  planning: "superpowers:writing-plans",
+  implementation: "superpowers:subagent-driven-development",
+};
+
+export function cloneSkillsConfig(config: PatchmillSkillsConfig): PatchmillSkillsConfig {
+  return { ...config };
+}
+
+export function mergeSkillsConfig(
+  base: PatchmillSkillsConfig,
+  update: PartialPatchmillSkillsConfig | undefined,
+): PatchmillSkillsConfig {
+  return { ...base, ...update };
+}
+
+export function renderConfiguredSkillLine(prefix: string, skill: string | undefined): string {
+  if (!skill) return "";
+  return `${prefix}: \`${skill}\`.`;
+}
+
+export function bundledTriageSkillPath(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return join(here, "..", "..", "skills", "patchmill-issue-triage", "SKILL.md");
+}
