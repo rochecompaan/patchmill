@@ -11,7 +11,7 @@ npm run test:coverage
 - Date: 2026-05-24
 - Runner: Node built-in `node:test` coverage
 - Line coverage: 94.24
-- Branch coverage: 84.41
+- Branch coverage: 84.40
 - Function coverage: 96.33
 
 ## Initial observations
