@@ -72,3 +72,10 @@ Legend:
   configured clean-status ignore prefix smoke test.
 - Direct safety coverage remains in `scripts/agent-issue/git.test.ts` for
   run-state log, todo-root, reuse, and similar-path ignore behavior.
+- Removed two cleanup-hook pipeline variants while keeping the configured
+  cleanup-hook invocation smoke test.
+- Removed the no-uploader visual-evidence pipeline pass-through test while
+  keeping the upload-before-handoff ordering test.
+- Direct safety coverage remains in `src/cleanup/hooks.test.ts`,
+  `scripts/agent-issue/visual-evidence.test.ts`, and
+  `src/host/forgejo-visual-evidence.test.ts`.
