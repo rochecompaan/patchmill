@@ -31,7 +31,7 @@ preset available on your machine.
     "ready": "agent-ready",
     "needsInfo": "needs-info",
     "unsuitable": "agent-unsuitable",
-    "inProgress": "in-progress",
+    "in-progress": "in-progress",
     "done": "agent-done",
     "blocked": "blocked",
     "types": ["bug", "enhancement", "docs", "chore", "test"],
@@ -41,6 +41,13 @@ preset available on your machine.
       "priority:medium",
       "priority:low"
     ]
+  },
+  "triage": {
+    "stateMap": {
+      "agent-ready": "agent-ready",
+      "needs-info": "needs-info",
+      "agent-unsuitable": "agent-unsuitable"
+    }
   },
   "skills": {
     "triage": "patchmill-issue-triage",
@@ -116,6 +123,11 @@ preset available on your machine.
   }
 }
 ```
+
+`triage.stateMap` maps repository label names to Patchmill's canonical triage
+buckets. Keys are repo labels, values must be `agent-ready`, `needs-info`, or
+`agent-unsuitable`, and the configured `labels.ready` label must map to
+`agent-ready`.
 
 `cleanupHook` is an optional repository-relative shell script path. Patchmill
 runs it with `bash` from the issue worktree root after a successful run. The
