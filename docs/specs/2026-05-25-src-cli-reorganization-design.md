@@ -73,6 +73,22 @@ uses to find the implementation.
 
 ## Alternatives considered
 
+### `src/cli/<command>/`
+
+This would remove one directory level:
+
+```text
+src/cli/
+  main.ts
+  triage/
+  run-once/
+```
+
+It is compact, but it makes command implementations peers of CLI-level shared
+files. Keeping `commands/` makes the dispatcher/adapter layer easier to scan:
+`src/cli/main.ts` is the dispatcher, and everything under `src/cli/commands/` is
+a public command implementation.
+
 ### `src/commands/<command>/`
 
 This would be short and clear, but less explicit about the command surface. A
@@ -85,6 +101,14 @@ This would emphasize domain workflows and could fit a future non-CLI surface,
 but today these modules include CLI concerns such as args, console progress, and
 command entrypoints. Calling them workflows would blur the line between command
 adapters and reusable workflow logic.
+
+### Rename `run-once`
+
+Names such as `work`, `implement`, `deliver`, and `process` may describe the
+single-issue workflow better than `run-once`. This spec defers public command
+renaming so the implementation remains a structure-only refactor. Any command
+rename should be handled separately, with compatibility and documentation
+migration considered explicitly.
 
 ### Keep production TypeScript in `scripts/`
 
