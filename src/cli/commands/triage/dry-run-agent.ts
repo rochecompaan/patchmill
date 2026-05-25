@@ -66,9 +66,9 @@ function asStringArray(value: unknown, context: string): string[] {
   return value.map((entry, index) => asString(entry, `${context}[${index}]`));
 }
 
-function asOptionalComment(value: unknown): string | null {
+function asOptionalComment(value: unknown, context: string): string | null {
   if (value === null || value === undefined) return null;
-  return asString(value, "wouldComment");
+  return asString(value, context);
 }
 
 function asBoolean(value: unknown, context: string): boolean {
@@ -176,8 +176,14 @@ function validateOnePreview(
     ),
     canonicalBucket: canonicalBucket as TriagePreview["canonicalBucket"],
     rationale: asString(raw.rationale, `rationale for issue ${issueNumber}`),
-    wouldComment: asOptionalComment(raw.wouldComment),
-    wouldClose: asBoolean(raw.wouldClose, "wouldClose"),
+    wouldComment: asOptionalComment(
+      raw.wouldComment,
+      `wouldComment for issue ${issueNumber}`,
+    ),
+    wouldClose: asBoolean(
+      raw.wouldClose,
+      `wouldClose for issue ${issueNumber}`,
+    ),
     questions:
       raw.questions === undefined
         ? []
@@ -222,10 +228,10 @@ export async function runTriageDryRunAgent(
   const prompt = buildTriageDryRunPrompt(input);
   const thinking = input.thinking ?? "high";
   const dir = await mkdtemp(join(tmpdir(), "agent-triage-dry-run-"));
-  const promptPath = join(dir, "prompt.md");
-  await writeFile(promptPath, prompt, "utf8");
 
   try {
+    const promptPath = join(dir, "prompt.md");
+    await writeFile(promptPath, prompt, "utf8");
     const result = await runner.run(
       "pi",
       [
