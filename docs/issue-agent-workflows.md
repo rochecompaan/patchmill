@@ -2,7 +2,7 @@
 
 Patchmill has two issue-agent workflows:
 
-- **Triage** (`agent-issue-triage`) classifies open issues and, when executed,
+- **Triage** (`patchmill triage`) classifies open issues and, when executed,
   applies labels/comments on the issue host.
 - **Run once** (`agent-issue-once`) claims one automation-ready issue, asks Pi
   to create or use an implementation plan, asks Pi to implement/review/land the
@@ -11,7 +11,7 @@ Patchmill has two issue-agent workflows:
 See also [skills configuration](skills.md) for repository-configurable skill
 selection at each workflow stage.
 
-The current script entrypoints are `scripts/agent-issue-triage.ts` and
+The current script entrypoints are `src/cli/commands/triage/main.ts` and
 `scripts/agent-issue-once.ts`; the generic CLI can dispatch the same backing
 workflows through `bin/patchmill.ts`.
 
@@ -19,12 +19,12 @@ workflows through `bin/patchmill.ts`.
 
 Source files:
 
-- CLI: `scripts/agent-issue-triage.ts`
-- Pipeline: `scripts/agent-issue-triage/pipeline.ts`
-- Prompt builder: `scripts/agent-issue-triage/agent.ts`
-- Validation: `scripts/agent-issue-triage/validation.ts`
-- Apply/log helpers: `scripts/agent-issue-triage/apply.ts`,
-  `scripts/agent-issue-triage/log.ts`
+- CLI: `src/cli/commands/triage/main.ts`
+- Pipeline: `src/cli/commands/triage/pipeline.ts`
+- Prompt builder: `src/cli/commands/triage/agent.ts`
+- Validation: `src/cli/commands/triage/validation.ts`
+- Apply/log helpers: `src/cli/commands/triage/apply.ts`,
+  `src/cli/commands/triage/log.ts`
 - Policy: `src/policy/triage.ts`
 
 ### Flow
