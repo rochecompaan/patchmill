@@ -4,6 +4,7 @@ import type {
 } from "../config/types.ts";
 import type { LabelDefinition } from "../host/types.ts";
 import {
+  cloneTriageStateMap,
   defaultTriageStateMap,
   nonReadyStateLabels,
   type PatchmillTriageStateMap,
@@ -91,7 +92,9 @@ export function createTriagePolicy(
     { status: "agent-unsuitable", label: config.unsuitable },
   ];
   const allowedLabels = requiredLabels(config);
-  const stateMap = triageConfig?.stateMap ?? defaultTriageStateMap(config);
+  const stateMap = triageConfig?.stateMap
+    ? cloneTriageStateMap(triageConfig.stateMap)
+    : defaultTriageStateMap(config);
   const stateBlockedLabels = nonReadyStateLabels(stateMap);
   const excludedLabels = [...automationProtectionLabels(config)];
   const primaryBucketLabels = new Set(

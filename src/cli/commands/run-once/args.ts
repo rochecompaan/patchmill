@@ -72,7 +72,10 @@ export function parseArgs(
       : {}),
     projectPolicy,
     skills: patchmillConfig.skills,
-    triagePolicy: createTriagePolicy(patchmillConfig.labels),
+    triagePolicy: createTriagePolicy(
+      patchmillConfig.labels,
+      patchmillConfig.triage,
+    ),
     readyLabel: patchmillConfig.labels.ready,
     issueLimit: 1,
     requirePlanApproval: projectPolicy.planRequiresApproval,

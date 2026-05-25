@@ -61,3 +61,19 @@ test("createTriagePolicy exposes shared confidence, ambiguity, and comment behav
     "generated-from-rationale-and-questions",
   );
 });
+
+test("createTriagePolicy clones supplied triage state maps", () => {
+  const stateMap = {
+    "agent-ready": "agent-ready",
+    "needs-info": "needs-info",
+    "agent-unsuitable": "agent-unsuitable",
+    deferred: "needs-info",
+  };
+
+  const policy = createTriagePolicy(DEFAULT_PATCHMILL_CONFIG.labels, {
+    stateMap,
+  });
+
+  assert.notEqual(policy.stateMap, stateMap);
+  assert.deepEqual(policy.stateMap, stateMap);
+});

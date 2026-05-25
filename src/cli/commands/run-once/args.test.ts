@@ -292,6 +292,51 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   ]);
 });
 
+test("loadCliConfig includes custom triage state aliases in run-once policy", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      labels: {
+        ready: "ready-for-bots",
+        needsInfo: "needs-clarification",
+        unsuitable: "manual-only",
+        "in-progress": "claimed",
+        done: "done-by-bot",
+        blocked: "waiting",
+      },
+      triage: {
+        stateMap: {
+          "ready-for-bots": "agent-ready",
+          "needs-clarification": "needs-info",
+          "manual-only": "agent-unsuitable",
+          deferred: "needs-info",
+          wontfix: "agent-unsuitable",
+        },
+      },
+    }),
+  );
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {});
+
+  assert.deepEqual(config.triagePolicy?.stateMap, {
+    "ready-for-bots": "agent-ready",
+    "needs-clarification": "needs-info",
+    "manual-only": "agent-unsuitable",
+    deferred: "needs-info",
+    wontfix: "agent-unsuitable",
+  });
+  assert.deepEqual(config.triagePolicy?.runOnceSelection.excludedLabels, [
+    "needs-clarification",
+    "manual-only",
+    "claimed",
+    "done-by-bot",
+    "waiting",
+    "deferred",
+    "wontfix",
+  ]);
+});
+
 test("loadCliConfig passes configured skills and project policy through to run-once prompts", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
   await writeFile(

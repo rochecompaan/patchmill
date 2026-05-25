@@ -157,6 +157,39 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
   );
 });
 
+test("loadCliConfig includes custom triage state aliases in triage policy", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-config-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      labels: {
+        ready: "ready-for-bots",
+        needsInfo: "needs-clarification",
+        unsuitable: "manual-only",
+      },
+      triage: {
+        stateMap: {
+          "ready-for-bots": "agent-ready",
+          "needs-clarification": "needs-info",
+          "manual-only": "agent-unsuitable",
+          deferred: "needs-info",
+          wontfix: "agent-unsuitable",
+        },
+      },
+    }),
+  );
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {});
+
+  assert.deepEqual(config.triagePolicy?.stateMap, {
+    "ready-for-bots": "agent-ready",
+    "needs-clarification": "needs-info",
+    "manual-only": "agent-unsuitable",
+    deferred: "needs-info",
+    wontfix: "agent-unsuitable",
+  });
+});
+
 test("loadCliConfig ignores removed legacy tea login when patchmill config only customizes paths", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-config-"));
   await writeFile(

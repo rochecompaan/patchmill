@@ -50,7 +50,10 @@ export function parseArgs(
       ? patchmillConfig.paths.triageLogDir
       : join(repoRoot, patchmillConfig.paths.triageLogDir),
     projectPolicy: patchmillConfig.projectPolicy,
-    triagePolicy: createTriagePolicy(patchmillConfig.labels),
+    triagePolicy: createTriagePolicy(
+      patchmillConfig.labels,
+      patchmillConfig.triage,
+    ),
     skills: patchmillConfig.skills,
   };
 
