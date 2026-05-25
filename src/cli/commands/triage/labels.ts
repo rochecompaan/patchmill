@@ -4,6 +4,7 @@ import type { LabelChangePlan, LabelDefinition } from "./types.ts";
 
 export const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
   DEFAULT_PATCHMILL_CONFIG.labels,
+  DEFAULT_PATCHMILL_CONFIG.triage,
 );
 
 export const REQUIRED_LABELS: LabelDefinition[] =

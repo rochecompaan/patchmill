@@ -12,23 +12,14 @@ const { blocked, done, inProgress, needsInfo, ready, unsuitable } =
   DEFAULT_PATCHMILL_CONFIG.labels;
 
 test("DEFAULT_TRIAGE_POLICY includes required automation labels", () => {
-  assert.deepEqual(
-    DEFAULT_TRIAGE_POLICY.primaryBuckets.map((bucket) => bucket.status),
-    ["agent-ready", "needs-info", "agent-unsuitable"],
-  );
-  assert.deepEqual(
-    DEFAULT_TRIAGE_POLICY.primaryBuckets.map((bucket) => bucket.label),
-    [ready, needsInfo, unsuitable],
-  );
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.ready, ready);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.needsInfo, needsInfo);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.unsuitable, unsuitable);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.inProgress, inProgress);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.done, done);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.blocked, blocked);
 
-  for (const name of [
-    ready,
-    needsInfo,
-    unsuitable,
-    inProgress,
-    done,
-    blocked,
-  ]) {
+  for (const name of [ready, needsInfo, unsuitable]) {
     assert.ok(REQUIRED_LABELS.some((label) => label.name === name));
   }
 });

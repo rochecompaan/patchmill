@@ -742,7 +742,7 @@ export type TriagePromptInput = {
 };
 ```
 
-In `buildTriagePrompt()`, add:
+In the triage prompt builder, add:
 
 ```ts
 const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
@@ -759,7 +759,7 @@ rules in the prompt.
 
 - [ ] **Step 4: Add read-only triage Pi arguments**
 
-In `runTriageAgent()`, compute the skills config:
+In the triage dry-run agent runner, compute the skills config:
 
 ```ts
 const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
@@ -804,8 +804,8 @@ with:
 In `scripts/agent-issue-triage/agent.test.ts`, add:
 
 ```ts
-test("buildTriagePrompt renders configured triage skill", () => {
-  const prompt = buildTriagePrompt({
+test("triage prompt builder renders configured triage skill", () => {
+  const prompt = buildTriageDryRunPrompt({
     issues: [
       {
         number: 1,
@@ -828,10 +828,10 @@ test("buildTriagePrompt renders configured triage skill", () => {
   assert.match(prompt, /Do not mutate repository-hosting state while triaging/);
 });
 
-test("runTriageAgent runs Pi with read-only tools and bundled default triage skill", async () => {
+test("runTriageDryRunAgent runs Pi with read-only tools and bundled default triage skill", async () => {
   const runner = new RecordingRunner(JSON.stringify({ decisions: [] }));
 
-  await runTriageAgent(runner, "/repo", {
+  await runTriageDryRunAgent(runner, "/repo", {
     issues: [],
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
   });
@@ -851,10 +851,10 @@ test("runTriageAgent runs Pi with read-only tools and bundled default triage ski
   );
 });
 
-test("runTriageAgent does not pass bundled skill path for custom triage skill", async () => {
+test("runTriageDryRunAgent does not pass bundled skill path for custom triage skill", async () => {
   const runner = new RecordingRunner(JSON.stringify({ decisions: [] }));
 
-  await runTriageAgent(runner, "/repo", {
+  await runTriageDryRunAgent(runner, "/repo", {
     issues: [],
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
     skills: {
@@ -1146,8 +1146,8 @@ In `src/pi/types.ts`, import `PatchmillSkillsConfig` and add
 `skills?: PatchmillSkillsConfig` to `TriagePiInput`, `PlanPiInput`, and
 `ImplementationPiInput`.
 
-In `src/pi/runner.ts`, pass `skills: input.skills` into `runTriageAgent()`,
-`buildPlanCreationPrompt()`, and `buildImplementationPrompt()`.
+In `src/pi/runner.ts`, pass `skills: input.skills` into the triage prompt
+helpers, `buildPlanCreationPrompt()`, and `buildImplementationPrompt()`.
 
 - [ ] **Step 7: Add prompt tests for default and custom skills**
 
