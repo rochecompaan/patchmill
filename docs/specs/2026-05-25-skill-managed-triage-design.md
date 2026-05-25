@@ -76,7 +76,7 @@ Example:
   },
   "labels": {
     "ready": "ready-for-agent",
-    "inProgress": "in-progress",
+    "in-progress": "in-progress",
     "done": "agent-done",
     "blocked": "blocked"
   },
