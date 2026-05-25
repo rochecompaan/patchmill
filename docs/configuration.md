@@ -67,15 +67,7 @@ preset available on your machine.
     "slugLength": 48,
     "allowDirectLand": true
   },
-  "cleanupHooks": [
-    {
-      "name": "stop-local-dev-server",
-      "whenPathExists": ".env",
-      "terminateProcessPatterns": ["npm run dev"],
-      "command": "npm",
-      "args": ["run", "cleanup"]
-    }
-  ],
+  "cleanupHook": "./scripts/cleanup.sh",
   "projectPolicy": {
     "projectName": "Example Project",
     "contextFileNames": ["AGENTS.md"],
@@ -124,6 +116,11 @@ preset available on your machine.
   }
 }
 ```
+
+`cleanupHook` is an optional repository-relative shell script path. Patchmill
+runs it with `bash` from the issue worktree root after a successful run. The
+script is responsible for its own safety checks and any repository-specific
+process shutdown.
 
 ## Skills
 
