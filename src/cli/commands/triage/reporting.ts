@@ -45,14 +45,15 @@ function addedComments(before: IssueSummary, after: IssueSummary): string[] {
 }
 
 export function extractNeedsInfoFollowUps(comment: string): string[] {
+  const listMarkerPattern = /^(?:[-*]|\d+[.)])\s+/u;
   const lines = comment
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   const questions = lines.flatMap((line) => {
-    const stripped = line.replace(/^[-*]\s*/u, "").trim();
+    const stripped = line.replace(listMarkerPattern, "").trim();
     if (stripped.endsWith("?")) return [stripped];
-    if (/^[-*]\s+/u.test(line)) return [stripped];
+    if (listMarkerPattern.test(line)) return [stripped];
     return [];
   });
 
@@ -71,7 +72,7 @@ export function createPreviewEntries(
     return {
       issueNumber: preview.issueNumber,
       title: issue.title,
-      previousLabels: preview.currentLabels,
+      previousLabels: issue.labels,
       finalLabels: preview.proposedLabels,
       primaryBucket: preview.canonicalBucket,
       rationale: preview.rationale,
@@ -90,7 +91,10 @@ export function createObservedChangeEntries(
 ): TriageLogIssueEntry[] {
   const afterByNumber = issueByNumber(afterIssues);
   return beforeIssues.map((before) => {
-    const after = afterByNumber.get(before.number) ?? before;
+    const after = afterByNumber.get(before.number);
+    if (!after) {
+      throw new Error(`Missing after snapshot for issue #${before.number}`);
+    }
     const newComments = addedComments(before, after);
     const primaryBucket = canonicalBucketForLabels(after.labels, stateMap);
     const questions =

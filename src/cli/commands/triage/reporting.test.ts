@@ -35,7 +35,7 @@ test("createPreviewEntries converts dry-run previews into log entries", () => {
   const previews: TriagePreview[] = [
     {
       issueNumber: 1,
-      currentLabels: ["needs-triage", "bug"],
+      currentLabels: ["stale-model-label"],
       proposedLabels: ["ready-for-agent", "bug"],
       canonicalBucket: "agent-ready",
       rationale: "Clear enough.",
@@ -97,12 +97,33 @@ test("createObservedChangeEntries reports labels, comments, state, and bucket", 
   ]);
 });
 
+test("createObservedChangeEntries throws when an after snapshot is missing", () => {
+  assert.throws(
+    () =>
+      createObservedChangeEntries(
+        [issue(1, ["needs-triage"])],
+        [issue(2, ["ready-for-agent"])],
+        stateMap,
+      ),
+    /Missing after snapshot for issue #1/,
+  );
+});
+
 test("extractNeedsInfoFollowUps returns question-like lines", () => {
   assert.deepEqual(
     extractNeedsInfoFollowUps(
       "## Triage Notes\n\n- What browser fails?\n- Please share logs\nPlain sentence",
     ),
     ["What browser fails?", "Please share logs"],
+  );
+});
+
+test("extractNeedsInfoFollowUps strips ordered markdown list markers", () => {
+  assert.deepEqual(
+    extractNeedsInfoFollowUps(
+      "## Need more info\n\n1. What browser fails?\n2) Please share logs\n3. Attach a screenshot\nPlain sentence",
+    ),
+    ["What browser fails?", "Please share logs", "Attach a screenshot"],
   );
 });
 
