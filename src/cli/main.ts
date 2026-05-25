@@ -1,0 +1,80 @@
+export const HELP_TEXT = `Usage:
+  patchmill <command> [options]
+
+Commands:
+  triage      Classify repository issues for agent readiness.
+  run-once    Claim and process one agent-ready issue.
+`;
+
+export type CommandHandler = (args: string[]) => number | Promise<number>;
+
+export type CliOutput = {
+  stdout: (line: string) => void;
+  stderr: (line: string) => void;
+};
+
+export type ResolvedCommand = {
+  command: string;
+  args: string[];
+};
+
+const DEFAULT_OUTPUT: CliOutput = {
+  stdout: (line) => console.log(line),
+  stderr: (line) => console.error(line),
+};
+
+export function resolveCommand(
+  argv: string[],
+  commandNames: Iterable<string>,
+): ResolvedCommand | "help" {
+  const command = argv[0];
+  if (
+    !command ||
+    command === "--help" ||
+    command === "-h" ||
+    command === "help"
+  ) {
+    return "help";
+  }
+
+  if (!new Set(commandNames).has(command)) {
+    throw new Error(`Unknown command: ${command}`);
+  }
+
+  return { command, args: argv.slice(1) };
+}
+
+export function createCliMain(
+  commands: ReadonlyMap<string, CommandHandler>,
+  output: CliOutput = DEFAULT_OUTPUT,
+): (argv?: string[]) => Promise<number> {
+  return async (argv = process.argv.slice(2)): Promise<number> => {
+    let resolved: ResolvedCommand | "help";
+    try {
+      resolved = resolveCommand(argv, commands.keys());
+    } catch (error) {
+      output.stderr(error instanceof Error ? error.message : String(error));
+      output.stderr(HELP_TEXT);
+      return 1;
+    }
+
+    if (resolved === "help") {
+      output.stdout(HELP_TEXT);
+      return 0;
+    }
+
+    const handler = commands.get(resolved.command);
+    if (!handler) {
+      output.stderr(`Unknown command: ${resolved.command}`);
+      output.stderr(HELP_TEXT);
+      return 1;
+    }
+
+    try {
+      return await handler(resolved.args);
+    } catch (error) {
+      output.stderr(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  };
+}
