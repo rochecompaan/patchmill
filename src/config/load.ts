@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import type { CleanupHookConfig } from "../cleanup/types.ts";
 import {
   cloneSkillsConfig,
   mergeSkillsConfig,
@@ -44,30 +43,12 @@ type PartialConfig = Partial<{
   labels: Partial<PatchmillConfig["labels"]>;
   skills: PartialPatchmillSkillsConfig;
   git: Partial<PatchmillConfig["git"]>;
-  cleanupHooks: CleanupHookConfig[];
+  cleanupHook: string;
   projectPolicy: PartialProjectPolicy;
 }>;
 
 function cloneStringArray(values: string[]): string[] {
   return [...values];
-}
-
-function cloneCleanupHooks(hooks: CleanupHookConfig[]): CleanupHookConfig[] {
-  return hooks.map((hook) => ({
-    name: hook.name,
-    ...(hook.whenPathExists !== undefined
-      ? { whenPathExists: hook.whenPathExists }
-      : {}),
-    ...(hook.terminateProcessPatterns !== undefined
-      ? {
-          terminateProcessPatterns: cloneStringArray(
-            hook.terminateProcessPatterns,
-          ),
-        }
-      : {}),
-    ...(hook.command !== undefined ? { command: hook.command } : {}),
-    ...(hook.args !== undefined ? { args: cloneStringArray(hook.args) } : {}),
-  }));
 }
 
 function cloneValidationRules(
@@ -286,7 +267,9 @@ function mergeConfig(
       ),
     },
     git: { ...base.git, ...update.git },
-    cleanupHooks: cloneCleanupHooks(update.cleanupHooks ?? base.cleanupHooks),
+    ...(update.cleanupHook !== undefined || base.cleanupHook !== undefined
+      ? { cleanupHook: update.cleanupHook ?? base.cleanupHook }
+      : {}),
     projectPolicy: mergeProjectPolicy(base.projectPolicy, update.projectPolicy),
   };
 }
@@ -311,7 +294,6 @@ function absolutizePaths(
         config.paths.cleanStatusIgnorePrefixes,
       ),
     },
-    cleanupHooks: cloneCleanupHooks(config.cleanupHooks),
     projectPolicy: cloneProjectPolicy(config.projectPolicy),
   };
 }
@@ -436,57 +418,16 @@ function readSkillsConfig(
   return hasEntries(parsed) ? parsed : undefined;
 }
 
-function readCleanupHooks(
-  source: Record<string, unknown>,
-): CleanupHookConfig[] | undefined {
-  const value = source.cleanupHooks;
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) {
+function readCleanupHook(source: Record<string, unknown>): string | undefined {
+  if (source.cleanupHooks !== undefined) {
     throw configError(
       "cleanupHooks",
-      "an array of cleanup hook objects",
-      value,
+      "removed; use cleanupHook as a repository-relative shell script path",
+      source.cleanupHooks,
     );
   }
 
-  return value.map((entry, index) => {
-    if (!isRecord(entry)) {
-      throw configError(`cleanupHooks[${index}]`, "an object", entry);
-    }
-
-    const name = readOptionalString(
-      entry,
-      "name",
-      `cleanupHooks[${index}].name`,
-    );
-    if (name === undefined) {
-      throw configError(`cleanupHooks[${index}].name`, "a string", entry.name);
-    }
-
-    return {
-      name,
-      whenPathExists: readOptionalString(
-        entry,
-        "whenPathExists",
-        `cleanupHooks[${index}].whenPathExists`,
-      ),
-      terminateProcessPatterns: readOptionalStringArray(
-        entry,
-        "terminateProcessPatterns",
-        `cleanupHooks[${index}].terminateProcessPatterns`,
-      ),
-      command: readOptionalString(
-        entry,
-        "command",
-        `cleanupHooks[${index}].command`,
-      ),
-      args: readOptionalStringArray(
-        entry,
-        "args",
-        `cleanupHooks[${index}].args`,
-      ),
-    };
-  });
+  return readOptionalString(source, "cleanupHook", "cleanupHook");
 }
 
 function readValidationRules(
@@ -793,9 +734,9 @@ function parseConfigFile(data: unknown): PartialConfig {
     if (hasEntries(parsed)) config.git = parsed;
   }
 
-  const cleanupHooks = readCleanupHooks(data);
-  if (cleanupHooks !== undefined) {
-    config.cleanupHooks = cleanupHooks;
+  const cleanupHook = readCleanupHook(data);
+  if (cleanupHook !== undefined) {
+    config.cleanupHook = cleanupHook;
   }
 
   const skills = readSkillsConfig(data);

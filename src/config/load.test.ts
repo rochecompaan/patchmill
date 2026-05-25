@@ -13,7 +13,7 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   assert.deepEqual(config.skills, DEFAULT_PATCHMILL_CONFIG.skills);
   assert.equal(config.paths.runStateDir, join(dir, ".patchmill/runs"));
   assert.equal(config.git.worktreePrefix, "patchmill-issue-");
-  assert.deepEqual(config.cleanupHooks, []);
+  assert.equal(config.cleanupHook, undefined);
 });
 
 test("loadPatchmillConfig clones default arrays for each load", async () => {
@@ -144,12 +144,6 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
     first.projectPolicy.pi.taskContract.doneStatuses,
     second.projectPolicy.pi.taskContract.doneStatuses,
   );
-  assert.notStrictEqual(
-    first.cleanupHooks,
-    DEFAULT_PATCHMILL_CONFIG.cleanupHooks,
-  );
-  assert.notStrictEqual(first.cleanupHooks, second.cleanupHooks);
-
   first.labels.priorities.push("priority:urgent");
   first.paths.cleanStatusIgnorePrefixes.push("scratch/");
   first.skills.planning = "project-planning";
@@ -171,7 +165,6 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
     "result",
   );
   first.projectPolicy.pi.taskContract.doneStatuses.push("verified");
-  first.cleanupHooks.push({ name: "custom-cleanup" });
 
   assert.deepEqual(
     second.labels.priorities,
@@ -206,7 +199,7 @@ test("loadPatchmillConfig clones default arrays for each load", async () => {
     second.projectPolicy.pi.taskContract,
     DEFAULT_PATCHMILL_CONFIG.projectPolicy.pi.taskContract,
   );
-  assert.deepEqual(second.cleanupHooks, DEFAULT_PATCHMILL_CONFIG.cleanupHooks);
+  assert.equal(second.cleanupHook, DEFAULT_PATCHMILL_CONFIG.cleanupHook);
 });
 
 test("loadPatchmillConfig clones configured visual evidence fields for each load", async () => {
@@ -393,14 +386,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
         worktreePrefix: "pm-issue-",
         slugLength: 32,
       },
-      cleanupHooks: [
-        {
-          name: "custom-cleanup",
-          whenPathExists: ".env",
-          command: "just",
-          args: ["cleanup"],
-        },
-      ],
+      cleanupHook: "./scripts/cleanup.sh",
       projectPolicy: {
         projectName: "Factory",
         contextFileNames: ["AGENTS.md", "CONTRIBUTING.md"],
@@ -467,14 +453,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   assert.equal(config.git.branchPrefix, "patchmill/issue-");
   assert.equal(config.git.worktreePrefix, "pm-issue-");
   assert.equal(config.git.slugLength, 32);
-  assert.deepEqual(config.cleanupHooks, [
-    {
-      name: "custom-cleanup",
-      whenPathExists: ".env",
-      command: "just",
-      args: ["cleanup"],
-    },
-  ]);
+  assert.equal(config.cleanupHook, "./scripts/cleanup.sh");
   assert.equal(config.projectPolicy.projectName, "Factory");
   assert.deepEqual(config.projectPolicy.contextFileNames, [
     "AGENTS.md",
@@ -597,6 +576,32 @@ test("loadPatchmillConfig reports invalid config field types", async () => {
     );
     return true;
   });
+});
+
+test("loadPatchmillConfig rejects non-string cleanupHook", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({ cleanupHook: ["./scripts/cleanup.sh"] }),
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(dir, {}, []),
+    /cleanupHook must be a string/,
+  );
+});
+
+test("loadPatchmillConfig rejects removed cleanupHooks config", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({ cleanupHooks: [{ name: "legacy-cleanup" }] }),
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(dir, {}, []),
+    /cleanupHooks must be removed; use cleanupHook as a repository-relative shell script path/,
+  );
 });
 
 test("loadPatchmillConfig reports invalid clean-status ignore prefixes", async () => {

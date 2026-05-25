@@ -53,7 +53,6 @@ test("defaults match the current patchmill baseline configuration", () => {
       slugLength: 48,
       allowDirectLand: true,
     },
-    cleanupHooks: [],
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
   });
 });
