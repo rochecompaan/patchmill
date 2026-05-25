@@ -11,7 +11,6 @@
     "patchmill": "node bin/patchmill.ts",
     "triage": "node bin/patchmill.ts triage",
     "run-once": "node bin/patchmill.ts run-once",
-    "audit:generalization": "bash ./scripts/audit-generalization.sh",
     "lint": "npm run format:check && npm run lint:ts && npm run lint:md",
     "lint:ts": "eslint \"{bin,src,test-support}/**/*.ts\" --max-warnings=0",
     "lint:md": "markdownlint-cli2",
