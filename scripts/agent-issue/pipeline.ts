@@ -12,12 +12,12 @@ import {
   createLabel,
   listLabels,
   listOpenIssues,
-} from "../agent-issue-triage/forgejo.ts";
+} from "../../src/cli/commands/triage/forgejo.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
   missingLabelDefinitions,
   planLabelChange,
-} from "../agent-issue-triage/labels.ts";
+} from "../../src/cli/commands/triage/labels.ts";
 import { resolveAgentTeam } from "./agent-team.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 import { assertCleanWorktree, ensureIssueWorktree } from "./git.ts";

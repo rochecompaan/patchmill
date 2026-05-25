@@ -9,7 +9,7 @@ export type {
   CommandRunner,
   HumanDecisionQuestion,
   IssueSummary,
-} from "../agent-issue-triage/types.ts";
+} from "../../src/cli/commands/triage/types.ts";
 export type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 
 export type AgentIssueConfig = {
@@ -142,7 +142,7 @@ export type AgentIssueImplementationResumeContext = {
 
 export type AgentIssueQuestion =
   | string
-  | import("../agent-issue-triage/types.ts").HumanDecisionQuestion;
+  | import("../../src/cli/commands/triage/types.ts").HumanDecisionQuestion;
 
 export type AgentIssueBlockedResult = {
   status: "blocked";

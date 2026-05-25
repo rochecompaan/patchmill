@@ -12,7 +12,7 @@ import {
   compositeProgressReporter,
   runLogPath,
 } from "./agent-issue/progress.ts";
-import { createCommandRunner } from "./agent-issue-triage/command.ts";
+import { createCommandRunner } from "../src/cli/commands/triage/command.ts";
 import type {
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,

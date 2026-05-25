@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStaticCommandRunner } from "../agent-issue-triage/command.ts";
+import { createStaticCommandRunner } from "../../src/cli/commands/triage/command.ts";
 import {
   assertCleanWorktree,
   buildIssueBranchName,
