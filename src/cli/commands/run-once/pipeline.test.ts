@@ -9,13 +9,13 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
-import { createTriagePolicy } from "../../src/policy/triage.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
+import { createTriagePolicy } from "../../../policy/triage.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { JsonlProgressReporter } from "./progress.ts";
-import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
+import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
 import type {
   AgentIssueConfig,
   AgentIssueProgressEvent,

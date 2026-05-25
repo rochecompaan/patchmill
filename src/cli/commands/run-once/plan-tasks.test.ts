@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
-import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
+import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 
 test("readPlanTaskLabels extracts ordered task headings", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-plan-tasks-"));

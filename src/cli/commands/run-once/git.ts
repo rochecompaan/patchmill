@@ -5,8 +5,8 @@ import {
   buildIssueBranchName as buildIssueBranchNameFromStrategy,
   buildIssueBranchSlug,
   buildIssueWorktreePath as buildIssueWorktreePathFromStrategy,
-} from "../../src/git/worktree-strategy.ts";
-import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
+} from "../../../git/worktree-strategy.ts";
+import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import type { CommandResult, CommandRunner } from "./types.ts";
 
 export { buildIssueBranchSlug };

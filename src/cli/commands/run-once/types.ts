@@ -1,6 +1,6 @@
-import type { PatchmillTriagePolicy } from "../../src/policy/triage.ts";
-import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
-import type { PatchmillSkillsConfig } from "../../src/workflow/skills.ts";
+import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
+import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
+import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 
 export type {
@@ -9,7 +9,7 @@ export type {
   CommandRunner,
   HumanDecisionQuestion,
   IssueSummary,
-} from "../../src/cli/commands/triage/types.ts";
+} from "../triage/types.ts";
 export type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 
 export type AgentIssueConfig = {
@@ -140,14 +140,14 @@ export type AgentIssueImplementationResumeContext = {
   existingCommits: string[];
 };
 
-export type AgentIssueQuestion =
+export type AgentIssueBlockerQuestion =
   | string
-  | import("../../src/cli/commands/triage/types.ts").HumanDecisionQuestion;
+  | import("../triage/types.ts").HumanDecisionQuestion;
 
 export type AgentIssueBlockedResult = {
   status: "blocked";
   reason: string;
-  questions: AgentIssueQuestion[];
+  questions: AgentIssueBlockerQuestion[];
   commits: string[];
   validation: string[];
 };

@@ -1,9 +1,9 @@
 import {
   ForgejoVisualEvidenceUploader,
   hasForgejoVisualEvidenceConfig,
-} from "../../src/host/forgejo-visual-evidence.ts";
-import type { ForgejoVisualEvidenceEnv } from "../../src/host/forgejo-visual-evidence.ts";
-import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
+} from "../../../host/forgejo-visual-evidence.ts";
+import type { ForgejoVisualEvidenceEnv } from "../../../host/forgejo-visual-evidence.ts";
+import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 import type { AgentIssueVisualEvidence, CommandRunner } from "./types.ts";
 
 export type UploadPrVisualEvidenceInput = {

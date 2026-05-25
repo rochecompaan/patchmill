@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { PiRunner } from "./runner.ts";
-import { parsePiResult } from "../../scripts/agent-issue/pi.ts";
+import { parsePiResult } from "../cli/commands/run-once/pi.ts";
 import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
-import type { ResolvedAgentTeam } from "../../scripts/agent-issue/agent-team.ts";
+import type { ResolvedAgentTeam } from "../cli/commands/run-once/agent-team.ts";
 import type {
   AgentIssueProgressEvent,
   ProgressReporter,
-} from "../../scripts/agent-issue/progress.ts";
+} from "../cli/commands/run-once/progress.ts";
 import type {
   CommandResult,
   CommandRunner,

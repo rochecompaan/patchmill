@@ -4,7 +4,7 @@ import { join } from "node:path";
 import {
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
-} from "../../src/policy/task-contract.ts";
+} from "../../../policy/task-contract.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   createPiSessionMessageStreamer,
@@ -12,8 +12,8 @@ import {
   type PiSessionObservation,
 } from "./pi-session-stream.ts";
 import type {
+  AgentIssueBlockerQuestion,
   AgentIssuePiResult,
-  AgentIssueQuestion,
   AgentIssueVisualEvidence,
   CommandResult,
   CommandRunner,
@@ -26,8 +26,8 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
-function questions(value: unknown): AgentIssueQuestion[] {
-  return Array.isArray(value) ? (value as AgentIssueQuestion[]) : [];
+function questions(value: unknown): AgentIssueBlockerQuestion[] {
+  return Array.isArray(value) ? (value as AgentIssueBlockerQuestion[]) : [];
 }
 
 function visualEvidence(

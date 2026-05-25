@@ -4,11 +4,11 @@ import {
   buildImplementationPrompt,
   buildPlanCreationPrompt,
 } from "./prompts.ts";
-import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
-import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
-import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
-import { DEFAULT_PATCHMILL_SKILLS } from "../../src/workflow/skills.ts";
-import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
+import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
+import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
+import { DEFAULT_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
+import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
 import type { IssueSummary } from "./types.ts";
 
 const issue: IssueSummary = {

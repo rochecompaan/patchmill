@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStaticCommandRunner } from "../../src/cli/commands/triage/command.ts";
+import { createStaticCommandRunner } from "../triage/command.ts";
 import {
   assertCleanWorktree,
   buildIssueBranchName,
@@ -12,7 +12,7 @@ import {
   ensureIssueWorktree,
   pushBranch,
 } from "./git.ts";
-import { DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG } from "../../src/git/worktree-strategy.ts";
+import { DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG } from "../../../git/worktree-strategy.ts";
 
 test("buildIssueBranchName creates safe issue branches", () => {
   assert.equal(

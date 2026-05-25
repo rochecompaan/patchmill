@@ -20,7 +20,7 @@ test("resolveCommand maps triage to copied triage script", () => {
 
 test("resolveCommand maps run-once to copied runner script", () => {
   assert.deepEqual(resolveCommand("/repo", ["run-once", "--issue", "7"]), {
-    script: "/repo/scripts/agent-issue-once.ts",
+    script: "/repo/src/cli/commands/run-once/main.ts",
     args: ["--issue", "7"],
   });
 });

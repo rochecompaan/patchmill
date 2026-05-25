@@ -1,5 +1,5 @@
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { createTriagePolicy } from "../../src/policy/triage.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { createTriagePolicy } from "../../../policy/triage.ts";
 import type { IssueSelectionOptions, IssueSummary } from "./types.ts";
 
 const DEFAULT_TRIAGE_POLICY = createTriagePolicy(

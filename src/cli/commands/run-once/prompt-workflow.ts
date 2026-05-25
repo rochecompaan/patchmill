@@ -1,7 +1,7 @@
 import {
   renderConfiguredSkillLine,
   type PatchmillSkillsConfig,
-} from "../../src/workflow/skills.ts";
+} from "../../../workflow/skills.ts";
 
 export function renderPlanningSkillStep(skills: PatchmillSkillsConfig): string {
   return renderConfiguredSkillLine(

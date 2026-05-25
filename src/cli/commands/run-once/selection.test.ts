@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { createTriagePolicy } from "../../src/policy/triage.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { createTriagePolicy } from "../../../policy/triage.ts";
 import { selectIssue } from "./selection.ts";
 import type { IssueSummary } from "./types.ts";
 

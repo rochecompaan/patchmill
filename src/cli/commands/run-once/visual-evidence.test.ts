@@ -7,9 +7,9 @@ import {
 import {
   LEGACY_FORGEJO_TOKEN_ENV,
   LEGACY_FORGEJO_URL_ENV,
-} from "../../test-support/legacy-seed.ts";
+} from "../../../../test-support/legacy-seed.ts";
 import type { AgentIssueVisualEvidence } from "./types.ts";
-import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
+import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 
 test("uploadPrVisualEvidence keeps evidence when no uploader is configured", async () => {
   const events: string[] = [];

@@ -4,7 +4,7 @@ import {
   compilePlanTaskHeadingPattern,
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
-} from "../../src/policy/task-contract.ts";
+} from "../../../policy/task-contract.ts";
 
 export type PlanTaskLabel = {
   number: number;

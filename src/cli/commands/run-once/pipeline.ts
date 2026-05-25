@@ -1,23 +1,23 @@
 import { access } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import { runCleanupHookScript } from "../../src/pi/hooks.ts";
+import { runCleanupHookScript } from "../../../pi/hooks.ts";
 import {
   buildIssueBranchName,
   buildIssueWorktreePath,
-} from "../../src/git/worktree-strategy.ts";
-import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
+} from "../../../git/worktree-strategy.ts";
+import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import {
   applyIssueLabels,
   commentIssue,
   createLabel,
   listLabels,
   listOpenIssues,
-} from "../../src/cli/commands/triage/forgejo.ts";
+} from "../triage/forgejo.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
   missingLabelDefinitions,
   planLabelChange,
-} from "../../src/cli/commands/triage/labels.ts";
+} from "../triage/labels.ts";
 import { resolveAgentTeam } from "./agent-team.ts";
 import type { ResolvedAgentTeam } from "./agent-team.ts";
 import { assertCleanWorktree, ensureIssueWorktree } from "./git.ts";
@@ -33,8 +33,8 @@ import {
   buildImplementationPrompt,
   buildPlanCreationPrompt,
 } from "./prompts.ts";
-import type { ForgejoVisualEvidenceEnv } from "../../src/host/forgejo-visual-evidence.ts";
-import type { VisualEvidenceUploader } from "../../src/host/visual-evidence.ts";
+import type { ForgejoVisualEvidenceEnv } from "../../../host/forgejo-visual-evidence.ts";
+import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 import {
   isResumableRunState,
   readRunState,
@@ -48,10 +48,10 @@ import {
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type {
   AgentIssueBlockedResult,
+  AgentIssueBlockerQuestion,
   AgentIssueConfig,
   AgentIssuePiResult,
   AgentIssuePipelineResult,
-  AgentIssueQuestion,
   AgentIssueVisualEvidence,
   AgentIssueRunCheckpoints,
   CommandRunner,
@@ -290,7 +290,7 @@ function handoffComment(
   return lines.join("\n");
 }
 
-function questionText(question: AgentIssueQuestion): string {
+function questionText(question: AgentIssueBlockerQuestion): string {
   return typeof question === "string"
     ? `- ${question}`
     : `- ${question.question}${question.recommendedAnswer ? `\n  Recommended: ${question.recommendedAnswer}` : ""}`;
@@ -428,7 +428,7 @@ function assertDirectLandAllowed(
   }
 }
 
-function agentTeamQuestion(): AgentIssueQuestion {
+function agentTeamQuestion(): AgentIssueBlockerQuestion {
   return {
     question:
       "Which agent-team preset should the run-once workflow use for worker and reviewer subagents?",

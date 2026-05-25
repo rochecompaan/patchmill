@@ -4,12 +4,8 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { cwd } from "node:process";
 import { join } from "node:path";
-import {
-  HELP_TEXT,
-  loadCliConfig,
-  summarizeResult,
-} from "../agent-issue-once.ts";
-import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { HELP_TEXT, loadCliConfig, summarizeResult } from "./main.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
   LEGACY_AGENT_TEAM_ENV,
   LEGACY_FORGEJO_REPO_ENV,
@@ -18,7 +14,7 @@ import {
   LEGACY_RUN_ONCE_LOGIN_ENV,
   LEGACY_TRIAGE_LOGIN_ENV,
   literalPattern,
-} from "../../test-support/legacy-seed.ts";
+} from "../../../../test-support/legacy-seed.ts";
 import { parseArgs } from "./args.ts";
 
 test("parseArgs shows help when no args are provided", () => {
@@ -58,7 +54,7 @@ test("parseArgs does not show help when an option is provided", () => {
 
 test("HELP_TEXT documents one-issue usage and options", () => {
   assert.match(HELP_TEXT, /Usage:/);
-  assert.match(HELP_TEXT, /agent-issue-once/);
+  assert.match(HELP_TEXT, /patchmill run-once/);
   assert.match(HELP_TEXT, /--help/);
   assert.match(HELP_TEXT, /--dry-run/);
   assert.match(HELP_TEXT, /--execute/);

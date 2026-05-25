@@ -1,16 +1,16 @@
 import type { ResolvedAgentTeam } from "./agent-team.ts";
-import type { GitWorktreeStrategyConfig } from "../../src/git/types.ts";
-import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
+import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
+import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   type PatchmillSkillsConfig,
-} from "../../src/workflow/skills.ts";
+} from "../../../workflow/skills.ts";
 import {
   renderIssueTodoTags,
   renderIssueTodoTitleGlob,
   renderIssueTodoTitlePattern,
   type PatchmillPiTaskContract,
-} from "../../src/policy/task-contract.ts";
+} from "../../../policy/task-contract.ts";
 import type {
   AgentIssueImplementationResumeContext,
   IssueSummary,

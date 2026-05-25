@@ -11,8 +11,8 @@ import {
   LEGACY_FORGEJO_TOKEN_ENV,
   LEGACY_FORGEJO_URL_ENV,
 } from "../../test-support/legacy-seed.ts";
-import type { CommandRunner } from "../../scripts/agent-issue/types.ts";
-import type { AgentIssueVisualEvidence } from "../../scripts/agent-issue/types.ts";
+import type { CommandRunner } from "../cli/commands/run-once/types.ts";
+import type { AgentIssueVisualEvidence } from "../cli/commands/run-once/types.ts";
 
 const MINIMAL_PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

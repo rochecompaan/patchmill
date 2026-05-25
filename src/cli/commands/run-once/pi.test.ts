@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
+import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 import { parsePiResult, runPiPrompt } from "./pi.ts";
 import {
   sessionEntryToObservations,

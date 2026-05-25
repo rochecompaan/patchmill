@@ -10,7 +10,7 @@
   "scripts": {
     "patchmill": "node bin/patchmill.ts",
     "triage": "node src/cli/commands/triage/main.ts",
-    "run-once": "node scripts/agent-issue-once.ts",
+    "run-once": "node src/cli/commands/run-once/main.ts",
     "audit:generalization": "bash ./scripts/audit-generalization.sh",
     "lint": "npm run format:check && npm run lint:ts && npm run lint:md",
     "lint:ts": "eslint \"{bin,scripts,src,test-support}/**/*.ts\" --max-warnings=0",
@@ -18,11 +18,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "test": "node --test \"bin/*.test.ts\" \"scripts/agent-issue/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='bin/**/*.ts' --test-coverage-include='scripts/**/*.ts' --test-coverage-include='src/**/*.ts' --test-coverage-include='test-support/**/*.ts' --test-coverage-exclude='**/*.test.ts' \"bin/*.test.ts\" \"scripts/agent-issue/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
+    "test": "node --test \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='bin/**/*.ts' --test-coverage-include='scripts/**/*.ts' --test-coverage-include='src/**/*.ts' --test-coverage-include='test-support/**/*.ts' --test-coverage-exclude='**/*.test.ts' \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
     "test:cli": "node --test bin/*.test.ts",
     "test:triage": "node --test src/cli/commands/triage/*.test.ts",
-    "test:run-once": "node --test scripts/agent-issue/*.test.ts"
+    "test:run-once": "node --test src/cli/commands/run-once/*.test.ts"
   },
   "lint-staged": {
     "*.{ts,js,json,md}": "prettier --write",

@@ -8,7 +8,7 @@ import {
   resolveTodoRoot,
   todoTitlePatternIncludesIssueNumber,
   type PatchmillPiTaskContract,
-} from "../../src/policy/task-contract.ts";
+} from "../../../policy/task-contract.ts";
 
 export type IssueTodoSummary = {
   total: number;

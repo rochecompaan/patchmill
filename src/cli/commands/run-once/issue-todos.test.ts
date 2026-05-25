@@ -8,7 +8,7 @@ import {
   issueTodoProgress,
   readIssueTodoTasks,
 } from "./issue-todos.ts";
-import { DEFAULT_PI_TASK_CONTRACT } from "../../src/policy/task-contract.ts";
+import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 
 async function writeTodo(
   repoRoot: string,

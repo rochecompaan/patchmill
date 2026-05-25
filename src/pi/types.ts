@@ -1,13 +1,13 @@
-import type { ResolvedAgentTeam } from "../../scripts/agent-issue/agent-team.ts";
-import type { RunPiPromptOptions } from "../../scripts/agent-issue/pi.ts";
+import type { ResolvedAgentTeam } from "../cli/commands/run-once/agent-team.ts";
+import type { RunPiPromptOptions } from "../cli/commands/run-once/pi.ts";
 import type {
   AgentIssueImplementationResumeContext,
   AgentIssuePiResult,
   IssueSummary,
-} from "../../scripts/agent-issue/types.ts";
+} from "../cli/commands/run-once/types.ts";
 import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 import type { RawTriageDocument } from "../cli/commands/triage/types.ts";
-import type { PromptTriageLabels } from "../../scripts/agent-issue/prompts.ts";
+import type { PromptTriageLabels } from "../cli/commands/run-once/prompts.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../workflow/skills.ts";
 

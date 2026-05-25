@@ -1,4 +1,4 @@
-import type { AgentIssueVisualEvidence } from "../../scripts/agent-issue/types.ts";
+import type { AgentIssueVisualEvidence } from "../cli/commands/run-once/types.ts";
 
 export type VisualEvidenceUploader = {
   uploadPrEvidence(input: {

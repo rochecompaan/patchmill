@@ -19,7 +19,7 @@ export type ResolvedCommand = {
 
 const COMMAND_SCRIPTS = new Map<string, string>([
   ["triage", "src/cli/commands/triage/main.ts"],
-  ["run-once", "scripts/agent-issue-once.ts"],
+  ["run-once", "src/cli/commands/run-once/main.ts"],
 ]);
 
 export function resolveCommand(

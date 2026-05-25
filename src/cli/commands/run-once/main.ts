@@ -3,24 +3,24 @@ import { mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
-import { loadPatchmillConfigState } from "../src/config/load.ts";
-import { parseArgs } from "./agent-issue/args.ts";
-import { AgentIssueConsoleProgressReporter } from "./agent-issue/console-progress.ts";
-import { runOneIssue } from "./agent-issue/pipeline.ts";
+import { loadPatchmillConfigState } from "../../../config/load.ts";
+import { parseArgs } from "./args.ts";
+import { AgentIssueConsoleProgressReporter } from "./console-progress.ts";
+import { runOneIssue } from "./pipeline.ts";
 import {
   JsonlProgressReporter,
   compositeProgressReporter,
   runLogPath,
-} from "./agent-issue/progress.ts";
-import { createCommandRunner } from "../src/cli/commands/triage/command.ts";
+} from "./progress.ts";
+import { createCommandRunner } from "../triage/command.ts";
 import type {
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,
-} from "./agent-issue/types.ts";
+} from "./types.ts";
 
 export const HELP_TEXT = `Usage:
-  node scripts/agent-issue-once.ts [options]
-  just agent-issue-once -- [options]
+  patchmill run-once [options]
+  npm run run-once -- [options]
 
 Process one Forgejo issue labeled agent-ready. Defaults to showing this help when no options are provided.
 Use --dry-run to preview the next eligible issue without mutating Forgejo or git.
@@ -208,62 +208,66 @@ export async function loadCliConfig(
   return parseArgs(args, repoRoot, env, patchmillConfig);
 }
 
-async function main(): Promise<void> {
-  const config = await loadCliConfig(process.argv.slice(2));
-  if (config.showHelp) {
-    console.log(HELP_TEXT);
-    return;
-  }
-
+export async function main(args = process.argv.slice(2)): Promise<number> {
   const startedAt = new Date();
   const timestamp = startedAt.toISOString();
-  const logPath = runLogPath(config.runStateDir, timestamp);
-  const progress = compositeProgressReporter([
-    new JsonlProgressReporter(logPath),
-    ...(config.quiet
-      ? []
-      : [new AgentIssueConsoleProgressReporter({ startedAt })]),
-  ]);
 
-  let result: AgentIssuePipelineResult;
   try {
-    result = await runOneIssue(createCommandRunner(), config, {
-      now: startedAt,
-      progress,
+    const config = await loadCliConfig(args);
+    if (config.showHelp) {
+      console.log(HELP_TEXT);
+      return 0;
+    }
+
+    const logPath = runLogPath(config.runStateDir, timestamp);
+    const progress = compositeProgressReporter([
+      new JsonlProgressReporter(logPath),
+      ...(config.quiet
+        ? []
+        : [new AgentIssueConsoleProgressReporter({ startedAt })]),
+    ]);
+
+    let result: AgentIssuePipelineResult;
+    try {
+      result = await runOneIssue(createCommandRunner(), config, {
+        now: startedAt,
+        progress,
+        logPath,
+        verbosePiOutput: config.verbosePiOutput,
+        streamPiOutput:
+          !config.quiet && config.verbosePiOutput
+            ? (chunk) => {
+                process.stderr.write(chunk);
+              }
+            : undefined,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await progress.event({
+        time: new Date().toISOString(),
+        level: "error",
+        stage: "error",
+        message: `blocked: ${message}`,
+        data: { error: message },
+      });
+      console.log(JSON.stringify({ status: "error", error: message, logPath }));
+      return 1;
+    }
+
+    const outputLogPath = await finalLogPath(
       logPath,
-      verbosePiOutput: config.verbosePiOutput,
-      streamPiOutput:
-        !config.quiet && config.verbosePiOutput
-          ? (chunk) => {
-              process.stderr.write(chunk);
-            }
-          : undefined,
-    });
+      config.runStateDir,
+      timestamp,
+      result,
+    );
+    console.log(
+      JSON.stringify(summarizeResult({ ...result, logPath: outputLogPath })),
+    );
+    return result.status === "blocked" ? 1 : 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await progress.event({
-      time: new Date().toISOString(),
-      level: "error",
-      stage: "error",
-      message: `blocked: ${message}`,
-      data: { error: message },
-    });
-    console.log(JSON.stringify({ status: "error", error: message, logPath }));
-    process.exitCode = 1;
-    return;
-  }
-
-  const outputLogPath = await finalLogPath(
-    logPath,
-    config.runStateDir,
-    timestamp,
-    result,
-  );
-  console.log(
-    JSON.stringify(summarizeResult({ ...result, logPath: outputLogPath })),
-  );
-  if (result.status === "blocked") {
-    process.exitCode = 1;
+    console.log(JSON.stringify({ status: "error", error: message }));
+    return 1;
   }
 }
 
@@ -272,9 +276,5 @@ const isMain = process.argv[1]
   : false;
 
 if (isMain) {
-  main().catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.log(JSON.stringify({ status: "error", error: message }));
-    process.exitCode = 1;
-  });
+  process.exitCode = await main();
 }

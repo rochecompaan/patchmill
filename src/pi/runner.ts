@@ -1,11 +1,11 @@
 import { resolve } from "node:path";
 import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
 import { runTriageAgent } from "../cli/commands/triage/agent.ts";
-import { runPiPrompt } from "../../scripts/agent-issue/pi.ts";
+import { runPiPrompt } from "../cli/commands/run-once/pi.ts";
 import {
   buildImplementationPrompt,
   buildPlanCreationPrompt,
-} from "../../scripts/agent-issue/prompts.ts";
+} from "../cli/commands/run-once/prompts.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type {

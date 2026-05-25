@@ -1,8 +1,8 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { createTriagePolicy } from "../../src/policy/triage.ts";
-import type { PatchmillConfig } from "../../src/config/types.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { createTriagePolicy } from "../../../policy/triage.ts";
+import type { PatchmillConfig } from "../../../config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
