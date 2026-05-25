@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   DEFAULT_PATCHMILL_SKILLS,
@@ -62,5 +63,17 @@ test("bundledTriageSkillPath points at the bundled SKILL.md file", () => {
     bundledTriageSkillPath().endsWith(
       join("skills", "patchmill-issue-triage", "SKILL.md"),
     ),
+  );
+});
+
+test("bundled triage skill matches dry-run previews and execute mutations", async () => {
+  const skill = await readFile(bundledTriageSkillPath(), "utf8");
+
+  assert.doesNotMatch(skill, /required JSON decision document/);
+  assert.doesNotMatch(skill, /Do not mutate repository-hosting state\./);
+  assert.match(skill, /dry-run\/preview mode[\s\S]*read-only JSON preview/i);
+  assert.match(
+    skill,
+    /execute mode[\s\S]*apply[\s\S]*labels, comments, closures[\s\S]*(host tools|configured workflow)/i,
   );
 });
