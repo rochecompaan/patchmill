@@ -60,12 +60,21 @@ Create and modify these areas:
 - Modify `src/cli/commands/run-once/args.ts`, `selection.ts`, and tests — pass
   the new triage config into policy creation and block issues with labels mapped
   to non-ready canonical buckets.
+- Delete old Patchmill-owned classifier modules after the skill-managed pipeline
+  is integrated: `src/cli/commands/triage/agent.ts`, `validation.ts`,
+  `apply.ts`, and their tests.
+- Modify `src/pi/runner.ts`, `src/pi/types.ts`, and tests — remove the old
+  reusable triage contract that returned classifier JSON.
+- Modify `src/cli/commands/triage/labels.ts` and `.test.ts` — keep only label
+  helpers still used by run-once and remove classifier vocabulary constants.
 - Modify docs: `docs/skills.md`, `docs/issue-agent-workflows.md`,
   `docs/configuration.md`, and `README.md` — document skill-managed triage,
   default execution, `--dry-run`, and `triage.stateMap`.
 
-Keep the existing JSON classifier files available during the migration, but do
-not route skill-managed triage through its strict decision schema.
+Remove the existing semi-hardcoded JSON classifier pipeline during this plan.
+The bundled `patchmill-issue-triage` skill can remain as documentation/default
+skill content, but Patchmill should not keep the old prompt builder, validator,
+or apply path as live command code.
 
 ---
 
@@ -2676,7 +2685,287 @@ git commit -m "feat(run-once): honor triage state blockers"
 
 ---
 
-## Task 8: Update documentation and run full verification
+## Task 8: Remove old semi-hardcoded triage pipeline
+
+**Files:**
+
+- Delete: `src/cli/commands/triage/agent.ts`
+- Delete: `src/cli/commands/triage/agent.test.ts`
+- Delete: `src/cli/commands/triage/validation.ts`
+- Delete: `src/cli/commands/triage/validation.test.ts`
+- Delete: `src/cli/commands/triage/apply.ts`
+- Delete: `src/cli/commands/triage/apply.test.ts`
+- Modify: `src/cli/commands/triage/labels.ts`
+- Modify: `src/cli/commands/triage/labels.test.ts`
+- Modify: `src/pi/types.ts`
+- Modify: `src/pi/runner.ts`
+- Modify: `src/pi/runner.test.ts`
+
+- [ ] **Step 1: Confirm old classifier code is no longer used by the triage
+      command**
+
+Run:
+
+```bash
+rg -n "runTriageAgent|validateTriageDocument|applyDecisions|createLogEntries|buildTriagePrompt" src/cli src/pi
+```
+
+Expected before cleanup: references remain in old files and maybe
+`src/pi/runner.ts`. Expected after Task 6: `src/cli/commands/triage/pipeline.ts`
+no longer imports these symbols.
+
+- [ ] **Step 2: Remove the old triage method from reusable Pi runner types**
+
+In `src/pi/types.ts`, delete this import:
+
+```ts
+import type { RawTriageDocument } from "../cli/commands/triage/types.ts";
+```
+
+Delete the `TriagePiInput` type:
+
+```ts
+export type TriagePiInput = {
+  repoRoot: string;
+  issues: IssueSummary[];
+  projectPolicy?: PatchmillProjectPolicy;
+  skills?: PatchmillSkillsConfig;
+};
+```
+
+Change `PiPromptContracts` from:
+
+```ts
+export type PiPromptContracts = {
+  triage(input: TriagePiInput): Promise<RawTriageDocument>;
+  plan(input: PlanPiInput): Promise<AgentIssuePiResult>;
+  implementation(input: ImplementationPiInput): Promise<AgentIssuePiResult>;
+};
+```
+
+to:
+
+```ts
+export type PiPromptContracts = {
+  plan(input: PlanPiInput): Promise<AgentIssuePiResult>;
+  implementation(input: ImplementationPiInput): Promise<AgentIssuePiResult>;
+};
+```
+
+- [ ] **Step 3: Remove the old triage method from `PiRunner`**
+
+In `src/pi/runner.ts`, delete this import:
+
+```ts
+import { runTriageAgent } from "../cli/commands/triage/agent.ts";
+```
+
+Remove `TriagePiInput` from the type import list.
+
+Delete this method from `PiRunner`:
+
+```ts
+triage(input: TriagePiInput) {
+  return runTriageAgent(this.runner, input.repoRoot, {
+    issues: input.issues,
+    projectPolicy: input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY,
+    skills: input.skills,
+  });
+}
+```
+
+- [ ] **Step 4: Remove the stale PiRunner triage test**
+
+In `src/pi/runner.test.ts`, delete the full test block named:
+
+```ts
+test("PiRunner triage defaults to the generic project policy", async () => {
+  const runner = createFakeRunner((call) => {
+    assert.equal(call.command, "pi");
+    assert.equal(call.cwd, "/repo");
+    assert.match(call.prompt, /issue triage agent/);
+    assertNoLegacyProjectText(call.prompt);
+    return { code: 0, stdout: '{"decisions":[]}', stderr: "" };
+  });
+
+  const result = await new PiRunner(runner).triage({
+    repoRoot: "/repo",
+    issues: [issue],
+  });
+
+  assert.deepEqual(result, { decisions: [] });
+});
+```
+
+Do not add a replacement triage test in `src/pi/runner.test.ts`; the
+skill-managed triage command is now covered by `dry-run-agent`, `execute-agent`,
+and `pipeline` tests.
+
+- [ ] **Step 5: Simplify triage label helpers**
+
+Replace `src/cli/commands/triage/labels.ts` with this content:
+
+```ts
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import {
+  createTriagePolicy,
+  type PatchmillTriagePolicy,
+} from "../../../policy/triage.ts";
+import type { LabelChangePlan, LabelDefinition } from "./types.ts";
+
+export const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
+  DEFAULT_PATCHMILL_CONFIG.labels,
+  DEFAULT_PATCHMILL_CONFIG.triage,
+);
+
+export const REQUIRED_LABELS: LabelDefinition[] =
+  DEFAULT_TRIAGE_POLICY.allowedLabels;
+
+export function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+function uniquePreserved(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+export function missingLabelDefinitions(
+  existingNames: string[],
+  triagePolicy: PatchmillTriagePolicy = DEFAULT_TRIAGE_POLICY,
+): LabelDefinition[] {
+  const existing = new Set(existingNames);
+  return triagePolicy.allowedLabels.filter(
+    (label) => !existing.has(label.name),
+  );
+}
+
+export function planLabelChange(
+  issueNumber: number,
+  oldLabels: string[],
+  newLabels: string[],
+): LabelChangePlan {
+  const oldSet = new Set(oldLabels);
+  const newSet = new Set(newLabels);
+  return {
+    issueNumber,
+    oldLabels: uniqueSorted(oldLabels),
+    newLabels: uniqueSorted(newLabels),
+    addLabels: uniquePreserved(newLabels.filter((label) => !oldSet.has(label))),
+    removeLabels: uniquePreserved(
+      oldLabels.filter((label) => !newSet.has(label)),
+    ),
+  };
+}
+```
+
+This keeps the helpers needed by `run-once` and removes the old classifier
+vocabulary constants.
+
+- [ ] **Step 6: Replace label helper tests**
+
+Replace `src/cli/commands/triage/labels.test.ts` with this content:
+
+```ts
+import test from "node:test";
+import assert from "node:assert/strict";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import {
+  DEFAULT_TRIAGE_POLICY,
+  REQUIRED_LABELS,
+  missingLabelDefinitions,
+  planLabelChange,
+} from "./labels.ts";
+
+const { blocked, done, inProgress, needsInfo, ready, unsuitable } =
+  DEFAULT_PATCHMILL_CONFIG.labels;
+
+test("DEFAULT_TRIAGE_POLICY exposes required automation labels", () => {
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.ready, ready);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.needsInfo, needsInfo);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.unsuitable, unsuitable);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.inProgress, inProgress);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.done, done);
+  assert.equal(DEFAULT_TRIAGE_POLICY.labels.blocked, blocked);
+  assert.ok(REQUIRED_LABELS.some((label) => label.name === ready));
+  assert.ok(REQUIRED_LABELS.some((label) => label.name === needsInfo));
+  assert.ok(REQUIRED_LABELS.some((label) => label.name === unsuitable));
+});
+
+test("missingLabelDefinitions returns labels absent from Forgejo", () => {
+  const missing = missingLabelDefinitions(["bug", ready]);
+  const missingNames = missing.map((label) => label.name);
+
+  assert.equal(missingNames.includes(ready), false);
+  assert.equal(missingNames.includes("bug"), false);
+  assert.equal(missingNames.includes(needsInfo), true);
+});
+
+test("planLabelChange computes additions and removals", () => {
+  const change = planLabelChange(
+    7,
+    ["bug", needsInfo, needsInfo],
+    ["bug", ready, "priority:medium", ready],
+  );
+
+  assert.deepEqual(change, {
+    issueNumber: 7,
+    oldLabels: ["bug", needsInfo],
+    newLabels: ["bug", "priority:medium", ready],
+    addLabels: [ready, "priority:medium"],
+    removeLabels: [needsInfo],
+  });
+});
+```
+
+- [ ] **Step 7: Delete old classifier files and tests**
+
+Run:
+
+```bash
+rm src/cli/commands/triage/agent.ts \
+  src/cli/commands/triage/agent.test.ts \
+  src/cli/commands/triage/validation.ts \
+  src/cli/commands/triage/validation.test.ts \
+  src/cli/commands/triage/apply.ts \
+  src/cli/commands/triage/apply.test.ts
+```
+
+- [ ] **Step 8: Verify no old classifier symbols remain**
+
+Run:
+
+```bash
+rg -n "runTriageAgent|validateTriageDocument|applyDecisions|createLogEntries|buildTriagePrompt|RawTriageDocument|RawTriageDecision|TRIAGE_ALLOWED_LABEL|PRIMARY_BUCKET_SET|PRIMARY_BUCKETS" src
+```
+
+Expected: no output.
+
+If output remains, remove the stale import, type, test, or export. Do not keep
+compatibility shims for the old classifier path.
+
+- [ ] **Step 9: Run cleanup-focused tests**
+
+Run:
+
+```bash
+node --test src/cli/commands/triage/labels.test.ts src/pi/runner.test.ts src/cli/commands/triage/pipeline.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 10: Commit old pipeline cleanup**
+
+Run:
+
+```bash
+git add src/cli/commands/triage/labels.ts src/cli/commands/triage/labels.test.ts src/pi/types.ts src/pi/runner.ts src/pi/runner.test.ts
+git rm src/cli/commands/triage/agent.ts src/cli/commands/triage/agent.test.ts src/cli/commands/triage/validation.ts src/cli/commands/triage/validation.test.ts src/cli/commands/triage/apply.ts src/cli/commands/triage/apply.test.ts
+git commit -m "refactor(triage): remove old classifier pipeline"
+```
+
+---
+
+## Task 9: Update documentation and run full verification
 
 **Files:**
 
