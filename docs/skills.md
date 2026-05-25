@@ -53,9 +53,16 @@ Supported keys:
 
 ## Triage
 
-Triage uses `skills.triage`. Normal `patchmill triage` execution delegates
-host-side triage mutations to the configured skill and reports the observed
-label/comment/state changes. `patchmill triage --dry-run` enforces a read-only
-preview JSON pass and limits Pi to `read`, `grep`, `find`, and `ls`. For the
-bundled default triage skill, Patchmill also passes the bundled skill path with
-`--skill`; custom triage skills are named directly instead.
+`patchmill triage` is a harness around `skills.triage`. The configured skill is
+responsible for triage judgment and workflow: labels, comments, maintainer
+handoff, issue closing, and any repository-owned triage knowledge base.
+
+Patchmill executes the configured triage skill by default. Use `--dry-run` to
+ask Patchmill to wrap the skill in a read-only preview prompt that extracts the
+classification logic and reports proposed labels, comments, closures, canonical
+bucket, and rationale without mutating the issue host.
+
+Patchmill still owns the automation intake contract used by
+`patchmill run-once`: an issue is eligible only when it is open, has the
+configured ready label, and has none of the configured protection or non-ready
+triage labels.

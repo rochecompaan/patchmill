@@ -124,10 +124,36 @@ preset available on your machine.
 }
 ```
 
-`triage.stateMap` maps repository label names to Patchmill's canonical triage
-buckets. Keys are repo labels, values must be `agent-ready`, `needs-info`, or
-`agent-unsuitable`, and the configured `labels.ready` label must map to
-`agent-ready`.
+## Triage state map
+
+Use `triage.stateMap` to map repository triage labels into Patchmill's canonical
+buckets. Keep the dashed `labels["in-progress"]` key exactly as shown in JSON.
+
+```json
+{
+  "skills": {
+    "triage": "triage"
+  },
+  "labels": {
+    "ready": "ready-for-agent",
+    "in-progress": "in-progress",
+    "done": "agent-done",
+    "blocked": "blocked"
+  },
+  "triage": {
+    "stateMap": {
+      "ready-for-agent": "agent-ready",
+      "needs-info": "needs-info",
+      "ready-for-human": "agent-unsuitable",
+      "wontfix": "agent-unsuitable"
+    }
+  }
+}
+```
+
+`triage.stateMap` keys are repository label names. Values are limited to
+`agent-ready`, `needs-info`, and `agent-unsuitable`, and the configured
+`labels.ready` label must map to `agent-ready`.
 
 `cleanupHook` is an optional repository-relative shell script path. Patchmill
 runs it with `bash` from the issue worktree root after a successful run. The

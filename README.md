@@ -17,7 +17,9 @@ The two main workflows are:
 - `patchmill run-once` claims one ready issue, plans the work, runs
   implementation, reviews/lands the result, and records the outcome.
 
-Add `--dry-run` when you want to preview selection or triage decisions without
+`patchmill triage` executes the configured triage skill by default and reports
+what changed. Use `patchmill triage --dry-run` to preview the labels, comments,
+closures, canonical bucket, and rationale the skill would produce without
 mutating the issue host.
 
 ## Configuration

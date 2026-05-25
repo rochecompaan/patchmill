@@ -30,6 +30,13 @@ Source files:
 
 ### Flow
 
+`patchmill triage --dry-run` builds a read-only preview prompt from the
+configured triage skill and writes preview entries to the triage log.
+
+`patchmill triage` executes the configured triage skill, snapshots selected
+issues before and after Pi runs, computes label/comment/state changes, writes a
+triage log, and prints a summary.
+
 ```mermaid
 flowchart TD
   A[CLI loads Patchmill config and args] --> B[List open issues from host]
@@ -45,11 +52,11 @@ flowchart TD
   E --> F{--dry-run?}
   F -->|yes| G[Build preview prompt and run dry-run triage agent with configured skills.triage; runtime restricts tools to read, grep, find, ls; no context; no session]
   G --> H[Parse preview JSON and validate one preview per selected issue]
-  H --> I[Write dry-run log with proposed labels/comments]
+  H --> I[Write dry-run log with preview entries]
   F -->|no| J[Build execution prompt and run execute triage agent with configured skills.triage]
   J --> K[Re-list selected issues and hydrate comments]
   K --> L[Compute observed label/state/comment changes]
-  L --> M[Write execute log]
+  L --> M[Write execute log and print summary]
   J -->|failure| N[Write failure log and rethrow]
   K -->|failure| N
   L -->|failure| N
