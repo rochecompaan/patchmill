@@ -110,23 +110,6 @@ test("Pi result parser accepts merged status", () => {
   );
 });
 
-test("PiRunner triage defaults to the generic project policy", async () => {
-  const runner = createFakeRunner((call) => {
-    assert.equal(call.command, "pi");
-    assert.equal(call.cwd, "/repo");
-    assert.match(call.prompt, /issue triage agent/);
-    assertNoLegacyProjectText(call.prompt);
-    return { code: 0, stdout: '{"decisions":[]}', stderr: "" };
-  });
-
-  const result = await new PiRunner(runner).triage({
-    repoRoot: "/repo",
-    issues: [issue],
-  });
-
-  assert.deepEqual(result, { decisions: [] });
-});
-
 test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
   const repoRoot = "/repo";
   const planPath = "docs/plans/2026-05-23-pi-runner.md";

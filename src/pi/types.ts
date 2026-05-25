@@ -5,18 +5,10 @@ import type {
   AgentIssuePiResult,
   IssueSummary,
 } from "../cli/commands/run-once/types.ts";
-import type { GitWorktreeStrategyConfig } from "../git/types.ts";
-import type { RawTriageDocument } from "../cli/commands/triage/types.ts";
 import type { PromptTriageLabels } from "../cli/commands/run-once/prompts.ts";
+import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../workflow/skills.ts";
-
-export type TriagePiInput = {
-  repoRoot: string;
-  issues: IssueSummary[];
-  projectPolicy?: PatchmillProjectPolicy;
-  skills?: PatchmillSkillsConfig;
-};
 
 type PiRunnerRunOptions = Omit<
   RunPiPromptOptions,
@@ -51,7 +43,6 @@ export type ImplementationPiInput = {
 };
 
 export type PiPromptContracts = {
-  triage(input: TriagePiInput): Promise<RawTriageDocument>;
   plan(input: PlanPiInput): Promise<AgentIssuePiResult>;
   implementation(input: ImplementationPiInput): Promise<AgentIssuePiResult>;
 };

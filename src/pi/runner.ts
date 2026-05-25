@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
-import { runTriageAgent } from "../cli/commands/triage/agent.ts";
 import { runPiPrompt } from "../cli/commands/run-once/pi.ts";
 import {
   buildImplementationPrompt,
@@ -12,7 +11,6 @@ import type {
   ImplementationPiInput,
   PiPromptContracts,
   PlanPiInput,
-  TriagePiInput,
 } from "./types.ts";
 
 function defaultImplementationPolicy(
@@ -32,14 +30,6 @@ export class PiRunner implements PiPromptContracts {
 
   constructor(runner: CommandRunner) {
     this.runner = runner;
-  }
-
-  triage(input: TriagePiInput) {
-    return runTriageAgent(this.runner, input.repoRoot, {
-      issues: input.issues,
-      projectPolicy: input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY,
-      skills: input.skills,
-    });
   }
 
   plan(input: PlanPiInput) {

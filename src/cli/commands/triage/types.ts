@@ -64,26 +64,12 @@ export type PrimaryBucket = PatchmillTriagePrimaryBucketStatus;
 
 export type Confidence = PatchmillTriageConfidence;
 
-export type RawTriageDecision = {
-  issueNumber: unknown;
-  primaryBucket: unknown;
-  labels: unknown;
-  confidence: unknown;
-  rationale: unknown;
-  questions: unknown;
-  comment: unknown;
-};
-
 export type HumanDecisionQuestion = {
   question: string;
   recommendedAnswer: string;
 };
 
 export type TriageQuestion = string | HumanDecisionQuestion;
-
-export type RawTriageDocument = {
-  decisions: unknown;
-};
 
 export type RawTriagePreview = {
   issueNumber: unknown;
