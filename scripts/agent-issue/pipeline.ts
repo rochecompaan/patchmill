@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import { runCleanupHooks } from "../../src/cleanup/hooks.ts";
+import { runCleanupHookScript } from "../../src/pi/hooks.ts";
 import {
   buildIssueBranchName,
   buildIssueWorktreePath,
@@ -1618,11 +1618,11 @@ export async function runOneIssue(
       timestamp,
     );
 
-    const cleanupResults = await runCleanupHooks(
+    const cleanupResults = await runCleanupHookScript(
       runner,
       config.repoRoot,
       worktreePath,
-      config.cleanupHooks,
+      config.cleanupHook,
     );
     for (const cleanup of cleanupResults) {
       await progress(

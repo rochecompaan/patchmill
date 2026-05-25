@@ -40,7 +40,7 @@ test("parseArgs shows help when no args are provided", () => {
     ".patchmill/runs/",
     ".patchmill/triage-runs/",
   ]);
-  assert.deepEqual(config.cleanupHooks, []);
+  assert.equal(config.cleanupHook, undefined);
   assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
   assert.equal(config.readyLabel, "agent-ready");
   assert.equal(config.issueLimit, 1);
@@ -235,7 +235,7 @@ test("loadCliConfig uses normalized Patchmill defaults when no config file exist
   assert.equal(config.agentTeamName, undefined);
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill", "runs"));
   assert.equal(config.worktreePrefix, "patchmill-issue-");
-  assert.deepEqual(config.cleanupHooks, []);
+  assert.equal(config.cleanupHook, undefined);
   assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
 });
 
@@ -280,7 +280,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
     "scratch/",
     ".patchmill/custom-runs/",
   ]);
-  assert.deepEqual(config.cleanupHooks, []);
+  assert.equal(config.cleanupHook, undefined);
   assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
   assert.equal(config.readyLabel, "ready-for-bots");
   assert.deepEqual(config.triagePolicy?.runOnceSelection.priorityOrder, [

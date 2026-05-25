@@ -103,13 +103,7 @@ const LANDING_SKILLS = {
   landing: "project-landing",
 };
 
-const cleanupHook = {
-  name: "example-cleanup",
-  whenPathExists: ".env",
-  terminateProcessPatterns: ["example dev server"],
-  command: "npm",
-  args: ["run", "cleanup:example"],
-};
+const cleanupHook = "./scripts/cleanup.sh";
 
 const DEFAULT_LABEL_NAMES = [
   "agent-ready",
@@ -298,7 +292,6 @@ async function makeConfig(
     runStateDir,
     worktreeDir: join(repoRoot, ".worktrees"),
     cleanStatusIgnorePrefixes: [".patchmill/runs/", ".patchmill/triage-runs/"],
-    cleanupHooks: [],
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
     readyLabel: "agent-ready",
     issueLimit: 1,
@@ -1900,20 +1893,19 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
   );
 });
 
-test("runOneIssue runs configured generic cleanup hooks", async () => {
+test("runOneIssue runs configured cleanup hook script", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     agentTeam: undefined,
     agentTeamName: undefined,
     worktreePrefix: "patchmill-issue-",
-    cleanupHooks: [cleanupHook],
+    cleanupHook,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-cleanup-example.md";
   const worktreePath = ".worktrees/patchmill-issue-45-cleanup-example";
   const worktreeRoot = join(config.repoRoot, worktreePath);
   await mkdir(worktreeRoot, { recursive: true });
-  await writeFile(join(worktreeRoot, ".env"), "READY=1\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(
     config.runStateDir,
@@ -1989,14 +1981,7 @@ test("runOneIssue runs configured generic cleanup hooks", async () => {
       return { code: 0, stdout: "", stderr: "" };
     if (
       call.command === "bash" &&
-      call.args[0] === "-c" &&
-      call.args[3] === worktreeRoot
-    )
-      return { code: 0, stdout: "", stderr: "" };
-    if (
-      call.command === "npm" &&
-      call.args[0] === "run" &&
-      call.args[1] === "cleanup:example" &&
+      call.args[0] === "./scripts/cleanup.sh" &&
       call.cwd === worktreeRoot
     )
       return { code: 0, stdout: "", stderr: "" };
@@ -2011,28 +1996,23 @@ test("runOneIssue runs configured generic cleanup hooks", async () => {
   assert.equal(result.status, "pr-created");
   const cleanupCalls = runner.calls.filter(
     (call) =>
-      (call.command === "bash" && call.args[0] === "-c") ||
-      (call.command === "npm" && call.args[0] === "run"),
+      call.command === "bash" && call.args[0] === "./scripts/cleanup.sh",
   );
-  assert.equal(cleanupCalls[0]?.command, "bash");
-  assert.equal(cleanupCalls[0]?.args[0], "-c");
-  assert.equal(cleanupCalls[0]?.args[2], "example-cleanup");
-  assert.equal(cleanupCalls[0]?.args[3], worktreeRoot);
-  assert.equal(cleanupCalls[0]?.args[4], "example dev server");
-  assert.equal(cleanupCalls[0]?.cwd, config.repoRoot);
-  assert.deepEqual(cleanupCalls[1], {
-    command: "npm",
-    args: ["run", "cleanup:example"],
-    cwd: worktreeRoot,
-    onStdout: undefined,
-    onStderr: undefined,
-  });
+  assert.deepEqual(cleanupCalls, [
+    {
+      command: "bash",
+      args: ["./scripts/cleanup.sh"],
+      cwd: worktreeRoot,
+      onStdout: undefined,
+      onStderr: undefined,
+    },
+  ]);
   assert.ok(
     events.some(
       (event) =>
         event.stage === "cleanup" &&
         event.message ===
-          "cleanup hook example-cleanup: completed for .worktrees/patchmill-issue-45-cleanup-example",
+          "cleanup hook ./scripts/cleanup.sh: completed for .worktrees/patchmill-issue-45-cleanup-example",
     ),
   );
 });

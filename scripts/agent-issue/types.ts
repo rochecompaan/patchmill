@@ -1,4 +1,3 @@
-import type { CleanupHookConfig } from "../../src/cleanup/types.ts";
 import type { PatchmillTriagePolicy } from "../../src/policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
 import type { PatchmillSkillsConfig } from "../../src/workflow/skills.ts";
@@ -29,7 +28,7 @@ export type AgentIssueConfig = {
   runStateDir: string;
   worktreeDir: string;
   cleanStatusIgnorePrefixes?: string[];
-  cleanupHooks: CleanupHookConfig[];
+  cleanupHook?: string;
   projectPolicy: PatchmillProjectPolicy;
   skills: PatchmillSkillsConfig;
   triagePolicy?: PatchmillTriagePolicy;
