@@ -65,11 +65,15 @@ process shutdown, or delegation belongs inside the configured shell script.
   Patchmill config, e.g. `cleanupHook?: string`.
 - Update config loading, cloning, defaults, and tests from `cleanupHooks: []` to
   optional `cleanupHook`.
-- Simplify `src/cleanup/hooks.ts` to execute one script or no-op.
+- Delete the dedicated `src/cleanup/` directory.
+- Add `src/pi/hooks.ts` for small Pi workflow hook helpers, starting with the
+  cleanup hook script runner.
+- Add focused tests in `src/pi/hooks.test.ts`.
 - Remove the process-termination shell script and helper functions.
 - Remove tests for `whenPathExists`, `terminateProcessPatterns`, process-group
   safety, and command/args execution.
-- Update pipeline code to pass the singular cleanup hook path.
+- Update pipeline code to import from `src/pi/hooks.ts` and pass the singular
+  cleanup hook path.
 - Update documentation examples.
 
 ## Testing
