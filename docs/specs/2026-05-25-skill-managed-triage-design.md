@@ -6,9 +6,9 @@ Patchmill triage should become a harness around a configured triage skill, not a
 hardcoded triage brain. A repository's triage skill can express its natural
 language workflow, labels, comments, maintainer handoff rules, issue-closing
 behavior, and knowledge-base updates. Patchmill adds value by running that skill
-in execute mode, rewriting that skill into a dry-run classification prompt in
-preview mode, observing issue state before and after execution, reporting
-changes, and feeding the configured automation-ready label into
+by default, rewriting that skill into a dry-run classification prompt when
+`--dry-run` is passed, observing issue state before and after execution,
+reporting changes, and feeding the configured automation-ready label into
 `patchmill run-once`.
 
 Patchmill still owns the automation intake contract: an issue becomes eligible
@@ -41,10 +41,9 @@ automation.
   behavior.
 - Keep `run-once` deterministic and safe through an explicit automation intake
   contract.
-- Let `patchmill triage` preview what the configured skill would classify and do
-  without mutating host state.
-- Let `patchmill triage --execute` run the configured skill and report what
-  changed.
+- Let `patchmill triage` run the configured skill and report what changed.
+- Let `patchmill triage --dry-run` preview what the configured skill would
+  classify and do without mutating host state.
 - Support reporting buckets by mapping repository triage-state labels to the
   canonical Patchmill categories `agent-ready`, `needs-info`, and
   `agent-unsuitable`.
@@ -117,11 +116,11 @@ configured `labels.ready` value to disambiguate `run-once` intake.
 
 ## Runtime behavior
 
-### `patchmill triage` dry-run
+### `patchmill triage --dry-run`
 
-In skill-managed mode, dry-run is not implemented by executing the triage skill
-and hoping it avoids mutations. Instead, Patchmill wraps the configured skill in
-a preview prompt:
+In skill-managed mode, explicit dry-run is not implemented by executing the
+triage skill and hoping it avoids mutations. Instead, Patchmill wraps the
+configured skill in a preview prompt:
 
 1. Load and use the configured triage skill as the source of classification
    criteria, workflow states, comment templates, and rationale expectations.
@@ -159,10 +158,10 @@ selected issue, and `canonicalBucket` values from `agent-ready`, `needs-info`,
 and `agent-unsuitable`. It should not treat the dry-run preview schema as a
 contract imposed on the configured skill during execute mode.
 
-### `patchmill triage --execute`
+### `patchmill triage`
 
-In skill-managed execute mode, `patchmill triage --execute` runs as an observer
-and reporter:
+Patchmill executes by default. In skill-managed execute mode, `patchmill triage`
+runs as an observer and reporter:
 
 1. Select issues according to CLI flags such as `--issue`, `--limit`, and
    eventually `--loop`.
@@ -204,10 +203,10 @@ triage skill.
 
 Dry-run and execute intentionally use different prompt contracts:
 
-- dry-run asks Pi to reinterpret the configured triage skill as a read-only
+- `--dry-run` asks Pi to reinterpret the configured triage skill as a read-only
   classifier and reporter;
-- execute asks Pi to run the configured triage skill normally, including any
-  host mutations that skill performs.
+- the default execute path asks Pi to run the configured triage skill normally,
+  including any host mutations that skill performs.
 
 This gives users a useful preview without requiring the triage skill itself to
 support a dry-run flag.
@@ -270,9 +269,9 @@ skill-managed triage should not be forced through its `agent-ready`,
 - Add dry-run preview parsing and validation.
 - Update `run-once` selection to use the configured ready/protection labels
   independently from the old triage primary-bucket policy.
-- Replace or branch the current `patchmill triage` pipeline so skill-managed
-  dry-run returns previews while skill-managed execute mode snapshots issues,
-  runs Pi, snapshots again, diffs, logs, and reports.
+- Replace or branch the current `patchmill triage` pipeline so default
+  skill-managed execution snapshots issues, runs Pi, snapshots again, diffs,
+  logs, and reports, while `--dry-run` returns previews.
 - Add reusable issue diff helpers for labels, comments, host state, and
   canonical bucket counts.
 - Update docs to describe Patchmill triage as a harness around configured
@@ -283,11 +282,11 @@ skill-managed triage should not be forced through its `agent-ready`,
 - A repository can configure Matt-style labels such as `ready-for-agent`,
   `needs-info`, `ready-for-human`, and `wontfix` without collapsing the skill's
   natural language workflow into Patchmill's current JSON classifier.
-- `patchmill triage --issue <n>` runs a read-only dry-run wrapper over the
-  configured triage skill and reports proposed labels, comments, closures,
+- `patchmill triage --issue <n>` runs the configured triage skill and reports
+  before/after label and comment changes.
+- `patchmill triage --dry-run --issue <n>` runs a read-only dry-run wrapper over
+  the configured triage skill and reports proposed labels, comments, closures,
   canonical bucket, and rationale without mutating host state.
-- `patchmill triage --execute --issue <n>` runs the configured triage skill and
-  reports before/after label and comment changes.
 - `patchmill triage` logs canonical bucket counts based on `triage.stateMap`.
 - New comments on needs-info issues are surfaced as aggregated follow-up items.
 - `patchmill run-once` can pick up an issue labeled with the configured ready
@@ -300,8 +299,8 @@ skill-managed triage should not be forced through its `agent-ready`,
 ## Risks and mitigations
 
 - **Skill-managed execute can mutate host state directly:** This is intentional
-  for rich workflows. Mitigate by making non-execute dry-run use a separate
-  read-only preview prompt and documenting the difference clearly.
+  for rich workflows. Mitigate by making `--dry-run` use a separate read-only
+  preview prompt and documenting that execution is the default.
 - **Dry-run may not perfectly predict execute behavior:** It asks the model to
   reinterpret the skill rather than run it. Mitigate by treating dry-run output
   as a preview, not an execution plan Patchmill will apply automatically.
