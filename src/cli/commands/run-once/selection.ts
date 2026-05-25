@@ -30,9 +30,10 @@ function resolveSelectionOptions(
     readyLabel: options.readyLabel,
     priorityLabels:
       options.priorityLabels ?? triagePolicy.runOnceSelection.priorityOrder,
-    excludedLabels: new Set(
-      options.excludedLabels ?? defaultExcludedLabels(options),
-    ),
+    excludedLabels: new Set([
+      ...defaultExcludedLabels(options),
+      ...(options.excludedLabels ?? []),
+    ]),
   };
 }
 
