@@ -5,8 +5,8 @@ import {
   hydrateIssueComments,
   listLabels,
   listOpenIssues,
-} from "../../scripts/agent-issue-triage/forgejo.ts";
-import type { CommandRunner } from "../../scripts/agent-issue-triage/types.ts";
+} from "../cli/commands/triage/forgejo.ts";
+import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type {
   IssueHostProvider,
   IssueSummary,

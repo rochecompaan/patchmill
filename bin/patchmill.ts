@@ -18,8 +18,8 @@ export type ResolvedCommand = {
 };
 
 const COMMAND_SCRIPTS = new Map<string, string>([
-  ["triage", "agent-issue-triage.ts"],
-  ["run-once", "agent-issue-once.ts"],
+  ["triage", "src/cli/commands/triage/main.ts"],
+  ["run-once", "scripts/agent-issue-once.ts"],
 ]);
 
 export function resolveCommand(
@@ -35,9 +35,9 @@ export function resolveCommand(
   )
     return "help";
 
-  const scriptName = COMMAND_SCRIPTS.get(command);
-  if (!scriptName) throw new Error(`Unknown command: ${command}`);
-  return { script: join(root, "scripts", scriptName), args: argv.slice(1) };
+  const scriptPath = COMMAND_SCRIPTS.get(command);
+  if (!scriptPath) throw new Error(`Unknown command: ${command}`);
+  return { script: join(root, scriptPath), args: argv.slice(1) };
 }
 
 export function main(argv = process.argv.slice(2)): number {

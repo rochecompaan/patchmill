@@ -1,6 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
-import type { CommandRunner } from "../../scripts/agent-issue-triage/types.ts";
+import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type { AgentIssueVisualEvidence } from "../../scripts/agent-issue/types.ts";
 import type { VisualEvidenceUploader } from "./visual-evidence.ts";
 

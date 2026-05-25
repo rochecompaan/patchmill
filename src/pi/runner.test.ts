@@ -15,7 +15,7 @@ import type {
   CommandResult,
   CommandRunner,
   IssueSummary,
-} from "../../scripts/agent-issue-triage/types.ts";
+} from "../cli/commands/triage/types.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
 import type { ImplementationPiInput } from "./types.ts";
 

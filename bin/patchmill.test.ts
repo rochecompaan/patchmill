@@ -13,7 +13,7 @@ test("resolveCommand returns help with no command", () => {
 
 test("resolveCommand maps triage to copied triage script", () => {
   assert.deepEqual(resolveCommand("/repo", ["triage", "--dry-run"]), {
-    script: "/repo/scripts/agent-issue-triage.ts",
+    script: "/repo/src/cli/commands/triage/main.ts",
     args: ["--dry-run"],
   });
 });

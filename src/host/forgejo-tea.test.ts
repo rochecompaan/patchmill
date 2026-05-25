@@ -9,7 +9,7 @@ import type {
 import type {
   CommandResult,
   CommandRunner,
-} from "../../scripts/agent-issue-triage/types.ts";
+} from "../cli/commands/triage/types.ts";
 
 type RecordedCall = {
   command: string;
