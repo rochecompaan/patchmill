@@ -1,3 +1,6 @@
+import { main as runOnceMain } from "./commands/run-once/main.ts";
+import { main as triageMain } from "./commands/triage/main.ts";
+
 export const HELP_TEXT = `Usage:
   patchmill <command> [options]
 
@@ -78,3 +81,10 @@ export function createCliMain(
     }
   };
 }
+
+const COMMANDS = new Map<string, CommandHandler>([
+  ["triage", triageMain],
+  ["run-once", runOnceMain],
+]);
+
+export const main = createCliMain(COMMANDS);
