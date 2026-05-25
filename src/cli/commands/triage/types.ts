@@ -134,12 +134,16 @@ export type TriageLogIssueEntry = {
   title: string;
   previousLabels: string[];
   finalLabels: string[];
-  primaryBucket: PrimaryBucket;
-  confidence: Confidence;
-  rationale: string;
+  primaryBucket?: PrimaryBucket;
+  confidence?: Confidence;
+  rationale?: string;
   questions: TriageQuestion[];
   comment: string | null;
-  mutationStatus: "planned" | "applied" | "failed";
+  addedComments?: string[];
+  previousState?: string;
+  finalState?: string;
+  wouldClose?: boolean;
+  mutationStatus: "preview" | "observed" | "planned" | "applied" | "failed";
   error?: string;
 };
 
