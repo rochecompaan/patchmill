@@ -5,6 +5,7 @@ import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
 import { TRIAGE_CANONICAL_BUCKETS } from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import {
+  bundledTriageSkillPath,
   DEFAULT_PATCHMILL_SKILLS,
   type PatchmillSkillsConfig,
 } from "../../../workflow/skills.ts";
@@ -226,6 +227,11 @@ export async function runTriageDryRunAgent(
   input: TriageDryRunPromptInput,
 ): Promise<TriagePreview[]> {
   const prompt = buildTriageDryRunPrompt(input);
+  const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
+  const skillArgs =
+    skills.triage === DEFAULT_PATCHMILL_SKILLS.triage
+      ? ["--skill", bundledTriageSkillPath()]
+      : [];
   const thinking = input.thinking ?? "high";
   const dir = await mkdtemp(join(tmpdir(), "agent-triage-dry-run-"));
 
@@ -239,6 +245,7 @@ export async function runTriageDryRunAgent(
         "read,grep,find,ls",
         "--no-context-files",
         "--no-session",
+        ...skillArgs,
         "--thinking",
         thinking,
         "-p",
