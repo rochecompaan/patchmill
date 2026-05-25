@@ -66,7 +66,7 @@ test("assertCleanWorktree checks for an empty porcelain status", async () => {
 
 test("assertCleanWorktree rejects dirty repositories", async () => {
   const runner = createStaticCommandRunner([
-    { code: 0, stdout: " M scripts/agent-issue/git.ts\n", stderr: "" },
+    { code: 0, stdout: " M src/cli/commands/run-once/git.ts\n", stderr: "" },
   ]);
 
   await assert.rejects(
