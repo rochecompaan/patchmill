@@ -11,7 +11,7 @@ import {
   listOpenIssues,
 } from "./forgejo.ts";
 import { DEFAULT_TRIAGE_POLICY, missingLabelDefinitions } from "./labels.ts";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { writeTriageLog } from "./log.ts";
 import { validateTriageDocument } from "./validation.ts";
 import type {

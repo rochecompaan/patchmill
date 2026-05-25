@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
   LEGACY_TRIAGE_LOGIN_ENV,
   literalPattern,
-} from "../../test-support/legacy-seed.ts";
-import { HELP_TEXT, loadCliConfig } from "../agent-issue-triage.ts";
+} from "../../../../test-support/legacy-seed.ts";
+import { HELP_TEXT, loadCliConfig } from "./main.ts";
 import { parseArgs } from "./args.ts";
 
 test("parseArgs shows help when no args are provided", () => {

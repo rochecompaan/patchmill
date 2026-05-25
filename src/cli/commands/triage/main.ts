@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
-import { loadPatchmillConfigState } from "../src/config/load.ts";
-import { parseArgs } from "./agent-issue-triage/args.ts";
-import { createCommandRunner } from "./agent-issue-triage/command.ts";
-import { runTriage } from "./agent-issue-triage/pipeline.ts";
-import type { TriageResult } from "./agent-issue-triage/types.ts";
+import { loadPatchmillConfigState } from "../../../config/load.ts";
+import { parseArgs } from "./args.ts";
+import { createCommandRunner } from "./command.ts";
+import { runTriage } from "./pipeline.ts";
+import type { TriageResult } from "./types.ts";
 
 export const HELP_TEXT = `Usage:
-  node scripts/agent-issue-triage.ts [options]
-  just agent-issue-triage -- [options]
+  patchmill triage [options]
+  npm run triage -- [options]
 
 Automated Forgejo issue triage. Defaults to showing this help when no options are provided.
 By default, only open issues without active triage or protection labels are classified.
@@ -77,19 +77,25 @@ export async function loadCliConfig(
   return parseArgs(args, repoRoot, env, patchmillConfig);
 }
 
-async function main(): Promise<void> {
-  const config = await loadCliConfig(process.argv.slice(2));
-  if (config.showHelp) {
-    console.log(HELP_TEXT);
-    return;
-  }
+export async function main(args = process.argv.slice(2)): Promise<number> {
+  try {
+    const config = await loadCliConfig(args);
+    if (config.showHelp) {
+      console.log(HELP_TEXT);
+      return 0;
+    }
 
-  const result = await runTriage(createCommandRunner(), config);
-  console.log(`agent issue triage: ${result.status}`);
-  console.log(`issues: ${result.issueCount}`);
-  console.log(`log: ${result.logPath}`);
-  for (const line of formatResultLines(result)) {
-    console.log(line);
+    const result = await runTriage(createCommandRunner(), config);
+    console.log(`agent issue triage: ${result.status}`);
+    console.log(`issues: ${result.issueCount}`);
+    console.log(`log: ${result.logPath}`);
+    for (const line of formatResultLines(result)) {
+      console.log(line);
+    }
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
   }
 }
 
@@ -98,8 +104,5 @@ const isMain = process.argv[1]
   : false;
 
 if (isMain) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+  process.exitCode = await main();
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import {
   ALLOWED_LABEL_NAMES,
   PRIMARY_BUCKETS,

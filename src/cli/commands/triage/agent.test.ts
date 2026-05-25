@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createStaticCommandRunner } from "./command.ts";
 import { buildTriagePrompt, parseAgentJson, runTriageAgent } from "./agent.ts";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
-import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
-import { createTriagePolicy } from "../../src/policy/triage.ts";
-import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
+import { createTriagePolicy } from "../../../policy/triage.ts";
+import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
 import type { CommandResult, CommandRunner, IssueSummary } from "./types.ts";
 
 class RecordingRunner implements CommandRunner {

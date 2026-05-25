@@ -1,10 +1,10 @@
-import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
+import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type {
   PatchmillTriageConfidence,
   PatchmillTriagePolicy,
   PatchmillTriagePrimaryBucketStatus,
-} from "../../src/policy/triage.ts";
-import type { PatchmillSkillsConfig } from "../../src/workflow/skills.ts";
+} from "../../../policy/triage.ts";
+import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
 export type TriageConfig = {
   repoRoot: string;

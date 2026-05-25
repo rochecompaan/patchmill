@@ -1,9 +1,9 @@
-import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import {
   createTriagePolicy,
   primaryBucketStatuses,
   type PatchmillTriagePolicy,
-} from "../../src/policy/triage.ts";
+} from "../../../policy/triage.ts";
 import type {
   LabelChangePlan,
   LabelDefinition,

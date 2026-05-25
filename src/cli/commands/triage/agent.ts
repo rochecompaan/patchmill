@@ -4,13 +4,13 @@ import { join } from "node:path";
 import {
   labelForPrimaryBucket,
   type PatchmillTriagePolicy,
-} from "../../src/policy/triage.ts";
-import type { PatchmillProjectPolicy } from "../../src/policy/types.ts";
+} from "../../../policy/triage.ts";
+import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   bundledTriageSkillPath,
   type PatchmillSkillsConfig,
-} from "../../src/workflow/skills.ts";
+} from "../../../workflow/skills.ts";
 import { DEFAULT_TRIAGE_POLICY } from "./labels.ts";
 import type {
   CommandRunner,

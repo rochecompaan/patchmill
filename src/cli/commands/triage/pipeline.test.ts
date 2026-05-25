@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { formatResultLines, HELP_TEXT } from "../agent-issue-triage.ts";
+import { formatResultLines, HELP_TEXT } from "./main.ts";
 import { createStaticCommandRunner } from "./command.ts";
 import { REQUIRED_LABELS } from "./labels.ts";
 import { runTriage } from "./pipeline.ts";

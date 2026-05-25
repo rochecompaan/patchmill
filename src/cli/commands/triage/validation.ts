@@ -1,7 +1,7 @@
 import {
   labelForPrimaryBucket,
   type PatchmillTriagePolicy,
-} from "../../src/policy/triage.ts";
+} from "../../../policy/triage.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
   primaryBucketLabelMap,

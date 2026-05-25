@@ -1,4 +1,4 @@
-import type { PatchmillTriagePolicy } from "../../src/policy/triage.ts";
+import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import { applyIssueLabels, commentIssue } from "./forgejo.ts";
 import { planLabelChange } from "./labels.ts";
 import type {
