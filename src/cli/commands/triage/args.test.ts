@@ -15,8 +15,8 @@ test("parseArgs shows help when no args are provided", () => {
   const config = parseArgs([], "/repo");
 
   assert.equal(config.showHelp, true);
-  assert.equal(config.dryRun, true);
-  assert.equal(config.execute, false);
+  assert.equal(config.dryRun, false);
+  assert.equal(config.execute, true);
   assert.equal(config.repoRoot, "/repo");
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.limit, undefined);
@@ -44,10 +44,9 @@ test("parseArgs accepts all to re-triage already classified issues", () => {
   assert.equal(config.all, true);
 });
 
-test("parseArgs accepts execute, issue, limit, and log dir", () => {
+test("parseArgs executes by default for issue, limit, and log dir", () => {
   const config = parseArgs(
     [
-      "--execute",
       "--issue",
       "42",
       "--limit",
@@ -60,6 +59,7 @@ test("parseArgs accepts execute, issue, limit, and log dir", () => {
     "/repo",
   );
 
+  assert.equal(config.showHelp, false);
   assert.equal(config.dryRun, false);
   assert.equal(config.execute, true);
   assert.equal(config.issueNumber, 42);
@@ -253,11 +253,11 @@ test("loadCliConfig shows help without reading malformed patchmill config", asyn
   assert.equal(helpShort.showHelp, true);
 });
 
-test("parseArgs accepts an explicit dry-run after execute", () => {
-  const config = parseArgs(["--execute", "--dry-run"], "/repo");
-
-  assert.equal(config.dryRun, true);
-  assert.equal(config.execute, false);
+test("parseArgs rejects removed execute flag", () => {
+  assert.throws(
+    () => parseArgs(["--execute"], "/repo"),
+    /Unknown argument: --execute/,
+  );
 });
 
 test("parseArgs rejects invalid issue numbers", () => {

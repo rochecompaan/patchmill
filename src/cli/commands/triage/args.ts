@@ -41,8 +41,8 @@ export function parseArgs(
   const patchmillConfig = normalizedConfig ?? DEFAULT_PATCHMILL_CONFIG;
   const config: TriageConfig = {
     repoRoot,
-    dryRun: true,
-    execute: false,
+    dryRun: false,
+    execute: true,
     triageThinking: patchmillConfig.pi.triageThinking,
     showHelp: args.length === 0,
     teaLogin: defaultTeaLogin(env, patchmillConfig),
@@ -61,9 +61,6 @@ export function parseArgs(
     const arg = args[index];
     if (arg === "--help" || arg === "-h") {
       config.showHelp = true;
-    } else if (arg === "--execute") {
-      config.dryRun = false;
-      config.execute = true;
     } else if (arg === "--dry-run" || arg === "--dryrun") {
       config.dryRun = true;
       config.execute = false;

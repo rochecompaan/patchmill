@@ -12,12 +12,12 @@ export const HELP_TEXT = `Usage:
   npm run triage -- [options]
 
 Automated Forgejo issue triage. Defaults to showing this help when no options are provided.
-By default, only open issues without active triage or protection labels are classified.
+With arguments, patchmill triage executes the configured triage skill by default.
+By default, only open issues without active triage or protection labels are selected.
 
 Options:
   --help, -h          Show this help and exit.
-  --dry-run, --dryrun Classify issues and write a log without mutating Forgejo.
-  --execute           Create missing labels and apply validated triage decisions.
+  --dry-run, --dryrun Preview configured triage skill decisions without mutating Forgejo.
   --issue <number>    Triage one open issue by number.
   --all               Re-triage all selected open issues, including issues already carrying triage or protection labels such as in-progress or blocked.
   --limit <number>    Triage only the first N selected open issues.

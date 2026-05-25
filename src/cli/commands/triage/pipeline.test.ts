@@ -82,7 +82,9 @@ test("HELP_TEXT documents usage and active triage protection wording", () => {
   assert.match(HELP_TEXT, /Usage:/);
   assert.match(HELP_TEXT, /--help/);
   assert.match(HELP_TEXT, /-h/);
-  assert.match(HELP_TEXT, /--execute/);
+  assert.doesNotMatch(HELP_TEXT, /--execute/);
+  assert.match(HELP_TEXT, /executes the configured triage skill by default/);
+  assert.match(HELP_TEXT, /--dry-run/);
   assert.match(HELP_TEXT, /--issue <number>/);
   assert.match(HELP_TEXT, /--all/);
   assert.match(HELP_TEXT, /without active triage or protection labels/);
