@@ -717,3 +717,139 @@ test("loadPatchmillConfig reports invalid visual evidence example types", async 
     return true;
   });
 });
+
+test("loadPatchmillConfig parses triage state map", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-state-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      labels: {
+        ready: "ready-for-agent",
+        needsInfo: "needs-info",
+        unsuitable: "ready-for-human",
+        "in-progress": "in-progress",
+      },
+      triage: {
+        stateMap: {
+          "ready-for-agent": "agent-ready",
+          "needs-info": "needs-info",
+          "ready-for-human": "agent-unsuitable",
+          wontfix: "agent-unsuitable",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.deepEqual(config.triage.stateMap, {
+    "ready-for-agent": "agent-ready",
+    "needs-info": "needs-info",
+    "ready-for-human": "agent-unsuitable",
+    wontfix: "agent-unsuitable",
+  });
+  assert.equal(config.labels.inProgress, "in-progress");
+});
+
+test("loadPatchmillConfig defaults triage state map from merged labels", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-defaults-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      labels: {
+        ready: "ready-for-agent",
+        needsInfo: "needs-info",
+        unsuitable: "manual-only",
+      },
+    }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.deepEqual(config.triage.stateMap, {
+    "ready-for-agent": "agent-ready",
+    "needs-info": "needs-info",
+    "manual-only": "agent-unsuitable",
+  });
+});
+
+test("loadPatchmillConfig rejects invalid triage state map buckets", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-invalid-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      triage: {
+        stateMap: {
+          "agent-ready": "agent-ready",
+          deferred: "later",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /triage\.stateMap\.deferred must be one of agent-ready, needs-info, agent-unsuitable/,
+  );
+});
+
+test("loadPatchmillConfig rejects state maps that omit ready label mapping", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-ready-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      labels: { ready: "ready-for-agent" },
+      triage: {
+        stateMap: {
+          "needs-info": "needs-info",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /triage\.stateMap must map ready label ready-for-agent to agent-ready/,
+  );
+});
+
+test('loadPatchmillConfig parses dashed labels["in-progress"] input', async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-in-progress-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      labels: {
+        "in-progress": "claimed",
+      },
+    }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.equal(config.labels.inProgress, "claimed");
+});
+
+test("loadPatchmillConfig rejects removed labels.inProgress input", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-in-progress-removed-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      labels: {
+        inProgress: "claimed",
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /labels\.inProgress must be removed; use labels\["in-progress"\]/,
+  );
+});

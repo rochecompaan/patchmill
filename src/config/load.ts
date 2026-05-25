@@ -1,6 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import {
+  cloneTriageStateMap,
+  defaultTriageStateMap,
+  validateTriageStateMap,
+  type PatchmillTriageStateMap,
+} from "../policy/triage-state.ts";
+import {
   cloneSkillsConfig,
   mergeSkillsConfig,
   PATCHMILL_SKILL_KEYS,
@@ -41,6 +47,7 @@ type PartialConfig = Partial<{
   pi: Partial<PatchmillConfig["pi"]>;
   paths: Partial<PatchmillConfig["paths"]>;
   labels: Partial<PatchmillConfig["labels"]>;
+  triage: Partial<PatchmillConfig["triage"]>;
   skills: PartialPatchmillSkillsConfig;
   git: Partial<PatchmillConfig["git"]>;
   cleanupHook: string;
@@ -241,11 +248,33 @@ function mergeProjectPolicy(
   };
 }
 
+function cloneTriageConfig(
+  triage: PatchmillConfig["triage"],
+): PatchmillConfig["triage"] {
+  return { stateMap: cloneTriageStateMap(triage.stateMap) };
+}
+
+function mergeTriageConfig(
+  base: PatchmillConfig,
+  labels: PatchmillConfig["labels"],
+  update: PartialConfig,
+): PatchmillConfig["triage"] {
+  const stateMap =
+    update.triage?.stateMap ??
+    (update.labels !== undefined
+      ? defaultTriageStateMap(labels)
+      : base.triage.stateMap);
+  return {
+    stateMap: validateTriageStateMap(stateMap, labels.ready),
+  };
+}
+
 function mergeConfig(
   base: PatchmillConfig,
   update: PartialConfig,
 ): PatchmillConfig {
   const labels = { ...base.labels, ...update.labels };
+  const triage = mergeTriageConfig(base, labels, update);
   const paths = { ...base.paths, ...update.paths };
 
   return {
@@ -258,6 +287,7 @@ function mergeConfig(
         update.labels?.priorities ?? base.labels.priorities,
       ),
     },
+    triage,
     skills: mergeSkillsConfig(base.skills, update.skills),
     paths: {
       ...paths,
@@ -284,6 +314,7 @@ function absolutizePaths(
 ): PatchmillConfig {
   return {
     ...config,
+    triage: cloneTriageConfig(config.triage),
     skills: cloneSkillsConfig(config.skills),
     paths: {
       plansDir: absolutize(root, config.paths.plansDir),
@@ -412,6 +443,42 @@ function readSkillsConfig(
   for (const key of Object.keys(value)) {
     if (!PATCHMILL_SKILL_KEYS.includes(key as PatchmillSkillKey)) {
       throw configError(`skills.${key}`, "a supported skill stage", value[key]);
+    }
+  }
+
+  return hasEntries(parsed) ? parsed : undefined;
+}
+
+function readTriageConfig(
+  source: Record<string, unknown>,
+): Partial<PatchmillConfig["triage"]> | undefined {
+  const value = source.triage;
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw configError("triage", "an object", value);
+
+  const parsed: Partial<PatchmillConfig["triage"]> = {};
+  const stateMap = value.stateMap;
+  if (stateMap !== undefined) {
+    if (!isRecord(stateMap)) {
+      throw configError("triage.stateMap", "an object", stateMap);
+    }
+    parsed.stateMap = Object.fromEntries(
+      Object.entries(stateMap).map(([label, bucket]) => {
+        if (typeof bucket !== "string") {
+          throw configError(`triage.stateMap.${label}`, "a string", bucket);
+        }
+        return [label, bucket];
+      }),
+    ) as PatchmillTriageStateMap;
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key !== "stateMap") {
+      throw configError(
+        `triage.${key}`,
+        "a supported triage setting",
+        value[key],
+      );
     }
   }
 
@@ -641,10 +708,17 @@ function parseConfigFile(data: unknown): PartialConfig {
       "unsuitable",
       "labels.unsuitable",
     );
+    if (labels.inProgress !== undefined) {
+      throw configError(
+        "labels.inProgress",
+        'removed; use labels["in-progress"]',
+        labels.inProgress,
+      );
+    }
     const inProgress = readOptionalString(
       labels,
-      "inProgress",
-      "labels.inProgress",
+      "in-progress",
+      'labels["in-progress"]',
     );
     const done = readOptionalString(labels, "done", "labels.done");
     const blocked = readOptionalString(labels, "blocked", "labels.blocked");
@@ -742,6 +816,11 @@ function parseConfigFile(data: unknown): PartialConfig {
   const skills = readSkillsConfig(data);
   if (skills !== undefined) {
     config.skills = skills;
+  }
+
+  const triage = readTriageConfig(data);
+  if (triage !== undefined) {
+    config.triage = triage;
   }
 
   const projectPolicy = readOptionalSection(data, "projectPolicy");

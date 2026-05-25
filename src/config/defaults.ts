@@ -1,7 +1,24 @@
 import { DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG } from "../git/worktree-strategy.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
+import { defaultTriageStateMap } from "../policy/triage-state.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
 import type { PatchmillConfig } from "./types.ts";
+
+const DEFAULT_PATCHMILL_LABELS = {
+  ready: "agent-ready",
+  needsInfo: "needs-info",
+  unsuitable: "agent-unsuitable",
+  inProgress: "in-progress",
+  done: "agent-done",
+  blocked: "blocked",
+  types: ["bug", "enhancement", "docs", "chore", "test"],
+  priorities: [
+    "priority:critical",
+    "priority:high",
+    "priority:medium",
+    "priority:low",
+  ],
+};
 
 export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
   host: {
@@ -11,20 +28,9 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
   pi: {
     triageThinking: "high",
   },
-  labels: {
-    ready: "agent-ready",
-    needsInfo: "needs-info",
-    unsuitable: "agent-unsuitable",
-    inProgress: "in-progress",
-    done: "agent-done",
-    blocked: "blocked",
-    types: ["bug", "enhancement", "docs", "chore", "test"],
-    priorities: [
-      "priority:critical",
-      "priority:high",
-      "priority:medium",
-      "priority:low",
-    ],
+  labels: DEFAULT_PATCHMILL_LABELS,
+  triage: {
+    stateMap: defaultTriageStateMap(DEFAULT_PATCHMILL_LABELS),
   },
   skills: DEFAULT_PATCHMILL_SKILLS,
   paths: {

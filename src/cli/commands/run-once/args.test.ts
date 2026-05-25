@@ -246,7 +246,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
         ready: "ready-for-bots",
         needsInfo: "needs-clarification",
         unsuitable: "manual-only",
-        inProgress: "claimed",
+        "in-progress": "claimed",
         done: "done-by-bot",
         blocked: "waiting",
         priorities: ["priority:p1", "priority:p2"],

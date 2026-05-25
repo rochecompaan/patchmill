@@ -1,4 +1,5 @@
 import type { GitWorktreeStrategyConfig } from "../git/types.ts";
+import type { PatchmillTriageStateMap } from "../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../workflow/skills.ts";
 
@@ -23,6 +24,10 @@ export type PatchmillLabelsConfig = {
   priorities: string[];
 };
 
+export type PatchmillTriageConfig = {
+  stateMap: PatchmillTriageStateMap;
+};
+
 export type PatchmillPathsConfig = {
   plansDir: string;
   runStateDir: string;
@@ -39,6 +44,7 @@ export type PatchmillConfig = {
   host: PatchmillHostConfig;
   pi: PatchmillPiConfig;
   labels: PatchmillLabelsConfig;
+  triage: PatchmillTriageConfig;
   skills: PatchmillSkillsConfig;
   paths: PatchmillPathsConfig;
   git: PatchmillGitConfig;

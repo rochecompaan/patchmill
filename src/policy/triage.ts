@@ -1,5 +1,13 @@
-import type { PatchmillLabelsConfig } from "../config/types.ts";
+import type {
+  PatchmillLabelsConfig,
+  PatchmillTriageConfig,
+} from "../config/types.ts";
 import type { LabelDefinition } from "../host/types.ts";
+import {
+  defaultTriageStateMap,
+  nonReadyStateLabels,
+  type PatchmillTriageStateMap,
+} from "./triage-state.ts";
 import { automationProtectionLabels, requiredLabels } from "./labels.ts";
 
 export type PatchmillTriagePrimaryBucketStatus =
@@ -28,6 +36,7 @@ export type PatchmillTriagePolicy = {
     types: string[];
     priorities: string[];
   };
+  stateMap: PatchmillTriageStateMap;
   primaryBuckets: PatchmillTriagePrimaryBucket[];
   allowedLabels: LabelDefinition[];
   triageAllowedLabels: LabelDefinition[];
@@ -64,6 +73,7 @@ const AMBIGUITY_RULE_TEXT = [
 
 export function createTriagePolicy(
   config: PatchmillLabelsConfig,
+  triageConfig?: PatchmillTriageConfig,
 ): PatchmillTriagePolicy {
   const labels = {
     ready: config.ready,
@@ -81,6 +91,8 @@ export function createTriagePolicy(
     { status: "agent-unsuitable", label: config.unsuitable },
   ];
   const allowedLabels = requiredLabels(config);
+  const stateMap = triageConfig?.stateMap ?? defaultTriageStateMap(config);
+  const stateBlockedLabels = nonReadyStateLabels(stateMap);
   const excludedLabels = [...automationProtectionLabels(config)];
   const primaryBucketLabels = new Set(
     primaryBuckets.map((bucket) => bucket.label),
@@ -93,6 +105,7 @@ export function createTriagePolicy(
 
   return {
     labels,
+    stateMap,
     primaryBuckets,
     allowedLabels,
     triageAllowedLabels,
@@ -104,7 +117,12 @@ export function createTriagePolicy(
     },
     runOnceSelection: {
       readyLabel: config.ready,
-      excludedLabels: excludedLabels.filter((label) => label !== config.ready),
+      excludedLabels: [
+        ...new Set([
+          ...excludedLabels.filter((label) => label !== config.ready),
+          ...stateBlockedLabels,
+        ]),
+      ],
       priorityOrder: [...config.priorities],
     },
   };
