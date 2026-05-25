@@ -70,16 +70,9 @@ Example:
 ```json
 {
   "skills": {
-    "triage": {
-      "name": "triage",
-      "path": ".pi/skills/triage/SKILL.md"
-    },
-    "planning": {
-      "name": "superpowers:writing-plans"
-    },
-    "implementation": {
-      "name": "superpowers:subagent-driven-development"
-    }
+    "triage": "triage",
+    "planning": "superpowers:writing-plans",
+    "implementation": "superpowers:subagent-driven-development"
   },
   "labels": {
     "ready": "ready-for-agent",
@@ -98,10 +91,9 @@ Example:
 }
 ```
 
-`skills.triage.name` is the skill name rendered into prompts. `path` is optional
-but, when present, Patchmill passes it to Pi with `--skill <path>` so the skill
-is loaded deterministically. Passing `--skill` is additive; it does not disable
-Pi's normal project/user/package skill discovery.
+`skills.triage` is the skill name rendered into prompts. Patchmill assumes the
+configured skill is already available through Pi's normal project/user/package
+skill discovery; skill-managed triage does not add a public skill path setting.
 
 `triage.stateMap` keys are repository label names. Values are constrained to:
 
@@ -210,9 +202,10 @@ skill-managed triage should not be forced through its `agent-ready`,
 
 ## Implementation shape
 
-- Add a triage skill reference type with `name` and optional `path`.
-- Normalize configured skill refs before prompt construction.
-- Pass `--skill <path>` when a triage skill path is configured.
+- Keep `skills.triage` as a skill-name string and render that name into the
+  skill-managed triage prompt.
+- Assume the configured triage skill is available through Pi skill discovery; do
+  not add a public path field for MVP.
 - Add `triage.stateMap` parsing and validation.
 - Update `run-once` selection to use the configured ready/protection labels
   independently from the old triage primary-bucket policy.
