@@ -9,6 +9,7 @@ import {
   commentIssue,
   createLabel,
   hydrateIssueComments,
+  listIssuesByNumbers,
   listLabels,
   listOpenIssues,
 } from "./forgejo.ts";
@@ -114,6 +115,36 @@ test("listOpenIssues paginates until an empty page is returned", async () => {
     issues.map((issue) => issue.number),
     [1, 2, 3],
   );
+});
+
+test("listIssuesByNumbers lists all states and filters selected issue numbers", async () => {
+  const runner = createStaticCommandRunner([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        { index: 1, title: "One", state: "open", labels: [] },
+        { index: 2, title: "Two", state: "closed", labels: ["wontfix"] },
+      ]),
+      stderr: "",
+    },
+    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+  ]);
+
+  const issues = await listIssuesByNumbers(
+    runner,
+    "/repo",
+    [2],
+    "triage-agent",
+  );
+
+  assert.deepEqual(
+    issues.map((issue) => issue.number),
+    [2],
+  );
+  assert.equal(issues[0]?.state, "closed");
+  assert.deepEqual(issues[0]?.labels, ["wontfix"]);
+  assert.ok(runner.calls[0]?.args.includes("--state"));
+  assert.ok(runner.calls[0]?.args.includes("all"));
 });
 
 test("listOpenIssues rejects empty stdout as invalid JSON", async () => {

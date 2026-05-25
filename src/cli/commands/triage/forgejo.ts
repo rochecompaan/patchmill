@@ -241,9 +241,10 @@ export async function hydrateIssueComments(
   }
 }
 
-export async function listOpenIssues(
+async function listIssuesByState(
   runner: CommandRunner,
   repoRoot: string,
+  state: "open" | "all",
   teaLogin?: string,
 ): Promise<IssueSummary[]> {
   const issues: IssueSummary[] = [];
@@ -256,7 +257,7 @@ export async function listOpenIssues(
           "issues",
           "list",
           "--state",
-          "open",
+          state,
           "--fields",
           "index,title,body,state,labels,author,updated,comments",
           "--page",
@@ -305,6 +306,25 @@ export async function listOpenIssues(
   }
 
   return issues.sort((a, b) => a.number - b.number);
+}
+
+export async function listOpenIssues(
+  runner: CommandRunner,
+  repoRoot: string,
+  teaLogin?: string,
+): Promise<IssueSummary[]> {
+  return listIssuesByState(runner, repoRoot, "open", teaLogin);
+}
+
+export async function listIssuesByNumbers(
+  runner: CommandRunner,
+  repoRoot: string,
+  issueNumbers: readonly number[],
+  teaLogin?: string,
+): Promise<IssueSummary[]> {
+  const wanted = new Set(issueNumbers);
+  const issues = await listIssuesByState(runner, repoRoot, "all", teaLogin);
+  return issues.filter((issue) => wanted.has(issue.number));
 }
 
 export async function listLabels(
