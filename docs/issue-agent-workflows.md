@@ -4,7 +4,7 @@ Patchmill has two issue-agent workflows:
 
 - **Triage** (`patchmill triage`) classifies open issues and, when executed,
   applies labels/comments on the issue host.
-- **Run once** (`agent-issue-once`) claims one automation-ready issue, asks Pi
+- **Run once** (`patchmill run-once`) claims one automation-ready issue, asks Pi
   to create or use an implementation plan, asks Pi to implement/review/land the
   work, then updates the issue host.
 
@@ -12,8 +12,8 @@ See also [skills configuration](skills.md) for repository-configurable skill
 selection at each workflow stage.
 
 The current script entrypoints are `src/cli/commands/triage/main.ts` and
-`scripts/agent-issue-once.ts`; the generic CLI can dispatch the same backing
-workflows through `bin/patchmill.ts`.
+`src/cli/commands/run-once/main.ts`; the generic CLI can dispatch the same
+backing workflows through `bin/patchmill.ts`.
 
 ## Issue triage workflow
 
@@ -128,15 +128,15 @@ bucket.
 
 Source files:
 
-- CLI: `scripts/agent-issue-once.ts`
-- Pipeline: `scripts/agent-issue/pipeline.ts`
-- Prompt builders: `scripts/agent-issue/prompts.ts`
-- Pi runner/result parser: `scripts/agent-issue/pi.ts`
-- Agent-team resolver: `scripts/agent-issue/agent-team.ts`
-- Issue selection: `scripts/agent-issue/selection.ts`
-- Progress/logging: `scripts/agent-issue/progress.ts`,
-  `scripts/agent-issue/console-progress.ts`
-- Run state: `scripts/agent-issue/run-state.ts`
+- CLI: `src/cli/commands/run-once/main.ts`
+- Pipeline: `src/cli/commands/run-once/pipeline.ts`
+- Prompt builders: `src/cli/commands/run-once/prompts.ts`
+- Pi runner/result parser: `src/cli/commands/run-once/pi.ts`
+- Agent-team resolver: `src/cli/commands/run-once/agent-team.ts`
+- Issue selection: `src/cli/commands/run-once/selection.ts`
+- Progress/logging: `src/cli/commands/run-once/progress.ts`,
+  `src/cli/commands/run-once/console-progress.ts`
+- Run state: `src/cli/commands/run-once/run-state.ts`
 
 ### Flow
 
@@ -185,7 +185,7 @@ flowchart TD
 
 ### Issue selection and safety gates
 
-`agent-issue-once` processes one issue. It prefers a single resumable
+`patchmill run-once` processes one issue. It prefers a single resumable
 `in-progress` run with valid run state. Otherwise it selects an open issue
 carrying the configured ready label and no excluded/protection labels. Priority
 labels determine ordering, then lower issue number wins.
@@ -331,7 +331,7 @@ or missing statuses are errors.
 
 ### Logging and progress
 
-`agent-issue-once` writes final JSON to stdout. Progress goes to stderr unless
+`patchmill run-once` writes final JSON to stdout. Progress goes to stderr unless
 `--quiet` is used, and every event is appended to a JSONL run log under the
 configured run-state directory.
 
