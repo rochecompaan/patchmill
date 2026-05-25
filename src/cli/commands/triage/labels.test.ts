@@ -49,3 +49,16 @@ test("planLabelChange computes additions and removals", () => {
     removeLabels: ["old", needsInfo],
   });
 });
+
+test("planLabelChange de-duplicates labels and preserves add/remove order", () => {
+  const change = planLabelChange(
+    8,
+    ["bug", needsInfo, "old", needsInfo, "stale"],
+    ["bug", ready, ready, "blocked", ready],
+  );
+
+  assert.deepEqual(change.oldLabels, ["bug", needsInfo, "old", "stale"]);
+  assert.deepEqual(change.newLabels, [ready, "blocked", "bug"]);
+  assert.deepEqual(change.addLabels, [ready, "blocked"]);
+  assert.deepEqual(change.removeLabels, [needsInfo, "old", "stale"]);
+});

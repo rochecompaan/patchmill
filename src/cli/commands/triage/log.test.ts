@@ -17,11 +17,10 @@ test("writeTriageLog writes timestamped JSON", async () => {
         previousLabels: ["bug"],
         finalLabels: ["bug", "agent-ready"],
         primaryBucket: "agent-ready",
-        confidence: "high",
         rationale: "Clear issue.",
         questions: [],
         comment: null,
-        mutationStatus: "planned",
+        mutationStatus: "preview",
       },
     ],
   });

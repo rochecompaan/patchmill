@@ -1,9 +1,5 @@
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
-import type {
-  PatchmillTriageConfidence,
-  PatchmillTriagePolicy,
-  PatchmillTriagePrimaryBucketStatus,
-} from "../../../policy/triage.ts";
+import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillTriageCanonicalBucket } from "../../../policy/triage-state.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
@@ -60,9 +56,7 @@ export type LabelDefinition = {
   description: string;
 };
 
-export type PrimaryBucket = PatchmillTriagePrimaryBucketStatus;
-
-export type Confidence = PatchmillTriageConfidence;
+export type PrimaryBucket = PatchmillTriageCanonicalBucket;
 
 export type HumanDecisionQuestion = {
   question: string;
@@ -97,16 +91,6 @@ export type TriagePreview = {
   questions: string[];
 };
 
-export type TriageDecision = {
-  issueNumber: number;
-  primaryBucket: PrimaryBucket;
-  labels: string[];
-  confidence: Confidence;
-  rationale: string;
-  questions: TriageQuestion[];
-  comment: string | null;
-};
-
 export type LabelChangePlan = {
   issueNumber: number;
   oldLabels: string[];
@@ -121,7 +105,6 @@ export type TriageLogIssueEntry = {
   previousLabels: string[];
   finalLabels: string[];
   primaryBucket?: PrimaryBucket;
-  confidence?: Confidence;
   rationale?: string;
   questions: TriageQuestion[];
   comment: string | null;
@@ -129,7 +112,7 @@ export type TriageLogIssueEntry = {
   previousState?: string;
   finalState?: string;
   wouldClose?: boolean;
-  mutationStatus: "preview" | "observed" | "planned" | "applied" | "failed";
+  mutationStatus: "preview" | "observed" | "failed";
   error?: string;
 };
 
@@ -141,7 +124,7 @@ export type TriageLog = {
 };
 
 export type TriageResult = {
-  status: "no-issues" | "dry-run" | "applied";
+  status: "no-issues" | "dry-run" | "observed";
   issueCount: number;
   logPath: string;
   issues: TriageLogIssueEntry[];

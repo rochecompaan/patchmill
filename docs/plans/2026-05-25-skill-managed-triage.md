@@ -881,7 +881,7 @@ policy imports:
 import type { PatchmillTriageCanonicalBucket } from "../../../policy/triage-state.ts";
 ```
 
-Add these types near the existing triage document types:
+Add these types after `RawTriageDocument`:
 
 ```ts
 export type RawTriagePreview = {
@@ -2423,12 +2423,13 @@ if (config.dryRun) {
 }
 ```
 
-Delete the old dry-run classifier validation and log-entry path.
+Delete the old dry-run path that called `validateTriageDocument()` and
+`createLogEntries()`.
 
 - [ ] **Step 7: Implement execute branch**
 
 Replace the old execute label creation, old triage-agent JSON validation, and
-old decision-application block with:
+`applyDecisions()` block with:
 
 ```ts
 const beforeIssues = issues.map((issue) => ({
@@ -2705,7 +2706,9 @@ git commit -m "feat(run-once): honor triage state blockers"
 
 Run:
 
-Run a repo search for old single-agent triage symbols in `src/cli` and `src/pi`.
+```bash
+rg -n "runTriageAgent|validateTriageDocument|applyDecisions|createLogEntries|buildTriagePrompt" src/cli src/pi
+```
 
 Expected before cleanup: references remain in old files and maybe
 `src/pi/runner.ts`. Expected after Task 6: `src/cli/commands/triage/pipeline.ts`
@@ -2715,7 +2718,9 @@ no longer imports these symbols.
 
 In `src/pi/types.ts`, delete this import:
 
-Delete the old triage document type import from `src/pi/types.ts`.
+```ts
+import type { RawTriageDocument } from "../cli/commands/triage/types.ts";
+```
 
 Delete the `TriagePiInput` type:
 
@@ -2732,6 +2737,7 @@ Change `PiPromptContracts` from:
 
 ```ts
 export type PiPromptContracts = {
+  triage(input: TriagePiInput): Promise<RawTriageDocument>;
   plan(input: PlanPiInput): Promise<AgentIssuePiResult>;
   implementation(input: ImplementationPiInput): Promise<AgentIssuePiResult>;
 };
@@ -2750,13 +2756,23 @@ export type PiPromptContracts = {
 
 In `src/pi/runner.ts`, delete this import:
 
-Delete the old single-agent triage import from `src/pi/runner.ts`.
+```ts
+import { runTriageAgent } from "../cli/commands/triage/agent.ts";
+```
 
 Remove `TriagePiInput` from the type import list.
 
 Delete this method from `PiRunner`:
 
-Delete the old `triage(input: TriagePiInput)` method from `PiRunner`.
+```ts
+triage(input: TriagePiInput) {
+  return runTriageAgent(this.runner, input.repoRoot, {
+    issues: input.issues,
+    projectPolicy: input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY,
+    skills: input.skills,
+  });
+}
+```
 
 - [ ] **Step 4: Remove the stale PiRunner triage test**
 
@@ -2918,7 +2934,9 @@ rm src/cli/commands/triage/agent.ts \
 
 Run:
 
-Run a final repo search to confirm no old classifier symbols remain in `src`.
+```bash
+rg -n "runTriageAgent|validateTriageDocument|applyDecisions|createLogEntries|buildTriagePrompt|RawTriageDocument|RawTriageDecision|TRIAGE_ALLOWED_LABEL|PRIMARY_BUCKET_SET|PRIMARY_BUCKETS" src
+```
 
 Expected: no output.
 

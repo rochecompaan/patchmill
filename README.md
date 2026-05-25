@@ -51,7 +51,9 @@ workflow looks like this:
 
 The default skills keep the workflow small and explicit:
 
-- `patchmill-issue-triage` is Patchmill's bundled read-only issue classifier.
+- `patchmill-issue-triage` is the bundled default triage skill; normal triage
+  runs it (or your configured replacement) and reports observed changes, while
+  `--dry-run` uses a read-only preview JSON pass.
 - `superpowers:writing-plans` writes implementation plans before code changes.
 - `superpowers:subagent-driven-development` executes approved plans with
   worker/reviewer handoffs.

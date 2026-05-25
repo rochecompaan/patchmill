@@ -131,7 +131,7 @@ test("formatResultLines prints dry-run previews and observed changes", () => {
   ]);
 
   const executeLines = formatResultLines({
-    status: "applied",
+    status: "observed",
     issueCount: 1,
     logPath: "/tmp/triage.json",
     issues: [
@@ -214,7 +214,7 @@ test("runTriage executes configured skill by default and reports observed change
     ),
   });
 
-  assert.equal(result.status, "applied");
+  assert.equal(result.status, "observed");
   assert.equal(result.issues[0]?.mutationStatus, "observed");
   assert.equal(result.issues[0]?.primaryBucket, "agent-ready");
   assert.deepEqual(result.issues[0]?.previousLabels, ["bug"]);
