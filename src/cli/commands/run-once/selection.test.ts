@@ -126,6 +126,39 @@ test("selectIssue honors custom excluded labels during automatic selection", () 
   assert.equal(selected?.number, 2);
 });
 
+test("selectIssue blocks labels mapped to non-ready triage states", () => {
+  const triagePolicy = createTriagePolicy(
+    {
+      ...DEFAULT_PATCHMILL_CONFIG.labels,
+      ready: "ready-for-agent",
+      unsuitable: "ready-for-human",
+    },
+    {
+      stateMap: {
+        "ready-for-agent": "agent-ready",
+        "needs-info": "needs-info",
+        "ready-for-human": "agent-unsuitable",
+        wontfix: "agent-unsuitable",
+      },
+    },
+  );
+
+  const selected = selectIssue(
+    [
+      issue(1, ["ready-for-agent", critical, "ready-for-human"]),
+      issue(2, ["ready-for-agent", critical, "wontfix"]),
+      issue(3, ["ready-for-agent", critical, "needs-info"]),
+      issue(5, ["ready-for-agent", high]),
+    ],
+    {
+      readyLabel: "ready-for-agent",
+      triagePolicy,
+    },
+  );
+
+  assert.equal(selected?.number, 5);
+});
+
 test("selectIssue returns no issue when no open agent-ready issue exists", () => {
   const selected = selectIssue(
     [issue(1, [critical]), issue(2, [ready], "closed"), issue(3, [needsInfo])],
