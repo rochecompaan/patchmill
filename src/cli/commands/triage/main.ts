@@ -44,13 +44,22 @@ function firstLine(value: string): string {
 }
 
 export function formatResultLines(result: TriageResult): string[] {
-  if (result.status !== "dry-run") return [];
+  if (result.status === "no-issues") return [];
 
   return result.issues.flatMap((issue) => {
+    const bucket = issue.primaryBucket ?? "unmapped";
     const lines = [
-      `#${issue.issueNumber} ${issue.primaryBucket}`,
+      `#${issue.issueNumber} ${bucket} ${issue.mutationStatus}`,
       `  labels: ${formatLabels(issue.previousLabels)} -> ${formatLabels(issue.finalLabels)}`,
     ];
+
+    if (
+      issue.previousState &&
+      issue.finalState &&
+      issue.previousState !== issue.finalState
+    ) {
+      lines.push(`  state: ${issue.previousState} -> ${issue.finalState}`);
+    }
 
     if (issue.comment) {
       lines.push(`  comment: ${firstLine(issue.comment)}`);

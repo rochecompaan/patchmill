@@ -1,24 +1,21 @@
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { runTriageDryRunAgent } from "./dry-run-agent.ts";
+import { runTriageExecuteAgent } from "./execute-agent.ts";
 import {
-  ApplyDecisionError,
-  applyDecisions,
-  createLogEntries,
-} from "./apply.ts";
-import { runTriageAgent } from "./agent.ts";
-import {
-  createLabel,
   hydrateIssueComments,
-  listLabels,
+  listIssuesByNumbers,
   listOpenIssues,
 } from "./forgejo.ts";
-import { DEFAULT_TRIAGE_POLICY, missingLabelDefinitions } from "./labels.ts";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { DEFAULT_TRIAGE_POLICY } from "./labels.ts";
 import { writeTriageLog } from "./log.ts";
-import { validateTriageDocument } from "./validation.ts";
+import {
+  createObservedChangeEntries,
+  createPreviewEntries,
+} from "./reporting.ts";
 import type {
   CommandRunner,
   IssueSummary,
   TriageConfig,
-  TriageDecision,
   TriageLogIssueEntry,
   TriageResult,
 } from "./types.ts";
@@ -48,17 +45,6 @@ function selectIssues(
 
 function logMode(config: TriageConfig): "dry-run" | "execute" {
   return config.execute ? "execute" : "dry-run";
-}
-
-function decisionsThroughFailure(
-  decisions: TriageDecision[],
-  issueNumber: number,
-): TriageDecision[] {
-  const failedIndex = decisions.findIndex(
-    (decision) => decision.issueNumber === issueNumber,
-  );
-  if (failedIndex < 0) return decisions;
-  return decisions.slice(0, failedIndex + 1);
 }
 
 function errorMessage(error: unknown): string {
@@ -132,105 +118,87 @@ export async function runTriage(
     throw error;
   }
 
-  let existingLabels: string[];
-  try {
-    existingLabels = await listLabels(runner, config.repoRoot, config.teaLogin);
-  } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
-    throw error;
-  }
-
-  const missingLabels = missingLabelDefinitions(existingLabels, triagePolicy);
-
-  if (config.execute) {
+  if (config.dryRun) {
     try {
-      for (const label of missingLabels) {
-        await createLabel(runner, config.repoRoot, label, config.teaLogin);
-      }
+      const previews = await runTriageDryRunAgent(runner, config.repoRoot, {
+        issues,
+        projectPolicy,
+        stateMap: triagePolicy.stateMap,
+        skills: config.skills,
+        thinking:
+          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+      });
+      const logIssues = createPreviewEntries(issues, previews);
+      const logPath = await writeTriageLog(config.logDir, {
+        mode: "dry-run",
+        createdAt,
+        issues: logIssues,
+      });
+
+      return {
+        status: "dry-run",
+        issueCount: issues.length,
+        logPath,
+        issues: logIssues,
+      };
     } catch (error) {
       await tryWriteFailureLog(config, createdAt, [], error);
       throw error;
     }
   }
 
-  let decisions: TriageDecision[];
+  const beforeIssues = issues.map((issue) => ({
+    ...issue,
+    labels: [...issue.labels],
+    comments: Array.isArray(issue.comments)
+      ? [...issue.comments]
+      : issue.comments,
+  }));
+
   try {
-    decisions = validateTriageDocument(
-      await runTriageAgent(runner, config.repoRoot, {
-        issues,
-        projectPolicy,
-        triagePolicy,
-        skills: config.skills,
-        thinking:
-          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-      }),
+    await runTriageExecuteAgent(runner, config.repoRoot, {
       issues,
-      triagePolicy,
+      projectPolicy,
+      skills: config.skills,
+      thinking:
+        config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+    });
+  } catch (error) {
+    await tryWriteFailureLog(config, createdAt, [], error);
+    throw error;
+  }
+
+  let afterIssues: IssueSummary[];
+  try {
+    afterIssues = await listIssuesByNumbers(
+      runner,
+      config.repoRoot,
+      beforeIssues.map((issue) => issue.number),
+      config.teaLogin,
+    );
+    await hydrateIssueComments(
+      runner,
+      config.repoRoot,
+      afterIssues,
+      config.teaLogin,
     );
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
   }
 
-  if (!config.execute) {
-    const logIssues = createLogEntries(
-      issues,
-      decisions,
-      "planned",
-      new Map(),
-      triagePolicy,
-    );
-    const logPath = await writeTriageLog(config.logDir, {
-      mode: "dry-run",
-      createdAt,
-      issues: logIssues,
-    });
-
-    return {
-      status: "dry-run",
-      issueCount: issues.length,
-      logPath,
-      issues: logIssues,
-    };
-  }
-
+  let logIssues: TriageLogIssueEntry[];
   try {
-    await applyDecisions(
-      runner,
-      config.repoRoot,
-      issues,
-      decisions,
-      config.teaLogin,
-      triagePolicy,
+    logIssues = createObservedChangeEntries(
+      beforeIssues,
+      afterIssues,
+      triagePolicy.stateMap,
     );
   } catch (error) {
-    if (error instanceof ApplyDecisionError) {
-      await tryWriteFailureLog(
-        config,
-        createdAt,
-        createLogEntries(
-          issues,
-          decisionsThroughFailure(decisions, error.issueNumber),
-          "applied",
-          new Map([[error.issueNumber, error.message]]),
-          triagePolicy,
-        ),
-        error,
-      );
-    } else {
-      await tryWriteFailureLog(config, createdAt, [], error);
-    }
-
+    await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
   }
 
-  const logIssues = createLogEntries(
-    issues,
-    decisions,
-    "applied",
-    new Map(),
-    triagePolicy,
-  );
   const logPath = await writeTriageLog(config.logDir, {
     mode: "execute",
     createdAt,
