@@ -4,6 +4,7 @@ import type {
   PatchmillTriagePolicy,
   PatchmillTriagePrimaryBucketStatus,
 } from "../../../policy/triage.ts";
+import type { PatchmillTriageCanonicalBucket } from "../../../policy/triage-state.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
 export type TriageConfig = {
@@ -82,6 +83,32 @@ export type TriageQuestion = string | HumanDecisionQuestion;
 
 export type RawTriageDocument = {
   decisions: unknown;
+};
+
+export type RawTriagePreview = {
+  issueNumber: unknown;
+  currentLabels: unknown;
+  proposedLabels: unknown;
+  canonicalBucket: unknown;
+  rationale: unknown;
+  wouldComment?: unknown;
+  wouldClose?: unknown;
+  questions?: unknown;
+};
+
+export type RawTriagePreviewDocument = {
+  previews: unknown;
+};
+
+export type TriagePreview = {
+  issueNumber: number;
+  currentLabels: string[];
+  proposedLabels: string[];
+  canonicalBucket: PatchmillTriageCanonicalBucket;
+  rationale: string;
+  wouldComment: string | null;
+  wouldClose: boolean;
+  questions: string[];
 };
 
 export type TriageDecision = {
