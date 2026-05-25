@@ -3,7 +3,8 @@
 Patchmill has two issue-agent workflows:
 
 - **Triage** (`patchmill triage`) classifies open issues and, when executed,
-  applies labels/comments on the issue host.
+  runs the configured triage skill, which may apply labels/comments on the issue
+  host.
 - **Run once** (`patchmill run-once`) claims one automation-ready issue, asks Pi
   to create or use an implementation plan, asks Pi to implement/review/land the
   work, then updates the issue host.

@@ -6,11 +6,12 @@ skills used at each workflow stage.
 ## Core contracts kept in Patchmill
 
 - untrusted issue-content boundaries
-- final-status validation before Patchmill applies host-side status updates
 - clean-worktree checks
 - run-state checkpoints
-- strict final JSON statuses
-- host-side label, comment, PR evidence, and cleanup side effects
+- run-once final-status validation before Patchmill applies host-side status
+  updates
+- run-once strict final JSON statuses
+- run-once host-side label, comment, PR evidence, and cleanup side effects
 
 ## Direct skills settings
 
@@ -52,9 +53,9 @@ Supported keys:
 
 ## Triage
 
-Triage uses `skills.triage`. Normal `patchmill triage` execution runs the
-configured skill and reports the observed label/comment/state changes.
-`patchmill triage --dry-run` switches to a read-only preview JSON pass and
-limits Pi to `read`, `grep`, `find`, and `ls`. For the bundled default triage
-skill, Patchmill also passes the bundled skill path with `--skill`; custom
-triage skills are named directly instead.
+Triage uses `skills.triage`. Normal `patchmill triage` execution delegates
+host-side triage mutations to the configured skill and reports the observed
+label/comment/state changes. `patchmill triage --dry-run` enforces a read-only
+preview JSON pass and limits Pi to `read`, `grep`, `find`, and `ls`. For the
+bundled default triage skill, Patchmill also passes the bundled skill path with
+`--skill`; custom triage skills are named directly instead.

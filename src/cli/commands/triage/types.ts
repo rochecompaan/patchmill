@@ -124,7 +124,7 @@ export type TriageLog = {
 };
 
 export type TriageResult = {
-  status: "no-issues" | "dry-run" | "observed";
+  status: "no-issues" | "dry-run" | "applied";
   issueCount: number;
   logPath: string;
   issues: TriageLogIssueEntry[];

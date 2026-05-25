@@ -206,7 +206,7 @@ export async function runTriage(
   });
 
   return {
-    status: "observed",
+    status: "applied",
     issueCount: issues.length,
     logPath,
     issues: logIssues,

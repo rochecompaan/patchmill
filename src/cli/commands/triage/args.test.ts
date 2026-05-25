@@ -149,12 +149,31 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
   assert.equal(config.teaLogin, "config-bot");
   assert.equal(config.logDir, join(repoRoot, ".patchmill/triage-runs"));
   assert.equal(config.triageThinking, "medium");
-  assert.equal(config.triagePolicy?.primaryBuckets[0]?.label, "ready-for-bots");
+  assert.equal(config.triagePolicy?.labels.ready, "ready-for-bots");
   assert.ok(
-    config.triagePolicy?.triageAllowedLabels.some(
+    config.triagePolicy?.allowedLabels.some(
       (label) => label.name === "incident",
     ),
   );
+  assert.deepEqual(config.triagePolicy?.excludedLabels, [
+    "ready-for-bots",
+    "needs-clarification",
+    "manual-only",
+    "in-progress",
+    "agent-done",
+    "blocked",
+  ]);
+  assert.deepEqual(config.triagePolicy?.runOnceSelection, {
+    readyLabel: "ready-for-bots",
+    excludedLabels: [
+      "needs-clarification",
+      "manual-only",
+      "in-progress",
+      "agent-done",
+      "blocked",
+    ],
+    priorityOrder: ["priority:p1", "priority:p2"],
+  });
 });
 
 test("loadCliConfig includes custom triage state aliases in triage policy", async () => {
