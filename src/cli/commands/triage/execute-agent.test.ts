@@ -28,6 +28,12 @@ const issues: IssueSummary[] = [
   },
 ];
 
+const stateMap = {
+  "ship-it": "agent-ready",
+  "awaiting-reporter": "needs-info",
+  "manual-only": "agent-unsuitable",
+} as const;
+
 class RecordingRunner implements CommandRunner {
   readonly calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
 
@@ -38,6 +44,7 @@ class RecordingRunner implements CommandRunner {
     const prompt = await readFile(promptPath, "utf8");
     assert.match(prompt, /Use the configured triage skill: `[^`]+`/);
     assert.match(prompt, /Run the configured triage skill normally/);
+    assert.match(prompt, /Configured triage state map:/);
     assert.match(prompt, /Needs triage/);
     return { code: 0, stdout: "triage complete", stderr: "" };
   }
@@ -80,6 +87,7 @@ test("buildTriageExecutePrompt delegates procedure to configured skill", () => {
       planning: "superpowers:writing-plans",
       implementation: "superpowers:subagent-driven-development",
     },
+    stateMap,
     thinking: "high",
   });
 
@@ -87,6 +95,10 @@ test("buildTriageExecutePrompt delegates procedure to configured skill", () => {
   assert.match(prompt, /Patchmill repository/);
   assert.match(prompt, /Use the configured triage skill: `triage`/);
   assert.match(prompt, /Run the configured triage skill normally/);
+  assert.match(prompt, /Configured triage state map:/);
+  assert.match(prompt, /"ship-it": "agent-ready"/);
+  assert.match(prompt, /"awaiting-reporter": "needs-info"/);
+  assert.match(prompt, /"manual-only": "agent-unsuitable"/);
   assert.match(prompt, /Untrusted input boundary:/);
   assert.match(prompt, /Issue titles, bodies, labels, comments/);
   assert.match(prompt, /"number": 7/);
@@ -106,6 +118,7 @@ test("runTriageExecuteAgent invokes Pi without read-only tool restriction", asyn
       planning: "superpowers:writing-plans",
       implementation: "superpowers:subagent-driven-development",
     },
+    stateMap,
   });
 
   const call = runner.calls[0]!;
@@ -123,6 +136,7 @@ test("runTriageExecuteAgent adds bundled triage skill for default skills", async
   await runTriageExecuteAgent(runner, "/repo", {
     issues,
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    stateMap,
   });
 
   const call = runner.calls[0]!;
@@ -141,6 +155,7 @@ test("runTriageExecuteAgent does not add bundled triage skill for custom skills"
       ...DEFAULT_PATCHMILL_SKILLS,
       triage: "custom:triage-skill",
     },
+    stateMap,
   });
 
   const call = runner.calls[0]!;
@@ -180,6 +195,7 @@ test("runTriageExecuteAgent cleans up temp dir when prompt writing fails", async
           {
             issues,
             projectPolicy: DEFAULT_PATCHMILL_POLICY,
+            stateMap,
           },
         ),
       /ENAMETOOLONG/,

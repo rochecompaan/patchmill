@@ -333,6 +333,93 @@ test("runTriage passes configured custom skills through to the triage agent", as
   assert.ok(runner.calls.some((call) => call.command === "pi"));
 });
 
+test("runTriage execute passes configured state map to the Pi prompt", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const beforeIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs triage",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "bug" }],
+    },
+  ]);
+  const afterIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs triage",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "ship-it" }, { name: "bug" }],
+    },
+  ]);
+  const runner = {
+    calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
+    async run(command: string, args: string[], options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+
+      if (
+        command === "tea" &&
+        args.includes("issues") &&
+        args.includes("list")
+      ) {
+        const page = args[args.indexOf("--page") + 1];
+        if (page) {
+          return {
+            code: 0,
+            stdout: page === "1" ? beforeIssueJson : JSON.stringify([]),
+            stderr: "",
+          };
+        }
+        return { code: 0, stdout: afterIssueJson, stderr: "" };
+      }
+
+      if (command === "tea" && args.includes("--comments")) {
+        return noCommentsOutput;
+      }
+
+      if (command === "pi") {
+        const promptPath = args[args.indexOf("-p") + 1]?.slice(1);
+        assert.ok(promptPath);
+        const prompt = await readFile(promptPath, "utf8");
+        assert.match(prompt, /Configured triage state map:/);
+        assert.match(prompt, /"ship-it": "agent-ready"/);
+        assert.match(prompt, /"awaiting-reporter": "needs-info"/);
+        assert.match(prompt, /"manual-only": "agent-unsuitable"/);
+        return { code: 0, stdout: "triaged", stderr: "" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: false,
+    execute: true,
+    issueNumber: 1,
+    logDir,
+    triagePolicy: createTriagePolicy(
+      {
+        ...DEFAULT_PATCHMILL_CONFIG.labels,
+        ready: "ship-it",
+        needsInfo: "awaiting-reporter",
+        unsuitable: "manual-only",
+      },
+      {
+        stateMap: {
+          "ship-it": "agent-ready",
+          "awaiting-reporter": "needs-info",
+          "manual-only": "agent-unsuitable",
+        },
+      },
+    ),
+  });
+
+  assert.equal(result.status, "applied");
+  assert.ok(runner.calls.some((call) => call.command === "pi"));
+});
+
 test("runTriage applies limit after listing open issues", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const twoIssues = JSON.stringify([

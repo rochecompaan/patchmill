@@ -159,6 +159,7 @@ export async function runTriage(
     await runTriageExecuteAgent(runner, config.repoRoot, {
       issues,
       projectPolicy,
+      stateMap: triagePolicy.stateMap,
       skills: config.skills,
       thinking:
         config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
