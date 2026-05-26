@@ -40,5 +40,8 @@
     "markdownlint-cli2": "^0.22.1",
     "prettier": "^3.8.3",
     "typescript-eslint": "^8.59.4"
+  },
+  "dependencies": {
+    "pi-subagents": "^0.25.0"
   }
 }
