@@ -27,15 +27,6 @@ const issue: IssueSummary = {
 
 const planPath = "docs/plans/2026-05-09-issue-42-add-once-runner-helpers.md";
 
-const agentTeam = {
-  name: "economy",
-  path: "/repo/.pi/agent-teams/economy.json",
-  roles: {
-    worker: { model: "openai-codex/gpt-5.4", thinking: "medium" },
-    reviewer: { model: "openai-codex/gpt-5.5", thinking: "high" },
-  },
-};
-
 const examplePolicy: PatchmillProjectPolicy = {
   projectName: "ExampleApp",
   contextFileNames: ["AGENTS.md"],
@@ -225,7 +216,6 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "origin",
@@ -292,26 +282,32 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     prompt,
     /Use the configured implementation skill: `superpowers:subagent-driven-development`\./,
   );
-  assert.match(prompt, /Authoritative agent team: economy/);
+  assert.match(prompt, /Subagent support:/);
+  assert.match(prompt, /Patchmill bundles `pi-subagents`/);
   assert.match(
     prompt,
-    /worker: model=openai-codex\/gpt-5\.4, thinking=medium, dispatchModel=openai-codex\/gpt-5\.4:medium/,
+    /the Pi `subagent` tool for delegated implementation and review workflows\./,
   );
   assert.match(
     prompt,
-    /reviewer: model=openai-codex\/gpt-5\.5, thinking=high, dispatchModel=openai-codex\/gpt-5\.5:high/,
+    /Use pi-subagents-discovered `worker` agents for implementation handoffs/,
+  );
+  assert.match(prompt, /`reviewer` agents for review checkpoints/);
+  assert.match(
+    prompt,
+    /Do not pass Patchmill-specific agent-team model overrides/,
   );
   assert.match(
     prompt,
-    /Pass the exact `dispatchModel` as the subagent `model` override/,
+    /If required subagents are unavailable or disabled, return the blocker JSON/,
   );
   assert.match(
     prompt,
-    /Do not pass a separate `thinking` field to the subagent execution call/,
+    /Users control subagent models, thinking, tools, context mode, skills, and nesting behavior through pi-subagents configuration\./,
   );
-  assert.match(prompt, /Example worker dispatch:/);
-  assert.match(prompt, /model: "openai-codex\/gpt-5\.4:medium"/);
-  assert.doesNotMatch(prompt, /thinking: "medium"/);
+  assert.doesNotMatch(prompt, /Authoritative agent team/);
+  assert.doesNotMatch(prompt, /dispatchModel/);
+  assert.doesNotMatch(prompt, /Example worker dispatch/);
   assert.match(prompt, /Conventional Commits/);
   assert.match(prompt, /pnpm test:server/);
   assert.match(prompt, /pnpm test:web/);
@@ -382,7 +378,6 @@ test("buildImplementationPrompt renders configured skills", () => {
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: { baseBranch: "main", remote: "origin", allowDirectLand: true },
     projectPolicy: examplePolicy,
     skills: {
@@ -441,7 +436,6 @@ test("generic policy implementation prompt does not include legacy project text"
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "origin",
@@ -459,7 +453,6 @@ test("buildImplementationPrompt uses configured direct-land policy inputs", () =
     planPath,
     branch: "patchmill/issue-42-add-once-runner-helpers",
     worktreePath: ".patchmill/worktrees/pm-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "upstream",
@@ -512,7 +505,6 @@ test("policy-driven prompts render validation and landing contract text from run
     planPath,
     branch: "patchmill/issue-42-add-once-runner-helpers",
     worktreePath: ".patchmill/worktrees/pm-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "upstream",
@@ -552,7 +544,6 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
     planPath,
     branch: "patchmill/issue-42-add-once-runner-helpers",
     worktreePath: ".patchmill/worktrees/pm-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "origin",
@@ -613,7 +604,6 @@ test("buildImplementationPrompt removes direct-land eligibility instructions whe
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "origin",
@@ -650,7 +640,6 @@ test("buildImplementationPrompt includes resume context when resuming existing w
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "origin",
@@ -676,7 +665,6 @@ test("buildImplementationPrompt includes resume context when existing commits ar
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "origin",
@@ -734,7 +722,6 @@ test("task contract overrides drive todo instructions in plan and implementation
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
     worktreePath: ".worktrees/agent-issue-42-add-once-runner-helpers",
-    agentTeam,
     git: {
       baseBranch: "main",
       remote: "origin",
