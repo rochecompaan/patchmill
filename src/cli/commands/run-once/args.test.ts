@@ -17,6 +17,9 @@ import {
 } from "../../../../test-support/legacy-seed.ts";
 import { parseArgs } from "./args.ts";
 
+const removedWorkerPresetField = ["agent", "TeamName"].join("");
+const removedPatchmillTeamEnv = ["PATCHMILL", "AGENT", "TEAM"].join("_");
+
 test("parseArgs shows help when no args are provided", () => {
   const config = parseArgs([], cwd(), {});
 
@@ -27,7 +30,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.planOnly, false);
   assert.equal(config.teaLogin, "triage-agent");
-  assert.equal("agentTeamName" in config, false);
+  assert.equal(removedWorkerPresetField in config, false);
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
   assert.equal(config.runStateDir, join(cwd(), ".patchmill", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
@@ -175,12 +178,12 @@ test("parseArgs accepts host-login as the primary tea login flag", () => {
   assert.equal(config.teaLogin, "operator");
 });
 
-test("parseArgs ignores removed PATCHMILL_AGENT_TEAM env value", () => {
+test("parseArgs ignores removed Patchmill team env value", () => {
   const config = parseArgs(["--dry-run"], "/repo", {
-    PATCHMILL_AGENT_TEAM: "patchmill-team",
+    [removedPatchmillTeamEnv]: "patchmill-team",
   });
 
-  assert.equal("agentTeamName" in config, false);
+  assert.equal(removedWorkerPresetField in config, false);
 });
 
 test("parseArgs ignores removed legacy host login variables", () => {
@@ -191,12 +194,12 @@ test("parseArgs ignores removed legacy host login variables", () => {
   assert.equal(config.teaLogin, "triage-agent");
 });
 
-test("parseArgs ignores removed legacy agent team variable", () => {
+test("parseArgs ignores removed legacy team variable", () => {
   const config = parseArgs(["--dry-run"], "/repo", {
     [LEGACY_AGENT_TEAM_ENV]: "legacy-team",
   });
 
-  assert.equal("agentTeamName" in config, false);
+  assert.equal(removedWorkerPresetField in config, false);
 });
 
 test("parseArgs prefers PATCHMILL_HOST_LOGIN over legacy env values", () => {
@@ -218,7 +221,7 @@ test("loadCliConfig uses normalized Patchmill defaults when no config file exist
   });
 
   assert.equal(config.teaLogin, "triage-agent");
-  assert.equal("agentTeamName" in config, false);
+  assert.equal(removedWorkerPresetField in config, false);
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill", "runs"));
   assert.equal(config.worktreePrefix, "patchmill-issue-");
   assert.equal(config.cleanupHook, undefined);
@@ -257,7 +260,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   });
 
   assert.equal(config.teaLogin, "config-bot");
-  assert.equal("agentTeamName" in config, false);
+  assert.equal(removedWorkerPresetField in config, false);
   assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));

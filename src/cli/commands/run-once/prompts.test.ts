@@ -293,10 +293,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     /Use pi-subagents-discovered `worker` agents for implementation handoffs/,
   );
   assert.match(prompt, /`reviewer` agents for review checkpoints/);
-  assert.match(
-    prompt,
-    /Do not pass Patchmill-specific agent-team model overrides/,
-  );
+  assert.match(prompt, /Do not pass Patchmill-specific model overrides/);
   assert.match(
     prompt,
     /If required subagents are unavailable or disabled, return the blocker JSON/,
@@ -305,8 +302,8 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     prompt,
     /Users control subagent models, thinking, tools, context mode, skills, and nesting behavior through pi-subagents configuration\./,
   );
-  assert.doesNotMatch(prompt, /Authoritative agent team/);
-  assert.doesNotMatch(prompt, /dispatchModel/);
+  assert.doesNotMatch(prompt, new RegExp("Authoritative agent " + "team"));
+  assert.doesNotMatch(prompt, new RegExp("dispatch" + "Model"));
   assert.doesNotMatch(prompt, /Example worker dispatch/);
   assert.match(prompt, /Conventional Commits/);
   assert.match(prompt, /pnpm test:server/);

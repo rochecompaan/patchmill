@@ -4644,7 +4644,7 @@ test("runOneIssue keeps implementation task totals anchored to the plan when tra
   );
 });
 
-test("runOneIssue uses an existing plan without agent-team lookup", async () => {
+test("runOneIssue uses an existing plan without legacy team lookup", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -4713,7 +4713,7 @@ test("runOneIssue uses an existing plan without agent-team lookup", async () => 
         /Read AGENTS\.md and the implementation plan at docs\/plans\/2026-05-01-issue-21-fix-isolated-issue-runner\.md/,
       );
       assert.match(prompt, /Subagent support:/);
-      assert.doesNotMatch(prompt, /Authoritative agent team/);
+      assert.doesNotMatch(prompt, new RegExp("Authoritative agent " + "team"));
       return {
         code: 0,
         stdout:

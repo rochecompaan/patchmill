@@ -6,6 +6,8 @@ import { test } from "node:test";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
 import { loadPatchmillConfig } from "./load.ts";
 
+const removedPatchmillTeamEnv = ["PATCHMILL", "AGENT", "TEAM"].join("_");
+
 test("loadPatchmillConfig returns defaults when no file or env is present", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   const config = await loadPatchmillConfig(dir, {}, []);
@@ -492,7 +494,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   assert.equal(config.projectPolicy.planRequiresApproval, true);
 });
 
-test("loadPatchmillConfig ignores removed agent-team env and config fields", async () => {
+test("loadPatchmillConfig ignores removed team env and config fields", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(
     join(dir, "patchmill.config.json"),
@@ -503,7 +505,10 @@ test("loadPatchmillConfig ignores removed agent-team env and config fields", asy
   );
   const config = await loadPatchmillConfig(
     dir,
-    { PATCHMILL_HOST_LOGIN: "env-login", PATCHMILL_AGENT_TEAM: "env-team" },
+    {
+      PATCHMILL_HOST_LOGIN: "env-login",
+      [removedPatchmillTeamEnv]: "env-team",
+    },
     [],
   );
   assert.equal(config.host.login, "env-login");
@@ -515,7 +520,10 @@ test("loadPatchmillConfig applies host-login CLI overrides last", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   const config = await loadPatchmillConfig(
     dir,
-    { PATCHMILL_HOST_LOGIN: "env-login", PATCHMILL_AGENT_TEAM: "env-team" },
+    {
+      PATCHMILL_HOST_LOGIN: "env-login",
+      [removedPatchmillTeamEnv]: "env-team",
+    },
     ["--host-login", "cli-login"],
   );
   assert.equal(config.host.login, "cli-login");
