@@ -819,6 +819,7 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "blocked");
+  assert.match(result.reason, /unexpected command: git worktree list/);
   const claimCall = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -838,7 +839,7 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
-  assert.equal(runState.status, "blocked");
+  assert.equal(runState.status, "planning");
   assert.equal(runState.planPath, planPath);
   assert.deepEqual(runState.checkpoints, {
     claimed: true,
@@ -2952,11 +2953,7 @@ test("runOneIssue starts implementation without an agent team", async () => {
     config.plansDir,
     "2026-05-01-issue-14-needs-explicit-team.md",
   );
-  await writeFile(
-    existingPlanPath,
-    "# plan\n\n### Task 1: Blocker Task\n",
-    "utf8",
-  );
+  await writeFile(existingPlanPath, "# plan\n", "utf8");
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -2997,6 +2994,10 @@ test("runOneIssue starts implementation without an agent team", async () => {
 
     if (call.command === "git" && call.args[0] === "log") {
       return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
     }
 
     if (
