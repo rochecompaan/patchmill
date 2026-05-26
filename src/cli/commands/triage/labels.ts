@@ -7,9 +7,6 @@ export const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
   DEFAULT_PATCHMILL_CONFIG.triage,
 );
 
-export const REQUIRED_LABELS: LabelDefinition[] =
-  DEFAULT_TRIAGE_POLICY.allowedLabels;
-
 export function uniqueSorted(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }

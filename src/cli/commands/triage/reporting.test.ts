@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  bucketCounts,
   createObservedChangeEntries,
   createPreviewEntries,
   extractNeedsInfoFollowUps,
@@ -131,36 +130,4 @@ test("extractNeedsInfoFollowUps falls back to full comment", () => {
   assert.deepEqual(extractNeedsInfoFollowUps("Need reporter details."), [
     "Need reporter details.",
   ]);
-});
-
-test("bucketCounts counts canonical buckets from log entries", () => {
-  assert.deepEqual(
-    bucketCounts([
-      {
-        issueNumber: 1,
-        title: "One",
-        previousLabels: [],
-        finalLabels: ["ready-for-agent"],
-        primaryBucket: "agent-ready",
-        questions: [],
-        comment: null,
-        mutationStatus: "observed",
-      },
-      {
-        issueNumber: 2,
-        title: "Two",
-        previousLabels: [],
-        finalLabels: ["needs-info"],
-        primaryBucket: "needs-info",
-        questions: ["What fails?"],
-        comment: "What fails?",
-        mutationStatus: "observed",
-      },
-    ]),
-    {
-      "agent-ready": 1,
-      "needs-info": 1,
-      "agent-unsuitable": 0,
-    },
-  );
 });

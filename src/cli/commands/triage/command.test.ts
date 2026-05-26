@@ -3,36 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createCommandRunner,
-  createDryRunCommandRunner,
-  createStaticCommandRunner,
-  shellQuote,
-} from "./command.ts";
-
-test("shellQuote preserves simple values", () => {
-  assert.equal(shellQuote("tea"), "tea");
-  assert.equal(shellQuote("issue-42"), "issue-42");
-});
-
-test("shellQuote quotes values with spaces", () => {
-  assert.equal(shellQuote("hello world"), "'hello world'");
-});
-
-test("dry-run runner records commands without executing", async () => {
-  const runner = createDryRunCommandRunner();
-  const result = await runner.run(
-    "tea",
-    ["issues", "list", "--output", "json"],
-    { cwd: "/repo" },
-  );
-
-  assert.equal(result.code, 0);
-  assert.equal(result.stdout, "");
-  assert.deepEqual(runner.commands, [
-    "cd /repo && tea issues list --output json",
-  ]);
-});
+import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
+import { createCommandRunner } from "./command.ts";
 
 test("command runner captures stdout from successful commands", async () => {
   const runner = createCommandRunner();

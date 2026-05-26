@@ -3,7 +3,6 @@ import test from "node:test";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
-  REQUIRED_LABELS,
   missingLabelDefinitions,
   planLabelChange,
 } from "./labels.ts";
@@ -20,7 +19,9 @@ test("DEFAULT_TRIAGE_POLICY includes required automation labels", () => {
   assert.equal(DEFAULT_TRIAGE_POLICY.labels.blocked, blocked);
 
   for (const name of [ready, needsInfo, unsuitable]) {
-    assert.ok(REQUIRED_LABELS.some((label) => label.name === name));
+    assert.ok(
+      DEFAULT_TRIAGE_POLICY.allowedLabels.some((label) => label.name === name),
+    );
   }
 });
 

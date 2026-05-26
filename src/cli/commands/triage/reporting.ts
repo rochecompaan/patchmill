@@ -1,6 +1,5 @@
 import {
   canonicalBucketForLabels,
-  TRIAGE_CANONICAL_BUCKETS,
   type PatchmillTriageStateMap,
 } from "../../../policy/triage-state.ts";
 import type {
@@ -116,20 +115,4 @@ export function createObservedChangeEntries(
       mutationStatus: "observed",
     };
   });
-}
-
-export function bucketCounts(
-  entries: TriageLogIssueEntry[],
-): Record<(typeof TRIAGE_CANONICAL_BUCKETS)[number], number> {
-  const counts = {
-    "agent-ready": 0,
-    "needs-info": 0,
-    "agent-unsuitable": 0,
-  };
-
-  for (const entry of entries) {
-    if (entry.primaryBucket) counts[entry.primaryBucket] += 1;
-  }
-
-  return counts;
 }

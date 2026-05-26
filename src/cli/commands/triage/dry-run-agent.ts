@@ -1,6 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { withPromptFile } from "./prompt-file.ts";
 import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
 import { TRIAGE_CANONICAL_BUCKETS } from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
@@ -233,11 +231,7 @@ export async function runTriageDryRunAgent(
       ? ["--skill", bundledTriageSkillPath()]
       : [];
   const thinking = input.thinking ?? "high";
-  const dir = await mkdtemp(join(tmpdir(), "agent-triage-dry-run-"));
-
-  try {
-    const promptPath = join(dir, "prompt.md");
-    await writeFile(promptPath, prompt, "utf8");
+  return withPromptFile("agent-triage-dry-run-", prompt, async (promptPath) => {
     const result = await runner.run(
       "pi",
       [
@@ -264,7 +258,5 @@ export async function runTriageDryRunAgent(
       parseTriagePreviewJson(result.stdout),
       input.issues,
     );
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  });
 }

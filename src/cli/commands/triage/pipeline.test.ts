@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
-import { createStaticCommandRunner } from "./command.ts";
+import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
 import { formatResultLines, HELP_TEXT } from "./main.ts";
 import { runTriage } from "./pipeline.ts";
 

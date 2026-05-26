@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
@@ -48,31 +45,6 @@ class RecordingRunner implements CommandRunner {
     assert.match(prompt, /Needs triage/);
     return { code: 0, stdout: "triage complete", stderr: "" };
   }
-}
-
-function getPathMax(path: string): number | null {
-  try {
-    return Number(
-      execFileSync("getconf", ["PATH_MAX", path], { encoding: "utf8" }).trim(),
-    );
-  } catch {
-    return null;
-  }
-}
-
-async function createDirectoryAtLength(
-  baseRoot: string,
-  targetLength: number,
-): Promise<string> {
-  let current = baseRoot;
-  while (current.length < targetLength) {
-    const remaining = targetLength - current.length - 1;
-    if (remaining <= 0) break;
-    const segmentLength = remaining > 255 ? 200 : remaining;
-    current = join(current, "x".repeat(segmentLength));
-    await mkdir(current);
-  }
-  return current;
 }
 
 test("buildTriageExecutePrompt delegates procedure to configured skill", () => {
@@ -160,53 +132,4 @@ test("runTriageExecuteAgent does not add bundled triage skill for custom skills"
 
   const call = runner.calls[0]!;
   assert.equal(call.args.includes("--skill"), false);
-});
-
-test("runTriageExecuteAgent cleans up temp dir when prompt writing fails", async (t) => {
-  const pathMax = getPathMax(tmpdir());
-  if (!pathMax || pathMax <= 0) {
-    t.skip("PATH_MAX is unavailable on this platform");
-    return;
-  }
-
-  const baseRoot = await mkdtemp(join(tmpdir(), "execute-agent-test-"));
-  const previousTmpDir = process.env.TMPDIR;
-
-  try {
-    const promptExtraLength =
-      1 + "agent-triage-execute-".length + 6 + 1 + "prompt.md".length;
-    const deepTmpDir = await createDirectoryAtLength(
-      baseRoot,
-      pathMax - promptExtraLength + 2,
-    );
-
-    process.env.TMPDIR = deepTmpDir;
-    await assert.rejects(
-      () =>
-        runTriageExecuteAgent(
-          {
-            async run() {
-              assert.fail(
-                "runner should not be called when prompt writing fails",
-              );
-            },
-          },
-          "/repo",
-          {
-            issues,
-            projectPolicy: DEFAULT_PATCHMILL_POLICY,
-            stateMap,
-          },
-        ),
-      /ENAMETOOLONG/,
-    );
-    assert.deepEqual(await readdir(deepTmpDir), []);
-  } finally {
-    if (previousTmpDir === undefined) {
-      delete process.env.TMPDIR;
-    } else {
-      process.env.TMPDIR = previousTmpDir;
-    }
-    await rm(baseRoot, { recursive: true, force: true });
-  }
 });
