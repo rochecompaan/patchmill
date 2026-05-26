@@ -19,7 +19,6 @@ Patchmill reads provider and workflow settings from `patchmill.config.json` and
 Common settings:
 
 - `host.login`
-- `pi.team`
 - `paths.runStateDir`
 - `paths.triageLogDir`
 - `paths.worktreeDir`
@@ -29,8 +28,6 @@ shared repository policy:
 
 - `PATCHMILL_HOST_LOGIN`: host account/login Patchmill uses with `tea`;
   overrides `host.login`.
-- `PATCHMILL_AGENT_TEAM`: Pi agent-team preset for implementation
-  worker/reviewer models; overrides `pi.team`.
 - `PATCHMILL_FORGEJO_URL`: Forgejo base URL used for visual-evidence uploads.
 - `PATCHMILL_FORGEJO_TOKEN`: Forgejo API token used for visual-evidence uploads.
 - `PATCHMILL_FORGEJO_REPO`: optional `owner/repo` override when git remote

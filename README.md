@@ -64,8 +64,15 @@ Customize `skills` when your repository needs different procedures. Optional
 skill hooks include `toolchain`, `review`, `visualEvidence`, and `landing`; see
 [skills configuration](docs/skills.md) for details and
 [configuration examples](docs/configuration.md) for a fuller
-`patchmill.config.json`. For full implementation runs, also set `pi.team` or
-`PATCHMILL_AGENT_TEAM` to a Pi agent-team preset available on your machine.
+`patchmill.config.json`.
+
+Patchmill bundles `pi-subagents` for implementation delegation. The default
+implementation skill, `superpowers:subagent-driven-development`, can use
+pi-subagents builtin agents such as `worker`, `reviewer`, `scout`, `planner`,
+`context-builder`, `researcher`, `delegate`, and `oracle`. Customize those
+agents with normal pi-subagents user or project configuration when your
+repository needs different models, tools, context behavior, or nested
+delegation.
 
 ## Environment variables
 
@@ -74,8 +81,6 @@ upload credentials that should not live in `patchmill.config.json`.
 
 - `PATCHMILL_HOST_LOGIN`: host account/login Patchmill uses with `tea`;
   overrides `host.login`.
-- `PATCHMILL_AGENT_TEAM`: Pi agent-team preset for implementation
-  worker/reviewer models; overrides `pi.team`.
 - `PATCHMILL_FORGEJO_URL`: Forgejo base URL used when uploading visual evidence
   to PRs.
 - `PATCHMILL_FORGEJO_TOKEN`: Forgejo API token for visual-evidence uploads.
@@ -84,6 +89,60 @@ upload credentials that should not live in `patchmill.config.json`.
 
 CLI flags override environment variables, and environment variables override
 `patchmill.config.json`.
+
+## Subagents
+
+Patchmill includes `pi-subagents`; users do not install it separately.
+Implementation prompts can rely on the Pi `subagent` tool and the agents
+discovered by pi-subagents.
+
+Agent files can live in:
+
+- `~/.pi/agent/agents/**/*.md` for user-scope agents
+- `.pi/agents/**/*.md` for project-scope agents
+
+Chain files can live in:
+
+- `~/.pi/agent/chains/**/*.chain.md`
+- `.pi/chains/**/*.chain.md`
+
+Settings overrides can live in `~/.pi/agent/settings.json` or
+`.pi/settings.json`. For example:
+
+```json
+{
+  "subagents": {
+    "agentOverrides": {
+      "reviewer": {
+        "model": "anthropic/claude-sonnet-4",
+        "thinking": "high"
+      }
+    }
+  }
+}
+```
+
+A minimal project agent file looks like:
+
+```md
+---
+name: worker
+description: Project-specific implementation worker
+model: anthropic/claude-sonnet-4
+thinking: high
+tools: read, grep, find, ls, bash, edit, write
+systemPromptMode: append
+inheritProjectContext: true
+inheritSkills: true
+---
+
+Follow this repository's implementation conventions. Escalate unclear product or
+architecture decisions instead of guessing.
+```
+
+If you want a child agent to delegate further, include the `subagent` tool in
+that agent's tools and configure nesting/depth through pi-subagents settings.
+Patchmill does not override those user choices.
 
 ## State paths
 

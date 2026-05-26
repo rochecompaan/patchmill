@@ -14,8 +14,7 @@ Precedence is:
 ## Complete example
 
 This example shows the main configuration surface in one place. Copy only the
-pieces your repository needs, and replace `my-agent-team` with a Pi agent-team
-preset available on your machine.
+pieces your repository needs.
 
 ```json
 {
@@ -24,7 +23,6 @@ preset available on your machine.
     "login": "triage-agent"
   },
   "pi": {
-    "team": "my-agent-team",
     "triageThinking": "high"
   },
   "labels": {
@@ -169,6 +167,18 @@ Patchmill defaults them to:
 - `superpowers:writing-plans`
 - `superpowers:subagent-driven-development`
 
+### Subagents
+
+Patchmill bundles `pi-subagents`, and `skills.implementation` defaults to
+`superpowers:subagent-driven-development`.
+
+Customize subagents through pi-subagents configuration rather than
+`patchmill.config.json`:
+
+- `.pi/agents/**/*.md`
+- `.pi/chains/**/*.chain.md`
+- `.pi/settings.json`
+
 Optional skill keys let a repository add procedure at specific workflow stages:
 
 - `toolchain`: setup and validation conventions.
@@ -183,6 +193,5 @@ See [skills configuration](skills.md) for how these are rendered into prompts.
 Some settings are intentionally better as environment variables:
 
 - `PATCHMILL_HOST_LOGIN`: local host login for the `tea` CLI.
-- `PATCHMILL_AGENT_TEAM`: local Pi agent-team preset.
 - `PATCHMILL_FORGEJO_URL`, `PATCHMILL_FORGEJO_TOKEN`, `PATCHMILL_FORGEJO_REPO`:
   visual-evidence upload credentials and repository override.

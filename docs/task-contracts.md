@@ -99,14 +99,15 @@ Set task-contract fields in `patchmill.config.json` under
 Other workflow settings live in the same `patchmill.config.json` file:
 
 - `host.login`
-- `pi.team`
 - `paths.runStateDir`
 - `paths.triageLogDir`
 - `paths.worktreeDir`
 
 Environment-variable overrides use the `PATCHMILL_*` namespace for machine-local
-settings such as `PATCHMILL_HOST_LOGIN` (host account) and
-`PATCHMILL_AGENT_TEAM` (Pi worker/reviewer agent-team preset).
+settings such as `PATCHMILL_HOST_LOGIN` (host account).
+
+Implementation subagent behavior is controlled by bundled `pi-subagents` and the
+user's pi-subagents agent/settings configuration.
 
 ## Local state
 

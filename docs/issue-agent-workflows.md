@@ -109,7 +109,7 @@ Source files:
 - Pipeline: `src/cli/commands/run-once/pipeline.ts`
 - Prompt builders: `src/cli/commands/run-once/prompts.ts`
 - Pi runner/result parser: `src/cli/commands/run-once/pi.ts`
-- Agent-team resolver: `src/cli/commands/run-once/agent-team.ts`
+- Subagent support: bundled pi-subagents and implementation prompt guidance
 - Issue selection: `src/cli/commands/run-once/selection.ts`
 - Progress/logging: `src/cli/commands/run-once/progress.ts`,
   `src/cli/commands/run-once/console-progress.ts`
@@ -144,8 +144,7 @@ flowchart TD
   P --> R{Plan-only or approval required?}
   P2 --> R
   R -->|yes| R1[Comment plan ready, restore ready label, finish]
-  R -->|no| S[Resolve required worker/reviewer agent team]
-  S -->|missing/invalid| BQ
+  R -->|no| S[Render pi-subagents support guidance]
   S --> T[Ensure issue worktree and branch]
   T --> U[Run Pi implementation prompt in worktree]
   U --> V{Pi result}
@@ -239,7 +238,8 @@ asks Pi to implement from the issue worktree. The prompt includes:
 
 - issue data, labels, plan path, branch, and worktree path;
 - the untrusted issue-content boundary;
-- authoritative agent-team mappings for `worker` and `reviewer` roles;
+- pi-subagents support guidance for delegated implementation and review
+  workflows;
 - resume context, when continuing an existing run;
 - issue body and relevant comments;
 - required project context-file instructions;
@@ -254,19 +254,18 @@ asks Pi to implement from the issue worktree. The prompt includes:
 - visual evidence requirements;
 - direct-land versus PR fallback policy.
 
-The agent-team section is generated from `--agent-team`/`PATCHMILL_AGENT_TEAM`
-and requires exact subagent dispatch model strings:
+The prompt includes pi-subagents support guidance for delegated implementation
+and review workflows. It tells Pi that Patchmill bundles `pi-subagents`, that
+implementation prompts may rely on the Pi `subagent` tool, and that agent,
+chain, and settings discovery follows normal pi-subagents user and project
+locations:
 
-```text
-Authoritative agent team: <team name>
-Agent team file: <path>
-Required subagent dispatch mappings:
-- worker: model=<model>, thinking=<thinking>, dispatchModel=<model:thinking>
-- reviewer: model=<model>, thinking=<thinking>, dispatchModel=<model:thinking>
-Pass the exact `dispatchModel` as the subagent `model` override for worker and reviewer calls.
-Do not pass a separate `thinking` field to the subagent execution call; pi-subagents encodes thinking as a `:level` model suffix.
-Do not call worker or reviewer subagents without these exact model overrides; return the blocker JSON instead.
-```
+- `~/.pi/agent/agents/**/*.md`
+- `.pi/agents/**/*.md`
+- `~/.pi/agent/chains/**/*.chain.md`
+- `.pi/chains/**/*.chain.md`
+- `~/.pi/agent/settings.json`
+- `.pi/settings.json`
 
 The implementation prompt renders skill lines from runtime configuration rather
 than hard-coding a repository-local worker/reviewer procedure.

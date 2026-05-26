@@ -39,6 +39,10 @@ subagent workflow instructions into skills. For todos, only the removed freeform
 skills; task naming, tagging, body requirements, and done-status behavior stay
 in `projectPolicy.pi.taskContract`.
 
+Subagent workflows run through bundled `pi-subagents`. Patchmill does not define
+models or tools for `worker` and `reviewer`; pi-subagents builtin agents, user
+overrides, and project agent files control that behavior.
+
 Supported keys:
 
 - `triage`: skill used to classify issues for automation readiness.
