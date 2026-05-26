@@ -435,6 +435,34 @@ test("runOneIssue resumes a single in-progress issue with run state before selec
     if (call.command === "git" && call.args[0] === "status")
       return { code: 0, stdout: "", stderr: "" };
     if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
       call.command === "tea" &&
       call.args[0] === "labels" &&
       call.args[1] === "list"
@@ -445,6 +473,16 @@ test("runOneIssue resumes a single in-progress issue with run state before selec
       (call.args[0] === "issues" || call.args[0] === "comment")
     )
       return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Read AGENTS\.md and the implementation plan at/);
+      return {
+        code: 0,
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-finished-plan-only","commits":["123abc"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+        stderr: "",
+      };
+    }
     throw new Error(
       `unexpected command: ${call.command} ${call.args.join(" ")}`,
     );
@@ -800,6 +838,20 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
     if (call.command === "git" && call.args[0] === "status")
       return { code: 0, stdout: "", stderr: "" };
     if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
       call.command === "tea" &&
       call.args[0] === "labels" &&
       call.args[1] === "list"
@@ -810,6 +862,16 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
       (call.args[0] === "issues" || call.args[0] === "comment")
     )
       return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Read AGENTS\.md and the implementation plan at/);
+      return {
+        code: 0,
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-finished-plan-only","commits":["123abc"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+        stderr: "",
+      };
+    }
     throw new Error(
       `unexpected command: ${call.command} ${call.args.join(" ")}`,
     );
@@ -818,8 +880,8 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const { progress } = collectProgressEvents();
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
-  assert.equal(result.status, "blocked");
-  assert.match(result.reason, /unexpected command: git worktree list/);
+  assert.equal(result.status, "pr-created");
+  assert.equal(result.prUrl, "https://forgejo.example/pr/45");
   const claimCall = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -836,17 +898,34 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   );
   assert.ok(startComment);
 
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "list",
+    ),
+    true,
+  );
+
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
-  assert.equal(runState.status, "planning");
+  assert.equal(runState.status, "finished");
   assert.equal(runState.planPath, planPath);
-  assert.deepEqual(runState.checkpoints, {
-    claimed: true,
-    startedCommentPosted: true,
-    planPathResolved: true,
-    planCreated: true,
-  });
+  assert.equal(runState.branch, "agent/issue-45-finished-plan-only");
+  assert.equal(
+    runState.worktreePath,
+    ".worktrees/patchmill-issue-45-finished-plan-only",
+  );
+  assert.equal(runState.checkpoints.claimed, true);
+  assert.equal(runState.checkpoints.startedCommentPosted, true);
+  assert.equal(runState.checkpoints.planPathResolved, true);
+  assert.equal(runState.checkpoints.planCreated, true);
+  assert.equal(runState.checkpoints.worktreeReady, true);
+  assert.equal(runState.checkpoints.implementationCompleted, true);
+  assert.equal(runState.checkpoints.readyLabelRestored, undefined);
+  assert.equal(runState.checkpoints.planReadyCommentPosted, undefined);
 });
 
 test("runOneIssue does not duplicate claim or plan-only comments on resume", async () => {
@@ -4634,6 +4713,7 @@ test("runOneIssue uses an existing plan without agent-team lookup", async () => 
         /Read AGENTS\.md and the implementation plan at docs\/plans\/2026-05-01-issue-21-fix-isolated-issue-runner\.md/,
       );
       assert.match(prompt, /Subagent support:/);
+      assert.doesNotMatch(prompt, /Authoritative agent team/);
       return {
         code: 0,
         stdout:
