@@ -6,7 +6,6 @@ import { test } from "node:test";
 import { PiRunner } from "./runner.ts";
 import { parsePiResult } from "../cli/commands/run-once/pi.ts";
 import { assertNoLegacyProjectText } from "../../test-support/legacy-project-text.ts";
-import type { ResolvedAgentTeam } from "../cli/commands/run-once/agent-team.ts";
 import type {
   AgentIssueProgressEvent,
   ProgressReporter,
@@ -41,15 +40,6 @@ const issue: IssueSummary = {
       body: "Please preserve resume context.",
     },
   ],
-};
-
-const agentTeam: ResolvedAgentTeam = {
-  name: "fast-team",
-  path: "/teams/fast-team.json",
-  roles: {
-    worker: { model: "gpt-5-mini", thinking: "low" },
-    reviewer: { model: "gpt-5", thinking: "high" },
-  },
 };
 
 function createFakeRunner(
@@ -273,7 +263,6 @@ test("PiRunner implementation uses the worktree root, derives the default landin
     planPath,
     branch: "agent/issue-42-fix",
     worktreePath,
-    agentTeam,
     git: {
       baseBranch: "release/1.2",
       remote: "origin",

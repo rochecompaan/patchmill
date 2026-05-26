@@ -1,4 +1,3 @@
-import type { ResolvedAgentTeam } from "../cli/commands/run-once/agent-team.ts";
 import type { RunPiPromptOptions } from "../cli/commands/run-once/pi.ts";
 import type {
   AgentIssueImplementationResumeContext,
@@ -31,7 +30,6 @@ export type ImplementationPiInput = {
   planPath: string;
   branch: string;
   worktreePath: string;
-  agentTeam: ResolvedAgentTeam;
   git: Pick<
     GitWorktreeStrategyConfig,
     "baseBranch" | "remote" | "allowDirectLand"

@@ -89,15 +89,6 @@ function issueListPayload(issues: IssueSummary[]): string {
   );
 }
 
-const AGENT_TEAM = {
-  name: "economy",
-  path: "/repo/.pi/agent-teams/economy.json",
-  roles: {
-    worker: { model: "openai-codex/gpt-5.4", thinking: "medium" },
-    reviewer: { model: "openai-codex/gpt-5.5", thinking: "high" },
-  },
-};
-
 const LANDING_SKILLS = {
   ...DEFAULT_PATCHMILL_CONFIG.skills,
   landing: "project-landing",
@@ -304,7 +295,6 @@ async function makeConfig(
     slugLength: 48,
     allowDirectLand: true,
     skills: { ...DEFAULT_PATCHMILL_CONFIG.skills },
-    agentTeam: AGENT_TEAM,
     ...overrides,
   };
 }
@@ -765,8 +755,6 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-finished-plan-only.md";
   await writeFile(
@@ -1401,7 +1389,6 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-resume-worktree.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -1514,7 +1501,6 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-reuse-implementation.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -1624,8 +1610,6 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-complete-pr-created.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -1745,8 +1729,6 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
     triagePolicy,
     readyLabel: triagePolicy.labels.ready,
   });
@@ -1897,8 +1879,6 @@ test("runOneIssue runs configured cleanup hook script", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
     worktreePrefix: "patchmill-issue-",
     cleanupHook,
   });
@@ -2022,8 +2002,6 @@ test("runOneIssue finishes saved merged handoff when direct landing is enabled a
     dryRun: false,
     execute: true,
     skills: LANDING_SKILLS,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-complete-merged.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -2135,8 +2113,6 @@ test("runOneIssue rejects saved merged handoff when skills.landing is not config
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-complete-merged.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -2231,8 +2207,6 @@ test("runOneIssue rejects saved merged handoff when direct landing is disabled",
     dryRun: false,
     execute: true,
     allowDirectLand: false,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-complete-merged.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -2326,8 +2300,6 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const planPath =
     "docs/plans/2026-05-14-issue-45-stale-finished-implementation.md";
@@ -2442,7 +2414,6 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
   });
   const planPath =
     "docs/plans/2026-05-14-issue-45-stale-finished-same-title.md";
@@ -2578,8 +2549,6 @@ test("runOneIssue rejects stale finished branch and worktree when title changed"
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-stale-finished-renamed.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -2668,7 +2637,6 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
   });
   const planPath =
     "docs/plans/2026-05-14-issue-45-incomplete-implementation-state.md";
@@ -2753,7 +2721,6 @@ test("runOneIssue reruns Pi when implementationCompleted state is missing requir
       return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
-      assert.match(prompt, /Authoritative agent team: economy/);
       assert.match(prompt, /Resume context:/);
       assert.match(prompt, /abc123 partial work/);
       return {
@@ -2785,7 +2752,6 @@ test("runOneIssue rejects resumable saved branch/worktree mismatch before worktr
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-branch-mismatch.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -2868,7 +2834,6 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
     skills: LANDING_SKILLS,
   });
   const planPath = "docs/plans/2026-05-14-issue-45-finished-handoff.md";
@@ -2977,12 +2942,10 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
   assert.equal(runState.checkpoints?.doneLabelApplied, true);
 });
 
-test("runOneIssue blocks implementation before Pi when no agent team is configured", async () => {
+test("runOneIssue starts implementation without an agent team", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: undefined,
   });
   const selected = issue(14, ["agent-ready", "bug"], "Needs explicit team");
   const existingPlanPath = join(
@@ -3013,6 +2976,30 @@ test("runOneIssue blocks implementation before Pi when no agent team is configur
     }
 
     if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "git" && call.args[0] === "checkout") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (
       call.command === "tea" &&
       call.args[0] === "labels" &&
       call.args[1] === "list"
@@ -3022,9 +3009,33 @@ test("runOneIssue blocks implementation before Pi when no agent team is configur
 
     if (
       call.command === "tea" &&
+      call.args[0] === "pulls" &&
+      call.args[1] === "create"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea" &&
       (call.args[0] === "issues" || call.args[0] === "comment")
     ) {
       return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/repo/pulls/14",
+          branch: "agent/issue-14-needs-explicit-team",
+          commits: ["abc1234"],
+          validation: ["npm test: pass"],
+          reviewSummary: "Reviewed with pi-subagents reviewer.",
+          landingDecision: "PR fallback.",
+        }),
+        stderr: "",
+      };
     }
 
     throw new Error(
@@ -3035,25 +3046,10 @@ test("runOneIssue blocks implementation before Pi when no agent team is configur
   const { progress } = collectProgressEvents();
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
-  assert.equal(result.status, "blocked");
-  assert.match(result.reason, /Agent team is required for implementation/);
-  assert.deepEqual(result.questions, [
-    {
-      question:
-        "Which agent-team preset should the run-once workflow use for worker and reviewer subagents?",
-      recommendedAnswer:
-        "Run with --agent-team <name> or set PATCHMILL_AGENT_TEAM=<name> so worker/reviewer model and thinking are explicit.",
-    },
-  ]);
-  assert.equal(
-    runner.calls.some(
-      (call) => call.command === "git" && call.args[0] === "worktree",
-    ),
-    false,
-  );
+  assert.equal(result.status, "pr-created");
   assert.equal(
     runner.calls.some((call) => call.command === "pi"),
-    false,
+    true,
   );
 });
 
@@ -3061,7 +3057,6 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
     skills: LANDING_SKILLS,
   });
   const planPath =
@@ -3274,15 +3269,6 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       assert.match(prompt, /Implement repository issue #15/);
       assertNoLegacyProjectText(prompt);
       assert.match(prompt, /Branch: agent\/issue-15-ship-automation-pipeline/);
-      assert.match(prompt, /Authoritative agent team: economy/);
-      assert.match(
-        prompt,
-        /worker: model=openai-codex\/gpt-5\.4, thinking=medium/,
-      );
-      assert.match(
-        prompt,
-        /reviewer: model=openai-codex\/gpt-5\.5, thinking=high/,
-      );
       return { code: 0, stdout: finalText, stderr: "" };
     }
 
@@ -4024,7 +4010,6 @@ test("runOneIssue moves streamed tool calls under the active implementation task
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
   });
   const planPath = join(config.plansDir, "2026-05-22-issue-77-agent-output.md");
   await writeFile(
@@ -4229,7 +4214,6 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: AGENT_TEAM,
   });
   const planPath = join(
     config.plansDir,
@@ -4580,12 +4564,10 @@ test("runOneIssue keeps implementation task totals anchored to the plan when tra
   );
 });
 
-test("runOneIssue resolves a named agent team when using an existing plan", async () => {
+test("runOneIssue uses an existing plan without agent-team lookup", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    agentTeam: undefined,
-    agentTeamName: "economy",
   });
   const selected = issue(
     21,
@@ -4597,19 +4579,6 @@ test("runOneIssue resolves a named agent team when using an existing plan", asyn
     "2026-05-01-issue-21-fix-isolated-issue-runner.md",
   );
   await writeFile(existingPlanPath, "# plan\n", "utf8");
-  const teamDir = join(config.repoRoot, ".pi", "agent-teams");
-  await mkdir(teamDir, { recursive: true });
-  await writeFile(
-    join(teamDir, "economy.json"),
-    JSON.stringify({
-      name: "economy",
-      agents: {
-        worker: { model: "openai-codex/gpt-5.4", thinking: "medium" },
-        reviewer: { model: "openai-codex/gpt-5.5", thinking: "high" },
-      },
-    }),
-    "utf8",
-  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -4663,15 +4632,7 @@ test("runOneIssue resolves a named agent team when using an existing plan", asyn
         prompt,
         /Read AGENTS\.md and the implementation plan at docs\/plans\/2026-05-01-issue-21-fix-isolated-issue-runner\.md/,
       );
-      assert.match(prompt, /Authoritative agent team: economy/);
-      assert.match(
-        prompt,
-        /worker: model=openai-codex\/gpt-5\.4, thinking=medium/,
-      );
-      assert.match(
-        prompt,
-        /reviewer: model=openai-codex\/gpt-5\.5, thinking=high/,
-      );
+      assert.match(prompt, /Subagent support:/);
       return {
         code: 0,
         stdout:

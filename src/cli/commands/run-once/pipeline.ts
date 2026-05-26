@@ -18,8 +18,6 @@ import {
   missingLabelDefinitions,
   planLabelChange,
 } from "../triage/labels.ts";
-import { resolveAgentTeam } from "./agent-team.ts";
-import type { ResolvedAgentTeam } from "./agent-team.ts";
 import { assertCleanWorktree, ensureIssueWorktree } from "./git.ts";
 import {
   assertIssueTodosComplete,
@@ -425,42 +423,6 @@ function assertDirectLandAllowed(
     throw new AgentIssueSafetyError(
       `${source} returned merged but direct landing requires git.allowDirectLand=true and configured skills.landing`,
     );
-  }
-}
-
-function agentTeamQuestion(): AgentIssueBlockerQuestion {
-  return {
-    question:
-      "Which agent-team preset should the run-once workflow use for worker and reviewer subagents?",
-    recommendedAnswer:
-      "Run with --agent-team <name> or set PATCHMILL_AGENT_TEAM=<name> so worker/reviewer model and thinking are explicit.",
-  };
-}
-
-async function implementationAgentTeam(
-  config: AgentIssueConfig,
-): Promise<ResolvedAgentTeam | AgentIssueBlockedResult> {
-  if (config.agentTeam) return config.agentTeam;
-  if (!config.agentTeamName) {
-    return {
-      status: "blocked",
-      reason: "Agent team is required for implementation runs.",
-      questions: [agentTeamQuestion()],
-      commits: [],
-      validation: [],
-    };
-  }
-
-  try {
-    return await resolveAgentTeam(config.repoRoot, config.agentTeamName);
-  } catch (error) {
-    return {
-      status: "blocked",
-      reason: `Configured agent team could not be resolved: ${errorMessage(error)}`,
-      questions: [agentTeamQuestion()],
-      commits: [],
-      validation: [],
-    };
   }
 }
 
@@ -1137,22 +1099,6 @@ export async function runOneIssue(
       );
     }
 
-    let agentTeam: ResolvedAgentTeam | undefined;
-    if (!implemented) {
-      agentTeam = await implementationAgentTeam(config);
-      if ("status" in agentTeam && agentTeam.status === "blocked") {
-        return blockIssue(
-          runner,
-          config,
-          issue,
-          labels,
-          agentTeam,
-          { planPath, planCommit },
-          timestamp,
-          options,
-        );
-      }
-    }
     const worktreeStrategy = configuredWorktreeStrategy(config);
     const expectedWorkspace = expectedIssueWorkspace(
       issue.number,
@@ -1379,7 +1325,6 @@ export async function runOneIssue(
             planPath,
             branch,
             worktreePath,
-            agentTeam,
             git: worktreeStrategy,
             projectPolicy,
             skills: config.skills,
