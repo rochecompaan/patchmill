@@ -161,7 +161,7 @@ function formatSubagentSupport(): string {
     "- Patchmill bundles `pi-subagents`; the implementation session can use the Pi `subagent` tool for delegated implementation and review workflows.",
     "- Use pi-subagents-discovered `worker` agents for implementation handoffs and `reviewer` agents for review checkpoints unless the configured implementation skill directs a different pi-subagents workflow.",
     "- Use the user's pi-subagents agent definitions, chains, settings, and builtin defaults for model, thinking, tools, context mode, skills, and output behavior.",
-    "- Do not pass Patchmill-specific agent-team model overrides; Patchmill no longer resolves or requires agent-team presets.",
+    "- Do not pass Patchmill-specific agent-team model overrides; Patchmill no longer resolves or requires legacy team defaults.",
     "- If required subagents are unavailable or disabled, return the blocker JSON with actionable setup guidance instead of inventing a local replacement workflow.",
     "- Users control subagent models, thinking, tools, context mode, skills, and nesting behavior through pi-subagents configuration.",
   ].join("\n");

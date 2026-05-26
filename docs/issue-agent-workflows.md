@@ -288,9 +288,9 @@ separately:
 
 Patchmill does not hard-code the individual worker/reviewer task prompts in this
 repository. Instead, the implementation Pi session follows the configured skill
-lines together with the resolved agent-team mapping. Composite behavior belongs
-in the configured skills. Patchmill observes those subagent tool calls through
-the Pi session stream and records concise progress events.
+lines and any pi-subagents behavior they direct. Composite behavior belongs in
+the configured skills. Patchmill observes those subagent tool calls through the
+Pi session stream and records concise progress events.
 
 The implementation prompt accepts these final statuses:
 
