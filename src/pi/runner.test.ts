@@ -225,6 +225,8 @@ test("PiRunner implementation uses the worktree root, derives the default landin
     assert.equal(call.cwd, worktreeRoot);
     assert.ok(call.args.includes("--session-dir"));
     assert.match(call.prompt, /Resume context:/);
+    assert.match(call.prompt, /Subagent support:/);
+    assert.doesNotMatch(call.prompt, /Authoritative agent team/);
     assert.match(call.prompt, /Existing commit: abc123/);
     assert.match(call.prompt, /Worktree: worktrees\/issue-42-fix/);
     assert.match(
