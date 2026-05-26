@@ -234,7 +234,6 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
     join(repoRoot, "patchmill.config.json"),
     JSON.stringify({
       host: { login: "config-bot" },
-      pi: { team: "config-team" },
       labels: {
         ready: "ready-for-bots",
         needsInfo: "needs-clarification",

@@ -125,7 +125,7 @@ test("loadCliConfig applies normalized patchmill defaults for triage", async () 
     join(repoRoot, "patchmill.config.json"),
     JSON.stringify({
       host: { login: "config-bot" },
-      pi: { team: "config-team", triageThinking: "medium" },
+      pi: { triageThinking: "medium" },
       paths: {
         plansDir: "pm-plans",
         runStateDir: ".patchmill/runs",

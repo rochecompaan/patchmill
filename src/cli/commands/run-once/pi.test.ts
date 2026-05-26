@@ -142,6 +142,9 @@ test("runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failu
   const runner = createMockRunner(async (call) => {
     assert.equal(call.command, "pi");
     assert.equal(call.cwd, "/repo/worktree");
+    assert.equal(call.args[0], "-e");
+    assert.match(call.args[1] ?? "", /node_modules\/pi-subagents$/);
+    assert.equal(call.args[2], "-p");
     const prompt = await readFile(promptPath(call.args), "utf8");
     assert.equal(prompt, "prompt body");
     return { code: 9, stdout: "", stderr: "pi exploded" };
@@ -188,7 +191,8 @@ test("runPiPrompt logs pi stdout and stderr chunks", async () => {
 test("runPiPrompt streams messages appended to the prompted pi session JSONL", async () => {
   const streamed: string[] = [];
   const runner = createMockRunner(async (call) => {
-    assert.equal(call.args[0], "-p");
+    assert.deepEqual(call.args.slice(0, 3), ["-e", call.args[1], "-p"]);
+    assert.match(call.args[1] ?? "", /node_modules\/pi-subagents$/);
     assert.equal(call.args.includes("--mode"), false);
     const sessionDirIndex = call.args.indexOf("--session-dir");
     assert.ok(

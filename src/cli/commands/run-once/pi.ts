@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
@@ -19,6 +20,18 @@ import type {
   CommandRunner,
   ProgressReporter,
 } from "./types.ts";
+
+const require = createRequire(import.meta.url);
+const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
+  require.resolve("pi-subagents/package.json"),
+);
+
+function piPromptArgs(promptPath: string, sessionDir?: string): string[] {
+  const baseArgs = ["-e", PI_SUBAGENTS_PACKAGE_ROOT, "-p"];
+  return sessionDir
+    ? [...baseArgs, "--session-dir", sessionDir, `@${promptPath}`]
+    : [...baseArgs, `@${promptPath}`];
+}
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -334,15 +347,9 @@ export async function runPiPrompt(
     sessionStreamer?.start();
     let result: CommandResult;
     try {
-      result = await runner.run(
-        "pi",
-        sessionDir
-          ? ["-p", "--session-dir", sessionDir, `@${promptPath}`]
-          : ["-p", `@${promptPath}`],
-        {
-          cwd,
-        },
-      );
+      result = await runner.run("pi", piPromptArgs(promptPath, sessionDir), {
+        cwd,
+      });
     } finally {
       await sessionStreamer?.stop();
       await Promise.all(pendingObservations);
