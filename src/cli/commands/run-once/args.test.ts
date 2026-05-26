@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { HELP_TEXT, loadCliConfig, summarizeResult } from "./main.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
-  LEGACY_AGENT_TEAM_ENV,
   LEGACY_FORGEJO_REPO_ENV,
   LEGACY_FORGEJO_TOKEN_ENV,
   LEGACY_FORGEJO_URL_ENV,
@@ -16,9 +15,6 @@ import {
   literalPattern,
 } from "../../../../test-support/legacy-seed.ts";
 import { parseArgs } from "./args.ts";
-
-const removedWorkerPresetField = ["agent", "TeamName"].join("");
-const removedPatchmillTeamEnv = ["PATCHMILL", "AGENT", "TEAM"].join("_");
 
 test("parseArgs shows help when no args are provided", () => {
   const config = parseArgs([], cwd(), {});
@@ -30,7 +26,6 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.planOnly, false);
   assert.equal(config.teaLogin, "triage-agent");
-  assert.equal(removedWorkerPresetField in config, false);
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
   assert.equal(config.runStateDir, join(cwd(), ".patchmill", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
@@ -68,7 +63,6 @@ test("HELP_TEXT documents one-issue usage and options", () => {
   assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_RUN_ONCE_LOGIN_ENV));
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
-  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_AGENT_TEAM_ENV));
 });
 
 test("parseArgs accepts execute mode", () => {
@@ -178,28 +172,12 @@ test("parseArgs accepts host-login as the primary tea login flag", () => {
   assert.equal(config.teaLogin, "operator");
 });
 
-test("parseArgs ignores removed Patchmill team env value", () => {
-  const config = parseArgs(["--dry-run"], "/repo", {
-    [removedPatchmillTeamEnv]: "patchmill-team",
-  });
-
-  assert.equal(removedWorkerPresetField in config, false);
-});
-
 test("parseArgs ignores removed legacy host login variables", () => {
   const config = parseArgs(["--dry-run"], "/repo", {
     [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
     [LEGACY_TRIAGE_LOGIN_ENV]: "triage-agent-legacy",
   });
   assert.equal(config.teaLogin, "triage-agent");
-});
-
-test("parseArgs ignores removed legacy team variable", () => {
-  const config = parseArgs(["--dry-run"], "/repo", {
-    [LEGACY_AGENT_TEAM_ENV]: "legacy-team",
-  });
-
-  assert.equal(removedWorkerPresetField in config, false);
 });
 
 test("parseArgs prefers PATCHMILL_HOST_LOGIN over legacy env values", () => {
@@ -217,11 +195,9 @@ test("loadCliConfig uses normalized Patchmill defaults when no config file exist
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
     [LEGACY_RUN_ONCE_LOGIN_ENV]: "legacy-login",
-    [LEGACY_AGENT_TEAM_ENV]: "legacy-team",
   });
 
   assert.equal(config.teaLogin, "triage-agent");
-  assert.equal(removedWorkerPresetField in config, false);
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill", "runs"));
   assert.equal(config.worktreePrefix, "patchmill-issue-");
   assert.equal(config.cleanupHook, undefined);
@@ -255,11 +231,9 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
 
   const config = await loadCliConfig(["--dry-run"], repoRoot, {
     [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
-    [LEGACY_AGENT_TEAM_ENV]: "economy",
   });
 
   assert.equal(config.teaLogin, "config-bot");
-  assert.equal(removedWorkerPresetField in config, false);
   assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
