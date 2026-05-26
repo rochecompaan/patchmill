@@ -24,6 +24,7 @@ function parsePositiveInteger(flag: string, value: string): number {
   return parsed;
 }
 
+// TODO: abstract tea login to host provider login, not hardcoded to Forgejo/Tea
 function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
   return (
     env.PATCHMILL_HOST_LOGIN ??

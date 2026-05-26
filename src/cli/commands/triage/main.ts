@@ -7,6 +7,8 @@ import { createCommandRunner } from "./command.ts";
 import { runTriage } from "./pipeline.ts";
 import type { TriageResult } from "./types.ts";
 
+// TODO: Remove compatibility alias for --tea-login in favor of --host-login
+// TODO: Remove explicit mention of Forgejo in help text and logs to allow for broader applicability of triage command to other host providers
 export const HELP_TEXT = `Usage:
   patchmill triage [options]
   npm run triage -- [options]
