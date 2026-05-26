@@ -9,7 +9,6 @@ export type PatchmillHostConfig = {
 };
 
 export type PatchmillPiConfig = {
-  team?: string;
   triageThinking: string;
 };
 

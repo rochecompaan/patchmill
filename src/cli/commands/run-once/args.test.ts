@@ -27,7 +27,7 @@ test("parseArgs shows help when no args are provided", () => {
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.planOnly, false);
   assert.equal(config.teaLogin, "triage-agent");
-  assert.equal(config.agentTeamName, undefined);
+  assert.equal("agentTeamName" in config, false);
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
   assert.equal(config.runStateDir, join(cwd(), ".patchmill", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
@@ -62,9 +62,7 @@ test("HELP_TEXT documents one-issue usage and options", () => {
   assert.match(HELP_TEXT, /--issue <number>/);
   assert.match(HELP_TEXT, /--host-login <name>/);
   assert.match(HELP_TEXT, /--tea-login <name>/);
-  assert.match(HELP_TEXT, /--agent-team <name>/);
   assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
-  assert.match(HELP_TEXT, /PATCHMILL_AGENT_TEAM/);
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_RUN_ONCE_LOGIN_ENV));
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_AGENT_TEAM_ENV));
@@ -177,20 +175,12 @@ test("parseArgs accepts host-login as the primary tea login flag", () => {
   assert.equal(config.teaLogin, "operator");
 });
 
-test("parseArgs accepts an explicit agent team", () => {
-  const config = parseArgs(["--agent-team", "economy"], "/repo", {
-    [LEGACY_AGENT_TEAM_ENV]: "premium",
-  });
-
-  assert.equal(config.agentTeamName, "economy");
-});
-
-test("parseArgs uses PATCHMILL_AGENT_TEAM env value", () => {
+test("parseArgs ignores removed PATCHMILL_AGENT_TEAM env value", () => {
   const config = parseArgs(["--dry-run"], "/repo", {
     PATCHMILL_AGENT_TEAM: "patchmill-team",
   });
 
-  assert.equal(config.agentTeamName, "patchmill-team");
+  assert.equal("agentTeamName" in config, false);
 });
 
 test("parseArgs ignores removed legacy host login variables", () => {
@@ -206,7 +196,7 @@ test("parseArgs ignores removed legacy agent team variable", () => {
     [LEGACY_AGENT_TEAM_ENV]: "legacy-team",
   });
 
-  assert.equal(config.agentTeamName, undefined);
+  assert.equal("agentTeamName" in config, false);
 });
 
 test("parseArgs prefers PATCHMILL_HOST_LOGIN over legacy env values", () => {
@@ -228,7 +218,7 @@ test("loadCliConfig uses normalized Patchmill defaults when no config file exist
   });
 
   assert.equal(config.teaLogin, "triage-agent");
-  assert.equal(config.agentTeamName, undefined);
+  assert.equal("agentTeamName" in config, false);
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill", "runs"));
   assert.equal(config.worktreePrefix, "patchmill-issue-");
   assert.equal(config.cleanupHook, undefined);
@@ -241,7 +231,6 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
     join(repoRoot, "patchmill.config.json"),
     JSON.stringify({
       host: { login: "config-bot" },
-      pi: { team: "config-team" },
       labels: {
         ready: "ready-for-bots",
         needsInfo: "needs-clarification",
@@ -267,7 +256,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   });
 
   assert.equal(config.teaLogin, "config-bot");
-  assert.equal(config.agentTeamName, "config-team");
+  assert.equal("agentTeamName" in config, false);
   assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
@@ -400,31 +389,28 @@ test("loadCliConfig ignores removed legacy tea login when patchmill config only 
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));
 });
 
-test("loadCliConfig lets run-once login and agent-team flags override patchmill config", async () => {
+test("loadCliConfig lets run-once login flags override patchmill config", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
   await writeFile(
     join(repoRoot, "patchmill.config.json"),
     JSON.stringify({
       host: { login: "config-bot" },
-      pi: { team: "config-team" },
     }),
   );
 
   const hostLogin = await loadCliConfig(
-    ["--dry-run", "--host-login", "host-bot", "--agent-team", "cli-team"],
+    ["--dry-run", "--host-login", "host-bot"],
     repoRoot,
     {},
   );
   const teaLogin = await loadCliConfig(
-    ["--dry-run", "--tea-login", "tea-bot", "--agent-team", "legacy-team"],
+    ["--dry-run", "--tea-login", "tea-bot"],
     repoRoot,
     {},
   );
 
   assert.equal(hostLogin.teaLogin, "host-bot");
-  assert.equal(hostLogin.agentTeamName, "cli-team");
   assert.equal(teaLogin.teaLogin, "tea-bot");
-  assert.equal(teaLogin.agentTeamName, "legacy-team");
 });
 
 test("loadCliConfig shows help without reading malformed patchmill config", async () => {

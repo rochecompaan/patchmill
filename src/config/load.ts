@@ -683,13 +683,11 @@ function parseConfigFile(data: unknown): PartialConfig {
   const pi = readOptionalSection(data, "pi");
   if (pi) {
     const parsed: Partial<PatchmillConfig["pi"]> = {};
-    const team = readOptionalString(pi, "team", "pi.team");
     const triageThinking = readOptionalString(
       pi,
       "triageThinking",
       "pi.triageThinking",
     );
-    if (team !== undefined) parsed.team = team;
     if (triageThinking !== undefined) parsed.triageThinking = triageThinking;
     if (hasEntries(parsed)) config.pi = parsed;
   }
@@ -1014,7 +1012,6 @@ async function readConfigFile(repoRoot: string): Promise<LoadedConfigFile> {
 function envConfig(env: Env): PartialConfig {
   return {
     host: env.PATCHMILL_HOST_LOGIN ? { login: env.PATCHMILL_HOST_LOGIN } : {},
-    pi: env.PATCHMILL_AGENT_TEAM ? { team: env.PATCHMILL_AGENT_TEAM } : {},
   };
 }
 
@@ -1027,12 +1024,6 @@ function cliConfig(args: string[]): PartialConfig {
       if (!value || value.startsWith("--"))
         throw new Error(`${flag} requires a value`);
       config.host = { ...(config.host ?? {}), login: value };
-      index += 1;
-    } else if (args[index] === "--agent-team") {
-      const value = args[index + 1];
-      if (!value || value.startsWith("--"))
-        throw new Error("--agent-team requires a value");
-      config.pi = { ...(config.pi ?? {}), team: value };
       index += 1;
     }
   }

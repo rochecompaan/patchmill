@@ -1,7 +1,6 @@
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
-import type { ResolvedAgentTeam } from "./agent-team.ts";
 
 export type {
   CommandResult,
@@ -22,8 +21,6 @@ export type AgentIssueConfig = {
   issueNumber?: number;
   planOnly: boolean;
   teaLogin?: string;
-  agentTeamName?: string;
-  agentTeam?: ResolvedAgentTeam;
   plansDir: string;
   runStateDir: string;
   worktreeDir: string;

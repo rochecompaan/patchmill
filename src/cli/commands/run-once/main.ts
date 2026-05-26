@@ -37,11 +37,9 @@ Options:
   --issue <number>    Process one specific open agent-ready issue.
   --host-login <name> Use a named host login for Forgejo issue updates.
   --tea-login <name>  Compatibility alias for --host-login.
-  --agent-team <name> Use the named Pi agent-team preset for worker/reviewer subagents.
 
 Environment:
   PATCHMILL_HOST_LOGIN               Override the default host login name.
-  PATCHMILL_AGENT_TEAM               Override the default Pi agent-team preset.
   PATCHMILL_FORGEJO_URL              Primary Forgejo base URL for PR visual evidence uploads.
   PATCHMILL_FORGEJO_TOKEN            Primary Forgejo API token for PR visual evidence uploads.
   PATCHMILL_FORGEJO_REPO             Primary optional owner/repo override when git remote parsing is insufficient.

@@ -367,7 +367,6 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
     join(dir, "patchmill.config.json"),
     JSON.stringify({
       host: { login: "bot-login" },
-      pi: { team: "fast-team" },
       skills: {
         triage: "project-triage",
         planning: "project-planning",
@@ -435,7 +434,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   );
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "bot-login");
-  assert.equal(config.pi.team, "fast-team");
+  assert.equal("team" in config.pi, false);
   assert.deepEqual(config.skills, {
     triage: "project-triage",
     planning: "project-planning",
@@ -493,13 +492,13 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
   assert.equal(config.projectPolicy.planRequiresApproval, true);
 });
 
-test("loadPatchmillConfig applies env overrides without CLI", async () => {
+test("loadPatchmillConfig ignores removed agent-team env and config fields", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(
     join(dir, "patchmill.config.json"),
     JSON.stringify({
       host: { login: "file-login" },
-      pi: { team: "file-team" },
+      pi: { team: "file-team", triageThinking: "medium" },
     }),
   );
   const config = await loadPatchmillConfig(
@@ -508,18 +507,19 @@ test("loadPatchmillConfig applies env overrides without CLI", async () => {
     [],
   );
   assert.equal(config.host.login, "env-login");
-  assert.equal(config.pi.team, "env-team");
+  assert.equal(config.pi.triageThinking, "medium");
+  assert.equal("team" in config.pi, false);
 });
 
-test("loadPatchmillConfig applies CLI overrides last", async () => {
+test("loadPatchmillConfig applies host-login CLI overrides last", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   const config = await loadPatchmillConfig(
     dir,
     { PATCHMILL_HOST_LOGIN: "env-login", PATCHMILL_AGENT_TEAM: "env-team" },
-    ["--host-login", "cli-login", "--agent-team", "cli-team"],
+    ["--host-login", "cli-login"],
   );
   assert.equal(config.host.login, "cli-login");
-  assert.equal(config.pi.team, "cli-team");
+  assert.equal("team" in config.pi, false);
 });
 
 test("loadPatchmillConfig accepts tea-login as a host-login alias", async () => {

@@ -32,13 +32,6 @@ function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
   );
 }
 
-function defaultAgentTeam(
-  env: Env,
-  normalizedConfig?: PatchmillConfig,
-): string | undefined {
-  return normalizedConfig?.pi.team ?? env.PATCHMILL_AGENT_TEAM;
-}
-
 export function parseArgs(
   args: string[],
   repoRoot = cwd(),
@@ -54,7 +47,6 @@ export function parseArgs(
     showHelp: args.length === 0,
     planOnly: false,
     teaLogin: defaultTeaLogin(env, normalizedConfig),
-    agentTeamName: defaultAgentTeam(env, normalizedConfig),
     plansDir:
       normalizedConfig?.paths.plansDir ??
       join(repoRoot, patchmillConfig.paths.plansDir),
@@ -115,9 +107,6 @@ export function parseArgs(
       config.planOnly = true;
     } else if (arg === "--tea-login" || arg === "--host-login") {
       config.teaLogin = requireValue(args, index, arg);
-      index += 1;
-    } else if (arg === "--agent-team") {
-      config.agentTeamName = requireValue(args, index, arg);
       index += 1;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
