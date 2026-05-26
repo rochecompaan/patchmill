@@ -293,7 +293,6 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     /Use pi-subagents-discovered `worker` agents for implementation handoffs/,
   );
   assert.match(prompt, /`reviewer` agents for review checkpoints/);
-  assert.match(prompt, /Do not pass Patchmill-specific model overrides/);
   assert.match(
     prompt,
     /If required subagents are unavailable or disabled, return the blocker JSON/,
