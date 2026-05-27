@@ -98,7 +98,13 @@ test("runInit offers Pi handoff when provider config is not apparent", async () 
         env: {},
         homeDir: await tempRepo(),
         isInteractive: true,
-        prompt: async () => "y",
+        prompt: async () => {
+          assert.match(
+            stdout[0] ?? "",
+            /No provider configuration was detected/,
+          );
+          return "y";
+        },
         launchPi: async () => {
           launched = true;
           return 0;
@@ -109,8 +115,47 @@ test("runInit offers Pi handoff when provider config is not apparent", async () 
   );
 
   assert.equal(launched, true);
-  assert.match(stdout.join("\n"), /No provider configuration was detected/);
-  assert.match(stdout.join("\n"), /Returned from Pi provider setup/);
+  assert.match(stdout[0] ?? "", /No provider configuration was detected/);
+  assert.doesNotMatch(
+    stdout.at(-1) ?? "",
+    /No provider configuration was detected/,
+  );
+  assert.match(stdout.at(-1) ?? "", /Returned from Pi provider setup/);
+});
+
+test("runInit gives manual Pi setup guidance when Pi exits non-zero", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runInit(
+      [],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: true,
+        prompt: async () => "y",
+        launchPi: async () => 1,
+      },
+    ),
+    0,
+  );
+
+  assert.match(stdout[0] ?? "", /No provider configuration was detected/);
+  assert.doesNotMatch(
+    stdout.at(-1) ?? "",
+    /No provider configuration was detected/,
+  );
+  assert.match(
+    stdout.at(-1) ?? "",
+    /Pi exited before provider setup could be confirmed/,
+  );
+  assert.match(
+    stdout.at(-1) ?? "",
+    /To configure manually, run `pi`, then `\/login`/,
+  );
 });
 
 test("runInit handles declined Pi handoff without error", async () => {

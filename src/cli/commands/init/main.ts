@@ -33,10 +33,15 @@ const DEFAULT_OUTPUT: InitOutput = {
   stderr: (line) => console.error(line),
 };
 
+const NO_PI_PROVIDER_MESSAGE =
+  "Patchmill also requires Pi with an LLM provider configured.\nNo provider configuration was detected.";
+const MANUAL_PI_SETUP_MESSAGE =
+  "To configure manually, run `pi`, then `/login`.";
+
 function defaultPiLauncher(): Promise<number> {
   return new Promise((resolve) => {
     const child = spawn("pi", [], { stdio: "inherit" });
-    child.on("error", () => resolve(1));
+    child.on("error", () => resolve(-1));
     child.on("close", (code) => resolve(code ?? 1));
   });
 }
@@ -83,23 +88,24 @@ export async function runInit(
   let piMessage =
     "Pi provider configuration detected.\nDoctor will verify it with a minimal smoke test.";
   if (!hasPiProvider) {
-    piMessage =
-      "Patchmill also requires Pi with an LLM provider configured.\nNo provider configuration was detected.";
-    if (options.isInteractive ?? defaultStdin.isTTY) {
+    const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
+    if (isInteractive) {
+      output.stdout(NO_PI_PROVIDER_MESSAGE);
       const answer = await (options.prompt ?? defaultPrompt)(
         "Open Pi now to configure a provider with `/login`? [y/N] ",
       );
       if (isYes(answer)) {
         const code = await (options.launchPi ?? defaultPiLauncher)();
-        piMessage +=
-          code === 0
-            ? "\n\nReturned from Pi provider setup."
-            : "\n\nPi exited before provider setup could be confirmed.";
+        if (code === 0) {
+          piMessage = "Returned from Pi provider setup.";
+        } else {
+          piMessage = `${code === -1 ? "Patchmill could not launch Pi." : "Pi exited before provider setup could be confirmed."}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
+        }
       } else {
-        piMessage += "\n\nTo configure manually, run `pi`, then `/login`.";
+        piMessage = MANUAL_PI_SETUP_MESSAGE;
       }
     } else {
-      piMessage += "\n\nTo configure manually, run `pi`, then `/login`.";
+      piMessage = `${NO_PI_PROVIDER_MESSAGE}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
     }
   }
 
