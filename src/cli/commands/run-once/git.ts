@@ -59,6 +59,22 @@ export function buildIssueWorktreePath(
   return buildIssueWorktreePathFromStrategy(issueNumber, title, strategy);
 }
 
+export function cleanStatusIgnoredPaths(config: {
+  cleanStatusIgnorePrefixes?: string[];
+  runStateDir: string;
+  todoRoot: string;
+  additionalPaths?: string[];
+}): string[] {
+  return [
+    ...new Set([
+      ...(config.cleanStatusIgnorePrefixes ?? []),
+      config.todoRoot,
+      config.runStateDir,
+      ...(config.additionalPaths ?? []),
+    ]),
+  ];
+}
+
 function formatCommandFailure(message: string, result: CommandResult): string {
   const output =
     [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||

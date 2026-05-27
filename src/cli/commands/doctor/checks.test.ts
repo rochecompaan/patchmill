@@ -47,7 +47,13 @@ const REQUIRED_LABELS = [
   "priority:low",
 ];
 
-function successMocks(labels = REQUIRED_LABELS) {
+function successMocks(
+  labels = REQUIRED_LABELS,
+  overrides: Record<
+    string,
+    { code: number; stdout?: string; stderr?: string }
+  > = {},
+) {
   return {
     "git rev-parse --is-inside-work-tree": { code: 0, stdout: "true\n" },
     "git branch --show-current": { code: 0, stdout: "main\n" },
@@ -69,6 +75,7 @@ function successMocks(labels = REQUIRED_LABELS) {
         code: 0,
         stdout: "PATCHMILL_PI_OK\n",
       },
+    ...overrides,
   };
 }
 
@@ -140,6 +147,62 @@ test("runDoctorChecks reports missing labels with manual commands", async () => 
     (labels?.remediation ?? []).join("\n"),
     /tea labels create --name agent-ready/,
   );
+});
+
+test("runDoctorChecks honors configured git clean-status ignores", async () => {
+  const repoRoot = await tempRepo();
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      host: { provider: "forgejo-tea", login: "triage-agent" },
+      paths: { cleanStatusIgnorePrefixes: ["scratch/"] },
+    }),
+  );
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(
+    successMocks(REQUIRED_LABELS, {
+      "git status --porcelain=v1 --untracked-files=all": {
+        code: 0,
+        stdout: [
+          "?? scratch/note.txt",
+          "?? .patchmill/runs/run-2026-05-10T04-19-08-934Z.jsonl",
+          "?? .pi/todos/issue-45-task-01-date-range-model.md",
+          "",
+        ].join("\n"),
+      },
+    }),
+  );
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+
+  assert.equal(results.find((result) => result.name === "git")?.status, "pass");
+});
+
+test("runDoctorChecks fails path checks when a configured directory is a file", async () => {
+  const repoRoot = await tempRepo();
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      host: { provider: "forgejo-tea", login: "triage-agent" },
+    }),
+  );
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeFile(join(repoRoot, "docs", "plans"), "not a directory\n");
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(successMocks());
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const paths = results.find((result) => result.name === "paths");
+
+  assert.equal(paths?.status, "fail");
+  assert.match(paths?.message ?? "", /plans:not-directory/);
 });
 
 test("runDoctorChecks never invokes known mutating host commands", async () => {

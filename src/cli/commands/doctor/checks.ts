@@ -1,11 +1,16 @@
-import { access } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
-import { assertCleanWorktree } from "../run-once/git.ts";
+import {
+  assertCleanWorktree,
+  cleanStatusIgnoredPaths,
+} from "../run-once/git.ts";
 import { listLabels, listOpenIssues } from "../triage/forgejo.ts";
 import { missingLabelDefinitions } from "../triage/labels.ts";
 import type { CommandRunner } from "../triage/types.ts";
+import type { PatchmillConfig } from "../../../config/types.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -57,6 +62,7 @@ function commandOutput(result: {
 async function checkGit(
   runner: CommandRunner,
   repoRoot: string,
+  config?: PatchmillConfig,
 ): Promise<DoctorCheckResult> {
   const inside = await runner.run(
     "git",
@@ -71,10 +77,17 @@ async function checkGit(
     cwd: repoRoot,
   });
   try {
-    await assertCleanWorktree(runner, repoRoot, [
-      ".patchmill/runs/",
-      ".patchmill/triage-runs/",
-    ]);
+    await assertCleanWorktree(
+      runner,
+      repoRoot,
+      config
+        ? cleanStatusIgnoredPaths({
+            cleanStatusIgnorePrefixes: config.paths.cleanStatusIgnorePrefixes,
+            todoRoot: config.projectPolicy.pi.taskContract.todoRoot,
+            runStateDir: config.paths.runStateDir,
+          })
+        : [],
+    );
   } catch (error) {
     return fail("git", error instanceof Error ? error.message : String(error));
   }
@@ -88,17 +101,31 @@ async function checkGit(
 
 async function pathStatus(
   path: string,
-): Promise<"exists" | "parent-usable" | "missing"> {
+): Promise<
+  "exists" | "parent-usable" | "missing" | "not-directory" | "unusable"
+> {
+  const targetStatus = await directoryStatus(path);
+  if (targetStatus !== "missing") return targetStatus;
+
+  const parentStatus = await directoryStatus(dirname(path));
+  if (parentStatus === "exists") return "parent-usable";
+  if (parentStatus === "missing") return "missing";
+  return "unusable";
+}
+
+async function directoryStatus(
+  path: string,
+): Promise<"exists" | "missing" | "not-directory" | "unusable"> {
   try {
-    await access(path);
+    const pathStat = await stat(path);
+    if (!pathStat.isDirectory()) return "not-directory";
+    await access(path, constants.W_OK | constants.X_OK);
     return "exists";
-  } catch {
-    try {
-      await access(dirname(path));
-      return "parent-usable";
-    } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return "missing";
     }
+    return "unusable";
   }
 }
 
@@ -177,7 +204,7 @@ export async function runDoctorChecks(
     );
   }
 
-  results.push(await checkGit(runner, options.repoRoot));
+  results.push(await checkGit(runner, options.repoRoot, loaded?.config));
 
   if (!loaded) {
     results.push(fail("host", "skipped because config did not load"));
@@ -265,10 +292,19 @@ export async function runDoctorChecks(
     const statuses = await Promise.all(
       paths.map(async ([name, path]) => `${name}:${await pathStatus(path)}`),
     );
+    const hasPathFailures = statuses.some(
+      (entry) =>
+        entry.endsWith(":not-directory") || entry.endsWith(":unusable"),
+    );
+    const hasPathWarnings = statuses.some(
+      (entry) => entry.endsWith(":missing") || entry.endsWith(":parent-usable"),
+    );
     results.push(
-      statuses.some((entry) => entry.endsWith(":missing"))
-        ? warn("paths", statuses.join(", "))
-        : pass("paths", statuses.join(", ")),
+      hasPathFailures
+        ? fail("paths", statuses.join(", "))
+        : hasPathWarnings
+          ? warn("paths", statuses.join(", "))
+          : pass("paths", statuses.join(", ")),
     );
   }
 

@@ -18,7 +18,11 @@ import {
   missingLabelDefinitions,
   planLabelChange,
 } from "../triage/labels.ts";
-import { assertCleanWorktree, ensureIssueWorktree } from "./git.ts";
+import {
+  assertCleanWorktree,
+  cleanStatusIgnoredPaths as buildCleanStatusIgnoredPaths,
+  ensureIssueWorktree,
+} from "./git.ts";
 import {
   assertIssueTodosComplete,
   issueTodoProgress,
@@ -124,14 +128,12 @@ function cleanStatusIgnoredPaths(
   >,
   options: Pick<RunOneIssueOptions, "logPath">,
 ): string[] {
-  return [
-    ...new Set([
-      ...(config.cleanStatusIgnorePrefixes ?? []),
-      config.projectPolicy.pi.taskContract.todoRoot,
-      config.runStateDir,
-      ...(options.logPath ? [options.logPath] : []),
-    ]),
-  ];
+  return buildCleanStatusIgnoredPaths({
+    cleanStatusIgnorePrefixes: config.cleanStatusIgnorePrefixes,
+    todoRoot: config.projectPolicy.pi.taskContract.todoRoot,
+    runStateDir: config.runStateDir,
+    additionalPaths: options.logPath ? [options.logPath] : [],
+  });
 }
 
 function repoPath(
