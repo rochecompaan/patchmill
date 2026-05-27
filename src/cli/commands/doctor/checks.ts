@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
 import {
@@ -11,6 +11,11 @@ import { listLabels, listOpenIssues } from "../triage/forgejo.ts";
 import { missingLabelDefinitions } from "../triage/labels.ts";
 import type { CommandRunner } from "../triage/types.ts";
 import type { PatchmillConfig } from "../../../config/types.ts";
+import {
+  DEFAULT_PATCHMILL_SKILLS,
+  PATCHMILL_SKILL_KEYS,
+  bundledTriageSkillPath,
+} from "../../../workflow/skills.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -177,6 +182,100 @@ async function checkPiProvider(
   ]);
 }
 
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
+const SKILL_NAMESPACE_PATTERN = /^[a-z0-9-]+:.+$/iu;
+
+function isNamespaceStyleSkill(skill: string): boolean {
+  return (
+    SKILL_NAMESPACE_PATTERN.test(skill) &&
+    !WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
+  );
+}
+
+function isPathLikeSkill(skill: string): boolean {
+  if (
+    skill.startsWith(".") ||
+    skill.startsWith("/") ||
+    WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
+  ) {
+    return true;
+  }
+  return /[\\/]/u.test(skill) && !isNamespaceStyleSkill(skill);
+}
+
+async function checkReadableSkillTarget(path: string): Promise<boolean> {
+  try {
+    const pathStat = await stat(path);
+    await access(
+      path,
+      pathStat.isDirectory() ? constants.R_OK | constants.X_OK : constants.R_OK,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkSkills(
+  config: PatchmillConfig,
+  repoRoot: string,
+): Promise<DoctorCheckResult> {
+  const configuredSkills = PATCHMILL_SKILL_KEYS.flatMap((key) => {
+    const skill = config.skills[key];
+    return skill ? [{ key, skill }] : [];
+  });
+
+  const entries = await Promise.all(
+    configuredSkills.map(async ({ key, skill }) => {
+      if (key === "triage" && skill === DEFAULT_PATCHMILL_SKILLS.triage) {
+        const bundledPath = bundledTriageSkillPath();
+        return (await checkReadableSkillTarget(bundledPath))
+          ? {
+              status: "pass" as const,
+              summary: `${key}: \`${skill}\` (bundled skill verified)`,
+            }
+          : {
+              status: "fail" as const,
+              summary: `${key}: \`${skill}\` (bundled skill unreadable at ${bundledPath})`,
+            };
+      }
+
+      if (!isPathLikeSkill(skill)) {
+        return {
+          status: "warn" as const,
+          summary: `${key}: \`${skill}\` (named skill configured; doctor did not verify it)`,
+        };
+      }
+
+      const resolvedPath = WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
+        ? skill
+        : resolve(repoRoot, skill);
+      return (await checkReadableSkillTarget(resolvedPath))
+        ? {
+            status: "pass" as const,
+            summary: `${key}: \`${skill}\` (path verified)`,
+          }
+        : {
+            status: "fail" as const,
+            summary: `${key}: \`${skill}\` (configured path unreadable at ${resolvedPath})`,
+          };
+    }),
+  );
+
+  const message = entries.map((entry) => entry.summary).join("; ");
+  if (entries.some((entry) => entry.status === "fail")) {
+    return fail("skills", message, [
+      "Patchmill doctor only verifies bundled skills and path-like configured skills.",
+      "Fix missing or unreadable skill paths, then rerun:",
+      "  patchmill doctor",
+    ]);
+  }
+  if (entries.some((entry) => entry.status === "warn")) {
+    return warn("skills", message);
+  }
+  return pass("skills", message);
+}
+
 export async function runDoctorChecks(
   runner: CommandRunner,
   options: DoctorOptions,
@@ -276,12 +375,7 @@ export async function runDoctorChecks(
       );
     }
 
-    const skillNames = [
-      config.skills.triage,
-      config.skills.planning,
-      config.skills.implementation,
-    ];
-    results.push(pass("skills", skillNames.join(", ")));
+    results.push(await checkSkills(config, options.repoRoot));
 
     const paths = [
       ["plans", config.paths.plansDir],

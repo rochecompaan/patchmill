@@ -34,10 +34,12 @@ patchmill run-once --dry-run
 patchmill run-once --execute
 ```
 
-`patchmill init` writes a minimal local `patchmill.config.json` and, when Pi
-provider setup is not apparent, can open Pi so you can run `/login`.
-`patchmill doctor` is read-only: it checks git, host access, labels, Pi, and
-local paths, and reports configured core skills before recommending dry runs.
+`patchmill init` writes a minimal local `patchmill.config.json`, reminds you how
+to change the default host login, and, when Pi provider setup is not apparent,
+can open Pi so you can run `/login` or prints install guidance if Pi is not
+available. `patchmill doctor` is read-only: it checks git, host access, labels,
+Pi, configured skills, and local paths, verifying bundled/path-like skills and
+flagging name-only skills as unverified before recommending dry runs.
 
 ## Configuration
 

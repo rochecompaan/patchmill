@@ -29,15 +29,26 @@ test("runInit creates config and prints next step", async () => {
   const stdout: string[] = [];
 
   assert.equal(
-    await runInit([], repoRoot, {
-      stdout: (line) => stdout.push(line),
-      stderr: () => undefined,
-    }),
+    await runInit(
+      [],
+      repoRoot,
+      {
+        stdout: (line) => stdout.push(line),
+        stderr: () => undefined,
+      },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: false,
+        checkPiAvailable: async () => false,
+      },
+    ),
     0,
   );
 
   assert.match(stdout.join("\n"), /Created patchmill\.config\.json/);
   assert.match(stdout.join("\n"), /provider: forgejo-tea/);
+  assert.match(stdout.join("\n"), /PATCHMILL_HOST_LOGIN/);
   assert.match(stdout.join("\n"), /patchmill doctor/);
 });
 
@@ -98,6 +109,7 @@ test("runInit offers Pi handoff when provider config is not apparent", async () 
         env: {},
         homeDir: await tempRepo(),
         isInteractive: true,
+        checkPiAvailable: async () => true,
         prompt: async () => {
           assert.match(
             stdout[0] ?? "",
@@ -136,6 +148,7 @@ test("runInit gives manual Pi setup guidance when Pi exits non-zero", async () =
         env: {},
         homeDir: await tempRepo(),
         isInteractive: true,
+        checkPiAvailable: async () => true,
         prompt: async () => "y",
         launchPi: async () => 1,
       },
@@ -158,6 +171,39 @@ test("runInit gives manual Pi setup guidance when Pi exits non-zero", async () =
   );
 });
 
+test("runInit skips Pi handoff prompt when Pi is unavailable", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let prompted = false;
+
+  assert.equal(
+    await runInit(
+      [],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: true,
+        checkPiAvailable: async () => false,
+        prompt: async () => {
+          prompted = true;
+          return "y";
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(prompted, false);
+  assert.match(stdout.join("\n"), /No provider configuration was detected/);
+  assert.match(stdout.join("\n"), /did not offer to launch it/);
+  assert.match(
+    stdout.join("\n"),
+    /npm install -g @earendil-works\/pi-coding-agent/,
+  );
+});
+
 test("runInit handles declined Pi handoff without error", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
@@ -171,6 +217,7 @@ test("runInit handles declined Pi handoff without error", async () => {
         env: {},
         homeDir: await tempRepo(),
         isInteractive: true,
+        checkPiAvailable: async () => true,
         prompt: async () => "no",
       },
     ),

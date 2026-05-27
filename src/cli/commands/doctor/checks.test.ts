@@ -106,6 +106,14 @@ test("runDoctorChecks aggregates successful read-only checks", async () => {
     "pass",
   );
   assert.equal(
+    results.find((result) => result.name === "skills")?.status,
+    "warn",
+  );
+  assert.match(
+    results.find((result) => result.name === "skills")?.message ?? "",
+    /named skill configured; doctor did not verify it/,
+  );
+  assert.equal(
     results.some((result) => result.status === "fail"),
     false,
   );
@@ -203,6 +211,35 @@ test("runDoctorChecks fails path checks when a configured directory is a file", 
 
   assert.equal(paths?.status, "fail");
   assert.match(paths?.message ?? "", /plans:not-directory/);
+});
+
+test("runDoctorChecks fails when a configured path-like skill is missing", async () => {
+  const repoRoot = await tempRepo();
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      host: { provider: "forgejo-tea", login: "triage-agent" },
+      skills: {
+        planning: "./skills/project-planning/SKILL.md",
+      },
+    }),
+  );
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(successMocks());
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /planning: `\.\/skills\/project-planning\/SKILL\.md`/,
+  );
+  assert.match(skills?.message ?? "", /configured path unreadable/);
 });
 
 test("runDoctorChecks never invokes known mutating host commands", async () => {

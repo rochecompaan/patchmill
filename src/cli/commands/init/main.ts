@@ -26,6 +26,7 @@ export type InitOutput = {
 };
 
 export type PiLauncher = () => Promise<number>;
+export type PiAvailabilityCheck = () => Promise<boolean>;
 export type InitPrompt = (question: string) => Promise<string>;
 
 const DEFAULT_OUTPUT: InitOutput = {
@@ -37,12 +38,24 @@ const NO_PI_PROVIDER_MESSAGE =
   "Patchmill also requires Pi with an LLM provider configured.\nNo provider configuration was detected.";
 const MANUAL_PI_SETUP_MESSAGE =
   "To configure manually, run `pi`, then `/login`.";
+const NO_PI_BINARY_MESSAGE =
+  "Pi does not appear to be installed, so Patchmill did not offer to launch it.\n\nInstall Pi, then configure a provider:\n  npm install -g @earendil-works/pi-coding-agent\n  pi\n  /login";
+const HOST_LOGIN_GUIDANCE =
+  "To change the default host login later, update `patchmill.config.json` (`host.login`) or set `PATCHMILL_HOST_LOGIN`.";
 
 function defaultPiLauncher(): Promise<number> {
   return new Promise((resolve) => {
     const child = spawn("pi", [], { stdio: "inherit" });
     child.on("error", () => resolve(-1));
     child.on("close", (code) => resolve(code ?? 1));
+  });
+}
+
+function defaultPiAvailabilityCheck(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn("pi", ["--help"], { stdio: "ignore" });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
   });
 }
 
@@ -64,6 +77,7 @@ export async function runInit(
     homeDir?: string;
     prompt?: InitPrompt;
     launchPi?: PiLauncher;
+    checkPiAvailable?: PiAvailabilityCheck;
     isInteractive?: boolean;
   } = {},
 ): Promise<number> {
@@ -88,29 +102,36 @@ export async function runInit(
   let piMessage =
     "Pi provider configuration detected.\nDoctor will verify it with a minimal smoke test.";
   if (!hasPiProvider) {
-    const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
-    if (isInteractive) {
-      output.stdout(NO_PI_PROVIDER_MESSAGE);
-      const answer = await (options.prompt ?? defaultPrompt)(
-        "Open Pi now to configure a provider with `/login`? [y/N] ",
-      );
-      if (isYes(answer)) {
-        const code = await (options.launchPi ?? defaultPiLauncher)();
-        if (code === 0) {
-          piMessage = "Returned from Pi provider setup.";
+    const piAvailable = await (
+      options.checkPiAvailable ?? defaultPiAvailabilityCheck
+    )();
+    if (!piAvailable) {
+      piMessage = `${NO_PI_PROVIDER_MESSAGE}\n\n${NO_PI_BINARY_MESSAGE}`;
+    } else {
+      const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
+      if (isInteractive) {
+        output.stdout(NO_PI_PROVIDER_MESSAGE);
+        const answer = await (options.prompt ?? defaultPrompt)(
+          "Open Pi now to configure a provider with `/login`? [y/N] ",
+        );
+        if (isYes(answer)) {
+          const code = await (options.launchPi ?? defaultPiLauncher)();
+          if (code === 0) {
+            piMessage = "Returned from Pi provider setup.";
+          } else {
+            piMessage = `${code === -1 ? "Patchmill could not launch Pi." : "Pi exited before provider setup could be confirmed."}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
+          }
         } else {
-          piMessage = `${code === -1 ? "Patchmill could not launch Pi." : "Pi exited before provider setup could be confirmed."}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
+          piMessage = MANUAL_PI_SETUP_MESSAGE;
         }
       } else {
-        piMessage = MANUAL_PI_SETUP_MESSAGE;
+        piMessage = `${NO_PI_PROVIDER_MESSAGE}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
       }
-    } else {
-      piMessage = `${NO_PI_PROVIDER_MESSAGE}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
     }
   }
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\nUsing Patchmill defaults for labels, paths, skills, and git policy.\n\n${piMessage}\n\nNext:\n  patchmill doctor`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\nUsing Patchmill defaults for labels, paths, skills, and git policy.\n\n${piMessage}\n\nNext:\n  patchmill doctor`,
   );
   return 0;
 }

@@ -16,9 +16,10 @@ patchmill init
 patchmill doctor
 ```
 
-`doctor` is read-only and verifies repository, host, label, Pi provider, and
-path readiness, and reports configured core skills before the existing
-`triage --dry-run` and `run-once` dry-run flows.
+`doctor` is read-only and verifies repository, host, label, Pi provider,
+configured skills, and path readiness before the existing `triage --dry-run` and
+`run-once` dry-run flows. It verifies bundled/path-like skills and flags
+name-only skills as configured but unverified.
 
 See also [skills configuration](skills.md) for repository-configurable skill
 selection at each workflow stage.

@@ -15,7 +15,9 @@ Precedence is:
 
 Use `patchmill init` to create the smallest useful `patchmill.config.json` for a
 repository. The generated file usually only needs the host provider and login;
-Patchmill fills omitted labels, paths, skills, and git policy from defaults.
+Patchmill fills omitted labels, paths, skills, and git policy from defaults, and
+the command output reminds you that you can later change the login in
+`patchmill.config.json` (`host.login`) or with `PATCHMILL_HOST_LOGIN`.
 
 Run `patchmill doctor` after initialization to validate the config and local
 toolchain before dry runs.
