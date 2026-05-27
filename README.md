@@ -30,14 +30,14 @@ After installing Patchmill, start with the safety-first onboarding flow:
 patchmill init
 patchmill doctor
 patchmill triage --dry-run
-patchmill run-once
+patchmill run-once --dry-run
 patchmill run-once --execute
 ```
 
 `patchmill init` writes a minimal local `patchmill.config.json` and, when Pi
-provider setup is not apparent, can hand you to Pi's native `/login` flow.
-`patchmill doctor` is read-only: it checks git, host access, labels, Pi, skills,
-and local paths before recommending dry runs.
+provider setup is not apparent, can open Pi so you can run `/login`.
+`patchmill doctor` is read-only: it checks git, host access, labels, Pi, and
+local paths, and reports configured core skills before recommending dry runs.
 
 ## Configuration
 
