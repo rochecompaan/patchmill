@@ -1,8 +1,15 @@
 #!/usr/bin/env node
-import { cwd } from "node:process";
+import { spawn } from "node:child_process";
+import {
+  stdin as defaultStdin,
+  stdout as defaultStdout,
+  cwd,
+} from "node:process";
+import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
 import { writeInitialConfig } from "./config-writer.ts";
+import { hasApparentPiProviderConfig } from "./pi-preflight.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill init [options]
@@ -18,15 +25,42 @@ export type InitOutput = {
   stderr: (line: string) => void;
 };
 
+export type PiLauncher = () => Promise<number>;
+export type InitPrompt = (question: string) => Promise<string>;
+
 const DEFAULT_OUTPUT: InitOutput = {
   stdout: (line) => console.log(line),
   stderr: (line) => console.error(line),
 };
 
+function defaultPiLauncher(): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn("pi", [], { stdio: "inherit" });
+    child.on("error", () => resolve(1));
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+}
+
+function defaultPrompt(question: string): Promise<string> {
+  const rl = createInterface({ input: defaultStdin, output: defaultStdout });
+  return rl.question(question).finally(() => rl.close());
+}
+
+function isYes(value: string): boolean {
+  return /^(y|yes)$/iu.test(value.trim());
+}
+
 export async function runInit(
   args: string[],
   repoRoot = cwd(),
   output: InitOutput = DEFAULT_OUTPUT,
+  options: {
+    env?: Record<string, string | undefined>;
+    homeDir?: string;
+    prompt?: InitPrompt;
+    launchPi?: PiLauncher;
+    isInteractive?: boolean;
+  } = {},
 ): Promise<number> {
   const config = parseArgs(args, repoRoot);
   if (config.showHelp) {
@@ -42,8 +76,35 @@ export async function runInit(
     return 1;
   }
 
+  const hasPiProvider = await hasApparentPiProviderConfig({
+    env: options.env,
+    homeDir: options.homeDir,
+  });
+  let piMessage =
+    "Pi provider configuration detected.\nDoctor will verify it with a minimal smoke test.";
+  if (!hasPiProvider) {
+    piMessage =
+      "Patchmill also requires Pi with an LLM provider configured.\nNo provider configuration was detected.";
+    if (options.isInteractive ?? defaultStdin.isTTY) {
+      const answer = await (options.prompt ?? defaultPrompt)(
+        "Open Pi now to configure a provider with `/login`? [y/N] ",
+      );
+      if (isYes(answer)) {
+        const code = await (options.launchPi ?? defaultPiLauncher)();
+        piMessage +=
+          code === 0
+            ? "\n\nReturned from Pi provider setup."
+            : "\n\nPi exited before provider setup could be confirmed.";
+      } else {
+        piMessage += "\n\nTo configure manually, run `pi`, then `/login`.";
+      }
+    } else {
+      piMessage += "\n\nTo configure manually, run `pi`, then `/login`.";
+    }
+  }
+
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\nUsing Patchmill defaults for labels, paths, skills, and git policy.\n\nNext:\n  patchmill doctor`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\nUsing Patchmill defaults for labels, paths, skills, and git policy.\n\n${piMessage}\n\nNext:\n  patchmill doctor`,
   );
   return 0;
 }

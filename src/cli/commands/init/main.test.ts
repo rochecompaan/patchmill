@@ -56,3 +56,85 @@ test("runInit refuses existing config", async () => {
   assert.match(stdout.join("\n"), /already exists/);
   assert.match(stdout.join("\n"), /did not overwrite/);
 });
+
+test("runInit does not offer Pi handoff when provider config is apparent", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let prompted = false;
+
+  assert.equal(
+    await runInit(
+      [],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        env: { ANTHROPIC_API_KEY: "sk-ant-test" },
+        homeDir: await tempRepo(),
+        isInteractive: true,
+        prompt: async () => {
+          prompted = true;
+          return "yes";
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(prompted, false);
+  assert.match(stdout.join("\n"), /Pi provider configuration detected/);
+});
+
+test("runInit offers Pi handoff when provider config is not apparent", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let launched = false;
+
+  assert.equal(
+    await runInit(
+      [],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: true,
+        prompt: async () => "y",
+        launchPi: async () => {
+          launched = true;
+          return 0;
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(launched, true);
+  assert.match(stdout.join("\n"), /No provider configuration was detected/);
+  assert.match(stdout.join("\n"), /Returned from Pi provider setup/);
+});
+
+test("runInit handles declined Pi handoff without error", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runInit(
+      [],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: true,
+        prompt: async () => "no",
+      },
+    ),
+    0,
+  );
+
+  assert.match(
+    stdout.join("\n"),
+    /To configure manually, run `pi`, then `\/login`/,
+  );
+  assert.match(stdout.join("\n"), /patchmill doctor/);
+});
