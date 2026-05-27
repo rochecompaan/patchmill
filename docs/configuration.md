@@ -11,6 +11,15 @@ Precedence is:
 3. `patchmill.config.json`
 4. built-in defaults
 
+## Creating the initial config
+
+Use `patchmill init` to create the smallest useful `patchmill.config.json` for a
+repository. The generated file usually only needs the host provider and login;
+Patchmill fills omitted labels, paths, skills, and git policy from defaults.
+
+Run `patchmill doctor` after initialization to validate the config and local
+toolchain before dry runs.
+
 ## Complete example
 
 This example shows the main configuration surface in one place. Copy only the

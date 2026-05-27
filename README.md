@@ -22,6 +22,23 @@ what changed. Use `patchmill triage --dry-run` to preview the labels, comments,
 closures, canonical bucket, and rationale the skill would produce without
 mutating the issue host.
 
+## First use
+
+After installing Patchmill, start with the safety-first onboarding flow:
+
+```sh
+patchmill init
+patchmill doctor
+patchmill triage --dry-run
+patchmill run-once
+patchmill run-once --execute
+```
+
+`patchmill init` writes a minimal local `patchmill.config.json` and, when Pi
+provider setup is not apparent, can hand you to Pi's native `/login` flow.
+`patchmill doctor` is read-only: it checks git, host access, labels, Pi, skills,
+and local paths before recommending dry runs.
+
 ## Configuration
 
 Patchmill loads `patchmill.config.json` from the repository root and fills

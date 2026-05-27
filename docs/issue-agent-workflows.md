@@ -9,6 +9,17 @@ Patchmill has two issue-agent workflows:
   to create or use an implementation plan, asks Pi to implement/review/land the
   work, then updates the issue host.
 
+Before running issue-agent workflows in a new repository, run:
+
+```sh
+patchmill init
+patchmill doctor
+```
+
+`doctor` is read-only and verifies repository, host, label, Pi provider, skill,
+and path readiness before the existing `triage --dry-run` and `run-once` dry-run
+flows.
+
 See also [skills configuration](skills.md) for repository-configurable skill
 selection at each workflow stage.
 
