@@ -43,9 +43,22 @@ buildNpmPackageNode24 rec {
   '';
 
   postInstall = ''
+    mkdir -p "$out/share/${pname}"
+    cp -R "$out/lib/node_modules/${pname}/bin" "$out/share/${pname}/bin"
+    cp -R "$out/lib/node_modules/${pname}/src" "$out/share/${pname}/src"
+    cp "$out/lib/node_modules/${pname}/package.json" "$out/share/${pname}/package.json"
+    ln -s "$out/lib/node_modules/${pname}/node_modules" "$out/share/${pname}/node_modules"
+
     rm -f "$out/bin/patchmill"
     makeWrapper ${nodejs_24}/bin/node "$out/bin/patchmill" \
-      --add-flags "$out/lib/node_modules/${pname}/bin/patchmill.ts"
+      --add-flags "$out/share/${pname}/bin/patchmill.ts"
+  '';
+
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    $out/bin/patchmill --help >/dev/null
+    runHook postInstallCheck
   '';
 
   meta = {
