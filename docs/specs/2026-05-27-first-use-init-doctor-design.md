@@ -11,8 +11,8 @@ patchmill doctor
 ```
 
 `init` creates a small local configuration file. `doctor` performs read-only
-checks and tells the user what to fix before running the existing dry-run
-workflows.
+checks, including Pi provider readiness, and tells the user what to fix before
+running the existing dry-run workflows.
 
 ## Scope
 
@@ -60,6 +60,7 @@ Create the smallest useful `patchmill.config.json` for the current repository.
 - Do not create labels.
 - Do not create Patchmill state directories.
 - Do not create git branches or worktrees.
+- Do not configure Pi or write Pi credentials.
 - Refuse to overwrite an existing config.
 - Do not support overwrite in the first version.
 - Infer obvious values from local git metadata when possible, especially host
@@ -98,6 +99,11 @@ Host:
   login: triage-agent
 
 Using Patchmill defaults for labels, paths, skills, and git policy.
+
+Patchmill also requires Pi with an LLM provider configured.
+Doctor will check this next. If Pi is not configured yet, run `pi` and use
+`/login`, or set a provider API key such as ANTHROPIC_API_KEY, OPENAI_API_KEY,
+or GEMINI_API_KEY.
 
 Next:
   patchmill doctor
@@ -139,6 +145,7 @@ missing setup. `doctor` is strictly read-only in the first version.
 - read configuration
 - inspect git status and remotes
 - run read-only host commands
+- run a minimal Pi print-mode smoke test that makes one LLM provider request
 - check command availability
 - verify authentication through read-only host metadata
 - list issues or labels
@@ -162,11 +169,24 @@ The initial checklist should cover:
 6. **Repository access** — open issues can be listed read-only.
 7. **Labels** — configured lifecycle labels exist, or missing labels are
    reported with manual creation commands.
-8. **Pi availability** — `pi` is on PATH and responds to a lightweight version
-   or help command.
-9. **Required skills** — configured required skills are present by name/path or
-   can be described as unresolved with remediation guidance.
-10. **Paths** — plans, run-state, triage-log, and worktree paths are reported as
+8. **Pi binary** — `pi` is on PATH and responds to a lightweight version or help
+   command.
+9. **Pi provider** — Pi can complete a minimal print-mode prompt using the
+   user's configured provider/model. This check should run with no session and
+   no project context, for example:
+
+   ```sh
+   pi --no-session --no-context-files --no-prompt-templates \
+     -p "Reply with PATCHMILL_PI_OK and nothing else."
+   ```
+
+   This is the point where Patchmill verifies that Pi has an LLM provider
+   configured. The check is read-only with respect to the repository and issue
+   host, but it does make a small external LLM request.
+
+10. **Required skills** — configured required skills are present by name/path or
+    can be described as unresolved with remediation guidance.
+11. **Paths** — plans, run-state, triage-log, and worktree paths are reported as
     existing, missing, or parent-usable without creating them.
 
 ### Output
@@ -181,7 +201,8 @@ Patchmill doctor
 ✓ host: forgejo via tea as triage-agent
 ✓ issues: open issues can be listed
 ✓ labels: agent-ready, needs-info, in-progress, agent-done
-✓ pi: available
+✓ pi: binary available
+✓ pi provider: minimal LLM smoke test succeeded
 ✓ skills: triage, planning, implementation
 ✓ paths: plans/run-state/triage/worktree paths look usable
 
@@ -206,6 +227,26 @@ Patchmill doctor is read-only and did not create labels.
 Create the missing labels manually, then rerun:
   tea labels create --name agent-ready --color 0e8a16
   tea labels create --name needs-info --color fbca04
+  patchmill doctor
+```
+
+Pi provider failure example:
+
+```text
+✗ pi provider: Pi could not complete a minimal LLM smoke test
+
+Patchmill doctor did not change the repository or issue host.
+The Pi check made no Patchmill workflow changes, but it could not reach a
+configured model provider.
+
+Configure Pi, then rerun:
+  pi
+  /login
+  # select a provider
+  patchmill doctor
+
+Alternatively set a provider API key, for example:
+  export ANTHROPIC_API_KEY=sk-ant-...
   patchmill doctor
 ```
 
