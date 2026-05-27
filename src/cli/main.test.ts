@@ -3,7 +3,10 @@ import { test } from "node:test";
 import { HELP_TEXT, createCliMain, resolveCommand } from "./main.ts";
 
 test("resolveCommand returns help with no command", () => {
-  assert.equal(resolveCommand([], ["triage", "run-once"]), "help");
+  assert.equal(
+    resolveCommand([], ["init", "doctor", "triage", "run-once"]),
+    "help",
+  );
 });
 
 test("resolveCommand maps triage to the public command name", () => {
@@ -20,16 +23,31 @@ test("resolveCommand maps run-once to the public command name", () => {
   });
 });
 
+test("resolveCommand maps init to the public command name", () => {
+  assert.deepEqual(resolveCommand(["init"], ["init"]), {
+    command: "init",
+    args: [],
+  });
+});
+
+test("resolveCommand maps doctor to the public command name", () => {
+  assert.deepEqual(resolveCommand(["doctor", "--quiet"], ["doctor"]), {
+    command: "doctor",
+    args: ["--quiet"],
+  });
+});
+
 test("resolveCommand rejects unknown commands", () => {
   assert.throws(
-    () => resolveCommand(["queue"], ["triage", "run-once"]),
+    () => resolveCommand(["queue"], ["init", "doctor", "triage", "run-once"]),
     /Unknown command: queue/,
   );
 });
 
 test("resolveCommand rejects inherited property names", () => {
   assert.throws(
-    () => resolveCommand(["toString"], ["triage", "run-once"]),
+    () =>
+      resolveCommand(["toString"], ["init", "doctor", "triage", "run-once"]),
     /Unknown command: toString/,
   );
 });
@@ -43,6 +61,8 @@ test("createCliMain prints top-level help", async () => {
   });
 
   assert.equal(await main(["--help"]), 0);
+  assert.match(HELP_TEXT, /init\s+Create a minimal patchmill\.config\.json\./);
+  assert.match(HELP_TEXT, /doctor\s+Run read-only readiness checks\./);
   assert.deepEqual(stdout, [HELP_TEXT]);
   assert.deepEqual(stderr, []);
 });
@@ -63,6 +83,35 @@ test("createCliMain dispatches selected command with remaining args", async () =
 
   assert.equal(await main(["triage", "--dry-run"]), 17);
   assert.deepEqual(calls, [["--dry-run"]]);
+});
+
+test("createCliMain dispatches init and doctor commands", async () => {
+  const calls: Array<{ command: string; args: string[] }> = [];
+  const main = createCliMain(
+    new Map([
+      [
+        "init",
+        async (args) => {
+          calls.push({ command: "init", args });
+          return 0;
+        },
+      ],
+      [
+        "doctor",
+        async (args) => {
+          calls.push({ command: "doctor", args });
+          return 0;
+        },
+      ],
+    ]),
+  );
+
+  assert.equal(await main(["init"]), 0);
+  assert.equal(await main(["doctor", "--quiet"]), 0);
+  assert.deepEqual(calls, [
+    { command: "init", args: [] },
+    { command: "doctor", args: ["--quiet"] },
+  ]);
 });
 
 test("createCliMain reports unknown commands with help", async () => {

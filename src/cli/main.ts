@@ -1,3 +1,5 @@
+import { main as doctorMain } from "./commands/doctor/main.ts";
+import { main as initMain } from "./commands/init/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
 
@@ -5,6 +7,8 @@ export const HELP_TEXT = `Usage:
   patchmill <command> [options]
 
 Commands:
+  init        Create a minimal patchmill.config.json.
+  doctor      Run read-only readiness checks.
   triage      Classify repository issues for agent readiness.
   run-once    Claim and process one agent-ready issue.
 `;
@@ -83,6 +87,8 @@ export function createCliMain(
 }
 
 const COMMANDS = new Map<string, CommandHandler>([
+  ["init", initMain],
+  ["doctor", doctorMain],
   ["triage", triageMain],
   ["run-once", runOnceMain],
 ]);
