@@ -21,6 +21,8 @@ In scope:
 - Add `patchmill init`.
 - Add `patchmill doctor`.
 - Guide users to existing dry-run commands after successful checks.
+- Offer to launch Pi's native provider setup from `init` when Pi appears
+  unconfigured.
 - Keep the first version conservative and understandable.
 
 Out of scope:
@@ -60,7 +62,9 @@ Create the smallest useful `patchmill.config.json` for the current repository.
 - Do not create labels.
 - Do not create Patchmill state directories.
 - Do not create git branches or worktrees.
-- Do not configure Pi or write Pi credentials.
+- Do not reimplement Pi provider setup or write Pi credentials directly.
+- With explicit user consent, launch Pi interactively so the user can use Pi's
+  native `/login` provider setup flow.
 - Refuse to overwrite an existing config.
 - Do not support overwrite in the first version.
 - Infer obvious values from local git metadata when possible, especially host
@@ -69,6 +73,8 @@ Create the smallest useful `patchmill.config.json` for the current repository.
   for changing it via config or `PATCHMILL_HOST_LOGIN`.
 - Prefer defaults for skills, labels, paths, and git policy so the generated
   file stays short.
+- Perform a local-only Pi provider preflight. If no provider configuration is
+  apparent, offer to run `pi` interactively for setup.
 
 ### Minimal generated config
 
@@ -101,9 +107,19 @@ Host:
 Using Patchmill defaults for labels, paths, skills, and git policy.
 
 Patchmill also requires Pi with an LLM provider configured.
-Doctor will check this next. If Pi is not configured yet, run `pi` and use
-`/login`, or set a provider API key such as ANTHROPIC_API_KEY, OPENAI_API_KEY,
-or GEMINI_API_KEY.
+No provider configuration was detected.
+
+Open Pi now to configure a provider with `/login`? [y/N]
+
+Next:
+  patchmill doctor
+```
+
+If Pi already appears configured, omit the provider setup prompt and print:
+
+```text
+Pi provider configuration detected.
+Doctor will verify it with a minimal smoke test.
 
 Next:
   patchmill doctor
@@ -119,6 +135,26 @@ Patchmill did not overwrite it.
 Next:
   patchmill doctor
 ```
+
+### Pi provider setup handoff
+
+`init` should not make an LLM request. It should do a local-only preflight for
+obvious provider configuration, such as:
+
+- known Pi provider API key environment variables, including
+  `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY`
+- user-level Pi auth entries in `~/.pi/agent/auth.json`
+
+If no provider configuration is apparent and `pi` is available, `init` asks
+whether to open Pi now. If the user accepts, Patchmill spawns `pi` attached to
+the current terminal and lets the user run Pi's native `/login` flow. Any
+credentials are written by Pi to Pi's own user-level auth store, not by
+Patchmill.
+
+If `pi` is not available, `init` prints install/setup guidance instead of
+offering to launch it. If provider configuration appears present, `init` does
+not prompt; `doctor` remains responsible for validating that the provider
+actually works.
 
 ## `patchmill doctor`
 
@@ -278,7 +314,10 @@ command-runner helpers instead of duplicating behavior.
 3. Inspect local git remotes if available.
 4. Build a minimal config object.
 5. Write the config if safe.
-6. Print summary and next command.
+6. Run local-only Pi provider preflight.
+7. If Pi appears unconfigured and the terminal is interactive, offer to launch
+   `pi` for the native `/login` setup flow.
+8. Print summary and next command.
 
 `doctor`:
 
@@ -293,6 +332,11 @@ command-runner helpers instead of duplicating behavior.
 
 - `init` exits non-zero for invalid arguments, failed writes, or existing config
   when overwrite is not requested.
+- Declining the Pi setup handoff is not an error; `init` should print the manual
+  `pi` and `/login` instructions and continue to recommend `patchmill doctor`.
+- If the user accepts the Pi setup handoff and the spawned `pi` process fails,
+  `init` should report the failure but still leave the written Patchmill config
+  in place.
 - `doctor` continues after individual check failures when possible so users get
   a complete setup report.
 - Required check failures make `doctor` exit non-zero.
@@ -307,6 +351,10 @@ Add tests for:
 - `init` writes minimal config
 - `init` refuses to overwrite existing config
 - `init` remote/provider inference where practical
+- `init` detects apparent Pi provider configuration from env/auth indicators
+- `init` offers to launch Pi only when no provider configuration is apparent
+- `init` does not offer to launch Pi when provider configuration is apparent
+- `init` handles declined Pi setup handoff without error
 - `doctor` success report with mocked command runner
 - `doctor` aggregates multiple failures instead of stopping at the first one
 - `doctor` does not call mutating host helpers
@@ -326,6 +374,8 @@ patchmill doctor
 and understand:
 
 - what local config was created
+- whether Pi provider setup is already apparent or needs the native Pi `/login`
+  flow
 - whether their repo and tools are ready
 - what must be fixed manually
 - that no remote or git mutation happened during `doctor`
