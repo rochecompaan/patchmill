@@ -1,4 +1,10 @@
-# Patchmill
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
+    <img alt="Patchmill logo" src="docs/assets/logo-light.svg" width="400">
+  </picture>
+</p>
 
 Patchmill is an agent-driven software factory where humans and agents
 collaborate through intentional, understandable patches—preserving software

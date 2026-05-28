@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="340 56 918 858" width="918" height="858">
+  <g transform="translate(800 295)">
+    <circle r="235" fill="none" stroke="#e4e4e4" stroke-width="7"/>
+    <g fill="none" stroke="#c4a882" stroke-width="1.3" opacity=".7">
+      <path d="M 27.4 -195.1 A 197 197 0 0 1 118.6 -157.3"/>
+      <path d="M 157.3 -118.6 A 197 197 0 0 1 195.1 -27.4"/>
+      <path d="M 195.1 27.4 A 197 197 0 0 1 157.3 118.6"/>
+      <path d="M 118.6 157.3 A 197 197 0 0 1 27.4 195.1"/>
+      <path d="M -27.4 195.1 A 197 197 0 0 1 -118.6 157.3"/>
+      <path d="M -157.3 118.6 A 197 197 0 0 1 -195.1 27.4"/>
+      <path d="M -195.1 -27.4 A 197 197 0 0 1 -157.3 -118.6"/>
+      <path d="M -118.6 -157.3 A 197 197 0 0 1 -27.4 -195.1"/>
+    </g>
+    <g stroke="#e4e4e4" stroke-width="6" stroke-linecap="round">
+      <line x1="0" y1="-165" x2="0" y2="-76"/>
+      <line x1="0" y1="76" x2="0" y2="165"/>
+      <line x1="-165" y1="0" x2="-76" y2="0"/>
+      <line x1="76" y1="0" x2="165" y2="0"/>
+      <line x1="-117" y1="-117" x2="-63" y2="-63"/>
+      <line x1="117" y1="-117" x2="63" y2="-63"/>
+      <line x1="-117" y1="117" x2="-63" y2="63"/>
+      <line x1="117" y1="117" x2="63" y2="63"/>
+    </g>
+    <g font-family="DejaVu Sans Mono, monospace" font-size="42" font-weight="700" text-anchor="middle" dominant-baseline="middle">
+      <text x="0" y="-197" fill="#39c96b">+</text>
+      <text x="139.3" y="-139.3" fill="#9a9590">=</text>
+      <text x="139.3" y="139.3" fill="#9a9590">=</text>
+      <text x="0" y="197" fill="#39c96b">+</text>
+      <text x="-197" y="0" fill="#39c96b">+</text>
+      <text x="-139.3" y="-139.3" fill="#ff4c4c">−</text>
+      <text x="197" y="0" fill="#ff4c4c">−</text>
+      <text x="-139.3" y="139.3" fill="#ff4c4c">−</text>
+    </g>
+    <g>
+      <rect x="-43" y="-30" width="86" height="60" rx="12" fill="#e4e4e4"/>
+      <rect x="-54" y="-13" width="5" height="26" rx="2" fill="#e4e4e4"/>
+      <rect x="49" y="-13" width="5" height="26" rx="2" fill="#e4e4e4"/>
+      <rect x="-5" y="-36" width="10" height="8" rx="2" fill="#e4e4e4"/>
+      <circle cx="-21" cy="0" r="11" fill="#08090b"/>
+      <circle cx="21" cy="0" r="11" fill="#08090b"/>
+    </g>
+  </g>
+  <text x="800" y="660" text-anchor="middle" fill="#e4e4e4" font-family="Noto Sans, Arial, sans-serif" font-size="102" font-weight="400" letter-spacing="20">PATCHMILL</text>
+  <text x="800" y="742" text-anchor="middle" fill="#9a9590" font-family="Noto Sans, Arial, sans-serif" font-size="27" font-weight="500" letter-spacing="10">SOFTWARE FACTORY</text>
+  <line x1="360" y1="790" x2="1240" y2="790" stroke="#e4e4e4" stroke-width="1.4" opacity=".9"/>
+  <text x="800" y="855" text-anchor="middle" fill="#c4a882" font-family="Noto Sans, Arial, sans-serif" font-size="28" font-weight="500" letter-spacing="4">where humans and agents collaborate to</text>
+  <text x="800" y="908" text-anchor="middle" fill="#c4a882" font-family="Noto Sans, Arial, sans-serif" font-size="28" font-weight="500" letter-spacing="4">preserve software craftsmanship</text>
+</svg>
