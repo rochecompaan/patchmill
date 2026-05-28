@@ -1,7 +1,31 @@
 {
-  "name": "patchmill",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@rochecompaan/patchmill",
+  "version": "0.1.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rochecompaan/patchmill.git"
+  },
+  "keywords": [
+    "pi-package",
+    "ai",
+    "llm",
+    "cli",
+    "automation",
+    "triage",
+    "software-factory",
+    "orchestrator"
+  ],
   "license": "MIT",
   "description": "An agent-driven software factory that turns issues into reviewed diffs.",
   "type": "module",
@@ -30,7 +54,7 @@
     "*.md": "markdownlint-cli2"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=22.19.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

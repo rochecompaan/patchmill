@@ -10,7 +10,7 @@ let
 in
 buildNpmPackageNode24 rec {
   pname = "patchmill";
-  version = "0.0.0";
+  version = "0.1.0";
 
   src = lib.cleanSourceWith {
     src = lib.cleanSource ../.;
@@ -25,7 +25,7 @@ buildNpmPackageNode24 rec {
         || baseName == "result");
   };
 
-  npmDepsHash = "sha256-jY5ufe5swFmXfpYMTlfTARhqNbezEBqCOAT27vFCeVU=";
+  npmDepsHash = "sha256-rN0wzxKN80KGKk7JuBF39AMbUAJfvRpG6ruxKh9vHQk=";
 
   dontNpmBuild = true;
 
@@ -43,11 +43,13 @@ buildNpmPackageNode24 rec {
   '';
 
   postInstall = ''
+    package_dir="$out/lib/node_modules/@rochecompaan/${pname}"
+
     mkdir -p "$out/share/${pname}"
-    cp -R "$out/lib/node_modules/${pname}/bin" "$out/share/${pname}/bin"
-    cp -R "$out/lib/node_modules/${pname}/src" "$out/share/${pname}/src"
-    cp "$out/lib/node_modules/${pname}/package.json" "$out/share/${pname}/package.json"
-    ln -s "$out/lib/node_modules/${pname}/node_modules" "$out/share/${pname}/node_modules"
+    cp -R "$package_dir/bin" "$out/share/${pname}/bin"
+    cp -R "$package_dir/src" "$out/share/${pname}/src"
+    cp "$package_dir/package.json" "$out/share/${pname}/package.json"
+    ln -s "$package_dir/node_modules" "$out/share/${pname}/node_modules"
 
     rm -f "$out/bin/patchmill"
     makeWrapper ${nodejs_24}/bin/node "$out/bin/patchmill" \
