@@ -1,9 +1,16 @@
 { pkgs, ... }:
 
+let
+  patchmill = pkgs.callPackage ./nix/package.nix { };
+in
 {
   env.GREET = "Patchmill";
 
-  packages = [ pkgs.git pkgs.python314Packages.grip ];
+  packages = [
+    pkgs.git
+    pkgs.python314Packages.grip
+    patchmill
+  ];
 
   languages.javascript = {
     enable = true;
@@ -12,6 +19,7 @@
   };
 
   tasks = {
+    "patchmill:build".exec = "nix build .#patchmill";
     "patchmill:test".exec = "npm test";
     "patchmill:test:triage".exec = "npm run test:triage";
     "patchmill:test:run-once".exec = "npm run test:run-once";
@@ -31,11 +39,13 @@
     echo "🧵 Welcome to $GREET — stitch issues into reviewed diffs."
     echo ""
     echo "Useful commands:"
+    echo "  patchmill --help"
     echo "  npm test"
     echo "  npm run patchmill -- triage --dry-run"
     echo "  npm run patchmill -- run-once --dry-run"
     echo ""
     echo "Useful devenv tasks:"
+    echo "  devenv tasks run patchmill:build"
     echo "  devenv tasks run patchmill:test"
     echo "  devenv tasks run patchmill:smoke"
     echo ""
