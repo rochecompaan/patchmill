@@ -31,6 +31,11 @@ The two main workflow stations are:
   issue, creates or reuses a plan, runs implementation, reviews or lands the
   result, and records the outcome.
 
+Planned: `patchmill run` will start the factory loop. It will keep selecting the
+next ready issue and running the same controlled production process until there
+is no eligible work left, a configured issue/budget limit is reached, or a
+blocker requires human input.
+
 The controls stay close to the work: labels decide what is ready, dry runs show
 what Patchmill would do before it mutates the issue host, plans make scope
 reviewable, run logs preserve progress, and repository skills let teams encode
