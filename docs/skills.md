@@ -3,6 +3,15 @@
 Patchmill keeps orchestration safety in code and lets repositories choose the Pi
 skills used at each workflow stage.
 
+A few terms appear throughout this page:
+
+- **Skills** are reusable workflow instructions that encode how a repository or
+  team wants a stage handled.
+- **Subagents** are delegated agent roles, such as workers, reviewers, scouts,
+  or planners, used during implementation and review.
+- **Chain files** define reusable multi-agent sequences, such as a planner step
+  followed by parallel worker and reviewer passes.
+
 ## Core contracts kept in Patchmill
 
 - untrusted issue-content boundaries

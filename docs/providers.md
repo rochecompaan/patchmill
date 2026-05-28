@@ -12,6 +12,8 @@ The current built-in runtime is Pi.
 
 ## Supported issue hosts
 
+Set `host.provider` to one of these values:
+
 - `forgejo-tea`: Forgejo/Gitea through `tea`.
 - `github-gh`: GitHub through `gh`.
 

@@ -1,13 +1,15 @@
 # Issue agent workflows
 
-Patchmill has two issue-agent workflows:
+Patchmill has two issue-agent workflows. Together they act as the main stations
+of the software factory: intake/sorting for incoming work, then one-issue
+production runs for ready work.
 
-- **Triage** (`patchmill triage`) classifies open issues and, when executed,
-  runs the configured triage skill, which may apply labels/comments on the issue
-  host.
-- **Run once** (`patchmill run-once`) claims one automation-ready issue, asks Pi
-  to create or use an implementation plan, asks Pi to implement/review/land the
-  work, then updates the issue host.
+- **Triage** (`patchmill triage`) is the intake/sorting station. It classifies
+  open issues and, when executed, runs the configured triage skill, which may
+  apply labels/comments on the issue host.
+- **Run once** (`patchmill run-once`) is the one-issue production station. It
+  claims one automation-ready issue, creates or uses an implementation plan,
+  runs implementation/review/landing, then updates the issue host.
 
 Before running issue-agent workflows in a new repository, run:
 
