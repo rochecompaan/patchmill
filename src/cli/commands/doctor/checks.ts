@@ -2,12 +2,12 @@ import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
+import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
 import {
   assertCleanWorktree,
   cleanStatusIgnoredPaths,
 } from "../run-once/git.ts";
-import { listLabels, listOpenIssues } from "../triage/forgejo.ts";
 import { missingLabelDefinitions } from "../triage/labels.ts";
 import type { CommandRunner } from "../triage/types.ts";
 import type { PatchmillConfig } from "../../../config/types.ts";
@@ -311,24 +311,21 @@ export async function runDoctorChecks(
     results.push(fail("labels", "skipped because config did not load"));
   } else {
     const config = loaded.config;
-    const repoRoot = options.teaRepoRootForTests ?? options.repoRoot;
-    if (config.host.provider !== "forgejo-tea") {
-      results.push(
-        fail("host", `unsupported provider ${config.host.provider}`),
-      );
-    } else {
-      const teaHelp = await runner.run("tea", ["--help"], {
-        cwd: options.repoRoot,
-      });
-      results.push(
-        teaHelp.code === 0
-          ? pass("host", `forgejo via tea as ${config.host.login}`)
-          : fail("host", `tea unavailable: ${commandOutput(teaHelp)}`),
-      );
-    }
+    const hostRepoRoot = options.teaRepoRootForTests ?? options.repoRoot;
+    const host = createIssueHostProvider({
+      runner,
+      repoRoot: hostRepoRoot,
+      host: config.host,
+    });
+    const cliCheck = await host.checkCli();
+    results.push(
+      cliCheck.ok
+        ? pass("host", cliCheck.message)
+        : fail("host", cliCheck.message, cliCheck.remediation),
+    );
 
     try {
-      const issues = await listOpenIssues(runner, repoRoot, config.host.login);
+      const issues = await host.listOpenIssues();
       results.push(
         pass("issues", `open issues can be listed (${issues.length})`),
       );
@@ -340,10 +337,7 @@ export async function runDoctorChecks(
 
     try {
       const policy = createTriagePolicy(config.labels, config.triage);
-      const missing = missingLabelDefinitions(
-        await listLabels(runner, repoRoot, config.host.login),
-        policy,
-      );
+      const missing = missingLabelDefinitions(await host.listLabels(), policy);
       if (missing.length === 0) {
         results.push(
           pass(
@@ -360,10 +354,7 @@ export async function runDoctorChecks(
               "Patchmill doctor is read-only and did not create labels.",
               "",
               "Create the missing labels manually, then rerun:",
-              ...missing.map(
-                (label) =>
-                  `  tea labels create --name ${label.name} --color ${label.color}`,
-              ),
+              ...missing.map((label) => host.missingLabelRemediation(label)),
               "  patchmill doctor",
             ],
           ),

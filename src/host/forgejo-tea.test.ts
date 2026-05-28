@@ -63,6 +63,50 @@ function flagValue(args: string[], flag: string): string | undefined {
   return index === -1 ? undefined : args[index + 1];
 }
 
+test("ForgejoTeaHostProvider reports CLI readiness", async () => {
+  const calls: string[] = [];
+  const provider = new ForgejoTeaHostProvider({
+    repoRoot,
+    login: "triage-agent",
+    runner: {
+      async run(command, args) {
+        calls.push([command, ...args].join(" "));
+        return { code: 0, stdout: "tea help", stderr: "" };
+      },
+    },
+  });
+
+  const result = await provider.checkCli();
+
+  assert.deepEqual(result, {
+    ok: true,
+    message: "forgejo via tea as triage-agent",
+  });
+  assert.deepEqual(calls, ["tea --help"]);
+});
+
+test("ForgejoTeaHostProvider reports CLI failures with remediation", async () => {
+  const provider = new ForgejoTeaHostProvider({
+    repoRoot,
+    runner: {
+      async run() {
+        return { code: 127, stdout: "", stderr: "tea: command not found" };
+      },
+    },
+  });
+
+  const result = await provider.checkCli();
+
+  assert.deepEqual(result, {
+    ok: false,
+    message: "tea unavailable: tea: command not found",
+    remediation: [
+      "Install and authenticate tea, then rerun:",
+      "  patchmill doctor",
+    ],
+  });
+});
+
 test("ForgejoTeaHostProvider delegates open issue listing to tea", async () => {
   const runner = createFakeRunner((_command, args) => {
     const page = flagValue(args, "--page");
@@ -181,6 +225,21 @@ test("ForgejoTeaHostProvider delegates label listing to tea", async () => {
   assertTeaContext(runner.calls[0]!);
   assert.deepEqual(runner.calls[0]!.args.slice(0, 2), ["labels", "list"]);
   assert.equal(flagValue(runner.calls[0]!.args, "--output"), "json");
+});
+
+test("ForgejoTeaHostProvider emits shell-safe missing-label remediation", () => {
+  const label: LabelDefinition = {
+    name: "agent ready; echo 'owned'",
+    color: "#2ea043",
+    description: "Ready for $(implementation) & review",
+  };
+
+  assert.equal(
+    createProvider(
+      createFakeRunner(() => ({ code: 0, stdout: "", stderr: "" })),
+    ).missingLabelRemediation(label),
+    "  tea labels create --name 'agent ready; echo '\"'\"'owned'\"'\"'' --color '#2ea043' --description 'Ready for $(implementation) & review'",
+  );
 });
 
 test("ForgejoTeaHostProvider delegates label creation to tea", async () => {

@@ -14,10 +14,22 @@ export type InitWriteResult =
   | { status: "created"; path: string; config: InitialConfig }
   | { status: "exists"; path: string };
 
+function remoteHost(remoteUrl: string | undefined): string | undefined {
+  if (!remoteUrl) return undefined;
+  const trimmed = remoteUrl.trim();
+  const scpLike = /^[^@]+@([^:]+):/u.exec(trimmed);
+  if (scpLike) return scpLike[1]?.toLowerCase();
+  try {
+    return new URL(trimmed.replace(/^git\+/, "")).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
 export function inferHostProviderFromRemote(
-  _remoteUrl: string | undefined,
+  remoteUrl: string | undefined,
 ): PatchmillConfig["host"]["provider"] {
-  return "forgejo-tea";
+  return remoteHost(remoteUrl) === "github.com" ? "github-gh" : "forgejo-tea";
 }
 
 export function buildInitialConfig(
@@ -26,10 +38,13 @@ export function buildInitialConfig(
     login?: string;
   } = {},
 ): InitialConfig {
+  const provider = options.provider ?? DEFAULT_PATCHMILL_CONFIG.host.provider;
   return {
     host: {
-      provider: options.provider ?? DEFAULT_PATCHMILL_CONFIG.host.provider,
-      login: options.login ?? DEFAULT_PATCHMILL_CONFIG.host.login,
+      provider,
+      login:
+        options.login ??
+        (provider === "github-gh" ? "" : DEFAULT_PATCHMILL_CONFIG.host.login),
     },
   };
 }

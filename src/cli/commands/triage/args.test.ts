@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
   LEGACY_TRIAGE_LOGIN_ENV,
@@ -36,6 +37,20 @@ test("parseArgs accepts dryrun alias", () => {
   assert.equal(config.showHelp, false);
   assert.equal(config.dryRun, true);
   assert.equal(config.execute, false);
+});
+
+test("parseArgs carries normalized host config", () => {
+  const config = parseArgs(
+    ["--dry-run"],
+    "/repo",
+    {},
+    {
+      ...DEFAULT_PATCHMILL_CONFIG,
+      host: { provider: "github-gh", login: "" },
+    },
+  );
+
+  assert.deepEqual(config.host, { provider: "github-gh", login: "" });
 });
 
 test("parseArgs accepts all to re-triage already classified issues", () => {
@@ -100,10 +115,16 @@ test("parseArgs defaults to the triage-agent tea login", () => {
   assert.equal(config.teaLogin, "triage-agent");
 });
 
-test("HELP_TEXT documents host-login and tea-login flags", () => {
+test("HELP_TEXT documents host-neutral host-login and tea-login flags", () => {
   assert.match(HELP_TEXT, /--host-login <name>/);
+  assert.match(
+    HELP_TEXT,
+    /Use a named host login when the provider supports named logins/,
+  );
   assert.match(HELP_TEXT, /--tea-login <name>/);
+  assert.match(HELP_TEXT, /Compatibility alias for --host-login/);
   assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
+  assert.doesNotMatch(HELP_TEXT, /Forgejo issue updates/);
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
 });
 

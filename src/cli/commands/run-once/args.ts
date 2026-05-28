@@ -6,7 +6,6 @@ import type { PatchmillConfig } from "../../../config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
-const DEFAULT_TEA_LOGIN = "triage-agent";
 
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -24,12 +23,14 @@ function parsePositiveInteger(flag: string, value: string): number {
   return parsed;
 }
 
-function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
-  return (
-    env.PATCHMILL_HOST_LOGIN ??
-    normalizedConfig?.host.login ??
-    DEFAULT_TEA_LOGIN
-  );
+function hostConfig(
+  env: Env,
+  normalizedConfig: PatchmillConfig,
+): PatchmillConfig["host"] {
+  return {
+    ...normalizedConfig.host,
+    login: env.PATCHMILL_HOST_LOGIN ?? normalizedConfig.host.login,
+  };
 }
 
 export function parseArgs(
@@ -39,6 +40,7 @@ export function parseArgs(
   normalizedConfig?: PatchmillConfig,
 ): AgentIssueConfig {
   const patchmillConfig = normalizedConfig ?? DEFAULT_PATCHMILL_CONFIG;
+  const host = hostConfig(env, patchmillConfig);
   const projectPolicy = patchmillConfig.projectPolicy;
   const config: AgentIssueConfig = {
     repoRoot,
@@ -46,7 +48,8 @@ export function parseArgs(
     execute: false,
     showHelp: args.length === 0,
     planOnly: false,
-    teaLogin: defaultTeaLogin(env, normalizedConfig),
+    host,
+    teaLogin: host.login,
     plansDir:
       normalizedConfig?.paths.plansDir ??
       join(repoRoot, patchmillConfig.paths.plansDir),
@@ -106,7 +109,8 @@ export function parseArgs(
     } else if (arg === "--plan-only") {
       config.planOnly = true;
     } else if (arg === "--tea-login" || arg === "--host-login") {
-      config.teaLogin = requireValue(args, index, arg);
+      config.host.login = requireValue(args, index, arg);
+      config.teaLogin = config.host.login;
       index += 1;
     } else {
       throw new Error(`Unknown argument: ${arg}`);

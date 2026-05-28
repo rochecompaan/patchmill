@@ -4,6 +4,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { cwd } from "node:process";
 import { join } from "node:path";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { HELP_TEXT, loadCliConfig, summarizeResult } from "./main.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
@@ -50,16 +51,49 @@ test("parseArgs does not show help when an option is provided", () => {
   assert.equal(parseArgs(["--dry-run"], "/repo", {}).showHelp, false);
 });
 
-test("HELP_TEXT documents one-issue usage and options", () => {
+test("parseArgs carries normalized github host config", () => {
+  const config = parseArgs(
+    ["--dry-run"],
+    "/repo",
+    {},
+    {
+      ...DEFAULT_PATCHMILL_CONFIG,
+      host: { provider: "github-gh", login: "" },
+    },
+  );
+  assert.deepEqual(config.host, { provider: "github-gh", login: "" });
+});
+
+test("parseArgs applies host-login to host config", () => {
+  const config = parseArgs(
+    ["--host-login", "operator"],
+    "/repo",
+    {},
+    DEFAULT_PATCHMILL_CONFIG,
+  );
+  assert.equal(config.host.login, "operator");
+});
+
+test("HELP_TEXT documents one-issue usage and host-neutral options", () => {
   assert.match(HELP_TEXT, /Usage:/);
   assert.match(HELP_TEXT, /patchmill run-once/);
+  assert.match(HELP_TEXT, /Process one issue labeled agent-ready/);
+  assert.doesNotMatch(HELP_TEXT, /Process one Forgejo issue/);
+  assert.match(HELP_TEXT, /without mutating the configured issue host or git/);
+  assert.doesNotMatch(HELP_TEXT, /without mutating Forgejo or git/);
   assert.match(HELP_TEXT, /--help/);
   assert.match(HELP_TEXT, /--dry-run/);
   assert.match(HELP_TEXT, /--execute/);
   assert.match(HELP_TEXT, /--plan-only/);
   assert.match(HELP_TEXT, /--issue <number>/);
   assert.match(HELP_TEXT, /--host-login <name>/);
+  assert.match(
+    HELP_TEXT,
+    /Use a named host login when the provider supports named logins/,
+  );
+  assert.doesNotMatch(HELP_TEXT, /Forgejo issue updates/);
   assert.match(HELP_TEXT, /--tea-login <name>/);
+  assert.match(HELP_TEXT, /Compatibility alias for --host-login/);
   assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_RUN_ONCE_LOGIN_ENV));
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
@@ -96,10 +130,19 @@ test("help text documents verbose Pi output", () => {
   assert.match(HELP_TEXT, /--verbose-pi-output/);
 });
 
-test("help text documents Forgejo visual evidence upload environment", () => {
-  assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_URL/);
-  assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_TOKEN/);
-  assert.match(HELP_TEXT, /PATCHMILL_FORGEJO_REPO/);
+test("help text documents Forgejo-only visual evidence upload environment", () => {
+  assert.match(
+    HELP_TEXT,
+    /PATCHMILL_FORGEJO_URL\s+Forgejo-only base URL for PR visual evidence uploads/,
+  );
+  assert.match(
+    HELP_TEXT,
+    /PATCHMILL_FORGEJO_TOKEN\s+Forgejo-only API token for PR visual evidence uploads/,
+  );
+  assert.match(
+    HELP_TEXT,
+    /PATCHMILL_FORGEJO_REPO\s+Forgejo-only optional owner\/repo override/,
+  );
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_URL_ENV));
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_TOKEN_ENV));
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_REPO_ENV));

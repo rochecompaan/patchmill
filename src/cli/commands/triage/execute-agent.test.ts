@@ -54,6 +54,7 @@ test("buildTriageExecutePrompt delegates procedure to configured skill", () => {
       ...DEFAULT_PATCHMILL_POLICY,
       projectName: "Patchmill",
     },
+    host: { provider: "forgejo-tea", login: "" },
     skills: {
       triage: "triage",
       planning: "superpowers:writing-plans",
@@ -79,12 +80,49 @@ test("buildTriageExecutePrompt delegates procedure to configured skill", () => {
   assert.doesNotMatch(prompt, /Return this exact JSON shape/);
 });
 
+test("buildTriageExecutePrompt gives GitHub gh tooling instructions", () => {
+  const prompt = buildTriageExecutePrompt({
+    issues,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    host: { provider: "github-gh", login: "" },
+    stateMap,
+  });
+
+  assert.match(prompt, /Configured issue host tooling:/);
+  assert.match(prompt, /configured issue host is GitHub/i);
+  assert.match(
+    prompt,
+    /use `gh` CLI for issue labels, comments, and status operations/i,
+  );
+  assert.match(prompt, /do not use `tea`/i);
+});
+
+test("buildTriageExecutePrompt gives Forgejo tea tooling instructions with login", () => {
+  const prompt = buildTriageExecutePrompt({
+    issues,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    stateMap,
+  });
+
+  assert.match(
+    prompt,
+    /configured issue host is Forgejo\/Gitea through `tea`/i,
+  );
+  assert.match(
+    prompt,
+    /use `tea` for issue labels, comments, and status operations/i,
+  );
+  assert.match(prompt, /use the configured `tea` login `triage-agent`/i);
+});
+
 test("runTriageExecuteAgent invokes Pi without read-only tool restriction", async () => {
   const runner = new RecordingRunner();
 
   await runTriageExecuteAgent(runner, "/repo", {
     issues,
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    host: { provider: "forgejo-tea", login: "" },
     skills: {
       triage: "triage",
       planning: "superpowers:writing-plans",
@@ -108,6 +146,7 @@ test("runTriageExecuteAgent adds bundled triage skill for default skills", async
   await runTriageExecuteAgent(runner, "/repo", {
     issues,
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    host: { provider: "forgejo-tea", login: "" },
     stateMap,
   });
 
@@ -123,6 +162,7 @@ test("runTriageExecuteAgent does not add bundled triage skill for custom skills"
   await runTriageExecuteAgent(runner, "/repo", {
     issues,
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    host: { provider: "forgejo-tea", login: "" },
     skills: {
       ...DEFAULT_PATCHMILL_SKILLS,
       triage: "custom:triage-skill",

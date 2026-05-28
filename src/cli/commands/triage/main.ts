@@ -8,27 +8,26 @@ import { runTriage } from "./pipeline.ts";
 import type { TriageResult } from "./types.ts";
 
 // TODO: Remove compatibility alias for --tea-login in favor of --host-login
-// TODO: Remove explicit mention of Forgejo in help text and logs to allow for broader applicability of triage command to other host providers
 export const HELP_TEXT = `Usage:
   patchmill triage [options]
   npm run triage -- [options]
 
-Automated Forgejo issue triage. Defaults to showing this help when no options are provided.
+Automated issue triage. Defaults to showing this help when no options are provided.
 With arguments, patchmill triage executes the configured triage skill by default.
 By default, only open issues without active triage or protection labels are selected.
 
 Options:
   --help, -h          Show this help and exit.
-  --dry-run, --dryrun Preview configured triage skill decisions without mutating Forgejo.
+  --dry-run, --dryrun Preview configured triage skill decisions without mutating the configured issue host.
   --issue <number>    Triage one open issue by number.
   --all               Re-triage all selected open issues, including issues already carrying triage or protection labels such as in-progress or blocked.
   --limit <number>    Triage only the first N selected open issues.
   --log-dir <path>    Write triage logs to a custom directory.
-  --host-login <name> Use a named host login for Forgejo issue updates.
+  --host-login <name> Use a named host login when the provider supports named logins.
   --tea-login <name>  Compatibility alias for --host-login.
 
 Environment:
-  PATCHMILL_HOST_LOGIN      Override the default host login name.
+  PATCHMILL_HOST_LOGIN      Override the default host login name when supported.
 `;
 
 type Env = Record<string, string | undefined>;

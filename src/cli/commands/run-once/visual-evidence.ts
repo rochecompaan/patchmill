@@ -2,6 +2,7 @@ import {
   ForgejoVisualEvidenceUploader,
   hasForgejoVisualEvidenceConfig,
 } from "../../../host/forgejo-visual-evidence.ts";
+import type { PatchmillHostProviderId } from "../../../config/types.ts";
 import type { ForgejoVisualEvidenceEnv } from "../../../host/forgejo-visual-evidence.ts";
 import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 import type { AgentIssueVisualEvidence, CommandRunner } from "./types.ts";
@@ -16,6 +17,7 @@ export type UploadPrVisualEvidenceInput = {
 
 export type DefaultVisualEvidenceUploaderInput = {
   runner: CommandRunner;
+  provider: PatchmillHostProviderId;
   env?: ForgejoVisualEvidenceEnv;
   fetchImpl?: typeof fetch;
 };
@@ -23,6 +25,7 @@ export type DefaultVisualEvidenceUploaderInput = {
 export function defaultVisualEvidenceUploader(
   input: DefaultVisualEvidenceUploaderInput,
 ): VisualEvidenceUploader | undefined {
+  if (input.provider !== "forgejo-tea") return undefined;
   const env = input.env ?? process.env;
   if (!hasForgejoVisualEvidenceConfig(env)) return undefined;
   return new ForgejoVisualEvidenceUploader({

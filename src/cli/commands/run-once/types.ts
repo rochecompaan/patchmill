@@ -1,3 +1,4 @@
+import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
@@ -20,6 +21,7 @@ export type AgentIssueConfig = {
   verbosePiOutput?: boolean;
   issueNumber?: number;
   planOnly: boolean;
+  host: PatchmillHostConfig;
   teaLogin?: string;
   plansDir: string;
   runStateDir: string;

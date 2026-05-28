@@ -279,6 +279,7 @@ async function makeConfig(
     dryRun: true,
     execute: false,
     planOnly: false,
+    host: { provider: "forgejo-tea", login: "" },
     plansDir,
     runStateDir,
     worktreeDir: join(repoRoot, ".worktrees"),
@@ -380,6 +381,57 @@ test("runOneIssue returns no-issue when no eligible issue exists and performs no
 
   assert.deepEqual(result, { status: "no-issue" });
   assert.equal(runner.calls.length, 2);
+});
+
+test("runOneIssue targeted GitHub issue reads issue by number", async () => {
+  const config = await makeConfig({
+    host: { provider: "github-gh", login: "" },
+    issueNumber: 1001,
+  });
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "gh" &&
+      call.args[0] === "issue" &&
+      call.args[1] === "view"
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          number: 1001,
+          title: "Outside the list cap",
+          body: "Implement me",
+          state: "OPEN",
+          labels: [{ name: "agent-ready" }],
+          author: { login: "alice" },
+          updatedAt: "2026-05-28T10:00:00Z",
+          comments: [],
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issue.number, 1001);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "gh" && call.args.join(" ").startsWith("issue list"),
+    ),
+    false,
+  );
+  assert.deepEqual(
+    runner.calls.map((call) =>
+      [call.command, ...call.args.slice(0, 3)].join(" "),
+    ),
+    ["gh issue view 1001"],
+  );
 });
 
 test("runOneIssue resumes a single in-progress issue with run state before selecting ready issues", async () => {
@@ -662,7 +714,7 @@ test("runOneIssue rejects an explicit open issue that is not agent-ready with a 
     () => runOneIssue(runner, config, { now: NOW }),
     /Issue #7 is open but not labeled agent-ready/,
   );
-  assert.equal(runner.calls.length, 2);
+  assert.equal(runner.calls.length, 4);
 });
 
 test("runOneIssue rejects a different explicit issue when a resumable run exists", async () => {

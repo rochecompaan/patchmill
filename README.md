@@ -28,6 +28,11 @@ what changed. Use `patchmill triage --dry-run` to preview the labels, comments,
 closures, canonical bucket, and rationale the skill would produce without
 mutating the issue host.
 
+Supported issue hosts are Forgejo/Gitea through `tea` (`forgejo-tea`) and GitHub
+through `gh` (`github-gh`). GitHub visual-evidence upload is not supported in
+the first `github-gh` version; Forgejo visual-evidence upload uses the
+`PATCHMILL_FORGEJO_*` environment variables.
+
 ## First use
 
 After installing Patchmill, start with the safety-first onboarding flow:
@@ -104,8 +109,9 @@ delegation.
 Environment variables are best for machine-local identity, CI secrets, and host
 upload credentials that should not live in `patchmill.config.json`.
 
-- `PATCHMILL_HOST_LOGIN`: host account/login Patchmill uses with `tea`;
-  overrides `host.login`.
+- `PATCHMILL_HOST_LOGIN`: host account/login override for providers that support
+  named logins, such as `forgejo-tea`; ignored by providers without named-login
+  support, such as `github-gh`.
 - `PATCHMILL_FORGEJO_URL`: Forgejo base URL used when uploading visual evidence
   to PRs.
 - `PATCHMILL_FORGEJO_TOKEN`: Forgejo API token for visual-evidence uploads.

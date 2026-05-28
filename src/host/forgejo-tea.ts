@@ -5,9 +5,11 @@ import {
   hydrateIssueComments,
   listLabels,
   listOpenIssues,
+  listIssuesByNumbers as listIssuesByNumbersWithTea,
 } from "../cli/commands/triage/forgejo.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type {
+  HostCliCheck,
   IssueHostProvider,
   IssueSummary,
   LabelChangePlan,
@@ -20,17 +22,80 @@ export type ForgejoTeaHostOptions = {
   login?: string;
 };
 
+function commandOutput(result: {
+  code: number;
+  stdout: string;
+  stderr: string;
+}): string {
+  return (
+    [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
+    "no output"
+  );
+}
+
+function shellQuote(value: string): string {
+  if (value.length === 0) return "''";
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
 export class ForgejoTeaHostProvider implements IssueHostProvider {
+  readonly id = "forgejo-tea" as const;
+  readonly displayName = "Forgejo via tea";
+
   private readonly options: ForgejoTeaHostOptions;
 
   constructor(options: ForgejoTeaHostOptions) {
     this.options = options;
   }
 
+  async checkCli(): Promise<HostCliCheck> {
+    const result = await this.options.runner.run("tea", ["--help"], {
+      cwd: this.options.repoRoot,
+    });
+    if (result.code === 0) {
+      return {
+        ok: true,
+        message: this.options.login
+          ? `forgejo via tea as ${this.options.login}`
+          : "forgejo via tea",
+      };
+    }
+    return {
+      ok: false,
+      message: `tea unavailable: ${commandOutput(result)}`,
+      remediation: [
+        "Install and authenticate tea, then rerun:",
+        "  patchmill doctor",
+      ],
+    };
+  }
+
+  missingLabelRemediation(label: LabelDefinition): string {
+    return [
+      "  tea labels create --name",
+      shellQuote(label.name),
+      "--color",
+      shellQuote(label.color),
+      "--description",
+      shellQuote(label.description),
+    ].join(" ");
+  }
+
   listOpenIssues(): Promise<IssueSummary[]> {
     return listOpenIssues(
       this.options.runner,
       this.options.repoRoot,
+      this.options.login,
+    );
+  }
+
+  listIssuesByNumbers(
+    issueNumbers: readonly number[],
+  ): Promise<IssueSummary[]> {
+    return listIssuesByNumbersWithTea(
+      this.options.runner,
+      this.options.repoRoot,
+      issueNumbers,
       this.options.login,
     );
   }

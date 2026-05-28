@@ -133,6 +133,27 @@ pieces your repository needs.
 }
 ```
 
+## Host providers
+
+The default host provider is `forgejo-tea`, which uses Forgejo/Gitea through
+`tea` and supports named logins via `host.login`, `--host-login`, and
+`PATCHMILL_HOST_LOGIN`.
+
+For GitHub through `gh`, configure the host like this:
+
+```json
+{
+  "host": {
+    "provider": "github-gh",
+    "login": ""
+  }
+}
+```
+
+`PATCHMILL_HOST_LOGIN` only affects providers with named-login support. The
+first `github-gh` version uses the active `gh` authentication context and does
+not support GitHub visual-evidence upload.
+
 ## Triage state map
 
 Use `triage.stateMap` to map repository triage labels into Patchmill's canonical
@@ -203,6 +224,8 @@ See [skills configuration](skills.md) for how these are rendered into prompts.
 
 Some settings are intentionally better as environment variables:
 
-- `PATCHMILL_HOST_LOGIN`: local host login for the `tea` CLI.
+- `PATCHMILL_HOST_LOGIN`: local host login for providers with named-login
+  support, such as `forgejo-tea`.
 - `PATCHMILL_FORGEJO_URL`, `PATCHMILL_FORGEJO_TOKEN`, `PATCHMILL_FORGEJO_REPO`:
-  visual-evidence upload credentials and repository override.
+  Forgejo visual-evidence upload credentials and repository override. GitHub
+  visual-evidence upload is not supported in the first `github-gh` version.

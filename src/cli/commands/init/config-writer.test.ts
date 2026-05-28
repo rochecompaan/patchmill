@@ -23,6 +23,15 @@ test("buildInitialConfig returns minimal default config", () => {
   });
 });
 
+test("buildInitialConfig defaults GitHub host login to empty", () => {
+  assert.deepEqual(buildInitialConfig({ provider: "github-gh" }), {
+    host: {
+      provider: "github-gh",
+      login: "",
+    },
+  });
+});
+
 test("inferHostProviderFromRemote recognizes Forgejo-like remotes", () => {
   assert.equal(
     inferHostProviderFromRemote("git@forgejo.example.com:owner/repo.git"),
@@ -30,6 +39,29 @@ test("inferHostProviderFromRemote recognizes Forgejo-like remotes", () => {
   );
   assert.equal(
     inferHostProviderFromRemote("https://codeberg.org/owner/repo.git"),
+    "forgejo-tea",
+  );
+});
+
+test("inferHostProviderFromRemote recognizes GitHub HTTPS remotes", () => {
+  assert.equal(
+    inferHostProviderFromRemote(
+      "https://github.com/rochecompaan/patchmill.git",
+    ),
+    "github-gh",
+  );
+});
+
+test("inferHostProviderFromRemote recognizes GitHub SCP-like remotes", () => {
+  assert.equal(
+    inferHostProviderFromRemote("git@github.com:rochecompaan/patchmill.git"),
+    "github-gh",
+  );
+});
+
+test("inferHostProviderFromRemote keeps non-GitHub remotes on Forgejo", () => {
+  assert.equal(
+    inferHostProviderFromRemote("git@git.example.com:owner/repo.git"),
     "forgejo-tea",
   );
 });

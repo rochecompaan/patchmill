@@ -8,8 +8,16 @@ import {
   LEGACY_FORGEJO_TOKEN_ENV,
   LEGACY_FORGEJO_URL_ENV,
 } from "../../../../test-support/legacy-seed.ts";
-import type { AgentIssueVisualEvidence } from "./types.ts";
+import type { AgentIssueVisualEvidence, CommandRunner } from "./types.ts";
 import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
+
+function fakeRunner(): CommandRunner {
+  return {
+    async run() {
+      return { code: 0, stdout: "", stderr: "" };
+    },
+  };
+}
 
 test("uploadPrVisualEvidence keeps evidence when no uploader is configured", async () => {
   const events: string[] = [];
@@ -38,11 +46,8 @@ test("uploadPrVisualEvidence keeps evidence when no uploader is configured", asy
 
 test("defaultVisualEvidenceUploader returns no uploader when only removed legacy env variables are set", () => {
   const uploader = defaultVisualEvidenceUploader({
-    runner: {
-      async run() {
-        return { code: 0, stdout: "", stderr: "" };
-      },
-    },
+    runner: fakeRunner(),
+    provider: "forgejo-tea",
     env: {
       [LEGACY_FORGEJO_URL_ENV]: "https://forgejo.example",
       [LEGACY_FORGEJO_TOKEN_ENV]: "compat-token",
@@ -50,6 +55,33 @@ test("defaultVisualEvidenceUploader returns no uploader when only removed legacy
   });
 
   assert.equal(uploader, undefined);
+});
+
+test("defaultVisualEvidenceUploader returns no uploader for github-gh", () => {
+  assert.equal(
+    defaultVisualEvidenceUploader({
+      runner: fakeRunner(),
+      provider: "github-gh",
+      env: {
+        PATCHMILL_FORGEJO_URL: "https://forgejo.example",
+        PATCHMILL_FORGEJO_TOKEN: "token",
+      },
+    }),
+    undefined,
+  );
+});
+
+test("defaultVisualEvidenceUploader keeps Forgejo uploader for forgejo-tea", () => {
+  const uploader = defaultVisualEvidenceUploader({
+    runner: fakeRunner(),
+    provider: "forgejo-tea",
+    env: {
+      PATCHMILL_FORGEJO_URL: "https://forgejo.example",
+      PATCHMILL_FORGEJO_TOKEN: "token",
+    },
+  });
+
+  assert.notEqual(uploader, undefined);
 });
 
 test("uploadPrVisualEvidence delegates to the configured uploader", async () => {

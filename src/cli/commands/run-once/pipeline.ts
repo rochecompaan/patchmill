@@ -6,13 +6,9 @@ import {
   buildIssueWorktreePath,
 } from "../../../git/worktree-strategy.ts";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
-import {
-  applyIssueLabels,
-  commentIssue,
-  createLabel,
-  listLabels,
-  listOpenIssues,
-} from "../triage/forgejo.ts";
+import { createIssueHostProvider } from "../../../host/factory.ts";
+import type { IssueHostProvider } from "../../../host/types.ts";
+import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
   missingLabelDefinitions,
@@ -485,6 +481,42 @@ async function selectResumableIssue(
   return selected ? { issue: selected, resumed: false } : undefined;
 }
 
+function mergeIssueLists(
+  primary: IssueSummary[],
+  secondary: IssueSummary[],
+): IssueSummary[] {
+  const issues = new Map<number, IssueSummary>();
+  for (const issue of secondary) issues.set(issue.number, issue);
+  for (const issue of primary) issues.set(issue.number, issue);
+  return [...issues.values()];
+}
+
+async function loadSelectionIssues(
+  host: IssueHostProvider,
+  config: AgentIssueConfig,
+  options: RunOneIssueOptions,
+): Promise<IssueSummary[]> {
+  if (config.issueNumber === undefined) {
+    await progress(options, "info", "select", "listing open issues");
+    return host.listOpenIssues();
+  }
+
+  await progress(
+    options,
+    "info",
+    "select",
+    `loading issue #${config.issueNumber}`,
+    { issueNumber: config.issueNumber },
+  );
+  const requestedIssues = await host.listIssuesByNumbers([config.issueNumber]);
+  const shouldResume = config.execute && !config.dryRun;
+  if (!shouldResume) return requestedIssues;
+
+  await progress(options, "info", "select", "listing open issues");
+  const openIssues = await host.listOpenIssues();
+  return mergeIssueLists(requestedIssues, openIssues);
+}
+
 function unexpectedFailureComment(
   reason: string,
   inProgressLabel: string,
@@ -505,21 +537,21 @@ function unexpectedFailureCommentKey(
 }
 
 async function ensureAutomationLabel(
-  runner: CommandRunner,
-  config: AgentIssueConfig,
+  host: IssueHostProvider,
+  triagePolicy: PatchmillTriagePolicy | undefined,
   name: string,
 ): Promise<void> {
   const missing = missingLabelDefinitions(
-    await listLabels(runner, config.repoRoot, config.teaLogin),
-    config.triagePolicy ?? DEFAULT_TRIAGE_POLICY,
+    await host.listLabels(),
+    triagePolicy ?? DEFAULT_TRIAGE_POLICY,
   );
   const label = missing.find((definition) => definition.name === name);
   if (!label) return;
-  await createLabel(runner, config.repoRoot, label, config.teaLogin);
+  await host.createLabel(label);
 }
 
 async function unexpectedFailure(
-  runner: CommandRunner,
+  host: IssueHostProvider,
   config: AgentIssueConfig,
   issue: IssueSummary,
   checkpoints: AgentIssueRunCheckpoints,
@@ -569,13 +601,8 @@ async function unexpectedFailure(
   const failureCommentKey = unexpectedFailureCommentKey(status);
   if (!state?.failureCommentKeys?.includes(failureCommentKey)) {
     const { inProgress } = lifecycleLabels(config);
-    const commented = await commentIssue(
-      runner,
-      config.repoRoot,
-      issue.number,
-      unexpectedFailureComment(reason, inProgress),
-      config.teaLogin,
-    )
+    const commented = await host
+      .commentIssue(issue.number, unexpectedFailureComment(reason, inProgress))
       .then(() => true)
       .catch(() => false);
     if (commented) {
@@ -612,7 +639,7 @@ async function unexpectedFailure(
 }
 
 async function blockIssue(
-  runner: CommandRunner,
+  host: IssueHostProvider,
   config: AgentIssueConfig,
   issue: IssueSummary,
   labels: string[],
@@ -631,13 +658,8 @@ async function blockIssue(
     issueNumber: issue.number,
   });
   const blockedLabels = nextLabels(labels, [inProgress], [needsInfo]);
-  await ensureAutomationLabel(runner, config, needsInfo);
-  await applyIssueLabels(
-    runner,
-    config.repoRoot,
-    planLabelChange(issue.number, labels, blockedLabels),
-    config.teaLogin,
-  );
+  await ensureAutomationLabel(host, config.triagePolicy, needsInfo);
+  await host.applyLabels(planLabelChange(issue.number, labels, blockedLabels));
   await writeRunState(
     config.runStateDir,
     {
@@ -652,13 +674,9 @@ async function blockIssue(
     },
     timestamp,
   );
-  await commentIssue(
-    runner,
-    config.repoRoot,
-    issue.number,
-    blockerComment(result),
-    config.teaLogin,
-  ).catch(() => undefined);
+  await host
+    .commentIssue(issue.number, blockerComment(result))
+    .catch(() => undefined);
 
   await emitSimpleStep(options, issue.number, "final result blocked");
 
@@ -670,8 +688,12 @@ export async function runOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  await progress(options, "info", "select", "listing open issues");
-  const issues = await listOpenIssues(runner, config.repoRoot, config.teaLogin);
+  const host = createIssueHostProvider({
+    runner,
+    repoRoot: config.repoRoot,
+    host: config.host,
+  });
+  const issues = await loadSelectionIssues(host, config, options);
   const selected = await selectResumableIssue(issues, config);
   const issue = selected?.issue;
 
@@ -829,12 +851,9 @@ export async function runOneIssue(
         `ensuring ${inProgress} label exists`,
         { issueNumber: issue.number },
       );
-      await ensureAutomationLabel(runner, config, inProgress);
-      await applyIssueLabels(
-        runner,
-        config.repoRoot,
+      await ensureAutomationLabel(host, config.triagePolicy, inProgress);
+      await host.applyLabels(
         planLabelChange(issue.number, issue.labels, labels),
-        config.teaLogin,
       );
       await progress(
         options,
@@ -865,13 +884,7 @@ export async function runOneIssue(
 
   try {
     if (!checkpoints.startedCommentPosted) {
-      await commentIssue(
-        runner,
-        config.repoRoot,
-        issue.number,
-        startedComment(issue),
-        config.teaLogin,
-      );
+      await host.commentIssue(issue.number, startedComment(issue));
       await writeRunState(
         config.runStateDir,
         {
@@ -964,7 +977,7 @@ export async function runOneIssue(
       });
       if (planned.status === "blocked") {
         return blockIssue(
-          runner,
+          host,
           config,
           issue,
           labels,
@@ -1012,12 +1025,9 @@ export async function runOneIssue(
     if (config.planOnly || config.requirePlanApproval) {
       const finalLabels = nextLabels(labels, [inProgress], [ready]);
       if (!checkpoints.planReadyCommentPosted) {
-        await commentIssue(
-          runner,
-          config.repoRoot,
+        await host.commentIssue(
           issue.number,
           planComment(planPath, planCreated),
-          config.teaLogin,
         );
         await writeRunState(
           config.runStateDir,
@@ -1033,11 +1043,8 @@ export async function runOneIssue(
         checkpoints.planReadyCommentPosted = true;
       }
       if (!checkpoints.readyLabelRestored) {
-        await applyIssueLabels(
-          runner,
-          config.repoRoot,
+        await host.applyLabels(
           planLabelChange(issue.number, labels, finalLabels),
-          config.teaLogin,
         );
         labels = finalLabels;
         await writeRunState(
@@ -1376,7 +1383,7 @@ export async function runOneIssue(
         throw new Error("Pi implementation completed without a result");
       if (piResult.status === "blocked") {
         return blockIssue(
-          runner,
+          host,
           config,
           issue,
           labels,
@@ -1440,6 +1447,7 @@ export async function runOneIssue(
         options.visualEvidenceUploader ??
         defaultVisualEvidenceUploader({
           runner,
+          provider: config.host.provider,
           env: options.visualEvidenceEnv,
           fetchImpl: options.fetchImpl,
         });
@@ -1479,12 +1487,9 @@ export async function runOneIssue(
     }
 
     if (!checkpoints.handoffCommentPosted) {
-      await commentIssue(
-        runner,
-        config.repoRoot,
+      await host.commentIssue(
         issue.number,
         handoffComment(planPath, implemented, config.baseBranch),
-        config.teaLogin,
       );
       await writeRunState(
         config.runStateDir,
@@ -1503,7 +1508,7 @@ export async function runOneIssue(
       checkpoints.handoffCommentPosted = true;
     }
     if (!checkpoints.doneLabelEnsured) {
-      await ensureAutomationLabel(runner, config, done);
+      await ensureAutomationLabel(host, config.triagePolicy, done);
       await writeRunState(
         config.runStateDir,
         {
@@ -1521,12 +1526,7 @@ export async function runOneIssue(
     }
     const doneLabels = nextLabels(labels, [inProgress], [done]);
     if (!checkpoints.doneLabelApplied) {
-      await applyIssueLabels(
-        runner,
-        config.repoRoot,
-        planLabelChange(issue.number, labels, doneLabels),
-        config.teaLogin,
-      );
+      await host.applyLabels(planLabelChange(issue.number, labels, doneLabels));
       await writeRunState(
         config.runStateDir,
         {
@@ -1595,7 +1595,7 @@ export async function runOneIssue(
       throw error;
     }
     return unexpectedFailure(
-      runner,
+      host,
       config,
       issue,
       checkpoints,

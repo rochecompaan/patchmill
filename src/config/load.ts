@@ -673,6 +673,7 @@ function parseConfigFile(data: unknown): PartialConfig {
     const parsed: Partial<PatchmillConfig["host"]> = {};
     const provider = readOptionalLiteral(host, "provider", "host.provider", [
       "forgejo-tea",
+      "github-gh",
     ]);
     const login = readOptionalString(host, "login", "host.login");
     if (provider !== undefined) parsed.provider = provider;

@@ -3,8 +3,10 @@ import type { PatchmillTriageStateMap } from "../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../workflow/skills.ts";
 
+export type PatchmillHostProviderId = "forgejo-tea" | "github-gh";
+
 export type PatchmillHostConfig = {
-  provider: "forgejo-tea";
+  provider: PatchmillHostProviderId;
   login: string;
 };
 

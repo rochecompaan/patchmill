@@ -67,6 +67,7 @@ test("runTriage dry-run previews configured skill without mutating Forgejo", asy
     dryRun: true,
     execute: false,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
   });
 
   assert.equal(result.status, "dry-run");
@@ -88,12 +89,141 @@ test("runTriage dry-run previews configured skill without mutating Forgejo", asy
   assert.deepEqual(result.issues, log.issues);
 });
 
+test("runTriage uses github-gh host provider from config host", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const runner = createStaticCommandRunner([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          number: 1,
+          title: "Needs info",
+          body: "Broken",
+          state: "OPEN",
+          labels: [{ name: "bug" }],
+          author: { login: "alice" },
+          updatedAt: "2026-05-28T10:00:00Z",
+        },
+      ]),
+      stderr: "",
+    },
+    {
+      code: 0,
+      stdout: JSON.stringify({
+        number: 1,
+        title: "Needs info",
+        body: "Broken",
+        state: "OPEN",
+        labels: [{ name: "bug" }],
+        author: { login: "alice" },
+        updatedAt: "2026-05-28T10:00:00Z",
+        comments: [],
+      }),
+      stderr: "",
+    },
+    { code: 0, stdout: needsInfoPreviewJson, stderr: "" },
+  ]);
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    logDir,
+    host: { provider: "github-gh", login: "" },
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.deepEqual(
+    runner.calls
+      .filter((call) => call.command === "gh")
+      .map((call) => [call.command, ...call.args].join(" ")),
+    [
+      "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt",
+      "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,comments",
+    ],
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    true,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "tea"),
+    false,
+  );
+});
+
+test("runTriage targeted GitHub issue reads issue by number", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const runner = {
+    calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
+    async run(command: string, args: string[], options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+
+      if (command === "gh" && args[0] === "issue" && args[1] === "view") {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 1001,
+            title: "Outside the list cap",
+            body: "Needs triage",
+            state: "OPEN",
+            labels: [{ name: "bug" }],
+            author: { login: "alice" },
+            updatedAt: "2026-05-28T10:00:00Z",
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "pi") {
+        return { code: 0, stdout: agentReadyPreviewJson(1001), stderr: "" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    issueNumber: 1001,
+    logDir,
+    host: { provider: "github-gh", login: "" },
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issues[0]?.issueNumber, 1001);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "gh" && call.args.join(" ").startsWith("issue list"),
+    ),
+    false,
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) =>
+        call.command === "gh" &&
+        call.args.slice(0, 3).join(" ") === "issue view 1001",
+    ),
+  );
+});
+
 test("HELP_TEXT documents usage and active triage protection wording", () => {
   assert.match(HELP_TEXT, /Usage:/);
   assert.match(HELP_TEXT, /--help/);
   assert.match(HELP_TEXT, /-h/);
   assert.doesNotMatch(HELP_TEXT, /--execute/);
+  assert.match(HELP_TEXT, /Automated issue triage/);
+  assert.doesNotMatch(HELP_TEXT, /Automated Forgejo issue triage/);
   assert.match(HELP_TEXT, /executes the configured triage skill by default/);
+  assert.match(
+    HELP_TEXT,
+    /Preview configured triage skill decisions without mutating the configured issue host/,
+  );
+  assert.doesNotMatch(HELP_TEXT, /without mutating Forgejo/);
   assert.match(HELP_TEXT, /--dry-run/);
   assert.match(HELP_TEXT, /--issue <number>/);
   assert.match(HELP_TEXT, /--all/);
@@ -199,6 +329,7 @@ test("runTriage executes configured skill by default and reports observed change
     execute: true,
     issueNumber: 1,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
     triagePolicy: createTriagePolicy(
       {
         ...DEFAULT_PATCHMILL_CONFIG.labels,
@@ -261,6 +392,7 @@ test("runTriage passes explicit tea login to Forgejo commands only", async () =>
     execute: true,
     issueNumber: 1,
     logDir,
+    host: { ...DEFAULT_PATCHMILL_CONFIG.host, login: "triage-agent" },
     teaLogin: "triage-agent",
   });
 
@@ -322,6 +454,7 @@ test("runTriage passes configured custom skills through to the triage agent", as
     dryRun: true,
     execute: false,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
     skills: {
       triage: "project-triage",
       planning: "superpowers:writing-plans",
@@ -386,6 +519,14 @@ test("runTriage execute passes configured state map to the Pi prompt", async () 
         assert.match(prompt, /"ship-it": "agent-ready"/);
         assert.match(prompt, /"awaiting-reporter": "needs-info"/);
         assert.match(prompt, /"manual-only": "agent-unsuitable"/);
+        assert.match(
+          prompt,
+          /configured issue host is Forgejo\/Gitea through `tea`/i,
+        );
+        assert.match(
+          prompt,
+          /use `tea` for issue labels, comments, and status operations/i,
+        );
         return { code: 0, stdout: "triaged", stderr: "" };
       }
 
@@ -399,6 +540,7 @@ test("runTriage execute passes configured state map to the Pi prompt", async () 
     execute: true,
     issueNumber: 1,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
     triagePolicy: createTriagePolicy(
       {
         ...DEFAULT_PATCHMILL_CONFIG.labels,
@@ -454,6 +596,7 @@ test("runTriage applies limit after listing open issues", async () => {
     execute: false,
     limit: 1,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
   });
 
   assert.equal(result.issueCount, 1);
@@ -497,6 +640,7 @@ test("runTriage skips already triaged open issues by default before applying lim
     execute: false,
     limit: 1,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
   });
 
   assert.equal(result.issueCount, 1);
@@ -534,6 +678,7 @@ test("runTriage skips in-progress issues by default before applying limit", asyn
     execute: false,
     limit: 1,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
   });
 
   assert.equal(result.issueCount, 1);
@@ -571,6 +716,7 @@ test("runTriage skips blocked issues by default before applying limit", async ()
     execute: false,
     limit: 1,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
   });
 
   assert.equal(result.issueCount, 1);
@@ -601,6 +747,7 @@ test("runTriage --all includes in-progress issues for recovery", async () => {
     execute: false,
     all: true,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
   });
 
   assert.equal(result.issueCount, 1);
@@ -631,6 +778,7 @@ test("runTriage targeted issue overrides the in-progress default skip", async ()
     execute: false,
     issueNumber: 1,
     logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
   });
 
   assert.equal(result.issueCount, 1);
@@ -652,6 +800,7 @@ test("runTriage writes a failure log before rethrowing execute agent errors", as
       dryRun: false,
       execute: true,
       logDir,
+      host: DEFAULT_PATCHMILL_CONFIG.host,
     }),
   );
 
@@ -679,6 +828,7 @@ test("runTriage writes a failure log when preview validation fails", async () =>
         dryRun: true,
         execute: false,
         logDir,
+        host: DEFAULT_PATCHMILL_CONFIG.host,
       }),
     /Expected 1 previews but received 0/,
   );
@@ -708,6 +858,7 @@ test("runTriage writes a failure log when execute snapshot listing fails", async
         dryRun: false,
         execute: true,
         logDir,
+        host: DEFAULT_PATCHMILL_CONFIG.host,
       }),
     /snapshot exploded/,
   );
@@ -735,6 +886,7 @@ test("runTriage rejects targeted issues that are not open or not found and logs 
         execute: false,
         issueNumber: 123,
         logDir,
+        host: DEFAULT_PATCHMILL_CONFIG.host,
       }),
     /Issue #123 is not open or was not found/,
   );

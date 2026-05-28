@@ -1,11 +1,7 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { createIssueHostProvider } from "../../../host/factory.ts";
 import { runTriageDryRunAgent } from "./dry-run-agent.ts";
 import { runTriageExecuteAgent } from "./execute-agent.ts";
-import {
-  hydrateIssueComments,
-  listIssuesByNumbers,
-  listOpenIssues,
-} from "./forgejo.ts";
 import { DEFAULT_TRIAGE_POLICY } from "./labels.ts";
 import { writeTriageLog } from "./log.ts";
 import {
@@ -29,7 +25,11 @@ function selectIssues(
   const excludedLabels = new Set(triagePolicy.excludedLabels);
 
   if (config.issueNumber !== undefined) {
-    selected = selected.filter((issue) => issue.number === config.issueNumber);
+    selected = selected.filter(
+      (issue) =>
+        issue.number === config.issueNumber &&
+        issue.state.toLowerCase() === "open",
+    );
   } else if (!config.all) {
     selected = selected.filter(
       (issue) => !issue.labels.some((label) => excludedLabels.has(label)),
@@ -69,6 +69,11 @@ export async function runTriage(
   runner: CommandRunner,
   config: TriageConfig,
 ): Promise<TriageResult> {
+  const host = createIssueHostProvider({
+    runner,
+    repoRoot: config.repoRoot,
+    host: config.host,
+  });
   const createdAt = new Date().toISOString();
   const projectPolicy =
     config.projectPolicy ?? DEFAULT_PATCHMILL_CONFIG.projectPolicy;
@@ -76,14 +81,22 @@ export async function runTriage(
 
   let listedIssues: IssueSummary[];
   try {
-    listedIssues = await listOpenIssues(
-      runner,
-      config.repoRoot,
-      config.teaLogin,
-    );
+    listedIssues =
+      config.issueNumber === undefined
+        ? await host.listOpenIssues()
+        : await host.listIssuesByNumbers([config.issueNumber]);
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
+  }
+
+  if (config.issueNumber !== undefined) {
+    try {
+      await host.hydrateIssueComments(listedIssues);
+    } catch (error) {
+      await tryWriteFailureLog(config, createdAt, [], error);
+      throw error;
+    }
   }
 
   const issues = selectIssues(listedIssues, config);
@@ -106,16 +119,13 @@ export async function runTriage(
     return { status: "no-issues", issueCount: 0, logPath, issues: [] };
   }
 
-  try {
-    await hydrateIssueComments(
-      runner,
-      config.repoRoot,
-      issues,
-      config.teaLogin,
-    );
-  } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
-    throw error;
+  if (config.issueNumber === undefined) {
+    try {
+      await host.hydrateIssueComments(issues);
+    } catch (error) {
+      await tryWriteFailureLog(config, createdAt, [], error);
+      throw error;
+    }
   }
 
   if (config.dryRun) {
@@ -160,6 +170,7 @@ export async function runTriage(
       issues,
       projectPolicy,
       stateMap: triagePolicy.stateMap,
+      host: config.host,
       skills: config.skills,
       thinking:
         config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
@@ -171,18 +182,10 @@ export async function runTriage(
 
   let afterIssues: IssueSummary[];
   try {
-    afterIssues = await listIssuesByNumbers(
-      runner,
-      config.repoRoot,
+    afterIssues = await host.listIssuesByNumbers(
       beforeIssues.map((issue) => issue.number),
-      config.teaLogin,
     );
-    await hydrateIssueComments(
-      runner,
-      config.repoRoot,
-      afterIssues,
-      config.teaLogin,
-    );
+    await host.hydrateIssueComments(afterIssues);
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;

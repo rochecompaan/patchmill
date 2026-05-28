@@ -10,6 +10,13 @@ async function tempRepo(): Promise<string> {
   return mkdtemp(join(tmpdir(), "patchmill-doctor-"));
 }
 
+async function writeConfig(repoRoot: string, config: unknown): Promise<void> {
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify(config),
+  );
+}
+
 function runnerFrom(
   map: Record<string, { code: number; stdout?: string; stderr?: string }>,
 ): CommandRunner {
@@ -81,12 +88,9 @@ function successMocks(
 
 test("runDoctorChecks aggregates successful read-only checks", async () => {
   const repoRoot = await tempRepo();
-  await writeFile(
-    join(repoRoot, "patchmill.config.json"),
-    JSON.stringify({
-      host: { provider: "forgejo-tea", login: "triage-agent" },
-    }),
-  );
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+  });
   await mkdir(join(repoRoot, "docs"), { recursive: true });
   await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
   const runner = runnerFrom(successMocks());
@@ -119,6 +123,45 @@ test("runDoctorChecks aggregates successful read-only checks", async () => {
   );
 });
 
+test("runDoctorChecks supports github-gh provider", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, { host: { provider: "github-gh", login: "" } });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom({
+    "git rev-parse --is-inside-work-tree": {
+      code: 0,
+      stdout: "true\n",
+      stderr: "",
+    },
+    "git branch --show-current": { code: 0, stdout: "main\n", stderr: "" },
+    "git status --porcelain=v1 --untracked-files=all": {
+      code: 0,
+      stdout: "",
+      stderr: "",
+    },
+    "gh --version": { code: 0, stdout: "gh version 2.0.0\n", stderr: "" },
+    "gh auth status": { code: 0, stdout: "Logged in\n", stderr: "" },
+    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt":
+      { code: 0, stdout: "[]", stderr: "" },
+    "gh label list --limit 1000 --json name": {
+      code: 0,
+      stdout: JSON.stringify(REQUIRED_LABELS.map((name) => ({ name }))),
+      stderr: "",
+    },
+    "pi --help": { code: 0, stdout: "pi help", stderr: "" },
+    "pi --no-session --no-context-files --no-prompt-templates -p Reply with PATCHMILL_PI_OK and nothing else.":
+      { code: 0, stdout: "PATCHMILL_PI_OK", stderr: "" },
+  });
+
+  const results = await runDoctorChecks(runner, { repoRoot });
+
+  assert.equal(
+    results.find((result) => result.name === "host")?.status,
+    "pass",
+  );
+});
+
 test("runDoctorChecks reports invalid config and continues", async () => {
   const repoRoot = await tempRepo();
   await writeFile(join(repoRoot, "patchmill.config.json"), "{");
@@ -133,12 +176,9 @@ test("runDoctorChecks reports invalid config and continues", async () => {
 
 test("runDoctorChecks reports missing labels with manual commands", async () => {
   const repoRoot = await tempRepo();
-  await writeFile(
-    join(repoRoot, "patchmill.config.json"),
-    JSON.stringify({
-      host: { provider: "forgejo-tea", login: "triage-agent" },
-    }),
-  );
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+  });
   await mkdir(join(repoRoot, "docs"), { recursive: true });
   await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
   const runner = runnerFrom(successMocks([]));
@@ -151,9 +191,45 @@ test("runDoctorChecks reports missing labels with manual commands", async () => 
 
   assert.equal(labels?.status, "fail");
   assert.match(labels?.message ?? "", /agent-ready/);
-  assert.match(
-    (labels?.remediation ?? []).join("\n"),
-    /tea labels create --name agent-ready/,
+  assert.ok(
+    (labels?.remediation ?? []).includes(
+      "  tea labels create --name 'agent-ready' --color '#2ea043' --description 'Ready for automated agent processing'",
+    ),
+  );
+});
+
+test("runDoctorChecks reports missing github labels with provider remediation", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, { host: { provider: "github-gh", login: "" } });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom({
+    "git rev-parse --is-inside-work-tree": { code: 0, stdout: "true\n" },
+    "git branch --show-current": { code: 0, stdout: "main\n" },
+    "git status --porcelain=v1 --untracked-files=all": { code: 0, stdout: "" },
+    "gh --version": { code: 0, stdout: "gh version 2.0.0\n" },
+    "gh auth status": { code: 0, stdout: "Logged in\n" },
+    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt":
+      { code: 0, stdout: "[]" },
+    "gh label list --limit 1000 --json name": { code: 0, stdout: "[]" },
+    "pi --help": { code: 0, stdout: "pi help" },
+    "pi --no-session --no-context-files --no-prompt-templates -p Reply with PATCHMILL_PI_OK and nothing else.":
+      { code: 0, stdout: "PATCHMILL_PI_OK" },
+  });
+
+  const results = await runDoctorChecks(runner, { repoRoot });
+  const labels = results.find((result) => result.name === "labels");
+  const remediation = labels?.remediation ?? [];
+
+  assert.equal(labels?.status, "fail");
+  assert.ok(
+    remediation.includes(
+      "  gh label create agent-ready --color 2ea043 --description 'Ready for automated agent processing'",
+    ),
+  );
+  assert.equal(
+    remediation.some((line) => line.includes("--color #")),
+    false,
   );
 });
 

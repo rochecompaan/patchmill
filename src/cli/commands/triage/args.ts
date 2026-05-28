@@ -6,7 +6,6 @@ import { createTriagePolicy } from "../../../policy/triage.ts";
 import type { TriageConfig } from "./types.ts";
 
 type Env = Record<string, string | undefined>;
-const DEFAULT_TEA_LOGIN = "triage-agent";
 
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
@@ -24,13 +23,14 @@ function parsePositiveInteger(flag: string, value: string): number {
   return parsed;
 }
 
-// TODO: abstract tea login to host provider login, not hardcoded to Forgejo/Tea
-function defaultTeaLogin(env: Env, normalizedConfig?: PatchmillConfig): string {
-  return (
-    env.PATCHMILL_HOST_LOGIN ??
-    normalizedConfig?.host.login ??
-    DEFAULT_TEA_LOGIN
-  );
+function hostConfig(
+  env: Env,
+  normalizedConfig: PatchmillConfig,
+): PatchmillConfig["host"] {
+  return {
+    ...normalizedConfig.host,
+    login: env.PATCHMILL_HOST_LOGIN ?? normalizedConfig.host.login,
+  };
 }
 
 export function parseArgs(
@@ -40,13 +40,15 @@ export function parseArgs(
   normalizedConfig?: PatchmillConfig,
 ): TriageConfig {
   const patchmillConfig = normalizedConfig ?? DEFAULT_PATCHMILL_CONFIG;
+  const host = hostConfig(env, patchmillConfig);
   const config: TriageConfig = {
     repoRoot,
     dryRun: false,
     execute: true,
     triageThinking: patchmillConfig.pi.triageThinking,
     showHelp: args.length === 0,
-    teaLogin: defaultTeaLogin(env, patchmillConfig),
+    host,
+    teaLogin: host.login,
     logDir: normalizedConfig
       ? patchmillConfig.paths.triageLogDir
       : join(repoRoot, patchmillConfig.paths.triageLogDir),
@@ -80,7 +82,8 @@ export function parseArgs(
       config.logDir = requireValue(args, index, arg);
       index += 1;
     } else if (arg === "--tea-login" || arg === "--host-login") {
-      config.teaLogin = requireValue(args, index, arg);
+      config.host.login = requireValue(args, index, arg);
+      config.teaLogin = config.host.login;
       index += 1;
     } else {
       throw new Error(`Unknown argument: ${arg}`);

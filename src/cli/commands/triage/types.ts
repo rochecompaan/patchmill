@@ -1,3 +1,4 @@
+import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillTriageCanonicalBucket } from "../../../policy/triage-state.ts";
@@ -9,6 +10,7 @@ export type TriageConfig = {
   execute: boolean;
   triageThinking: string;
   showHelp?: boolean;
+  host: PatchmillHostConfig;
   teaLogin?: string;
   issueNumber?: number;
   limit?: number;

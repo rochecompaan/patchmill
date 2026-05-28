@@ -22,8 +22,8 @@ export const HELP_TEXT = `Usage:
   patchmill run-once [options]
   npm run run-once -- [options]
 
-Process one Forgejo issue labeled agent-ready. Defaults to showing this help when no options are provided.
-Use --dry-run to preview the next eligible issue without mutating Forgejo or git.
+Process one issue labeled agent-ready. Defaults to showing this help when no options are provided.
+Use --dry-run to preview the next eligible issue without mutating the configured issue host or git.
 Progress is written to stderr by default. Final JSON is written to stdout.
 Run logs are written under the configured run state directory (default: .patchmill/runs/).
 
@@ -35,14 +35,14 @@ Options:
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
   --issue <number>    Process one specific open agent-ready issue.
-  --host-login <name> Use a named host login for Forgejo issue updates.
+  --host-login <name> Use a named host login when the provider supports named logins.
   --tea-login <name>  Compatibility alias for --host-login.
 
 Environment:
-  PATCHMILL_HOST_LOGIN               Override the default host login name.
-  PATCHMILL_FORGEJO_URL              Primary Forgejo base URL for PR visual evidence uploads.
-  PATCHMILL_FORGEJO_TOKEN            Primary Forgejo API token for PR visual evidence uploads.
-  PATCHMILL_FORGEJO_REPO             Primary optional owner/repo override when git remote parsing is insufficient.
+  PATCHMILL_HOST_LOGIN               Override the default host login name when supported.
+  PATCHMILL_FORGEJO_URL              Forgejo-only base URL for PR visual evidence uploads.
+  PATCHMILL_FORGEJO_TOKEN            Forgejo-only API token for PR visual evidence uploads.
+  PATCHMILL_FORGEJO_REPO             Forgejo-only optional owner/repo override when git remote parsing is insufficient.
 `;
 
 type Env = Record<string, string | undefined>;

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
-import { loadPatchmillConfig } from "./load.ts";
+import { loadPatchmillConfig, loadPatchmillConfigState } from "./load.ts";
 
 test("loadPatchmillConfig returns defaults when no file or env is present", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
@@ -14,6 +14,37 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   assert.equal(config.paths.runStateDir, join(dir, ".patchmill/runs"));
   assert.equal(config.git.worktreePrefix, "patchmill-issue-");
   assert.equal(config.cleanupHook, undefined);
+});
+
+test("loadPatchmillConfigState accepts github-gh host provider", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({ host: { provider: "github-gh", login: "" } }),
+  );
+
+  const result = await loadPatchmillConfigState(repoRoot, {}, []);
+
+  assert.equal(result.config.host.provider, "github-gh");
+  assert.equal(result.config.host.login, "");
+});
+
+test("loadPatchmillConfig rejects invalid host provider", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({ host: { provider: "github" } }),
+  );
+
+  await assert.rejects(loadPatchmillConfig(dir, {}, []), (error: unknown) => {
+    assert(error instanceof Error);
+    assert.equal(error.name, "Error");
+    assert.match(
+      error.message,
+      /Invalid patchmill\.config\.json: host\.provider must be one of "forgejo-tea", "github-gh"; received "github"/,
+    );
+    return true;
+  });
 });
 
 test("loadPatchmillConfig clones default arrays for each load", async () => {

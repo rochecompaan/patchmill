@@ -8,8 +8,37 @@ workflows.
 - `patchmill triage`
 - `patchmill run-once`
 
-The current built-in runtime is Pi, and the current host integration is Forgejo
-through `tea`.
+The current built-in runtime is Pi.
+
+## Supported issue hosts
+
+- `forgejo-tea`: Forgejo/Gitea through `tea`.
+- `github-gh`: GitHub through `gh`.
+
+## GitHub setup
+
+Authenticate `gh`, initialize Patchmill, then run the read-only checks:
+
+```sh
+gh auth login
+patchmill init
+patchmill doctor
+```
+
+For repositories where `patchmill init` cannot infer GitHub from the git remote,
+set the host provider explicitly:
+
+```json
+{
+  "host": {
+    "provider": "github-gh",
+    "login": ""
+  }
+}
+```
+
+The first `github-gh` version uses the active `gh` authentication context. It
+does not support named logins or GitHub visual-evidence upload.
 
 ## Configuration surface
 
@@ -18,6 +47,7 @@ Patchmill reads provider and workflow settings from `patchmill.config.json` and
 
 Common settings:
 
+- `host.provider`
 - `host.login`
 - `paths.runStateDir`
 - `paths.triageLogDir`
@@ -26,12 +56,13 @@ Common settings:
 Environment variables are intended for local identity and secrets rather than
 shared repository policy:
 
-- `PATCHMILL_HOST_LOGIN`: host account/login Patchmill uses with `tea`;
-  overrides `host.login`.
+- `PATCHMILL_HOST_LOGIN`: host account/login override for providers with
+  named-login support, such as `forgejo-tea`. Providers without named-login
+  support, such as `github-gh`, ignore it.
 - `PATCHMILL_FORGEJO_URL`: Forgejo base URL used for visual-evidence uploads.
 - `PATCHMILL_FORGEJO_TOKEN`: Forgejo API token used for visual-evidence uploads.
 - `PATCHMILL_FORGEJO_REPO`: optional `owner/repo` override when git remote
-  parsing is insufficient.
+  parsing is insufficient for Forgejo visual-evidence uploads.
 
 ## Local state
 
