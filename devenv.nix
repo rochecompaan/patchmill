@@ -3,7 +3,7 @@
 {
   env.GREET = "Patchmill";
 
-  packages = [ pkgs.git ];
+  packages = [ pkgs.git pkgs.python314Packages.grip ];
 
   languages.javascript = {
     enable = true;
