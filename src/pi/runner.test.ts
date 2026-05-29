@@ -207,6 +207,44 @@ test("PiRunner plan passes configured ready and needs-info labels into the promp
   });
 });
 
+test("PiRunner plan resolves configured local planning skills into pi --skill args", async () => {
+  const repoRoot = "/repo";
+  const planPath = "docs/plans/2026-05-23-pi-runner-local-skill.md";
+  const runner = createFakeRunner((call) => {
+    const skillIndex = call.args.indexOf("--skill");
+    assert.notEqual(skillIndex, -1);
+    assert.equal(
+      call.args[skillIndex + 1],
+      "/repo/.patchmill/skills/writing-plans/SKILL.md",
+    );
+    return {
+      code: 0,
+      stdout: JSON.stringify({
+        status: "plan-created",
+        planPath,
+        commit: "ghi789",
+      }),
+      stderr: "",
+    };
+  });
+
+  const result = await new PiRunner(runner).plan({
+    repoRoot,
+    issue,
+    planPath,
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      planning: ".patchmill/skills/writing-plans",
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: "plan-created",
+    planPath,
+    commit: "ghi789",
+  });
+});
+
 test("PiRunner implementation uses the worktree root, derives the default landing branch from git.baseBranch, preserves resume context, and keeps runner metadata authoritative", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-"));
   const worktreePath = "worktrees/issue-42-fix";
@@ -309,4 +347,78 @@ test("PiRunner implementation uses the worktree root, derives the default landin
         event.message.includes("task 1/1"),
     ),
   );
+});
+
+test("PiRunner implementation resolves configured local skill paths against the repo root", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-local-"));
+  const worktreePath = "worktrees/issue-42-local-skills";
+  const worktreeRoot = join(repoRoot, worktreePath);
+  const planPath = "docs/plans/2026-05-23-pi-runner-local-skills.md";
+  await mkdir(join(worktreeRoot, ".pi", "todos"), { recursive: true });
+  await writeFile(
+    join(
+      worktreeRoot,
+      ".pi",
+      "todos",
+      "issue-42-task-01-check-local-skills.md",
+    ),
+    `${JSON.stringify({ title: "issue-42-task-01-check-local-skills", status: "open" })}\nTask body`,
+    "utf8",
+  );
+
+  const runner = createFakeRunner((call) => {
+    const skillPaths = call.args.flatMap((arg, index, args) =>
+      arg === "--skill" ? [args[index + 1] ?? ""] : [],
+    );
+    assert.deepEqual(skillPaths, [
+      join(repoRoot, ".patchmill", "skills", "toolchain", "SKILL.md"),
+      join(repoRoot, ".patchmill", "skills", "implementation", "SKILL.md"),
+      join(repoRoot, ".patchmill", "skills", "review", "SKILL.md"),
+      join(repoRoot, ".patchmill", "skills", "visual-evidence", "SKILL.md"),
+      join(repoRoot, ".patchmill", "skills", "landing", "SKILL.md"),
+    ]);
+    assert.equal(call.cwd, worktreeRoot);
+    return {
+      code: 0,
+      stdout: JSON.stringify({
+        status: "merged",
+        branch: "agent/issue-42-local-skills",
+        mergeCommit: "merge456",
+        commits: ["commit456"],
+        validation: ["npm test"],
+      }),
+      stderr: "",
+    };
+  });
+
+  const result = await new PiRunner(runner).implementation({
+    repoRoot,
+    issue,
+    planPath,
+    branch: "agent/issue-42-local-skills",
+    worktreePath,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      toolchain: ".patchmill/skills/toolchain",
+      implementation: ".patchmill/skills/implementation",
+      review: ".patchmill/skills/review",
+      visualEvidence: ".patchmill/skills/visual-evidence",
+      landing: ".patchmill/skills/landing",
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: "merged",
+    branch: "agent/issue-42-local-skills",
+    mergeCommit: "merge456",
+    commits: ["commit456"],
+    validation: ["npm test"],
+    reviewSummary: undefined,
+    landingDecision: undefined,
+  });
 });

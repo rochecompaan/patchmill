@@ -156,6 +156,36 @@ test("runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failu
   );
 });
 
+test("runPiPrompt passes configured skill files before the prompt argument", async () => {
+  const runner = createMockRunner(async (call) => {
+    assert.equal(call.command, "pi");
+    assert.deepEqual(call.args.slice(0, 7), [
+      "-e",
+      call.args[1],
+      "--skill",
+      "/repo/.patchmill/skills/writing-plans/SKILL.md",
+      "--skill",
+      "/repo/.patchmill/skills/review/SKILL.md",
+      "-p",
+    ]);
+    assert.match(call.args[1] ?? "", /node_modules\/pi-subagents$/);
+    assert.equal(call.args[7]?.startsWith("@"), true);
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    skillPaths: [
+      "/repo/.patchmill/skills/writing-plans/SKILL.md",
+      "/repo/.patchmill/skills/review/SKILL.md",
+    ],
+  });
+});
+
 test("runPiPrompt logs pi stdout and stderr chunks", async () => {
   const events: AgentIssueProgressEvent[] = [];
   const runner = createStaticCommandRunner([

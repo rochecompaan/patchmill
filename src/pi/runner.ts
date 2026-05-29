@@ -12,6 +12,7 @@ import type {
   PiPromptContracts,
   PlanPiInput,
 } from "./types.ts";
+import { skillInvocationPaths } from "../workflow/skills.ts";
 
 function defaultImplementationPolicy(
   baseBranch: string,
@@ -47,6 +48,10 @@ export class PiRunner implements PiPromptContracts {
       {
         ...input.runOptions,
         stage: "pi-plan",
+        skillPaths: skillInvocationPaths(
+          [input.skills?.planning],
+          input.repoRoot,
+        ),
         issueNumber: input.issue.number,
         repoRoot: input.repoRoot,
         taskContract: projectPolicy.pi.taskContract,
@@ -75,6 +80,16 @@ export class PiRunner implements PiPromptContracts {
       {
         ...input.runOptions,
         stage: "pi-implementation",
+        skillPaths: skillInvocationPaths(
+          [
+            input.skills?.toolchain,
+            input.skills?.implementation,
+            input.skills?.review,
+            input.skills?.visualEvidence,
+            input.skills?.landing,
+          ],
+          input.repoRoot,
+        ),
         issueNumber: input.issue.number,
         repoRoot: worktreeRoot,
         taskContract: projectPolicy.pi.taskContract,

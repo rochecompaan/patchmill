@@ -8,6 +8,11 @@ import {
   mergeSkillsConfig,
   renderConfiguredSkillLine,
   bundledTriageSkillPath,
+  isNamespaceStyleSkill,
+  isPathLikeSkill,
+  resolvePathLikeSkillPath,
+  skillInvocationArgs,
+  skillInvocationPaths,
 } from "./skills.ts";
 import type { PartialPatchmillSkillsConfig } from "./skills.ts";
 
@@ -63,6 +68,96 @@ test("bundledTriageSkillPath points at the bundled SKILL.md file", () => {
     bundledTriageSkillPath().endsWith(
       join("skills", "patchmill-issue-triage", "SKILL.md"),
     ),
+  );
+});
+
+test("isNamespaceStyleSkill recognizes namespace-style skills only", () => {
+  assert.equal(isNamespaceStyleSkill("superpowers:writing-plans"), true);
+  assert.equal(isNamespaceStyleSkill("writing-plans"), false);
+  assert.equal(isNamespaceStyleSkill("C:\\repo\\skills\\writing-plans"), false);
+});
+
+test("isPathLikeSkill recognizes relative and absolute local skill paths", () => {
+  assert.equal(isPathLikeSkill(".patchmill/skills/writing-plans"), true);
+  assert.equal(isPathLikeSkill("skills\\writing-plans"), true);
+  assert.equal(isPathLikeSkill("/repo/skills/writing-plans"), true);
+  assert.equal(isPathLikeSkill("C:\\repo\\skills\\writing-plans"), true);
+  assert.equal(isPathLikeSkill("superpowers:writing-plans"), false);
+  assert.equal(isPathLikeSkill("writing-plans"), false);
+});
+
+test("skillInvocationArgs resolves bundled, local, and named skills", () => {
+  assert.deepEqual(skillInvocationArgs(undefined, "/repo"), []);
+  assert.deepEqual(skillInvocationArgs("writing-plans", "/repo"), []);
+  assert.deepEqual(skillInvocationArgs("patchmill-issue-triage", "/repo"), [
+    "--skill",
+    bundledTriageSkillPath(),
+  ]);
+  assert.deepEqual(
+    skillInvocationArgs(".patchmill/skills/writing-plans", "/repo"),
+    ["--skill", "/repo/.patchmill/skills/writing-plans/SKILL.md"],
+  );
+  assert.deepEqual(skillInvocationArgs("skills\\writing-plans", "/repo"), [
+    "--skill",
+    "/repo/skills/writing-plans/SKILL.md",
+  ]);
+  assert.deepEqual(skillInvocationArgs("/repo/skills/writing-plans", "/repo"), [
+    "--skill",
+    "/repo/skills/writing-plans/SKILL.md",
+  ]);
+  assert.deepEqual(
+    skillInvocationArgs("C:\\repo\\skills\\writing-plans", "/repo"),
+    ["--skill", "C:\\repo\\skills\\writing-plans\\SKILL.md"],
+  );
+  assert.deepEqual(
+    skillInvocationArgs("./skills/writing-plans/SKILL.md", "/repo"),
+    ["--skill", "/repo/skills/writing-plans/SKILL.md"],
+  );
+  assert.deepEqual(
+    skillInvocationArgs("/repo/skills/writing-plans/SKILL.md", "/repo"),
+    ["--skill", "/repo/skills/writing-plans/SKILL.md"],
+  );
+  assert.deepEqual(
+    skillInvocationArgs("C:\\repo\\skills\\writing-plans\\SKILL.md", "/repo"),
+    ["--skill", "C:\\repo\\skills\\writing-plans\\SKILL.md"],
+  );
+});
+
+test("resolvePathLikeSkillPath preserves configured SKILL.md file paths", () => {
+  assert.equal(
+    resolvePathLikeSkillPath("./skills/writing-plans/SKILL.md", "/repo"),
+    "/repo/skills/writing-plans/SKILL.md",
+  );
+  assert.equal(
+    resolvePathLikeSkillPath("/repo/skills/writing-plans/SKILL.md", "/repo"),
+    "/repo/skills/writing-plans/SKILL.md",
+  );
+  assert.equal(
+    resolvePathLikeSkillPath(
+      "C:\\repo\\skills\\writing-plans\\SKILL.md",
+      "/repo",
+    ),
+    "C:\\repo\\skills\\writing-plans\\SKILL.md",
+  );
+});
+
+test("skillInvocationPaths keeps only invokable skill paths in order", () => {
+  assert.deepEqual(
+    skillInvocationPaths(
+      [
+        ".patchmill/skills/writing-plans",
+        "superpowers:writing-plans",
+        undefined,
+        "patchmill-issue-triage",
+        "skills\\implementation",
+      ],
+      "/repo",
+    ),
+    [
+      "/repo/.patchmill/skills/writing-plans/SKILL.md",
+      bundledTriageSkillPath(),
+      "/repo/skills/implementation/SKILL.md",
+    ],
   );
 });
 

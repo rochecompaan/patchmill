@@ -318,6 +318,41 @@ test("runDoctorChecks fails when a configured path-like skill is missing", async
   assert.match(skills?.message ?? "", /configured path unreadable/);
 });
 
+test("runDoctorChecks resolves configured skill directories to their SKILL.md target", async () => {
+  const repoRoot = await tempRepo();
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      host: { provider: "forgejo-tea", login: "triage-agent" },
+      skills: {
+        planning: "./skills/project-planning",
+      },
+    }),
+  );
+  await mkdir(join(repoRoot, "skills", "project-planning"), {
+    recursive: true,
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(successMocks());
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /planning: `\.\/skills\/project-planning`/,
+  );
+  assert.match(
+    skills?.message ?? "",
+    /configured path unreadable at .*skills\/project-planning\/SKILL\.md/,
+  );
+});
+
 test("runDoctorChecks never invokes known mutating host commands", async () => {
   const repoRoot = await tempRepo();
   await writeFile(

@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
@@ -15,6 +15,8 @@ import {
   DEFAULT_PATCHMILL_SKILLS,
   PATCHMILL_SKILL_KEYS,
   bundledTriageSkillPath,
+  isPathLikeSkill,
+  resolvePathLikeSkillPath,
 } from "../../../workflow/skills.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
@@ -182,27 +184,6 @@ async function checkPiProvider(
   ]);
 }
 
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
-const SKILL_NAMESPACE_PATTERN = /^[a-z0-9-]+:.+$/iu;
-
-function isNamespaceStyleSkill(skill: string): boolean {
-  return (
-    SKILL_NAMESPACE_PATTERN.test(skill) &&
-    !WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
-  );
-}
-
-function isPathLikeSkill(skill: string): boolean {
-  if (
-    skill.startsWith(".") ||
-    skill.startsWith("/") ||
-    WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
-  ) {
-    return true;
-  }
-  return /[\\/]/u.test(skill) && !isNamespaceStyleSkill(skill);
-}
-
 async function checkReadableSkillTarget(path: string): Promise<boolean> {
   try {
     const pathStat = await stat(path);
@@ -247,9 +228,7 @@ async function checkSkills(
         };
       }
 
-      const resolvedPath = WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
-        ? skill
-        : resolve(repoRoot, skill);
+      const resolvedPath = resolvePathLikeSkillPath(skill, repoRoot);
       return (await checkReadableSkillTarget(resolvedPath))
         ? {
             status: "pass" as const,

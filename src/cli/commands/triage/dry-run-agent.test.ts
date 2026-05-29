@@ -273,3 +273,25 @@ test("runTriageDryRunAgent does not add bundled triage skill for custom skills",
   const call = runner.calls[0]!;
   assert.equal(call.args.includes("--skill"), false);
 });
+
+test("runTriageDryRunAgent resolves configured local triage skill paths", async () => {
+  const runner = new RecordingRunner();
+
+  await runTriageDryRunAgent(runner, "/repo", {
+    issues,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      triage: ".patchmill/skills/triage-local",
+    },
+    stateMap,
+  });
+
+  const call = runner.calls[0]!;
+  const skillIndex = call.args.indexOf("--skill");
+  assert.notEqual(skillIndex, -1);
+  assert.equal(
+    call.args[skillIndex + 1],
+    "/repo/.patchmill/skills/triage-local/SKILL.md",
+  );
+});
