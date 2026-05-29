@@ -9,7 +9,8 @@
       "version": "0.1.0",
       "license": "MIT",
       "dependencies": {
-        "pi-subagents": "^0.25.0"
+        "pi-subagents": "^0.25.0",
+        "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz"
       },
       "bin": {
         "patchmill": "bin/patchmill.ts"
@@ -2826,6 +2827,11 @@
       "funding": {
         "url": "https://github.com/chalk/strip-ansi?sponsor=1"
       }
+    },
+    "node_modules/superpowers": {
+      "version": "5.0.7",
+      "resolved": "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
+      "integrity": "sha512-xGb/ZAZjyimxdRzR26KLzMz4IwIzsVSg9appLnbpCuZlVbtiu2YUBZiaxuB9G8oqGamkY71Zbxut2L2mf/RVNw=="
     },
     "node_modules/tinyexec": {
       "version": "1.2.2",
