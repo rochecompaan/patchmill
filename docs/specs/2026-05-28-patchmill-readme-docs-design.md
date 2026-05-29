@@ -19,7 +19,7 @@ planning, implementation, review, landing, and iteration.
 - Make supported issue hosts and provider values explicit near
   first-use/configuration content.
 - Briefly explain extensibility concepts that appear in the README, especially
-  skills, subagents, and chain files.
+  skills and subagent roles.
 - Keep current terminology for `doctor` and `triage`, but explain them through
   practical CLI meaning rather than relying on metaphor.
 - Record future documentation work for cost/token control, greenfield workflows,
@@ -63,7 +63,7 @@ Update existing docs only where they clarify first understanding:
   user-facing framing around product-work stations rather than making Pi the
   first concept.
 - `docs/skills.md`: continue to explain customization, including where Pi,
-  skills, subagents, and chain files fit.
+  skills, and subagent roles fit.
 
 ## Future Docs Captured as Todos
 

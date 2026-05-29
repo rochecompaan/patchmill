@@ -38,7 +38,7 @@ Forgejo/Gitea through `tea` (`forgejo-tea`) and GitHub through `gh`
 
 - [ ] **Step 3: Move runtime/customization concepts later**
 
-Keep Pi, subagents, skills, and chain files in later customization/extensibility
+Keep Pi, subagent roles, and skills in later customization/extensibility
 sections, not the README first impression.
 
 ## Task 2: Align supporting docs
@@ -58,8 +58,7 @@ Ensure `docs/configuration.md` and `docs/providers.md` plainly list accepted
 - [ ] **Step 2: Clarify extensibility vocabulary**
 
 In `docs/skills.md`, add a short explanation that skills are reusable workflow
-instructions, subagents are delegated implementation/review roles, and chain
-files define reusable multi-agent sequences.
+instructions and subagents are delegated implementation/review roles.
 
 - [ ] **Step 3: Improve workflow framing**
 

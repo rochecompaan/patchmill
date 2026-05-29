@@ -9,8 +9,6 @@ A few terms appear throughout this page:
   team wants a stage handled.
 - **Subagents** are delegated agent roles, such as workers, reviewers, scouts,
   or planners, used during implementation and review.
-- **Chain files** define reusable multi-agent sequences, such as a planner step
-  followed by parallel worker and reviewer passes.
 
 ## Core contracts kept in Patchmill
 
@@ -48,9 +46,10 @@ subagent workflow instructions into skills. For todos, only the removed freeform
 skills; task naming, tagging, body requirements, and done-status behavior stay
 in `projectPolicy.pi.taskContract`.
 
-Subagent workflows run through bundled `pi-subagents`. Patchmill does not define
-models or tools for `worker` and `reviewer`; pi-subagents builtin agents, user
-overrides, and project agent files control that behavior.
+Subagent execution runs through bundled `pi-subagents`. Patchmill controls the
+production workflow around those delegated roles, while pi-subagents builtin
+agents, user overrides, and project agent files control role behavior such as
+models, tools, and context.
 
 Supported keys:
 

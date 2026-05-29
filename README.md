@@ -134,8 +134,8 @@ CLI flags override environment variables, and environment variables override
 
 Patchmill uses Pi as the runtime harness for configurable agent work. Most users
 start by configuring issue hosts, labels, paths, and skills; Pi becomes relevant
-when you want to customize the runtime, agent delegation, models, tools, context
-behavior, or reusable multi-agent workflows.
+when you want to customize the runtime, delegated agent roles, models, tools, or
+context behavior.
 
 Patchmill includes `pi-subagents`; users do not install it separately.
 Implementation prompts can rely on the Pi `subagent` tool and the agents
@@ -148,12 +148,6 @@ Agent files define reusable delegated roles and can live in:
 
 - `~/.pi/agent/agents/**/*.md` for user-scope agents
 - `.pi/agents/**/*.md` for project-scope agents
-
-Chain files define reusable multi-agent sequences, such as a planning step
-followed by parallel worker/reviewer passes. They can live in:
-
-- `~/.pi/agent/chains/**/*.chain.md`
-- `.pi/chains/**/*.chain.md`
 
 Settings overrides can live in `~/.pi/agent/settings.json` or
 `.pi/settings.json`. For example:

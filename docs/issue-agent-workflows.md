@@ -123,7 +123,7 @@ Source files:
 - Pipeline: `src/cli/commands/run-once/pipeline.ts`
 - Prompt builders: `src/cli/commands/run-once/prompts.ts`
 - Pi runner/result parser: `src/cli/commands/run-once/pi.ts`
-- Subagent support: bundled pi-subagents and implementation prompt guidance
+- Subagent support: bundled runtime support and implementation prompt guidance
 - Issue selection: `src/cli/commands/run-once/selection.ts`
 - Progress/logging: `src/cli/commands/run-once/progress.ts`,
   `src/cli/commands/run-once/console-progress.ts`
@@ -158,7 +158,7 @@ flowchart TD
   P --> R{Plan-only or approval required?}
   P2 --> R
   R -->|yes| R1[Comment plan ready, restore ready label, finish]
-  R -->|no| S[Render pi-subagents support guidance]
+  R -->|no| S[Render subagent support guidance]
   S --> T[Ensure issue worktree and branch]
   T --> U[Run Pi implementation prompt in worktree]
   U --> V{Pi result}
@@ -252,8 +252,7 @@ asks Pi to implement from the issue worktree. The prompt includes:
 
 - issue data, labels, plan path, branch, and worktree path;
 - the untrusted issue-content boundary;
-- pi-subagents support guidance for delegated implementation and review
-  workflows;
+- subagent support guidance for delegated implementation and review roles;
 - resume context, when continuing an existing run;
 - issue body and relevant comments;
 - required project context-file instructions;
@@ -268,16 +267,13 @@ asks Pi to implement from the issue worktree. The prompt includes:
 - visual evidence requirements;
 - direct-land versus PR fallback policy.
 
-The prompt includes pi-subagents support guidance for delegated implementation
-and review workflows. It tells Pi that Patchmill bundles `pi-subagents`, that
-implementation prompts may rely on the Pi `subagent` tool, and that agent,
-chain, and settings discovery follows normal pi-subagents user and project
-locations:
+The prompt includes subagent support guidance for delegated implementation and
+review roles. It tells Pi that Patchmill bundles `pi-subagents`, that
+implementation prompts may rely on the Pi `subagent` tool, and that agent and
+settings discovery follows normal pi-subagents user and project locations:
 
 - `~/.pi/agent/agents/**/*.md`
 - `.pi/agents/**/*.md`
-- `~/.pi/agent/chains/**/*.chain.md`
-- `.pi/chains/**/*.chain.md`
 - `~/.pi/agent/settings.json`
 - `.pi/settings.json`
 
@@ -301,10 +297,10 @@ separately:
 - `Use the configured landing skill for the direct-land versus PR decision: <skills.landing>.`
 
 Patchmill does not hard-code the individual worker/reviewer task prompts in this
-repository. Instead, the implementation Pi session follows the configured skill
-lines and any pi-subagents behavior they direct. Composite behavior belongs in
-the configured skills. Patchmill observes those subagent tool calls through the
-Pi session stream and records concise progress events.
+repository. Instead, Patchmill controls the production workflow and the
+implementation Pi session follows the configured skill lines plus any delegated
+agent behavior they direct. Patchmill observes those subagent tool calls through
+the Pi session stream and records concise progress events.
 
 The implementation prompt accepts these final statuses:
 

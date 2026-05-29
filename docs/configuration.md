@@ -211,11 +211,10 @@ Patchmill defaults them to:
 Patchmill bundles `pi-subagents`, and `skills.implementation` defaults to
 `superpowers:subagent-driven-development`.
 
-Customize subagents through pi-subagents configuration rather than
-`patchmill.config.json`:
+Customize subagent roles and runtime settings through pi-subagents configuration
+rather than `patchmill.config.json`:
 
 - `.pi/agents/**/*.md`
-- `.pi/chains/**/*.chain.md`
 - `.pi/settings.json`
 
 Optional skill keys let a repository add procedure at specific workflow stages:
