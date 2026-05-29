@@ -6,22 +6,40 @@
   </picture>
 </p>
 
-Patchmill is an agent-driven software factory where humans and agents
-collaborate through intentional, understandable patches—preserving software
-craftsmanship while making iterative engineering feel industrial and scalable.
+Patchmill is an agent-driven software factory for turning product work into
+reviewed, landed changes without hiding the engineering judgment between idea
+and production.
+
+It gives automated development an explicit production line: intake incoming
+work, sort what is ready, write or reuse a plan, implement in an isolated
+worktree, review the result, collect evidence when needed, land the change, and
+record what happened. The goal is not a black box that writes code for you; it
+is a factory floor where every station is visible, configurable, and designed to
+preserve software craftsmanship while making iterative engineering scalable.
 
 ## What Patchmill does
 
-Patchmill connects issue trackers, Pi agents, repository policy, and git
-worktrees so a repository can move from open issues to reviewed diffs with clear
-handoffs.
+Patchmill connects an issue host, repository policy, git worktrees, and
+configurable workflow instructions so a repository can move from open product
+work to reviewed diffs with clear handoffs.
 
-The two main workflows are:
+The two main workflow stations are:
 
-- `patchmill triage` classifies open issues and can apply readiness
-  labels/comments.
-- `patchmill run-once` claims one ready issue, plans the work, runs
-  implementation, reviews/lands the result, and records the outcome.
+- `patchmill triage` is the intake/sorting station. It classifies open issues
+  and can apply readiness labels or comments.
+- `patchmill run-once` is the one-issue production run. It claims one ready
+  issue, creates or reuses a plan, runs implementation, reviews or lands the
+  result, and records the outcome.
+
+Planned: `patchmill run` will start the factory loop. It will keep selecting the
+next ready issue and running the same controlled production process until there
+is no eligible work left, a configured issue/budget limit is reached, or a
+blocker requires human input.
+
+The controls stay close to the work: labels decide what is ready, dry runs show
+what Patchmill would do before it mutates the issue host, plans make scope
+reviewable, run logs preserve progress, and repository skills let teams encode
+their own process.
 
 `patchmill triage` executes the configured triage skill by default and reports
 what changed. Use `patchmill triage --dry-run` to preview the labels, comments,
@@ -45,12 +63,11 @@ patchmill run-once --dry-run
 patchmill run-once --execute
 ```
 
-`patchmill init` writes a minimal local `patchmill.config.json`, reminds you how
-to change the default host login, and, when Pi provider setup is not apparent,
-can open Pi so you can run `/login` or prints install guidance if Pi is not
-available. `patchmill doctor` is read-only: it checks git, host access, labels,
-Pi, configured skills, and local paths, verifying bundled/path-like skills and
-flagging name-only skills as unverified before recommending dry runs.
+`patchmill init` writes a minimal local `patchmill.config.json` and reminds you
+how to change the default host login. `patchmill doctor` is read-only: it checks
+git, host access, labels, configured skills, runtime access, and local paths,
+verifying bundled/path-like skills and flagging name-only skills as unverified
+before recommending dry runs.
 
 ## Configuration
 
@@ -63,9 +80,6 @@ workflow looks like this:
   "host": {
     "provider": "forgejo-tea",
     "login": "triage-agent"
-  },
-  "pi": {
-    "triageThinking": "high"
   },
   "skills": {
     "triage": "patchmill-issue-triage",
@@ -90,19 +104,14 @@ The default skills keep the workflow small and explicit:
 - `superpowers:subagent-driven-development` executes approved plans with
   worker/reviewer handoffs.
 
+Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
+`tea` and `github-gh` for GitHub through `gh`.
+
 Customize `skills` when your repository needs different procedures. Optional
 skill hooks include `toolchain`, `review`, `visualEvidence`, and `landing`; see
 [skills configuration](docs/skills.md) for details and
 [configuration examples](docs/configuration.md) for a fuller
 `patchmill.config.json`.
-
-Patchmill bundles `pi-subagents` for implementation delegation. The default
-implementation skill, `superpowers:subagent-driven-development`, can use
-pi-subagents builtin agents such as `worker`, `reviewer`, `scout`, `planner`,
-`context-builder`, `researcher`, `delegate`, and `oracle`. Customize those
-agents with normal pi-subagents user or project configuration when your
-repository needs different models, tools, context behavior, or nested
-delegation.
 
 ## Environment variables
 
@@ -121,21 +130,24 @@ upload credentials that should not live in `patchmill.config.json`.
 CLI flags override environment variables, and environment variables override
 `patchmill.config.json`.
 
-## Subagents
+## Runtime and subagent customization
+
+Patchmill uses Pi as the runtime harness for configurable agent work. Most users
+start by configuring issue hosts, labels, paths, and skills; Pi becomes relevant
+when you want to customize the runtime, delegated agent roles, models, tools, or
+context behavior.
 
 Patchmill includes `pi-subagents`; users do not install it separately.
 Implementation prompts can rely on the Pi `subagent` tool and the agents
-discovered by pi-subagents.
+discovered by pi-subagents. The default implementation skill,
+`superpowers:subagent-driven-development`, can use pi-subagents builtin agents
+such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
+`researcher`, `delegate`, and `oracle`.
 
-Agent files can live in:
+Agent files define reusable delegated roles and can live in:
 
 - `~/.pi/agent/agents/**/*.md` for user-scope agents
 - `.pi/agents/**/*.md` for project-scope agents
-
-Chain files can live in:
-
-- `~/.pi/agent/chains/**/*.chain.md`
-- `.pi/chains/**/*.chain.md`
 
 Settings overrides can live in `~/.pi/agent/settings.json` or
 `.pi/settings.json`. For example:
@@ -171,9 +183,11 @@ Follow this repository's implementation conventions. Escalate unclear product or
 architecture decisions instead of guessing.
 ```
 
-If you want a child agent to delegate further, include the `subagent` tool in
-that agent's tools and configure nesting/depth through pi-subagents settings.
-Patchmill does not override those user choices.
+Customize agents with normal pi-subagents user or project configuration when
+your repository needs different models, tools, context behavior, or nested
+delegation. If you want a child agent to delegate further, include the
+`subagent` tool in that agent's tools and configure nesting/depth through
+pi-subagents settings. Patchmill does not override those user choices.
 
 ## State paths
 
@@ -187,8 +201,8 @@ These paths are local workflow state, not source documentation.
 ## Issue-agent workflows
 
 For a deeper newcomer-friendly walkthrough,
-[issue-agent workflows](docs/issue-agent-workflows.md) explains how triage
-selects and labels issues, how `run-once` claims work, how Pi planning and
+[issue-agent workflows](docs/issue-agent-workflows.md) explains how the intake
+station selects and labels issues, how `run-once` claims work, how planning and
 implementation prompts are shaped, and where Patchmill records progress and
 safety checkpoints.
 

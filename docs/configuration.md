@@ -19,6 +19,9 @@ Patchmill fills omitted labels, paths, skills, and git policy from defaults, and
 the command output reminds you that you can later change the login in
 `patchmill.config.json` (`host.login`) or with `PATCHMILL_HOST_LOGIN`.
 
+Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
+`tea` and `github-gh` for GitHub through `gh`.
+
 Run `patchmill doctor` after initialization to validate the config and local
 toolchain before dry runs.
 
@@ -135,9 +138,13 @@ pieces your repository needs.
 
 ## Host providers
 
-The default host provider is `forgejo-tea`, which uses Forgejo/Gitea through
-`tea` and supports named logins via `host.login`, `--host-login`, and
-`PATCHMILL_HOST_LOGIN`.
+`host.provider` must be one of:
+
+- `forgejo-tea`: Forgejo/Gitea through `tea`.
+- `github-gh`: GitHub through `gh`.
+
+The default host provider is `forgejo-tea`, which supports named logins via
+`host.login`, `--host-login`, and `PATCHMILL_HOST_LOGIN`.
 
 For GitHub through `gh`, configure the host like this:
 
@@ -204,11 +211,10 @@ Patchmill defaults them to:
 Patchmill bundles `pi-subagents`, and `skills.implementation` defaults to
 `superpowers:subagent-driven-development`.
 
-Customize subagents through pi-subagents configuration rather than
-`patchmill.config.json`:
+Customize subagent roles and runtime settings through pi-subagents configuration
+rather than `patchmill.config.json`:
 
 - `.pi/agents/**/*.md`
-- `.pi/chains/**/*.chain.md`
 - `.pi/settings.json`
 
 Optional skill keys let a repository add procedure at specific workflow stages:
