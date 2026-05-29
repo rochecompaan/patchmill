@@ -63,11 +63,26 @@ patchmill run-once --dry-run
 patchmill run-once --execute
 ```
 
-`patchmill init` writes a minimal local `patchmill.config.json` and reminds you
-how to change the default host login. `patchmill doctor` is read-only: it checks
-git, host access, labels, configured skills, runtime access, and local paths,
-verifying bundled/path-like skills and flagging name-only skills as unverified
-before recommending dry runs.
+`patchmill init` writes a minimal local `patchmill.config.json`, reminds you to
+change the default host login, and installs Patchmill's recommended skills into
+`.patchmill/skills/` by default so triage, planning, implementation, and
+review/validation behavior are sourced from your repository. Those files should
+be committed because they govern triage, planning, implementation, and
+review/validation behavior.
+
+Alternative initialization modes:
+
+```sh
+patchmill init --skills project
+patchmill init --skills global
+patchmill init --skills none
+patchmill init --skills path:project-skills
+```
+
+`patchmill doctor` is read-only: it checks git, host access, labels, configured
+skills, runtime access, and local paths, verifying bundled/path-like skills and
+flagging name-only skills as configured but unverified before recommending dry
+runs.
 
 ## Configuration
 
@@ -82,9 +97,9 @@ workflow looks like this:
     "login": "triage-agent"
   },
   "skills": {
-    "triage": "patchmill-issue-triage",
-    "planning": "superpowers:writing-plans",
-    "implementation": "superpowers:subagent-driven-development"
+    "triage": ".patchmill/skills/patchmill-issue-triage",
+    "planning": ".patchmill/skills/writing-plans",
+    "implementation": ".patchmill/skills/subagent-driven-development"
   },
   "paths": {
     "plansDir": "docs/plans",
@@ -97,11 +112,12 @@ workflow looks like this:
 
 The default skills keep the workflow small and explicit:
 
-- `patchmill-issue-triage` is the bundled default triage skill; normal triage
-  runs it (or your configured replacement) and reports observed changes, while
-  `--dry-run` uses a read-only preview JSON pass.
-- `superpowers:writing-plans` writes implementation plans before code changes.
-- `superpowers:subagent-driven-development` executes approved plans with
+- `.patchmill/skills/patchmill-issue-triage` is the default triage skill; normal
+  triage runs it (or your configured replacement) and reports observed changes,
+  while `--dry-run` uses a read-only preview JSON pass.
+- `.patchmill/skills/writing-plans` writes implementation plans before code
+  changes.
+- `.patchmill/skills/subagent-driven-development` executes approved plans with
   worker/reviewer handoffs.
 
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
@@ -139,10 +155,12 @@ context behavior.
 
 Patchmill includes `pi-subagents`; users do not install it separately.
 Implementation prompts can rely on the Pi `subagent` tool and the agents
-discovered by pi-subagents. The default implementation skill,
-`superpowers:subagent-driven-development`, can use pi-subagents builtin agents
-such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
-`researcher`, `delegate`, and `oracle`.
+discovered by pi-subagents. For initialized repositories, the default
+implementation skill is `.patchmill/skills/subagent-driven-development`; legacy
+setups without project-local defaults fall back to the built-in compatibility
+skill `superpowers:subagent-driven-development`, and both can use pi-subagents
+builtin agents such as `worker`, `reviewer`, `scout`, `planner`,
+`context-builder`, `researcher`, `delegate`, and `oracle`.
 
 Agent files define reusable delegated roles and can live in:
 

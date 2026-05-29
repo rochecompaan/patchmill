@@ -19,9 +19,12 @@ patchmill doctor
 ```
 
 `doctor` is read-only and verifies repository, host, label, Pi provider,
-configured skills, and path readiness before the existing `triage --dry-run` and
-`run-once` dry-run flows. It verifies bundled/path-like skills and flags
-name-only skills as configured but unverified.
+configured local skills, and path readiness before the existing
+`triage --dry-run` and `run-once` dry-run flows. For project-local defaults, it
+asks Pi to load the project-local skill pack. `doctor` verifies
+bundled/path-like skills, flags name-only skills as configured but unverified,
+and fails when required skill paths are missing or malformed. It also checks
+that `.patchmill/skills/` is not ignored by git.
 
 See also [skills configuration](skills.md) for repository-configurable skill
 selection at each workflow stage.
@@ -205,8 +208,9 @@ The plan prompt includes:
 - project context-file instructions;
 - instruction that the ready label means the issue is already clear enough to
   plan;
-- required use of configured `skills.planning`; the default is
-  `superpowers:writing-plans`;
+- required use of configured `skills.planning`; initialized repositories default
+  to `.patchmill/skills/writing-plans`, while legacy/no-override compatibility
+  defaults fall back to `superpowers:writing-plans`;
 - whether to stop for manual plan approval;
 - the project task-contract instructions for one todo per implementation-plan
   task;
@@ -257,8 +261,9 @@ asks Pi to implement from the issue worktree. The prompt includes:
 - issue body and relevant comments;
 - required project context-file instructions;
 - the implementation task-contract instructions;
-- the configured `skills.implementation` line; the default skill is
-  `superpowers:subagent-driven-development`;
+- the configured `skills.implementation` line; initialized repositories default
+  to `.patchmill/skills/subagent-driven-development`, while legacy compatibility
+  defaults use `superpowers:subagent-driven-development`;
 - when configured, separate lines for `skills.toolchain`, `skills.review`,
   `skills.visualEvidence`, and `skills.landing`;
 - Conventional Commit expectations;
@@ -284,9 +289,9 @@ It always renders:
 
 - `Use the configured implementation skill: <skills.implementation>.`
 
-By default, `skills.implementation` is
-`superpowers:subagent-driven-development`, so the required workflow names that
-skill unless repository config overrides it.
+For initialized repositories, `skills.implementation` is set to the project path
+`.patchmill/skills/subagent-driven-development`; legacy/no-override configs use
+the built-in compatibility default `superpowers:subagent-driven-development`.
 
 When present, the prompt renders these additional configured skill lines
 separately:

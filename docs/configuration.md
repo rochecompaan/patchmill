@@ -14,10 +14,11 @@ Precedence is:
 ## Creating the initial config
 
 Use `patchmill init` to create the smallest useful `patchmill.config.json` for a
-repository. The generated file usually only needs the host provider and login;
-Patchmill fills omitted labels, paths, skills, and git policy from defaults, and
-the command output reminds you that you can later change the login in
-`patchmill.config.json` (`host.login`) or with `PATCHMILL_HOST_LOGIN`.
+repository. By default, init writes host fields and project-local skill mappings
+for required stages (`triage`, `planning`, and `implementation`); Patchmill
+fills omitted labels, paths, and git policy from defaults. The command output
+reminds you that you can later change the login in `patchmill.config.json`
+(`host.login`) or with `PATCHMILL_HOST_LOGIN`.
 
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
 `tea` and `github-gh` for GitHub through `gh`.
@@ -62,9 +63,9 @@ pieces your repository needs.
     }
   },
   "skills": {
-    "triage": "patchmill-issue-triage",
-    "planning": "superpowers:writing-plans",
-    "implementation": "superpowers:subagent-driven-development",
+    "triage": ".patchmill/skills/patchmill-issue-triage",
+    "planning": ".patchmill/skills/writing-plans",
+    "implementation": ".patchmill/skills/subagent-driven-development",
     "toolchain": "project-toolchain",
     "review": "project-review",
     "visualEvidence": "capturing-proof-screenshots",
@@ -199,8 +200,21 @@ process shutdown.
 
 ## Skills
 
-The required skill keys are `triage`, `planning`, and `implementation`.
-Patchmill defaults them to:
+The required skill keys are `triage`, `planning`, and `implementation`. For new
+repositories, `patchmill init` defaults them to:
+
+```json
+{
+  "skills": {
+    "triage": ".patchmill/skills/patchmill-issue-triage",
+    "planning": ".patchmill/skills/writing-plans",
+    "implementation": ".patchmill/skills/subagent-driven-development"
+  }
+}
+```
+
+Older repos and no config overrides still use the built-in defaults for
+compatibility:
 
 - `patchmill-issue-triage`
 - `superpowers:writing-plans`
@@ -208,7 +222,9 @@ Patchmill defaults them to:
 
 ### Subagents
 
-Patchmill bundles `pi-subagents`, and `skills.implementation` defaults to
+Patchmill bundles `pi-subagents`; initialized repositories set
+`skills.implementation` to `.patchmill/skills/subagent-driven-development`.
+Legacy repos with no init override use the built-in compatibility default
 `superpowers:subagent-driven-development`.
 
 Customize subagent roles and runtime settings through pi-subagents configuration
