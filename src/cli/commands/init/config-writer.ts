@@ -6,7 +6,7 @@ import type { PatchmillConfig } from "../../../config/types.ts";
 
 export const CONFIG_FILE_NAME = "patchmill.config.json";
 
-type InitialConfigSkills = Pick<
+export type InitialConfigSkills = Pick<
   PatchmillConfig["skills"],
   "triage" | "planning" | "implementation"
 >;
@@ -71,6 +71,10 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+export async function configFileExists(repoRoot: string): Promise<boolean> {
+  return fileExists(join(repoRoot, CONFIG_FILE_NAME));
+}
+
 async function originRemoteUrl(repoRoot: string): Promise<string | undefined> {
   try {
     const config = await readFile(join(repoRoot, ".git", "config"), "utf8");
@@ -100,7 +104,7 @@ export async function writeInitialConfig(
   },
 ): Promise<InitWriteResult> {
   const path = join(repoRoot, CONFIG_FILE_NAME);
-  if (await fileExists(path)) return { status: "exists", path };
+  if (await configFileExists(repoRoot)) return { status: "exists", path };
 
   const provider = inferHostProviderFromRemote(await originRemoteUrl(repoRoot));
   const config = buildInitialConfig({

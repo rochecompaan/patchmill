@@ -6,6 +6,7 @@ import { test } from "node:test";
 import {
   CONFIG_FILE_NAME,
   buildInitialConfig,
+  configFileExists,
   inferHostProviderFromRemote,
   writeInitialConfig,
 } from "./config-writer.ts";
@@ -137,6 +138,16 @@ test("writeInitialConfig refuses to overwrite existing config", async () => {
     await readFile(join(repoRoot, CONFIG_FILE_NAME), "utf8"),
     "{}\n",
   );
+});
+
+test("configFileExists reports whether patchmill config is present", async () => {
+  const repoRoot = await tempRepo();
+
+  assert.equal(await configFileExists(repoRoot), false);
+
+  await writeFile(join(repoRoot, CONFIG_FILE_NAME), "{}\n");
+
+  assert.equal(await configFileExists(repoRoot), true);
 });
 
 test("writeInitialConfig reads origin remote from git config when present", async () => {
