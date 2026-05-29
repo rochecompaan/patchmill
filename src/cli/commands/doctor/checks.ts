@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
-import { access, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { access, readFile, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, win32 } from "node:path";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
@@ -18,6 +18,13 @@ import {
   isPathLikeSkill,
   resolvePathLikeSkillPath,
 } from "../../../workflow/skills.ts";
+import {
+  DEFAULT_PROJECT_SKILL_DIR,
+  PATCHMILL_RECOMMENDED_SKILL_PACK,
+  SKILL_PACK_METADATA_FILE,
+  hashText,
+  type SkillPackMetadataFile,
+} from "../../../workflow/skill-pack.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -33,6 +40,18 @@ type DoctorOptions = {
   env?: Record<string, string | undefined>;
   teaRepoRootForTests?: string;
 };
+
+type SkillCheckEntry = {
+  status: DoctorCheckStatus;
+  summary: string;
+};
+
+type LocalSkillValidation = SkillCheckEntry & {
+  smokePath?: string;
+};
+
+const PROJECT_LOCAL_SKILLS_PROMPT =
+  "Reply with PATCHMILL_SKILLS_OK and nothing else.";
 
 function pass(name: string, message: string): DoctorCheckResult {
   return { name, status: "pass", message };
@@ -197,16 +216,392 @@ async function checkReadableSkillTarget(path: string): Promise<boolean> {
   }
 }
 
+function parseSkillFrontmatter(
+  text: string,
+): { name: string; description: string } | { error: string } {
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
+  if (!match) {
+    return { error: "missing frontmatter" };
+  }
+
+  const values = new Map<string, string>();
+  const continuationLines = new Map<string, string[]>();
+  let currentKey: string | undefined;
+  let currentValueAllowsContinuation = false;
+
+  for (const line of match[1].split(/\r?\n/u)) {
+    const trimmed = line.trim();
+
+    if (/^[^\s].*:/u.test(line)) {
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex === -1) {
+        currentKey = undefined;
+        currentValueAllowsContinuation = false;
+        continue;
+      }
+
+      const key = line.slice(0, separatorIndex).trim();
+      const value = line.slice(separatorIndex + 1).trim();
+      values.set(key, value);
+      continuationLines.set(key, []);
+      currentKey = key;
+      currentValueAllowsContinuation =
+        value.length === 0 || /^[>|]/u.test(value);
+      continue;
+    }
+
+    if (
+      currentKey &&
+      currentValueAllowsContinuation &&
+      (/^[ \t]/u.test(line) || trimmed.length === 0)
+    ) {
+      continuationLines.get(currentKey)?.push(trimmed);
+      continue;
+    }
+
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    currentKey = undefined;
+    currentValueAllowsContinuation = false;
+  }
+
+  for (const [key, value] of values) {
+    if (value.length > 0 && !/^[>|]/u.test(value)) continue;
+
+    const continuation = (continuationLines.get(key) ?? []).join("\n").trim();
+    values.set(key, continuation);
+  }
+
+  const missing = ["name", "description"].filter((key) => !values.get(key));
+  if (missing.length > 0) {
+    return { error: `missing ${missing.join(" and ")}` };
+  }
+
+  return {
+    name: values.get("name") ?? "",
+    description: values.get("description") ?? "",
+  };
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const pathRelative = relative(parent, child);
+  return (
+    pathRelative === "" ||
+    (!pathRelative.startsWith("..") && !isAbsolute(pathRelative))
+  );
+}
+
+function resolveProjectLocalMetadataFilePath(
+  filePath: string,
+  repoRoot: string,
+): string | null {
+  const normalizedPath = filePath.replaceAll("\\", "/");
+  if (isAbsolute(normalizedPath) || win32.isAbsolute(filePath)) {
+    return null;
+  }
+
+  if (!normalizedPath.startsWith(`${DEFAULT_PROJECT_SKILL_DIR}/`)) {
+    return null;
+  }
+
+  const projectLocalRoot = resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR);
+  const resolvedPath = resolve(repoRoot, normalizedPath);
+  return isPathInside(projectLocalRoot, resolvedPath) ? resolvedPath : null;
+}
+
+async function validateResolvedLocalSkill(
+  label: string,
+  configuredPath: string,
+  resolvedPath: string,
+  options: { projectLocalRoot: string },
+): Promise<LocalSkillValidation> {
+  try {
+    const pathStat = await stat(resolvedPath);
+    if (!pathStat.isFile()) {
+      return {
+        status: "fail",
+        summary: `${label}: \`${configuredPath}\` (configured path unreadable at ${resolvedPath})`,
+      };
+    }
+
+    await access(resolvedPath, constants.R_OK);
+    const content = await readFile(resolvedPath, "utf8");
+    const frontmatter = parseSkillFrontmatter(content);
+    if ("error" in frontmatter) {
+      return {
+        status: "fail",
+        summary: `${label}: \`${configuredPath}\` (malformed skill frontmatter: ${frontmatter.error} at ${resolvedPath})`,
+      };
+    }
+
+    return {
+      status: "pass",
+      summary: `${label}: \`${configuredPath}\` (path verified)`,
+      ...(isPathInside(options.projectLocalRoot, resolvedPath)
+        ? { smokePath: resolvedPath }
+        : {}),
+    };
+  } catch {
+    return {
+      status: "fail",
+      summary: `${label}: \`${configuredPath}\` (configured path unreadable at ${resolvedPath})`,
+    };
+  }
+}
+
+function isValidProjectLocalMetadata(
+  value: unknown,
+  repoRoot: string,
+): value is SkillPackMetadataFile {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Partial<SkillPackMetadataFile> & {
+    pack?: { source?: Record<string, unknown> };
+  };
+
+  return (
+    candidate.pack?.name === PATCHMILL_RECOMMENDED_SKILL_PACK.name &&
+    candidate.pack.version === PATCHMILL_RECOMMENDED_SKILL_PACK.version &&
+    candidate.pack.source?.type ===
+      PATCHMILL_RECOMMENDED_SKILL_PACK.source.type &&
+    candidate.pack.source?.repository ===
+      PATCHMILL_RECOMMENDED_SKILL_PACK.source.repository &&
+    candidate.pack.source?.tag ===
+      PATCHMILL_RECOMMENDED_SKILL_PACK.source.tag &&
+    candidate.pack.source?.tarballUrl ===
+      PATCHMILL_RECOMMENDED_SKILL_PACK.source.tarballUrl &&
+    typeof candidate.installedAt === "string" &&
+    candidate.skillDir === DEFAULT_PROJECT_SKILL_DIR &&
+    candidate.metadataFile === SKILL_PACK_METADATA_FILE &&
+    Array.isArray(candidate.files) &&
+    candidate.files.every(
+      (file) =>
+        file &&
+        typeof file.path === "string" &&
+        typeof file.sha256 === "string" &&
+        resolveProjectLocalMetadataFilePath(file.path, repoRoot) !== null,
+    )
+  );
+}
+
+function metadataSkillPaths(
+  metadata: SkillPackMetadataFile,
+  repoRoot: string,
+): string[] {
+  return metadata.files
+    .filter(
+      (file) => file.path === "SKILL.md" || file.path.endsWith("/SKILL.md"),
+    )
+    .flatMap((file) => {
+      const resolvedPath = resolveProjectLocalMetadataFilePath(
+        file.path,
+        repoRoot,
+      );
+      return resolvedPath ? [resolvedPath] : [];
+    });
+}
+
+async function checkProjectLocalMetadata(
+  repoRoot: string,
+  configuredProjectLocalPaths: string[],
+): Promise<{ entries: SkillCheckEntry[]; smokePaths: string[] }> {
+  const metadataPath = join(
+    repoRoot,
+    DEFAULT_PROJECT_SKILL_DIR,
+    SKILL_PACK_METADATA_FILE,
+  );
+
+  let metadataContent: string;
+  try {
+    metadataContent = await readFile(metadataPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        entries: [
+          {
+            status: "warn",
+            summary: "project-local skill pack metadata missing",
+          },
+        ],
+        smokePaths: configuredProjectLocalPaths,
+      };
+    }
+    return {
+      entries: [
+        {
+          status: "warn",
+          summary: `project-local skill pack metadata unreadable: ${String(error)}`,
+        },
+      ],
+      smokePaths: configuredProjectLocalPaths,
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(metadataContent);
+  } catch (error) {
+    return {
+      entries: [
+        {
+          status: "warn",
+          summary: `project-local skill pack metadata malformed: ${String(error)}`,
+        },
+      ],
+      smokePaths: configuredProjectLocalPaths,
+    };
+  }
+
+  if (!isValidProjectLocalMetadata(parsed, repoRoot)) {
+    return {
+      entries: [
+        {
+          status: "warn",
+          summary: "project-local skill pack metadata malformed",
+        },
+      ],
+      smokePaths: configuredProjectLocalPaths,
+    };
+  }
+
+  const metadata = parsed;
+  const entries: SkillCheckEntry[] = [];
+  const smokePaths = metadataSkillPaths(metadata, repoRoot);
+  const configuredPathSet = new Set(configuredProjectLocalPaths);
+
+  for (const skillPath of smokePaths) {
+    if (configuredPathSet.has(skillPath)) continue;
+
+    const relativeSkillPath = relative(repoRoot, skillPath).replaceAll(
+      "\\",
+      "/",
+    );
+    const validation = await validateResolvedLocalSkill(
+      "project-local",
+      `./${relativeSkillPath}`,
+      skillPath,
+      { projectLocalRoot: resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR) },
+    );
+
+    if (validation.status === "fail") {
+      entries.push({
+        status: validation.status,
+        summary: `installed pack skill validation failed (${validation.summary})`,
+      });
+    }
+  }
+
+  let hasHashMismatch = false;
+  for (const file of metadata.files) {
+    try {
+      const resolvedPath = resolveProjectLocalMetadataFilePath(
+        file.path,
+        repoRoot,
+      );
+      if (!resolvedPath) {
+        hasHashMismatch = true;
+        break;
+      }
+
+      const content = await readFile(resolvedPath, "utf8");
+      if (hashText(content) !== file.sha256) {
+        hasHashMismatch = true;
+        break;
+      }
+    } catch {
+      hasHashMismatch = true;
+      break;
+    }
+  }
+
+  entries.push(
+    hasHashMismatch
+      ? {
+          status: "warn",
+          summary: "project-local skill pack customized from installed pack",
+        }
+      : {
+          status: "pass",
+          summary: "project-local metadata verified",
+        },
+  );
+
+  return { entries, smokePaths };
+}
+
+async function checkProjectLocalGitIgnore(
+  runner: CommandRunner,
+  repoRoot: string,
+): Promise<SkillCheckEntry> {
+  const result = await runner.run(
+    "git",
+    ["check-ignore", "-q", DEFAULT_PROJECT_SKILL_DIR],
+    { cwd: repoRoot },
+  );
+
+  if (result.code === 0) {
+    return {
+      status: "fail",
+      summary: `${DEFAULT_PROJECT_SKILL_DIR} is ignored by git`,
+    };
+  }
+
+  if (result.code === 1) {
+    return {
+      status: "pass",
+      summary: `${DEFAULT_PROJECT_SKILL_DIR} is not ignored by git`,
+    };
+  }
+
+  return {
+    status: "warn",
+    summary: `git-ignore status could not be verified: ${commandOutput(result)}`,
+  };
+}
+
+async function smokeTestProjectLocalSkills(
+  runner: CommandRunner,
+  repoRoot: string,
+  skillPaths: string[],
+): Promise<SkillCheckEntry> {
+  const result = await runner.run(
+    "pi",
+    [
+      "--no-session",
+      "--no-context-files",
+      "--no-prompt-templates",
+      ...skillPaths.flatMap((path) => ["--skill", path]),
+      "-p",
+      PROJECT_LOCAL_SKILLS_PROMPT,
+    ],
+    { cwd: repoRoot },
+  );
+
+  if (result.code === 0 && result.stdout.includes("PATCHMILL_SKILLS_OK")) {
+    return {
+      status: "pass",
+      summary: "Pi loaded project-local skill pack",
+    };
+  }
+
+  return {
+    status: "fail",
+    summary: `Pi could not load the project-local skill pack: ${commandOutput(result)}`,
+  };
+}
+
 async function checkSkills(
+  runner: CommandRunner,
   config: PatchmillConfig,
   repoRoot: string,
 ): Promise<DoctorCheckResult> {
+  const projectLocalRoot = resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR);
   const configuredSkills = PATCHMILL_SKILL_KEYS.flatMap((key) => {
     const skill = config.skills[key];
     return skill ? [{ key, skill }] : [];
   });
 
-  const entries = await Promise.all(
+  const entries: SkillCheckEntry[] = await Promise.all(
     configuredSkills.map(async ({ key, skill }) => {
       if (key === "triage" && skill === DEFAULT_PATCHMILL_SKILLS.triage) {
         const bundledPath = bundledTriageSkillPath();
@@ -229,17 +624,39 @@ async function checkSkills(
       }
 
       const resolvedPath = resolvePathLikeSkillPath(skill, repoRoot);
-      return (await checkReadableSkillTarget(resolvedPath))
-        ? {
-            status: "pass" as const,
-            summary: `${key}: \`${skill}\` (path verified)`,
-          }
-        : {
-            status: "fail" as const,
-            summary: `${key}: \`${skill}\` (configured path unreadable at ${resolvedPath})`,
-          };
+      return validateResolvedLocalSkill(key, skill, resolvedPath, {
+        projectLocalRoot,
+      });
     }),
   );
+
+  const configuredProjectLocalPaths = [
+    ...new Set(
+      entries.flatMap((entry) =>
+        entry.status === "pass" && entry.smokePath ? [entry.smokePath] : [],
+      ),
+    ),
+  ];
+
+  if (await checkReadableSkillTarget(projectLocalRoot)) {
+    const metadata = await checkProjectLocalMetadata(
+      repoRoot,
+      configuredProjectLocalPaths,
+    );
+    entries.push(...metadata.entries);
+    entries.push(await checkProjectLocalGitIgnore(runner, repoRoot));
+
+    if (
+      !entries.some((entry) => entry.status === "fail") &&
+      metadata.smokePaths.length > 0
+    ) {
+      entries.push(
+        await smokeTestProjectLocalSkills(runner, repoRoot, [
+          ...new Set(metadata.smokePaths),
+        ]),
+      );
+    }
+  }
 
   const message = entries.map((entry) => entry.summary).join("; ");
   if (entries.some((entry) => entry.status === "fail")) {
@@ -345,7 +762,7 @@ export async function runDoctorChecks(
       );
     }
 
-    results.push(await checkSkills(config, options.repoRoot));
+    results.push(await checkSkills(runner, config, options.repoRoot));
 
     const paths = [
       ["plans", config.paths.plansDir],
