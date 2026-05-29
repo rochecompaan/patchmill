@@ -92,6 +92,10 @@ test("runInit installs project-local skills by default", async () => {
   );
   assert.match(stdout.join("\n"), /Installed project-local skills/);
   assert.match(stdout.join("\n"), /Commit \.patchmill\/skills\//);
+  assert.match(
+    stdout.join("\n"),
+    /Commit `patchmill\.config\.json` and `\.patchmill\/skills\/` before running `patchmill doctor`/,
+  );
 });
 
 test("runInit --skills none skips skill installation and omits skills config", async () => {
@@ -226,6 +230,10 @@ test("runInit creates config and prints next step", async () => {
   assert.match(stdout.join("\n"), /Created patchmill\.config\.json/);
   assert.match(stdout.join("\n"), /provider: forgejo-tea/);
   assert.match(stdout.join("\n"), /PATCHMILL_HOST_LOGIN/);
+  assert.match(
+    stdout.join("\n"),
+    /Commit `patchmill\.config\.json` before running `patchmill doctor`/,
+  );
   assert.match(stdout.join("\n"), /patchmill doctor/);
 });
 

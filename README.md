@@ -66,9 +66,9 @@ patchmill run-once --execute
 `patchmill init` writes a minimal local `patchmill.config.json`, reminds you to
 change the default host login, and installs Patchmill's recommended skills into
 `.patchmill/skills/` by default so triage, planning, implementation, and
-review/validation behavior are sourced from your repository. Those files should
-be committed because they govern triage, planning, implementation, and
-review/validation behavior.
+review/validation behavior are sourced from your repository. Commit
+`patchmill.config.json` and `.patchmill/skills/` before running
+`patchmill doctor`; doctor expects a clean worktree.
 
 Alternative initialization modes:
 

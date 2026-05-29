@@ -96,6 +96,15 @@ const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
 const EXISTING_CONFIG_MESSAGE =
   "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor";
 
+function successNextSteps(skillsMode: "project" | "global" | "none" | "path") {
+  const commitTargets =
+    skillsMode === "project"
+      ? "`patchmill.config.json` and `.patchmill/skills/`"
+      : "`patchmill.config.json`";
+
+  return `Commit ${commitTargets} before running \`patchmill doctor\`. Doctor expects a clean worktree.\n\nNext:\n  patchmill doctor`;
+}
+
 export async function runInit(
   args: string[],
   repoRoot = cwd(),
@@ -187,7 +196,7 @@ export async function runInit(
   }
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${skillsMessage}\n\n${piMessage}\n\nNext:\n  patchmill doctor`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${skillsMessage}\n\n${piMessage}\n\n${successNextSteps(config.skills.mode)}`,
   );
   return 0;
 }
