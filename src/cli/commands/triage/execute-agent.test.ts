@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
@@ -30,6 +32,43 @@ const stateMap = {
   "awaiting-reporter": "needs-info",
   "manual-only": "agent-unsuitable",
 } as const;
+
+async function createProjectLocalTriageRepo(): Promise<{
+  repoRoot: string;
+  triageSkillPath: string;
+  supportSkillPath: string;
+}> {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-execute-"));
+  const skillsRoot = join(repoRoot, ".patchmill", "skills");
+  const triageSkillPath = join(
+    skillsRoot,
+    "patchmill-issue-triage",
+    "SKILL.md",
+  );
+  const supportSkillPath = join(skillsRoot, "triage-support", "SKILL.md");
+
+  await mkdir(join(skillsRoot, "patchmill-issue-triage"), { recursive: true });
+  await mkdir(join(skillsRoot, "triage-support"), { recursive: true });
+  await writeFile(triageSkillPath, "# triage\n");
+  await writeFile(supportSkillPath, "# support\n");
+  await writeFile(
+    join(skillsRoot, "patchmill-skill-pack.json"),
+    JSON.stringify({
+      files: [
+        {
+          path: ".patchmill/skills/patchmill-issue-triage/SKILL.md",
+          sha256: "triage",
+        },
+        {
+          path: ".patchmill/skills/triage-support/SKILL.md",
+          sha256: "support",
+        },
+      ],
+    }),
+  );
+
+  return { repoRoot, triageSkillPath, supportSkillPath };
+}
 
 class RecordingRunner implements CommandRunner {
   readonly calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
@@ -195,4 +234,27 @@ test("runTriageExecuteAgent resolves configured local triage skill paths", async
     call.args[skillIndex + 1],
     "/repo/.patchmill/skills/triage-local/SKILL.md",
   );
+});
+
+test("runTriageExecuteAgent expands project-local triage skill packs from metadata", async () => {
+  const runner = new RecordingRunner();
+  const { repoRoot, triageSkillPath, supportSkillPath } =
+    await createProjectLocalTriageRepo();
+
+  await runTriageExecuteAgent(runner, repoRoot, {
+    issues,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    host: { provider: "forgejo-tea", login: "" },
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      triage: ".patchmill/skills/patchmill-issue-triage",
+    },
+    stateMap,
+  });
+
+  const call = runner.calls[0]!;
+  const skillPaths = call.args.flatMap((arg, index) =>
+    arg === "--skill" ? [call.args[index + 1] ?? ""] : [],
+  );
+  assert.deepEqual(skillPaths, [triageSkillPath, supportSkillPath]);
 });

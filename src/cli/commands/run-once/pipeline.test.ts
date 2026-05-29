@@ -3524,23 +3524,23 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   assert.equal(runState.implementingAt, NOW.toISOString());
 });
 
-test("runOneIssue passes configured local planning and implementation skills to pi commands", async () => {
+test("runOneIssue resolves implementation skills from the worktree root and expands the local skill pack", async () => {
   const baseConfig = await makeConfig({ dryRun: false, execute: true });
   const config = {
     ...baseConfig,
     skills: {
       ...baseConfig.skills,
-      planning: ".patchmill/skills/local-planning/SKILL.md",
-      implementation: join(
-        baseConfig.repoRoot,
-        "skills",
-        "local-implementation",
-        "SKILL.md",
-      ),
+      planning: "skills/local-planning/SKILL.md",
+      implementation: ".patchmill/skills/subagent-driven-development",
     },
   };
   const selected = issue(16, ["agent-ready", "bug"], "Use local skills");
   const expectedPlanPath = "docs/plans/2026-05-09-issue-16-use-local-skills.md";
+  const worktreeRoot = join(
+    config.repoRoot,
+    ".worktrees",
+    "patchmill-issue-16-use-local-skills",
+  );
   let piCalls = 0;
   const runner = createMockRunner(async (call) => {
     if (
@@ -3566,8 +3566,71 @@ test("runOneIssue passes configured local planning and implementation skills to 
     }
     if (call.command === "git" && call.args[0] === "show-ref")
       return { code: 1, stdout: "", stderr: "" };
-    if (call.command === "git" && call.args[0] === "worktree")
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "subagent-driven-development",
+        ),
+        { recursive: true },
+      );
+      await mkdir(
+        join(worktreeRoot, ".patchmill", "skills", "requesting-code-review"),
+        { recursive: true },
+      );
+      await writeFile(
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "subagent-driven-development",
+          "SKILL.md",
+        ),
+        "# implementation\n",
+        "utf8",
+      );
+      await writeFile(
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "requesting-code-review",
+          "SKILL.md",
+        ),
+        "# review\n",
+        "utf8",
+      );
+      await writeFile(
+        join(worktreeRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
+        JSON.stringify({
+          files: [
+            {
+              path: ".patchmill/skills/subagent-driven-development/SKILL.md",
+              sha256: "implementation",
+            },
+            {
+              path: ".patchmill/skills/requesting-code-review/SKILL.md",
+              sha256: "review",
+            },
+          ],
+        }),
+        "utf8",
+      );
+      return { code: 0, stdout: "", stderr: "" };
+    }
     if (
       call.command === "tea" &&
       (call.args[0] === "issues" || call.args[0] === "comment")
@@ -3582,13 +3645,7 @@ test("runOneIssue passes configured local planning and implementation skills to 
 
       if (piCalls === 1) {
         assert.deepEqual(skillPaths, [
-          join(
-            config.repoRoot,
-            ".patchmill",
-            "skills",
-            "local-planning",
-            "SKILL.md",
-          ),
+          join(config.repoRoot, "skills", "local-planning", "SKILL.md"),
         ]);
         return {
           code: 0,
@@ -3598,7 +3655,20 @@ test("runOneIssue passes configured local planning and implementation skills to 
       }
 
       assert.deepEqual(skillPaths, [
-        join(config.repoRoot, "skills", "local-implementation", "SKILL.md"),
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "subagent-driven-development",
+          "SKILL.md",
+        ),
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "requesting-code-review",
+          "SKILL.md",
+        ),
       ]);
       return {
         code: 0,

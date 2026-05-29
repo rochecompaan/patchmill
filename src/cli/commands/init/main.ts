@@ -28,7 +28,7 @@ Create a minimal patchmill.config.json for this repository.
 Installs the recommended project-local skill pack by default.
 
 Options:
-  --skills <mode>  Skill installation mode: project, global, none, or path:<dir>.
+  --skills <mode>  Skill installation mode: project, global, none, or path:<dir>. Default: project.
   --help, -h  Show this help and exit.
 `;
 

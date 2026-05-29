@@ -42,6 +42,10 @@ test("runInit prints help", async () => {
   assert.deepEqual(stderr, []);
 });
 
+test("HELP_TEXT documents project as the default --skills mode", () => {
+  assert.match(HELP_TEXT, /--skills <mode>[\s\S]*Default: project\./);
+});
+
 test("runInit installs project-local skills by default", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];

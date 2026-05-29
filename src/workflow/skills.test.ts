@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_PATCHMILL_SKILLS,
@@ -157,6 +158,109 @@ test("skillInvocationPaths keeps only invokable skill paths in order", () => {
       "/repo/.patchmill/skills/writing-plans/SKILL.md",
       bundledTriageSkillPath(),
       "/repo/skills/implementation/SKILL.md",
+    ],
+  );
+});
+
+test("skillInvocationPaths expands project-local pack skills from metadata", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-skills-metadata-"));
+  const projectSkillsRoot = join(repoRoot, ".patchmill", "skills");
+  await mkdir(join(projectSkillsRoot, "subagent-driven-development"), {
+    recursive: true,
+  });
+  await mkdir(join(projectSkillsRoot, "requesting-code-review"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(projectSkillsRoot, "subagent-driven-development", "SKILL.md"),
+    "# implementation\n",
+  );
+  await writeFile(
+    join(projectSkillsRoot, "requesting-code-review", "SKILL.md"),
+    "# review\n",
+  );
+  await writeFile(
+    join(projectSkillsRoot, "patchmill-skill-pack.json"),
+    JSON.stringify({
+      files: [
+        {
+          path: ".patchmill/skills/subagent-driven-development/SKILL.md",
+          sha256: "impl",
+        },
+        {
+          path: ".patchmill/skills/requesting-code-review/SKILL.md",
+          sha256: "review",
+        },
+        {
+          path: ".patchmill/skills/subagent-driven-development/README.md",
+          sha256: "docs",
+        },
+      ],
+    }),
+  );
+
+  assert.deepEqual(
+    skillInvocationPaths(
+      [".patchmill/skills/subagent-driven-development"],
+      repoRoot,
+    ),
+    [
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-driven-development",
+        "SKILL.md",
+      ),
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "requesting-code-review",
+        "SKILL.md",
+      ),
+    ],
+  );
+});
+
+test("skillInvocationPaths discovers project-local pack skills when metadata is missing", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-skills-discovery-"));
+  const projectSkillsRoot = join(repoRoot, ".patchmill", "skills");
+  await mkdir(join(projectSkillsRoot, "subagent-driven-development"), {
+    recursive: true,
+  });
+  await mkdir(join(projectSkillsRoot, "test-driven-development"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(projectSkillsRoot, "subagent-driven-development", "SKILL.md"),
+    "# implementation\n",
+  );
+  await writeFile(
+    join(projectSkillsRoot, "test-driven-development", "SKILL.md"),
+    "# tests\n",
+  );
+
+  assert.deepEqual(
+    skillInvocationPaths(
+      [".patchmill/skills/subagent-driven-development"],
+      repoRoot,
+    ),
+    [
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-driven-development",
+        "SKILL.md",
+      ),
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "test-driven-development",
+        "SKILL.md",
+      ),
     ],
   );
 });

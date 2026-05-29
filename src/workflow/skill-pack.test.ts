@@ -7,6 +7,7 @@ import {
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
   buildSkillPackMetadata,
+  hashContent,
   hashText,
   projectSkillPath,
 } from "./skill-pack.ts";
@@ -71,6 +72,15 @@ test("hashText returns stable sha256 hex", () => {
   assert.equal(
     hashText(unixNewline),
     createHash("sha256").update(unixNewline).digest("hex"),
+  );
+});
+
+test("hashContent hashes raw bytes without text decoding", () => {
+  const content = Buffer.from([0x66, 0x6f, 0x80, 0x6f]);
+
+  assert.equal(
+    hashContent(content),
+    createHash("sha256").update(content).digest("hex"),
   );
 });
 

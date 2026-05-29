@@ -88,7 +88,7 @@ export class PiRunner implements PiPromptContracts {
             input.skills?.visualEvidence,
             input.skills?.landing,
           ],
-          input.repoRoot,
+          worktreeRoot,
         ),
         issueNumber: input.issue.number,
         repoRoot: worktreeRoot,

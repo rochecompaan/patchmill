@@ -22,7 +22,7 @@ import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
   SKILL_PACK_METADATA_FILE,
-  hashText,
+  hashContent,
   type SkillPackMetadataFile,
 } from "../../../workflow/skill-pack.ts";
 
@@ -503,8 +503,8 @@ async function checkProjectLocalMetadata(
         break;
       }
 
-      const content = await readFile(resolvedPath, "utf8");
-      if (hashText(content) !== file.sha256) {
+      const content = await readFile(resolvedPath);
+      if (hashContent(content) !== file.sha256) {
         hasHashMismatch = true;
         break;
       }
@@ -535,7 +535,7 @@ async function checkProjectLocalGitIgnore(
 ): Promise<SkillCheckEntry> {
   const result = await runner.run(
     "git",
-    ["check-ignore", "-q", DEFAULT_PROJECT_SKILL_DIR],
+    ["check-ignore", "--no-index", "-q", DEFAULT_PROJECT_SKILL_DIR],
     { cwd: repoRoot },
   );
 

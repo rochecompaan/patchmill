@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, type BinaryLike } from "node:crypto";
 import type { PatchmillSkillsConfig } from "./skills.ts";
 
 export const DEFAULT_PROJECT_SKILL_DIR = ".patchmill/skills";
@@ -85,8 +85,12 @@ export function buildRecommendedProjectSkillConfig(
   };
 }
 
+export function hashContent(content: BinaryLike): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
 export function hashText(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
+  return hashContent(text);
 }
 
 export function buildSkillPackMetadata(

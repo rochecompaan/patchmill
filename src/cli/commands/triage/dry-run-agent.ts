@@ -4,7 +4,7 @@ import { TRIAGE_CANONICAL_BUCKETS } from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
-  skillInvocationArgs,
+  skillInvocationPaths,
   type PatchmillSkillsConfig,
 } from "../../../workflow/skills.ts";
 import type {
@@ -226,7 +226,9 @@ export async function runTriageDryRunAgent(
 ): Promise<TriagePreview[]> {
   const prompt = buildTriageDryRunPrompt(input);
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
-  const skillArgs = skillInvocationArgs(skills.triage, repoRoot);
+  const skillArgs = skillInvocationPaths([skills.triage], repoRoot).flatMap(
+    (path) => ["--skill", path],
+  );
   const thinking = input.thinking ?? "high";
   return withPromptFile("agent-triage-dry-run-", prompt, async (promptPath) => {
     const result = await runner.run(

@@ -349,12 +349,64 @@ test("PiRunner implementation uses the worktree root, derives the default landin
   );
 });
 
-test("PiRunner implementation resolves configured local skill paths against the repo root", async () => {
+test("PiRunner implementation resolves local skills from the worktree root and expands the local skill pack", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-local-"));
   const worktreePath = "worktrees/issue-42-local-skills";
   const worktreeRoot = join(repoRoot, worktreePath);
   const planPath = "docs/plans/2026-05-23-pi-runner-local-skills.md";
   await mkdir(join(worktreeRoot, ".pi", "todos"), { recursive: true });
+  await mkdir(
+    join(worktreeRoot, ".patchmill", "skills", "subagent-driven-development"),
+    {
+      recursive: true,
+    },
+  );
+  await mkdir(
+    join(worktreeRoot, ".patchmill", "skills", "requesting-code-review"),
+    {
+      recursive: true,
+    },
+  );
+  await mkdir(join(worktreeRoot, "skills", "toolchain"), { recursive: true });
+  await writeFile(
+    join(
+      worktreeRoot,
+      ".patchmill",
+      "skills",
+      "subagent-driven-development",
+      "SKILL.md",
+    ),
+    "# implementation\n",
+  );
+  await writeFile(
+    join(
+      worktreeRoot,
+      ".patchmill",
+      "skills",
+      "requesting-code-review",
+      "SKILL.md",
+    ),
+    "# review\n",
+  );
+  await writeFile(
+    join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
+    "# toolchain\n",
+  );
+  await writeFile(
+    join(worktreeRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
+    JSON.stringify({
+      files: [
+        {
+          path: ".patchmill/skills/subagent-driven-development/SKILL.md",
+          sha256: "implementation",
+        },
+        {
+          path: ".patchmill/skills/requesting-code-review/SKILL.md",
+          sha256: "review",
+        },
+      ],
+    }),
+  );
   await writeFile(
     join(
       worktreeRoot,
@@ -371,11 +423,21 @@ test("PiRunner implementation resolves configured local skill paths against the 
       arg === "--skill" ? [args[index + 1] ?? ""] : [],
     );
     assert.deepEqual(skillPaths, [
-      join(repoRoot, ".patchmill", "skills", "toolchain", "SKILL.md"),
-      join(repoRoot, ".patchmill", "skills", "implementation", "SKILL.md"),
-      join(repoRoot, ".patchmill", "skills", "review", "SKILL.md"),
-      join(repoRoot, ".patchmill", "skills", "visual-evidence", "SKILL.md"),
-      join(repoRoot, ".patchmill", "skills", "landing", "SKILL.md"),
+      join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
+      join(
+        worktreeRoot,
+        ".patchmill",
+        "skills",
+        "subagent-driven-development",
+        "SKILL.md",
+      ),
+      join(
+        worktreeRoot,
+        ".patchmill",
+        "skills",
+        "requesting-code-review",
+        "SKILL.md",
+      ),
     ]);
     assert.equal(call.cwd, worktreeRoot);
     return {
@@ -404,11 +466,8 @@ test("PiRunner implementation resolves configured local skill paths against the 
     },
     skills: {
       ...DEFAULT_PATCHMILL_SKILLS,
-      toolchain: ".patchmill/skills/toolchain",
-      implementation: ".patchmill/skills/implementation",
-      review: ".patchmill/skills/review",
-      visualEvidence: ".patchmill/skills/visual-evidence",
-      landing: ".patchmill/skills/landing",
+      toolchain: "skills/toolchain",
+      implementation: ".patchmill/skills/subagent-driven-development",
     },
   });
 

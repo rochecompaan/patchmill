@@ -1,5 +1,10 @@
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_PROJECT_SKILL_DIR,
+  SKILL_PACK_METADATA_FILE,
+} from "./skill-pack.ts";
 
 export type PatchmillSkillsConfig = {
   triage: string;
@@ -132,10 +137,98 @@ export function skillInvocationPaths(
   skills: Array<string | undefined>,
   repoRoot: string,
 ): string[] {
-  return skills.flatMap((skill) => {
+  const configuredPaths = skills.flatMap((skill) => {
     const [flag, path] = skillInvocationArgs(skill, repoRoot);
     return flag === "--skill" && path ? [path] : [];
   });
+
+  if (
+    !configuredPaths.some((path) =>
+      pathStartsWith(
+        resolve(path),
+        resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR),
+      ),
+    )
+  ) {
+    return configuredPaths;
+  }
+
+  return uniqueSkillPaths([
+    ...configuredPaths,
+    ...projectLocalPackSkillPaths(repoRoot),
+  ]);
+}
+
+function uniqueSkillPaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  return paths.filter((path) => {
+    if (seen.has(path)) return false;
+    seen.add(path);
+    return true;
+  });
+}
+
+function pathStartsWith(path: string, prefix: string): boolean {
+  return (
+    path === prefix ||
+    path.startsWith(`${prefix}/`) ||
+    path.startsWith(`${prefix}\\`)
+  );
+}
+
+function projectLocalPackSkillPaths(repoRoot: string): string[] {
+  const projectLocalRoot = resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR);
+  const metadataSkillPaths = projectLocalMetadataSkillPaths(
+    repoRoot,
+    projectLocalRoot,
+  );
+  return metadataSkillPaths.length > 0
+    ? metadataSkillPaths
+    : discoveredProjectLocalSkillPaths(projectLocalRoot);
+}
+
+function projectLocalMetadataSkillPaths(
+  repoRoot: string,
+  projectLocalRoot: string,
+): string[] {
+  try {
+    const metadataPath = join(projectLocalRoot, SKILL_PACK_METADATA_FILE);
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8")) as {
+      files?: Array<{ path?: unknown }>;
+    };
+    if (!Array.isArray(metadata.files)) return [];
+
+    return metadata.files.flatMap((file) => {
+      if (typeof file.path !== "string") return [];
+
+      const normalizedPath = file.path.replaceAll("\\", "/");
+      return normalizedPath.startsWith(`${DEFAULT_PROJECT_SKILL_DIR}/`) &&
+        normalizedPath.endsWith(`/${SKILL_FILE_NAME}`)
+        ? [resolve(repoRoot, normalizedPath)]
+        : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function discoveredProjectLocalSkillPaths(projectLocalRoot: string): string[] {
+  try {
+    const entries = readdirSync(projectLocalRoot, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+
+    return entries.flatMap((entry) => {
+      const entryPath = join(projectLocalRoot, entry.name);
+      if (entry.isDirectory()) {
+        return discoveredProjectLocalSkillPaths(entryPath);
+      }
+      return entry.isFile() && entry.name === SKILL_FILE_NAME
+        ? [entryPath]
+        : [];
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function bundledTriageSkillPath(): string {

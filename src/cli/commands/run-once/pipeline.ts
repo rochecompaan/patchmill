@@ -1359,7 +1359,7 @@ export async function runOneIssue(
                 config.skills.visualEvidence,
                 config.skills.landing,
               ],
-              config.repoRoot,
+              worktreeRoot,
             ),
             streamOutput: options.streamPiOutput,
             issueNumber: issue.number,

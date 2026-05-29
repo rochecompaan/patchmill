@@ -489,7 +489,7 @@ test("runDoctorChecks passes for a fresh project-local skill pack", async () => 
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
-          "git check-ignore -q .patchmill/skills": { code: 1 },
+          "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
           [projectLocalPiSmokeCommand(smokePaths)]: {
             code: 0,
             stdout: "PATCHMILL_SKILLS_OK\n",
@@ -604,7 +604,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
         calls.push(key);
         return (
           successMocks(REQUIRED_LABELS, {
-            "git check-ignore -q .patchmill/skills": { code: 1 },
+            "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
             [projectLocalPiSmokeCommand(smokePaths)]: {
               code: 0,
               stdout: "PATCHMILL_SKILLS_OK\n",
@@ -685,7 +685,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
-      "git check-ignore -q .patchmill/skills": { code: 1 },
+      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
       [projectLocalPiSmokeCommand(smokePaths)]: {
         code: 0,
         stdout: "PATCHMILL_SKILLS_OK\n",
@@ -744,7 +744,7 @@ test("runDoctorChecks fails when .patchmill/skills is gitignored", async () => {
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
-          "git check-ignore -q .patchmill/skills": { code: 0 },
+          "git check-ignore --no-index -q .patchmill/skills": { code: 0 },
         })[key] ?? {
           code: 127,
           stdout: "",
@@ -762,6 +762,7 @@ test("runDoctorChecks fails when .patchmill/skills is gitignored", async () => {
 
   assert.equal(skills?.status, "fail");
   assert.match(skills?.message ?? "", /\.patchmill\/skills is ignored by git/);
+  assert.ok(calls.includes("git check-ignore --no-index -q .patchmill/skills"));
   assert.equal(
     calls.some((command) => command.includes("PATCHMILL_SKILLS_OK")),
     false,
@@ -808,7 +809,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
-      "git check-ignore -q .patchmill/skills": { code: 1 },
+      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
       [projectLocalPiSmokeCommand(smokePaths)]: {
         code: 1,
         stderr: "pi failed to load one or more skills",
@@ -856,7 +857,7 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
-      "git check-ignore -q .patchmill/skills": { code: 1 },
+      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
       [projectLocalPiSmokeCommand(smokePaths)]: {
         code: 0,
         stdout: "PATCHMILL_SKILLS_OK\n",
