@@ -714,12 +714,14 @@ export function resolveConfiguredSkillInvocation(
   diagnostics.push(...pack.diagnostics);
 
   return {
-    paths: unique([...configuredPaths, ...pack.paths]),
+    paths: unique([...pack.paths, ...configuredPaths]),
     diagnostics,
     configuredProjectLocalPaths: unique(configuredProjectLocalPaths),
     usedProjectLocalPack: true,
   };
 }
+
+// Project-local pack metadata order stays canonical; configured paths only fill gaps.
 
 export function skillInvocationPaths(
   skills: Array<string | undefined>,

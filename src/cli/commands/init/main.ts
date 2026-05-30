@@ -8,7 +8,7 @@ import {
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
-import { DEFAULT_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
+import { GLOBAL_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
 import {
   installProjectSkills,
   validateExistingSkillDirectory,
@@ -88,9 +88,9 @@ function isYes(value: string): boolean {
 }
 
 const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
-  triage: DEFAULT_PATCHMILL_SKILLS.triage,
-  planning: DEFAULT_PATCHMILL_SKILLS.planning,
-  implementation: DEFAULT_PATCHMILL_SKILLS.implementation,
+  triage: GLOBAL_PATCHMILL_SKILLS.triage,
+  planning: GLOBAL_PATCHMILL_SKILLS.planning,
+  implementation: GLOBAL_PATCHMILL_SKILLS.implementation,
 };
 
 const EXISTING_CONFIG_MESSAGE =

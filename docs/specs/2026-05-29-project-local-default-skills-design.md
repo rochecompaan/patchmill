@@ -69,8 +69,9 @@ future skill maintenance commands.
 ### Project-local skill directory
 
 The default target is `.patchmill/skills/`. It contains the actual committed
-skill files. Generated Patchmill config references these local files rather than
-external package names, for example `superpowers:subagent-driven-development`.
+skill files. Generated Patchmill config references local paths such as
+`.patchmill/skills/subagent-driven-development` instead of namespaced/global
+identifiers such as `superpowers:subagent-driven-development`.
 
 Example generated mapping:
 
@@ -138,8 +139,10 @@ These commands are explicit so skill changes remain reviewable.
 
 ## Distribution strategy
 
-The initial implementation should install a pinned external skill pack during
-`patchmill init`. This keeps Patchmill lean while giving users good defaults.
+The initial implementation should depend on a pinned GitHub release tarball for
+the external skill pack and, during `patchmill init`, copy the installed skill
+files into `.patchmill/skills/`. This keeps Patchmill lean while giving users
+good defaults.
 
 A later hybrid model can add bundled fallback skills so init still works when
 the network or external source is unavailable. The product direction remains the

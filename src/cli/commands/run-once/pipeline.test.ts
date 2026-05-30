@@ -12,6 +12,10 @@ import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import {
+  buildSkillPackMetadata,
+  hashText,
+} from "../../../workflow/skill-pack.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { JsonlProgressReporter } from "./progress.ts";
@@ -3591,6 +3595,8 @@ test("runOneIssue resolves implementation skills from the worktree root and expa
         join(worktreeRoot, ".patchmill", "skills", "requesting-code-review"),
         { recursive: true },
       );
+      const implementationSkill = "# implementation\n";
+      const reviewSkill = "# review\n";
       await writeFile(
         join(
           worktreeRoot,
@@ -3599,7 +3605,7 @@ test("runOneIssue resolves implementation skills from the worktree root and expa
           "subagent-driven-development",
           "SKILL.md",
         ),
-        "# implementation\n",
+        implementationSkill,
         "utf8",
       );
       await writeFile(
@@ -3610,23 +3616,23 @@ test("runOneIssue resolves implementation skills from the worktree root and expa
           "requesting-code-review",
           "SKILL.md",
         ),
-        "# review\n",
+        reviewSkill,
         "utf8",
       );
       await writeFile(
         join(worktreeRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
-        JSON.stringify({
-          files: [
+        JSON.stringify(
+          buildSkillPackMetadata([
             {
               path: ".patchmill/skills/subagent-driven-development/SKILL.md",
-              sha256: "implementation",
+              sha256: hashText(implementationSkill),
             },
             {
               path: ".patchmill/skills/requesting-code-review/SKILL.md",
-              sha256: "review",
+              sha256: hashText(reviewSkill),
             },
-          ],
-        }),
+          ]),
+        ),
         "utf8",
       );
       return { code: 0, stdout: "", stderr: "" };

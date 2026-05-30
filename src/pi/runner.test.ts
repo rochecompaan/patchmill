@@ -16,6 +16,7 @@ import type {
   IssueSummary,
 } from "../cli/commands/triage/types.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
+import { buildSkillPackMetadata, hashText } from "../workflow/skill-pack.ts";
 import type { ImplementationPiInput } from "./types.ts";
 
 type RecordedCall = {
@@ -368,6 +369,8 @@ test("PiRunner implementation resolves local skills from the worktree root and e
     },
   );
   await mkdir(join(worktreeRoot, "skills", "toolchain"), { recursive: true });
+  const implementationSkill = "# implementation\n";
+  const reviewSkill = "# review\n";
   await writeFile(
     join(
       worktreeRoot,
@@ -376,7 +379,7 @@ test("PiRunner implementation resolves local skills from the worktree root and e
       "subagent-driven-development",
       "SKILL.md",
     ),
-    "# implementation\n",
+    implementationSkill,
   );
   await writeFile(
     join(
@@ -386,7 +389,7 @@ test("PiRunner implementation resolves local skills from the worktree root and e
       "requesting-code-review",
       "SKILL.md",
     ),
-    "# review\n",
+    reviewSkill,
   );
   await writeFile(
     join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
@@ -394,18 +397,18 @@ test("PiRunner implementation resolves local skills from the worktree root and e
   );
   await writeFile(
     join(worktreeRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
-    JSON.stringify({
-      files: [
+    JSON.stringify(
+      buildSkillPackMetadata([
         {
           path: ".patchmill/skills/subagent-driven-development/SKILL.md",
-          sha256: "implementation",
+          sha256: hashText(implementationSkill),
         },
         {
           path: ".patchmill/skills/requesting-code-review/SKILL.md",
-          sha256: "review",
+          sha256: hashText(reviewSkill),
         },
-      ],
-    }),
+      ]),
+    ),
   );
   await writeFile(
     join(
@@ -423,7 +426,6 @@ test("PiRunner implementation resolves local skills from the worktree root and e
       arg === "--skill" ? [args[index + 1] ?? ""] : [],
     );
     assert.deepEqual(skillPaths, [
-      join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
       join(
         worktreeRoot,
         ".patchmill",
@@ -438,6 +440,7 @@ test("PiRunner implementation resolves local skills from the worktree root and e
         "requesting-code-review",
         "SKILL.md",
       ),
+      join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
     ]);
     assert.equal(call.cwd, worktreeRoot);
     return {

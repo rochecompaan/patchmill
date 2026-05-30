@@ -103,11 +103,13 @@ Do not modify:
 Run:
 
 ```sh
-npm install superpowers@5.0.7 --save-exact
+npm install https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz --save-exact
 ```
 
 Expected: `package.json`, `package-lock.json`, and `npm-shrinkwrap.json` include
-`superpowers` at exact version `5.0.7`.
+`superpowers` pinned to the GitHub tag tarball URL
+`https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz`, with
+lockfiles resolving that same tarball.
 
 - [ ] **Step 2: Verify the dependency exposes skills**
 
@@ -186,9 +188,11 @@ test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.05");
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.source, {
-    type: "npm",
-    package: "superpowers",
-    version: "5.0.7",
+    type: "github-release",
+    repository: "obra/superpowers",
+    tag: "v5.0.7",
+    tarballUrl:
+      "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
   });
   assert.ok(
     PATCHMILL_RECOMMENDED_SKILL_PACK.skills.some(
@@ -222,9 +226,11 @@ test("buildSkillPackMetadata records installed file hashes", () => {
       name: "patchmill-recommended",
       version: "2026.05",
       source: {
-        type: "npm",
-        package: "superpowers",
-        version: "5.0.7",
+        type: "github-release",
+        repository: "obra/superpowers",
+        tag: "v5.0.7",
+        tarballUrl:
+          "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
       },
     },
     installedAt: "<generated-by-init>",
@@ -262,9 +268,10 @@ export const DEFAULT_PROJECT_SKILL_DIR = ".patchmill/skills";
 export const SKILL_PACK_METADATA_FILE = "patchmill-skill-pack.json";
 
 export type SkillPackSource = {
-  type: "npm";
-  package: "superpowers";
-  version: "5.0.7";
+  type: "github-release";
+  repository: "obra/superpowers";
+  tag: "v5.0.7";
+  tarballUrl: "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz";
 };
 
 export type SkillPackSkill = {
@@ -295,9 +302,11 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
   version: "2026.05",
   source: {
-    type: "npm",
-    package: "superpowers",
-    version: "5.0.7",
+    type: "github-release",
+    repository: "obra/superpowers",
+    tag: "v5.0.7",
+    tarballUrl:
+      "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
   },
   skills: [
     { name: "patchmill-issue-triage", source: "patchmill" },
@@ -1779,7 +1788,13 @@ async function writeSkillMetadata(
         pack: {
           name: "patchmill-recommended",
           version: "2026.05",
-          source: { type: "npm", package: "superpowers", version: "5.0.7" },
+          source: {
+            type: "github-release",
+            repository: "obra/superpowers",
+            tag: "v5.0.7",
+            tarballUrl:
+              "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
+          },
         },
         installedAt: "2026-05-29T00:00:00.000Z",
         skillDir: ".patchmill/skills",

@@ -3,14 +3,17 @@ import { constants } from "node:fs";
 import {
   access,
   cp,
+  mkdtemp,
   mkdir,
   readdir,
   readFile,
+  rename,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
@@ -40,6 +43,32 @@ export type ProjectSkillInstallResult = {
   metadataPath: string;
 };
 
+export type SkillInstallerDependencies = {
+  access: typeof access;
+  cp: typeof cp;
+  mkdtemp: typeof mkdtemp;
+  mkdir: typeof mkdir;
+  readdir: typeof readdir;
+  readFile: typeof readFile;
+  rename: typeof rename;
+  rm: typeof rm;
+  stat: typeof stat;
+  writeFile: typeof writeFile;
+};
+
+const defaultDependencies: SkillInstallerDependencies = {
+  access,
+  cp,
+  mkdtemp,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+};
+
 export function defaultSkillSourceRoots(): SourceRoots {
   const superpowersRoot = dirname(require.resolve("superpowers/package.json"));
   return {
@@ -48,9 +77,12 @@ export function defaultSkillSourceRoots(): SourceRoots {
   };
 }
 
-async function pathExists(path: string): Promise<boolean> {
+async function pathExists(
+  path: string,
+  dependencies: SkillInstallerDependencies = defaultDependencies,
+): Promise<boolean> {
   try {
-    await access(path, constants.F_OK);
+    await dependencies.access(path, constants.F_OK);
     return true;
   } catch {
     return false;
@@ -66,13 +98,14 @@ function sourceRootFor(skill: SkillPackSkill, roots: SourceRoots): string {
 async function assertSkillFile(
   path: string,
   displayPath: string,
+  dependencies: SkillInstallerDependencies = defaultDependencies,
 ): Promise<void> {
   try {
-    const skillFile = await stat(path);
+    const skillFile = await dependencies.stat(path);
     if (!skillFile.isFile()) {
       throw new Error("Skill path is not a file");
     }
-    await access(path, constants.R_OK);
+    await dependencies.access(path, constants.R_OK);
   } catch {
     throw new Error(`Missing required skill file: ${displayPath}`);
   }
@@ -84,9 +117,12 @@ function comparePaths(a: string, b: string): number {
   return 0;
 }
 
-async function hashFile(path: string): Promise<string> {
+async function hashFile(
+  path: string,
+  dependencies: SkillInstallerDependencies = defaultDependencies,
+): Promise<string> {
   return createHash("sha256")
-    .update(await readFile(path))
+    .update(await dependencies.readFile(path))
     .digest("hex");
 }
 
@@ -95,9 +131,12 @@ async function collectSourceFiles(
   currentDir: string,
   targetRelativeDir: string,
   displayRoot: string,
+  dependencies: SkillInstallerDependencies = defaultDependencies,
 ): Promise<Array<{ path: string; sha256: string }>> {
   const files: Array<{ path: string; sha256: string }> = [];
-  const entries = await readdir(currentDir, { withFileTypes: true });
+  const entries = await dependencies.readdir(currentDir, {
+    withFileTypes: true,
+  });
   entries.sort((a, b) => comparePaths(a.name, b.name));
 
   for (const entry of entries) {
@@ -113,6 +152,7 @@ async function collectSourceFiles(
           entryPath,
           targetRelativeDir,
           displayRoot,
+          dependencies,
         )),
       );
       continue;
@@ -123,7 +163,7 @@ async function collectSourceFiles(
 
     files.push({
       path: metadataPath,
-      sha256: await hashFile(entryPath),
+      sha256: await hashFile(entryPath, dependencies),
     });
   }
 
@@ -136,11 +176,13 @@ export async function installProjectSkills(options: {
   sourceRoots?: SourceRoots;
   packSkills?: SkillPackSkill[];
   installedAt?: string;
+  dependencies?: SkillInstallerDependencies;
 }): Promise<ProjectSkillInstallResult> {
   const skillDir = options.skillDir ?? DEFAULT_PROJECT_SKILL_DIR;
   const sourceRoots = options.sourceRoots ?? defaultSkillSourceRoots();
   const packSkills =
     options.packSkills ?? PATCHMILL_RECOMMENDED_SKILL_PACK.skills;
+  const dependencies = options.dependencies ?? defaultDependencies;
   const absoluteSkillDir = resolve(options.repoRoot, skillDir);
   const metadataPath = join(absoluteSkillDir, SKILL_PACK_METADATA_FILE);
   const installedSkills: string[] = [];
@@ -157,11 +199,12 @@ export async function installProjectSkills(options: {
     await assertSkillFile(
       join(sourceDir, "SKILL.md"),
       `${skill.name}/SKILL.md`,
+      dependencies,
     );
 
     const targetRelativeDir = projectSkillPath(skill.name, skillDir);
     const targetDir = resolve(options.repoRoot, targetRelativeDir);
-    if (await pathExists(targetDir)) {
+    if (await pathExists(targetDir, dependencies)) {
       throw new Error(
         `Refusing to overwrite existing skill path: ${targetRelativeDir}`,
       );
@@ -172,6 +215,7 @@ export async function installProjectSkills(options: {
       sourceDir,
       targetRelativeDir,
       skill.name,
+      dependencies,
     );
 
     installationPlan.push({
@@ -182,25 +226,18 @@ export async function installProjectSkills(options: {
     });
   }
 
-  if (await pathExists(metadataPath)) {
+  if (await pathExists(metadataPath, dependencies)) {
     throw new Error(
       `Refusing to overwrite existing skill path: ${projectSkillPath(SKILL_PACK_METADATA_FILE, skillDir)}`,
     );
   }
 
-  for (const plan of installationPlan) {
-    files.push(...plan.files);
+  if (await pathExists(absoluteSkillDir, dependencies)) {
+    throw new Error(`Refusing to overwrite existing skill path: ${skillDir}`);
   }
 
-  for (const { sourceDir, targetDir, targetRelativeDir } of installationPlan) {
-    await mkdir(dirname(targetDir), { recursive: true });
-    await cp(sourceDir, targetDir, {
-      recursive: true,
-      errorOnExist: true,
-      force: false,
-    });
-
-    installedSkills.push(targetRelativeDir);
+  for (const plan of installationPlan) {
+    files.push(...plan.files);
   }
 
   files.sort((a, b) => comparePaths(a.path, b.path));
@@ -209,10 +246,47 @@ export async function installProjectSkills(options: {
     installedAt: options.installedAt ?? new Date().toISOString(),
     skillDir,
   });
-  await mkdir(absoluteSkillDir, { recursive: true });
-  await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, {
-    flag: "wx",
-  });
+
+  let stagingSkillDir: string | undefined;
+
+  try {
+    await dependencies.mkdir(dirname(absoluteSkillDir), { recursive: true });
+    stagingSkillDir = await dependencies.mkdtemp(
+      join(dirname(absoluteSkillDir), `${basename(absoluteSkillDir)}-staging-`),
+    );
+
+    for (const {
+      sourceDir,
+      targetDir,
+      targetRelativeDir,
+    } of installationPlan) {
+      await dependencies.cp(
+        sourceDir,
+        join(stagingSkillDir, relative(absoluteSkillDir, targetDir)),
+        {
+          recursive: true,
+          errorOnExist: true,
+          force: false,
+        },
+      );
+
+      installedSkills.push(targetRelativeDir);
+    }
+
+    await dependencies.writeFile(
+      join(stagingSkillDir, SKILL_PACK_METADATA_FILE),
+      `${JSON.stringify(metadata, null, 2)}\n`,
+      {
+        flag: "wx",
+      },
+    );
+
+    await dependencies.rename(stagingSkillDir, absoluteSkillDir);
+  } finally {
+    if (stagingSkillDir !== undefined) {
+      await dependencies.rm(stagingSkillDir, { recursive: true, force: true });
+    }
+  }
 
   return {
     skillDir: metadata.skillDir,

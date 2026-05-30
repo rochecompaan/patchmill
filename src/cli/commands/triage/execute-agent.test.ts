@@ -9,6 +9,10 @@ import {
   DEFAULT_PATCHMILL_SKILLS,
 } from "../../../workflow/skills.ts";
 import {
+  buildSkillPackMetadata,
+  hashText,
+} from "../../../workflow/skill-pack.ts";
+import {
   buildTriageExecutePrompt,
   runTriageExecuteAgent,
 } from "./execute-agent.ts";
@@ -49,22 +53,24 @@ async function createProjectLocalTriageRepo(): Promise<{
 
   await mkdir(join(skillsRoot, "patchmill-issue-triage"), { recursive: true });
   await mkdir(join(skillsRoot, "triage-support"), { recursive: true });
-  await writeFile(triageSkillPath, "# triage\n");
-  await writeFile(supportSkillPath, "# support\n");
+  const triageSkill = "# triage\n";
+  const supportSkill = "# support\n";
+  await writeFile(triageSkillPath, triageSkill);
+  await writeFile(supportSkillPath, supportSkill);
   await writeFile(
     join(skillsRoot, "patchmill-skill-pack.json"),
-    JSON.stringify({
-      files: [
+    JSON.stringify(
+      buildSkillPackMetadata([
         {
           path: ".patchmill/skills/patchmill-issue-triage/SKILL.md",
-          sha256: "triage",
+          sha256: hashText(triageSkill),
         },
         {
           path: ".patchmill/skills/triage-support/SKILL.md",
-          sha256: "support",
+          sha256: hashText(supportSkill),
         },
-      ],
-    }),
+      ]),
+    ),
   );
 
   return { repoRoot, triageSkillPath, supportSkillPath };
