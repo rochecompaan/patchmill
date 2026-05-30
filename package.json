@@ -27,7 +27,7 @@
     "software-factory",
     "orchestrator"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "description": "An agent-driven software factory that turns issues into reviewed diffs.",
   "type": "module",
   "bin": {

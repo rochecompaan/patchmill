@@ -66,7 +66,7 @@ buildNpmPackageNode24 rec {
   meta = {
     description = "Agent-driven software factory that turns issues into reviewed diffs";
     mainProgram = "patchmill";
-    license = lib.licenses.mit;
+    license = lib.licenses.asl20;
     platforms = lib.platforms.unix;
   };
 }
