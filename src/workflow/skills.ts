@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve, win32 } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
@@ -176,40 +176,100 @@ function pathStartsWith(path: string, prefix: string): boolean {
   );
 }
 
+function isPathInside(parent: string, child: string): boolean {
+  const pathRelative = relative(parent, child);
+  return (
+    pathRelative === "" ||
+    (!pathRelative.startsWith("..") && !isAbsolute(pathRelative))
+  );
+}
+
+function resolveProjectLocalMetadataFilePath(
+  filePath: string,
+  repoRoot: string,
+  projectLocalRoot: string,
+): string | null {
+  const normalizedPath = filePath.replaceAll("\\", "/");
+  if (isAbsolute(normalizedPath) || win32.isAbsolute(filePath)) {
+    return null;
+  }
+
+  if (!normalizedPath.startsWith(`${DEFAULT_PROJECT_SKILL_DIR}/`)) {
+    return null;
+  }
+
+  const resolvedPath = resolve(repoRoot, normalizedPath);
+  return isPathInside(projectLocalRoot, resolvedPath) ? resolvedPath : null;
+}
+
 function projectLocalPackSkillPaths(repoRoot: string): string[] {
   const projectLocalRoot = resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR);
   const metadataSkillPaths = projectLocalMetadataSkillPaths(
     repoRoot,
     projectLocalRoot,
   );
-  return metadataSkillPaths.length > 0
-    ? metadataSkillPaths
-    : discoveredProjectLocalSkillPaths(projectLocalRoot);
+  return (
+    metadataSkillPaths ?? discoveredProjectLocalSkillPaths(projectLocalRoot)
+  );
 }
 
 function projectLocalMetadataSkillPaths(
   repoRoot: string,
   projectLocalRoot: string,
-): string[] {
+): string[] | null {
+  const metadataPath = join(projectLocalRoot, SKILL_PACK_METADATA_FILE);
+
+  let metadataContent: string;
   try {
-    const metadataPath = join(projectLocalRoot, SKILL_PACK_METADATA_FILE);
-    const metadata = JSON.parse(readFileSync(metadataPath, "utf8")) as {
-      files?: Array<{ path?: unknown }>;
-    };
-    if (!Array.isArray(metadata.files)) return [];
-
-    return metadata.files.flatMap((file) => {
-      if (typeof file.path !== "string") return [];
-
-      const normalizedPath = file.path.replaceAll("\\", "/");
-      return normalizedPath.startsWith(`${DEFAULT_PROJECT_SKILL_DIR}/`) &&
-        normalizedPath.endsWith(`/${SKILL_FILE_NAME}`)
-        ? [resolve(repoRoot, normalizedPath)]
-        : [];
-    });
-  } catch {
-    return [];
+    metadataContent = readFileSync(metadataPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw new Error(
+      `project-local skill pack metadata unreadable: ${metadataPath}`,
+      { cause: error },
+    );
   }
+
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(metadataContent);
+  } catch (error) {
+    throw new Error(
+      `project-local skill pack metadata malformed: ${metadataPath}`,
+      { cause: error },
+    );
+  }
+
+  if (!metadata || typeof metadata !== "object") {
+    throw new Error(
+      `project-local skill pack metadata malformed: ${metadataPath}`,
+    );
+  }
+
+  const files = (metadata as { files?: unknown }).files;
+  if (!Array.isArray(files)) {
+    throw new Error(
+      `project-local skill pack metadata malformed: ${metadataPath}`,
+    );
+  }
+
+  return files.flatMap((file) => {
+    if (!file || typeof file !== "object") return [];
+
+    const filePath = (file as { path?: unknown }).path;
+    if (typeof filePath !== "string") return [];
+
+    if (!isSkillFilePath(filePath)) return [];
+
+    const resolvedPath = resolveProjectLocalMetadataFilePath(
+      filePath,
+      repoRoot,
+      projectLocalRoot,
+    );
+    return resolvedPath ? [resolvedPath] : [];
+  });
 }
 
 function discoveredProjectLocalSkillPaths(projectLocalRoot: string): string[] {

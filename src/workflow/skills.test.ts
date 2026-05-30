@@ -223,6 +223,85 @@ test("skillInvocationPaths expands project-local pack skills from metadata", asy
   );
 });
 
+test("skillInvocationPaths rejects metadata skill paths outside project-local skills", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-skills-metadata-traversal-"),
+  );
+  const projectSkillsRoot = join(repoRoot, ".patchmill", "skills");
+  await mkdir(join(projectSkillsRoot, "subagent-driven-development"), {
+    recursive: true,
+  });
+  await mkdir(join(projectSkillsRoot, "requesting-code-review"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(projectSkillsRoot, "subagent-driven-development", "SKILL.md"),
+    "# implementation\n",
+  );
+  await writeFile(
+    join(projectSkillsRoot, "requesting-code-review", "SKILL.md"),
+    "# review\n",
+  );
+  await writeFile(
+    join(projectSkillsRoot, "patchmill-skill-pack.json"),
+    JSON.stringify({
+      files: [
+        {
+          path: ".patchmill/skills/../other/SKILL.md",
+          sha256: "escaped",
+        },
+      ],
+    }),
+  );
+
+  assert.deepEqual(
+    skillInvocationPaths(
+      [".patchmill/skills/subagent-driven-development"],
+      repoRoot,
+    ),
+    [
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-driven-development",
+        "SKILL.md",
+      ),
+    ],
+  );
+});
+
+test("skillInvocationPaths fails fast when project-local metadata is malformed", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-skills-malformed-metadata-"),
+  );
+  const projectSkillsRoot = join(repoRoot, ".patchmill", "skills");
+  await mkdir(join(projectSkillsRoot, "subagent-driven-development"), {
+    recursive: true,
+  });
+  await mkdir(join(projectSkillsRoot, "test-driven-development"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(projectSkillsRoot, "subagent-driven-development", "SKILL.md"),
+    "# implementation\n",
+  );
+  await writeFile(
+    join(projectSkillsRoot, "test-driven-development", "SKILL.md"),
+    "# tests\n",
+  );
+  await writeFile(join(projectSkillsRoot, "patchmill-skill-pack.json"), "{");
+
+  assert.throws(
+    () =>
+      skillInvocationPaths(
+        [".patchmill/skills/subagent-driven-development"],
+        repoRoot,
+      ),
+    /project-local skill pack metadata malformed/u,
+  );
+});
+
 test("skillInvocationPaths discovers project-local pack skills when metadata is missing", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-skills-discovery-"));
   const projectSkillsRoot = join(repoRoot, ".patchmill", "skills");
