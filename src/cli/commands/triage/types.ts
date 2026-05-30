@@ -29,6 +29,7 @@ export type CommandResult = {
 
 export type CommandRunOptions = {
   cwd?: string;
+  env?: Record<string, string | undefined>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
 };

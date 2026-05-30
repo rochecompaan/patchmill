@@ -7,3 +7,4 @@ coverage/
 .tmp/
 .worktrees/
 package-lock.json
+extensions/todos.ts

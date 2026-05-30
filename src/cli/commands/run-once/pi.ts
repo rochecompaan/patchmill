@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
@@ -25,6 +26,15 @@ const require = createRequire(import.meta.url);
 const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
   require.resolve("pi-subagents/package.json"),
 );
+const PATCHMILL_PACKAGE_ROOT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../..",
+);
+const PATCHMILL_TODOS_EXTENSION = join(
+  PATCHMILL_PACKAGE_ROOT,
+  "extensions",
+  "todos.ts",
+);
 
 function piPromptArgs(
   promptPath: string,
@@ -32,7 +42,13 @@ function piPromptArgs(
   skillPaths: string[] = [],
 ): string[] {
   const skillArgs = skillPaths.flatMap((path) => ["--skill", path]);
-  const baseArgs = ["-e", PI_SUBAGENTS_PACKAGE_ROOT, ...skillArgs, "-p"];
+  const extensionArgs = [
+    "-e",
+    PI_SUBAGENTS_PACKAGE_ROOT,
+    "-e",
+    PATCHMILL_TODOS_EXTENSION,
+  ];
+  const baseArgs = [...extensionArgs, ...skillArgs, "-p"];
   return sessionDir
     ? [...baseArgs, "--session-dir", sessionDir, `@${promptPath}`]
     : [...baseArgs, `@${promptPath}`];
@@ -358,6 +374,11 @@ export async function runPiPrompt(
         piPromptArgs(promptPath, sessionDir, options?.skillPaths),
         {
           cwd,
+          env: {
+            PI_TODO_PATH:
+              options?.taskContract?.todoRoot ??
+              DEFAULT_PI_TASK_CONTRACT.todoRoot,
+          },
         },
       );
     } finally {

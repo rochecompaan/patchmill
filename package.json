@@ -10,8 +10,10 @@
     "src",
     "docs",
     "skills",
+    "extensions",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "repository": {
     "type": "git",
@@ -51,7 +53,7 @@
   },
   "lint-staged": {
     "*.{ts,js,json,md}": "prettier --write",
-    "*.ts": "eslint --max-warnings=0",
+    "{bin,src,test-support}/**/*.ts": "eslint --max-warnings=0",
     "*.md": "markdownlint-cli2"
   },
   "engines": {

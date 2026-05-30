@@ -48,6 +48,8 @@ buildNpmPackageNode24 rec {
     mkdir -p "$out/share/${pname}"
     cp -R "$package_dir/bin" "$out/share/${pname}/bin"
     cp -R "$package_dir/src" "$out/share/${pname}/src"
+    cp -R "$package_dir/extensions" "$out/share/${pname}/extensions"
+    cp "$package_dir/THIRD_PARTY_NOTICES.md" "$out/share/${pname}/THIRD_PARTY_NOTICES.md"
     cp "$package_dir/package.json" "$out/share/${pname}/package.json"
     ln -s "$package_dir/node_modules" "$out/share/${pname}/node_modules"
 

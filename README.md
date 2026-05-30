@@ -153,14 +153,18 @@ start by configuring issue hosts, labels, paths, and skills; Pi becomes relevant
 when you want to customize the runtime, delegated agent roles, models, tools, or
 context behavior.
 
-Patchmill includes `pi-subagents`; users do not install it separately.
-Implementation prompts can rely on the Pi `subagent` tool and the agents
-discovered by pi-subagents. For initialized repositories, the default
-implementation skill is `.patchmill/skills/subagent-driven-development`; legacy
-setups without project-local defaults fall back to the built-in compatibility
-skill `superpowers:subagent-driven-development`, and both can use pi-subagents
-builtin agents such as `worker`, `reviewer`, `scout`, `planner`,
-`context-builder`, `researcher`, `delegate`, and `oracle`.
+Patchmill includes `pi-subagents`; users do not install it separately. Patchmill
+also bundles the file-backed Pi `todo` extension used by the issue-agent task
+contract, so planning and implementation prompts can create local task todos
+under the configured `projectPolicy.pi.taskContract.todoRoot` (default:
+`.pi/todos`) without requiring a separate Pi package install. Implementation
+prompts can rely on the Pi `subagent` tool and the agents discovered by
+pi-subagents. For initialized repositories, the default implementation skill is
+`.patchmill/skills/subagent-driven-development`; legacy setups without
+project-local defaults fall back to the built-in compatibility skill
+`superpowers:subagent-driven-development`, and both can use pi-subagents builtin
+agents such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
+`researcher`, `delegate`, and `oracle`.
 
 Agent files define reusable delegated roles and can live in:
 

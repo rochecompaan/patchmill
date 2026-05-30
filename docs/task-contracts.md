@@ -93,6 +93,9 @@ Set task-contract fields in `patchmill.config.json` under
   todos.
 - `patchmill run-once` uses the task contract when it creates prompts, reads
   plan tasks, and checks issue-task completion before final handoff.
+- Patchmill loads its bundled file-backed Pi `todo` extension for run-once Pi
+  sessions and passes `todoRoot` as `PI_TODO_PATH`, so the agent-created todo
+  files and Patchmill's progress checks use the same directory.
 
 ## Related settings
 

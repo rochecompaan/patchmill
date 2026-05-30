@@ -13,6 +13,7 @@ export function createCommandRunner(): CommandRunner {
         };
         const child = spawn(command, args, {
           cwd: options.cwd,
+          env: options.env ? { ...process.env, ...options.env } : undefined,
           stdio: ["ignore", "pipe", "pipe"],
         });
         let stdout = "";
