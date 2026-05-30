@@ -1,0 +1,14 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "@rochecompaan/patchmill",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "nix/package.nix"
+        }
+      ]
+    }
+  }
+}

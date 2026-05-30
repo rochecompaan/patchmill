@@ -220,6 +220,13 @@ Patchmill writes local run state under `.patchmill/`:
 
 These paths are local workflow state, not source documentation.
 
+## Releases
+
+Patchmill uses release-please on pushes to `main`. Conventional Commits drive
+release PRs that update `package.json`, lockfiles, `CHANGELOG.md`, and the Nix
+package version marker. When a release PR is merged, the workflow creates the
+GitHub release and publishes the npm package with provenance using `NPM_TOKEN`.
+
 ## Issue-agent workflows
 
 For a deeper newcomer-friendly walkthrough,

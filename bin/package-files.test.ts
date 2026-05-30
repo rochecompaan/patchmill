@@ -48,6 +48,7 @@ test("npm pack dry-run includes bundled runtime resources and notices", () => {
   const files = new Set(packEntries[0]?.files?.map((file) => file.path) ?? []);
   assert.equal(files.has("skills/patchmill-issue-triage/SKILL.md"), true);
   assert.equal(files.has("extensions/todos.ts"), true);
+  assert.equal(files.has("CHANGELOG.md"), true);
   assert.equal(files.has("LICENSES/Apache-2.0.txt"), false);
   assert.equal(files.has("THIRD_PARTY_NOTICES.md"), true);
 });
