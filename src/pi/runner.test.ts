@@ -16,6 +16,7 @@ import type {
   IssueSummary,
 } from "../cli/commands/triage/types.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
+import { buildSkillPackMetadata, hashText } from "../workflow/skill-pack.ts";
 import type { ImplementationPiInput } from "./types.ts";
 
 type RecordedCall = {
@@ -207,6 +208,44 @@ test("PiRunner plan passes configured ready and needs-info labels into the promp
   });
 });
 
+test("PiRunner plan resolves configured local planning skills into pi --skill args", async () => {
+  const repoRoot = "/repo";
+  const planPath = "docs/plans/2026-05-23-pi-runner-local-skill.md";
+  const runner = createFakeRunner((call) => {
+    const skillIndex = call.args.indexOf("--skill");
+    assert.notEqual(skillIndex, -1);
+    assert.equal(
+      call.args[skillIndex + 1],
+      "/repo/.patchmill/skills/writing-plans/SKILL.md",
+    );
+    return {
+      code: 0,
+      stdout: JSON.stringify({
+        status: "plan-created",
+        planPath,
+        commit: "ghi789",
+      }),
+      stderr: "",
+    };
+  });
+
+  const result = await new PiRunner(runner).plan({
+    repoRoot,
+    issue,
+    planPath,
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      planning: ".patchmill/skills/writing-plans",
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: "plan-created",
+    planPath,
+    commit: "ghi789",
+  });
+});
+
 test("PiRunner implementation uses the worktree root, derives the default landing branch from git.baseBranch, preserves resume context, and keeps runner metadata authoritative", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-"));
   const worktreePath = "worktrees/issue-42-fix";
@@ -309,4 +348,139 @@ test("PiRunner implementation uses the worktree root, derives the default landin
         event.message.includes("task 1/1"),
     ),
   );
+});
+
+test("PiRunner implementation resolves local skills from the worktree root and expands the local skill pack", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-local-"));
+  const worktreePath = "worktrees/issue-42-local-skills";
+  const worktreeRoot = join(repoRoot, worktreePath);
+  const planPath = "docs/plans/2026-05-23-pi-runner-local-skills.md";
+  await mkdir(join(worktreeRoot, ".pi", "todos"), { recursive: true });
+  await mkdir(
+    join(worktreeRoot, ".patchmill", "skills", "subagent-driven-development"),
+    {
+      recursive: true,
+    },
+  );
+  await mkdir(
+    join(worktreeRoot, ".patchmill", "skills", "requesting-code-review"),
+    {
+      recursive: true,
+    },
+  );
+  await mkdir(join(worktreeRoot, "skills", "toolchain"), { recursive: true });
+  const implementationSkill = "# implementation\n";
+  const reviewSkill = "# review\n";
+  await writeFile(
+    join(
+      worktreeRoot,
+      ".patchmill",
+      "skills",
+      "subagent-driven-development",
+      "SKILL.md",
+    ),
+    implementationSkill,
+  );
+  await writeFile(
+    join(
+      worktreeRoot,
+      ".patchmill",
+      "skills",
+      "requesting-code-review",
+      "SKILL.md",
+    ),
+    reviewSkill,
+  );
+  await writeFile(
+    join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
+    "# toolchain\n",
+  );
+  await writeFile(
+    join(worktreeRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
+    JSON.stringify(
+      buildSkillPackMetadata([
+        {
+          path: ".patchmill/skills/subagent-driven-development/SKILL.md",
+          sha256: hashText(implementationSkill),
+        },
+        {
+          path: ".patchmill/skills/requesting-code-review/SKILL.md",
+          sha256: hashText(reviewSkill),
+        },
+      ]),
+    ),
+  );
+  await writeFile(
+    join(
+      worktreeRoot,
+      ".pi",
+      "todos",
+      "issue-42-task-01-check-local-skills.md",
+    ),
+    `${JSON.stringify({ title: "issue-42-task-01-check-local-skills", status: "open" })}\nTask body`,
+    "utf8",
+  );
+
+  const runner = createFakeRunner((call) => {
+    const skillPaths = call.args.flatMap((arg, index, args) =>
+      arg === "--skill" ? [args[index + 1] ?? ""] : [],
+    );
+    assert.deepEqual(skillPaths, [
+      join(
+        worktreeRoot,
+        ".patchmill",
+        "skills",
+        "subagent-driven-development",
+        "SKILL.md",
+      ),
+      join(
+        worktreeRoot,
+        ".patchmill",
+        "skills",
+        "requesting-code-review",
+        "SKILL.md",
+      ),
+      join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
+    ]);
+    assert.equal(call.cwd, worktreeRoot);
+    return {
+      code: 0,
+      stdout: JSON.stringify({
+        status: "merged",
+        branch: "agent/issue-42-local-skills",
+        mergeCommit: "merge456",
+        commits: ["commit456"],
+        validation: ["npm test"],
+      }),
+      stderr: "",
+    };
+  });
+
+  const result = await new PiRunner(runner).implementation({
+    repoRoot,
+    issue,
+    planPath,
+    branch: "agent/issue-42-local-skills",
+    worktreePath,
+    git: {
+      baseBranch: "main",
+      remote: "origin",
+      allowDirectLand: true,
+    },
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      toolchain: "skills/toolchain",
+      implementation: ".patchmill/skills/subagent-driven-development",
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: "merged",
+    branch: "agent/issue-42-local-skills",
+    mergeCommit: "merge456",
+    commits: ["commit456"],
+    validation: ["npm test"],
+    reviewSummary: undefined,
+    landingDecision: undefined,
+  });
 });

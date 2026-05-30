@@ -22,22 +22,27 @@ A few terms appear throughout this page:
 
 ## Direct skills settings
 
-Use the top-level `skills` key:
+Use the top-level `skills` key with a supported reference form (examples):
 
 ```json
 {
   "skills": {
     "triage": "patchmill-issue-triage",
-    "planning": "superpowers:writing-plans",
+    "planning": ".patchmill/skills/writing-plans",
     "implementation": "superpowers:subagent-driven-development",
     "visualEvidence": "capturing-proof-screenshots"
   }
 }
 ```
 
-Each stage accepts one skill name. If a workflow needs several skills or
-detailed instructions, create a project skill that references those skills and
-configure that project skill here.
+`patchmill init` writes `.patchmill/skills/...` references by default, and
+namespace-style references like `superpowers:writing-plans` are supported custom
+examples.
+
+Each stage accepts one skill reference (name, namespace-style, or path-like
+local skill directory/file). If a workflow needs several skills or detailed
+instructions, create a project skill that references those skills and configure
+that project skill here.
 
 The old prompt-fragment settings are removed instead of kept for compatibility.
 Move toolchain, host workflow, landing judgment, visual-evidence procedure, and
@@ -62,6 +67,23 @@ Supported keys:
 - `landing`: optional skill used for direct-land versus PR decisions. It is
   required for direct squash-land eligibility; without it, Patchmill uses PR
   fallback even when direct land is enabled.
+
+## Project-local default skills
+
+`patchmill init` installs Patchmill's recommended skill pack into
+`.patchmill/skills/` by default (mode `project`). If you choose another
+`--skills` mode, the default pack is not installed.
+
+Commit `.patchmill/skills/` to git. It is part of repository process: changes to
+those files directly alter triage, planning, implementation, review, and
+validation behavior.
+
+Patchmill treats installed files as project-owned. It will not silently
+overwrite edited skill files and will preserve repository-specific edits.
+
+`patchmill doctor` checks configured project-local skills by reading the skill
+metadata; it warns when installed skills differ from expected metadata and fails
+when required configured skill paths are missing or malformed.
 
 ## Triage
 

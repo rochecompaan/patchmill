@@ -9,6 +9,7 @@ import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
+import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
   missingLabelDefinitions,
@@ -963,6 +964,10 @@ export async function runOneIssue(
           {
             progress: options.progress,
             stage: "pi-plan",
+            skillPaths: skillInvocationPaths(
+              [config.skills.planning],
+              config.repoRoot,
+            ),
             streamOutput: options.streamPiOutput,
             issueNumber: issue.number,
             repoRoot: config.repoRoot,
@@ -1346,6 +1351,16 @@ export async function runOneIssue(
           {
             progress: options.progress,
             stage: "pi-implementation",
+            skillPaths: skillInvocationPaths(
+              [
+                config.skills.toolchain,
+                config.skills.implementation,
+                config.skills.review,
+                config.skills.visualEvidence,
+                config.skills.landing,
+              ],
+              worktreeRoot,
+            ),
             streamOutput: options.streamPiOutput,
             issueNumber: issue.number,
             repoRoot: worktreeRoot,

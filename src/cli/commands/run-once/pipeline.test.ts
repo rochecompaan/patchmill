@@ -12,6 +12,10 @@ import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import {
+  buildSkillPackMetadata,
+  hashText,
+} from "../../../workflow/skill-pack.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { JsonlProgressReporter } from "./progress.ts";
@@ -3522,6 +3526,177 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
     ".worktrees/patchmill-issue-15-ship-automation-pipeline",
   );
   assert.equal(runState.implementingAt, NOW.toISOString());
+});
+
+test("runOneIssue resolves implementation skills from the worktree root and expands the local skill pack", async () => {
+  const baseConfig = await makeConfig({ dryRun: false, execute: true });
+  const config = {
+    ...baseConfig,
+    skills: {
+      ...baseConfig.skills,
+      planning: "skills/local-planning/SKILL.md",
+      implementation: ".patchmill/skills/subagent-driven-development",
+    },
+  };
+  const selected = issue(16, ["agent-ready", "bug"], "Use local skills");
+  const expectedPlanPath = "docs/plans/2026-05-09-issue-16-use-local-skills.md";
+  const worktreeRoot = join(
+    config.repoRoot,
+    ".worktrees",
+    "patchmill-issue-16-use-local-skills",
+  );
+  let piCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "subagent-driven-development",
+        ),
+        { recursive: true },
+      );
+      await mkdir(
+        join(worktreeRoot, ".patchmill", "skills", "requesting-code-review"),
+        { recursive: true },
+      );
+      const implementationSkill = "# implementation\n";
+      const reviewSkill = "# review\n";
+      await writeFile(
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "subagent-driven-development",
+          "SKILL.md",
+        ),
+        implementationSkill,
+        "utf8",
+      );
+      await writeFile(
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "requesting-code-review",
+          "SKILL.md",
+        ),
+        reviewSkill,
+        "utf8",
+      );
+      await writeFile(
+        join(worktreeRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
+        JSON.stringify(
+          buildSkillPackMetadata([
+            {
+              path: ".patchmill/skills/subagent-driven-development/SKILL.md",
+              sha256: hashText(implementationSkill),
+            },
+            {
+              path: ".patchmill/skills/requesting-code-review/SKILL.md",
+              sha256: hashText(reviewSkill),
+            },
+          ]),
+        ),
+        "utf8",
+      );
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCalls += 1;
+      const skillPaths = call.args.flatMap((arg, index) =>
+        arg === "--skill" ? [call.args[index + 1] ?? ""] : [],
+      );
+
+      if (piCalls === 1) {
+        assert.deepEqual(skillPaths, [
+          join(config.repoRoot, "skills", "local-planning", "SKILL.md"),
+        ]);
+        return {
+          code: 0,
+          stdout: `{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
+          stderr: "",
+        };
+      }
+
+      assert.deepEqual(skillPaths, [
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "subagent-driven-development",
+          "SKILL.md",
+        ),
+        join(
+          worktreeRoot,
+          ".patchmill",
+          "skills",
+          "requesting-code-review",
+          "SKILL.md",
+        ),
+      ]);
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/16",
+          branch: "agent/issue-16-use-local-skills",
+          commits: ["def456"],
+          validation: ["node --test ok"],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(piCalls, 2);
 });
 
 test("runOneIssue renders configured project policy visual evidence fields in the implementation prompt", async () => {

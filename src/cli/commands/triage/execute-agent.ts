@@ -3,8 +3,8 @@ import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import {
-  bundledTriageSkillPath,
   DEFAULT_PATCHMILL_SKILLS,
+  skillInvocationPaths,
   type PatchmillSkillsConfig,
 } from "../../../workflow/skills.ts";
 import type { CommandRunner, IssueSummary } from "./types.ts";
@@ -96,10 +96,9 @@ export async function runTriageExecuteAgent(
 ): Promise<void> {
   const prompt = buildTriageExecutePrompt(input);
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
-  const skillArgs =
-    skills.triage === DEFAULT_PATCHMILL_SKILLS.triage
-      ? ["--skill", bundledTriageSkillPath()]
-      : [];
+  const skillArgs = skillInvocationPaths([skills.triage], repoRoot).flatMap(
+    (path) => ["--skill", path],
+  );
   const thinking = input.thinking ?? "high";
   await withPromptFile("agent-triage-execute-", prompt, async (promptPath) => {
     const result = await runner.run(

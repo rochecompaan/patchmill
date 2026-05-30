@@ -6,9 +6,16 @@ import { test } from "node:test";
 import {
   CONFIG_FILE_NAME,
   buildInitialConfig,
+  configFileExists,
   inferHostProviderFromRemote,
   writeInitialConfig,
 } from "./config-writer.ts";
+
+const PROJECT_LOCAL_SKILLS = {
+  triage: ".patchmill/skills/patchmill-issue-triage",
+  planning: ".patchmill/skills/writing-plans",
+  implementation: ".patchmill/skills/subagent-driven-development",
+};
 
 async function tempRepo(): Promise<string> {
   return mkdtemp(join(tmpdir(), "patchmill-init-"));
@@ -29,6 +36,16 @@ test("buildInitialConfig defaults GitHub host login to empty", () => {
       provider: "github-gh",
       login: "",
     },
+  });
+});
+
+test("buildInitialConfig includes provided skills", () => {
+  assert.deepEqual(buildInitialConfig({ skills: PROJECT_LOCAL_SKILLS }), {
+    host: {
+      provider: "forgejo-tea",
+      login: "triage-agent",
+    },
+    skills: PROJECT_LOCAL_SKILLS,
   });
 });
 
@@ -88,6 +105,25 @@ test("writeInitialConfig writes pretty minimal JSON", async () => {
   );
 });
 
+test("writeInitialConfig writes selected skills", async () => {
+  const repoRoot = await tempRepo();
+  const result = await writeInitialConfig(repoRoot, {
+    skills: PROJECT_LOCAL_SKILLS,
+  });
+
+  const expectedConfig = buildInitialConfig({ skills: PROJECT_LOCAL_SKILLS });
+
+  assert.deepEqual(result, {
+    status: "created",
+    path: join(repoRoot, CONFIG_FILE_NAME),
+    config: expectedConfig,
+  });
+  assert.equal(
+    await readFile(join(repoRoot, CONFIG_FILE_NAME), "utf8"),
+    `${JSON.stringify(expectedConfig, null, 2)}\n`,
+  );
+});
+
 test("writeInitialConfig refuses to overwrite existing config", async () => {
   const repoRoot = await tempRepo();
   await writeFile(join(repoRoot, CONFIG_FILE_NAME), "{}\n");
@@ -102,6 +138,16 @@ test("writeInitialConfig refuses to overwrite existing config", async () => {
     await readFile(join(repoRoot, CONFIG_FILE_NAME), "utf8"),
     "{}\n",
   );
+});
+
+test("configFileExists reports whether patchmill config is present", async () => {
+  const repoRoot = await tempRepo();
+
+  assert.equal(await configFileExists(repoRoot), false);
+
+  await writeFile(join(repoRoot, CONFIG_FILE_NAME), "{}\n");
+
+  assert.equal(await configFileExists(repoRoot), true);
 });
 
 test("writeInitialConfig reads origin remote from git config when present", async () => {

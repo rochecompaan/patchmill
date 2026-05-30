@@ -8,15 +8,27 @@ import {
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
-import { writeInitialConfig } from "./config-writer.ts";
+import { GLOBAL_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
+import {
+  installProjectSkills,
+  validateExistingSkillDirectory,
+  type ProjectSkillInstallResult,
+} from "./skill-installer.ts";
+import {
+  configFileExists,
+  writeInitialConfig,
+  type InitialConfigSkills,
+} from "./config-writer.ts";
 import { hasApparentPiProviderConfig } from "./pi-preflight.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill init [options]
 
 Create a minimal patchmill.config.json for this repository.
+Installs the recommended project-local skill pack by default.
 
 Options:
+  --skills <mode>  Skill installation mode: project, global, none, or path:<dir>. Default: project.
   --help, -h  Show this help and exit.
 `;
 
@@ -28,6 +40,13 @@ export type InitOutput = {
 export type PiLauncher = () => Promise<number>;
 export type PiAvailabilityCheck = () => Promise<boolean>;
 export type InitPrompt = (question: string) => Promise<string>;
+export type ProjectSkillInstaller = (options: {
+  repoRoot: string;
+}) => Promise<ProjectSkillInstallResult>;
+export type ExistingSkillDirectoryValidator = (
+  repoRoot: string,
+  skillDir: string,
+) => Promise<InitialConfigSkills>;
 
 const DEFAULT_OUTPUT: InitOutput = {
   stdout: (line) => console.log(line),
@@ -68,6 +87,24 @@ function isYes(value: string): boolean {
   return /^(y|yes)$/iu.test(value.trim());
 }
 
+const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
+  triage: GLOBAL_PATCHMILL_SKILLS.triage,
+  planning: GLOBAL_PATCHMILL_SKILLS.planning,
+  implementation: GLOBAL_PATCHMILL_SKILLS.implementation,
+};
+
+const EXISTING_CONFIG_MESSAGE =
+  "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor";
+
+function successNextSteps(skillsMode: "project" | "global" | "none" | "path") {
+  const commitTargets =
+    skillsMode === "project"
+      ? "`patchmill.config.json` and `.patchmill/skills/`"
+      : "`patchmill.config.json`";
+
+  return `Commit ${commitTargets} before running \`patchmill doctor\`. Doctor expects a clean worktree.\n\nNext:\n  patchmill doctor`;
+}
+
 export async function runInit(
   args: string[],
   repoRoot = cwd(),
@@ -79,6 +116,8 @@ export async function runInit(
     launchPi?: PiLauncher;
     checkPiAvailable?: PiAvailabilityCheck;
     isInteractive?: boolean;
+    installProjectSkills?: ProjectSkillInstaller;
+    validateExistingSkillDirectory?: ExistingSkillDirectoryValidator;
   } = {},
 ): Promise<number> {
   const config = parseArgs(args, repoRoot);
@@ -87,11 +126,37 @@ export async function runInit(
     return 0;
   }
 
-  const result = await writeInitialConfig(config.repoRoot, {});
+  if (await configFileExists(config.repoRoot)) {
+    output.stdout(EXISTING_CONFIG_MESSAGE);
+    return 1;
+  }
+
+  let skills: InitialConfigSkills | undefined;
+  let skillsMessage: string;
+
+  if (config.skills.mode === "project") {
+    const installResult = await (
+      options.installProjectSkills ?? installProjectSkills
+    )({ repoRoot: config.repoRoot });
+    skills = installResult.skillConfig;
+    skillsMessage = `Installed project-local skills:\n  ${installResult.installedSkills.join("\n  ")}\n\nCommit ${installResult.skillDir}/ to share the recommended skill pack with this repository.\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
+  } else if (config.skills.mode === "global") {
+    skills = DEFAULT_GLOBAL_SKILLS;
+    skillsMessage =
+      "Using Patchmill default global skill names.\nNo project-local skills were installed.\n\nUsing Patchmill defaults for labels, paths, and git policy.";
+  } else if (config.skills.mode === "none") {
+    skillsMessage =
+      "Skipped default project-local skill installation (--skills none).\nNo skills mapping was written to patchmill.config.json.\n\nUsing Patchmill defaults for labels, paths, and git policy.";
+  } else {
+    skills = await (
+      options.validateExistingSkillDirectory ?? validateExistingSkillDirectory
+    )(config.repoRoot, config.skills.path);
+    skillsMessage = `Validated existing local skills from ${config.skills.path}.\nNo project-local skills were installed.\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
+  }
+
+  const result = await writeInitialConfig(config.repoRoot, { skills });
   if (result.status === "exists") {
-    output.stdout(
-      `patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor`,
-    );
+    output.stdout(EXISTING_CONFIG_MESSAGE);
     return 1;
   }
 
@@ -131,7 +196,7 @@ export async function runInit(
   }
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\nUsing Patchmill defaults for labels, paths, skills, and git policy.\n\n${piMessage}\n\nNext:\n  patchmill doctor`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${skillsMessage}\n\n${piMessage}\n\n${successNextSteps(config.skills.mode)}`,
   );
   return 0;
 }

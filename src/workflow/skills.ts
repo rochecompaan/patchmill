@@ -1,5 +1,4 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { BUNDLED_TRIAGE_SKILL_REFERENCE } from "./skill-resolution.ts";
 
 export type PatchmillSkillsConfig = {
   triage: string;
@@ -25,7 +24,15 @@ export type PatchmillSkillKey = (typeof PATCHMILL_SKILL_KEYS)[number];
 
 export type PartialPatchmillSkillsConfig = Partial<PatchmillSkillsConfig>;
 
+export { BUNDLED_TRIAGE_SKILL_REFERENCE };
+
 export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
+  triage: BUNDLED_TRIAGE_SKILL_REFERENCE,
+  planning: "superpowers:writing-plans",
+  implementation: "superpowers:subagent-driven-development",
+};
+
+export const GLOBAL_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   triage: "patchmill-issue-triage",
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
@@ -62,7 +69,15 @@ export function renderConfiguredSkillLine(
   return `${prefix}: \`${skill}\`.`;
 }
 
-export function bundledTriageSkillPath(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "..", "..", "skills", "patchmill-issue-triage", "SKILL.md");
-}
+export {
+  bundledTriageSkillPath,
+  isNamespaceStyleSkill,
+  isPathLikeSkill,
+  resolveConfiguredSkillInvocation,
+  resolvePathLikeSkillPath,
+  skillInvocationArgs,
+  skillInvocationPaths,
+  type SkillInvocationResolution,
+  type SkillResolutionDiagnostic,
+  type SkillResolutionStatus,
+} from "./skill-resolution.ts";

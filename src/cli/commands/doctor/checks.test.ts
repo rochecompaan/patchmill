@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
+import { installProjectSkills } from "../init/skill-installer.ts";
 import type { CommandRunner } from "../triage/types.ts";
+import {
+  DEFAULT_PROJECT_SKILL_DIR,
+  PATCHMILL_RECOMMENDED_SKILL_PACK,
+  SKILL_PACK_METADATA_FILE,
+  hashText,
+  type SkillPackMetadataFile,
+} from "../../../workflow/skill-pack.ts";
 
 async function tempRepo(): Promise<string> {
   return mkdtemp(join(tmpdir(), "patchmill-doctor-"));
@@ -15,6 +23,99 @@ async function writeConfig(repoRoot: string, config: unknown): Promise<void> {
     join(repoRoot, "patchmill.config.json"),
     JSON.stringify(config),
   );
+}
+
+function skillDocument(name: string, description?: string): string {
+  return [
+    "---",
+    `name: ${name}`,
+    ...(description ? [`description: ${description}`] : []),
+    "---",
+    `# ${name}`,
+    "",
+  ].join("\n");
+}
+
+async function writeSkillFile(
+  rootDir: string,
+  skillDir: string,
+  content: string,
+): Promise<string> {
+  const fullSkillDir = join(rootDir, skillDir);
+  await mkdir(fullSkillDir, { recursive: true });
+  const skillPath = join(fullSkillDir, "SKILL.md");
+  await writeFile(skillPath, content);
+  return skillPath;
+}
+
+async function writeProjectLocalSkill(
+  repoRoot: string,
+  skillName: string,
+  content: string,
+): Promise<string> {
+  return writeSkillFile(
+    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR),
+    skillName,
+    content,
+  );
+}
+
+function recommendedProjectLocalConfig() {
+  return {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      triage: `${DEFAULT_PROJECT_SKILL_DIR}/patchmill-issue-triage`,
+      planning: `${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`,
+      implementation: `${DEFAULT_PROJECT_SKILL_DIR}/subagent-driven-development`,
+    },
+  };
+}
+
+function recommendedProjectLocalMetadata(
+  files: Array<{ path: string; sha256: string }>,
+): SkillPackMetadataFile {
+  return {
+    pack: {
+      name: PATCHMILL_RECOMMENDED_SKILL_PACK.name,
+      version: PATCHMILL_RECOMMENDED_SKILL_PACK.version,
+      source: PATCHMILL_RECOMMENDED_SKILL_PACK.source,
+    },
+    installedAt: "2026-05-29T00:00:00.000Z",
+    skillDir: DEFAULT_PROJECT_SKILL_DIR,
+    metadataFile: SKILL_PACK_METADATA_FILE,
+    files,
+  };
+}
+
+async function writeProjectLocalMetadata(
+  repoRoot: string,
+  files: Array<{ path: string; sha256: string }>,
+): Promise<void> {
+  await mkdir(join(repoRoot, DEFAULT_PROJECT_SKILL_DIR), { recursive: true });
+  await writeFile(
+    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, SKILL_PACK_METADATA_FILE),
+    JSON.stringify(recommendedProjectLocalMetadata(files)),
+  );
+}
+
+function projectLocalSkillPath(repoRoot: string, skillName: string): string {
+  return join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, skillName, "SKILL.md");
+}
+
+function projectLocalMetadataSkillPath(skillName: string): string {
+  return `${DEFAULT_PROJECT_SKILL_DIR}/${skillName}/SKILL.md`;
+}
+
+function projectLocalPiSmokeCommand(paths: string[]): string {
+  return [
+    "pi",
+    "--no-session",
+    "--no-context-files",
+    "--no-prompt-templates",
+    ...paths.flatMap((path) => ["--skill", path]),
+    "-p",
+    "Reply with PATCHMILL_SKILLS_OK and nothing else.",
+  ].join(" ");
 }
 
 function runnerFrom(
@@ -316,6 +417,605 @@ test("runDoctorChecks fails when a configured path-like skill is missing", async
     /planning: `\.\/skills\/project-planning\/SKILL\.md`/,
   );
   assert.match(skills?.message ?? "", /configured path unreadable/);
+});
+
+test("runDoctorChecks resolves configured skill directories to their SKILL.md target", async () => {
+  const repoRoot = await tempRepo();
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      host: { provider: "forgejo-tea", login: "triage-agent" },
+      skills: {
+        planning: "./skills/project-planning",
+      },
+    }),
+  );
+  await mkdir(join(repoRoot, "skills", "project-planning"), {
+    recursive: true,
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(successMocks());
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /planning: `\.\/skills\/project-planning`/,
+  );
+  assert.match(
+    skills?.message ?? "",
+    /configured path unreadable at .*skills\/project-planning\/SKILL\.md/,
+  );
+});
+
+test("runDoctorChecks passes for a fresh project-local skill pack", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await installProjectSkills({
+    repoRoot,
+    installedAt: "2026-05-29T00:00:00.000Z",
+  });
+
+  const installedTriageSkill = await readFile(
+    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+    "utf8",
+  );
+  assert.match(
+    installedTriageSkill,
+    /description:\s*\n\s+Triage repository issues/u,
+  );
+
+  const metadata = JSON.parse(
+    await readFile(
+      join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, SKILL_PACK_METADATA_FILE),
+      "utf8",
+    ),
+  ) as SkillPackMetadataFile;
+  const smokePaths = metadata.files
+    .filter((file) => file.path.endsWith("/SKILL.md"))
+    .map((file) => join(repoRoot, file.path));
+
+  const calls: string[] = [];
+  const runner: CommandRunner = {
+    async run(command, args) {
+      const key = [command, ...args].join(" ");
+      calls.push(key);
+      return (
+        successMocks(REQUIRED_LABELS, {
+          "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
+          [projectLocalPiSmokeCommand(smokePaths)]: {
+            code: 0,
+            stdout: "PATCHMILL_SKILLS_OK\n",
+          },
+        })[key] ?? {
+          code: 127,
+          stdout: "",
+          stderr: `missing mock for ${key}`,
+        }
+      );
+    },
+  };
+
+  const expectedSmokeCommand = projectLocalPiSmokeCommand(smokePaths);
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "pass");
+  assert.match(skills?.message ?? "", /project-local metadata verified/);
+  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
+  assert.doesNotMatch(skills?.message ?? "", /metadata missing|customized/);
+  assert.ok(calls.includes(expectedSmokeCommand));
+  assert.equal(
+    calls.some((call) =>
+      call.includes(
+        `${join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, DEFAULT_PROJECT_SKILL_DIR)}/`,
+      ),
+    ),
+    false,
+  );
+});
+
+test("runDoctorChecks fails when a local skill frontmatter is malformed", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      planning: "./skills/project-planning",
+    },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  await writeSkillFile(
+    join(repoRoot, "skills"),
+    "project-planning",
+    skillDocument("project-planning"),
+  );
+  const runner = runnerFrom(successMocks());
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(skills?.message ?? "", /malformed skill frontmatter/);
+  assert.match(skills?.message ?? "", /missing description/);
+});
+
+test("runDoctorChecks ignores unused .patchmill skills when config uses global/named skills", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      triage: "patchmill-issue-triage",
+      planning: "superpowers:writing-plans",
+      implementation: "superpowers:subagent-driven-development",
+    },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(
+    repoRoot,
+    "stale-unused-skill",
+    "not a valid skill document\n",
+  );
+
+  const calls: string[] = [];
+  const runner: CommandRunner = {
+    async run(command, args) {
+      const key = [command, ...args].join(" ");
+      calls.push(key);
+      return (
+        successMocks(REQUIRED_LABELS)[key] ?? {
+          code: 127,
+          stdout: "",
+          stderr: `missing mock for ${key}`,
+        }
+      );
+    },
+  };
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "warn");
+  assert.match(
+    skills?.message ?? "",
+    /triage: `patchmill-issue-triage` \(named skill configured; doctor did not verify it\)/,
+  );
+  assert.doesNotMatch(skills?.message ?? "", /stale-unused-skill/);
+  assert.doesNotMatch(
+    skills?.message ?? "",
+    /project-local skill pack metadata/,
+  );
+  assert.equal(
+    calls.some((call) =>
+      call.includes("git check-ignore --no-index -q .patchmill/skills"),
+    ),
+    false,
+  );
+  assert.equal(
+    calls.some((call) => call.includes("PATCHMILL_SKILLS_OK")),
+    false,
+  );
+});
+
+test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata is malformed", async () => {
+  const repoRoot = await tempRepo();
+  const planningSkill = skillDocument("writing-plans", "Write plans.");
+
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      triage: "patchmill-issue-triage",
+      planning: `${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`,
+      implementation: "superpowers:subagent-driven-development",
+    },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
+  await writeProjectLocalSkill(
+    repoRoot,
+    "stale-unused-skill",
+    "not a valid skill document\n",
+  );
+  await mkdir(join(repoRoot, DEFAULT_PROJECT_SKILL_DIR), { recursive: true });
+  await writeFile(
+    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, SKILL_PACK_METADATA_FILE),
+    "{ malformed json",
+  );
+
+  const smokePaths = [projectLocalSkillPath(repoRoot, "writing-plans")];
+  const calls: string[] = [];
+  const runner: CommandRunner = {
+    async run(command, args) {
+      const key = [command, ...args].join(" ");
+      calls.push(key);
+      return (
+        successMocks(REQUIRED_LABELS, {
+          "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
+          [projectLocalPiSmokeCommand(smokePaths)]: {
+            code: 0,
+            stdout: "PATCHMILL_SKILLS_OK\n",
+          },
+        })[key] ?? {
+          code: 127,
+          stdout: "",
+          stderr: `missing mock for ${key}`,
+        }
+      );
+    },
+  };
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "warn");
+  assert.match(skills?.message ?? "", /metadata malformed/);
+  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
+  assert.ok(calls.includes(projectLocalPiSmokeCommand(smokePaths)));
+  assert.equal(
+    calls.some((call) => call.includes("stale-unused-skill")),
+    false,
+  );
+});
+
+test("runDoctorChecks rejects metadata paths outside project-local skills", async () => {
+  for (const invalidPath of [
+    "/tmp/outside/SKILL.md",
+    "C:\\temp\\outside\\SKILL.md",
+    ".patchmill/skills/../../outside/SKILL.md",
+  ]) {
+    const repoRoot = await tempRepo();
+    const triageSkill = skillDocument(
+      "patchmill-issue-triage",
+      "Triage issues.",
+    );
+    const planningSkill = skillDocument("writing-plans", "Write plans.");
+    const implementationSkill = skillDocument(
+      "subagent-driven-development",
+      "Execute plans.",
+    );
+
+    await writeConfig(repoRoot, recommendedProjectLocalConfig());
+    await mkdir(join(repoRoot, "docs"), { recursive: true });
+    await writeProjectLocalSkill(
+      repoRoot,
+      "patchmill-issue-triage",
+      triageSkill,
+    );
+    await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
+    await writeProjectLocalSkill(
+      repoRoot,
+      "subagent-driven-development",
+      implementationSkill,
+    );
+    await writeProjectLocalMetadata(repoRoot, [
+      {
+        path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
+        sha256: hashText(triageSkill),
+      },
+      { path: invalidPath, sha256: hashText("outside") },
+    ]);
+
+    const smokePaths = [
+      projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+      projectLocalSkillPath(repoRoot, "writing-plans"),
+      projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+    ];
+    const calls: string[] = [];
+    const runner: CommandRunner = {
+      async run(command, args) {
+        const key = [command, ...args].join(" ");
+        calls.push(key);
+        return (
+          successMocks(REQUIRED_LABELS, {
+            "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
+            [projectLocalPiSmokeCommand(smokePaths)]: {
+              code: 0,
+              stdout: "PATCHMILL_SKILLS_OK\n",
+            },
+          })[key] ?? {
+            code: 127,
+            stdout: "",
+            stderr: `missing mock for ${key}`,
+          }
+        );
+      },
+    };
+
+    const results = await runDoctorChecks(runner, {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    });
+    const skills = results.find((result) => result.name === "skills");
+
+    assert.equal(skills?.status, "warn");
+    assert.match(
+      skills?.message ?? "",
+      /project-local skill pack metadata malformed/,
+    );
+    assert.ok(calls.includes(projectLocalPiSmokeCommand(smokePaths)));
+    assert.equal(
+      calls.some((call) => call.includes(invalidPath)),
+      false,
+    );
+  }
+});
+
+test("runDoctorChecks warns when project-local skill files differ from metadata", async () => {
+  const repoRoot = await tempRepo();
+  const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
+  const originalPlanningSkill = skillDocument("writing-plans", "Write plans.");
+  const customizedPlanningSkill = skillDocument(
+    "writing-plans",
+    "Write plans with local tweaks.",
+  );
+  const implementationSkill = skillDocument(
+    "subagent-driven-development",
+    "Execute plans.",
+  );
+
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(repoRoot, "patchmill-issue-triage", triageSkill);
+  await writeProjectLocalSkill(
+    repoRoot,
+    "writing-plans",
+    customizedPlanningSkill,
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    implementationSkill,
+  );
+  await writeProjectLocalMetadata(repoRoot, [
+    {
+      path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
+      sha256: hashText(triageSkill),
+    },
+    {
+      path: projectLocalMetadataSkillPath("writing-plans"),
+      sha256: hashText(originalPlanningSkill),
+    },
+    {
+      path: projectLocalMetadataSkillPath("subagent-driven-development"),
+      sha256: hashText(implementationSkill),
+    },
+  ]);
+
+  const smokePaths = [
+    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+    projectLocalSkillPath(repoRoot, "writing-plans"),
+    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+  ];
+  const runner = runnerFrom(
+    successMocks(REQUIRED_LABELS, {
+      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
+      [projectLocalPiSmokeCommand(smokePaths)]: {
+        code: 0,
+        stdout: "PATCHMILL_SKILLS_OK\n",
+      },
+    }),
+  );
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "warn");
+  assert.match(skills?.message ?? "", /customized from installed pack/);
+  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
+});
+
+test("runDoctorChecks fails when .patchmill/skills is gitignored", async () => {
+  const repoRoot = await tempRepo();
+  const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
+  const planningSkill = skillDocument("writing-plans", "Write plans.");
+  const implementationSkill = skillDocument(
+    "subagent-driven-development",
+    "Execute plans.",
+  );
+
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(repoRoot, "patchmill-issue-triage", triageSkill);
+  await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    implementationSkill,
+  );
+  await writeProjectLocalMetadata(repoRoot, [
+    {
+      path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
+      sha256: hashText(triageSkill),
+    },
+    {
+      path: projectLocalMetadataSkillPath("writing-plans"),
+      sha256: hashText(planningSkill),
+    },
+    {
+      path: projectLocalMetadataSkillPath("subagent-driven-development"),
+      sha256: hashText(implementationSkill),
+    },
+  ]);
+
+  const calls: string[] = [];
+  const runner: CommandRunner = {
+    async run(command, args) {
+      const key = [command, ...args].join(" ");
+      calls.push(key);
+      return (
+        successMocks(REQUIRED_LABELS, {
+          "git check-ignore --no-index -q .patchmill/skills": { code: 0 },
+        })[key] ?? {
+          code: 127,
+          stdout: "",
+          stderr: `missing mock for ${key}`,
+        }
+      );
+    },
+  };
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(skills?.message ?? "", /\.patchmill\/skills is ignored by git/);
+  assert.ok(calls.includes("git check-ignore --no-index -q .patchmill/skills"));
+  assert.equal(
+    calls.some((command) => command.includes("PATCHMILL_SKILLS_OK")),
+    false,
+  );
+});
+
+test("runDoctorChecks fails when Pi cannot load project-local skills", async () => {
+  const repoRoot = await tempRepo();
+  const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
+  const planningSkill = skillDocument("writing-plans", "Write plans.");
+  const implementationSkill = skillDocument(
+    "subagent-driven-development",
+    "Execute plans.",
+  );
+
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(repoRoot, "patchmill-issue-triage", triageSkill);
+  await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    implementationSkill,
+  );
+  await writeProjectLocalMetadata(repoRoot, [
+    {
+      path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
+      sha256: hashText(triageSkill),
+    },
+    {
+      path: projectLocalMetadataSkillPath("writing-plans"),
+      sha256: hashText(planningSkill),
+    },
+    {
+      path: projectLocalMetadataSkillPath("subagent-driven-development"),
+      sha256: hashText(implementationSkill),
+    },
+  ]);
+
+  const smokePaths = [
+    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+    projectLocalSkillPath(repoRoot, "writing-plans"),
+    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+  ];
+  const runner = runnerFrom(
+    successMocks(REQUIRED_LABELS, {
+      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
+      [projectLocalPiSmokeCommand(smokePaths)]: {
+        code: 1,
+        stderr: "pi failed to load one or more skills",
+      },
+    }),
+  );
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /Pi could not load the project-local skill pack/,
+  );
+  assert.match(skills?.message ?? "", /pi failed to load one or more skills/);
+});
+
+test("runDoctorChecks warns when project-local metadata is missing", async () => {
+  const repoRoot = await tempRepo();
+  const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
+  const planningSkill = skillDocument("writing-plans", "Write plans.");
+  const implementationSkill = skillDocument(
+    "subagent-driven-development",
+    "Execute plans.",
+  );
+
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(repoRoot, "patchmill-issue-triage", triageSkill);
+  await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    implementationSkill,
+  );
+
+  const smokePaths = [
+    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+    projectLocalSkillPath(repoRoot, "writing-plans"),
+    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+  ];
+  const runner = runnerFrom(
+    successMocks(REQUIRED_LABELS, {
+      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
+      [projectLocalPiSmokeCommand(smokePaths)]: {
+        code: 0,
+        stdout: "PATCHMILL_SKILLS_OK\n",
+      },
+    }),
+  );
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "warn");
+  assert.match(
+    skills?.message ?? "",
+    /project-local skill pack metadata missing/,
+  );
+  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
+});
+
+test("doctor does not parse project-local skill-pack metadata directly", async () => {
+  const source = await readFile(
+    new URL("./checks.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /checkProjectLocalMetadata/);
+  assert.doesNotMatch(source, /isValidProjectLocalMetadata/);
+  assert.doesNotMatch(source, /metadataSkillPaths/);
+  assert.doesNotMatch(source, /resolveProjectLocalMetadataFilePath/);
+  assert.doesNotMatch(source, /metadata\.files/);
+  assert.doesNotMatch(source, /hashContent/);
+  assert.doesNotMatch(source, /SKILL_PACK_METADATA_FILE/);
+  assert.doesNotMatch(source, /patchmill-skill-pack(?:\.json)?/);
 });
 
 test("runDoctorChecks never invokes known mutating host commands", async () => {

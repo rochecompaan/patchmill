@@ -26,8 +26,13 @@ const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
   require.resolve("pi-subagents/package.json"),
 );
 
-function piPromptArgs(promptPath: string, sessionDir?: string): string[] {
-  const baseArgs = ["-e", PI_SUBAGENTS_PACKAGE_ROOT, "-p"];
+function piPromptArgs(
+  promptPath: string,
+  sessionDir?: string,
+  skillPaths: string[] = [],
+): string[] {
+  const skillArgs = skillPaths.flatMap((path) => ["--skill", path]);
+  const baseArgs = ["-e", PI_SUBAGENTS_PACKAGE_ROOT, ...skillArgs, "-p"];
   return sessionDir
     ? [...baseArgs, "--session-dir", sessionDir, `@${promptPath}`]
     : [...baseArgs, `@${promptPath}`];
@@ -176,6 +181,7 @@ export type PiTaskProgress = {
 export type RunPiPromptOptions = {
   progress?: ProgressReporter;
   stage: "pi-plan" | "pi-implementation";
+  skillPaths?: string[];
   heartbeatMs?: number;
   streamOutput?: (chunk: string) => void;
   issueNumber?: number;
@@ -347,9 +353,13 @@ export async function runPiPrompt(
     sessionStreamer?.start();
     let result: CommandResult;
     try {
-      result = await runner.run("pi", piPromptArgs(promptPath, sessionDir), {
-        cwd,
-      });
+      result = await runner.run(
+        "pi",
+        piPromptArgs(promptPath, sessionDir, options?.skillPaths),
+        {
+          cwd,
+        },
+      );
     } finally {
       await sessionStreamer?.stop();
       await Promise.all(pendingObservations);

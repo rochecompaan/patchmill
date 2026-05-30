@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
-import { access, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { access, readFile, stat } from "node:fs/promises";
+import { dirname } from "node:path";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
@@ -15,7 +15,11 @@ import {
   DEFAULT_PATCHMILL_SKILLS,
   PATCHMILL_SKILL_KEYS,
   bundledTriageSkillPath,
+  isPathLikeSkill,
+  resolveConfiguredSkillInvocation,
+  resolvePathLikeSkillPath,
 } from "../../../workflow/skills.ts";
+import { DEFAULT_PROJECT_SKILL_DIR } from "../../../workflow/skill-pack.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -31,6 +35,14 @@ type DoctorOptions = {
   env?: Record<string, string | undefined>;
   teaRepoRootForTests?: string;
 };
+
+type SkillCheckEntry = {
+  status: DoctorCheckStatus;
+  summary: string;
+};
+
+const PROJECT_LOCAL_SKILLS_PROMPT =
+  "Reply with PATCHMILL_SKILLS_OK and nothing else.";
 
 function pass(name: string, message: string): DoctorCheckResult {
   return { name, status: "pass", message };
@@ -182,27 +194,6 @@ async function checkPiProvider(
   ]);
 }
 
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
-const SKILL_NAMESPACE_PATTERN = /^[a-z0-9-]+:.+$/iu;
-
-function isNamespaceStyleSkill(skill: string): boolean {
-  return (
-    SKILL_NAMESPACE_PATTERN.test(skill) &&
-    !WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
-  );
-}
-
-function isPathLikeSkill(skill: string): boolean {
-  if (
-    skill.startsWith(".") ||
-    skill.startsWith("/") ||
-    WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
-  ) {
-    return true;
-  }
-  return /[\\/]/u.test(skill) && !isNamespaceStyleSkill(skill);
-}
-
 async function checkReadableSkillTarget(path: string): Promise<boolean> {
   try {
     const pathStat = await stat(path);
@@ -216,7 +207,172 @@ async function checkReadableSkillTarget(path: string): Promise<boolean> {
   }
 }
 
+function parseSkillFrontmatter(
+  text: string,
+): { name: string; description: string } | { error: string } {
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
+  if (!match) {
+    return { error: "missing frontmatter" };
+  }
+
+  const values = new Map<string, string>();
+  const continuationLines = new Map<string, string[]>();
+  let currentKey: string | undefined;
+  let currentValueAllowsContinuation = false;
+
+  for (const line of match[1].split(/\r?\n/u)) {
+    const trimmed = line.trim();
+
+    if (/^[^\s].*:/u.test(line)) {
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex === -1) {
+        currentKey = undefined;
+        currentValueAllowsContinuation = false;
+        continue;
+      }
+
+      const key = line.slice(0, separatorIndex).trim();
+      const value = line.slice(separatorIndex + 1).trim();
+      values.set(key, value);
+      continuationLines.set(key, []);
+      currentKey = key;
+      currentValueAllowsContinuation =
+        value.length === 0 || /^[>|]/u.test(value);
+      continue;
+    }
+
+    if (
+      currentKey &&
+      currentValueAllowsContinuation &&
+      (/^[ \t]/u.test(line) || trimmed.length === 0)
+    ) {
+      continuationLines.get(currentKey)?.push(trimmed);
+      continue;
+    }
+
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    currentKey = undefined;
+    currentValueAllowsContinuation = false;
+  }
+
+  for (const [key, value] of values) {
+    if (value.length > 0 && !/^[>|]/u.test(value)) continue;
+
+    const continuation = (continuationLines.get(key) ?? []).join("\n").trim();
+    values.set(key, continuation);
+  }
+
+  const missing = ["name", "description"].filter((key) => !values.get(key));
+  if (missing.length > 0) {
+    return { error: `missing ${missing.join(" and ")}` };
+  }
+
+  return {
+    name: values.get("name") ?? "",
+    description: values.get("description") ?? "",
+  };
+}
+
+async function validateResolvedLocalSkill(
+  label: string,
+  configuredPath: string,
+  resolvedPath: string,
+): Promise<SkillCheckEntry> {
+  try {
+    const pathStat = await stat(resolvedPath);
+    if (!pathStat.isFile()) {
+      return {
+        status: "fail",
+        summary: `${label}: \`${configuredPath}\` (configured path unreadable at ${resolvedPath})`,
+      };
+    }
+
+    await access(resolvedPath, constants.R_OK);
+    const content = await readFile(resolvedPath, "utf8");
+    const frontmatter = parseSkillFrontmatter(content);
+    if ("error" in frontmatter) {
+      return {
+        status: "fail",
+        summary: `${label}: \`${configuredPath}\` (malformed skill frontmatter: ${frontmatter.error} at ${resolvedPath})`,
+      };
+    }
+
+    return {
+      status: "pass",
+      summary: `${label}: \`${configuredPath}\` (path verified)`,
+    };
+  } catch {
+    return {
+      status: "fail",
+      summary: `${label}: \`${configuredPath}\` (configured path unreadable at ${resolvedPath})`,
+    };
+  }
+}
+
+async function checkProjectLocalGitIgnore(
+  runner: CommandRunner,
+  repoRoot: string,
+): Promise<SkillCheckEntry> {
+  const result = await runner.run(
+    "git",
+    ["check-ignore", "--no-index", "-q", DEFAULT_PROJECT_SKILL_DIR],
+    { cwd: repoRoot },
+  );
+
+  if (result.code === 0) {
+    return {
+      status: "fail",
+      summary: `${DEFAULT_PROJECT_SKILL_DIR} is ignored by git`,
+    };
+  }
+
+  if (result.code === 1) {
+    return {
+      status: "pass",
+      summary: `${DEFAULT_PROJECT_SKILL_DIR} is not ignored by git`,
+    };
+  }
+
+  return {
+    status: "warn",
+    summary: `git-ignore status could not be verified: ${commandOutput(result)}`,
+  };
+}
+
+async function smokeTestProjectLocalSkills(
+  runner: CommandRunner,
+  repoRoot: string,
+  skillPaths: string[],
+): Promise<SkillCheckEntry> {
+  const result = await runner.run(
+    "pi",
+    [
+      "--no-session",
+      "--no-context-files",
+      "--no-prompt-templates",
+      ...skillPaths.flatMap((path) => ["--skill", path]),
+      "-p",
+      PROJECT_LOCAL_SKILLS_PROMPT,
+    ],
+    { cwd: repoRoot },
+  );
+
+  if (result.code === 0 && result.stdout.includes("PATCHMILL_SKILLS_OK")) {
+    return {
+      status: "pass",
+      summary: "Pi loaded project-local skill pack",
+    };
+  }
+
+  return {
+    status: "fail",
+    summary: `Pi could not load the project-local skill pack: ${commandOutput(result)}`,
+  };
+}
+
 async function checkSkills(
+  runner: CommandRunner,
   config: PatchmillConfig,
   repoRoot: string,
 ): Promise<DoctorCheckResult> {
@@ -224,8 +380,16 @@ async function checkSkills(
     const skill = config.skills[key];
     return skill ? [{ key, skill }] : [];
   });
+  const configuredSkillValues = PATCHMILL_SKILL_KEYS.flatMap((key) => {
+    const skill = config.skills[key];
+    return skill ? [skill] : [];
+  });
+  const resolution = resolveConfiguredSkillInvocation(
+    configuredSkillValues,
+    repoRoot,
+  );
 
-  const entries = await Promise.all(
+  const entries: SkillCheckEntry[] = await Promise.all(
     configuredSkills.map(async ({ key, skill }) => {
       if (key === "triage" && skill === DEFAULT_PATCHMILL_SKILLS.triage) {
         const bundledPath = bundledTriageSkillPath();
@@ -247,20 +411,25 @@ async function checkSkills(
         };
       }
 
-      const resolvedPath = WINDOWS_ABSOLUTE_PATH_PATTERN.test(skill)
-        ? skill
-        : resolve(repoRoot, skill);
-      return (await checkReadableSkillTarget(resolvedPath))
-        ? {
-            status: "pass" as const,
-            summary: `${key}: \`${skill}\` (path verified)`,
-          }
-        : {
-            status: "fail" as const,
-            summary: `${key}: \`${skill}\` (configured path unreadable at ${resolvedPath})`,
-          };
+      const resolvedPath = resolvePathLikeSkillPath(skill, repoRoot);
+      return validateResolvedLocalSkill(key, skill, resolvedPath);
     }),
   );
+
+  entries.push(...resolution.diagnostics);
+
+  if (resolution.usedProjectLocalPack) {
+    entries.push(await checkProjectLocalGitIgnore(runner, repoRoot));
+
+    if (
+      !entries.some((entry) => entry.status === "fail") &&
+      resolution.paths.length > 0
+    ) {
+      entries.push(
+        await smokeTestProjectLocalSkills(runner, repoRoot, resolution.paths),
+      );
+    }
+  }
 
   const message = entries.map((entry) => entry.summary).join("; ");
   if (entries.some((entry) => entry.status === "fail")) {
@@ -366,7 +535,7 @@ export async function runDoctorChecks(
       );
     }
 
-    results.push(await checkSkills(config, options.repoRoot));
+    results.push(await checkSkills(runner, config, options.repoRoot));
 
     const paths = [
       ["plans", config.paths.plansDir],

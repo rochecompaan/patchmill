@@ -1,18 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import {
+  BUNDLED_TRIAGE_SKILL_REFERENCE,
   DEFAULT_PATCHMILL_SKILLS,
+  GLOBAL_PATCHMILL_SKILLS,
   cloneSkillsConfig,
   mergeSkillsConfig,
   renderConfiguredSkillLine,
-  bundledTriageSkillPath,
 } from "./skills.ts";
 import type { PartialPatchmillSkillsConfig } from "./skills.ts";
 
-test("DEFAULT_PATCHMILL_SKILLS keeps current default workflow skills", () => {
+test("DEFAULT_PATCHMILL_SKILLS uses the bundled fallback triage reference", () => {
   assert.deepEqual(DEFAULT_PATCHMILL_SKILLS, {
+    triage: BUNDLED_TRIAGE_SKILL_REFERENCE,
+    planning: "superpowers:writing-plans",
+    implementation: "superpowers:subagent-driven-development",
+  });
+});
+
+test("GLOBAL_PATCHMILL_SKILLS keeps the global named triage skill", () => {
+  assert.deepEqual(GLOBAL_PATCHMILL_SKILLS, {
     triage: "patchmill-issue-triage",
     planning: "superpowers:writing-plans",
     implementation: "superpowers:subagent-driven-development",
@@ -26,7 +33,7 @@ test("mergeSkillsConfig replaces only configured stages", () => {
   });
 
   assert.deepEqual(merged, {
-    triage: "patchmill-issue-triage",
+    triage: BUNDLED_TRIAGE_SKILL_REFERENCE,
     planning: "superpowers:writing-plans",
     implementation: "project-implementation",
     visualEvidence: "capturing-proof-screenshots",
@@ -38,7 +45,7 @@ test("mergeSkillsConfig preserves defaults when update contains explicit undefin
     triage: undefined,
   } as PartialPatchmillSkillsConfig);
 
-  assert.equal(merged.triage, "patchmill-issue-triage");
+  assert.equal(merged.triage, BUNDLED_TRIAGE_SKILL_REFERENCE);
 });
 
 test("cloneSkillsConfig returns an independent object", () => {
@@ -55,25 +62,5 @@ test("renderConfiguredSkillLine renders direct stage-to-skill wording", () => {
       "superpowers:writing-plans",
     ),
     "Use the configured planning skill: `superpowers:writing-plans`.",
-  );
-});
-
-test("bundledTriageSkillPath points at the bundled SKILL.md file", () => {
-  assert.ok(
-    bundledTriageSkillPath().endsWith(
-      join("skills", "patchmill-issue-triage", "SKILL.md"),
-    ),
-  );
-});
-
-test("bundled triage skill matches dry-run previews and execute mutations", async () => {
-  const skill = await readFile(bundledTriageSkillPath(), "utf8");
-
-  assert.doesNotMatch(skill, /required JSON decision document/);
-  assert.doesNotMatch(skill, /Do not mutate repository-hosting state\./);
-  assert.match(skill, /dry-run\/preview mode[\s\S]*read-only JSON preview/i);
-  assert.match(
-    skill,
-    /execute mode[\s\S]*apply[\s\S]*labels, comments, closures[\s\S]*(host tools|configured workflow)/i,
   );
 });

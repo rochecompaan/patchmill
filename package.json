@@ -9,6 +9,7 @@
     "bin",
     "src",
     "docs",
+    "skills",
     "README.md",
     "LICENSE"
   ],
@@ -67,6 +68,7 @@
     "typescript-eslint": "^8.59.4"
   },
   "dependencies": {
-    "pi-subagents": "^0.25.0"
+    "pi-subagents": "^0.25.0",
+    "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz"
   }
 }

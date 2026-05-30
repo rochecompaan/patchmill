@@ -6,8 +6,14 @@ import type { PatchmillConfig } from "../../../config/types.ts";
 
 export const CONFIG_FILE_NAME = "patchmill.config.json";
 
+export type InitialConfigSkills = Pick<
+  PatchmillConfig["skills"],
+  "triage" | "planning" | "implementation"
+>;
+
 type InitialConfig = {
   host: Pick<PatchmillConfig["host"], "provider" | "login">;
+  skills?: InitialConfigSkills;
 };
 
 export type InitWriteResult =
@@ -36,10 +42,11 @@ export function buildInitialConfig(
   options: {
     provider?: PatchmillConfig["host"]["provider"];
     login?: string;
+    skills?: InitialConfigSkills;
   } = {},
 ): InitialConfig {
   const provider = options.provider ?? DEFAULT_PATCHMILL_CONFIG.host.provider;
-  return {
+  const config: InitialConfig = {
     host: {
       provider,
       login:
@@ -47,6 +54,12 @@ export function buildInitialConfig(
         (provider === "github-gh" ? "" : DEFAULT_PATCHMILL_CONFIG.host.login),
     },
   };
+
+  if (options.skills) {
+    config.skills = options.skills;
+  }
+
+  return config;
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -56,6 +69,10 @@ async function fileExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function configFileExists(repoRoot: string): Promise<boolean> {
+  return fileExists(join(repoRoot, CONFIG_FILE_NAME));
 }
 
 async function originRemoteUrl(repoRoot: string): Promise<string | undefined> {
@@ -81,13 +98,20 @@ async function originRemoteUrl(repoRoot: string): Promise<string | undefined> {
 
 export async function writeInitialConfig(
   repoRoot: string,
-  options: { login?: string },
+  options: {
+    login?: string;
+    skills?: InitialConfigSkills;
+  },
 ): Promise<InitWriteResult> {
   const path = join(repoRoot, CONFIG_FILE_NAME);
-  if (await fileExists(path)) return { status: "exists", path };
+  if (await configFileExists(repoRoot)) return { status: "exists", path };
 
   const provider = inferHostProviderFromRemote(await originRemoteUrl(repoRoot));
-  const config = buildInitialConfig({ provider, login: options.login });
+  const config = buildInitialConfig({
+    provider,
+    login: options.login,
+    skills: options.skills,
+  });
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, {
     flag: "wx",
   });
