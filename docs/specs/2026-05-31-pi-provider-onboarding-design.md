@@ -24,12 +24,13 @@ Patchmill must not create repository-local Pi credential state.
 - Existing user-level Pi configuration is treated as apparent setup, but `init`
   still verifies it with a smoke test.
 
-Pi is considered apparently configured when any of the following are present:
-
-- known provider API key environment variables, such as `ANTHROPIC_API_KEY`,
-  `OPENAI_API_KEY`, or `GEMINI_API_KEY`;
-- user-level Pi auth entries in `~/.pi/agent/auth.json`;
-- user-level Pi model/provider configuration such as `~/.pi/agent/models.json`.
+Patchmill should not reimplement Pi's provider/auth/model discovery when a Pi
+surface exists. Provider readiness checks should delegate to Pi's existing model
+registry and auth resolution through a stable library API or CLI behavior, so
+Patchmill observes the same provider availability that Pi itself would use.
+Direct inspection of environment variables, `auth.json`, or `models.json` is
+only a fallback when Pi does not expose a stable readiness API for the needed
+check.
 
 ## Init flow
 
@@ -39,7 +40,8 @@ Pi is considered apparently configured when any of the following are present:
 2. Install or validate project-local skills as today.
 3. Perform existing local setup such as `.git/info/exclude` entries and optional
    deterministic label setup.
-4. Detect apparent Pi provider/auth/model configuration.
+4. Ask Pi, through its existing model/auth implementation, whether a usable
+   provider/model appears available.
 5. If setup is missing, or if the user chooses to reconfigure, run an embedded
    Pi setup wizard.
 6. Run a real Pi smoke test immediately.
@@ -79,8 +81,13 @@ little control over whether provider login and model selection are completed.
 The first implementation should create a dedicated setup module with clean
 seams:
 
-- `pi-preflight`: detect apparent existing Pi auth/model configuration.
-- `pi-setup-wizard`: interactively collect provider/login/model choices.
+- `pi-preflight`: wrap Pi's existing provider/auth/model discovery instead of
+  duplicating it. Prefer a stable Pi library API; otherwise use the narrowest Pi
+  CLI behavior that exercises the same code path, such as model listing or a dry
+  readiness probe.
+- `pi-setup-wizard`: interactively collect provider/login/model choices while
+  routing login and model availability through Pi's own implementation wherever
+  possible.
 - `pi-smoke-test`: run the final Pi smoke test and normalize success/failure.
 
 The wizard should prefer Pi UI library components when Patchmill can import them
@@ -90,14 +97,17 @@ swap.
 
 Wizard flow:
 
-1. If no apparent configuration exists, ask whether to configure Pi now.
-2. If apparent configuration exists, ask whether to use it or reconfigure.
-3. Let the user select a common provider or choose manual/custom setup.
-4. For key-based providers, show exact environment variable or Pi auth guidance.
-5. For OAuth-capable providers, route through Pi-compatible login behavior where
-   possible.
-6. Let the user select a recommended model for common providers or manually
-   enter a `provider/model` string.
+1. If Pi reports no usable provider/model configuration, ask whether to
+   configure Pi now.
+2. If Pi reports usable configuration, ask whether to use it or reconfigure.
+3. Let the user select from providers/models discovered by Pi where possible;
+   include manual/custom setup only when Pi cannot enumerate the target.
+4. For key-based providers, show exact environment variable or Pi auth guidance
+   derived from Pi's provider metadata where available.
+5. For OAuth-capable providers, route through Pi-compatible login behavior
+   rather than recreating provider-specific OAuth logic in Patchmill.
+6. Let the user select a Pi-discovered model where possible, or manually enter a
+   `provider/model` string for custom setups.
 7. Run the smoke test.
 
 The wizard must not write API keys into `patchmill.config.json`.
@@ -139,7 +149,10 @@ available, while still documenting manual Pi `/login` setup.
 
 Add tests for:
 
-- apparent user-level Pi auth detected and smoke test invoked;
+- Pi-backed readiness detection reports available auth/model and smoke test is
+  invoked;
+- direct env/auth-file probing is covered only as a fallback when the Pi-backed
+  readiness surface is unavailable;
 - no auth in interactive mode, setup accepted, wizard completed, smoke test
   invoked;
 - no auth in non-interactive mode prints manual remediation and does not hang;
