@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -33,7 +33,25 @@ const PROJECT_LOCAL_CUSTOMIZED_SUMMARY =
 
 export function bundledTriageSkillPath(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "..", "..", "skills", "patchmill-issue-triage", "SKILL.md");
+  const sourceTreePath = join(
+    here,
+    "..",
+    "..",
+    "skills",
+    "patchmill-issue-triage",
+    "SKILL.md",
+  );
+  const builtPackagePath = join(
+    here,
+    "..",
+    "..",
+    "..",
+    "skills",
+    "patchmill-issue-triage",
+    "SKILL.md",
+  );
+
+  return existsSync(sourceTreePath) ? sourceTreePath : builtPackagePath;
 }
 
 export function isNamespaceStyleSkill(skill: string): boolean {

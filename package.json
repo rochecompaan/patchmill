@@ -8,13 +8,15 @@
   "files": [
     "bin",
     "src",
+    "dist",
     "docs",
     "skills",
     "extensions",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "tsconfig.build.json"
   ],
   "repository": {
     "type": "git",
@@ -34,12 +36,14 @@
   "description": "An agent-driven software factory that turns issues into reviewed diffs.",
   "type": "module",
   "bin": {
-    "patchmill": "./bin/patchmill.ts"
+    "patchmill": "./dist/bin/patchmill.js"
   },
   "scripts": {
     "patchmill": "node bin/patchmill.ts",
     "triage": "node bin/patchmill.ts triage",
     "run-once": "node bin/patchmill.ts run-once",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "lint": "npm run format:check && npm run lint:ts && npm run lint:md",
     "lint:ts": "eslint \"{bin,src,test-support}/**/*.ts\" --max-warnings=0",
     "lint:md": "markdownlint-cli2",
@@ -68,6 +72,7 @@
     "lint-staged": "^17.0.5",
     "markdownlint-cli2": "^0.22.1",
     "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.4"
   },
   "dependencies": {

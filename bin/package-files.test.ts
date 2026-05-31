@@ -14,7 +14,11 @@ test("package metadata identifies Patchmill as Apache-2.0", () => {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const packageJson = JSON.parse(
     readFileSync(join(repoRoot, "package.json"), "utf8"),
-  ) as { license?: string };
+  ) as {
+    bin?: { patchmill?: string };
+    license?: string;
+    scripts?: { prepack?: string };
+  };
   const license = readFileSync(join(repoRoot, "LICENSE"), "utf8");
   const thirdPartyNotices = readFileSync(
     join(repoRoot, "THIRD_PARTY_NOTICES.md"),
@@ -22,6 +26,8 @@ test("package metadata identifies Patchmill as Apache-2.0", () => {
   );
 
   assert.equal(packageJson.license, "Apache-2.0");
+  assert.equal(packageJson.bin?.patchmill, "./dist/bin/patchmill.js");
+  assert.equal(packageJson.scripts?.prepack, "npm run build");
   assert.match(license, /^Copyright 2026 Roché Compaan\n/u);
   assert.match(license, /Apache License\n\s+Version 2\.0, January 2004/u);
   assert.match(
@@ -58,4 +64,5 @@ test("npm pack dry-run includes bundled runtime resources and notices", () => {
   assert.equal(files.has("CHANGELOG.md"), true);
   assert.equal(files.has("LICENSES/Apache-2.0.txt"), false);
   assert.equal(files.has("THIRD_PARTY_NOTICES.md"), true);
+  assert.equal(files.has("tsconfig.build.json"), true);
 });
