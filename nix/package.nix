@@ -48,6 +48,7 @@ buildNpmPackageNode24 rec {
     mkdir -p "$out/share/${pname}"
     cp -R "$package_dir/bin" "$out/share/${pname}/bin"
     cp -R "$package_dir/src" "$out/share/${pname}/src"
+    cp -R "$package_dir/skills" "$out/share/${pname}/skills"
     cp -R "$package_dir/extensions" "$out/share/${pname}/extensions"
     cp "$package_dir/THIRD_PARTY_NOTICES.md" "$out/share/${pname}/THIRD_PARTY_NOTICES.md"
     cp "$package_dir/package.json" "$out/share/${pname}/package.json"
@@ -62,6 +63,15 @@ buildNpmPackageNode24 rec {
   installCheckPhase = ''
     runHook preInstallCheck
     $out/bin/patchmill --help >/dev/null
+    install_check_dir="$(mktemp -d)"
+    mkdir -p "$install_check_dir/home" "$install_check_dir/config" "$install_check_dir/project"
+    (
+      cd "$install_check_dir/project"
+      HOME="$install_check_dir/home" \
+        XDG_CONFIG_HOME="$install_check_dir/config" \
+        $out/bin/patchmill init >/dev/null
+      test -f .patchmill/skills/patchmill-issue-triage/SKILL.md
+    )
     runHook postInstallCheck
   '';
 
