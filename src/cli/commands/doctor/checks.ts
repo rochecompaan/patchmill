@@ -42,11 +42,6 @@ type SkillCheckEntry = {
 
 const PROJECT_LOCAL_SKILLS_PROMPT =
   "Reply with PATCHMILL_SKILLS_OK and nothing else.";
-const LOCAL_ONLY_INIT_PATHS = [
-  ".gitignore",
-  "patchmill.config.json",
-  ".patchmill",
-];
 
 function pass(name: string, message: string): DoctorCheckResult {
   return { name, status: "pass", message };
@@ -106,7 +101,6 @@ async function checkGit(
             cleanStatusIgnorePrefixes: config.paths.cleanStatusIgnorePrefixes,
             todoRoot: config.projectPolicy.pi.taskContract.todoRoot,
             runStateDir: config.paths.runStateDir,
-            additionalPaths: LOCAL_ONLY_INIT_PATHS,
           })
         : [],
     );

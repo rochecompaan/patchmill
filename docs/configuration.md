@@ -202,7 +202,7 @@ process shutdown.
 
 The required skill keys are `triage`, `planning`, and `implementation`. For new
 repositories, `patchmill init` defaults them to local-only skill paths and adds
-`.patchmill` plus `patchmill.config.json` to `.gitignore`:
+`.patchmill` plus `patchmill.config.json` to `.git/info/exclude`:
 
 ```json
 {
@@ -214,9 +214,9 @@ repositories, `patchmill init` defaults them to local-only skill paths and adds
 }
 ```
 
-Path-like skill references resolve relative to the config file directory. Remove
-the generated ignore entries if you want to share Patchmill config and skills
-through git.
+Path-like skill references resolve relative to the config file directory. For
+consistent Patchmill runs across local machines and CI, consider committing
+`patchmill.config.json` and `.patchmill/skills/` explicitly.
 
 Older repos and no config overrides still use the built-in defaults for
 compatibility:

@@ -19,7 +19,7 @@ import {
   writeInitialConfig,
   type InitialConfigSkills,
 } from "./config-writer.ts";
-import { ensurePatchmillGitignoreEntries } from "./gitignore.ts";
+import { ensurePatchmillLocalExcludeEntries } from "./local-ignore.ts";
 import { hasApparentPiProviderConfig } from "./pi-preflight.ts";
 
 export const HELP_TEXT = `Usage:
@@ -135,7 +135,7 @@ export async function runInit(
       options.installProjectSkills ?? installProjectSkills
     )({ repoRoot: config.repoRoot });
     skills = installResult.skillConfig;
-    skillsMessage = `Installed project-local skills:\n  ${installResult.installedSkills.join("\n  ")}\n\nProject-local skills are local-only by default. Remove the .gitignore entries if you want to share them with this repository.\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
+    skillsMessage = `Installed project-local skills:\n  ${installResult.installedSkills.join("\n  ")}\n\nProject-local skills are local-only by default.\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
   } else if (config.skills.mode === "global") {
     skills = DEFAULT_GLOBAL_SKILLS;
     skillsMessage =
@@ -155,11 +155,16 @@ export async function runInit(
     output.stdout(EXISTING_CONFIG_MESSAGE);
     return 1;
   }
-  const gitignore = await ensurePatchmillGitignoreEntries(config.repoRoot);
-  const gitignoreMessage =
-    gitignore.added.length > 0
-      ? `Added Patchmill local files to .gitignore:\n  ${gitignore.added.join("\n  ")}`
-      : "Patchmill local files were already ignored by .gitignore.";
+  const localExclude = await ensurePatchmillLocalExcludeEntries(
+    config.repoRoot,
+  );
+  const localExcludeMessage = localExclude.skipped
+    ? `Warning: Patchmill could not update .git/info/exclude (${localExclude.skipped}).\nAdd .patchmill and patchmill.config.json to your local git excludes to keep the worktree clean.`
+    : localExclude.added.length > 0
+      ? `Added Patchmill local files to .git/info/exclude:\n  ${localExclude.added.join("\n  ")}`
+      : "Patchmill local files were already ignored by .git/info/exclude.";
+  const consistencyWarning =
+    "Warning: Patchmill config and skills are local-only by default. For consistent Patchmill runs across local machines and CI, consider committing patchmill.config.json and .patchmill/skills/ explicitly.";
 
   const hasPiProvider = await hasApparentPiProviderConfig({
     env: options.env,
@@ -197,7 +202,7 @@ export async function runInit(
   }
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${gitignoreMessage}\n\n${skillsMessage}\n\n${piMessage}\n\n${successNextSteps()}`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${piMessage}\n\n${successNextSteps()}`,
   );
   return 0;
 }

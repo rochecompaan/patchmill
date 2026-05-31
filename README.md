@@ -66,8 +66,9 @@ patchmill run-once --execute
 `patchmill init` writes a minimal local `patchmill.config.json`, reminds you to
 change the default host login, installs Patchmill's recommended skills into
 `.patchmill/skills/`, and adds `.patchmill` plus `patchmill.config.json` to
-`.gitignore` by default. Remove those ignore entries if you want to share the
-Patchmill config or skill pack through git.
+`.git/info/exclude` by default. For consistent Patchmill runs across local
+machines and CI, consider committing `patchmill.config.json` and
+`.patchmill/skills/` explicitly.
 
 Alternative initialization modes:
 

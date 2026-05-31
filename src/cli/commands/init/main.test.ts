@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -18,7 +18,9 @@ const GLOBAL_SKILLS = {
 };
 
 async function tempRepo(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "patchmill-init-main-"));
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-init-main-"));
+  await mkdir(join(repoRoot, ".git", "info"), { recursive: true });
+  return repoRoot;
 }
 
 async function readConfig(repoRoot: string): Promise<Record<string, unknown>> {
@@ -91,10 +93,17 @@ test("runInit installs project-local skills by default", async () => {
     ),
   );
   assert.match(stdout.join("\n"), /Installed project-local skills/);
-  assert.match(stdout.join("\n"), /Added Patchmill local files to \.gitignore/);
   assert.match(
-    await readFile(join(repoRoot, ".gitignore"), "utf8"),
+    stdout.join("\n"),
+    /Added Patchmill local files to \.git\/info\/exclude/,
+  );
+  assert.match(
+    await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
     /\.patchmill\npatchmill\.config\.json\n/u,
+  );
+  assert.match(
+    stdout.join("\n"),
+    /Warning: Patchmill config and skills are local-only by default/u,
   );
   assert.doesNotMatch(stdout.join("\n"), /Commit \.patchmill\/skills\//);
   assert.match(
@@ -103,9 +112,13 @@ test("runInit installs project-local skills by default", async () => {
   );
 });
 
-test("runInit preserves existing gitignore entries and does not duplicate Patchmill ignores", async () => {
+test("runInit preserves existing local exclude entries and does not touch gitignore", async () => {
   const repoRoot = await tempRepo();
-  await writeFile(join(repoRoot, ".gitignore"), "node_modules\n.patchmill\n");
+  await writeFile(join(repoRoot, ".gitignore"), "node_modules\n");
+  await writeFile(
+    join(repoRoot, ".git", "info", "exclude"),
+    "node_modules\n.patchmill\n",
+  );
 
   assert.equal(
     await runInit(
@@ -127,6 +140,10 @@ test("runInit preserves existing gitignore entries and does not duplicate Patchm
 
   assert.equal(
     await readFile(join(repoRoot, ".gitignore"), "utf8"),
+    "node_modules\n",
+  );
+  assert.equal(
+    await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
     "node_modules\n.patchmill\npatchmill.config.json\n",
   );
 });

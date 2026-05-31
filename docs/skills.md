@@ -36,8 +36,9 @@ Use the top-level `skills` key with a supported reference form (examples):
 ```
 
 `patchmill init` writes `.patchmill/skills/...` references by default and adds
-`.patchmill` plus `patchmill.config.json` to `.gitignore`. Namespace-style
-references like `superpowers:writing-plans` are supported custom examples.
+`.patchmill` plus `patchmill.config.json` to `.git/info/exclude`.
+Namespace-style references like `superpowers:writing-plans` are supported custom
+examples.
 
 Each stage accepts one skill reference (name, namespace-style, or path-like
 local skill directory/file). If a workflow needs several skills or detailed
@@ -74,10 +75,9 @@ Supported keys:
 `.patchmill/skills/` by default (mode `project`). If you choose another
 `--skills` mode, the default pack is not installed.
 
-Project-local skills are local-only by default. Keep `.patchmill` and
-`patchmill.config.json` ignored for personal setup, or remove those ignore
-entries when you explicitly want the repository to share Patchmill config and
-skill behavior.
+Project-local skills are local-only by default. For consistent Patchmill runs
+across local machines and CI, consider committing `patchmill.config.json` and
+`.patchmill/skills/` explicitly.
 
 Patchmill treats installed files as project-owned. It will not silently
 overwrite edited skill files and will preserve local edits.

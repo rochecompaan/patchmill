@@ -367,7 +367,7 @@ test("runDoctorChecks honors configured git clean-status ignores", async () => {
   assert.equal(results.find((result) => result.name === "git")?.status, "pass");
 });
 
-test("runDoctorChecks ignores local-only init files in git clean-status checks", async () => {
+test("runDoctorChecks does not hide local-only files when git reports them dirty", async () => {
   const repoRoot = await tempRepo();
   await writeConfig(repoRoot, {
     host: { provider: "forgejo-tea", login: "triage-agent" },
@@ -394,7 +394,9 @@ test("runDoctorChecks ignores local-only init files in git clean-status checks",
     teaRepoRootForTests: "/repo",
   });
 
-  assert.equal(results.find((result) => result.name === "git")?.status, "pass");
+  const git = results.find((result) => result.name === "git");
+  assert.equal(git?.status, "fail");
+  assert.match(git?.message ?? "", /patchmill\.config\.json/);
 });
 
 test("runDoctorChecks fails path checks when a configured directory is a file", async () => {
