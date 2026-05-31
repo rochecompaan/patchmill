@@ -29,6 +29,24 @@ async function readConfig(repoRoot: string): Promise<Record<string, unknown>> {
   );
 }
 
+function missingPiReadiness() {
+  return {
+    status: "missing" as const,
+    message: "Pi did not report any provider/model with configured auth.",
+    models: [],
+  };
+}
+
+async function failingPiSmokeTest() {
+  return {
+    status: "fail" as const,
+    message: "Pi could not complete the provider smoke test.",
+    command:
+      "pi --no-session --no-context-files --no-prompt-templates -p Reply with PATCHMILL_PI_OK and nothing else.",
+    details: "missing key",
+  };
+}
+
 test("runInit prints help", async () => {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -67,6 +85,8 @@ test("runInit installs project-local skills by default", async () => {
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
       },
@@ -112,7 +132,7 @@ test("runInit installs project-local skills by default", async () => {
   assert.doesNotMatch(stdout.join("\n"), /Commit \.patchmill\/skills\//);
   assert.match(
     stdout.join("\n"),
-    /Run `patchmill doctor` to verify local setup/,
+    /Run `patchmill doctor` after completing Pi setup/,
   );
 });
 
@@ -135,6 +155,8 @@ test("runInit preserves existing local exclude entries and does not touch gitign
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
       },
@@ -168,6 +190,8 @@ test("runInit --skills none skips skill installation and omits skills config", a
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
         installProjectSkills: async () => {
@@ -202,6 +226,8 @@ test("runInit --skills global writes default global skill names", async () => {
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
         installProjectSkills: async () => {
@@ -238,6 +264,8 @@ test("runInit --skills path validates existing local skill directory", async () 
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
         installProjectSkills: async () => {
@@ -274,6 +302,8 @@ test("runInit creates config and prints next step", async () => {
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
       },
@@ -286,7 +316,7 @@ test("runInit creates config and prints next step", async () => {
   assert.match(stdout.join("\n"), /PATCHMILL_HOST_LOGIN/);
   assert.match(
     stdout.join("\n"),
-    /Run `patchmill doctor` to verify local setup/,
+    /Run `patchmill doctor` after completing Pi setup/,
   );
   assert.match(stdout.join("\n"), /patchmill doctor/);
 });
@@ -304,6 +334,8 @@ test("runInit prints missing label review and edit guidance when label setup is 
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
         setupLabels: async () => {
@@ -341,6 +373,8 @@ test("runInit --yes approves setup-time label creation", async () => {
       {
         env: {},
         homeDir: await tempRepo(),
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
         setupLabels: async (options) => {
@@ -388,10 +422,10 @@ test("runInit refuses existing config without installing skills", async () => {
   assert.match(stdout.join("\n"), /did not overwrite/);
 });
 
-test("runInit does not offer Pi handoff when provider config is apparent", async () => {
+test("runInit uses Pi-reported ready configuration without native handoff", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
-  let prompted = false;
+  const prompts: string[] = [];
 
   assert.equal(
     await runInit(
@@ -399,102 +433,53 @@ test("runInit does not offer Pi handoff when provider config is apparent", async
       repoRoot,
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
-        env: { ANTHROPIC_API_KEY: "sk-ant-test" },
-        homeDir: await tempRepo(),
         isInteractive: true,
-        prompt: async () => {
-          prompted = true;
-          return "yes";
+        detectPiReadiness: () => ({
+          status: "ready",
+          message: "Pi reported 1 provider/model option with configured auth.",
+          models: [
+            {
+              provider: "anthropic",
+              providerName: "Anthropic",
+              id: "claude-sonnet-4-5",
+              label: "Anthropic / Claude Sonnet 4.5",
+              value: "anthropic/claude-sonnet-4-5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+          ],
+        }),
+        runPiSmokeTest: async () => ({
+          status: "pass",
+          message:
+            "Pi completed the provider smoke test with anthropic/claude-sonnet-4-5.",
+          command:
+            "pi --no-session --no-context-files --no-prompt-templates --model anthropic/claude-sonnet-4-5 -p Reply with PATCHMILL_PI_OK and nothing else.",
+        }),
+        prompt: async (question) => {
+          prompts.push(question);
+          return "";
         },
       },
     ),
     0,
   );
 
-  assert.equal(prompted, false);
-  assert.match(stdout.join("\n"), /Pi provider configuration detected/);
-});
-
-test("runInit offers Pi handoff when provider config is not apparent", async () => {
-  const repoRoot = await tempRepo();
-  const stdout: string[] = [];
-  let launched = false;
-
-  assert.equal(
-    await runInit(
-      ["--skills", "none"],
-      repoRoot,
-      { stdout: (line) => stdout.push(line), stderr: () => undefined },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        isInteractive: true,
-        checkPiAvailable: async () => true,
-        prompt: async () => {
-          assert.match(
-            stdout[0] ?? "",
-            /No provider configuration was detected/,
-          );
-          return "y";
-        },
-        launchPi: async () => {
-          launched = true;
-          return 0;
-        },
-      },
-    ),
-    0,
-  );
-
-  assert.equal(launched, true);
-  assert.match(stdout[0] ?? "", /No provider configuration was detected/);
-  assert.doesNotMatch(
-    stdout.at(-1) ?? "",
-    /No provider configuration was detected/,
-  );
-  assert.match(stdout.at(-1) ?? "", /Returned from Pi provider setup/);
-});
-
-test("runInit gives manual Pi setup guidance when Pi exits non-zero", async () => {
-  const repoRoot = await tempRepo();
-  const stdout: string[] = [];
-
-  assert.equal(
-    await runInit(
-      ["--skills", "none"],
-      repoRoot,
-      { stdout: (line) => stdout.push(line), stderr: () => undefined },
-      {
-        env: {},
-        homeDir: await tempRepo(),
-        isInteractive: true,
-        checkPiAvailable: async () => true,
-        prompt: async () => "y",
-        launchPi: async () => 1,
-      },
-    ),
-    0,
-  );
-
-  assert.match(stdout[0] ?? "", /No provider configuration was detected/);
-  assert.doesNotMatch(
-    stdout.at(-1) ?? "",
-    /No provider configuration was detected/,
-  );
+  assert.equal(prompts.length, 2);
   assert.match(
-    stdout.at(-1) ?? "",
-    /Pi exited before provider setup could be confirmed/,
+    prompts[0] ?? "",
+    /Use existing Pi provider\/model configuration/,
   );
-  assert.match(
-    stdout.at(-1) ?? "",
-    /To configure manually, run `pi`, then `\/login`/,
-  );
+  assert.match(prompts[1] ?? "", /Select a Pi model/);
+  assert.match(stdout.join("\n"), /Pi reported 1 provider\/model option/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
 });
 
-test("runInit skips Pi handoff prompt when Pi is unavailable", async () => {
+test("runInit prompts for manual model when Pi readiness is missing", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
-  let prompted = false;
+  const prompts: string[] = [];
 
   assert.equal(
     await runInit(
@@ -502,29 +487,33 @@ test("runInit skips Pi handoff prompt when Pi is unavailable", async () => {
       repoRoot,
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
-        env: {},
-        homeDir: await tempRepo(),
         isInteractive: true,
-        checkPiAvailable: async () => false,
-        prompt: async () => {
-          prompted = true;
-          return "y";
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: async (_runner, options) => ({
+          status: "pass",
+          message: `Pi completed the provider smoke test with ${options.model}.`,
+          command: "pi smoke",
+        }),
+        prompt: async (question) => {
+          prompts.push(question);
+          return prompts.length === 1 ? "y" : "anthropic/claude-haiku-4-5";
         },
       },
     ),
     0,
   );
 
-  assert.equal(prompted, false);
-  assert.match(stdout.join("\n"), /No provider configuration was detected/);
-  assert.match(stdout.join("\n"), /did not offer to launch it/);
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0] ?? "", /Configure Pi now/);
+  assert.match(prompts[1] ?? "", /enter the Pi model as provider\/model/);
   assert.match(
     stdout.join("\n"),
-    /npm install -g @earendil-works\/pi-coding-agent/,
+    /Using manually entered Pi model anthropic\/claude-haiku-4-5/,
   );
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
 });
 
-test("runInit handles declined Pi handoff without error", async () => {
+test("runInit reports manual setup when missing Pi readiness is declined", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
 
@@ -534,19 +523,109 @@ test("runInit handles declined Pi handoff without error", async () => {
       repoRoot,
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
-        env: {},
-        homeDir: await tempRepo(),
         isInteractive: true,
-        checkPiAvailable: async () => true,
+        detectPiReadiness: missingPiReadiness,
+        runPiSmokeTest: failingPiSmokeTest,
         prompt: async () => "no",
       },
     ),
     0,
   );
 
-  assert.match(
-    stdout.join("\n"),
-    /To configure manually, run `pi`, then `\/login`/,
+  assert.match(stdout.join("\n"), /Run `pi`, then `\/login`/);
+  assert.match(stdout.join("\n"), /Pi setup is incomplete/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+});
+
+test("runInit runs Pi smoke test when Pi readiness is available", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let smokeModel: string | undefined;
+
+  assert.equal(
+    await runInit(
+      [],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        isInteractive: false,
+        setupLabels: async () => ({
+          status: "skipped",
+          message: "labels skipped",
+        }),
+        detectPiReadiness: () => ({
+          status: "ready",
+          message: "Pi reported 1 provider/model option with configured auth.",
+          models: [
+            {
+              provider: "anthropic",
+              providerName: "Anthropic",
+              id: "claude-sonnet-4-5",
+              label: "Anthropic / Claude Sonnet 4.5",
+              value: "anthropic/claude-sonnet-4-5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+          ],
+        }),
+        runPiSmokeTest: async (_runner, options) => {
+          smokeModel = options.model;
+          return {
+            status: "pass",
+            message:
+              "Pi completed the provider smoke test with anthropic/claude-sonnet-4-5.",
+            command:
+              "pi --no-session --no-context-files --no-prompt-templates --model anthropic/claude-sonnet-4-5 -p Reply with PATCHMILL_PI_OK and nothing else.",
+          };
+        },
+      },
+    ),
+    0,
   );
-  assert.match(stdout.join("\n"), /patchmill doctor/);
+
+  assert.equal(smokeModel, "anthropic/claude-sonnet-4-5");
+  assert.match(stdout.join("\n"), /Pi completed the provider smoke test/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
+});
+
+test("runInit keeps config but reports incomplete Pi setup when smoke test fails", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runInit(
+      [],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        isInteractive: false,
+        setupLabels: async () => ({
+          status: "skipped",
+          message: "labels skipped",
+        }),
+        detectPiReadiness: () => ({
+          status: "missing",
+          message: "Pi did not report any provider/model with configured auth.",
+          models: [],
+        }),
+        runPiSmokeTest: async () => ({
+          status: "fail",
+          message: "Pi could not complete the provider smoke test.",
+          command:
+            "pi --no-session --no-context-files --no-prompt-templates -p Reply with PATCHMILL_PI_OK and nothing else.",
+          details: "missing key",
+        }),
+      },
+    ),
+    0,
+  );
+
+  assert.match(stdout.join("\n"), /Pi setup is incomplete/);
+  assert.match(stdout.join("\n"), /missing key/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+  assert.doesNotMatch(
+    await readFile(join(repoRoot, "patchmill.config.json"), "utf8"),
+    /missing key|sk-/u,
+  );
 });
