@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/rochecompaan/patchmill/compare/v0.3.2...v0.4.0) (2026-05-31)
+
+
+### Features
+
+* **labels:** automate approved setup ([cdcd8a0](https://github.com/rochecompaan/patchmill/commit/cdcd8a01cac4f4b70a7e569f6e864161d8a9c57b))
+
 ## [0.3.2](https://github.com/rochecompaan/patchmill/compare/v0.3.1...v0.3.2) (2026-05-31)
 
 
