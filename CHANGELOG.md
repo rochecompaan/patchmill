@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.2](https://github.com/rochecompaan/patchmill/compare/v0.3.1...v0.3.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* **init:** make installed skills owner-writable ([035c2fa](https://github.com/rochecompaan/patchmill/commit/035c2fac4167070719ed5b30f134ccacee137f69))
+* **init:** make patchmill setup local-only ([e04351b](https://github.com/rochecompaan/patchmill/commit/e04351bf526121f731f3d29d14a23cd30b0ecd68))
+* **init:** use local git excludes ([2ad36df](https://github.com/rochecompaan/patchmill/commit/2ad36dfbfe100bdd9589031de598bcaaffb103c8))
+
 ## [0.3.1](https://github.com/rochecompaan/patchmill/compare/v0.3.0...v0.3.1) (2026-05-31)
 
 
