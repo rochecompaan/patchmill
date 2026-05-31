@@ -114,7 +114,9 @@ The default skills keep the workflow small and explicit:
 
 - `.patchmill/skills/patchmill-issue-triage` is the default triage skill; normal
   triage runs it (or your configured replacement) and reports observed changes,
-  while `--dry-run` uses a read-only preview JSON pass.
+  while `--dry-run` uses a read-only preview JSON pass. Its triage-note,
+  disclosure, and agent-brief practices were inspired by
+  [Matt Pocock's triage skill](https://github.com/mattpocock/skills/blob/main/skills/engineering/triage/SKILL.md).
 - `.patchmill/skills/writing-plans` writes implementation plans before code
   changes.
 - `.patchmill/skills/subagent-driven-development` executes approved plans with
