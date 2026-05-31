@@ -27,6 +27,7 @@ test("release-please config manages the root node package and Nix version", () =
       {
         "release-type"?: string;
         "package-name"?: string;
+        "include-component-in-tag"?: boolean;
         "extra-files"?: Array<{ type?: string; path?: string }>;
       }
     >;
@@ -35,6 +36,7 @@ test("release-please config manages the root node package and Nix version", () =
   assert.deepEqual(config.packages?.["."], {
     "release-type": "node",
     "package-name": "@rochecompaan/patchmill",
+    "include-component-in-tag": false,
     "extra-files": [{ type: "generic", path: "nix/package.nix" }],
   });
 });

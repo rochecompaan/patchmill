@@ -3,6 +3,7 @@
     ".": {
       "release-type": "node",
       "package-name": "@rochecompaan/patchmill",
+      "include-component-in-tag": false,
       "extra-files": [
         {
           "type": "generic",

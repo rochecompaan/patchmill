@@ -224,8 +224,9 @@ These paths are local workflow state, not source documentation.
 
 Patchmill uses release-please on pushes to `main`. Conventional Commits drive
 release PRs that update `package.json`, lockfiles, `CHANGELOG.md`, and the Nix
-package version marker. When a release PR is merged, the workflow creates the
-GitHub release and publishes the npm package with provenance using `NPM_TOKEN`.
+package version marker. Release-please creates plain `vX.Y.Z` Git tags and
+release names. When a release PR is merged, the workflow creates the GitHub
+release and publishes the npm package with provenance using `NPM_TOKEN`.
 
 ## Issue-agent workflows
 

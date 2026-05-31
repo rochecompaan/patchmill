@@ -7,4 +7,5 @@ coverage/
 .tmp/
 .worktrees/
 package-lock.json
+CHANGELOG.md
 extensions/todos.ts
