@@ -275,7 +275,7 @@ test("runDoctorChecks reports invalid config and continues", async () => {
   assert.ok(results.length > 1);
 });
 
-test("runDoctorChecks reports missing labels with manual commands", async () => {
+test("runDoctorChecks reports missing labels with doctor fix guidance", async () => {
   const repoRoot = await tempRepo();
   await writeConfig(repoRoot, {
     host: { provider: "forgejo-tea", login: "triage-agent" },
@@ -292,10 +292,17 @@ test("runDoctorChecks reports missing labels with manual commands", async () => 
 
   assert.equal(labels?.status, "fail");
   assert.match(labels?.message ?? "", /agent-ready/);
-  assert.ok(
-    (labels?.remediation ?? []).includes(
-      "  tea labels create --name 'agent-ready' --color '#2ea043' --description 'Ready for automated agent processing'",
-    ),
+  assert.deepEqual(labels?.remediation, [
+    "Patchmill doctor is read-only and did not create labels.",
+    "",
+    "Run the approved repair flow:",
+    "  patchmill doctor --fix",
+    "",
+    "You can edit label names in patchmill.config.json before running --fix.",
+  ]);
+  assert.doesNotMatch(
+    (labels?.remediation ?? []).join("\n"),
+    /tea labels create/,
   );
 });
 
@@ -323,10 +330,10 @@ test("runDoctorChecks reports missing github labels with provider remediation", 
   const remediation = labels?.remediation ?? [];
 
   assert.equal(labels?.status, "fail");
-  assert.ok(
-    remediation.includes(
-      "  gh label create agent-ready --color 2ea043 --description 'Ready for automated agent processing'",
-    ),
+  assert.ok(remediation.includes("  patchmill doctor --fix"));
+  assert.equal(
+    remediation.some((line) => line.includes("gh label create")),
+    false,
   );
   assert.equal(
     remediation.some((line) => line.includes("--color #")),

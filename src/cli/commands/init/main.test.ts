@@ -48,6 +48,10 @@ test("HELP_TEXT documents project as the default --skills mode", () => {
   assert.match(HELP_TEXT, /--skills <mode>[\s\S]*Default: project\./);
 });
 
+test("HELP_TEXT documents yes", () => {
+  assert.match(HELP_TEXT, /--yes[\s\S]*Approve setup prompts/);
+});
+
 test("runInit installs project-local skills by default", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
@@ -285,6 +289,75 @@ test("runInit creates config and prints next step", async () => {
     /Run `patchmill doctor` to verify local setup/,
   );
   assert.match(stdout.join("\n"), /patchmill doctor/);
+});
+
+test("runInit prints missing label review and edit guidance when label setup is skipped", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let labelSetupCalled = false;
+
+  assert.equal(
+    await runInit(
+      ["--skills", "none"],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: false,
+        checkPiAvailable: async () => false,
+        setupLabels: async () => {
+          labelSetupCalled = true;
+          return {
+            status: "skipped",
+            missingCount: 1,
+            createdCount: 0,
+            message:
+              "Patchmill needs these labels:\n  agent-ready — Ready for automated agent processing\n\nSkipped label creation.\nYou can edit label names in patchmill.config.json after init, then run:\n  patchmill doctor --fix",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(labelSetupCalled, true);
+  assert.match(
+    stdout.join("\n"),
+    /agent-ready — Ready for automated agent processing/,
+  );
+  assert.match(stdout.join("\n"), /patchmill doctor --fix/);
+});
+
+test("runInit --yes approves setup-time label creation", async () => {
+  const repoRoot = await tempRepo();
+  let assumeYes: boolean | undefined;
+
+  assert.equal(
+    await runInit(
+      ["--yes", "--skills", "none"],
+      repoRoot,
+      { stdout: () => undefined, stderr: () => undefined },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: false,
+        checkPiAvailable: async () => false,
+        setupLabels: async (options) => {
+          assumeYes = options.assumeYes;
+          return {
+            status: "satisfied",
+            missingCount: 0,
+            createdCount: 0,
+            message: "Required labels already exist.",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(assumeYes, true);
 });
 
 test("runInit refuses existing config without installing skills", async () => {

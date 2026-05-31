@@ -6,6 +6,7 @@ const expectedDefault = {
   repoRoot: "/repo",
   showHelp: false,
   skills: { mode: "project" },
+  yes: false,
 };
 
 test("parseArgs defaults to creating config", () => {
@@ -20,6 +21,13 @@ test("parseArgs recognizes help", () => {
   assert.deepEqual(parseArgs(["-h"], "/repo"), {
     ...expectedDefault,
     showHelp: true,
+  });
+});
+
+test("parseArgs recognizes yes", () => {
+  assert.deepEqual(parseArgs(["--yes"], "/repo"), {
+    ...expectedDefault,
+    yes: true,
   });
 });
 

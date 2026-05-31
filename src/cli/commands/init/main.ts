@@ -8,7 +8,12 @@ import {
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
+import { createCommandRunner } from "../triage/command.ts";
 import { GLOBAL_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
+import { createIssueHostProvider } from "../../../host/factory.ts";
+import { createTriagePolicy } from "../../../policy/triage.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { ensureRequiredLabels } from "../labels/setup.ts";
 import {
   installProjectSkills,
   validateExistingSkillDirectory,
@@ -30,6 +35,7 @@ Installs the recommended project-local skill pack by default.
 
 Options:
   --skills <mode>  Skill installation mode: project, global, none, or path:<dir>. Default: project.
+  --yes            Approve setup prompts for deterministic actions such as label creation.
   --help, -h  Show this help and exit.
 `;
 
@@ -114,6 +120,7 @@ export async function runInit(
     isInteractive?: boolean;
     installProjectSkills?: ProjectSkillInstaller;
     validateExistingSkillDirectory?: ExistingSkillDirectoryValidator;
+    setupLabels?: typeof ensureRequiredLabels;
   } = {},
 ): Promise<number> {
   const config = parseArgs(args, repoRoot);
@@ -165,6 +172,36 @@ export async function runInit(
       : "Patchmill local files were already ignored by .git/info/exclude.";
   const consistencyWarning =
     "Warning: Patchmill config and skills are local-only by default. For consistent Patchmill runs across local machines and CI, consider committing patchmill.config.json and .patchmill/skills/ explicitly.";
+  const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
+
+  let labelSetupMessage: string;
+  try {
+    const runner = createCommandRunner();
+    const host = createIssueHostProvider({
+      runner,
+      repoRoot: config.repoRoot,
+      host: result.config.host,
+    });
+    const policy = createTriagePolicy(
+      DEFAULT_PATCHMILL_CONFIG.labels,
+      DEFAULT_PATCHMILL_CONFIG.triage,
+    );
+    const labelSetup = await (options.setupLabels ?? ensureRequiredLabels)({
+      host,
+      policy,
+      prompt: options.prompt ?? defaultPrompt,
+      isInteractive,
+      assumeYes: config.yes,
+      command: "init",
+    });
+    labelSetupMessage = labelSetup.message;
+  } catch (error) {
+    labelSetupMessage = [
+      `Could not check required labels during init: ${error instanceof Error ? error.message : String(error)}`,
+      "You can edit label names in patchmill.config.json after init, then run:",
+      "  patchmill doctor --fix",
+    ].join("\n");
+  }
 
   const hasPiProvider = await hasApparentPiProviderConfig({
     env: options.env,
@@ -179,7 +216,6 @@ export async function runInit(
     if (!piAvailable) {
       piMessage = `${NO_PI_PROVIDER_MESSAGE}\n\n${NO_PI_BINARY_MESSAGE}`;
     } else {
-      const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
       if (isInteractive) {
         output.stdout(NO_PI_PROVIDER_MESSAGE);
         const answer = await (options.prompt ?? defaultPrompt)(
@@ -202,7 +238,7 @@ export async function runInit(
   }
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${piMessage}\n\n${successNextSteps()}`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piMessage}\n\n${successNextSteps()}`,
   );
   return 0;
 }

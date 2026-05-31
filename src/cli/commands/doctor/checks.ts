@@ -488,9 +488,10 @@ export async function runDoctorChecks(
             [
               "Patchmill doctor is read-only and did not create labels.",
               "",
-              "Create the missing labels manually, then rerun:",
-              ...missing.map((label) => host.missingLabelRemediation(label)),
-              "  patchmill doctor",
+              "Run the approved repair flow:",
+              "  patchmill doctor --fix",
+              "",
+              "You can edit label names in patchmill.config.json before running --fix.",
             ],
           ),
         );

@@ -10,6 +10,7 @@ export type InitConfig = {
   repoRoot: string;
   showHelp: boolean;
   skills: InitSkillsMode;
+  yes: boolean;
 };
 
 const SKILLS_VALUE_ERROR =
@@ -49,12 +50,15 @@ export function parseArgs(args: string[], repoRoot = cwd()): InitConfig {
     repoRoot,
     showHelp: false,
     skills: { mode: "project" },
+    yes: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--help" || arg === "-h") {
       config.showHelp = true;
+    } else if (arg === "--yes") {
+      config.yes = true;
     } else if (arg === "--skills") {
       config.skills = parseSkillsMode(requireSkillsValue(args, index));
       index += 1;

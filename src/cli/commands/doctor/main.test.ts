@@ -26,6 +26,11 @@ test("runDoctor prints help", async () => {
   assert.deepEqual(stderr, []);
 });
 
+test("HELP_TEXT documents fix and yes", () => {
+  assert.match(HELP_TEXT, /--fix[\s\S]*Create missing labels after approval/);
+  assert.match(HELP_TEXT, /--yes[\s\S]*Skip --fix approval prompt/);
+});
+
 test("runDoctor returns zero when checks pass", async () => {
   const stdout: string[] = [];
   const checks: DoctorCheckResult[] = [
@@ -60,4 +65,66 @@ test("runDoctor returns one when any check fails", async () => {
     1,
   );
   assert.match(stdout.join("\n"), /✗ config: missing/);
+});
+
+test("runDoctor --fix runs label setup and prints its review", async () => {
+  const stdout: string[] = [];
+  let called = false;
+
+  assert.equal(
+    await runDoctor(
+      ["--fix"],
+      "/repo",
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        runner,
+        runChecks: async () => [
+          { name: "labels", status: "pass", message: "ok" },
+        ],
+        setupLabels: async (options) => {
+          called = true;
+          assert.equal(options.assumeYes, false);
+          return {
+            status: "created",
+            missingCount: 1,
+            createdCount: 1,
+            message:
+              "Patchmill needs these labels:\n  agent-ready — Ready for automated agent processing\n\nCreated 1 label.",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(called, true);
+  assert.match(stdout.join("\n"), /Created 1 label/);
+});
+
+test("runDoctor --fix --yes passes assumeYes", async () => {
+  let assumeYes: boolean | undefined;
+
+  assert.equal(
+    await runDoctor(
+      ["--fix", "--yes"],
+      "/repo",
+      { stdout: () => undefined, stderr: () => undefined },
+      {
+        runner,
+        runChecks: async () => [],
+        setupLabels: async (options) => {
+          assumeYes = options.assumeYes;
+          return {
+            status: "satisfied",
+            missingCount: 0,
+            createdCount: 0,
+            message: "Required labels already exist.",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(assumeYes, true);
 });

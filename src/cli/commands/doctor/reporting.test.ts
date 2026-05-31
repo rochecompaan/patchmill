@@ -32,9 +32,10 @@ test("formatDoctorReport prints failures and remediation", () => {
       remediation: [
         "Patchmill doctor is read-only and did not create labels.",
         "",
-        "Create the missing labels manually, then rerun:",
-        "  tea labels create --name agent-ready --color 0e8a16",
-        "  patchmill doctor",
+        "Run the approved repair flow:",
+        "  patchmill doctor --fix",
+        "",
+        "You can edit label names in patchmill.config.json before running --fix.",
       ],
     },
   ]);
@@ -48,9 +49,10 @@ test("formatDoctorReport prints failures and remediation", () => {
     "",
     "Patchmill doctor is read-only and did not create labels.",
     "",
-    "Create the missing labels manually, then rerun:",
-    "  tea labels create --name agent-ready --color 0e8a16",
-    "  patchmill doctor",
+    "Run the approved repair flow:",
+    "  patchmill doctor --fix",
+    "",
+    "You can edit label names in patchmill.config.json before running --fix.",
   ]);
 });
 
