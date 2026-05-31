@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/rochecompaan/patchmill/compare/v0.2.0...v0.2.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **nix:** update npm deps hash ([2999d82](https://github.com/rochecompaan/patchmill/commit/2999d824c2d1e9c2e22bae7f39e32b2b6fa734a3))
+* **release:** use plain version tags ([ec43aa9](https://github.com/rochecompaan/patchmill/commit/ec43aa96deac01798f14f33d8451bedaf7621304))
+
 ## [0.2.0](https://github.com/rochecompaan/patchmill/compare/patchmill-v0.1.0...patchmill-v0.2.0) (2026-05-30)
 
 
