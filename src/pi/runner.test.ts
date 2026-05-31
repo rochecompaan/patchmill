@@ -350,30 +350,30 @@ test("PiRunner implementation uses the worktree root, derives the default landin
   );
 });
 
-test("PiRunner implementation resolves local skills from the worktree root and expands the local skill pack", async () => {
+test("PiRunner implementation resolves local skills from the config repo root without expanding metadata", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-runner-local-"));
   const worktreePath = "worktrees/issue-42-local-skills";
   const worktreeRoot = join(repoRoot, worktreePath);
   const planPath = "docs/plans/2026-05-23-pi-runner-local-skills.md";
   await mkdir(join(worktreeRoot, ".pi", "todos"), { recursive: true });
   await mkdir(
-    join(worktreeRoot, ".patchmill", "skills", "subagent-driven-development"),
+    join(repoRoot, ".patchmill", "skills", "subagent-driven-development"),
     {
       recursive: true,
     },
   );
   await mkdir(
-    join(worktreeRoot, ".patchmill", "skills", "requesting-code-review"),
+    join(repoRoot, ".patchmill", "skills", "requesting-code-review"),
     {
       recursive: true,
     },
   );
-  await mkdir(join(worktreeRoot, "skills", "toolchain"), { recursive: true });
+  await mkdir(join(repoRoot, "skills", "toolchain"), { recursive: true });
   const implementationSkill = "# implementation\n";
   const reviewSkill = "# review\n";
   await writeFile(
     join(
-      worktreeRoot,
+      repoRoot,
       ".patchmill",
       "skills",
       "subagent-driven-development",
@@ -383,7 +383,7 @@ test("PiRunner implementation resolves local skills from the worktree root and e
   );
   await writeFile(
     join(
-      worktreeRoot,
+      repoRoot,
       ".patchmill",
       "skills",
       "requesting-code-review",
@@ -392,11 +392,11 @@ test("PiRunner implementation resolves local skills from the worktree root and e
     reviewSkill,
   );
   await writeFile(
-    join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
+    join(repoRoot, "skills", "toolchain", "SKILL.md"),
     "# toolchain\n",
   );
   await writeFile(
-    join(worktreeRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
+    join(repoRoot, ".patchmill", "skills", "patchmill-skill-pack.json"),
     JSON.stringify(
       buildSkillPackMetadata([
         {
@@ -426,21 +426,14 @@ test("PiRunner implementation resolves local skills from the worktree root and e
       arg === "--skill" ? [args[index + 1] ?? ""] : [],
     );
     assert.deepEqual(skillPaths, [
+      join(repoRoot, "skills", "toolchain", "SKILL.md"),
       join(
-        worktreeRoot,
+        repoRoot,
         ".patchmill",
         "skills",
         "subagent-driven-development",
         "SKILL.md",
       ),
-      join(
-        worktreeRoot,
-        ".patchmill",
-        "skills",
-        "requesting-code-review",
-        "SKILL.md",
-      ),
-      join(worktreeRoot, "skills", "toolchain", "SKILL.md"),
     ]);
     assert.equal(call.cwd, worktreeRoot);
     return {

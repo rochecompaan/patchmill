@@ -367,6 +367,36 @@ test("runDoctorChecks honors configured git clean-status ignores", async () => {
   assert.equal(results.find((result) => result.name === "git")?.status, "pass");
 });
 
+test("runDoctorChecks ignores local-only init files in git clean-status checks", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(
+    successMocks(REQUIRED_LABELS, {
+      "git status --porcelain=v1 --untracked-files=all": {
+        code: 0,
+        stdout: [
+          " M .gitignore",
+          "?? patchmill.config.json",
+          "?? .patchmill/skills/writing-plans/SKILL.md",
+          "?? .patchmill/runs/run-2026-05-10T04-19-08-934Z.jsonl",
+          "",
+        ].join("\n"),
+      },
+    }),
+  );
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+
+  assert.equal(results.find((result) => result.name === "git")?.status, "pass");
+});
+
 test("runDoctorChecks fails path checks when a configured directory is a file", async () => {
   const repoRoot = await tempRepo();
   await writeFile(
@@ -454,7 +484,7 @@ test("runDoctorChecks resolves configured skill directories to their SKILL.md ta
   );
 });
 
-test("runDoctorChecks passes for a fresh project-local skill pack", async () => {
+test("runDoctorChecks passes for fresh configured project-local skills", async () => {
   const repoRoot = await tempRepo();
   await writeConfig(repoRoot, recommendedProjectLocalConfig());
   await mkdir(join(repoRoot, "docs"), { recursive: true });
@@ -472,15 +502,11 @@ test("runDoctorChecks passes for a fresh project-local skill pack", async () => 
     /description:\s*\n\s+Triage repository issues/u,
   );
 
-  const metadata = JSON.parse(
-    await readFile(
-      join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, SKILL_PACK_METADATA_FILE),
-      "utf8",
-    ),
-  ) as SkillPackMetadataFile;
-  const smokePaths = metadata.files
-    .filter((file) => file.path.endsWith("/SKILL.md"))
-    .map((file) => join(repoRoot, file.path));
+  const smokePaths = [
+    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+    projectLocalSkillPath(repoRoot, "writing-plans"),
+    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+  ];
 
   const calls: string[] = [];
   const runner: CommandRunner = {
@@ -489,7 +515,6 @@ test("runDoctorChecks passes for a fresh project-local skill pack", async () => 
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
-          "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
           [projectLocalPiSmokeCommand(smokePaths)]: {
             code: 0,
             stdout: "PATCHMILL_SKILLS_OK\n",
@@ -512,9 +537,8 @@ test("runDoctorChecks passes for a fresh project-local skill pack", async () => 
   const skills = results.find((result) => result.name === "skills");
 
   assert.equal(skills?.status, "pass");
-  assert.match(skills?.message ?? "", /project-local metadata verified/);
-  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
-  assert.doesNotMatch(skills?.message ?? "", /metadata missing|customized/);
+  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
+  assert.doesNotMatch(skills?.message ?? "", /metadata/);
   assert.ok(calls.includes(expectedSmokeCommand));
   assert.equal(
     calls.some((call) =>
@@ -647,7 +671,6 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
-          "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
           [projectLocalPiSmokeCommand(smokePaths)]: {
             code: 0,
             stdout: "PATCHMILL_SKILLS_OK\n",
@@ -668,8 +691,8 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
   const skills = results.find((result) => result.name === "skills");
 
   assert.equal(skills?.status, "warn");
-  assert.match(skills?.message ?? "", /metadata malformed/);
-  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
+  assert.doesNotMatch(skills?.message ?? "", /metadata malformed/);
+  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
   assert.ok(calls.includes(projectLocalPiSmokeCommand(smokePaths)));
   assert.equal(
     calls.some((call) => call.includes("stale-unused-skill")),
@@ -727,7 +750,6 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
         calls.push(key);
         return (
           successMocks(REQUIRED_LABELS, {
-            "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
             [projectLocalPiSmokeCommand(smokePaths)]: {
               code: 0,
               stdout: "PATCHMILL_SKILLS_OK\n",
@@ -747,11 +769,8 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
     });
     const skills = results.find((result) => result.name === "skills");
 
-    assert.equal(skills?.status, "warn");
-    assert.match(
-      skills?.message ?? "",
-      /project-local skill pack metadata malformed/,
-    );
+    assert.equal(skills?.status, "pass");
+    assert.doesNotMatch(skills?.message ?? "", /metadata malformed/);
     assert.ok(calls.includes(projectLocalPiSmokeCommand(smokePaths)));
     assert.equal(
       calls.some((call) => call.includes(invalidPath)),
@@ -808,7 +827,6 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
-      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
       [projectLocalPiSmokeCommand(smokePaths)]: {
         code: 0,
         stdout: "PATCHMILL_SKILLS_OK\n",
@@ -822,12 +840,12 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
   });
   const skills = results.find((result) => result.name === "skills");
 
-  assert.equal(skills?.status, "warn");
-  assert.match(skills?.message ?? "", /customized from installed pack/);
-  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
+  assert.equal(skills?.status, "pass");
+  assert.doesNotMatch(skills?.message ?? "", /customized from installed pack/);
+  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
 });
 
-test("runDoctorChecks fails when .patchmill/skills is gitignored", async () => {
+test("runDoctorChecks allows project-local skills to be ignored by git", async () => {
   const repoRoot = await tempRepo();
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
@@ -867,7 +885,14 @@ test("runDoctorChecks fails when .patchmill/skills is gitignored", async () => {
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
-          "git check-ignore --no-index -q .patchmill/skills": { code: 0 },
+          [projectLocalPiSmokeCommand([
+            projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+            projectLocalSkillPath(repoRoot, "writing-plans"),
+            projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+          ])]: {
+            code: 0,
+            stdout: "PATCHMILL_SKILLS_OK\n",
+          },
         })[key] ?? {
           code: 127,
           stdout: "",
@@ -883,12 +908,18 @@ test("runDoctorChecks fails when .patchmill/skills is gitignored", async () => {
   });
   const skills = results.find((result) => result.name === "skills");
 
-  assert.equal(skills?.status, "fail");
-  assert.match(skills?.message ?? "", /\.patchmill\/skills is ignored by git/);
-  assert.ok(calls.includes("git check-ignore --no-index -q .patchmill/skills"));
+  assert.equal(skills?.status, "pass");
+  assert.doesNotMatch(
+    skills?.message ?? "",
+    /\.patchmill\/skills is ignored by git/,
+  );
+  assert.equal(
+    calls.some((call) => call.includes("git check-ignore")),
+    false,
+  );
   assert.equal(
     calls.some((command) => command.includes("PATCHMILL_SKILLS_OK")),
-    false,
+    true,
   );
 });
 
@@ -932,7 +963,6 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
-      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
       [projectLocalPiSmokeCommand(smokePaths)]: {
         code: 1,
         stderr: "pi failed to load one or more skills",
@@ -949,7 +979,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   assert.equal(skills?.status, "fail");
   assert.match(
     skills?.message ?? "",
-    /Pi could not load the project-local skill pack/,
+    /Pi could not load the configured local skills/,
   );
   assert.match(skills?.message ?? "", /pi failed to load one or more skills/);
 });
@@ -980,7 +1010,6 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
-      "git check-ignore --no-index -q .patchmill/skills": { code: 1 },
       [projectLocalPiSmokeCommand(smokePaths)]: {
         code: 0,
         stdout: "PATCHMILL_SKILLS_OK\n",
@@ -994,12 +1023,9 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
   });
   const skills = results.find((result) => result.name === "skills");
 
-  assert.equal(skills?.status, "warn");
-  assert.match(
-    skills?.message ?? "",
-    /project-local skill pack metadata missing/,
-  );
-  assert.match(skills?.message ?? "", /Pi loaded project-local skill pack/);
+  assert.equal(skills?.status, "pass");
+  assert.doesNotMatch(skills?.message ?? "", /metadata missing/);
+  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
 });
 
 test("doctor does not parse project-local skill-pack metadata directly", async () => {

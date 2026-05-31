@@ -19,6 +19,7 @@ import {
   writeInitialConfig,
   type InitialConfigSkills,
 } from "./config-writer.ts";
+import { ensurePatchmillGitignoreEntries } from "./gitignore.ts";
 import { hasApparentPiProviderConfig } from "./pi-preflight.ts";
 
 export const HELP_TEXT = `Usage:
@@ -96,13 +97,8 @@ const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
 const EXISTING_CONFIG_MESSAGE =
   "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor";
 
-function successNextSteps(skillsMode: "project" | "global" | "none" | "path") {
-  const commitTargets =
-    skillsMode === "project"
-      ? "`patchmill.config.json` and `.patchmill/skills/`"
-      : "`patchmill.config.json`";
-
-  return `Commit ${commitTargets} before running \`patchmill doctor\`. Doctor expects a clean worktree.\n\nNext:\n  patchmill doctor`;
+function successNextSteps() {
+  return "Run `patchmill doctor` to verify local setup.\n\nNext:\n  patchmill doctor";
 }
 
 export async function runInit(
@@ -139,7 +135,7 @@ export async function runInit(
       options.installProjectSkills ?? installProjectSkills
     )({ repoRoot: config.repoRoot });
     skills = installResult.skillConfig;
-    skillsMessage = `Installed project-local skills:\n  ${installResult.installedSkills.join("\n  ")}\n\nCommit ${installResult.skillDir}/ to share the recommended skill pack with this repository.\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
+    skillsMessage = `Installed project-local skills:\n  ${installResult.installedSkills.join("\n  ")}\n\nProject-local skills are local-only by default. Remove the .gitignore entries if you want to share them with this repository.\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
   } else if (config.skills.mode === "global") {
     skills = DEFAULT_GLOBAL_SKILLS;
     skillsMessage =
@@ -159,6 +155,11 @@ export async function runInit(
     output.stdout(EXISTING_CONFIG_MESSAGE);
     return 1;
   }
+  const gitignore = await ensurePatchmillGitignoreEntries(config.repoRoot);
+  const gitignoreMessage =
+    gitignore.added.length > 0
+      ? `Added Patchmill local files to .gitignore:\n  ${gitignore.added.join("\n  ")}`
+      : "Patchmill local files were already ignored by .gitignore.";
 
   const hasPiProvider = await hasApparentPiProviderConfig({
     env: options.env,
@@ -196,7 +197,7 @@ export async function runInit(
   }
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${skillsMessage}\n\n${piMessage}\n\n${successNextSteps(config.skills.mode)}`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${gitignoreMessage}\n\n${skillsMessage}\n\n${piMessage}\n\n${successNextSteps()}`,
   );
   return 0;
 }

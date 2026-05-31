@@ -169,7 +169,7 @@ test("skillInvocationPaths keeps only invokable skill paths in order", () => {
   );
 });
 
-test("resolveConfiguredSkillInvocation expands a valid project-local pack exactly once", async () => {
+test("resolveConfiguredSkillInvocation uses only skill paths configured in patchmill config", async () => {
   const repoRoot = await tempRepo();
   const triage = await writeProjectLocalSkill(
     repoRoot,
@@ -204,12 +204,6 @@ test("resolveConfiguredSkillInvocation expands a valid project-local pack exactl
   );
 
   assert.deepEqual(result.paths, [
-    join(
-      repoRoot,
-      DEFAULT_PROJECT_SKILL_DIR,
-      "patchmill-issue-triage",
-      "SKILL.md",
-    ),
     join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, "writing-plans", "SKILL.md"),
     join(
       repoRoot,
@@ -228,10 +222,7 @@ test("resolveConfiguredSkillInvocation expands a valid project-local pack exactl
       "SKILL.md",
     ),
   ]);
-  assert.deepEqual(
-    result.diagnostics.map((entry) => entry.status),
-    ["pass"],
-  );
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test("resolveConfiguredSkillInvocation uses configured paths only when metadata is missing", async () => {
@@ -256,13 +247,7 @@ test("resolveConfiguredSkillInvocation uses configured paths only when metadata 
       "SKILL.md",
     ),
   ]);
-  assert.deepEqual(result.diagnostics, [
-    {
-      status: "warn",
-      summary:
-        "project-local skill pack metadata missing; using configured project-local skill paths only",
-    },
-  ]);
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test("resolveConfiguredSkillInvocation preserves mixed configured ordering when metadata is missing", async () => {
@@ -286,13 +271,7 @@ test("resolveConfiguredSkillInvocation preserves mixed configured ordering when 
       "SKILL.md",
     ),
   ]);
-  assert.deepEqual(result.diagnostics, [
-    {
-      status: "warn",
-      summary:
-        "project-local skill pack metadata missing; using configured project-local skill paths only",
-    },
-  ]);
+  assert.deepEqual(result.diagnostics, []);
   assert.equal(result.usedProjectLocalPack, true);
 });
 
@@ -320,13 +299,7 @@ test("resolveConfiguredSkillInvocation treats unsafe metadata paths as malformed
       "SKILL.md",
     ),
   ]);
-  assert.deepEqual(result.diagnostics, [
-    {
-      status: "warn",
-      summary:
-        "project-local skill pack metadata malformed; using configured project-local skill paths only",
-    },
-  ]);
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test("resolveConfiguredSkillInvocation uses configured paths only when metadata is malformed", async () => {
@@ -346,11 +319,7 @@ test("resolveConfiguredSkillInvocation uses configured paths only when metadata 
   assert.deepEqual(result.paths, [
     join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, "writing-plans", "SKILL.md"),
   ]);
-  assert.equal(result.diagnostics[0]?.status, "warn");
-  assert.match(
-    result.diagnostics[0]?.summary ?? "",
-    /project-local skill pack metadata malformed; using configured project-local skill paths only/,
-  );
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test("resolveConfiguredSkillInvocation preserves mixed configured ordering when metadata is malformed", async () => {
@@ -379,11 +348,7 @@ test("resolveConfiguredSkillInvocation preserves mixed configured ordering when 
       "SKILL.md",
     ),
   ]);
-  assert.equal(result.diagnostics[0]?.status, "warn");
-  assert.match(
-    result.diagnostics[0]?.summary ?? "",
-    /project-local skill pack metadata malformed; using configured project-local skill paths only/,
-  );
+  assert.deepEqual(result.diagnostics, []);
   assert.equal(result.usedProjectLocalPack, true);
 });
 
@@ -406,18 +371,7 @@ test("resolveConfiguredSkillInvocation reports customized project-local pack fil
     repoRoot,
   );
 
-  assert.deepEqual(
-    result.diagnostics.map((entry) => entry.status),
-    ["pass", "warn"],
-  );
-  assert.equal(
-    result.diagnostics[0]?.summary,
-    "project-local metadata verified",
-  );
-  assert.match(
-    result.diagnostics[1]?.summary ?? "",
-    /project-local skill pack customized from installed pack/,
-  );
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test("resolveConfiguredSkillInvocation ignores unused project-local directories and metadata", async () => {

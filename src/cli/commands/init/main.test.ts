@@ -91,10 +91,43 @@ test("runInit installs project-local skills by default", async () => {
     ),
   );
   assert.match(stdout.join("\n"), /Installed project-local skills/);
-  assert.match(stdout.join("\n"), /Commit \.patchmill\/skills\//);
+  assert.match(stdout.join("\n"), /Added Patchmill local files to \.gitignore/);
+  assert.match(
+    await readFile(join(repoRoot, ".gitignore"), "utf8"),
+    /\.patchmill\npatchmill\.config\.json\n/u,
+  );
+  assert.doesNotMatch(stdout.join("\n"), /Commit \.patchmill\/skills\//);
   assert.match(
     stdout.join("\n"),
-    /Commit `patchmill\.config\.json` and `\.patchmill\/skills\/` before running `patchmill doctor`/,
+    /Run `patchmill doctor` to verify local setup/,
+  );
+});
+
+test("runInit preserves existing gitignore entries and does not duplicate Patchmill ignores", async () => {
+  const repoRoot = await tempRepo();
+  await writeFile(join(repoRoot, ".gitignore"), "node_modules\n.patchmill\n");
+
+  assert.equal(
+    await runInit(
+      ["--skills", "none"],
+      repoRoot,
+      {
+        stdout: () => undefined,
+        stderr: () => undefined,
+      },
+      {
+        env: {},
+        homeDir: await tempRepo(),
+        isInteractive: false,
+        checkPiAvailable: async () => false,
+      },
+    ),
+    0,
+  );
+
+  assert.equal(
+    await readFile(join(repoRoot, ".gitignore"), "utf8"),
+    "node_modules\n.patchmill\npatchmill.config.json\n",
   );
 });
 
@@ -232,7 +265,7 @@ test("runInit creates config and prints next step", async () => {
   assert.match(stdout.join("\n"), /PATCHMILL_HOST_LOGIN/);
   assert.match(
     stdout.join("\n"),
-    /Commit `patchmill\.config\.json` before running `patchmill doctor`/,
+    /Run `patchmill doctor` to verify local setup/,
   );
   assert.match(stdout.join("\n"), /patchmill doctor/);
 });

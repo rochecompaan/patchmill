@@ -21,10 +21,9 @@ patchmill doctor
 `doctor` is read-only and verifies repository, host, label, Pi provider,
 configured local skills, and path readiness before the existing
 `triage --dry-run` and `run-once` dry-run flows. For project-local defaults, it
-asks Pi to load the project-local skill pack. `doctor` verifies
+asks Pi to load the configured project-local skill paths. `doctor` verifies
 bundled/path-like skills, flags name-only skills as configured but unverified,
-and fails when required skill paths are missing or malformed. It also checks
-that `.patchmill/skills/` is not ignored by git.
+and fails when required skill paths are missing or malformed.
 
 See also [skills configuration](skills.md) for repository-configurable skill
 selection at each workflow stage.

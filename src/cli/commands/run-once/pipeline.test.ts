@@ -3541,7 +3541,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   assert.equal(runState.implementingAt, NOW.toISOString());
 });
 
-test("runOneIssue resolves implementation skills from the worktree root and expands the local skill pack", async () => {
+test("runOneIssue resolves implementation skills from the config repo root without expanding metadata", async () => {
   const baseConfig = await makeConfig({ dryRun: false, execute: true });
   const config = {
     ...baseConfig,
@@ -3675,17 +3675,10 @@ test("runOneIssue resolves implementation skills from the worktree root and expa
 
       assert.deepEqual(skillPaths, [
         join(
-          worktreeRoot,
+          config.repoRoot,
           ".patchmill",
           "skills",
           "subagent-driven-development",
-          "SKILL.md",
-        ),
-        join(
-          worktreeRoot,
-          ".patchmill",
-          "skills",
-          "requesting-code-review",
           "SKILL.md",
         ),
       ]);

@@ -35,9 +35,9 @@ Use the top-level `skills` key with a supported reference form (examples):
 }
 ```
 
-`patchmill init` writes `.patchmill/skills/...` references by default, and
-namespace-style references like `superpowers:writing-plans` are supported custom
-examples.
+`patchmill init` writes `.patchmill/skills/...` references by default and adds
+`.patchmill` plus `patchmill.config.json` to `.gitignore`. Namespace-style
+references like `superpowers:writing-plans` are supported custom examples.
 
 Each stage accepts one skill reference (name, namespace-style, or path-like
 local skill directory/file). If a workflow needs several skills or detailed
@@ -74,16 +74,17 @@ Supported keys:
 `.patchmill/skills/` by default (mode `project`). If you choose another
 `--skills` mode, the default pack is not installed.
 
-Commit `.patchmill/skills/` to git. It is part of repository process: changes to
-those files directly alter triage, planning, implementation, review, and
-validation behavior.
+Project-local skills are local-only by default. Keep `.patchmill` and
+`patchmill.config.json` ignored for personal setup, or remove those ignore
+entries when you explicitly want the repository to share Patchmill config and
+skill behavior.
 
 Patchmill treats installed files as project-owned. It will not silently
-overwrite edited skill files and will preserve repository-specific edits.
+overwrite edited skill files and will preserve local edits.
 
-`patchmill doctor` checks configured project-local skills by reading the skill
-metadata; it warns when installed skills differ from expected metadata and fails
-when required configured skill paths are missing or malformed.
+`patchmill doctor` checks the skill paths configured in `patchmill.config.json`.
+Path-like skill references are resolved relative to the config file directory,
+and doctor fails when required configured skill paths are missing or malformed.
 
 ## Triage
 

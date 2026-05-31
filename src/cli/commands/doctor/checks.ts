@@ -19,7 +19,6 @@ import {
   resolveConfiguredSkillInvocation,
   resolvePathLikeSkillPath,
 } from "../../../workflow/skills.ts";
-import { DEFAULT_PROJECT_SKILL_DIR } from "../../../workflow/skill-pack.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -43,6 +42,11 @@ type SkillCheckEntry = {
 
 const PROJECT_LOCAL_SKILLS_PROMPT =
   "Reply with PATCHMILL_SKILLS_OK and nothing else.";
+const LOCAL_ONLY_INIT_PATHS = [
+  ".gitignore",
+  "patchmill.config.json",
+  ".patchmill",
+];
 
 function pass(name: string, message: string): DoctorCheckResult {
   return { name, status: "pass", message };
@@ -102,6 +106,7 @@ async function checkGit(
             cleanStatusIgnorePrefixes: config.paths.cleanStatusIgnorePrefixes,
             todoRoot: config.projectPolicy.pi.taskContract.todoRoot,
             runStateDir: config.paths.runStateDir,
+            additionalPaths: LOCAL_ONLY_INIT_PATHS,
           })
         : [],
     );
@@ -310,36 +315,6 @@ async function validateResolvedLocalSkill(
   }
 }
 
-async function checkProjectLocalGitIgnore(
-  runner: CommandRunner,
-  repoRoot: string,
-): Promise<SkillCheckEntry> {
-  const result = await runner.run(
-    "git",
-    ["check-ignore", "--no-index", "-q", DEFAULT_PROJECT_SKILL_DIR],
-    { cwd: repoRoot },
-  );
-
-  if (result.code === 0) {
-    return {
-      status: "fail",
-      summary: `${DEFAULT_PROJECT_SKILL_DIR} is ignored by git`,
-    };
-  }
-
-  if (result.code === 1) {
-    return {
-      status: "pass",
-      summary: `${DEFAULT_PROJECT_SKILL_DIR} is not ignored by git`,
-    };
-  }
-
-  return {
-    status: "warn",
-    summary: `git-ignore status could not be verified: ${commandOutput(result)}`,
-  };
-}
-
 async function smokeTestProjectLocalSkills(
   runner: CommandRunner,
   repoRoot: string,
@@ -361,13 +336,13 @@ async function smokeTestProjectLocalSkills(
   if (result.code === 0 && result.stdout.includes("PATCHMILL_SKILLS_OK")) {
     return {
       status: "pass",
-      summary: "Pi loaded project-local skill pack",
+      summary: "Pi loaded configured local skills",
     };
   }
 
   return {
     status: "fail",
-    summary: `Pi could not load the project-local skill pack: ${commandOutput(result)}`,
+    summary: `Pi could not load the configured local skills: ${commandOutput(result)}`,
   };
 }
 
@@ -418,17 +393,14 @@ async function checkSkills(
 
   entries.push(...resolution.diagnostics);
 
-  if (resolution.usedProjectLocalPack) {
-    entries.push(await checkProjectLocalGitIgnore(runner, repoRoot));
-
-    if (
-      !entries.some((entry) => entry.status === "fail") &&
-      resolution.paths.length > 0
-    ) {
-      entries.push(
-        await smokeTestProjectLocalSkills(runner, repoRoot, resolution.paths),
-      );
-    }
+  if (
+    resolution.usedProjectLocalPack &&
+    !entries.some((entry) => entry.status === "fail") &&
+    resolution.paths.length > 0
+  ) {
+    entries.push(
+      await smokeTestProjectLocalSkills(runner, repoRoot, resolution.paths),
+    );
   }
 
   const message = entries.map((entry) => entry.summary).join("; ");

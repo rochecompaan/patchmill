@@ -341,10 +341,9 @@ test("runTriageDryRunAgent resolves configured local triage skill paths", async 
   );
 });
 
-test("runTriageDryRunAgent expands project-local triage skill packs from metadata", async () => {
+test("runTriageDryRunAgent uses only configured project-local triage skills", async () => {
   const runner = new RecordingRunner();
-  const { repoRoot, triageSkillPath, supportSkillPath } =
-    await createProjectLocalTriageRepo();
+  const { repoRoot, triageSkillPath } = await createProjectLocalTriageRepo();
 
   await runTriageDryRunAgent(runner, repoRoot, {
     issues,
@@ -360,5 +359,5 @@ test("runTriageDryRunAgent expands project-local triage skill packs from metadat
   const skillPaths = call.args.flatMap((arg, index) =>
     arg === "--skill" ? [call.args[index + 1] ?? ""] : [],
   );
-  assert.deepEqual(skillPaths, [triageSkillPath, supportSkillPath]);
+  assert.deepEqual(skillPaths, [triageSkillPath]);
 });

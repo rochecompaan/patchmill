@@ -64,11 +64,10 @@ patchmill run-once --execute
 ```
 
 `patchmill init` writes a minimal local `patchmill.config.json`, reminds you to
-change the default host login, and installs Patchmill's recommended skills into
-`.patchmill/skills/` by default so triage, planning, implementation, and
-review/validation behavior are sourced from your repository. Commit
-`patchmill.config.json` and `.patchmill/skills/` before running
-`patchmill doctor`; doctor expects a clean worktree.
+change the default host login, installs Patchmill's recommended skills into
+`.patchmill/skills/`, and adds `.patchmill` plus `patchmill.config.json` to
+`.gitignore` by default. Remove those ignore entries if you want to share the
+Patchmill config or skill pack through git.
 
 Alternative initialization modes:
 
