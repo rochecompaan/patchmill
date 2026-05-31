@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -32,14 +33,20 @@ test("package metadata identifies Patchmill as Apache-2.0", () => {
 test("npm pack dry-run includes bundled runtime resources and notices", () => {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const npmCache = mkdtempSync(join(tmpdir(), "patchmill-npm-cache-"));
   const result = spawnSync(
     npmCommand,
     ["pack", "--dry-run", "--json", "--ignore-scripts"],
     {
       cwd: repoRoot,
       encoding: "utf8",
+      env: {
+        ...process.env,
+        npm_config_cache: npmCache,
+      },
     },
   );
+  rmSync(npmCache, { force: true, recursive: true });
 
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr || result.stdout);
