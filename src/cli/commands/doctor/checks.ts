@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
+import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
@@ -163,34 +164,29 @@ async function checkPiProvider(
   runner: CommandRunner,
   repoRoot: string,
 ): Promise<DoctorCheckResult> {
-  const prompt = "Reply with PATCHMILL_PI_OK and nothing else.";
-  const result = await runner.run(
-    "pi",
-    [
-      "--no-session",
-      "--no-context-files",
-      "--no-prompt-templates",
-      "-p",
-      prompt,
-    ],
-    { cwd: repoRoot },
-  );
-  if (result.code === 0 && result.stdout.includes("PATCHMILL_PI_OK")) {
+  const result = await runPiSmokeTest(runner, { repoRoot });
+  if (result.status === "pass") {
     return pass("pi provider", "minimal LLM smoke test succeeded");
   }
-  return fail("pi provider", "Pi could not complete a minimal LLM smoke test", [
-    "Patchmill doctor did not change the repository or issue host.",
-    "The Pi check made no Patchmill workflow changes, but it could not reach a configured model provider.",
-    "",
-    "Configure Pi, then rerun:",
-    "  pi",
-    "  /login",
-    "  patchmill doctor",
-    "",
-    "Alternatively set a provider API key, for example:",
-    "  export ANTHROPIC_API_KEY=sk-ant-...",
-    "  patchmill doctor",
-  ]);
+  return fail(
+    "pi provider",
+    "Pi could not complete a minimal LLM smoke test",
+    [
+      "Patchmill doctor did not change the repository or issue host.",
+      "The Pi check made no Patchmill workflow changes, but it could not reach a configured model provider.",
+      "",
+      "Run Patchmill's guided setup, then rerun doctor:",
+      "  patchmill init",
+      "  patchmill doctor",
+      "",
+      "Manual Pi setup is also supported:",
+      "  pi",
+      "  /login",
+      "  patchmill doctor",
+      "",
+      result.details ? `Details: ${result.details}` : "",
+    ].filter(Boolean),
+  );
 }
 
 async function checkReadableSkillTarget(path: string): Promise<boolean> {

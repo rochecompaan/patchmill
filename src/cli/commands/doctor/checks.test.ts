@@ -224,6 +224,35 @@ test("runDoctorChecks aggregates successful read-only checks", async () => {
   );
 });
 
+test("runDoctorChecks points Pi provider failures to guided setup", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(
+    successMocks(REQUIRED_LABELS, {
+      "pi --no-session --no-context-files --no-prompt-templates -p Reply with PATCHMILL_PI_OK and nothing else.":
+        {
+          code: 1,
+          stdout: "",
+          stderr: "missing key",
+        },
+    }),
+  );
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const piProvider = results.find((result) => result.name === "pi provider");
+
+  assert.equal(piProvider?.status, "fail");
+  assert.match((piProvider?.remediation ?? []).join("\n"), /patchmill init/);
+  assert.match((piProvider?.remediation ?? []).join("\n"), /missing key/);
+});
+
 test("runDoctorChecks supports github-gh provider", async () => {
   const repoRoot = await tempRepo();
   await writeConfig(repoRoot, { host: { provider: "github-gh", login: "" } });
