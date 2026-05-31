@@ -15,8 +15,13 @@ Before running issue-agent workflows in a new repository, run:
 
 ```sh
 patchmill init
-patchmill doctor
+patchmill triage --dry-run
 ```
+
+`init` creates local Patchmill config, checks Pi provider readiness using Pi's
+own model/auth implementation, and runs a minimal Pi smoke test. Use
+`patchmill doctor` when you want a full troubleshooting checklist or when the
+init smoke test reports incomplete setup.
 
 `doctor` is read-only and verifies repository, host, label, Pi provider,
 configured local skills, and path readiness before the existing
