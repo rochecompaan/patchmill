@@ -255,6 +255,19 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForCondition(
+  condition: () => boolean,
+  failureMessage: () => string,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) return;
+    await delay(5);
+  }
+  assert.ok(condition(), failureMessage());
+}
+
 async function writeTodo(
   repoRoot: string,
   id: string,
@@ -4170,7 +4183,15 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
     heartbeatMs: 10,
   });
 
-  await new Promise((resolve) => setTimeout(resolve, 25));
+  await waitForCondition(
+    () =>
+      events.some(
+        (event) =>
+          event.level === "heartbeat" &&
+          event.message.includes("implementing task 7/8"),
+      ),
+    () => events.map((event) => event.message).join("\n"),
+  );
   finishRun({
     code: 0,
     stdout:
@@ -4178,15 +4199,6 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
     stderr: "",
   });
   await run;
-
-  assert.ok(
-    events.some(
-      (event) =>
-        event.level === "heartbeat" &&
-        event.message.includes("implementing task 7/8"),
-    ),
-    events.map((event) => event.message).join("\n"),
-  );
 });
 
 test("runOneIssue emits visible implementation subtask step labels", async () => {
