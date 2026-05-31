@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/rochecompaan/patchmill/compare/v0.3.0...v0.3.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **nix:** bundle skills in package ([d8ece26](https://github.com/rochecompaan/patchmill/commit/d8ece26528832c9a7f977d282341be4009433c2d))
+
 ## [0.3.0](https://github.com/rochecompaan/patchmill/compare/v0.2.1...v0.3.0) (2026-05-31)
 
 
