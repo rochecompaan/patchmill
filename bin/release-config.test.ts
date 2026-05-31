@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { dirname } from "node:path";
@@ -70,4 +70,38 @@ test("release workflow opens release PRs and publishes created releases", () => 
   );
   assert.match(workflow, /npm publish --provenance --access public/u);
   assert.match(workflow, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/u);
+});
+
+test("release workflow updates Nix hash on release PR updates", () => {
+  const releaseWorkflow = readFileSync(
+    join(repoRoot, ".github/workflows/release-please.yml"),
+    "utf8",
+  );
+  const updateScript = readFileSync(
+    join(repoRoot, "scripts/update-npm-deps-hash.sh"),
+    "utf8",
+  );
+
+  assert.equal(
+    existsSync(join(repoRoot, ".github/workflows/update-release-nix-hash.yml")),
+    false,
+  );
+  assert.match(
+    releaseWorkflow,
+    /steps\.release\.outputs\.prs_created == 'true'/u,
+  );
+  assert.match(releaseWorkflow, /JSON\.parse\(process\.env\.RELEASE_PR\)/u);
+  assert.match(releaseWorkflow, /headBranchName/u);
+  assert.match(releaseWorkflow, /actions\/checkout@v4/u);
+  assert.match(releaseWorkflow, /cachix\/install-nix-action@v31/u);
+  assert.match(releaseWorkflow, /scripts\/update-npm-deps-hash\.sh/u);
+  assert.match(
+    releaseWorkflow,
+    /git commit -m "chore\(nix\): update release npm deps hash"/u,
+  );
+  assert.match(releaseWorkflow, /git push origin "HEAD:\$\{HEAD_REF\}"/u);
+
+  assert.match(updateScript, /nix build --print-build-logs "\$build_target"/u);
+  assert.match(updateScript, /got_hash=/u);
+  assert.match(updateScript, /npmDepsHash = "sha256-\[\^"\]\+";/u);
 });

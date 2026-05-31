@@ -22,6 +22,61 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Resolve release PR branch
+        id: release-pr
+        if:
+          ${{ steps.release.outputs.prs_created == 'true' &&
+          steps.release.outputs.pr != '' }}
+        env:
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: |
+          node <<'NODE' >>"$GITHUB_OUTPUT"
+          const pr = JSON.parse(process.env.RELEASE_PR);
+          const headRef = pr.headBranchName;
+
+          if (!/^release-please--branches--main--components--[-A-Za-z0-9._/]+$/.test(headRef ?? "")) {
+            throw new Error(`Unexpected release PR branch: ${headRef}`);
+          }
+
+          console.log(`head_ref=${headRef}`);
+          NODE
+
+      - name: Check out release PR branch
+        if: ${{ steps.release-pr.outputs.head_ref != '' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release-pr.outputs.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Nix
+        if: ${{ steps.release-pr.outputs.head_ref != '' }}
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Update npmDepsHash when Nix reports a mismatch
+        if: ${{ steps.release-pr.outputs.head_ref != '' }}
+        run: scripts/update-npm-deps-hash.sh
+
+      - name: Commit updated Nix hash
+        if: ${{ steps.release-pr.outputs.head_ref != '' }}
+        env:
+          HEAD_REF: ${{ steps.release-pr.outputs.head_ref }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- nix/package.nix; then
+            echo "nix/package.nix already matches the computed hash."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nix/package.nix
+          git commit -m "chore(nix): update release npm deps hash"
+          git push origin "HEAD:${HEAD_REF}"
+
       - name: Check out repository
         if: ${{ steps.release.outputs.release_created }}
         uses: actions/checkout@v4
