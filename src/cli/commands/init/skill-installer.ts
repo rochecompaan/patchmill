@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import {
   access,
+  chmod,
   cp,
   mkdtemp,
   mkdir,
@@ -45,6 +46,7 @@ export type ProjectSkillInstallResult = {
 
 export type SkillInstallerDependencies = {
   access: typeof access;
+  chmod: typeof chmod;
   cp: typeof cp;
   mkdtemp: typeof mkdtemp;
   mkdir: typeof mkdir;
@@ -58,6 +60,7 @@ export type SkillInstallerDependencies = {
 
 const defaultDependencies: SkillInstallerDependencies = {
   access,
+  chmod,
   cp,
   mkdtemp,
   mkdir,
@@ -170,6 +173,21 @@ async function collectSourceFiles(
   return files;
 }
 
+async function makeOwnerWritableRecursive(
+  path: string,
+  dependencies: SkillInstallerDependencies = defaultDependencies,
+): Promise<void> {
+  const entry = await dependencies.stat(path);
+  await dependencies.chmod(path, entry.mode | 0o200);
+
+  if (!entry.isDirectory()) return;
+
+  const children = await dependencies.readdir(path, { withFileTypes: true });
+  for (const child of children) {
+    await makeOwnerWritableRecursive(join(path, child.name), dependencies);
+  }
+}
+
 export async function installProjectSkills(options: {
   repoRoot: string;
   skillDir?: string;
@@ -260,15 +278,16 @@ export async function installProjectSkills(options: {
       targetDir,
       targetRelativeDir,
     } of installationPlan) {
-      await dependencies.cp(
-        sourceDir,
-        join(stagingSkillDir, relative(absoluteSkillDir, targetDir)),
-        {
-          recursive: true,
-          errorOnExist: true,
-          force: false,
-        },
+      const stagedTargetDir = join(
+        stagingSkillDir,
+        relative(absoluteSkillDir, targetDir),
       );
+      await dependencies.cp(sourceDir, stagedTargetDir, {
+        recursive: true,
+        errorOnExist: true,
+        force: false,
+      });
+      await makeOwnerWritableRecursive(stagedTargetDir, dependencies);
 
       installedSkills.push(targetRelativeDir);
     }
@@ -284,6 +303,12 @@ export async function installProjectSkills(options: {
     await dependencies.rename(stagingSkillDir, absoluteSkillDir);
   } finally {
     if (stagingSkillDir !== undefined) {
+      try {
+        await makeOwnerWritableRecursive(stagingSkillDir, dependencies);
+      } catch {
+        // Best-effort cleanup preparation: the staging directory may already
+        // have been renamed into place, or a partial copy may be unreadable.
+      }
       await dependencies.rm(stagingSkillDir, { recursive: true, force: true });
     }
   }

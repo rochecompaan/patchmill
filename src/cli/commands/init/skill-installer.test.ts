@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   access,
+  chmod,
   cp,
   mkdtemp,
   mkdir,
@@ -31,6 +32,7 @@ import {
 
 const skillInstallerDependencies: SkillInstallerDependencies = {
   access,
+  chmod,
   cp,
   mkdtemp,
   mkdir,
@@ -181,6 +183,55 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     { ...metadata, files: undefined },
     { ...expectedMetadata, files: undefined },
   );
+});
+
+test("installProjectSkills makes copied skill pack owner-writable", async () => {
+  const repoRoot = await tempRoot("patchmill-install-repo-");
+  const patchmillSource = await tempRoot("patchmill-install-patchmill-");
+  const superpowersSource = await tempRoot("patchmill-install-superpowers-");
+  await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill, {
+    "scripts/check.md": "check things\n",
+  });
+
+  await chmod(
+    join(patchmillSource, "patchmill-issue-triage", "scripts", "check.md"),
+    0o444,
+  );
+  await chmod(
+    join(patchmillSource, "patchmill-issue-triage", "scripts"),
+    0o555,
+  );
+  await chmod(
+    join(patchmillSource, "patchmill-issue-triage", "SKILL.md"),
+    0o444,
+  );
+  await chmod(join(patchmillSource, "patchmill-issue-triage"), 0o555);
+
+  await installProjectSkills({
+    repoRoot,
+    sourceRoots: {
+      patchmillSkillsDir: patchmillSource,
+      superpowersSkillsDir: superpowersSource,
+    },
+    packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
+  });
+
+  const installedSkillDir = join(
+    repoRoot,
+    ".patchmill",
+    "skills",
+    "patchmill-issue-triage",
+  );
+  const installedSkill = await stat(join(installedSkillDir, "SKILL.md"));
+  const installedNestedDir = await stat(join(installedSkillDir, "scripts"));
+  const installedNestedFile = await stat(
+    join(installedSkillDir, "scripts", "check.md"),
+  );
+
+  assert.equal(installedSkill.mode & 0o200, 0o200);
+  assert.equal(installedNestedDir.mode & 0o200, 0o200);
+  assert.equal(installedNestedFile.mode & 0o200, 0o200);
+  await rm(join(repoRoot, ".patchmill"), { recursive: true });
 });
 
 test("installProjectSkills refuses to overwrite existing skill files/directories", async () => {
