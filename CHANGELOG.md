@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/rochecompaan/patchmill/compare/v0.2.1...v0.3.0) (2026-05-31)
+
+
+### Features
+
+* **triage:** add structured triage guidance ([aec2da5](https://github.com/rochecompaan/patchmill/commit/aec2da5da8da71e70b6da0a7d5c76c66f70c041c))
+
+
+### Bug Fixes
+
+* **nix:** update release npm deps hash ([539b493](https://github.com/rochecompaan/patchmill/commit/539b49316502dce7ed4295b02385a2f5d2b109ad))
+* **release:** update nix hash in release workflow ([5b1aaf8](https://github.com/rochecompaan/patchmill/commit/5b1aaf8bf71a23823a8cde28153269f69b63c7d4))
+
 ## [0.2.1](https://github.com/rochecompaan/patchmill/compare/v0.2.0...v0.2.1) (2026-05-31)
 
 
