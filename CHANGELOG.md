@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/rochecompaan/patchmill/compare/v0.5.0...v0.5.1) (2026-06-01)
+
+
+### Bug Fixes
+
+* **nix:** update and check npm deps hash ([41a0b2a](https://github.com/rochecompaan/patchmill/commit/41a0b2aec0ec1b24917b874ac0bca6d22af92fad))
+* **release:** format generated release files ([f3e877b](https://github.com/rochecompaan/patchmill/commit/f3e877b4384b5fa8aa14d810282f62867f753751))
+
 ## [0.5.0](https://github.com/rochecompaan/patchmill/compare/v0.4.0...v0.5.0) (2026-06-01)
 
 
