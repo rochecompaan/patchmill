@@ -12,10 +12,10 @@ import {
 import { HELP_TEXT, loadCliConfig } from "./main.ts";
 import { parseArgs } from "./args.ts";
 
-test("parseArgs shows help when no args are provided", () => {
+test("parseArgs executes safe default triage when no args are provided", () => {
   const config = parseArgs([], "/repo");
 
-  assert.equal(config.showHelp, true);
+  assert.equal(config.showHelp, false);
   assert.equal(config.dryRun, false);
   assert.equal(config.execute, true);
   assert.equal(config.repoRoot, "/repo");
@@ -276,7 +276,7 @@ test("loadCliConfig lets triage login flags override patchmill config", async ()
   assert.equal(teaLogin.teaLogin, "tea-bot");
 });
 
-test("loadCliConfig shows help without reading malformed patchmill config", async () => {
+test("loadCliConfig shows help without reading malformed patchmill config for help flags", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-triage-config-"));
   await writeFile(
     join(repoRoot, "patchmill.config.json"),
@@ -284,11 +284,9 @@ test("loadCliConfig shows help without reading malformed patchmill config", asyn
     "utf8",
   );
 
-  const noArgs = await loadCliConfig([], repoRoot, {});
   const helpLong = await loadCliConfig(["--help"], repoRoot, {});
   const helpShort = await loadCliConfig(["-h"], repoRoot, {});
 
-  assert.equal(noArgs.showHelp, true);
   assert.equal(helpLong.showHelp, true);
   assert.equal(helpShort.showHelp, true);
 });

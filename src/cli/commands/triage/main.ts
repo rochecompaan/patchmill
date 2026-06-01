@@ -12,15 +12,15 @@ export const HELP_TEXT = `Usage:
   patchmill triage [options]
   npm run triage -- [options]
 
-Automated issue triage. Defaults to showing this help when no options are provided.
-With arguments, patchmill triage executes the configured triage skill by default.
+Automated issue triage. Runs the configured triage skill against eligible untriaged open issues by default.
 By default, only open issues without active triage or protection labels are selected.
+Use --dry-run to preview decisions before mutating the configured issue host.
 
 Options:
   --help, -h          Show this help and exit.
   --dry-run, --dryrun Preview configured triage skill decisions without mutating the configured issue host.
   --issue <number>    Triage one open issue by number.
-  --all               Re-triage all selected open issues, including issues already carrying triage or protection labels such as in-progress or blocked.
+  --all               Re-triage selected open issues and include issues already carrying triage or protection labels such as in-progress or blocked.
   --limit <number>    Triage only the first N selected open issues.
   --log-dir <path>    Write triage logs to a custom directory.
   --host-login <name> Use a named host login when the provider supports named logins.
@@ -33,7 +33,7 @@ Environment:
 type Env = Record<string, string | undefined>;
 
 function isHelpOnlyInvocation(args: string[]): boolean {
-  return args.length === 0 || args.includes("--help") || args.includes("-h");
+  return args.includes("--help") || args.includes("-h");
 }
 
 function formatLabels(labels: string[]): string {
