@@ -46,7 +46,7 @@ export function parseArgs(
     dryRun: false,
     execute: true,
     triageThinking: patchmillConfig.pi.triageThinking,
-    showHelp: args.length === 0,
+    showHelp: false,
     host,
     teaLogin: host.login,
     logDir: normalizedConfig
