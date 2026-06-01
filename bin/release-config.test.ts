@@ -103,5 +103,22 @@ test("release workflow updates Nix hash on release PR updates", () => {
 
   assert.match(updateScript, /nix build --print-build-logs "\$build_target"/u);
   assert.match(updateScript, /got_hash=/u);
-  assert.match(updateScript, /npmDepsHash = "sha256-\[\^"\]\+";/u);
+  assert.equal(
+    updateScript.includes(
+      String.raw`r'npmDepsHash = (?:lib\.fakeHash|"sha256-[^"]+");'`,
+    ),
+    true,
+  );
+  assert.match(updateScript, /set_npm_deps_hash lib\.fakeHash/u);
+});
+
+test("CI checks Nix npm dependency hash on main pushes", () => {
+  const workflow = readFileSync(
+    join(repoRoot, ".github/workflows/ci.yml"),
+    "utf8",
+  );
+
+  assert.match(workflow, /push:\n {4}branches:\n {6}- main/u);
+  assert.match(workflow, /scripts\/update-npm-deps-hash\.sh/u);
+  assert.match(workflow, /git diff --exit-code -- nix\/package\.nix/u);
 });

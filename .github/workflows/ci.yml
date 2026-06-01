@@ -64,9 +64,16 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Build and smoke test Nix package
+      - name: Check Nix npm deps hash
         run: |
-          nix build --print-build-logs .#patchmill
+          scripts/update-npm-deps-hash.sh
+          if ! git diff --exit-code -- nix/package.nix; then
+            echo "::error file=nix/package.nix::npmDepsHash is stale. Run scripts/update-npm-deps-hash.sh and commit the result."
+            exit 1
+          fi
+
+      - name: Smoke test Nix package
+        run: |
           ./result/bin/patchmill --help >/dev/null
           smoke_dir="$(mktemp -d)"
           mkdir -p "$smoke_dir/home" "$smoke_dir/config" "$smoke_dir/project"
