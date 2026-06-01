@@ -587,6 +587,62 @@ test("runInit runs Pi smoke test when Pi readiness is available", async () => {
   assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
 });
 
+test("runInit warns about Pi registry errors while using available models", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let smokeModel: string | undefined;
+
+  assert.equal(
+    await runInit(
+      ["--skills", "none"],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        isInteractive: false,
+        setupLabels: async () => ({
+          status: "skipped",
+          message: "labels skipped",
+        }),
+        detectPiReadiness: () => ({
+          status: "ready",
+          message: "Pi reported 1 provider/model option with configured auth.",
+          warning:
+            "Pi model registry reported provider configuration issues: bad models.json",
+          models: [
+            {
+              provider: "anthropic",
+              providerName: "Anthropic",
+              id: "claude-sonnet-4-5",
+              label: "Anthropic / Claude Sonnet 4.5",
+              value: "anthropic/claude-sonnet-4-5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+          ],
+        }),
+        runPiSmokeTest: async (_runner, options) => {
+          smokeModel = options.model;
+          return {
+            status: "pass",
+            message:
+              "Pi completed the provider smoke test with anthropic/claude-sonnet-4-5.",
+            command: "pi smoke",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(smokeModel, "anthropic/claude-sonnet-4-5");
+  assert.match(
+    stdout.join("\n"),
+    /Pi model registry reported provider configuration issues: bad models\.json/,
+  );
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
+});
+
 test("runInit keeps config but reports incomplete Pi setup when smoke test fails", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
@@ -619,9 +675,12 @@ test("runInit keeps config but reports incomplete Pi setup when smoke test fails
     0,
   );
 
-  assert.match(stdout.join("\n"), /Pi setup is incomplete/);
-  assert.match(stdout.join("\n"), /missing key/);
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+  const output = stdout.join("\n");
+  assert.match(output, /Pi setup is incomplete/);
+  assert.match(output, /missing key/);
+  assert.match(output, /After login, run `patchmill doctor`/);
+  assert.doesNotMatch(output, /rerun `patchmill init`/);
+  assert.match(output, /Next:\n {2}patchmill doctor/);
   assert.doesNotMatch(
     await readFile(join(repoRoot, "patchmill.config.json"), "utf8"),
     /missing key|sk-/u,

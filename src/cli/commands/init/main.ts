@@ -96,6 +96,9 @@ function formatPiSetupMessage(
   smoke: PiSmokeTestResult,
 ): string {
   const messages = [readiness.message];
+  if (readiness.status === "ready" && readiness.warning) {
+    messages.push(readiness.warning);
+  }
   if (selection.message !== readiness.message) {
     messages.push(selection.message);
   }
@@ -108,7 +111,7 @@ function formatPiSetupMessage(
     smoke.message,
     smoke.details ? `Details:\n${smoke.details}` : undefined,
     "Run `pi`, then `/login` to configure a provider using Pi's native login flow.",
-    "After login, rerun `patchmill init` or `patchmill doctor`.",
+    "After login, run `patchmill doctor`.",
   ]
     .filter(Boolean)
     .join("\n\n");

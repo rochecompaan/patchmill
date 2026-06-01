@@ -50,6 +50,7 @@ export type PiReadiness =
       status: "ready";
       models: NonEmptyArray<PiModelChoice>;
       message: string;
+      warning?: string;
     }
   | {
       status: "missing" | "error";
@@ -97,8 +98,12 @@ export function detectPiReadiness(
   options: { registry?: PiRegistryLike } = {},
 ): PiReadiness {
   const registry = options.registry ?? createPiRegistry();
+  const models = registry
+    .getAvailable()
+    .map((model) => toChoice(registry, model));
   const loadError = registry.getError();
-  if (loadError) {
+
+  if (models.length === 0 && loadError) {
     return {
       status: "error",
       models: [],
@@ -106,9 +111,6 @@ export function detectPiReadiness(
     };
   }
 
-  const models = registry
-    .getAvailable()
-    .map((model) => toChoice(registry, model));
   if (models.length === 0) {
     return {
       status: "missing",
@@ -121,5 +123,10 @@ export function detectPiReadiness(
     status: "ready",
     models: models as NonEmptyArray<PiModelChoice>,
     message: `Pi reported ${models.length} provider/model option${models.length === 1 ? "" : "s"} with configured auth.`,
+    ...(loadError
+      ? {
+          warning: `Pi model registry reported provider configuration issues: ${loadError}`,
+        }
+      : {}),
   };
 }

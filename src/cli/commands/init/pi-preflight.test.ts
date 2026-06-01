@@ -48,6 +48,30 @@ test("detectPiReadiness reports ready when Pi registry has available models", ()
   });
 });
 
+test("detectPiReadiness reports ready with a warning when registry has an error and available models", () => {
+  const readiness = detectPiReadiness({
+    registry: {
+      ...registry([
+        {
+          provider: "anthropic",
+          id: "claude-sonnet-4-5",
+          name: "Claude Sonnet 4.5",
+          reasoning: true,
+          input: ["text"],
+        },
+      ]),
+      getError: () => "bad models.json",
+    },
+  });
+
+  assert.equal(readiness.status, "ready");
+  assert.equal(readiness.models[0]?.value, "anthropic/claude-sonnet-4-5");
+  assert.equal(
+    readiness.warning,
+    "Pi model registry reported provider configuration issues: bad models.json",
+  );
+});
+
 test("detectPiReadiness reports missing when Pi registry has no available models", () => {
   const readiness = detectPiReadiness({ registry: registry([]) });
 
