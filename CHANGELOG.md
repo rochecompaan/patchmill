@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/rochecompaan/patchmill/compare/v0.4.0...v0.5.0) (2026-06-01)
+
+
+### Features
+
+* **init:** add Pi provider onboarding ([#9](https://github.com/rochecompaan/patchmill/issues/9)) ([19ce441](https://github.com/rochecompaan/patchmill/commit/19ce4415f8207d48eb99c92f7d0aff21de6581d8))
+
 ## [0.4.0](https://github.com/rochecompaan/patchmill/compare/v0.3.2...v0.4.0) (2026-05-31)
 
 
