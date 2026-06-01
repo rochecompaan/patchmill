@@ -56,6 +56,23 @@ jobs:
           ref: ${{ steps.release-pr.outputs.head_ref }}
           token: ${{ steps.app-token.outputs.token }}
 
+      - name: Set up Node.js for release PR
+        if: ${{ steps.release-pr.outputs.head_ref != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install release PR dependencies
+        if: ${{ steps.release-pr.outputs.head_ref != '' }}
+        run: npm ci
+
+      - name: Format generated release files
+        if: ${{ steps.release-pr.outputs.head_ref != '' }}
+        run:
+          npx prettier --write npm-shrinkwrap.json package-lock.json
+          package.json .release-please-manifest.json
+
       - name: Install Nix
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
         uses: cachix/install-nix-action@v31
@@ -67,22 +84,30 @@ jobs:
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
         run: scripts/update-npm-deps-hash.sh
 
-      - name: Commit updated Nix hash
+      - name: Commit updated release files
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
         env:
           HEAD_REF: ${{ steps.release-pr.outputs.head_ref }}
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- nix/package.nix; then
-            echo "nix/package.nix already matches the computed hash."
+          release_files=(
+            nix/package.nix
+            npm-shrinkwrap.json
+            package-lock.json
+            package.json
+            .release-please-manifest.json
+          )
+
+          if git diff --quiet -- "${release_files[@]}"; then
+            echo "Release-generated files already match formatting and computed hash."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add nix/package.nix
-          git commit -m "chore(nix): update release npm deps hash"
+          git add "${release_files[@]}"
+          git commit -m "chore(release): update generated files"
           git push origin "HEAD:${HEAD_REF}"
 
       - name: Check out repository

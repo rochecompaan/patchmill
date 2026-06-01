@@ -72,7 +72,7 @@ test("release workflow opens release PRs and publishes created releases", () => 
   assert.match(workflow, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/u);
 });
 
-test("release workflow updates Nix hash on release PR updates", () => {
+test("release workflow formats and updates Nix hash on release PR updates", () => {
   const releaseWorkflow = readFileSync(
     join(repoRoot, ".github/workflows/release-please.yml"),
     "utf8",
@@ -93,11 +93,28 @@ test("release workflow updates Nix hash on release PR updates", () => {
   assert.match(releaseWorkflow, /JSON\.parse\(process\.env\.RELEASE_PR\)/u);
   assert.match(releaseWorkflow, /headBranchName/u);
   assert.match(releaseWorkflow, /actions\/checkout@v4/u);
+  assert.match(releaseWorkflow, /node-version: 24/u);
+  assert.match(releaseWorkflow, /npm ci/u);
+  assert.match(releaseWorkflow, /npx prettier --write/u);
+  assert.match(releaseWorkflow, /npm-shrinkwrap\.json/u);
+  assert.match(releaseWorkflow, /package-lock\.json/u);
+  assert.match(releaseWorkflow, /package\.json/u);
+  assert.equal(
+    releaseWorkflow.includes(
+      "package.json .release-please-manifest.json nix/package.nix",
+    ),
+    false,
+  );
   assert.match(releaseWorkflow, /cachix\/install-nix-action@v31/u);
   assert.match(releaseWorkflow, /scripts\/update-npm-deps-hash\.sh/u);
+  assert.match(releaseWorkflow, /release_files=\(/u);
+  assert.match(releaseWorkflow, /nix\/package\.nix/u);
+  assert.match(releaseWorkflow, /npm-shrinkwrap\.json/u);
+  assert.match(releaseWorkflow, /package-lock\.json/u);
+  assert.match(releaseWorkflow, /git add "\$\{release_files\[@\]\}"/u);
   assert.match(
     releaseWorkflow,
-    /git commit -m "chore\(nix\): update release npm deps hash"/u,
+    /git commit -m "chore\(release\): update generated files"/u,
   );
   assert.match(releaseWorkflow, /git push origin "HEAD:\$\{HEAD_REF\}"/u);
 
