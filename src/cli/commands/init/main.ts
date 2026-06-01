@@ -25,10 +25,7 @@ import {
 } from "./config-writer.ts";
 import { ensurePatchmillLocalExcludeEntries } from "./local-ignore.ts";
 import { detectPiReadiness, type PiReadiness } from "./pi-preflight.ts";
-import {
-  runPiSetupWizard,
-  type PiSetupWizardResult,
-} from "./pi-setup-wizard.ts";
+import { selectPiModel, type PiModelSelection } from "./pi-model-selection.ts";
 import { runPiSmokeTest, type PiSmokeTestResult } from "./pi-smoke-test.ts";
 
 export const HELP_TEXT = `Usage:
@@ -95,20 +92,23 @@ function selectedModelFromReadiness(
 
 function formatPiSetupMessage(
   readiness: PiReadiness,
-  setup: PiSetupWizardResult,
+  selection: PiModelSelection,
   smoke: PiSmokeTestResult,
 ): string {
-  const setupMessage = setup.message;
+  const messages = [readiness.message];
+  if (selection.message !== readiness.message) {
+    messages.push(selection.message);
+  }
   if (smoke.status === "pass") {
-    return [readiness.message, setupMessage, smoke.message].join("\n\n");
+    return [...messages, smoke.message].join("\n\n");
   }
   return [
-    readiness.message,
-    setupMessage,
+    ...messages,
     "Pi setup is incomplete.",
     smoke.message,
     smoke.details ? `Details:\n${smoke.details}` : undefined,
-    "Configure Pi using `pi` and `/login`, then rerun `patchmill doctor`.",
+    "Run `pi`, then `/login` to configure a provider using Pi's native login flow.",
+    "After login, rerun `patchmill init` or `patchmill doctor`.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -211,24 +211,33 @@ export async function runInit(
   }
 
   const readiness = (options.detectPiReadiness ?? detectPiReadiness)();
-  const setup = await runPiSetupWizard({
+  const selection = await selectPiModel({
     readiness,
     isInteractive,
-    assumeYes: config.yes,
     prompt: options.prompt ?? defaultPrompt,
   });
-  const smoke = await (options.runPiSmokeTest ?? runPiSmokeTest)(
-    createCommandRunner(),
-    {
-      repoRoot: config.repoRoot,
-      model:
-        setup.status === "selected"
-          ? setup.model
-          : selectedModelFromReadiness(readiness),
-    },
-  );
+  const smoke =
+    selection.status === "unavailable" &&
+    selection.reason === "invalid-selection"
+      ? {
+          status: "fail" as const,
+          message:
+            "Pi smoke test was not run because model selection was invalid.",
+          command: "pi smoke test not run",
+          details: selection.message,
+        }
+      : await (options.runPiSmokeTest ?? runPiSmokeTest)(
+          createCommandRunner(),
+          {
+            repoRoot: config.repoRoot,
+            model:
+              selection.status === "selected"
+                ? selection.model
+                : selectedModelFromReadiness(readiness),
+          },
+        );
   const piReady = smoke.status === "pass";
-  const piMessage = formatPiSetupMessage(readiness, setup, smoke);
+  const piMessage = formatPiSetupMessage(readiness, selection, smoke);
 
   output.stdout(
     `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piMessage}\n\n${nextSteps(piReady)}`,

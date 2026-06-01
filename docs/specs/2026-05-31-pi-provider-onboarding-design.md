@@ -42,10 +42,14 @@ check.
    deterministic label setup.
 4. Ask Pi, through its existing model/auth implementation, whether a usable
    provider/model appears available.
-5. If setup is missing, or if the user chooses to reconfigure, run an embedded
-   Pi setup wizard.
-6. Run a real Pi smoke test immediately.
-7. Print next steps based on the smoke-test result.
+5. If Pi reports usable models, select a model for the smoke test; interactive
+   runs may prompt, while non-interactive runs choose the first Pi-reported
+   model.
+6. If Pi does not report usable models, keep setup explicit: run the smoke test
+   without a model override and render manual Pi `/login` remediation only when
+   setup is missing or the smoke test fails.
+7. Run a real Pi smoke test immediately.
+8. Print next steps based on the smoke-test result.
 
 The smoke test should use Pi print mode with no Patchmill session or project
 context, for example:
@@ -72,45 +76,37 @@ patchmill triage --dry-run
 On failure, `init` should keep the created Patchmill config but report that Pi
 setup is incomplete and point the user at remediation plus `patchmill doctor`.
 
-## Embedded setup wizard
+## Model selection and setup remediation
 
-The setup wizard should be Patchmill-owned rather than a normal unconstrained Pi
-session. Launching Pi directly and asking the user to run `/login` gives too
-little control over whether provider login and model selection are completed.
+Patchmill should not introduce a fake setup wizard that merely tells the user to
+run unconstrained Pi and `/login`. Until Patchmill can route through a stable Pi
+login API, setup should remain explicit manual remediation and the owned
+interactive behavior should be limited to model selection for Pi-reported
+available models.
 
-The first implementation should create a dedicated setup module with clean
-seams:
+The first implementation should create dedicated modules with clean seams:
 
 - `pi-preflight`: wrap Pi's existing provider/auth/model discovery instead of
   duplicating it. Prefer a stable Pi library API; otherwise use the narrowest Pi
   CLI behavior that exercises the same code path, such as model listing or a dry
   readiness probe.
-- `pi-setup-wizard`: interactively collect provider/login/model choices while
-  routing login and model availability through Pi's own implementation wherever
-  possible.
+- `pi-model-selection`: select one Pi-reported model for the smoke test. It must
+  not fabricate provider credentials or silently fall back after invalid input.
 - `pi-smoke-test`: run the final Pi smoke test and normalize success/failure.
 
-The wizard should prefer Pi UI library components when Patchmill can import them
-cleanly. If direct Pi TUI reuse is awkward, the first version may use readline
-prompts with the same flow and keep the module boundary ready for a later TUI
-swap.
+Model-selection flow:
 
-Wizard flow:
+1. If Pi reports usable models and init is interactive, let the user choose a
+   listed model or enter an explicit `provider/model` string.
+2. If Pi reports usable models and init is non-interactive, choose the first
+   Pi-reported model for the smoke test.
+3. If Pi does not report usable models, do not prompt for fake setup. Run the
+   smoke test without a model override and render manual Pi `/login` remediation
+   if the smoke test fails.
+4. If interactive model input is invalid, do not silently choose the first
+   model; report invalid selection and skip the smoke test.
 
-1. If Pi reports no usable provider/model configuration, ask whether to
-   configure Pi now.
-2. If Pi reports usable configuration, ask whether to use it or reconfigure.
-3. Let the user select from providers/models discovered by Pi where possible;
-   include manual/custom setup only when Pi cannot enumerate the target.
-4. For key-based providers, show exact environment variable or Pi auth guidance
-   derived from Pi's provider metadata where available.
-5. For OAuth-capable providers, route through Pi-compatible login behavior
-   rather than recreating provider-specific OAuth logic in Patchmill.
-6. Let the user select a Pi-discovered model where possible, or manually enter a
-   `provider/model` string for custom setups.
-7. Run the smoke test.
-
-The wizard must not write API keys into `patchmill.config.json`.
+Patchmill must not write API keys into `patchmill.config.json`.
 
 ## Non-interactive and `--yes` behavior
 
@@ -142,8 +138,8 @@ and machine-safe.
 change, doctor is a re-check and troubleshooting command rather than the first
 place users discover that provider/model setup was skipped.
 
-Doctor remediation should point back to the embedded `init` setup path when
-available, while still documenting manual Pi `/login` setup.
+Doctor remediation should point back to `patchmill init` when available, while
+still documenting manual Pi `/login` setup.
 
 ## Testing
 
@@ -153,10 +149,11 @@ Add tests for:
   invoked;
 - direct env/auth-file probing is covered only as a fallback when the Pi-backed
   readiness surface is unavailable;
-- no auth in interactive mode, setup accepted, wizard completed, smoke test
-  invoked;
+- no auth in interactive mode does not pretend to configure Pi and reports
+  manual remediation when the smoke test fails;
 - no auth in non-interactive mode prints manual remediation and does not hang;
 - smoke-test success prints `patchmill triage --dry-run` as the next step;
 - smoke-test failure keeps Patchmill config but reports incomplete Pi setup;
 - `patchmill.config.json` never contains API keys or other credential values;
+- invalid model input does not silently fall back to the first model;
 - `--yes` does not silently choose or create provider credentials.

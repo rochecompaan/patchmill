@@ -23,6 +23,10 @@ Patchmill config/skill/label setup and before final next-step output.
 ## Spec and context
 
 - Spec: `docs/specs/2026-05-31-pi-provider-onboarding-design.md`
+- Review adjustment: the implementation should not create a fake
+  `pi-setup-wizard` that merely points users at unconstrained Pi `/login`. Until
+  Patchmill can call a stable Pi login API, keep setup remediation explicit and
+  implement only Pi-backed readiness, model selection, and smoke testing.
 - Current direct provider probing: `src/cli/commands/init/pi-preflight.ts`
 - Current init orchestration: `src/cli/commands/init/main.ts:206-238`
 - Current doctor Pi smoke test: `src/cli/commands/doctor/checks.ts`

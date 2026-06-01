@@ -43,10 +43,12 @@ export type PiModelChoice = {
   input: string[];
 };
 
+export type NonEmptyArray<T> = [T, ...T[]];
+
 export type PiReadiness =
   | {
       status: "ready";
-      models: PiModelChoice[];
+      models: NonEmptyArray<PiModelChoice>;
       message: string;
     }
   | {
@@ -117,7 +119,7 @@ export function detectPiReadiness(
 
   return {
     status: "ready",
-    models,
+    models: models as NonEmptyArray<PiModelChoice>,
     message: `Pi reported ${models.length} provider/model option${models.length === 1 ? "" : "s"} with configured auth.`,
   };
 }
