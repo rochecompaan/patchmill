@@ -13,18 +13,26 @@ Precedence is:
 
 ## Creating the initial config
 
-Use `patchmill init` to create the smallest useful `patchmill.config.json` for a
-repository. By default, init writes host fields and project-local skill mappings
-for required stages (`triage`, `planning`, and `implementation`); Patchmill
-fills omitted labels, paths, and git policy from defaults. The command output
-reminds you that you can later change the login in `patchmill.config.json`
+Run `patchmill init` to create the smallest useful `patchmill.config.json` for a
+repository. Init also checks Pi provider readiness through Pi's own model/auth
+registry, guides you to Pi login/model setup when needed, and runs a minimal Pi
+smoke test. When the smoke test passes, continue with:
+
+```sh
+patchmill triage --dry-run
+```
+
+If the smoke test fails, complete Pi setup with `pi` and `/login`, then run
+`patchmill doctor`.
+
+By default, init writes host fields and project-local skill mappings for
+required stages (`triage`, `planning`, and `implementation`); Patchmill fills
+omitted labels, paths, and git policy from defaults. The command output reminds
+you that you can later change the login in `patchmill.config.json`
 (`host.login`) or with `PATCHMILL_HOST_LOGIN`.
 
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
 `tea` and `github-gh` for GitHub through `gh`.
-
-Run `patchmill doctor` after initialization to validate the config and local
-toolchain before dry runs.
 
 ## Complete example
 

@@ -1,67 +1,132 @@
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+  AuthStorage,
+  getAgentDir,
+  ModelRegistry,
+} from "@earendil-works/pi-coding-agent";
 
-export const PI_PROVIDER_ENV_VARS = [
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
-  "AZURE_OPENAI_API_KEY",
-  "DEEPSEEK_API_KEY",
-  "GEMINI_API_KEY",
-  "MISTRAL_API_KEY",
-  "GROQ_API_KEY",
-  "CLOUDFLARE_API_KEY",
-  "XAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "AI_GATEWAY_API_KEY",
-  "ZAI_API_KEY",
-  "OPENCODE_API_KEY",
-  "HF_TOKEN",
-  "FIREWORKS_API_KEY",
-  "KIMI_API_KEY",
-  "MINIMAX_API_KEY",
-  "MINIMAX_CN_API_KEY",
-  "XIAOMI_API_KEY",
-  "XIAOMI_TOKEN_PLAN_CN_API_KEY",
-  "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
-  "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
-] as const;
+type PiAuthStatus = {
+  configured: boolean;
+  source?:
+    | "stored"
+    | "runtime"
+    | "environment"
+    | "fallback"
+    | "models_json_key"
+    | "models_json_command";
+  label?: string;
+};
 
-type Env = Record<string, string | undefined>;
+type PiRegistryModel = {
+  provider: string;
+  id: string;
+  name?: string;
+  reasoning?: boolean;
+  input?: string[];
+};
 
-function hasProviderEnv(env: Env): boolean {
-  return PI_PROVIDER_ENV_VARS.some((key) => (env[key]?.trim().length ?? 0) > 0);
+export type PiRegistryLike = {
+  getAvailable(): PiRegistryModel[];
+  getError(): string | undefined;
+  getProviderAuthStatus(provider: string): PiAuthStatus;
+  getProviderDisplayName(provider: string): string;
+};
+
+export type PiModelChoice = {
+  provider: string;
+  providerName: string;
+  id: string;
+  label: string;
+  value: string;
+  authSource?: PiAuthStatus["source"];
+  reasoning: boolean;
+  input: string[];
+};
+
+export type NonEmptyArray<T> = [T, ...T[]];
+
+export type PiReadiness =
+  | {
+      status: "ready";
+      models: NonEmptyArray<PiModelChoice>;
+      message: string;
+      warning?: string;
+    }
+  | {
+      status: "missing" | "error";
+      models: PiModelChoice[];
+      message: string;
+    };
+
+export function createPiRegistry(): PiRegistryLike {
+  const agentDir = getAgentDir();
+  const auth = AuthStorage.create(join(agentDir, "auth.json"));
+  const registry = ModelRegistry.create(auth, join(agentDir, "models.json"));
+  registry.refresh();
+  return registry;
 }
 
-function hasAuthEntries(value: unknown): boolean {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value).length > 0
-  );
+function toChoice(
+  registry: PiRegistryLike,
+  model: PiRegistryModel,
+): PiModelChoice {
+  const providerName = registry.getProviderDisplayName(model.provider);
+  const label = `${providerName} / ${model.name ?? model.id}`;
+  return {
+    provider: model.provider,
+    providerName,
+    id: model.id,
+    label,
+    value: `${model.provider}/${model.id}`,
+    authSource: registry.getProviderAuthStatus(model.provider).source,
+    reasoning: model.reasoning ?? false,
+    input: model.input ?? ["text"],
+  };
 }
 
-export async function hasApparentPiProviderConfig(
-  options: {
-    env?: Env;
-    homeDir?: string;
-  } = {},
-): Promise<boolean> {
-  const env = options.env ?? process.env;
-  if (hasProviderEnv(env)) return true;
-
-  const authPath = join(
-    options.homeDir ?? homedir(),
-    ".pi",
-    "agent",
-    "auth.json",
-  );
-  try {
-    return hasAuthEntries(
-      JSON.parse(await readFile(authPath, "utf8")) as unknown,
-    );
-  } catch {
-    return false;
+export function formatPiModelLabel(model: PiModelChoice): string {
+  if (
+    model.providerName === model.provider &&
+    model.label === `${model.provider} / ${model.id}`
+  ) {
+    return model.value;
   }
+  return model.label;
+}
+
+export function detectPiReadiness(
+  options: { registry?: PiRegistryLike } = {},
+): PiReadiness {
+  const registry = options.registry ?? createPiRegistry();
+  const models = registry
+    .getAvailable()
+    .map((model) => toChoice(registry, model));
+  const loadError = registry.getError();
+
+  if (models.length === 0 && loadError) {
+    return {
+      status: "error",
+      models: [],
+      message: `Pi model registry could not load provider configuration: ${loadError}`,
+    };
+  }
+
+  if (models.length === 0) {
+    return {
+      status: "missing",
+      models: [],
+      message: "Pi did not report any provider/model with configured auth.",
+    };
+  }
+
+  return {
+    status: "ready",
+    models: models as NonEmptyArray<PiModelChoice>,
+    message: `Pi reported ${models.length} provider/model option${models.length === 1 ? "" : "s"} with configured auth.`,
+    ...(loadError
+      ? {
+          warning: `Pi model registry reported provider configuration issues: ${loadError}`,
+        }
+      : {}),
+  };
 }

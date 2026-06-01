@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
 import {
   stdin as defaultStdin,
   stdout as defaultStdout,
@@ -25,7 +24,9 @@ import {
   type InitialConfigSkills,
 } from "./config-writer.ts";
 import { ensurePatchmillLocalExcludeEntries } from "./local-ignore.ts";
-import { hasApparentPiProviderConfig } from "./pi-preflight.ts";
+import { detectPiReadiness, type PiReadiness } from "./pi-preflight.ts";
+import { selectPiModel, type PiModelSelection } from "./pi-model-selection.ts";
+import { runPiSmokeTest, type PiSmokeTestResult } from "./pi-smoke-test.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill init [options]
@@ -44,9 +45,9 @@ export type InitOutput = {
   stderr: (line: string) => void;
 };
 
-export type PiLauncher = () => Promise<number>;
-export type PiAvailabilityCheck = () => Promise<boolean>;
 export type InitPrompt = (question: string) => Promise<string>;
+export type PiReadinessDetector = () => PiReadiness;
+export type PiSmokeTestRunner = typeof runPiSmokeTest;
 export type ProjectSkillInstaller = (options: {
   repoRoot: string;
 }) => Promise<ProjectSkillInstallResult>;
@@ -60,38 +61,12 @@ const DEFAULT_OUTPUT: InitOutput = {
   stderr: (line) => console.error(line),
 };
 
-const NO_PI_PROVIDER_MESSAGE =
-  "Patchmill also requires Pi with an LLM provider configured.\nNo provider configuration was detected.";
-const MANUAL_PI_SETUP_MESSAGE =
-  "To configure manually, run `pi`, then `/login`.";
-const NO_PI_BINARY_MESSAGE =
-  "Pi does not appear to be installed, so Patchmill did not offer to launch it.\n\nInstall Pi, then configure a provider:\n  npm install -g @earendil-works/pi-coding-agent\n  pi\n  /login";
 const HOST_LOGIN_GUIDANCE =
   "To change the default host login later, update `patchmill.config.json` (`host.login`) or set `PATCHMILL_HOST_LOGIN`.";
-
-function defaultPiLauncher(): Promise<number> {
-  return new Promise((resolve) => {
-    const child = spawn("pi", [], { stdio: "inherit" });
-    child.on("error", () => resolve(-1));
-    child.on("close", (code) => resolve(code ?? 1));
-  });
-}
-
-function defaultPiAvailabilityCheck(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const child = spawn("pi", ["--help"], { stdio: "ignore" });
-    child.on("error", () => resolve(false));
-    child.on("close", (code) => resolve(code === 0));
-  });
-}
 
 function defaultPrompt(question: string): Promise<string> {
   const rl = createInterface({ input: defaultStdin, output: defaultStdout });
   return rl.question(question).finally(() => rl.close());
-}
-
-function isYes(value: string): boolean {
-  return /^(y|yes)$/iu.test(value.trim());
 }
 
 const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
@@ -103,8 +78,43 @@ const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
 const EXISTING_CONFIG_MESSAGE =
   "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor";
 
-function successNextSteps() {
-  return "Run `patchmill doctor` to verify local setup.\n\nNext:\n  patchmill doctor";
+function nextSteps(piReady: boolean) {
+  return piReady
+    ? "Run `patchmill triage --dry-run` to preview issue triage.\n\nNext:\n  patchmill triage --dry-run"
+    : "Run `patchmill doctor` after completing Pi setup.\n\nNext:\n  patchmill doctor";
+}
+
+function selectedModelFromReadiness(
+  readiness: PiReadiness,
+): string | undefined {
+  return readiness.status === "ready" ? readiness.models[0]?.value : undefined;
+}
+
+function formatPiSetupMessage(
+  readiness: PiReadiness,
+  selection: PiModelSelection,
+  smoke: PiSmokeTestResult,
+): string {
+  const messages = [readiness.message];
+  if (readiness.status === "ready" && readiness.warning) {
+    messages.push(readiness.warning);
+  }
+  if (selection.message !== readiness.message) {
+    messages.push(selection.message);
+  }
+  if (smoke.status === "pass") {
+    return [...messages, smoke.message].join("\n\n");
+  }
+  return [
+    ...messages,
+    "Pi setup is incomplete.",
+    smoke.message,
+    smoke.details ? `Details:\n${smoke.details}` : undefined,
+    "Run `pi`, then `/login` to configure a provider using Pi's native login flow.",
+    "After login, run `patchmill doctor`.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export async function runInit(
@@ -115,8 +125,8 @@ export async function runInit(
     env?: Record<string, string | undefined>;
     homeDir?: string;
     prompt?: InitPrompt;
-    launchPi?: PiLauncher;
-    checkPiAvailable?: PiAvailabilityCheck;
+    detectPiReadiness?: PiReadinessDetector;
+    runPiSmokeTest?: PiSmokeTestRunner;
     isInteractive?: boolean;
     installProjectSkills?: ProjectSkillInstaller;
     validateExistingSkillDirectory?: ExistingSkillDirectoryValidator;
@@ -203,42 +213,37 @@ export async function runInit(
     ].join("\n");
   }
 
-  const hasPiProvider = await hasApparentPiProviderConfig({
-    env: options.env,
-    homeDir: options.homeDir,
+  const readiness = (options.detectPiReadiness ?? detectPiReadiness)();
+  const selection = await selectPiModel({
+    readiness,
+    isInteractive,
+    prompt: options.prompt ?? defaultPrompt,
   });
-  let piMessage =
-    "Pi provider configuration detected.\nDoctor will verify it with a minimal smoke test.";
-  if (!hasPiProvider) {
-    const piAvailable = await (
-      options.checkPiAvailable ?? defaultPiAvailabilityCheck
-    )();
-    if (!piAvailable) {
-      piMessage = `${NO_PI_PROVIDER_MESSAGE}\n\n${NO_PI_BINARY_MESSAGE}`;
-    } else {
-      if (isInteractive) {
-        output.stdout(NO_PI_PROVIDER_MESSAGE);
-        const answer = await (options.prompt ?? defaultPrompt)(
-          "Open Pi now to configure a provider with `/login`? [y/N] ",
-        );
-        if (isYes(answer)) {
-          const code = await (options.launchPi ?? defaultPiLauncher)();
-          if (code === 0) {
-            piMessage = "Returned from Pi provider setup.";
-          } else {
-            piMessage = `${code === -1 ? "Patchmill could not launch Pi." : "Pi exited before provider setup could be confirmed."}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
-          }
-        } else {
-          piMessage = MANUAL_PI_SETUP_MESSAGE;
+  const smoke =
+    selection.status === "unavailable" &&
+    selection.reason === "invalid-selection"
+      ? {
+          status: "fail" as const,
+          message:
+            "Pi smoke test was not run because model selection was invalid.",
+          command: "pi smoke test not run",
+          details: selection.message,
         }
-      } else {
-        piMessage = `${NO_PI_PROVIDER_MESSAGE}\n\n${MANUAL_PI_SETUP_MESSAGE}`;
-      }
-    }
-  }
+      : await (options.runPiSmokeTest ?? runPiSmokeTest)(
+          createCommandRunner(),
+          {
+            repoRoot: config.repoRoot,
+            model:
+              selection.status === "selected"
+                ? selection.model
+                : selectedModelFromReadiness(readiness),
+          },
+        );
+  const piReady = smoke.status === "pass";
+  const piMessage = formatPiSetupMessage(readiness, selection, smoke);
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piMessage}\n\n${successNextSteps()}`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piMessage}\n\n${nextSteps(piReady)}`,
   );
   return 0;
 }
