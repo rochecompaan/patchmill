@@ -136,9 +136,9 @@ The smoke test receives `selected.value` as the CLI model argument.
 - If `settings.json` does not exist, create it with mode-appropriate parent
   directories.
 - If `settings.json` contains valid JSON, preserve unrelated keys.
-- If `settings.json` contains invalid JSON, fail the model persistence step with
-  a clear message and continue to report Pi setup as incomplete rather than
-  silently overwriting user state.
+- If `settings.json` contains invalid JSON, warn clearly, preserve the invalid
+  file, skip default-model persistence, and continue Pi readiness/smoke-test
+  reporting rather than silently overwriting user state.
 - If the terminal is not interactive, skip the selector.
 - If the selector is cancelled, use the previously persisted default if
   available and still present in the available list; otherwise use the first
