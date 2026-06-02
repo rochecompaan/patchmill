@@ -8,6 +8,7 @@ class FakeTerminal implements Terminal {
   private readonly drainError: Error | undefined;
   private onInput: ((data: string) => void) | undefined;
 
+  writes: string[] = [];
   stopCalls = 0;
   drainCalls = 0;
 
@@ -28,7 +29,9 @@ class FakeTerminal implements Terminal {
     if (this.drainError) throw this.drainError;
   }
 
-  write(_data: string): void {}
+  write(data: string): void {
+    this.writes.push(data);
+  }
 
   get columns(): number {
     return 80;
@@ -81,6 +84,10 @@ const models = [
   model("anthropic", "claude-sonnet-4-5", "Anthropic / Claude Sonnet 4.5"),
 ];
 
+const manyModels = Array.from({ length: 11 }, (_entry, index) =>
+  model("anthropic", `model-${index + 1}`, `Anthropic / Model ${index + 1}`),
+);
+
 test("selectModelInteractively resolves selected model even when drainInput fails", async () => {
   const terminal = new FakeTerminal({ drainError: new Error("drain failed") });
   const selection = selectModelInteractively({
@@ -96,6 +103,18 @@ test("selectModelInteractively resolves selected model even when drainInput fail
   assert.equal(result?.value, "anthropic/claude-sonnet-4-5");
   assert.equal(terminal.stopCalls, 1);
   assert.equal(terminal.drainCalls, 1);
+});
+
+test("selectModelInteractively renders a single selector count for the visible model list", async () => {
+  const terminal = new FakeTerminal();
+  const selection = selectModelInteractively({ models: manyModels, terminal });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(terminal.writes.join("").match(/\(1\/11\)/gu)?.length, 1);
+
+  terminal.sendInput("\n");
+
+  await selection;
 });
 
 test("selectModelInteractively only finishes once when cancellation is repeated", async () => {

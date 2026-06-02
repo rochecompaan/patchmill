@@ -2,13 +2,11 @@ import {
   Container,
   Input,
   ProcessTerminal,
-  SelectList,
   Text,
+  TruncatedText,
   TUI,
   getKeybindings,
   type Focusable,
-  type SelectItem,
-  type SelectListTheme,
   type Terminal,
 } from "@earendil-works/pi-tui";
 import type { LocalPiDefaultModel } from "./pi-agent-settings.ts";
@@ -16,9 +14,12 @@ import {
   createModelSelectorState,
   formatModelSelectorCount,
   modelSelectorDetails,
+  moveModelSelection,
   searchModelSelector,
   selectedModel,
+  visibleModelRows,
   type ModelSelectorState,
+  type VisibleModelRow,
 } from "./pi-model-selector-state.ts";
 import type { PiModelChoice } from "./pi-preflight.ts";
 
@@ -28,37 +29,19 @@ export type InteractiveModelSelector = (options: {
   terminal?: Terminal;
 }) => Promise<PiModelChoice | undefined>;
 
-const selectorTheme: SelectListTheme = {
-  selectedPrefix: (text) => `→ ${text}`,
-  selectedText: (text) => text,
-  description: (text) => text,
-  scrollInfo: (text) => text,
-  noMatch: (text) => text.replace("commands", "models"),
-};
-
-function modelItem(
-  model: PiModelChoice,
-  current: LocalPiDefaultModel | undefined,
-): SelectItem {
-  const isCurrent =
-    current?.provider === model.provider && current.modelId === model.id;
-  return {
-    value: model.value,
-    label: `${model.id} [${model.provider}]${isCurrent ? " ✓" : ""}`,
-    description: model.label,
-  };
+function modelRow(row: VisibleModelRow): string {
+  const prefix = row.selected ? "→" : " ";
+  const current = row.current ? " ✓" : "";
+  return `${prefix} ${row.model.id} [${row.model.provider}]${current}  ${row.model.label}`;
 }
 
 class ModelSelectorComponent extends Container implements Focusable {
-  private readonly current: LocalPiDefaultModel | undefined;
   private readonly onSelect: (model: PiModelChoice) => void;
-  private readonly onCancel: () => void;
   private readonly searchInput = new Input();
   private readonly listContainer = new Container();
   private readonly count = new Text();
   private readonly details = new Text();
   private state: ModelSelectorState;
-  private list: SelectList;
   private isFocused = false;
 
   constructor(
@@ -68,11 +51,8 @@ class ModelSelectorComponent extends Container implements Focusable {
     onCancel: () => void,
   ) {
     super();
-    this.current = current;
     this.onSelect = onSelect;
-    this.onCancel = onCancel;
     this.state = createModelSelectorState(models, { current });
-    this.list = this.createList();
 
     this.searchInput.onEscape = onCancel;
     this.searchInput.onSubmit = () => {
@@ -87,7 +67,7 @@ class ModelSelectorComponent extends Container implements Focusable {
     this.addChild(new Text(""));
     this.addChild(this.details);
 
-    this.renderList();
+    this.renderRows();
     this.updateFooter();
   }
 
@@ -106,44 +86,31 @@ class ModelSelectorComponent extends Container implements Focusable {
       keybindings.matches(data, "tui.select.up") ||
       keybindings.matches(data, "tui.select.down")
     ) {
-      this.list.handleInput(data);
+      this.state = moveModelSelection(
+        this.state,
+        keybindings.matches(data, "tui.select.up") ? -1 : 1,
+      );
+      this.renderRows();
+      this.updateFooter();
       return;
     }
 
     this.searchInput.handleInput(data);
     this.state = searchModelSelector(this.state, this.searchInput.getValue());
-    this.renderList();
+    this.renderRows();
     this.updateFooter();
   }
 
-  private createList(): SelectList {
-    const list = new SelectList(
-      this.state.filtered.map((model) => modelItem(model, this.current)),
-      10,
-      selectorTheme,
-    );
-    list.onCancel = this.onCancel;
-    list.onSelect = (item) => {
-      const model = this.state.filtered.find(
-        (entry) => entry.value === item.value,
-      );
-      if (model) this.onSelect(model);
-    };
-    list.onSelectionChange = (item) => {
-      const index = this.state.filtered.findIndex(
-        (model) => model.value === item.value,
-      );
-      this.state = { ...this.state, selectedIndex: Math.max(0, index) };
-      this.updateFooter();
-    };
-    list.setSelectedIndex(this.state.selectedIndex);
-    return list;
-  }
-
-  private renderList(): void {
-    this.list = this.createList();
+  private renderRows(): void {
     this.listContainer.clear();
-    this.listContainer.addChild(this.list);
+    const rows = visibleModelRows(this.state);
+    if (rows.length === 0) {
+      this.listContainer.addChild(new Text("  No matching models"));
+      return;
+    }
+    for (const row of rows) {
+      this.listContainer.addChild(new TruncatedText(modelRow(row)));
+    }
   }
 
   private updateFooter(): void {
