@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -620,6 +621,100 @@ test("runInit persists selected model to local Pi settings and smoke-tests it", 
     },
   );
   assert.match(stdout.join("\n"), /Using Pi model OpenAI Codex \/ GPT-5\.5/);
+});
+
+test("runInit warns when saving the selected model to local Pi settings fails", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let smokeModel: string | undefined;
+  const agentDir = join(repoRoot, ".patchmill", "pi-agent");
+  const settingsPath = join(agentDir, "settings.json");
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(
+    settingsPath,
+    `${JSON.stringify(
+      {
+        defaultProvider: "anthropic",
+        defaultModel: "claude-sonnet-4-5",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  assert.equal(
+    await runInit(
+      ["--skills", "none"],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        isInteractive: true,
+        setupLabels: async () => ({
+          status: "skipped",
+          message: "labels skipped",
+        }),
+        detectPiReadiness: () => ({
+          status: "ready",
+          message: "Pi reported 2 provider/model options with configured auth.",
+          models: [
+            {
+              provider: "anthropic",
+              providerName: "Anthropic",
+              id: "claude-sonnet-4-5",
+              label: "Anthropic / Claude Sonnet 4.5",
+              value: "anthropic/claude-sonnet-4-5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+            {
+              provider: "openai-codex",
+              providerName: "OpenAI Codex",
+              id: "gpt-5.5",
+              label: "OpenAI Codex / GPT-5.5",
+              value: "openai-codex/gpt-5.5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+          ],
+        }),
+        selectModelInteractively: async ({ models }) => {
+          await rm(agentDir, { recursive: true, force: true });
+          await writeFile(agentDir, "not a directory", "utf8");
+          return models[1];
+        },
+        runPiSmokeTest: async (_runner, options) => {
+          smokeModel = options.model;
+          return {
+            status: "pass",
+            message:
+              "Pi completed the provider smoke test with openai-codex/gpt-5.5.",
+            command: "pi smoke",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  const output = stdout.join("\n");
+  assert.equal(smokeModel, "openai-codex/gpt-5.5");
+  assert.match(
+    output,
+    /Could not save local Pi default model: Could not parse local Pi settings:/,
+  );
+  assert.ok(
+    output.indexOf("Could not save local Pi default model:") <
+      output.indexOf("Using Pi model OpenAI Codex / GPT-5.5."),
+  );
+  assert.match(output, /Using Pi model OpenAI Codex \/ GPT-5\.5/);
+  assert.match(
+    output,
+    /Pi completed the provider smoke test with openai-codex\/gpt-5\.5\./,
+  );
+  assert.equal(await readFile(agentDir, "utf8"), "not a directory");
 });
 
 test("runInit warns and preserves invalid local Pi settings while using a ready model", async () => {

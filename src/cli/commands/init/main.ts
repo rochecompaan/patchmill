@@ -200,6 +200,7 @@ export async function runInit(
   let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>> =
     undefined;
   let settingsWarning: string | undefined;
+  let settingsWriteWarning: string | undefined;
   try {
     currentDefault = await readLocalPiDefaultModel(piAgentDir);
   } catch (error) {
@@ -240,8 +241,13 @@ export async function runInit(
   });
   const persistDefaultModel = settingsWarning
     ? undefined
-    : (model: Parameters<typeof writeLocalPiDefaultModel>[1]) =>
-        writeLocalPiDefaultModel(piAgentDir, model);
+    : async (model: Parameters<typeof writeLocalPiDefaultModel>[1]) => {
+        try {
+          await writeLocalPiDefaultModel(piAgentDir, model);
+        } catch (error) {
+          settingsWriteWarning = `Could not save local Pi default model: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      };
   const selection = await selectPiModel({
     readiness,
     isInteractive,
@@ -273,7 +279,12 @@ export async function runInit(
         );
   const piReady = smoke.status === "pass";
   const piMessage = formatPiSetupMessage(readiness, selection, smoke);
-  const piSettingsMessage = settingsWarning ? `${settingsWarning}\n\n` : "";
+  const piSettingsWarnings = [settingsWarning, settingsWriteWarning]
+    .filter((warning): warning is string => Boolean(warning))
+    .join("\n\n");
+  const piSettingsMessage = piSettingsWarnings
+    ? `${piSettingsWarnings}\n\n`
+    : "";
 
   output.stdout(
     `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
