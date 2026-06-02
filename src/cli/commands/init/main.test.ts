@@ -622,6 +622,86 @@ test("runInit persists selected model to local Pi settings and smoke-tests it", 
   assert.match(stdout.join("\n"), /Using Pi model OpenAI Codex \/ GPT-5\.5/);
 });
 
+test("runInit warns and preserves invalid local Pi settings while using a ready model", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  const invalidSettings = "{not json";
+  let smokeModel: string | undefined;
+  const settingsPath = join(
+    repoRoot,
+    ".patchmill",
+    "pi-agent",
+    "settings.json",
+  );
+  await mkdir(join(repoRoot, ".patchmill", "pi-agent"), { recursive: true });
+  await writeFile(settingsPath, invalidSettings, "utf8");
+
+  assert.equal(
+    await runInit(
+      ["--skills", "none"],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        isInteractive: true,
+        setupLabels: async () => ({
+          status: "skipped",
+          message: "labels skipped",
+        }),
+        detectPiReadiness: () => ({
+          status: "ready",
+          message: "Pi reported 2 provider/model options with configured auth.",
+          models: [
+            {
+              provider: "anthropic",
+              providerName: "Anthropic",
+              id: "claude-sonnet-4-5",
+              label: "Anthropic / Claude Sonnet 4.5",
+              value: "anthropic/claude-sonnet-4-5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+            {
+              provider: "openai-codex",
+              providerName: "OpenAI Codex",
+              id: "gpt-5.5",
+              label: "OpenAI Codex / GPT-5.5",
+              value: "openai-codex/gpt-5.5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+          ],
+        }),
+        selectModelInteractively: async ({ models }) => models[1],
+        runPiSmokeTest: async (_runner, options) => {
+          smokeModel = options.model;
+          return {
+            status: "pass",
+            message:
+              "Pi completed the provider smoke test with openai-codex/gpt-5.5.",
+            command: "pi smoke",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  const output = stdout.join("\n");
+  assert.equal(smokeModel, "openai-codex/gpt-5.5");
+  assert.match(
+    output,
+    /Could not read local Pi settings: Could not parse local Pi settings:/,
+  );
+  assert.match(
+    output,
+    /Could not read local Pi settings:[\s\S]*Pi reported 2 provider\/model options with configured auth\./,
+  );
+  assert.match(output, /Using Pi model OpenAI Codex \/ GPT-5\.5/);
+  assert.equal(await readFile(settingsPath, "utf8"), invalidSettings);
+});
+
 test("runInit skips model selector and local settings when no models are available", async () => {
   const repoRoot = await tempRepo();
   let selectorCalled = false;

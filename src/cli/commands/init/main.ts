@@ -197,7 +197,8 @@ export async function runInit(
     "Warning: Patchmill config and skills are local-only by default. For consistent Patchmill runs across local machines and CI, consider committing patchmill.config.json and .patchmill/skills/ explicitly.";
   const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
   const piAgentDir = localPiAgentDir(config.repoRoot);
-  let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>>;
+  let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>> =
+    undefined;
   let settingsWarning: string | undefined;
   try {
     currentDefault = await readLocalPiDefaultModel(piAgentDir);
@@ -237,13 +238,17 @@ export async function runInit(
   const readiness = (options.detectPiReadiness ?? detectPiReadiness)({
     agentDir: piAgentDir,
   });
+  const persistDefaultModel = settingsWarning
+    ? undefined
+    : (model: Parameters<typeof writeLocalPiDefaultModel>[1]) =>
+        writeLocalPiDefaultModel(piAgentDir, model);
   const selection = await selectPiModel({
     readiness,
     isInteractive,
     currentDefault,
     selectModelInteractively:
       options.selectModelInteractively ?? defaultSelectModelInteractively,
-    persistDefaultModel: (model) => writeLocalPiDefaultModel(piAgentDir, model),
+    persistDefaultModel,
   });
   const smoke =
     selection.status === "unavailable" &&
