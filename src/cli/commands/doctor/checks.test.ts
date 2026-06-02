@@ -253,6 +253,55 @@ test("runDoctorChecks points Pi provider failures to guided setup", async () => 
   assert.match((piProvider?.remediation ?? []).join("\n"), /missing key/);
 });
 
+test("runDoctorChecks scopes Pi provider smoke test to local agent dir", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const calls: Array<{
+    command: string;
+    args: string[];
+    env?: Record<string, string | undefined>;
+  }> = [];
+  const runner: CommandRunner = {
+    async run(command, args, options = {}) {
+      calls.push({ command, args: [...args], env: options.env });
+      const key = [command, ...args].join(" ");
+      const result = successMocks()[key] ?? {
+        code: 127,
+        stdout: "",
+        stderr: `missing mock for ${key}`,
+      };
+      return {
+        code: result.code,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+      };
+    },
+  };
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+
+  assert.equal(
+    results.find((result) => result.name === "pi provider")?.status,
+    "pass",
+  );
+  const smokeCall = calls.find(
+    (call) =>
+      call.command === "pi" &&
+      call.args.includes("Reply with PATCHMILL_PI_OK and nothing else."),
+  );
+  assert.equal(
+    smokeCall?.env?.PI_CODING_AGENT_DIR,
+    join(repoRoot, ".patchmill", "pi-agent"),
+  );
+});
+
 test("runDoctorChecks supports github-gh provider", async () => {
   const repoRoot = await tempRepo();
   await writeConfig(repoRoot, { host: { provider: "github-gh", login: "" } });
