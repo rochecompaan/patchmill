@@ -1,5 +1,5 @@
 import type { LocalPiDefaultModel } from "./pi-agent-settings.ts";
-import { selectModelInteractively } from "./pi-model-selector.ts";
+import type { selectModelInteractively } from "./pi-model-selector.ts";
 import {
   formatPiModelLabel,
   type PiModelChoice,
@@ -53,6 +53,31 @@ function findCurrentDefault(
     : undefined;
 }
 
+function canonicalizeSelection(
+  models: PiModelChoice[],
+  selection: PiModelChoice | undefined,
+): PiModelChoice | undefined {
+  if (!selection) return undefined;
+
+  return (
+    models.find((model) => model.value === selection.value) ??
+    models.find(
+      (model) =>
+        model.provider === selection.provider && model.id === selection.id,
+    )
+  );
+}
+
+function invalidSelection(
+  selection: PiModelChoice,
+): Extract<PiModelSelection, { status: "unavailable" }> {
+  return {
+    status: "unavailable",
+    reason: "invalid-selection",
+    message: `Invalid Pi model selection: ${selection.value}`,
+  };
+}
+
 async function persistSelection(
   persistDefaultModel: PersistDefaultModel | undefined,
   model: PiModelChoice,
@@ -84,20 +109,31 @@ export async function selectPiModel(options: {
     };
   }
 
-  const select = options.selectModelInteractively ?? selectModelInteractively;
-  const selected = options.isInteractive
-    ? ((await select({
-        models: options.readiness.models,
-        current: options.currentDefault,
-      })) ??
-      findCurrentDefault(options.readiness.models, options.currentDefault) ??
-      first)
-    : (findCurrentDefault(options.readiness.models, options.currentDefault) ??
-      first);
+  const current = findCurrentDefault(
+    options.readiness.models,
+    options.currentDefault,
+  );
 
-  await persistSelection(options.persistDefaultModel, selected);
+  let selected: PiModelChoice | undefined;
+  if (options.isInteractive && options.selectModelInteractively) {
+    const interactiveSelection = await options.selectModelInteractively({
+      models: options.readiness.models,
+      current: options.currentDefault,
+    });
+    if (interactiveSelection) {
+      selected = canonicalizeSelection(
+        options.readiness.models,
+        interactiveSelection,
+      );
+      if (!selected) return invalidSelection(interactiveSelection);
+    }
+  }
+
+  const resolved = selected ?? current ?? first;
+
+  await persistSelection(options.persistDefaultModel, resolved);
   return toSelection({
-    ...selected,
-    label: formatPiModelLabel(selected),
+    ...resolved,
+    label: formatPiModelLabel(resolved),
   });
 }

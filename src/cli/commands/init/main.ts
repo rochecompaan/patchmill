@@ -217,7 +217,6 @@ export async function runInit(
   const selection = await selectPiModel({
     readiness,
     isInteractive,
-    prompt: options.prompt ?? defaultPrompt,
   });
   const smoke =
     selection.status === "unavailable" &&

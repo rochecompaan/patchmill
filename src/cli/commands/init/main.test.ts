@@ -422,7 +422,7 @@ test("runInit refuses existing config without installing skills", async () => {
   assert.match(stdout.join("\n"), /did not overwrite/);
 });
 
-test("runInit uses Pi-reported ready configuration without native handoff", async () => {
+test("runInit uses Pi-reported ready configuration without launching an interactive selector", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
   const prompts: string[] = [];
@@ -466,9 +466,12 @@ test("runInit uses Pi-reported ready configuration without native handoff", asyn
     0,
   );
 
-  assert.equal(prompts.length, 1);
-  assert.match(prompts[0] ?? "", /Select a Pi model/);
+  assert.deepEqual(prompts, []);
   assert.match(stdout.join("\n"), /Pi reported 1 provider\/model option/);
+  assert.match(
+    stdout.join("\n"),
+    /Using Pi model Anthropic \/ Claude Sonnet 4.5/,
+  );
   assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
 });
 
@@ -734,10 +737,11 @@ test("runInit does not print manual login remediation after non-interactive read
   assert.match(output, /Next:\n {2}patchmill triage --dry-run/);
 });
 
-test("runInit does not smoke-test a silently defaulted model after invalid model input", async () => {
+test("runInit deterministically smoke-tests the default model when no interactive selector callback is wired", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
-  let smokeCalled = false;
+  const prompts: string[] = [];
+  let smokeModel: string | undefined;
 
   assert.equal(
     await runInit(
@@ -766,22 +770,25 @@ test("runInit does not smoke-test a silently defaulted model after invalid model
             },
           ],
         }),
-        runPiSmokeTest: async () => {
-          smokeCalled = true;
+        runPiSmokeTest: async (_runner, options) => {
+          smokeModel = options.model;
           return {
             status: "pass",
-            message: "should not run",
+            message: "Pi smoke test passed.",
             command: "pi smoke",
           };
         },
-        prompt: async () => "999",
+        prompt: async (question) => {
+          prompts.push(question);
+          return "999";
+        },
       },
     ),
     0,
   );
 
-  assert.equal(smokeCalled, false);
-  assert.match(stdout.join("\n"), /Invalid Pi model selection: 999/);
-  assert.match(stdout.join("\n"), /Pi smoke test was not run/);
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+  assert.equal(smokeModel, "anthropic/claude-sonnet-4-5");
+  assert.deepEqual(prompts, []);
+  assert.doesNotMatch(stdout.join("\n"), /Invalid Pi model selection/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
 });
