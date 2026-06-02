@@ -50,6 +50,9 @@ function modelItem(
 }
 
 class ModelSelectorComponent extends Container implements Focusable {
+  private readonly current: LocalPiDefaultModel | undefined;
+  private readonly onSelect: (model: PiModelChoice) => void;
+  private readonly onCancel: () => void;
   private readonly searchInput = new Input();
   private readonly listContainer = new Container();
   private readonly count = new Text();
@@ -59,12 +62,15 @@ class ModelSelectorComponent extends Container implements Focusable {
   private isFocused = false;
 
   constructor(
-    private readonly models: PiModelChoice[],
-    private readonly current: LocalPiDefaultModel | undefined,
-    private readonly onSelect: (model: PiModelChoice) => void,
-    private readonly onCancel: () => void,
+    models: PiModelChoice[],
+    current: LocalPiDefaultModel | undefined,
+    onSelect: (model: PiModelChoice) => void,
+    onCancel: () => void,
   ) {
     super();
+    this.current = current;
+    this.onSelect = onSelect;
+    this.onCancel = onCancel;
     this.state = createModelSelectorState(models, { current });
     this.list = this.createList();
 
@@ -118,7 +124,9 @@ class ModelSelectorComponent extends Container implements Focusable {
     );
     list.onCancel = this.onCancel;
     list.onSelect = (item) => {
-      const model = this.models.find((entry) => entry.value === item.value);
+      const model = this.state.filtered.find(
+        (entry) => entry.value === item.value,
+      );
       if (model) this.onSelect(model);
     };
     list.onSelectionChange = (item) => {
@@ -153,10 +161,29 @@ export async function selectModelInteractively(options: {
   const tui = new TUI(terminal, true);
 
   return new Promise((resolve) => {
-    const finish = async (model: PiModelChoice | undefined) => {
-      tui.stop();
-      await terminal.drainInput();
-      resolve(model);
+    let finished = false;
+
+    const finish = (model: PiModelChoice | undefined): void => {
+      if (finished) return;
+      finished = true;
+
+      void (async () => {
+        try {
+          try {
+            tui.stop();
+          } catch {
+            // Best-effort cleanup before returning control to the caller.
+          }
+
+          try {
+            await terminal.drainInput();
+          } catch {
+            // Best-effort cleanup before returning control to the caller.
+          }
+        } finally {
+          resolve(model);
+        }
+      })();
     };
 
     const component = new ModelSelectorComponent(
