@@ -58,8 +58,10 @@ export type PiReadiness =
       message: string;
     };
 
-export function createPiRegistry(): PiRegistryLike {
-  const agentDir = getAgentDir();
+export function createPiRegistry(
+  options: { agentDir?: string } = {},
+): PiRegistryLike {
+  const agentDir = options.agentDir ?? getAgentDir();
   const auth = AuthStorage.create(join(agentDir, "auth.json"));
   const registry = ModelRegistry.create(auth, join(agentDir, "models.json"));
   registry.refresh();
@@ -95,9 +97,10 @@ export function formatPiModelLabel(model: PiModelChoice): string {
 }
 
 export function detectPiReadiness(
-  options: { registry?: PiRegistryLike } = {},
+  options: { registry?: PiRegistryLike; agentDir?: string } = {},
 ): PiReadiness {
-  const registry = options.registry ?? createPiRegistry();
+  const registry =
+    options.registry ?? createPiRegistry({ agentDir: options.agentDir });
   const models = registry
     .getAvailable()
     .map((model) => toChoice(registry, model));

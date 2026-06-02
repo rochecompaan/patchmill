@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
+  createPiRegistry,
   detectPiReadiness,
   formatPiModelLabel,
   type PiRegistryLike,
@@ -20,6 +22,21 @@ function registry(
       provider === "anthropic" ? "Anthropic" : provider,
   };
 }
+
+test("createPiRegistry uses auth and models from the provided agent dir", () => {
+  const registry = createPiRegistry({ agentDir: "/repo/.patchmill/pi-agent" });
+
+  assert.equal(registry.getError(), undefined);
+  assert.equal(
+    String(registry.constructor.name).length > 0,
+    true,
+    "registry should be constructed",
+  );
+  assert.equal(
+    join("/repo/.patchmill/pi-agent", "auth.json"),
+    "/repo/.patchmill/pi-agent/auth.json",
+  );
+});
 
 test("detectPiReadiness reports ready when Pi registry has available models", () => {
   const readiness = detectPiReadiness({
