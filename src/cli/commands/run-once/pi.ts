@@ -7,6 +7,7 @@ import {
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
+import { piAgentEnv } from "../init/pi-agent-settings.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   createPiSessionMessageStreamer,
@@ -213,6 +214,7 @@ export type RunPiPromptOptions = {
   onObservation?: (observation: PiSessionObservation) => void | Promise<void>;
   verbosePiOutput?: boolean;
   taskContract?: PatchmillPiTaskContract;
+  piAgentDir?: string;
 };
 
 function stageStatus(stage: RunPiPromptOptions["stage"]): string {
@@ -375,6 +377,7 @@ export async function runPiPrompt(
         {
           cwd,
           env: {
+            ...(options?.piAgentDir ? piAgentEnv(options.piAgentDir) : {}),
             PI_TODO_PATH:
               options?.taskContract?.todoRoot ??
               DEFAULT_PI_TASK_CONTRACT.todoRoot,

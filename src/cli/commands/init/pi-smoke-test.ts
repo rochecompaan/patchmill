@@ -1,4 +1,5 @@
 import type { CommandRunner } from "../triage/types.ts";
+import { piAgentEnv } from "./pi-agent-settings.ts";
 
 const PI_SMOKE_PROMPT = "Reply with PATCHMILL_PI_OK and nothing else.";
 const PI_SMOKE_SENTINEL = "PATCHMILL_PI_OK";
@@ -24,13 +25,16 @@ function commandOutput(stdout: string, stderr: string): string {
 
 export async function runPiSmokeTest(
   runner: CommandRunner,
-  options: { repoRoot: string; model?: string },
+  options: { repoRoot: string; model?: string; piAgentDir?: string },
 ): Promise<PiSmokeTestResult> {
   const args = ["--no-session", "--no-context-files", "--no-prompt-templates"];
   if (options.model) args.push("--model", options.model);
   args.push("-p", PI_SMOKE_PROMPT);
 
-  const result = await runner.run("pi", args, { cwd: options.repoRoot });
+  const result = await runner.run("pi", args, {
+    cwd: options.repoRoot,
+    ...(options.piAgentDir ? { env: piAgentEnv(options.piAgentDir) } : {}),
+  });
   const command = formatCommand(args);
   if (result.code === 0 && result.stdout.includes(PI_SMOKE_SENTINEL)) {
     return {

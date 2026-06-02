@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { runCleanupHookScript } from "../../../pi/hooks.ts";
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import {
   buildIssueBranchName,
   buildIssueWorktreePath,
@@ -704,6 +705,7 @@ export async function runOneIssue(
   }
 
   const existingState = await readRunState(config.runStateDir, issue.number);
+  const piAgentDir = localPiAgentDir(config.repoRoot);
   const resumed = selected?.resumed ?? false;
   const resumableState =
     resumed && !!existingState && isResumableRunState(existingState);
@@ -977,6 +979,7 @@ export async function runOneIssue(
             verbosePiOutput: options.verbosePiOutput,
             onObservation: observePi("pi-plan"),
             taskContract: config.projectPolicy.pi.taskContract,
+            piAgentDir,
           },
         );
       });
@@ -1370,6 +1373,7 @@ export async function runOneIssue(
             verbosePiOutput: options.verbosePiOutput,
             onObservation: observeImplementation,
             taskContract: projectPolicy.pi.taskContract,
+            piAgentDir,
             onTaskProgress: async (progress) => {
               await switchImplementationTask(
                 progress.current,

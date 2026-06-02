@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
+import { localPiAgentDir, piAgentEnv } from "../init/pi-agent-settings.ts";
 import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
@@ -163,8 +164,9 @@ async function checkPiBinary(
 async function checkPiProvider(
   runner: CommandRunner,
   repoRoot: string,
+  piAgentDir: string,
 ): Promise<DoctorCheckResult> {
-  const result = await runPiSmokeTest(runner, { repoRoot });
+  const result = await runPiSmokeTest(runner, { repoRoot, piAgentDir });
   if (result.status === "pass") {
     return pass("pi provider", "minimal LLM smoke test succeeded");
   }
@@ -309,6 +311,7 @@ async function smokeTestProjectLocalSkills(
   runner: CommandRunner,
   repoRoot: string,
   skillPaths: string[],
+  piAgentDir: string,
 ): Promise<SkillCheckEntry> {
   const result = await runner.run(
     "pi",
@@ -320,7 +323,7 @@ async function smokeTestProjectLocalSkills(
       "-p",
       PROJECT_LOCAL_SKILLS_PROMPT,
     ],
-    { cwd: repoRoot },
+    { cwd: repoRoot, env: piAgentEnv(piAgentDir) },
   );
 
   if (result.code === 0 && result.stdout.includes("PATCHMILL_SKILLS_OK")) {
@@ -340,6 +343,7 @@ async function checkSkills(
   runner: CommandRunner,
   config: PatchmillConfig,
   repoRoot: string,
+  piAgentDir: string,
 ): Promise<DoctorCheckResult> {
   const configuredSkills = PATCHMILL_SKILL_KEYS.flatMap((key) => {
     const skill = config.skills[key];
@@ -389,7 +393,12 @@ async function checkSkills(
     resolution.paths.length > 0
   ) {
     entries.push(
-      await smokeTestProjectLocalSkills(runner, repoRoot, resolution.paths),
+      await smokeTestProjectLocalSkills(
+        runner,
+        repoRoot,
+        resolution.paths,
+        piAgentDir,
+      ),
     );
   }
 
@@ -412,6 +421,7 @@ export async function runDoctorChecks(
   options: DoctorOptions,
 ): Promise<DoctorCheckResult[]> {
   const results: DoctorCheckResult[] = [];
+  const piAgentDir = localPiAgentDir(options.repoRoot);
   let loaded;
   try {
     loaded = await loadPatchmillConfigState(
@@ -498,7 +508,9 @@ export async function runDoctorChecks(
       );
     }
 
-    results.push(await checkSkills(runner, config, options.repoRoot));
+    results.push(
+      await checkSkills(runner, config, options.repoRoot, piAgentDir),
+    );
 
     const paths = [
       ["plans", config.paths.plansDir],
@@ -526,7 +538,7 @@ export async function runDoctorChecks(
   }
 
   results.push(await checkPiBinary(runner, options.repoRoot));
-  results.push(await checkPiProvider(runner, options.repoRoot));
+  results.push(await checkPiProvider(runner, options.repoRoot, piAgentDir));
 
   return results;
 }

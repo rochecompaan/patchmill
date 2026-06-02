@@ -239,6 +239,23 @@ test("runPiPrompt passes the configured todo root to Pi", async () => {
   });
 });
 
+test("runPiPrompt passes the local Pi agent dir to Pi", async () => {
+  const runner = createMockRunner((call) => {
+    assert.equal(call.env?.PI_CODING_AGENT_DIR, "/repo/.patchmill/pi-agent");
+    assert.equal(call.env?.PI_TODO_PATH, DEFAULT_PI_TASK_CONTRACT.todoRoot);
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    piAgentDir: "/repo/.patchmill/pi-agent",
+  });
+});
+
 test("runPiPrompt logs pi stdout and stderr chunks", async () => {
   const events: AgentIssueProgressEvent[] = [];
   const runner = createStaticCommandRunner([

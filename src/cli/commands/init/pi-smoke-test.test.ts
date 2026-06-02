@@ -8,13 +8,23 @@ function runner(result: {
   stdout?: string;
   stderr?: string;
 }): CommandRunner & {
-  calls: Array<{ command: string; args: string[]; cwd?: string }>;
+  calls: Array<{
+    command: string;
+    args: string[];
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+  }>;
 } {
-  const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+  const calls: Array<{
+    command: string;
+    args: string[];
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+  }> = [];
   return {
     calls,
     async run(command, args, options = {}) {
-      calls.push({ command, args, cwd: options.cwd });
+      calls.push({ command, args, cwd: options.cwd, env: options.env });
       return { stdout: "", stderr: "", ...result };
     },
   };
@@ -39,6 +49,7 @@ test("runPiSmokeTest succeeds when Pi prints sentinel", async () => {
     {
       command: "pi",
       cwd: "/repo",
+      env: undefined,
       args: [
         "--no-session",
         "--no-context-files",
@@ -50,6 +61,21 @@ test("runPiSmokeTest succeeds when Pi prints sentinel", async () => {
       ],
     },
   ]);
+});
+
+test("runPiSmokeTest scopes Pi to the provided local agent dir", async () => {
+  const fake = runner({ code: 0, stdout: "PATCHMILL_PI_OK\n" });
+
+  await runPiSmokeTest(fake, {
+    repoRoot: "/repo",
+    model: "openai-codex/gpt-5.5",
+    piAgentDir: "/repo/.patchmill/pi-agent",
+  });
+
+  assert.equal(
+    fake.calls[0]?.env?.PI_CODING_AGENT_DIR,
+    "/repo/.patchmill/pi-agent",
+  );
 });
 
 test("runPiSmokeTest omits model when no model is selected", async () => {

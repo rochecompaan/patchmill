@@ -32,6 +32,7 @@ type Call = {
   command: string;
   args: string[];
   cwd?: string;
+  env?: Record<string, string | undefined>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
 };
@@ -149,6 +150,7 @@ function createMockRunner(
         command,
         args: [...args],
         cwd: options.cwd,
+        ...(options.env ? { env: options.env } : {}),
         onStdout: options.onStdout,
         onStderr: options.onStderr,
       };
@@ -3390,6 +3392,10 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
     if (call.command === "pi") {
       piCalls += 1;
       const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.equal(
+        call.env?.PI_CODING_AGENT_DIR,
+        join(config.repoRoot, ".patchmill", "pi-agent"),
+      );
       if (piCalls === 1) {
         const finalText = `created plan\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`;
         await writePiSessionMessage(call, "plan output\n", {
