@@ -24,8 +24,18 @@ import {
   type InitialConfigSkills,
 } from "./config-writer.ts";
 import { ensurePatchmillLocalExcludeEntries } from "./local-ignore.ts";
+import {
+  localPiAgentDir,
+  readLocalPiDefaultModel,
+  writeLocalPiDefaultModel,
+} from "./pi-agent-settings.ts";
+import { selectModelInteractively as defaultSelectModelInteractively } from "./pi-model-selector.ts";
+import {
+  selectPiModel,
+  type PiModelSelection,
+  type SelectInteractiveModel,
+} from "./pi-model-selection.ts";
 import { detectPiReadiness, type PiReadiness } from "./pi-preflight.ts";
-import { selectPiModel, type PiModelSelection } from "./pi-model-selection.ts";
 import { runPiSmokeTest, type PiSmokeTestResult } from "./pi-smoke-test.ts";
 
 export const HELP_TEXT = `Usage:
@@ -46,7 +56,9 @@ export type InitOutput = {
 };
 
 export type InitPrompt = (question: string) => Promise<string>;
-export type PiReadinessDetector = () => PiReadiness;
+export type PiReadinessDetector = (options: {
+  agentDir: string;
+}) => PiReadiness;
 export type PiSmokeTestRunner = typeof runPiSmokeTest;
 export type ProjectSkillInstaller = (options: {
   repoRoot: string;
@@ -128,6 +140,7 @@ export async function runInit(
     detectPiReadiness?: PiReadinessDetector;
     runPiSmokeTest?: PiSmokeTestRunner;
     isInteractive?: boolean;
+    selectModelInteractively?: SelectInteractiveModel;
     installProjectSkills?: ProjectSkillInstaller;
     validateExistingSkillDirectory?: ExistingSkillDirectoryValidator;
     setupLabels?: typeof ensureRequiredLabels;
@@ -183,6 +196,14 @@ export async function runInit(
   const consistencyWarning =
     "Warning: Patchmill config and skills are local-only by default. For consistent Patchmill runs across local machines and CI, consider committing patchmill.config.json and .patchmill/skills/ explicitly.";
   const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
+  const piAgentDir = localPiAgentDir(config.repoRoot);
+  let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>>;
+  let settingsWarning: string | undefined;
+  try {
+    currentDefault = await readLocalPiDefaultModel(piAgentDir);
+  } catch (error) {
+    settingsWarning = `Could not read local Pi settings: ${error instanceof Error ? error.message : String(error)}`;
+  }
 
   let labelSetupMessage: string;
   try {
@@ -213,10 +234,16 @@ export async function runInit(
     ].join("\n");
   }
 
-  const readiness = (options.detectPiReadiness ?? detectPiReadiness)();
+  const readiness = (options.detectPiReadiness ?? detectPiReadiness)({
+    agentDir: piAgentDir,
+  });
   const selection = await selectPiModel({
     readiness,
     isInteractive,
+    currentDefault,
+    selectModelInteractively:
+      options.selectModelInteractively ?? defaultSelectModelInteractively,
+    persistDefaultModel: (model) => writeLocalPiDefaultModel(piAgentDir, model),
   });
   const smoke =
     selection.status === "unavailable" &&
@@ -232,6 +259,7 @@ export async function runInit(
           createCommandRunner(),
           {
             repoRoot: config.repoRoot,
+            piAgentDir,
             model:
               selection.status === "selected"
                 ? selection.model
@@ -240,9 +268,10 @@ export async function runInit(
         );
   const piReady = smoke.status === "pass";
   const piMessage = formatPiSetupMessage(readiness, selection, smoke);
+  const piSettingsMessage = settingsWarning ? `${settingsWarning}\n\n` : "";
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piMessage}\n\n${nextSteps(piReady)}`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
   );
   return 0;
 }

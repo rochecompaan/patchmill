@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -450,6 +457,7 @@ test("runInit uses Pi-reported ready configuration without launching an interact
             },
           ],
         }),
+        selectModelInteractively: async ({ models }) => models[0],
         runPiSmokeTest: async () => ({
           status: "pass",
           message:
@@ -536,6 +544,111 @@ test("runInit reports manual setup when missing Pi readiness is declined", async
   assert.match(stdout.join("\n"), /Run `pi`, then `\/login`/);
   assert.match(stdout.join("\n"), /Pi setup is incomplete/);
   assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+});
+
+test("runInit persists selected model to local Pi settings and smoke-tests it", async () => {
+  const repoRoot = await tempRepo();
+  const stdout: string[] = [];
+  let smokeModel: string | undefined;
+  let smokeAgentDir: string | undefined;
+
+  assert.equal(
+    await runInit(
+      ["--skills", "none"],
+      repoRoot,
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        isInteractive: true,
+        setupLabels: async () => ({
+          status: "skipped",
+          message: "labels skipped",
+        }),
+        detectPiReadiness: () => ({
+          status: "ready",
+          message: "Pi reported 2 provider/model options with configured auth.",
+          models: [
+            {
+              provider: "anthropic",
+              providerName: "Anthropic",
+              id: "claude-sonnet-4-5",
+              label: "Anthropic / Claude Sonnet 4.5",
+              value: "anthropic/claude-sonnet-4-5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+            {
+              provider: "openai-codex",
+              providerName: "OpenAI Codex",
+              id: "gpt-5.5",
+              label: "OpenAI Codex / GPT-5.5",
+              value: "openai-codex/gpt-5.5",
+              authSource: "stored",
+              reasoning: true,
+              input: ["text"],
+            },
+          ],
+        }),
+        selectModelInteractively: async ({ models }) => models[1],
+        runPiSmokeTest: async (_runner, options) => {
+          smokeModel = options.model;
+          smokeAgentDir = options.piAgentDir;
+          return {
+            status: "pass",
+            message:
+              "Pi completed the provider smoke test with openai-codex/gpt-5.5.",
+            command: "pi smoke",
+          };
+        },
+      },
+    ),
+    0,
+  );
+
+  assert.equal(smokeModel, "openai-codex/gpt-5.5");
+  assert.equal(smokeAgentDir, join(repoRoot, ".patchmill", "pi-agent"));
+  assert.deepEqual(
+    JSON.parse(
+      await readFile(
+        join(repoRoot, ".patchmill", "pi-agent", "settings.json"),
+        "utf8",
+      ),
+    ),
+    {
+      defaultProvider: "openai-codex",
+      defaultModel: "gpt-5.5",
+    },
+  );
+  assert.match(stdout.join("\n"), /Using Pi model OpenAI Codex \/ GPT-5\.5/);
+});
+
+test("runInit skips model selector and local settings when no models are available", async () => {
+  const repoRoot = await tempRepo();
+  let selectorCalled = false;
+
+  assert.equal(
+    await runInit(
+      ["--skills", "none"],
+      repoRoot,
+      { stdout: () => undefined, stderr: () => undefined },
+      {
+        isInteractive: true,
+        detectPiReadiness: missingPiReadiness,
+        selectModelInteractively: async () => {
+          selectorCalled = true;
+          return undefined;
+        },
+        runPiSmokeTest: failingPiSmokeTest,
+      },
+    ),
+    0,
+  );
+
+  assert.equal(selectorCalled, false);
+  await assert.rejects(
+    stat(join(repoRoot, ".patchmill", "pi-agent", "settings.json")),
+    /ENOENT/u,
+  );
 });
 
 test("runInit runs Pi smoke test when Pi readiness is available", async () => {
@@ -737,7 +850,7 @@ test("runInit does not print manual login remediation after non-interactive read
   assert.match(output, /Next:\n {2}patchmill triage --dry-run/);
 });
 
-test("runInit deterministically smoke-tests the default model when no interactive selector callback is wired", async () => {
+test("runInit smoke-tests the default model when the interactive selector is cancelled", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
   const prompts: string[] = [];
@@ -770,6 +883,7 @@ test("runInit deterministically smoke-tests the default model when no interactiv
             },
           ],
         }),
+        selectModelInteractively: async () => undefined,
         runPiSmokeTest: async (_runner, options) => {
           smokeModel = options.model;
           return {
