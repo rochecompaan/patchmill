@@ -1,38 +1,71 @@
-import { formatPiModelLabel, type PiReadiness } from "./pi-preflight.ts";
-
-export type ModelSelectionPrompt = (question: string) => Promise<string>;
+import type { LocalPiDefaultModel } from "./pi-agent-settings.ts";
+import { selectModelInteractively } from "./pi-model-selector.ts";
+import {
+  formatPiModelLabel,
+  type PiModelChoice,
+  type PiReadiness,
+} from "./pi-preflight.ts";
 
 export type PiModelSelection =
-  | { status: "selected"; model: string; message: string }
+  | {
+      status: "selected";
+      model: string;
+      provider: string;
+      modelId: string;
+      message: string;
+    }
   | {
       status: "unavailable";
       reason: "not-ready" | "invalid-selection";
       message: string;
     };
 
-function isModelValue(value: string): boolean {
-  return /^[^\s/]+\/.+$/u.test(value.trim());
-}
-
-function modelMenu(
-  readiness: Extract<PiReadiness, { status: "ready" }>,
-): string {
-  return readiness.models
-    .map(
-      (model, index) =>
-        `  ${index + 1}. ${formatPiModelLabel(model)} (${model.value})`,
-    )
-    .join("\n");
-}
+export type SelectInteractiveModel = typeof selectModelInteractively;
+export type PersistDefaultModel = (
+  selection: LocalPiDefaultModel,
+) => Promise<void>;
 
 function selectedMessage(model: { label: string; value: string }): string {
   return `Using Pi model ${model.label}.`;
 }
 
+function toSelection(
+  model: PiModelChoice,
+): Extract<PiModelSelection, { status: "selected" }> {
+  return {
+    status: "selected",
+    model: model.value,
+    provider: model.provider,
+    modelId: model.id,
+    message: selectedMessage(model),
+  };
+}
+
+function findCurrentDefault(
+  models: PiModelChoice[],
+  current: LocalPiDefaultModel | undefined,
+): PiModelChoice | undefined {
+  return current
+    ? models.find(
+        (model) =>
+          model.provider === current.provider && model.id === current.modelId,
+      )
+    : undefined;
+}
+
+async function persistSelection(
+  persistDefaultModel: PersistDefaultModel | undefined,
+  model: PiModelChoice,
+): Promise<void> {
+  await persistDefaultModel?.({ provider: model.provider, modelId: model.id });
+}
+
 export async function selectPiModel(options: {
   readiness: PiReadiness;
   isInteractive: boolean;
-  prompt: ModelSelectionPrompt;
+  currentDefault?: LocalPiDefaultModel;
+  selectModelInteractively?: SelectInteractiveModel;
+  persistDefaultModel?: PersistDefaultModel;
 }): Promise<PiModelSelection> {
   if (options.readiness.status !== "ready") {
     return {
@@ -51,50 +84,20 @@ export async function selectPiModel(options: {
     };
   }
 
-  if (!options.isInteractive) {
-    return {
-      status: "selected",
-      model: first.value,
-      message: selectedMessage(first),
-    };
-  }
+  const select = options.selectModelInteractively ?? selectModelInteractively;
+  const selected = options.isInteractive
+    ? ((await select({
+        models: options.readiness.models,
+        current: options.currentDefault,
+      })) ??
+      findCurrentDefault(options.readiness.models, options.currentDefault) ??
+      first)
+    : (findCurrentDefault(options.readiness.models, options.currentDefault) ??
+      first);
 
-  const menu = modelMenu(options.readiness);
-  const answer = await options.prompt(
-    `Select a Pi model for the smoke test:\n${menu}\nChoose 1-${options.readiness.models.length} or enter provider/model [1]: `,
-  );
-  const trimmed = answer.trim();
-  if (trimmed === "") {
-    return {
-      status: "selected",
-      model: first.value,
-      message: selectedMessage(first),
-    };
-  }
-
-  const index = Number.parseInt(trimmed, 10) - 1;
-  const selected = /^\d+$/u.test(trimmed)
-    ? options.readiness.models[index]
-    : undefined;
-  if (selected) {
-    return {
-      status: "selected",
-      model: selected.value,
-      message: selectedMessage(selected),
-    };
-  }
-
-  if (isModelValue(trimmed)) {
-    return {
-      status: "selected",
-      model: trimmed,
-      message: `Using manually entered Pi model ${trimmed}.`,
-    };
-  }
-
-  return {
-    status: "unavailable",
-    reason: "invalid-selection",
-    message: `Invalid Pi model selection: ${trimmed}. Enter a listed number or provider/model.`,
-  };
+  await persistSelection(options.persistDefaultModel, selected);
+  return toSelection({
+    ...selected,
+    label: formatPiModelLabel(selected),
+  });
 }

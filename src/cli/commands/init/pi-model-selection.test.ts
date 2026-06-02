@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { PiModelChoice, PiReadiness } from "./pi-preflight.ts";
-import {
-  selectPiModel,
-  type ModelSelectionPrompt,
-} from "./pi-model-selection.ts";
+import { selectPiModel } from "./pi-model-selection.ts";
 
 const model: PiModelChoice = {
   provider: "anthropic",
@@ -17,88 +14,89 @@ const model: PiModelChoice = {
   input: ["text"],
 };
 
-const ready: PiReadiness = {
-  status: "ready",
-  models: [model],
-  message: "Pi reported 1 provider/model option with configured auth.",
-};
-
-function prompt(
-  answers: string[],
-): ModelSelectionPrompt & { questions: string[] } {
-  const questions: string[] = [];
-  return Object.assign(
-    async (question: string) => {
-      questions.push(question);
-      return answers.shift() ?? "";
-    },
-    { questions },
-  );
+function secondModel(): PiModelChoice {
+  return {
+    provider: "openai-codex",
+    providerName: "OpenAI Codex",
+    id: "gpt-5.5",
+    label: "OpenAI Codex / GPT-5.5",
+    value: "openai-codex/gpt-5.5",
+    authSource: "stored",
+    reasoning: true,
+    input: ["text"],
+  };
 }
 
-test("selectPiModel selects first ready model without prompting in non-interactive mode", async () => {
-  const ask = prompt([]);
+const twoReady: PiReadiness = {
+  status: "ready",
+  models: [model, secondModel()],
+  message: "Pi reported 2 provider/model options with configured auth.",
+};
+
+test("selectPiModel uses the interactive selector and persists the selected model", async () => {
+  const persisted: Array<{ provider: string; modelId: string }> = [];
 
   const result = await selectPiModel({
-    readiness: ready,
-    isInteractive: false,
-    prompt: ask,
+    readiness: twoReady,
+    isInteractive: true,
+    currentDefault: { provider: "anthropic", modelId: "claude-sonnet-4-5" },
+    selectModelInteractively: async () => secondModel(),
+    persistDefaultModel: async (selection) => {
+      persisted.push(selection);
+    },
   });
 
   assert.deepEqual(result, {
     status: "selected",
-    model: "anthropic/claude-sonnet-4-5",
-    message: "Using Pi model Anthropic / Claude Sonnet 4.5.",
+    model: "openai-codex/gpt-5.5",
+    provider: "openai-codex",
+    modelId: "gpt-5.5",
+    message: "Using Pi model OpenAI Codex / GPT-5.5.",
   });
-  assert.deepEqual(ask.questions, []);
+  assert.deepEqual(persisted, [
+    { provider: "openai-codex", modelId: "gpt-5.5" },
+  ]);
 });
 
-test("selectPiModel prompts for model when ready and interactive", async () => {
-  const ask = prompt(["1"]);
-
+test("selectPiModel falls back to current default when selector is cancelled", async () => {
   const result = await selectPiModel({
-    readiness: ready,
+    readiness: twoReady,
     isInteractive: true,
-    prompt: ask,
+    currentDefault: { provider: "openai-codex", modelId: "gpt-5.5" },
+    selectModelInteractively: async () => undefined,
+  });
+
+  assert.equal(result.status, "selected");
+  assert.equal(result.model, "openai-codex/gpt-5.5");
+});
+
+test("selectPiModel falls back to first model when selector is cancelled without a current default", async () => {
+  const result = await selectPiModel({
+    readiness: twoReady,
+    isInteractive: true,
+    selectModelInteractively: async () => undefined,
   });
 
   assert.equal(result.status, "selected");
   assert.equal(result.model, "anthropic/claude-sonnet-4-5");
-  assert.equal(ask.questions.length, 1);
-  assert.match(ask.questions[0] ?? "", /Select a Pi model/);
 });
 
-test("selectPiModel accepts manual provider/model input", async () => {
-  const ask = prompt(["openai/gpt-4.1"]);
+test("selectPiModel persists deterministic non-interactive selection", async () => {
+  const persisted: Array<{ provider: string; modelId: string }> = [];
 
   const result = await selectPiModel({
-    readiness: ready,
-    isInteractive: true,
-    prompt: ask,
+    readiness: twoReady,
+    isInteractive: false,
+    persistDefaultModel: async (selection) => {
+      persisted.push(selection);
+    },
   });
 
-  assert.deepEqual(result, {
-    status: "selected",
-    model: "openai/gpt-4.1",
-    message: "Using manually entered Pi model openai/gpt-4.1.",
-  });
-});
-
-test("selectPiModel rejects invalid interactive model input", async () => {
-  const ask = prompt(["999"]);
-
-  const result = await selectPiModel({
-    readiness: ready,
-    isInteractive: true,
-    prompt: ask,
-  });
-
-  assert.deepEqual(result, {
-    status: "unavailable",
-    reason: "invalid-selection",
-    message:
-      "Invalid Pi model selection: 999. Enter a listed number or provider/model.",
-  });
+  assert.equal(result.status, "selected");
+  assert.equal(result.model, "anthropic/claude-sonnet-4-5");
+  assert.deepEqual(persisted, [
+    { provider: "anthropic", modelId: "claude-sonnet-4-5" },
+  ]);
 });
 
 test("selectPiModel does not fabricate a model when readiness is missing", async () => {
@@ -109,7 +107,6 @@ test("selectPiModel does not fabricate a model when readiness is missing", async
       message: "Pi did not report any provider/model with configured auth.",
     },
     isInteractive: true,
-    prompt: prompt(["anthropic/claude-haiku-4-5"]),
   });
 
   assert.deepEqual(result, {
