@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/rochecompaan/patchmill/compare/v0.5.1...v0.6.0) (2026-06-02)
+
+
+### Features
+
+* **init:** add interactive Pi model selector ([#14](https://github.com/rochecompaan/patchmill/issues/14)) ([dbf9b96](https://github.com/rochecompaan/patchmill/commit/dbf9b961b93fc3e6d515a6508832eab338f7ee9e))
+* **triage:** run default triage without flags ([#12](https://github.com/rochecompaan/patchmill/issues/12)) ([6ba17d9](https://github.com/rochecompaan/patchmill/commit/6ba17d95af3f4de1d1737fe236cfd97a9b7ca079))
+
 ## [0.5.1](https://github.com/rochecompaan/patchmill/compare/v0.5.0...v0.5.1) (2026-06-01)
 
 
