@@ -91,6 +91,17 @@ test("selectPiModel falls back to first model without an interactive selector ca
   assert.equal(result.model, "anthropic/claude-sonnet-4-5");
 });
 
+test("selectPiModel falls back to first model when selector is cancelled without a current default", async () => {
+  const result = await selectPiModel({
+    readiness: twoReady,
+    isInteractive: true,
+    selectModelInteractively: async () => undefined,
+  });
+
+  assert.equal(result.status, "selected");
+  assert.equal(result.model, "anthropic/claude-sonnet-4-5");
+});
+
 test("selectPiModel rejects and does not persist an unknown interactive selection", async () => {
   const persisted: Array<{ provider: string; modelId: string }> = [];
 
