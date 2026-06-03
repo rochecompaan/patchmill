@@ -60,6 +60,8 @@ class ModelSelectorComponent extends Container implements Focusable {
       if (model) this.onSelect(model);
     };
 
+    this.addChild(new Text("Select Patchmill orchestration model:"));
+    this.addChild(new Text(""));
     this.addChild(this.searchInput);
     this.addChild(new Text(""));
     this.addChild(this.listContainer);

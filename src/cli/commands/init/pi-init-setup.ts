@@ -1,5 +1,6 @@
 import { createCommandRunner } from "../triage/command.ts";
 import type { LocalPiDefaultModel } from "./pi-agent-settings.ts";
+import { setupPiInteractively as defaultSetupPiInteractively } from "./pi-auth-flow.ts";
 import {
   selectPiModel,
   type PersistDefaultModel,
@@ -14,6 +15,8 @@ export type InteractivePiSetup = (options: {
   agentDir: string;
   currentDefault: LocalPiDefaultModel | undefined;
   initialReadiness: PiReadiness;
+  selectModelInteractively?: SelectInteractiveModel;
+  persistDefaultModel?: PersistDefaultModel;
 }) => Promise<{
   readiness: PiReadiness;
   selection: PiModelSelection;
@@ -60,21 +63,8 @@ function abortingSelectionStatus(
   return undefined;
 }
 
-export async function setupPiInteractively(options: {
-  initialReadiness: PiReadiness;
-}): Promise<{
-  readiness: PiReadiness;
-  selection: PiModelSelection;
-}> {
-  return {
-    readiness: options.initialReadiness,
-    selection: {
-      status: "unavailable",
-      reason: "not-ready",
-      message: options.initialReadiness.message,
-    },
-  };
-}
+export const setupPiInteractively: InteractivePiSetup =
+  defaultSetupPiInteractively;
 
 export async function resolvePiInitSetup(options: {
   repoRoot: string;
@@ -97,6 +87,8 @@ export async function resolvePiInitSetup(options: {
       agentDir: options.piAgentDir,
       currentDefault: options.currentDefault,
       initialReadiness: readiness,
+      selectModelInteractively: options.selectModelInteractively,
+      persistDefaultModel: options.persistDefaultModel,
     });
     readiness = setup.readiness;
     selection = setup.selection;

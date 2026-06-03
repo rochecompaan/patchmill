@@ -190,7 +190,7 @@ test("runInit reports Patchmill setup guidance when Pi readiness remains missing
       repoRoot,
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
-        isInteractive: true,
+        isInteractive: false,
         detectPiReadiness: missingPiReadiness,
         runPiSmokeTest: failingPiSmokeTest,
         prompt: async () => "no",
@@ -389,6 +389,19 @@ test("runInit skips model selector and local settings when no models are availab
       {
         isInteractive: true,
         detectPiReadiness: missingPiReadiness,
+        resolvePiInitSetup: (setupOptions) =>
+          resolvePiInitSetup({
+            ...setupOptions,
+            setupPiInteractively: async () => ({
+              readiness: missingPiReadiness(),
+              selection: {
+                status: "unavailable",
+                reason: "not-ready",
+                message:
+                  "Pi did not report any provider/model with configured auth.",
+              },
+            }),
+          }),
         selectModelInteractively: async () => {
           selectorCalled = true;
           return undefined;
