@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/rochecompaan/patchmill/compare/v0.7.0...v0.7.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **init:** add Patchmill-owned Pi auth setup ([#17](https://github.com/rochecompaan/patchmill/issues/17)) ([949136a](https://github.com/rochecompaan/patchmill/commit/949136a3e447c0c73c5c69f566ee72ee0f3aa582))
+
 ## [0.7.0](https://github.com/rochecompaan/patchmill/compare/v0.6.0...v0.7.0) (2026-06-03)
 
 
