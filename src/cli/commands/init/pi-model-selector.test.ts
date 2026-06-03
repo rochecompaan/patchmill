@@ -105,6 +105,21 @@ test("selectModelInteractively resolves selected model even when drainInput fail
   assert.equal(terminal.drainCalls, 1);
 });
 
+test("selectModelInteractively renders a main orchestration model instruction", async () => {
+  const terminal = new FakeTerminal();
+  const selection = selectModelInteractively({ models, terminal });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(
+    terminal.writes.join(""),
+    /Select Patchmill orchestration model:/,
+  );
+
+  terminal.sendInput("\n");
+
+  await selection;
+});
+
 test("selectModelInteractively renders a single selector count for the visible model list", async () => {
   const terminal = new FakeTerminal();
   const selection = selectModelInteractively({ models: manyModels, terminal });
