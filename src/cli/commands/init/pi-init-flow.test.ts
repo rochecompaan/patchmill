@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runInit } from "./main.ts";
+import { resolvePiInitSetup } from "./pi-init-setup.ts";
 import type { PiModelChoice, PiReadiness } from "./pi-preflight.ts";
 
 async function tempRepo(): Promise<string> {
@@ -142,19 +143,23 @@ test("runInit starts Patchmill-owned interactive Pi setup when readiness is miss
       {
         isInteractive: true,
         detectPiReadiness: missingPiReadiness,
-        setupPiInteractively: async ({ agentDir }) => {
-          setupAgentDir = agentDir;
-          return {
-            readiness: readyReadiness([anthropicModel()]),
-            selection: {
-              status: "selected",
-              model: "anthropic/claude-sonnet-4-5",
-              provider: "anthropic",
-              modelId: "claude-sonnet-4-5",
-              message: "Using Pi model Anthropic / Claude Sonnet 4.5.",
+        resolvePiInitSetup: (setupOptions) =>
+          resolvePiInitSetup({
+            ...setupOptions,
+            setupPiInteractively: async ({ agentDir }) => {
+              setupAgentDir = agentDir;
+              return {
+                readiness: readyReadiness([anthropicModel()]),
+                selection: {
+                  status: "selected",
+                  model: "anthropic/claude-sonnet-4-5",
+                  provider: "anthropic",
+                  modelId: "claude-sonnet-4-5",
+                  message: "Using Pi model Anthropic / Claude Sonnet 4.5.",
+                },
+              };
             },
-          };
-        },
+          }),
         runPiSmokeTest: async (_runner, options) => {
           smokeModel = options.model;
           return {

@@ -30,13 +30,14 @@ import {
   writeLocalPiDefaultModel,
 } from "./pi-agent-settings.ts";
 import { selectModelInteractively as defaultSelectModelInteractively } from "./pi-model-selector.ts";
+import type { SelectInteractiveModel } from "./pi-model-selection.ts";
 import {
-  selectPiModel,
-  type PiModelSelection,
-  type SelectInteractiveModel,
-} from "./pi-model-selection.ts";
+  resolvePiInitSetup as defaultResolvePiInitSetup,
+  type PiInitSetupResolver,
+  type PiInitSetupResult,
+} from "./pi-init-setup.ts";
 import { detectPiReadiness, type PiReadiness } from "./pi-preflight.ts";
-import { runPiSmokeTest, type PiSmokeTestResult } from "./pi-smoke-test.ts";
+import { runPiSmokeTest } from "./pi-smoke-test.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill init [options]
@@ -67,16 +68,6 @@ export type ExistingSkillDirectoryValidator = (
   repoRoot: string,
   skillDir: string,
 ) => Promise<InitialConfigSkills>;
-export type InteractivePiSetup = (options: {
-  repoRoot: string;
-  agentDir: string;
-  currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>>;
-  output: InitOutput;
-}) => Promise<{
-  readiness: PiReadiness;
-  selection: PiModelSelection;
-}>;
-
 const DEFAULT_OUTPUT: InitOutput = {
   stdout: (line) => console.log(line),
   stderr: (line) => console.error(line),
@@ -105,32 +96,25 @@ function nextSteps(piReady: boolean) {
     : "Run `patchmill doctor` after completing Pi setup.\n\nNext:\n  patchmill doctor";
 }
 
-function selectedModelFromReadiness(
-  readiness: PiReadiness,
-): string | undefined {
-  return readiness.status === "ready" ? readiness.models[0]?.value : undefined;
-}
-
-function formatPiSetupMessage(
-  readiness: PiReadiness,
-  selection: PiModelSelection,
-  smoke: PiSmokeTestResult,
-): string {
-  const messages = [readiness.message];
-  if (readiness.status === "ready" && readiness.warning) {
-    messages.push(readiness.warning);
+function formatPiSetupMessage(setup: PiInitSetupResult): string {
+  const messages = [setup.readiness.message];
+  if (setup.readiness.status === "ready" && setup.readiness.warning) {
+    messages.push(setup.readiness.warning);
   }
-  if (selection.message !== readiness.message) {
-    messages.push(selection.message);
+  if (setup.selection.message !== setup.readiness.message) {
+    messages.push(setup.selection.message);
   }
-  if (smoke.status === "pass") {
-    return [...messages, smoke.message].join("\n\n");
+  if (setup.status === "ready") {
+    return [...messages, setup.smoke.message].join("\n\n");
+  }
+  if (setup.status === "cancelled" || setup.status === "invalid") {
+    return messages.join("\n\n");
   }
   return [
     ...messages,
     "Pi provider/model setup is incomplete.",
-    smoke.message,
-    smoke.details ? `Details:\n${smoke.details}` : undefined,
+    setup.smoke.message,
+    setup.smoke.details ? `Details:\n${setup.smoke.details}` : undefined,
     "Run `patchmill init` in an interactive terminal to configure provider auth and select a model.",
     "After setup, run `patchmill doctor`.",
   ]
@@ -138,12 +122,8 @@ function formatPiSetupMessage(
     .join("\n\n");
 }
 
-function shouldAbortForSelection(selection: PiModelSelection): boolean {
-  return (
-    selection.status === "unavailable" &&
-    (selection.reason === "cancelled" ||
-      selection.reason === "invalid-selection")
-  );
+function shouldAbortPiSetup(setup: PiInitSetupResult): boolean {
+  return setup.status === "cancelled" || setup.status === "invalid";
 }
 
 export async function runInit(
@@ -158,7 +138,7 @@ export async function runInit(
     runPiSmokeTest?: PiSmokeTestRunner;
     isInteractive?: boolean;
     selectModelInteractively?: SelectInteractiveModel;
-    setupPiInteractively?: InteractivePiSetup;
+    resolvePiInitSetup?: PiInitSetupResolver;
     installProjectSkills?: ProjectSkillInstaller;
     validateExistingSkillDirectory?: ExistingSkillDirectoryValidator;
     setupLabels?: typeof ensureRequiredLabels;
@@ -254,7 +234,7 @@ export async function runInit(
     ].join("\n");
   }
 
-  let readiness = (options.detectPiReadiness ?? detectPiReadiness)({
+  const readiness = (options.detectPiReadiness ?? detectPiReadiness)({
     agentDir: piAgentDir,
   });
   const persistDefaultModel = settingsWarning
@@ -266,51 +246,21 @@ export async function runInit(
           settingsWriteWarning = `Could not save local Pi default model: ${error instanceof Error ? error.message : String(error)}`;
         }
       };
-  let selection: PiModelSelection;
-  if (
-    readiness.status !== "ready" &&
-    isInteractive &&
-    options.setupPiInteractively
-  ) {
-    const setup = await options.setupPiInteractively({
-      repoRoot: config.repoRoot,
-      agentDir: piAgentDir,
-      currentDefault,
-      output,
-    });
-    readiness = setup.readiness;
-    selection = setup.selection;
-  } else {
-    selection = await selectPiModel({
-      readiness,
-      isInteractive,
-      currentDefault,
-      selectModelInteractively:
-        options.selectModelInteractively ?? defaultSelectModelInteractively,
-      persistDefaultModel,
-    });
-  }
-  const smoke = shouldAbortForSelection(selection)
-    ? {
-        status: "fail" as const,
-        message: `Pi smoke test was not run because ${
-          selection.reason === "cancelled"
-            ? "model selection was cancelled"
-            : "model selection was invalid"
-        }.`,
-        command: "pi smoke test not run",
-        details: selection.message,
-      }
-    : await (options.runPiSmokeTest ?? runPiSmokeTest)(createCommandRunner(), {
-        repoRoot: config.repoRoot,
-        piAgentDir,
-        model:
-          selection.status === "selected"
-            ? selection.model
-            : selectedModelFromReadiness(readiness),
-      });
-  const piReady = smoke.status === "pass";
-  const piMessage = formatPiSetupMessage(readiness, selection, smoke);
+  const piSetup = await (
+    options.resolvePiInitSetup ?? defaultResolvePiInitSetup
+  )({
+    repoRoot: config.repoRoot,
+    piAgentDir,
+    readiness,
+    isInteractive,
+    currentDefault,
+    selectModelInteractively:
+      options.selectModelInteractively ?? defaultSelectModelInteractively,
+    persistDefaultModel,
+    runPiSmokeTest: options.runPiSmokeTest,
+  });
+  const piReady = piSetup.status === "ready";
+  const piMessage = formatPiSetupMessage(piSetup);
   const piSettingsWarnings = [settingsWarning, settingsWriteWarning]
     .filter((warning): warning is string => Boolean(warning))
     .join("\n\n");
@@ -321,7 +271,7 @@ export async function runInit(
   output.stdout(
     `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
   );
-  return shouldAbortForSelection(selection) ? 1 : 0;
+  return shouldAbortPiSetup(piSetup) ? 1 : 0;
 }
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
