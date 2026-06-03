@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/rochecompaan/patchmill/compare/v0.6.0...v0.7.0) (2026-06-03)
+
+
+### Features
+
+* **init:** add auth provider selector ([#15](https://github.com/rochecompaan/patchmill/issues/15)) ([9404ec4](https://github.com/rochecompaan/patchmill/commit/9404ec4d59085dd2b5934db83322f1968c0dbf2b))
+
 ## [0.6.0](https://github.com/rochecompaan/patchmill/compare/v0.5.1...v0.6.0) (2026-06-02)
 
 
