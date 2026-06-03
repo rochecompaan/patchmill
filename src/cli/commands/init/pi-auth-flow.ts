@@ -47,6 +47,7 @@ export type OAuthLoginCallbacksLike = {
     options: Array<{ id: string; label: string }>;
   }) => Promise<string | undefined>;
   signal?: AbortSignal;
+  dispose?: () => void;
 };
 
 export type PiAuthFlowStorage = AuthStorageLike & {
@@ -177,10 +178,13 @@ export async function runInteractivePiAuthSetup(
       options.authStorage.set(provider.id, { type: "api_key", key: trimmed });
     }
   } else {
-    await options.authStorage.login(
-      provider.id,
-      options.oauthCallbacks?.(provider) ?? createOAuthCallbacks(),
-    );
+    const callbacks =
+      options.oauthCallbacks?.(provider) ?? createOAuthCallbacks();
+    try {
+      await options.authStorage.login(provider.id, callbacks);
+    } finally {
+      callbacks.dispose?.();
+    }
   }
 
   options.registry.refresh();

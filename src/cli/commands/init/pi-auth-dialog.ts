@@ -1,3 +1,4 @@
+import { exec } from "node:child_process";
 import {
   Container,
   Input,
@@ -143,6 +144,7 @@ async function promptText(options: {
   prompt: string;
   allowEmpty?: boolean;
   terminal?: Terminal;
+  signal?: AbortSignal;
 }): Promise<string | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
   const tui = new TUI(terminal, true);
@@ -152,8 +154,11 @@ async function promptText(options: {
     const finish = (value: string | undefined): void => {
       if (finished) return;
       finished = true;
+      options.signal?.removeEventListener("abort", abortPrompt);
       void stopTui(tui, terminal).finally(() => resolve(value));
     };
+    const abortPrompt = (): void => finish(undefined);
+    options.signal?.addEventListener("abort", abortPrompt, { once: true });
 
     const component = new PromptComponent(
       options.title,
@@ -244,38 +249,76 @@ async function selectOption(options: {
   });
 }
 
+export type OpenUrl = (url: string) => void;
+
+function defaultOpenUrl(url: string): void {
+  const openCmd =
+    process.platform === "darwin"
+      ? "open"
+      : process.platform === "win32"
+        ? "start"
+        : "xdg-open";
+  try {
+    exec(`${openCmd} "${url}"`, () => undefined);
+  } catch {
+    // Ignore browser launch failures. The URL remains visible.
+  }
+}
+
 export function createOAuthCallbacks(
   options: {
     terminal?: Terminal;
+    openUrl?: OpenUrl;
   } = {},
 ): OAuthLoginCallbacksLike {
   const terminal = options.terminal ?? new ProcessTerminal();
+  const openUrl = options.openUrl ?? defaultOpenUrl;
+  const abortController = new AbortController();
+  let disposed = false;
   return {
+    signal: abortController.signal,
+    dispose: () => {
+      disposed = true;
+      abortController.abort();
+    },
     onAuth: (info) => {
       terminal.write(`\nOpen this URL to authenticate:\n${info.url}\n`);
       if (info.instructions) terminal.write(`${info.instructions}\n`);
+      openUrl(info.url);
     },
     onDeviceCode: (info) => {
       terminal.write(
         `\nOpen ${info.verificationUri} and enter code ${info.userCode}.\n`,
       );
+      openUrl(info.verificationUri);
     },
     onProgress: (message) => {
       terminal.write(`${message}\n`);
     },
-    onPrompt: (prompt) =>
-      promptText({
+    onPrompt: async (prompt) => {
+      const value = await promptText({
         title: prompt.message,
         prompt: prompt.placeholder ?? prompt.message,
         allowEmpty: prompt.allowEmpty,
         terminal,
-      }).then((value) => value ?? ""),
-    onManualCodeInput: () =>
-      promptText({
+        signal: abortController.signal,
+      });
+      if (value === undefined) throw new Error("Login cancelled");
+      return value;
+    },
+    onManualCodeInput: async () => {
+      const value = await promptText({
         title: "Paste redirect URL or code:",
         prompt: "Redirect URL or code:",
         terminal,
-      }).then((value) => value ?? ""),
+        signal: abortController.signal,
+      });
+      if (value === undefined) {
+        if (disposed) return "";
+        throw new Error("Login cancelled");
+      }
+      return value;
+    },
     onSelect: (prompt) =>
       selectOption({
         title: prompt.message,

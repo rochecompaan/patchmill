@@ -91,6 +91,31 @@ test("showBedrockInfoInteractively resolves when escape closes the panel", async
   assert.equal(terminal.stopCalls, 1);
 });
 
+test("createOAuthCallbacks opens browser URLs for auth callbacks", () => {
+  const terminal = new FakeTerminal();
+  const opened: string[] = [];
+  const callbacks = createOAuthCallbacks({
+    terminal,
+    openUrl: (url) => opened.push(url),
+  });
+
+  callbacks.onAuth({
+    url: "https://login.example.test/oauth",
+    instructions: "Complete login.",
+  });
+  callbacks.onDeviceCode({
+    verificationUri: "https://device.example.test",
+    userCode: "ABCD-EFGH",
+  });
+
+  assert.deepEqual(opened, [
+    "https://login.example.test/oauth",
+    "https://device.example.test",
+  ]);
+  assert.match(terminal.writes.join(""), /Complete login/);
+  assert.match(terminal.writes.join(""), /ABCD-EFGH/);
+});
+
 test("createOAuthCallbacks prompts for provider text input", async () => {
   const terminal = new FakeTerminal();
   const callbacks = createOAuthCallbacks({ terminal });
@@ -117,4 +142,16 @@ test("createOAuthCallbacks selects OAuth prompt options", async () => {
   terminal.sendInput("\n");
 
   assert.equal(await answer, "second");
+});
+
+test("createOAuthCallbacks dispose closes pending manual code input", async () => {
+  const terminal = new FakeTerminal();
+  const callbacks = createOAuthCallbacks({ terminal });
+  const manualInput = callbacks.onManualCodeInput?.();
+
+  await new Promise((resolve) => setImmediate(resolve));
+  callbacks.dispose?.();
+
+  assert.equal(await manualInput, "");
+  assert.equal(terminal.stopCalls, 1);
 });
