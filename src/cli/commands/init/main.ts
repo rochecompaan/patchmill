@@ -67,6 +67,15 @@ export type ExistingSkillDirectoryValidator = (
   repoRoot: string,
   skillDir: string,
 ) => Promise<InitialConfigSkills>;
+export type InteractivePiSetup = (options: {
+  repoRoot: string;
+  agentDir: string;
+  currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>>;
+  output: InitOutput;
+}) => Promise<{
+  readiness: PiReadiness;
+  selection: PiModelSelection;
+}>;
 
 const DEFAULT_OUTPUT: InitOutput = {
   stdout: (line) => console.log(line),
@@ -119,14 +128,22 @@ function formatPiSetupMessage(
   }
   return [
     ...messages,
-    "Pi setup is incomplete.",
+    "Pi provider/model setup is incomplete.",
     smoke.message,
     smoke.details ? `Details:\n${smoke.details}` : undefined,
-    "Run `pi`, then `/login` to configure a provider using Pi's native login flow.",
-    "After login, run `patchmill doctor`.",
+    "Run `patchmill init` in an interactive terminal to configure provider auth and select a model.",
+    "After setup, run `patchmill doctor`.",
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function shouldAbortForSelection(selection: PiModelSelection): boolean {
+  return (
+    selection.status === "unavailable" &&
+    (selection.reason === "cancelled" ||
+      selection.reason === "invalid-selection")
+  );
 }
 
 export async function runInit(
@@ -141,6 +158,7 @@ export async function runInit(
     runPiSmokeTest?: PiSmokeTestRunner;
     isInteractive?: boolean;
     selectModelInteractively?: SelectInteractiveModel;
+    setupPiInteractively?: InteractivePiSetup;
     installProjectSkills?: ProjectSkillInstaller;
     validateExistingSkillDirectory?: ExistingSkillDirectoryValidator;
     setupLabels?: typeof ensureRequiredLabels;
@@ -236,7 +254,7 @@ export async function runInit(
     ].join("\n");
   }
 
-  const readiness = (options.detectPiReadiness ?? detectPiReadiness)({
+  let readiness = (options.detectPiReadiness ?? detectPiReadiness)({
     agentDir: piAgentDir,
   });
   const persistDefaultModel = settingsWarning
@@ -248,35 +266,49 @@ export async function runInit(
           settingsWriteWarning = `Could not save local Pi default model: ${error instanceof Error ? error.message : String(error)}`;
         }
       };
-  const selection = await selectPiModel({
-    readiness,
-    isInteractive,
-    currentDefault,
-    selectModelInteractively:
-      options.selectModelInteractively ?? defaultSelectModelInteractively,
-    persistDefaultModel,
-  });
-  const smoke =
-    selection.status === "unavailable" &&
-    selection.reason === "invalid-selection"
-      ? {
-          status: "fail" as const,
-          message:
-            "Pi smoke test was not run because model selection was invalid.",
-          command: "pi smoke test not run",
-          details: selection.message,
-        }
-      : await (options.runPiSmokeTest ?? runPiSmokeTest)(
-          createCommandRunner(),
-          {
-            repoRoot: config.repoRoot,
-            piAgentDir,
-            model:
-              selection.status === "selected"
-                ? selection.model
-                : selectedModelFromReadiness(readiness),
-          },
-        );
+  let selection: PiModelSelection;
+  if (
+    readiness.status !== "ready" &&
+    isInteractive &&
+    options.setupPiInteractively
+  ) {
+    const setup = await options.setupPiInteractively({
+      repoRoot: config.repoRoot,
+      agentDir: piAgentDir,
+      currentDefault,
+      output,
+    });
+    readiness = setup.readiness;
+    selection = setup.selection;
+  } else {
+    selection = await selectPiModel({
+      readiness,
+      isInteractive,
+      currentDefault,
+      selectModelInteractively:
+        options.selectModelInteractively ?? defaultSelectModelInteractively,
+      persistDefaultModel,
+    });
+  }
+  const smoke = shouldAbortForSelection(selection)
+    ? {
+        status: "fail" as const,
+        message: `Pi smoke test was not run because ${
+          selection.reason === "cancelled"
+            ? "model selection was cancelled"
+            : "model selection was invalid"
+        }.`,
+        command: "pi smoke test not run",
+        details: selection.message,
+      }
+    : await (options.runPiSmokeTest ?? runPiSmokeTest)(createCommandRunner(), {
+        repoRoot: config.repoRoot,
+        piAgentDir,
+        model:
+          selection.status === "selected"
+            ? selection.model
+            : selectedModelFromReadiness(readiness),
+      });
   const piReady = smoke.status === "pass";
   const piMessage = formatPiSetupMessage(readiness, selection, smoke);
   const piSettingsWarnings = [settingsWarning, settingsWriteWarning]
@@ -289,7 +321,7 @@ export async function runInit(
   output.stdout(
     `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
   );
-  return 0;
+  return shouldAbortForSelection(selection) ? 1 : 0;
 }
 
 export async function main(args = process.argv.slice(2)): Promise<number> {

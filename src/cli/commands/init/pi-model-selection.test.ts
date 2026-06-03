@@ -58,16 +58,25 @@ test("selectPiModel uses the interactive selector and persists the selected mode
   ]);
 });
 
-test("selectPiModel falls back to current default when selector is cancelled", async () => {
+test("selectPiModel aborts when the interactive selector is cancelled", async () => {
+  const persisted: Array<{ provider: string; modelId: string }> = [];
+
   const result = await selectPiModel({
     readiness: twoReady,
     isInteractive: true,
     currentDefault: { provider: "openai-codex", modelId: "gpt-5.5" },
     selectModelInteractively: async () => undefined,
+    persistDefaultModel: async (selection) => {
+      persisted.push(selection);
+    },
   });
 
-  assert.equal(result.status, "selected");
-  assert.equal(result.model, "openai-codex/gpt-5.5");
+  assert.deepEqual(result, {
+    status: "unavailable",
+    reason: "cancelled",
+    message: "Pi model selection was cancelled.",
+  });
+  assert.deepEqual(persisted, []);
 });
 
 test("selectPiModel falls back deterministically without an interactive selector callback", async () => {
@@ -91,15 +100,18 @@ test("selectPiModel falls back to first model without an interactive selector ca
   assert.equal(result.model, "anthropic/claude-sonnet-4-5");
 });
 
-test("selectPiModel falls back to first model when selector is cancelled without a current default", async () => {
+test("selectPiModel aborts when the selector is cancelled without a current default", async () => {
   const result = await selectPiModel({
     readiness: twoReady,
     isInteractive: true,
     selectModelInteractively: async () => undefined,
   });
 
-  assert.equal(result.status, "selected");
-  assert.equal(result.model, "anthropic/claude-sonnet-4-5");
+  assert.deepEqual(result, {
+    status: "unavailable",
+    reason: "cancelled",
+    message: "Pi model selection was cancelled.",
+  });
 });
 
 test("selectPiModel rejects and does not persist an unknown interactive selection", async () => {

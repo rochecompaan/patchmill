@@ -128,11 +128,11 @@ test("runInit uses Pi-reported ready configuration without launching a prompt se
   assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
 });
 
-test("runInit does not pretend to configure Pi when readiness is missing", async () => {
+test("runInit starts Patchmill-owned interactive Pi setup when readiness is missing", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
-  let prompted = false;
-  let smokeModel: string | undefined = "not-called";
+  let setupAgentDir: string | undefined;
+  let smokeModel: string | undefined;
 
   assert.equal(
     await runInit(
@@ -142,32 +142,40 @@ test("runInit does not pretend to configure Pi when readiness is missing", async
       {
         isInteractive: true,
         detectPiReadiness: missingPiReadiness,
+        setupPiInteractively: async ({ agentDir }) => {
+          setupAgentDir = agentDir;
+          return {
+            readiness: readyReadiness([anthropicModel()]),
+            selection: {
+              status: "selected",
+              model: "anthropic/claude-sonnet-4-5",
+              provider: "anthropic",
+              modelId: "claude-sonnet-4-5",
+              message: "Using Pi model Anthropic / Claude Sonnet 4.5.",
+            },
+          };
+        },
         runPiSmokeTest: async (_runner, options) => {
           smokeModel = options.model;
           return {
-            status: "fail",
-            message: "Pi could not complete the provider smoke test.",
+            status: "pass",
+            message:
+              "Pi completed the provider smoke test with anthropic/claude-sonnet-4-5.",
             command: "pi smoke",
-            details: "missing key",
           };
-        },
-        prompt: async () => {
-          prompted = true;
-          return "anthropic/claude-haiku-4-5";
         },
       },
     ),
     0,
   );
 
-  assert.equal(prompted, false);
-  assert.equal(smokeModel, undefined);
-  assert.match(stdout.join("\n"), /Pi setup is incomplete/);
-  assert.match(stdout.join("\n"), /Run `pi`, then `\/login`/);
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+  assert.equal(setupAgentDir, join(repoRoot, ".patchmill", "pi-agent"));
+  assert.equal(smokeModel, "anthropic/claude-sonnet-4-5");
+  assert.doesNotMatch(stdout.join("\n"), /Run `pi`, then `\/login`/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
 });
 
-test("runInit reports manual setup when missing Pi readiness is declined", async () => {
+test("runInit reports Patchmill setup guidance when Pi readiness remains missing", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
 
@@ -186,8 +194,12 @@ test("runInit reports manual setup when missing Pi readiness is declined", async
     0,
   );
 
-  assert.match(stdout.join("\n"), /Run `pi`, then `\/login`/);
-  assert.match(stdout.join("\n"), /Pi setup is incomplete/);
+  assert.doesNotMatch(stdout.join("\n"), /Run `pi`, then `\/login`/);
+  assert.match(stdout.join("\n"), /Pi provider\/model setup is incomplete/);
+  assert.match(
+    stdout.join("\n"),
+    /Run `patchmill init` in an interactive terminal to configure provider auth and select a model/,
+  );
   assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
 });
 
@@ -483,9 +495,14 @@ test("runInit keeps config but reports incomplete Pi setup when smoke test fails
   );
 
   const output = stdout.join("\n");
-  assert.match(output, /Pi setup is incomplete/);
+  assert.match(output, /Pi provider\/model setup is incomplete/);
   assert.match(output, /missing key/);
-  assert.match(output, /After login, run `patchmill doctor`/);
+  assert.match(output, /After setup, run `patchmill doctor`/);
+  assert.match(
+    output,
+    /Run `patchmill init` in an interactive terminal to configure provider auth and select a model/,
+  );
+  assert.doesNotMatch(output, /Run `pi`, then `\/login`/);
   assert.doesNotMatch(output, /rerun `patchmill init`/);
   assert.match(output, /Next:\n {2}patchmill doctor/);
   assert.doesNotMatch(
@@ -523,11 +540,11 @@ test("runInit does not print manual login remediation after non-interactive read
   assert.match(output, /Next:\n {2}patchmill triage --dry-run/);
 });
 
-test("runInit smoke-tests the default model when the interactive selector is cancelled", async () => {
+test("runInit aborts when the required interactive model selector is cancelled", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
   const prompts: string[] = [];
-  let smokeModel: string | undefined;
+  let smokeCalled = false;
 
   assert.equal(
     await runInit(
@@ -539,8 +556,8 @@ test("runInit smoke-tests the default model when the interactive selector is can
         setupLabels: skippedLabels,
         detectPiReadiness: () => readyReadiness([anthropicModel()]),
         selectModelInteractively: async () => undefined,
-        runPiSmokeTest: async (_runner, options) => {
-          smokeModel = options.model;
+        runPiSmokeTest: async () => {
+          smokeCalled = true;
           return {
             status: "pass",
             message: "Pi smoke test passed.",
@@ -553,11 +570,11 @@ test("runInit smoke-tests the default model when the interactive selector is can
         },
       },
     ),
-    0,
+    1,
   );
 
-  assert.equal(smokeModel, "anthropic/claude-sonnet-4-5");
+  assert.equal(smokeCalled, false);
   assert.deepEqual(prompts, []);
-  assert.doesNotMatch(stdout.join("\n"), /Invalid Pi model selection/);
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
+  assert.match(stdout.join("\n"), /Pi model selection was cancelled/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
 });

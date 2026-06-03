@@ -16,7 +16,7 @@ export type PiModelSelection =
     }
   | {
       status: "unavailable";
-      reason: "not-ready" | "invalid-selection";
+      reason: "not-ready" | "invalid-selection" | "cancelled";
       message: string;
     };
 
@@ -78,6 +78,17 @@ function invalidSelection(
   };
 }
 
+function cancelledSelection(): Extract<
+  PiModelSelection,
+  { status: "unavailable" }
+> {
+  return {
+    status: "unavailable",
+    reason: "cancelled",
+    message: "Pi model selection was cancelled.",
+  };
+}
+
 async function persistSelection(
   persistDefaultModel: PersistDefaultModel | undefined,
   model: PiModelChoice,
@@ -120,13 +131,13 @@ export async function selectPiModel(options: {
       models: options.readiness.models,
       current: options.currentDefault,
     });
-    if (interactiveSelection) {
-      selected = canonicalizeSelection(
-        options.readiness.models,
-        interactiveSelection,
-      );
-      if (!selected) return invalidSelection(interactiveSelection);
-    }
+    if (!interactiveSelection) return cancelledSelection();
+
+    selected = canonicalizeSelection(
+      options.readiness.models,
+      interactiveSelection,
+    );
+    if (!selected) return invalidSelection(interactiveSelection);
   }
 
   const resolved = selected ?? current ?? first;
