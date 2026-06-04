@@ -10,6 +10,10 @@ Patchmill is an agent-driven software factory for turning product work into
 reviewed, landed changes without hiding the engineering judgment between idea
 and production.
 
+> **Alpha status:** Patchmill is early alpha software and is not ready for
+> production use yet. Expect incomplete workflows, sharp edges, and breaking
+> changes while the factory loop is still being built.
+
 It gives automated development an explicit production line: intake incoming
 work, sort what is ready, write or reuse a plan, implement in an isolated
 worktree, review the result, collect evidence when needed, land the change, and
@@ -23,18 +27,23 @@ Patchmill connects an issue host, repository policy, git worktrees, and
 configurable workflow instructions so a repository can move from open product
 work to reviewed diffs with clear handoffs.
 
-The two main workflow stations are:
+Current command status:
 
+Functional:
+
+- `patchmill init` initializes local configuration and recommended skills.
 - `patchmill triage` is the intake/sorting station. It classifies open issues
   and can apply readiness labels or comments.
-- `patchmill run-once` is the one-issue production run. It claims one ready
-  issue, creates or reuses a plan, runs implementation, reviews or lands the
-  result, and records the outcome.
 
-Planned: `patchmill run` will start the factory loop. It will keep selecting the
-next ready issue and running the same controlled production process until there
-is no eligible work left, a configured issue/budget limit is reached, or a
-blocker requires human input.
+In progress:
+
+- `patchmill run-once` is the one-issue production run. It is intended to claim
+  one ready issue, create or reuse a plan, run implementation, review or land
+  the result, and record the outcome.
+- `patchmill run` will start the factory loop. It will keep selecting the next
+  ready issue and running the same controlled production process until there is
+  no eligible work left, a configured issue/budget limit is reached, or a
+  blocker requires human input.
 
 The controls stay close to the work: labels decide what is ready, dry runs show
 what Patchmill would do before it mutates the issue host, plans make scope
@@ -53,15 +62,16 @@ the first `github-gh` version; Forgejo visual-evidence upload uses the
 
 ## First use
 
-After installing Patchmill, start with the safety-first onboarding flow:
+After installing Patchmill, start with the safety-first alpha onboarding flow:
 
 ```sh
 patchmill init
 patchmill doctor
 patchmill triage --dry-run
-patchmill run-once --dry-run
-patchmill run-once --execute
 ```
+
+`patchmill run-once` and `patchmill run` are still in progress; treat any
+experiments with them as development testing rather than supported usage.
 
 `patchmill init` writes a minimal local `patchmill.config.json`, reminds you to
 change the default host login, installs Patchmill's recommended skills into
