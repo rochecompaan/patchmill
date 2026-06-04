@@ -1,13 +1,10 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { runTriageDryRunAgent } from "./dry-run-agent.ts";
-import { runTriageExecuteAgent } from "./execute-agent.ts";
+import { executeTriageIssues } from "./execute-issues.ts";
 import { DEFAULT_TRIAGE_POLICY } from "./labels.ts";
 import { writeTriageLog } from "./log.ts";
-import {
-  createObservedChangeEntries,
-  createPreviewEntries,
-} from "./reporting.ts";
+import { createPreviewEntries } from "./reporting.ts";
 import type {
   CommandRunner,
   IssueSummary,
@@ -84,7 +81,7 @@ export async function runTriage(
     listedIssues =
       config.issueNumber === undefined
         ? await host.listOpenIssues()
-        : await host.listIssuesByNumbers([config.issueNumber]);
+        : [await host.viewIssue(config.issueNumber)];
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
@@ -108,6 +105,8 @@ export async function runTriage(
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
   }
+
+  config.onProgress?.({ type: "selected", total: issues.length });
 
   if (issues.length === 0) {
     const logPath = await writeTriageLog(config.logDir, {
@@ -139,6 +138,14 @@ export async function runTriage(
           config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
       });
       const logIssues = createPreviewEntries(issues, previews);
+      logIssues.forEach((issue, index) => {
+        config.onProgress?.({
+          type: "issue",
+          issue,
+          completed: index + 1,
+          total: logIssues.length,
+        });
+      });
       const logPath = await writeTriageLog(config.logDir, {
         mode: "dry-run",
         createdAt,
@@ -157,49 +164,27 @@ export async function runTriage(
     }
   }
 
-  const beforeIssues = issues.map((issue) => ({
-    ...issue,
-    labels: [...issue.labels],
-    comments: Array.isArray(issue.comments)
-      ? [...issue.comments]
-      : issue.comments,
-  }));
+  const logIssues: TriageLogIssueEntry[] = [];
 
   try {
-    await runTriageExecuteAgent(runner, config.repoRoot, {
+    await executeTriageIssues({
+      runner,
+      repoRoot: config.repoRoot,
+      host,
+      hostConfig: config.host,
       issues,
       projectPolicy,
       stateMap: triagePolicy.stateMap,
-      host: config.host,
       skills: config.skills,
       thinking:
         config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+      onIssue(entry, completed, total) {
+        logIssues.push(entry);
+        config.onProgress?.({ type: "issue", issue: entry, completed, total });
+      },
     });
   } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
-    throw error;
-  }
-
-  let afterIssues: IssueSummary[];
-  try {
-    afterIssues = await host.listIssuesByNumbers(
-      beforeIssues.map((issue) => issue.number),
-    );
-    await host.hydrateIssueComments(afterIssues);
-  } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
-    throw error;
-  }
-
-  let logIssues: TriageLogIssueEntry[];
-  try {
-    logIssues = createObservedChangeEntries(
-      beforeIssues,
-      afterIssues,
-      triagePolicy.stateMap,
-    );
-  } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
+    await tryWriteFailureLog(config, createdAt, logIssues, error);
     throw error;
   }
 

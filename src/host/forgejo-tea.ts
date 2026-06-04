@@ -5,7 +5,7 @@ import {
   hydrateIssueComments,
   listLabels,
   listOpenIssues,
-  listIssuesByNumbers as listIssuesByNumbersWithTea,
+  viewIssue as viewIssueWithTea,
 } from "../cli/commands/triage/forgejo.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type {
@@ -89,13 +89,11 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
     );
   }
 
-  listIssuesByNumbers(
-    issueNumbers: readonly number[],
-  ): Promise<IssueSummary[]> {
-    return listIssuesByNumbersWithTea(
+  viewIssue(issueNumber: number): Promise<IssueSummary> {
+    return viewIssueWithTea(
       this.options.runner,
       this.options.repoRoot,
-      issueNumbers,
+      issueNumber,
       this.options.login,
     );
   }

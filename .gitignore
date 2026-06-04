@@ -10,6 +10,7 @@ coverage/
 .pi/todos/
 .worktrees/
 .tmp/
+.superpowers/
 
 # Devenv
 .devenv*

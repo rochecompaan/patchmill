@@ -510,7 +510,7 @@ async function loadSelectionIssues(
     `loading issue #${config.issueNumber}`,
     { issueNumber: config.issueNumber },
   );
-  const requestedIssues = await host.listIssuesByNumbers([config.issueNumber]);
+  const requestedIssues = [await host.viewIssue(config.issueNumber)];
   const shouldResume = config.execute && !config.dryRun;
   if (!shouldResume) return requestedIssues;
 

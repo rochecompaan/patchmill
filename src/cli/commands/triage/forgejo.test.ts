@@ -9,9 +9,9 @@ import {
   commentIssue,
   createLabel,
   hydrateIssueComments,
-  listIssuesByNumbers,
   listLabels,
   listOpenIssues,
+  viewIssue,
 } from "./forgejo.ts";
 
 test("listOpenIssues parses tea issue JSON", async () => {
@@ -34,6 +34,7 @@ test("listOpenIssues parses tea issue JSON", async () => {
           body: "",
           state: "open",
           labels: ["enhancement"],
+          url: "https://forgejo.example/issues/1",
         },
       ]),
       stderr: "",
@@ -48,6 +49,7 @@ test("listOpenIssues parses tea issue JSON", async () => {
     [1, 2],
   );
   assert.deepEqual(issues[0].labels, ["enhancement"]);
+  assert.equal(issues[0]?.url, "https://forgejo.example/issues/1");
   assert.equal(runner.calls[0].command, "tea");
   assert.deepEqual(runner.calls[0].args.slice(0, 4), [
     "issues",
@@ -117,34 +119,30 @@ test("listOpenIssues paginates until an empty page is returned", async () => {
   );
 });
 
-test("listIssuesByNumbers lists all states and filters selected issue numbers", async () => {
+test("viewIssue fetches one Forgejo issue directly", async () => {
   const runner = createStaticCommandRunner([
     {
       code: 0,
-      stdout: JSON.stringify([
-        { index: 1, title: "One", state: "open", labels: [] },
-        { index: 2, title: "Two", state: "closed", labels: ["wontfix"] },
-      ]),
+      stdout: JSON.stringify({
+        index: 2,
+        title: "Two",
+        body: "Closed issue body",
+        state: "closed",
+        labels: ["wontfix"],
+        url: "https://forgejo.example/issues/2",
+      }),
       stderr: "",
     },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
   ]);
 
-  const issues = await listIssuesByNumbers(
-    runner,
-    "/repo",
-    [2],
-    "triage-agent",
-  );
+  const issue = await viewIssue(runner, "/repo", 2, "triage-agent");
 
-  assert.deepEqual(
-    issues.map((issue) => issue.number),
-    [2],
-  );
-  assert.equal(issues[0]?.state, "closed");
-  assert.deepEqual(issues[0]?.labels, ["wontfix"]);
-  assert.ok(runner.calls[0]?.args.includes("--state"));
-  assert.ok(runner.calls[0]?.args.includes("all"));
+  assert.equal(issue.number, 2);
+  assert.equal(issue.state, "closed");
+  assert.deepEqual(issue.labels, ["wontfix"]);
+  assert.equal(issue.url, "https://forgejo.example/issues/2");
+  assert.deepEqual(runner.calls[0]?.args.slice(0, 2), ["issues", "2"]);
+  assert.equal(runner.calls[0]?.args.includes("--state"), false);
 });
 
 test("listOpenIssues rejects empty stdout as invalid JSON", async () => {

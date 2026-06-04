@@ -79,19 +79,25 @@ function issue(
   };
 }
 
+function teaIssuePayload(entry: IssueSummary) {
+  return {
+    index: entry.number,
+    title: entry.title,
+    body: entry.body,
+    state: entry.state,
+    labels: entry.labels.map((name) => ({ name })),
+    author: { login: entry.author },
+    updated: entry.updated,
+    comments: entry.comments,
+  };
+}
+
 function issueListPayload(issues: IssueSummary[]): string {
-  return JSON.stringify(
-    issues.map((entry) => ({
-      index: entry.number,
-      title: entry.title,
-      body: entry.body,
-      state: entry.state,
-      labels: entry.labels.map((name) => ({ name })),
-      author: { login: entry.author },
-      updated: entry.updated,
-      comments: entry.comments,
-    })),
-  );
+  return JSON.stringify(issues.map(teaIssuePayload));
+}
+
+function issueViewPayload(issue: IssueSummary): string {
+  return JSON.stringify(teaIssuePayload(issue));
 }
 
 const LANDING_SKILLS = {
@@ -714,6 +720,18 @@ test("runOneIssue rejects an explicit open issue that is not agent-ready with a 
     if (
       call.command === "tea" &&
       call.args[0] === "issues" &&
+      call.args[1] === "7"
+    ) {
+      return {
+        code: 0,
+        stdout: issueViewPayload(issue(7, ["bug"])),
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
       call.args[1] === "list"
     ) {
       const page = call.args[call.args.indexOf("--page") + 1];
@@ -733,7 +751,7 @@ test("runOneIssue rejects an explicit open issue that is not agent-ready with a 
     () => runOneIssue(runner, config, { now: NOW }),
     /Issue #7 is open but not labeled agent-ready/,
   );
-  assert.equal(runner.calls.length, 4);
+  assert.equal(runner.calls.length, 3);
 });
 
 test("runOneIssue rejects a different explicit issue when a resumable run exists", async () => {
@@ -748,6 +766,20 @@ test("runOneIssue rejects a different explicit issue when a resumable run exists
     NOW.toISOString(),
   );
   const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "46"
+    ) {
+      return {
+        code: 0,
+        stdout: issueViewPayload(
+          issue(46, ["agent-ready", "bug"], "Requested issue"),
+        ),
+        stderr: "",
+      };
+    }
+
     if (
       call.command === "tea" &&
       call.args[0] === "issues" &&
@@ -810,6 +842,20 @@ test("runOneIssue allows an explicit resumable issue", async () => {
     "utf8",
   );
   const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "45"
+    ) {
+      return {
+        code: 0,
+        stdout: issueViewPayload(
+          issue(45, ["in-progress", "bug"], "Resume in-progress issue"),
+        ),
+        stderr: "",
+      };
+    }
+
     if (
       call.command === "tea" &&
       call.args[0] === "issues" &&

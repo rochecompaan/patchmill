@@ -19,6 +19,7 @@ function issue(
   labels: string[],
   comments: unknown[] = [],
   state = "open",
+  url?: string,
 ): IssueSummary {
   return {
     number,
@@ -27,6 +28,7 @@ function issue(
     labels,
     state,
     comments,
+    ...(url ? { url } : {}),
   };
 }
 
@@ -63,6 +65,28 @@ test("createPreviewEntries converts dry-run previews into log entries", () => {
   );
 });
 
+test("createPreviewEntries includes issue URL when available", () => {
+  const previews: TriagePreview[] = [
+    {
+      issueNumber: 1,
+      currentLabels: ["bug"],
+      proposedLabels: ["agent-ready", "bug"],
+      canonicalBucket: "agent-ready",
+      rationale: "Clear enough.",
+      wouldComment: null,
+      wouldClose: false,
+      questions: [],
+    },
+  ];
+
+  const entries = createPreviewEntries(
+    [issue(1, ["bug"], [], "open", "https://example.test/issues/1")],
+    previews,
+  );
+
+  assert.equal(entries[0]?.url, "https://example.test/issues/1");
+});
+
 test("createObservedChangeEntries reports labels, comments, state, and bucket", () => {
   const before = [
     issue(1, ["needs-triage", "bug"], [{ author: "bot", body: "old comment" }]),
@@ -94,6 +118,16 @@ test("createObservedChangeEntries reports labels, comments, state, and bucket", 
       mutationStatus: "observed",
     },
   ]);
+});
+
+test("createObservedChangeEntries includes after snapshot URL", () => {
+  const entries = createObservedChangeEntries(
+    [issue(1, ["needs-triage"], [], "open", "https://old.test/1")],
+    [issue(1, ["agent-ready"], [], "open", "https://new.test/1")],
+    stateMap,
+  );
+
+  assert.equal(entries[0]?.url, "https://new.test/1");
 });
 
 test("createObservedChangeEntries throws when an after snapshot is missing", () => {

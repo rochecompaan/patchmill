@@ -8,6 +8,7 @@ export type IssueSummary = {
   state: string;
   author?: string;
   updated?: string;
+  url?: string;
   comments?: unknown[];
 };
 
@@ -35,7 +36,7 @@ export type IssueHostProvider = {
   checkCli(): Promise<HostCliCheck>;
   missingLabelRemediation(label: LabelDefinition): string;
   listOpenIssues(): Promise<IssueSummary[]>;
-  listIssuesByNumbers(issueNumbers: readonly number[]): Promise<IssueSummary[]>;
+  viewIssue(issueNumber: number): Promise<IssueSummary>;
   hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]>;
   listLabels(): Promise<string[]>;
   createLabel(label: LabelDefinition): Promise<void>;

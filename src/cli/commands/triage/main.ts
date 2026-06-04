@@ -5,7 +5,13 @@ import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { parseArgs } from "./args.ts";
 import { createCommandRunner } from "./command.ts";
 import { runTriage } from "./pipeline.ts";
-import type { TriageResult } from "./types.ts";
+import { createTriageProgressReporter } from "./progress-output.ts";
+import type {
+  CommandRunner,
+  TriageConfig,
+  TriageProgressEvent,
+  TriageResult,
+} from "./types.ts";
 
 // TODO: Remove compatibility alias for --tea-login in favor of --host-login
 export const HELP_TEXT = `Usage:
@@ -32,42 +38,12 @@ Environment:
 
 type Env = Record<string, string | undefined>;
 
-function isHelpOnlyInvocation(args: string[]): boolean {
+export function isHelpOnlyInvocation(args: string[]): boolean {
   return args.includes("--help") || args.includes("-h");
 }
 
-function formatLabels(labels: string[]): string {
-  return labels.length > 0 ? labels.join(", ") : "(none)";
-}
-
-function firstLine(value: string): string {
-  return value.split(/\r?\n/u, 1)[0] ?? "";
-}
-
-export function formatResultLines(result: TriageResult): string[] {
-  if (result.status === "no-issues") return [];
-
-  return result.issues.flatMap((issue) => {
-    const bucket = issue.primaryBucket ?? "unmapped";
-    const lines = [
-      `#${issue.issueNumber} ${bucket} ${issue.mutationStatus}`,
-      `  labels: ${formatLabels(issue.previousLabels)} -> ${formatLabels(issue.finalLabels)}`,
-    ];
-
-    if (
-      issue.previousState &&
-      issue.finalState &&
-      issue.previousState !== issue.finalState
-    ) {
-      lines.push(`  state: ${issue.previousState} -> ${issue.finalState}`);
-    }
-
-    if (issue.comment) {
-      lines.push(`  comment: ${firstLine(issue.comment)}`);
-    }
-
-    return lines;
-  });
+export function commandText(args: string[]): string {
+  return ["patchmill", "triage", ...args].join(" ").trim();
 }
 
 export async function loadCliConfig(
@@ -87,24 +63,68 @@ export async function loadCliConfig(
   return parseArgs(args, repoRoot, env, patchmillConfig);
 }
 
-export async function main(args = process.argv.slice(2)): Promise<number> {
+export type TriageCliProgressReporter = {
+  onProgress(event: TriageProgressEvent): void;
+  finish(result: TriageResult): void;
+};
+
+export type TriageCliDependencies = {
+  loadCliConfig(
+    args: string[],
+    repoRoot?: string,
+    env?: Env,
+  ): Promise<TriageConfig>;
+  createCommandRunner(): CommandRunner;
+  runTriage(runner: CommandRunner, config: TriageConfig): Promise<TriageResult>;
+  createProgressReporter(options: {
+    command: string;
+    writeLine: (line: string) => void;
+  }): TriageCliProgressReporter;
+  writeStdout(line: string): void;
+  writeStderr(line: string): void;
+};
+
+const defaultTriageCliDependencies: TriageCliDependencies = {
+  loadCliConfig,
+  createCommandRunner,
+  runTriage,
+  createProgressReporter: createTriageProgressReporter,
+  writeStdout(line) {
+    console.log(line);
+  },
+  writeStderr(line) {
+    console.error(line);
+  },
+};
+
+export async function main(
+  args = process.argv.slice(2),
+  dependencies: TriageCliDependencies = defaultTriageCliDependencies,
+): Promise<number> {
   try {
-    const config = await loadCliConfig(args);
+    const config = await dependencies.loadCliConfig(args);
     if (config.showHelp) {
-      console.log(HELP_TEXT);
+      dependencies.writeStdout(HELP_TEXT);
       return 0;
     }
 
-    const result = await runTriage(createCommandRunner(), config);
-    console.log(`agent issue triage: ${result.status}`);
-    console.log(`issues: ${result.issueCount}`);
-    console.log(`log: ${result.logPath}`);
-    for (const line of formatResultLines(result)) {
-      console.log(line);
-    }
+    const reporter = dependencies.createProgressReporter({
+      command: commandText(args),
+      writeLine: dependencies.writeStdout,
+    });
+    const result = await dependencies.runTriage(
+      dependencies.createCommandRunner(),
+      {
+        ...config,
+        onProgress: reporter.onProgress,
+      },
+    );
+    reporter.finish(result);
     return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    dependencies.writeStderr(
+      error instanceof Error ? error.message : String(error),
+    );
     return 1;
   }
 }

@@ -4,6 +4,17 @@ import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillTriageCanonicalBucket } from "../../../policy/triage-state.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
+export type TriageProgressEvent =
+  | { type: "selected"; total: number }
+  | {
+      type: "issue";
+      issue: TriageLogIssueEntry;
+      completed: number;
+      total: number;
+    };
+
+export type TriageProgressHandler = (event: TriageProgressEvent) => void;
+
 export type TriageConfig = {
   repoRoot: string;
   dryRun: boolean;
@@ -19,6 +30,7 @@ export type TriageConfig = {
   projectPolicy?: PatchmillProjectPolicy;
   triagePolicy?: PatchmillTriagePolicy;
   skills: PatchmillSkillsConfig;
+  onProgress?: TriageProgressHandler;
 };
 
 export type CommandResult = {
@@ -48,6 +60,7 @@ export type IssueSummary = {
   body: string;
   labels: string[];
   state: string;
+  url?: string;
   author?: string;
   updated?: string;
   comments?: unknown[];
@@ -105,6 +118,7 @@ export type LabelChangePlan = {
 export type TriageLogIssueEntry = {
   issueNumber: number;
   title: string;
+  url?: string;
   previousLabels: string[];
   finalLabels: string[];
   primaryBucket?: PrimaryBucket;

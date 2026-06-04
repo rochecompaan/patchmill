@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
 import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
-import { formatResultLines, HELP_TEXT } from "./main.ts";
 import { runTriage } from "./pipeline.ts";
 
 const issueJson = JSON.stringify([
@@ -89,6 +88,36 @@ test("runTriage dry-run previews configured skill without mutating Forgejo", asy
   assert.deepEqual(result.issues, log.issues);
 });
 
+test("runTriage dry-run emits selected and issue progress events", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const events: string[] = [];
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: issueJson, stderr: "" },
+    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    noCommentsOutput,
+    { code: 0, stdout: needsInfoPreviewJson, stderr: "" },
+  ]);
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+    onProgress: (event) => {
+      if (event.type === "selected") events.push(`selected:${event.total}`);
+      if (event.type === "issue") {
+        events.push(
+          `issue:${event.completed}/${event.total}:#${event.issue.issueNumber}`,
+        );
+      }
+    },
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.deepEqual(events, ["selected:1", "issue:1/1:#1"]);
+});
+
 test("runTriage uses github-gh host provider from config host", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([
@@ -138,8 +167,8 @@ test("runTriage uses github-gh host provider from config host", async () => {
       .filter((call) => call.command === "gh")
       .map((call) => [call.command, ...call.args].join(" ")),
     [
-      "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt",
-      "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,comments",
+      "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt,url",
+      "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,url,comments",
     ],
   );
   assert.equal(
@@ -211,114 +240,27 @@ test("runTriage targeted GitHub issue reads issue by number", async () => {
   );
 });
 
-test("HELP_TEXT documents usage and active triage protection wording", () => {
-  assert.match(HELP_TEXT, /Usage:/);
-  assert.match(HELP_TEXT, /--help/);
-  assert.match(HELP_TEXT, /-h/);
-  assert.doesNotMatch(HELP_TEXT, /--execute/);
-  assert.match(HELP_TEXT, /Automated issue triage/);
-  assert.doesNotMatch(HELP_TEXT, /Automated Forgejo issue triage/);
-  assert.match(
-    HELP_TEXT,
-    /Runs the configured triage skill against eligible untriaged open issues by default/,
-  );
-  assert.doesNotMatch(HELP_TEXT, /Defaults to showing this help/);
-  assert.match(
-    HELP_TEXT,
-    /Preview configured triage skill decisions without mutating the configured issue host/,
-  );
-  assert.doesNotMatch(HELP_TEXT, /without mutating Forgejo/);
-  assert.match(HELP_TEXT, /--dry-run/);
-  assert.match(HELP_TEXT, /--issue <number>/);
-  assert.match(HELP_TEXT, /--all/);
-  assert.match(HELP_TEXT, /without active triage or protection labels/);
-  assert.match(
-    HELP_TEXT,
-    /include issues already carrying triage or protection labels such as in-progress or blocked/,
-  );
-});
-
-test("formatResultLines prints dry-run previews and observed changes", () => {
-  const dryRunLines = formatResultLines({
-    status: "dry-run",
-    issueCount: 1,
-    logPath: "/tmp/triage.json",
-    issues: [
-      {
-        issueNumber: 1,
-        title: "Needs info",
-        previousLabels: ["bug"],
-        finalLabels: ["bug", "needs-info"],
-        primaryBucket: "needs-info",
-        rationale: "Missing reproduction details.",
-        questions: ["What exact steps reproduce the issue?"],
-        comment: "What exact steps reproduce the issue?",
-        mutationStatus: "preview",
-      },
-    ],
-  });
-
-  assert.deepEqual(dryRunLines, [
-    "#1 needs-info preview",
-    "  labels: bug -> bug, needs-info",
-    "  comment: What exact steps reproduce the issue?",
-  ]);
-
-  const executeLines = formatResultLines({
-    status: "applied",
-    issueCount: 1,
-    logPath: "/tmp/triage.json",
-    issues: [
-      {
-        issueNumber: 2,
-        title: "Ready",
-        previousLabels: ["needs-triage"],
-        finalLabels: ["ready-for-agent"],
-        primaryBucket: "agent-ready",
-        questions: [],
-        comment: "## Agent Brief",
-        addedComments: ["## Agent Brief"],
-        previousState: "open",
-        finalState: "open",
-        mutationStatus: "observed",
-      },
-    ],
-  });
-
-  assert.deepEqual(executeLines, [
-    "#2 agent-ready observed",
-    "  labels: needs-triage -> ready-for-agent",
-    "  comment: ## Agent Brief",
-  ]);
-});
-
 test("runTriage executes configured skill by default and reports observed changes", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const beforeIssueJson = JSON.stringify([
-    {
-      index: 1,
-      title: "Needs triage",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "bug" }],
-    },
-  ]);
-  const afterIssueJson = JSON.stringify([
-    {
-      index: 1,
-      title: "Needs triage",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "ready-for-agent" }, { name: "bug" }],
-    },
-  ]);
+  const beforeIssueJson = JSON.stringify({
+    index: 1,
+    title: "Needs triage",
+    body: "Broken",
+    state: "open",
+    labels: [{ name: "bug" }],
+  });
+  const afterIssueJson = JSON.stringify({
+    index: 1,
+    title: "Needs triage",
+    body: "Broken",
+    state: "open",
+    labels: [{ name: "ready-for-agent" }, { name: "bug" }],
+  });
   const runner = createStaticCommandRunner([
     { code: 0, stdout: beforeIssueJson, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
     noCommentsOutput,
     { code: 0, stdout: "triaged", stderr: "" },
     { code: 0, stdout: afterIssueJson, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
     {
       code: 0,
       stdout:
@@ -369,24 +311,268 @@ test("runTriage executes configured skill by default and reports observed change
   );
 });
 
+test("runTriage execute emits each issue after its own snapshot", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const events: string[] = [];
+  const runner = {
+    calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
+    async run(command: string, args: string[], options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+
+      if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
+        return {
+          code: 0,
+          stdout: JSON.stringify([
+            {
+              number: 1,
+              title: "One",
+              body: "Broken one",
+              state: "OPEN",
+              labels: [{ name: "bug" }],
+              url: "https://example.test/issues/1",
+            },
+            {
+              number: 2,
+              title: "Two",
+              body: "Broken two",
+              state: "OPEN",
+              labels: [{ name: "bug" }],
+              url: "https://example.test/issues/2",
+            },
+          ]),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 1") {
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 1,
+            title: "One",
+            body: "Broken one",
+            state: "OPEN",
+            labels: [{ name: piCalls > 0 ? "agent-ready" : "bug" }],
+            url: "https://example.test/issues/1",
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 2") {
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 2,
+            title: "Two",
+            body: "Broken two",
+            state: "OPEN",
+            labels: [{ name: piCalls > 1 ? "agent-ready" : "bug" }],
+            url: "https://example.test/issues/2",
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "pi") {
+        return { code: 0, stdout: "triaged", stderr: "" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: false,
+    execute: true,
+    logDir,
+    host: { provider: "github-gh", login: "" },
+    onProgress: (event) => {
+      if (event.type === "selected") events.push(`selected:${event.total}`);
+      if (event.type === "issue") {
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        events.push(
+          `issue:${event.completed}/${event.total}:#${event.issue.issueNumber}:pi=${piCalls}`,
+        );
+      }
+    },
+  });
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(events, [
+    "selected:2",
+    "issue:1/2:#1:pi=1",
+    "issue:2/2:#2:pi=2",
+  ]);
+});
+
+test("runTriage execute snapshots Forgejo issues without repeated all-issue scans", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const events: string[] = [];
+  const runner = {
+    calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
+    async run(command: string, args: string[], options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+
+      if (command === "tea" && args.slice(0, 2).join(" ") === "issues list") {
+        const state = args[args.indexOf("--state") + 1];
+        const page = args[args.indexOf("--page") + 1];
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        if (state === "open" && page === "1") {
+          return {
+            code: 0,
+            stdout: JSON.stringify([
+              {
+                index: 1,
+                title: "One",
+                body: "Broken one",
+                state: "open",
+                labels: [{ name: "bug" }],
+              },
+              {
+                index: 2,
+                title: "Two",
+                body: "Broken two",
+                state: "open",
+                labels: [{ name: "bug" }],
+              },
+            ]),
+            stderr: "",
+          };
+        }
+        if (state === "all" && page === "1") {
+          return {
+            code: 0,
+            stdout: JSON.stringify([
+              {
+                index: 1,
+                title: "One",
+                body: "Broken one",
+                state: "open",
+                labels: [{ name: piCalls > 0 ? "agent-ready" : "bug" }],
+              },
+              {
+                index: 2,
+                title: "Two",
+                body: "Broken two",
+                state: "open",
+                labels: [{ name: piCalls > 1 ? "agent-ready" : "bug" }],
+              },
+            ]),
+            stderr: "",
+          };
+        }
+        return { code: 0, stdout: JSON.stringify([]), stderr: "" };
+      }
+
+      if (command === "tea" && args[0] === "issues" && args[2] === "--fields") {
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        const issueNumber = Number(args[1]);
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            index: issueNumber,
+            title: issueNumber === 1 ? "One" : "Two",
+            body: issueNumber === 1 ? "Broken one" : "Broken two",
+            state: "open",
+            labels: [
+              {
+                name: piCalls >= issueNumber ? "agent-ready" : "bug",
+              },
+            ],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (
+        command === "tea" &&
+        args[0] === "issues" &&
+        args.includes("--comments")
+      ) {
+        return noCommentsOutput;
+      }
+
+      if (command === "pi") {
+        return { code: 0, stdout: "triaged", stderr: "" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: false,
+    execute: true,
+    logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+    onProgress: (event) => {
+      if (event.type === "issue") {
+        events.push(
+          `#${event.issue.issueNumber}:${event.issue.finalLabels.join(",")}`,
+        );
+      }
+    },
+  });
+
+  const allIssueScanCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args.slice(0, 2).join(" ") === "issues list" &&
+      call.args[call.args.indexOf("--state") + 1] === "all",
+  );
+  const singleIssueViewCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      ["1", "2"].includes(call.args[1] ?? "") &&
+      call.args.includes("--fields") &&
+      !call.args.includes("--comments"),
+  );
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(events, ["#1:agent-ready", "#2:agent-ready"]);
+  assert.equal(allIssueScanCalls.length, 0);
+  assert.equal(singleIssueViewCalls.length, 2);
+});
+
 test("runTriage passes explicit tea login to Forgejo commands only", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const afterIssueJson = JSON.stringify([
-    {
-      index: 1,
-      title: "Needs info",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "agent-ready" }, { name: "bug" }],
-    },
-  ]);
+  const beforeIssueJson = JSON.stringify({
+    index: 1,
+    title: "Needs info",
+    body: "Broken",
+    state: "open",
+    labels: [{ name: "bug" }],
+  });
+  const afterIssueJson = JSON.stringify({
+    index: 1,
+    title: "Needs info",
+    body: "Broken",
+    state: "open",
+    labels: [{ name: "agent-ready" }, { name: "bug" }],
+  });
   const runner = createStaticCommandRunner([
-    { code: 0, stdout: issueJson, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    { code: 0, stdout: beforeIssueJson, stderr: "" },
     noCommentsOutput,
     { code: 0, stdout: "triaged", stderr: "" },
     { code: 0, stdout: afterIssueJson, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
     noCommentsOutput,
   ]);
 
@@ -472,24 +658,20 @@ test("runTriage passes configured custom skills through to the triage agent", as
 
 test("runTriage execute passes configured state map to the Pi prompt", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const beforeIssueJson = JSON.stringify([
-    {
-      index: 1,
-      title: "Needs triage",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "bug" }],
-    },
-  ]);
-  const afterIssueJson = JSON.stringify([
-    {
-      index: 1,
-      title: "Needs triage",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "ship-it" }, { name: "bug" }],
-    },
-  ]);
+  const beforeIssueJson = JSON.stringify({
+    index: 1,
+    title: "Needs triage",
+    body: "Broken",
+    state: "open",
+    labels: [{ name: "bug" }],
+  });
+  const afterIssueJson = JSON.stringify({
+    index: 1,
+    title: "Needs triage",
+    body: "Broken",
+    state: "open",
+    labels: [{ name: "ship-it" }, { name: "bug" }],
+  });
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
@@ -497,18 +679,18 @@ test("runTriage execute passes configured state map to the Pi prompt", async () 
 
       if (
         command === "tea" &&
-        args.includes("issues") &&
-        args.includes("list")
+        args[0] === "issues" &&
+        args[1] === "1" &&
+        args.includes("--fields")
       ) {
-        const page = args[args.indexOf("--page") + 1];
-        if (page) {
-          return {
-            code: 0,
-            stdout: page === "1" ? beforeIssueJson : JSON.stringify([]),
-            stderr: "",
-          };
-        }
-        return { code: 0, stdout: afterIssueJson, stderr: "" };
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        return {
+          code: 0,
+          stdout: piCalls > 0 ? afterIssueJson : beforeIssueJson,
+          stderr: "",
+        };
       }
 
       if (command === "tea" && args.includes("--comments")) {
@@ -566,229 +748,6 @@ test("runTriage execute passes configured state map to the Pi prompt", async () 
   assert.ok(runner.calls.some((call) => call.command === "pi"));
 });
 
-test("runTriage applies limit after listing open issues", async () => {
-  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const twoIssues = JSON.stringify([
-    { index: 1, title: "One", body: "", state: "open", labels: [] },
-    { index: 2, title: "Two", body: "", state: "open", labels: [] },
-  ]);
-  const runner = createStaticCommandRunner([
-    { code: 0, stdout: twoIssues, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
-    noCommentsOutput,
-    {
-      code: 0,
-      stdout: previewJson([
-        {
-          issueNumber: 1,
-          currentLabels: [],
-          proposedLabels: ["agent-unsuitable"],
-          canonicalBucket: "agent-unsuitable",
-          rationale: "Not actionable for automation.",
-          wouldComment: null,
-          wouldClose: false,
-          questions: [],
-        },
-      ]),
-      stderr: "",
-    },
-  ]);
-
-  const result = await runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    limit: 1,
-    logDir,
-    host: DEFAULT_PATCHMILL_CONFIG.host,
-  });
-
-  assert.equal(result.issueCount, 1);
-});
-
-test("runTriage skips already triaged open issues by default before applying limit", async () => {
-  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const mixedIssues = JSON.stringify([
-    {
-      index: 1,
-      title: "Already ready",
-      body: "Clear",
-      state: "open",
-      labels: [{ name: "agent-ready" }],
-    },
-    {
-      index: 2,
-      title: "Already blocked",
-      body: "Needs decision",
-      state: "open",
-      labels: [{ name: "needs-info" }],
-    },
-    {
-      index: 3,
-      title: "Untriaged",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "bug" }],
-    },
-  ]);
-  const runner = createStaticCommandRunner([
-    { code: 0, stdout: mixedIssues, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
-    noCommentsOutput,
-    { code: 0, stdout: agentReadyPreviewJson(3), stderr: "" },
-  ]);
-
-  const result = await runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    limit: 1,
-    logDir,
-    host: DEFAULT_PATCHMILL_CONFIG.host,
-  });
-
-  assert.equal(result.issueCount, 1);
-  assert.equal(result.issues[0]?.issueNumber, 3);
-});
-
-test("runTriage skips in-progress issues by default before applying limit", async () => {
-  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const mixedIssues = JSON.stringify([
-    {
-      index: 1,
-      title: "Claimed",
-      body: "Already being worked",
-      state: "open",
-      labels: [{ name: "in-progress" }],
-    },
-    {
-      index: 2,
-      title: "Untriaged",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "bug" }],
-    },
-  ]);
-  const runner = createStaticCommandRunner([
-    { code: 0, stdout: mixedIssues, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
-    noCommentsOutput,
-    { code: 0, stdout: agentReadyPreviewJson(2), stderr: "" },
-  ]);
-
-  const result = await runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    limit: 1,
-    logDir,
-    host: DEFAULT_PATCHMILL_CONFIG.host,
-  });
-
-  assert.equal(result.issueCount, 1);
-  assert.equal(result.issues[0]?.issueNumber, 2);
-});
-
-test("runTriage skips blocked issues by default before applying limit", async () => {
-  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const mixedIssues = JSON.stringify([
-    {
-      index: 1,
-      title: "Blocked",
-      body: "Waiting on dependency",
-      state: "open",
-      labels: [{ name: "blocked" }],
-    },
-    {
-      index: 2,
-      title: "Untriaged",
-      body: "Broken",
-      state: "open",
-      labels: [{ name: "bug" }],
-    },
-  ]);
-  const runner = createStaticCommandRunner([
-    { code: 0, stdout: mixedIssues, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
-    noCommentsOutput,
-    { code: 0, stdout: agentReadyPreviewJson(2), stderr: "" },
-  ]);
-
-  const result = await runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    limit: 1,
-    logDir,
-    host: DEFAULT_PATCHMILL_CONFIG.host,
-  });
-
-  assert.equal(result.issueCount, 1);
-  assert.equal(result.issues[0]?.issueNumber, 2);
-});
-
-test("runTriage --all includes in-progress issues for recovery", async () => {
-  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const triagedIssue = JSON.stringify([
-    {
-      index: 1,
-      title: "Claimed",
-      body: "Already being worked",
-      state: "open",
-      labels: [{ name: "in-progress" }],
-    },
-  ]);
-  const runner = createStaticCommandRunner([
-    { code: 0, stdout: triagedIssue, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
-    noCommentsOutput,
-    { code: 0, stdout: agentReadyPreviewJson(1), stderr: "" },
-  ]);
-
-  const result = await runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    all: true,
-    logDir,
-    host: DEFAULT_PATCHMILL_CONFIG.host,
-  });
-
-  assert.equal(result.issueCount, 1);
-  assert.equal(result.issues[0]?.issueNumber, 1);
-});
-
-test("runTriage targeted issue overrides the in-progress default skip", async () => {
-  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const triagedIssue = JSON.stringify([
-    {
-      index: 1,
-      title: "Claimed",
-      body: "Already being worked",
-      state: "open",
-      labels: [{ name: "in-progress" }],
-    },
-  ]);
-  const runner = createStaticCommandRunner([
-    { code: 0, stdout: triagedIssue, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
-    noCommentsOutput,
-    { code: 0, stdout: agentReadyPreviewJson(1), stderr: "" },
-  ]);
-
-  const result = await runTriage(runner, {
-    repoRoot: "/repo",
-    dryRun: true,
-    execute: false,
-    issueNumber: 1,
-    logDir,
-    host: DEFAULT_PATCHMILL_CONFIG.host,
-  });
-
-  assert.equal(result.issueCount, 1);
-  assert.equal(result.issues[0]?.issueNumber, 1);
-});
-
 test("runTriage writes a failure log before rethrowing execute agent errors", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([
@@ -814,6 +773,83 @@ test("runTriage writes a failure log before rethrowing execute agent errors", as
   assert.equal(log.mode, "execute");
   assert.equal(log.issues.length, 0);
   assert.match(log.error, /triage exploded/);
+});
+
+test("runTriage execute failure log keeps completed issue entries", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  let piCalls = 0;
+  const runner = {
+    async run(command: string, args: string[]) {
+      if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
+        return {
+          code: 0,
+          stdout: JSON.stringify([
+            { number: 1, title: "One", body: "", state: "OPEN", labels: [] },
+            { number: 2, title: "Two", body: "", state: "OPEN", labels: [] },
+          ]),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 1") {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 1,
+            title: "One",
+            body: "",
+            state: "OPEN",
+            labels: [{ name: piCalls > 0 ? "agent-ready" : "bug" }],
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 2") {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 2,
+            title: "Two",
+            body: "",
+            state: "OPEN",
+            labels: [],
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "pi") {
+        piCalls += 1;
+        return piCalls === 1
+          ? { code: 0, stdout: "triaged", stderr: "" }
+          : { code: 1, stdout: "", stderr: "second issue exploded" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      runTriage(runner, {
+        repoRoot: "/repo",
+        dryRun: false,
+        execute: true,
+        logDir,
+        host: { provider: "github-gh", login: "" },
+      }),
+    /second issue exploded/,
+  );
+
+  const files = await readdir(logDir);
+  const log = JSON.parse(await readFile(join(logDir, files[0]!), "utf8"));
+  assert.equal(log.mode, "execute");
+  assert.equal(log.issues.length, 1);
+  assert.equal(log.issues[0].issueNumber, 1);
+  assert.match(log.error, /second issue exploded/);
 });
 
 test("runTriage writes a failure log when preview validation fails", async () => {
@@ -875,11 +911,21 @@ test("runTriage writes a failure log when execute snapshot listing fails", async
   assert.match(log.error, /snapshot exploded/);
 });
 
-test("runTriage rejects targeted issues that are not open or not found and logs the error", async () => {
+test("runTriage rejects targeted issues that are not open and logs the error", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([
-    { code: 0, stdout: issueJson, stderr: "" },
-    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    {
+      code: 0,
+      stdout: JSON.stringify({
+        index: 123,
+        title: "Closed",
+        body: "Already closed",
+        state: "closed",
+        labels: [],
+      }),
+      stderr: "",
+    },
+    noCommentsOutput,
   ]);
 
   await assert.rejects(

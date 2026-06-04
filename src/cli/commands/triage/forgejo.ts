@@ -8,6 +8,8 @@ import type {
 } from "./types.ts";
 
 const ISSUE_PAGE_SIZE = 1000;
+const ISSUE_FIELDS =
+  "index,title,body,state,labels,author,updated,comments,url";
 
 function insertBeforeSeparator(args: string[], extraArgs: string[]): string[] {
   const separator = args.indexOf("--");
@@ -141,6 +143,34 @@ function authorName(author: unknown): string | undefined {
   return undefined;
 }
 
+function parseIssuePayload(entry: unknown): IssueSummary {
+  if (!entry || typeof entry !== "object")
+    throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
+  const issue = entry as Record<string, unknown>;
+  const number = issueNumber(issue.index);
+  if (number === undefined || typeof issue.title !== "string") {
+    throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
+  }
+
+  const parsedIssue: IssueSummary = {
+    number,
+    title: issue.title,
+    body: typeof issue.body === "string" ? issue.body : "",
+    state: typeof issue.state === "string" ? issue.state : "open",
+    labels: labelNames(issue.labels),
+    author: authorName(issue.author),
+    updated: typeof issue.updated === "string" ? issue.updated : undefined,
+    comments: Array.isArray(issue.comments) ? issue.comments : undefined,
+  };
+
+  if (typeof issue.url === "string") parsedIssue.url = issue.url;
+  if (typeof issue.html_url === "string" && !parsedIssue.url) {
+    parsedIssue.url = issue.html_url;
+  }
+
+  return parsedIssue;
+}
+
 function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-9;]*m/gu, "");
 }
@@ -259,7 +289,7 @@ async function listIssuesByState(
           "--state",
           state,
           "--fields",
-          "index,title,body,state,labels,author,updated,comments",
+          ISSUE_FIELDS,
           "--page",
           String(page),
           "--limit",
@@ -280,26 +310,7 @@ async function listIssuesByState(
     if (!Array.isArray(parsed))
       throw new Error("tea issues list returned a non-array payload");
 
-    const pageIssues = parsed.map((entry) => {
-      if (!entry || typeof entry !== "object")
-        throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
-      const issue = entry as Record<string, unknown>;
-      const number = issueNumber(issue.index);
-      if (number === undefined || typeof issue.title !== "string") {
-        throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
-      }
-
-      return {
-        number,
-        title: issue.title,
-        body: typeof issue.body === "string" ? issue.body : "",
-        state: typeof issue.state === "string" ? issue.state : "open",
-        labels: labelNames(issue.labels),
-        author: authorName(issue.author),
-        updated: typeof issue.updated === "string" ? issue.updated : undefined,
-        comments: Array.isArray(issue.comments) ? issue.comments : undefined,
-      };
-    });
+    const pageIssues = parsed.map((entry) => parseIssuePayload(entry));
 
     if (pageIssues.length === 0) break;
     issues.push(...pageIssues);
@@ -316,15 +327,42 @@ export async function listOpenIssues(
   return listIssuesByState(runner, repoRoot, "open", teaLogin);
 }
 
-export async function listIssuesByNumbers(
+export async function viewIssue(
   runner: CommandRunner,
   repoRoot: string,
-  issueNumbers: readonly number[],
+  issueNumber: number,
   teaLogin?: string,
-): Promise<IssueSummary[]> {
-  const wanted = new Set(issueNumbers);
-  const issues = await listIssuesByState(runner, repoRoot, "all", teaLogin);
-  return issues.filter((issue) => wanted.has(issue.number));
+): Promise<IssueSummary> {
+  const result = await runner.run(
+    "tea",
+    withTeaContext(
+      [
+        "issues",
+        String(issueNumber),
+        "--fields",
+        ISSUE_FIELDS,
+        "--output",
+        "json",
+      ],
+      repoRoot,
+      teaLogin,
+    ),
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0)
+    throw new Error(
+      `tea issue view failed for #${issueNumber}: ${result.stderr || result.stdout}`,
+    );
+
+  const issue = parseIssuePayload(
+    parseJson(result.stdout, `tea issue view #${issueNumber}`),
+  );
+  if (issue.number !== issueNumber) {
+    throw new Error(
+      `tea issue view #${issueNumber} returned issue #${issue.number}`,
+    );
+  }
+  return issue;
 }
 
 export async function listLabels(

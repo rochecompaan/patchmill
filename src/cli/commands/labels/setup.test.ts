@@ -36,9 +36,6 @@ function fakeHost(options: FakeHostOptions = {}) {
     async listOpenIssues(): Promise<IssueSummary[]> {
       return [];
     },
-    async listIssuesByNumbers(): Promise<IssueSummary[]> {
-      return [];
-    },
     async hydrateIssueComments(
       issues: IssueSummary[],
     ): Promise<IssueSummary[]> {

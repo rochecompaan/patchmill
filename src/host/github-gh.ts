@@ -11,7 +11,7 @@ import type {
 } from "./types.ts";
 
 const ISSUE_LIST_JSON_FIELDS =
-  "number,title,body,state,labels,author,updatedAt";
+  "number,title,body,state,labels,author,updatedAt,url";
 const ISSUE_VIEW_JSON_FIELDS = `${ISSUE_LIST_JSON_FIELDS},comments`;
 
 export type GitHubGhHostOptions = {
@@ -110,6 +110,10 @@ function parseIssuePayload(payload: unknown, context: string): IssueSummary {
   if (author !== undefined) parsed.author = author;
   if (typeof issue.updatedAt === "string") parsed.updated = issue.updatedAt;
   if (Array.isArray(issue.comments)) parsed.comments = issue.comments;
+  if (typeof issue.url === "string") parsed.url = issue.url;
+  if (typeof issue.html_url === "string" && !parsed.url) {
+    parsed.url = issue.html_url;
+  }
 
   return parsed;
 }
@@ -191,16 +195,6 @@ export class GitHubGhHostProvider implements IssueHostProvider {
     return parseIssueArray(result.stdout, "gh issue list");
   }
 
-  async listIssuesByNumbers(
-    issueNumbers: readonly number[],
-  ): Promise<IssueSummary[]> {
-    const issues: IssueSummary[] = [];
-    for (const issueNumber of issueNumbers) {
-      issues.push(await this.viewIssue(issueNumber));
-    }
-    return issues.sort((a, b) => a.number - b.number);
-  }
-
   async hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]> {
     for (const issue of issues) {
       const viewed = await this.viewIssue(issue.number);
@@ -272,7 +266,7 @@ export class GitHubGhHostProvider implements IssueHostProvider {
       );
   }
 
-  private async viewIssue(issueNumber: number): Promise<IssueSummary> {
+  async viewIssue(issueNumber: number): Promise<IssueSummary> {
     const result = await this.runGh([
       "issue",
       "view",
