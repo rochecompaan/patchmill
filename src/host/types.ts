@@ -36,6 +36,7 @@ export type IssueHostProvider = {
   checkCli(): Promise<HostCliCheck>;
   missingLabelRemediation(label: LabelDefinition): string;
   listOpenIssues(): Promise<IssueSummary[]>;
+  viewIssue(issueNumber: number): Promise<IssueSummary>;
   listIssuesByNumbers(issueNumbers: readonly number[]): Promise<IssueSummary[]>;
   hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]>;
   listLabels(): Promise<string[]>;

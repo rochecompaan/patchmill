@@ -6,6 +6,7 @@ import {
   listLabels,
   listOpenIssues,
   listIssuesByNumbers as listIssuesByNumbersWithTea,
+  viewIssue as viewIssueWithTea,
 } from "../cli/commands/triage/forgejo.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type {
@@ -96,6 +97,15 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
       this.options.runner,
       this.options.repoRoot,
       issueNumbers,
+      this.options.login,
+    );
+  }
+
+  viewIssue(issueNumber: number): Promise<IssueSummary> {
+    return viewIssueWithTea(
+      this.options.runner,
+      this.options.repoRoot,
+      issueNumber,
       this.options.login,
     );
   }

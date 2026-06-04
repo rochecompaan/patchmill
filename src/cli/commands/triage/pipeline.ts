@@ -79,12 +79,14 @@ async function snapshotIssue(
   host: ReturnType<typeof createIssueHostProvider>,
   issueNumber: number,
 ): Promise<IssueSummary> {
-  const afterIssues = await host.listIssuesByNumbers([issueNumber]);
-  await host.hydrateIssueComments(afterIssues);
-  const after = afterIssues[0];
-  if (!after)
-    throw new Error(`Missing after snapshot for issue #${issueNumber}`);
-  return after;
+  const afterIssue = await host.viewIssue(issueNumber);
+  if (afterIssue.number !== issueNumber) {
+    throw new Error(
+      `Issue snapshot for #${issueNumber} returned issue #${afterIssue.number}`,
+    );
+  }
+  await host.hydrateIssueComments([afterIssue]);
+  return afterIssue;
 }
 
 export async function runTriage(

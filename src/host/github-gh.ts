@@ -276,7 +276,7 @@ export class GitHubGhHostProvider implements IssueHostProvider {
       );
   }
 
-  private async viewIssue(issueNumber: number): Promise<IssueSummary> {
+  async viewIssue(issueNumber: number): Promise<IssueSummary> {
     const result = await this.runGh([
       "issue",
       "view",
