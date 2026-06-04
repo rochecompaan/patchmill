@@ -1050,6 +1050,83 @@ test("runTriage writes a failure log before rethrowing execute agent errors", as
   assert.match(log.error, /triage exploded/);
 });
 
+test("runTriage execute failure log keeps completed issue entries", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  let piCalls = 0;
+  const runner = {
+    async run(command: string, args: string[]) {
+      if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
+        return {
+          code: 0,
+          stdout: JSON.stringify([
+            { number: 1, title: "One", body: "", state: "OPEN", labels: [] },
+            { number: 2, title: "Two", body: "", state: "OPEN", labels: [] },
+          ]),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 1") {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 1,
+            title: "One",
+            body: "",
+            state: "OPEN",
+            labels: [{ name: piCalls > 0 ? "agent-ready" : "bug" }],
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 2") {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 2,
+            title: "Two",
+            body: "",
+            state: "OPEN",
+            labels: [],
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "pi") {
+        piCalls += 1;
+        return piCalls === 1
+          ? { code: 0, stdout: "triaged", stderr: "" }
+          : { code: 1, stdout: "", stderr: "second issue exploded" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      runTriage(runner, {
+        repoRoot: "/repo",
+        dryRun: false,
+        execute: true,
+        logDir,
+        host: { provider: "github-gh", login: "" },
+      }),
+    /second issue exploded/,
+  );
+
+  const files = await readdir(logDir);
+  const log = JSON.parse(await readFile(join(logDir, files[0]!), "utf8"));
+  assert.equal(log.mode, "execute");
+  assert.equal(log.issues.length, 1);
+  assert.equal(log.issues[0].issueNumber, 1);
+  assert.match(log.error, /second issue exploded/);
+});
+
 test("runTriage writes a failure log when preview validation fails", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([
