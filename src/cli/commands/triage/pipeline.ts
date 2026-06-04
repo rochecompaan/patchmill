@@ -1,13 +1,10 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { runTriageDryRunAgent } from "./dry-run-agent.ts";
-import { runTriageExecuteAgent } from "./execute-agent.ts";
+import { executeTriageIssues } from "./execute-issues.ts";
 import { DEFAULT_TRIAGE_POLICY } from "./labels.ts";
 import { writeTriageLog } from "./log.ts";
-import {
-  createObservedChangeEntries,
-  createPreviewEntries,
-} from "./reporting.ts";
+import { createPreviewEntries } from "./reporting.ts";
 import type {
   CommandRunner,
   IssueSummary,
@@ -65,30 +62,6 @@ async function tryWriteFailureLog(
   }).catch(() => undefined);
 }
 
-function cloneIssue(issue: IssueSummary): IssueSummary {
-  return {
-    ...issue,
-    labels: [...issue.labels],
-    comments: Array.isArray(issue.comments)
-      ? [...issue.comments]
-      : issue.comments,
-  };
-}
-
-async function snapshotIssue(
-  host: ReturnType<typeof createIssueHostProvider>,
-  issueNumber: number,
-): Promise<IssueSummary> {
-  const afterIssue = await host.viewIssue(issueNumber);
-  if (afterIssue.number !== issueNumber) {
-    throw new Error(
-      `Issue snapshot for #${issueNumber} returned issue #${afterIssue.number}`,
-    );
-  }
-  await host.hydrateIssueComments([afterIssue]);
-  return afterIssue;
-}
-
 export async function runTriage(
   runner: CommandRunner,
   config: TriageConfig,
@@ -108,7 +81,7 @@ export async function runTriage(
     listedIssues =
       config.issueNumber === undefined
         ? await host.listOpenIssues()
-        : await host.listIssuesByNumbers([config.issueNumber]);
+        : [await host.viewIssue(config.issueNumber)];
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, [], error);
     throw error;
@@ -191,41 +164,25 @@ export async function runTriage(
     }
   }
 
-  const beforeIssues = issues.map(cloneIssue);
   const logIssues: TriageLogIssueEntry[] = [];
 
   try {
-    for (const [index, beforeIssue] of beforeIssues.entries()) {
-      await runTriageExecuteAgent(runner, config.repoRoot, {
-        issues: [beforeIssue],
-        projectPolicy,
-        stateMap: triagePolicy.stateMap,
-        host: config.host,
-        skills: config.skills,
-        thinking:
-          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-      });
-
-      const afterIssue = await snapshotIssue(host, beforeIssue.number);
-      const [entry] = createObservedChangeEntries(
-        [beforeIssue],
-        [afterIssue],
-        triagePolicy.stateMap,
-      );
-      if (!entry) {
-        throw new Error(
-          `No observed change entry for issue #${beforeIssue.number}`,
-        );
-      }
-
-      logIssues.push(entry);
-      config.onProgress?.({
-        type: "issue",
-        issue: entry,
-        completed: index + 1,
-        total: beforeIssues.length,
-      });
-    }
+    await executeTriageIssues({
+      runner,
+      repoRoot: config.repoRoot,
+      host,
+      hostConfig: config.host,
+      issues,
+      projectPolicy,
+      stateMap: triagePolicy.stateMap,
+      skills: config.skills,
+      thinking:
+        config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+      onIssue(entry, completed, total) {
+        logIssues.push(entry);
+        config.onProgress?.({ type: "issue", issue: entry, completed, total });
+      },
+    });
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, logIssues, error);
     throw error;

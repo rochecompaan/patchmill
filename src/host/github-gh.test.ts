@@ -176,24 +176,8 @@ test("GitHubGhHostProvider hydrates issue comments from gh issue view", async ()
   ]);
 });
 
-test("GitHubGhHostProvider lists requested issues by number", async () => {
+test("GitHubGhHostProvider views one issue by number", async () => {
   const runner = scriptedRunner({
-    "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,url,comments":
-      {
-        code: 0,
-        stdout: JSON.stringify({
-          number: 1,
-          title: "One",
-          body: "Body one",
-          state: "OPEN",
-          labels: [{ name: "bug" }],
-          author: { login: "alice" },
-          updatedAt: "2026-05-28T10:00:00Z",
-          comments: [],
-          url: "https://github.example/issues/12",
-        }),
-        stderr: "",
-      },
     "gh issue view 2 --json number,title,body,state,labels,author,updatedAt,url,comments":
       {
         code: 0,
@@ -212,20 +196,15 @@ test("GitHubGhHostProvider lists requested issues by number", async () => {
       },
   });
 
-  const issues = await createProvider(runner).listIssuesByNumbers([1, 2]);
+  const issue = await createProvider(runner).viewIssue(2);
 
   assert.deepEqual(commandLines(runner), [
-    "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,url,comments",
     "gh issue view 2 --json number,title,body,state,labels,author,updatedAt,url,comments",
   ]);
-  assert.deepEqual(
-    issues.map((issue) => issue.number),
-    [1, 2],
-  );
-  assert.equal(issues[0]?.url, "https://github.example/issues/12");
-  assert.equal(issues[1]?.body, "");
-  assert.equal(issues[1]?.state, "closed");
-  assert.deepEqual(issues[1]?.comments, [{ body: "done" }]);
+  assert.equal(issue.number, 2);
+  assert.equal(issue.body, "");
+  assert.equal(issue.state, "closed");
+  assert.deepEqual(issue.comments, [{ body: "done" }]);
 });
 
 test("GitHubGhHostProvider lists labels", async () => {
@@ -332,7 +311,7 @@ test("GitHubGhHostProvider command failures include gh and operation context", a
       { code: 1, stdout: "", stderr: "not found" },
   });
   await assert.rejects(
-    () => createProvider(issueRunner).listIssuesByNumbers([3]),
+    () => createProvider(issueRunner).viewIssue(3),
     /gh issue view failed for #3: not found/,
   );
 

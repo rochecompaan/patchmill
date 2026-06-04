@@ -5,7 +5,6 @@ import {
   hydrateIssueComments,
   listLabels,
   listOpenIssues,
-  listIssuesByNumbers as listIssuesByNumbersWithTea,
   viewIssue as viewIssueWithTea,
 } from "../cli/commands/triage/forgejo.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
@@ -86,17 +85,6 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
     return listOpenIssues(
       this.options.runner,
       this.options.repoRoot,
-      this.options.login,
-    );
-  }
-
-  listIssuesByNumbers(
-    issueNumbers: readonly number[],
-  ): Promise<IssueSummary[]> {
-    return listIssuesByNumbersWithTea(
-      this.options.runner,
-      this.options.repoRoot,
-      issueNumbers,
       this.options.login,
     );
   }

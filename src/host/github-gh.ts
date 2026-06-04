@@ -195,16 +195,6 @@ export class GitHubGhHostProvider implements IssueHostProvider {
     return parseIssueArray(result.stdout, "gh issue list");
   }
 
-  async listIssuesByNumbers(
-    issueNumbers: readonly number[],
-  ): Promise<IssueSummary[]> {
-    const issues: IssueSummary[] = [];
-    for (const issueNumber of issueNumbers) {
-      issues.push(await this.viewIssue(issueNumber));
-    }
-    return issues.sort((a, b) => a.number - b.number);
-  }
-
   async hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]> {
     for (const issue of issues) {
       const viewed = await this.viewIssue(issue.number);

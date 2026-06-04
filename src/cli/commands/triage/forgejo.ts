@@ -365,17 +365,6 @@ export async function viewIssue(
   return issue;
 }
 
-export async function listIssuesByNumbers(
-  runner: CommandRunner,
-  repoRoot: string,
-  issueNumbers: readonly number[],
-  teaLogin?: string,
-): Promise<IssueSummary[]> {
-  const wanted = new Set(issueNumbers);
-  const issues = await listIssuesByState(runner, repoRoot, "all", teaLogin);
-  return issues.filter((issue) => wanted.has(issue.number));
-}
-
 export async function listLabels(
   runner: CommandRunner,
   repoRoot: string,
