@@ -6,6 +6,12 @@ import { parseArgs } from "./args.ts";
 import { createCommandRunner } from "./command.ts";
 import { runTriage } from "./pipeline.ts";
 import { createTriageProgressReporter } from "./progress-output.ts";
+import type {
+  CommandRunner,
+  TriageConfig,
+  TriageProgressEvent,
+  TriageResult,
+} from "./types.ts";
 
 // TODO: Remove compatibility alias for --tea-login in favor of --host-login
 export const HELP_TEXT = `Usage:
@@ -32,11 +38,11 @@ Environment:
 
 type Env = Record<string, string | undefined>;
 
-function isHelpOnlyInvocation(args: string[]): boolean {
+export function isHelpOnlyInvocation(args: string[]): boolean {
   return args.includes("--help") || args.includes("-h");
 }
 
-function commandText(args: string[]): string {
+export function commandText(args: string[]): string {
   return ["patchmill", "triage", ...args].join(" ").trim();
 }
 
@@ -57,26 +63,68 @@ export async function loadCliConfig(
   return parseArgs(args, repoRoot, env, patchmillConfig);
 }
 
-export async function main(args = process.argv.slice(2)): Promise<number> {
+export type TriageCliProgressReporter = {
+  onProgress(event: TriageProgressEvent): void;
+  finish(result: TriageResult): void;
+};
+
+export type TriageCliDependencies = {
+  loadCliConfig(
+    args: string[],
+    repoRoot?: string,
+    env?: Env,
+  ): Promise<TriageConfig>;
+  createCommandRunner(): CommandRunner;
+  runTriage(runner: CommandRunner, config: TriageConfig): Promise<TriageResult>;
+  createProgressReporter(options: {
+    command: string;
+    writeLine: (line: string) => void;
+  }): TriageCliProgressReporter;
+  writeStdout(line: string): void;
+  writeStderr(line: string): void;
+};
+
+const defaultTriageCliDependencies: TriageCliDependencies = {
+  loadCliConfig,
+  createCommandRunner,
+  runTriage,
+  createProgressReporter: createTriageProgressReporter,
+  writeStdout(line) {
+    console.log(line);
+  },
+  writeStderr(line) {
+    console.error(line);
+  },
+};
+
+export async function main(
+  args = process.argv.slice(2),
+  dependencies: TriageCliDependencies = defaultTriageCliDependencies,
+): Promise<number> {
   try {
-    const config = await loadCliConfig(args);
+    const config = await dependencies.loadCliConfig(args);
     if (config.showHelp) {
-      console.log(HELP_TEXT);
+      dependencies.writeStdout(HELP_TEXT);
       return 0;
     }
 
-    const reporter = createTriageProgressReporter({
+    const reporter = dependencies.createProgressReporter({
       command: commandText(args),
-      writeLine: (line) => console.log(line),
+      writeLine: dependencies.writeStdout,
     });
-    const result = await runTriage(createCommandRunner(), {
-      ...config,
-      onProgress: reporter.onProgress,
-    });
+    const result = await dependencies.runTriage(
+      dependencies.createCommandRunner(),
+      {
+        ...config,
+        onProgress: reporter.onProgress,
+      },
+    );
     reporter.finish(result);
     return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    dependencies.writeStderr(
+      error instanceof Error ? error.message : String(error),
+    );
     return 1;
   }
 }
