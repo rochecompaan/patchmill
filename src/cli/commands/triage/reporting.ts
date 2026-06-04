@@ -71,6 +71,7 @@ export function createPreviewEntries(
     return {
       issueNumber: preview.issueNumber,
       title: issue.title,
+      ...(issue.url ? { url: issue.url } : {}),
       previousLabels: issue.labels,
       finalLabels: preview.proposedLabels,
       primaryBucket: preview.canonicalBucket,
@@ -104,6 +105,7 @@ export function createObservedChangeEntries(
     return {
       issueNumber: before.number,
       title: after.title || before.title,
+      ...(after.url || before.url ? { url: after.url ?? before.url } : {}),
       previousLabels: before.labels,
       finalLabels: after.labels,
       ...(primaryBucket ? { primaryBucket } : {}),
