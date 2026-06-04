@@ -109,6 +109,8 @@ export async function runTriage(
     throw error;
   }
 
+  config.onProgress?.({ type: "selected", total: issues.length });
+
   if (issues.length === 0) {
     const logPath = await writeTriageLog(config.logDir, {
       mode: logMode(config),
@@ -139,6 +141,14 @@ export async function runTriage(
           config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
       });
       const logIssues = createPreviewEntries(issues, previews);
+      logIssues.forEach((issue, index) => {
+        config.onProgress?.({
+          type: "issue",
+          issue,
+          completed: index + 1,
+          total: logIssues.length,
+        });
+      });
       const logPath = await writeTriageLog(config.logDir, {
         mode: "dry-run",
         createdAt,

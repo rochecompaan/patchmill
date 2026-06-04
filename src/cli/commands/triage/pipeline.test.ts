@@ -94,6 +94,36 @@ test("runTriage dry-run previews configured skill without mutating Forgejo", asy
   assert.deepEqual(result.issues, log.issues);
 });
 
+test("runTriage dry-run emits selected and issue progress events", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const events: string[] = [];
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: issueJson, stderr: "" },
+    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    noCommentsOutput,
+    { code: 0, stdout: needsInfoPreviewJson, stderr: "" },
+  ]);
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+    onProgress: (event) => {
+      if (event.type === "selected") events.push(`selected:${event.total}`);
+      if (event.type === "issue") {
+        events.push(
+          `issue:${event.completed}/${event.total}:#${event.issue.issueNumber}`,
+        );
+      }
+    },
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.deepEqual(events, ["selected:1", "issue:1/1:#1"]);
+});
+
 test("runTriage uses github-gh host provider from config host", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([
