@@ -497,6 +497,112 @@ test("runTriage executes configured skill by default and reports observed change
   );
 });
 
+test("runTriage execute emits each issue after its own snapshot", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const events: string[] = [];
+  const runner = {
+    calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
+    async run(command: string, args: string[], options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+
+      if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
+        return {
+          code: 0,
+          stdout: JSON.stringify([
+            {
+              number: 1,
+              title: "One",
+              body: "Broken one",
+              state: "OPEN",
+              labels: [{ name: "bug" }],
+              url: "https://example.test/issues/1",
+            },
+            {
+              number: 2,
+              title: "Two",
+              body: "Broken two",
+              state: "OPEN",
+              labels: [{ name: "bug" }],
+              url: "https://example.test/issues/2",
+            },
+          ]),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 1") {
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 1,
+            title: "One",
+            body: "Broken one",
+            state: "OPEN",
+            labels: [{ name: piCalls > 0 ? "agent-ready" : "bug" }],
+            url: "https://example.test/issues/1",
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "gh" && args.slice(0, 3).join(" ") === "issue view 2") {
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            number: 2,
+            title: "Two",
+            body: "Broken two",
+            state: "OPEN",
+            labels: [{ name: piCalls > 1 ? "agent-ready" : "bug" }],
+            url: "https://example.test/issues/2",
+            comments: [],
+          }),
+          stderr: "",
+        };
+      }
+
+      if (command === "pi") {
+        return { code: 0, stdout: "triaged", stderr: "" };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    },
+  };
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: false,
+    execute: true,
+    logDir,
+    host: { provider: "github-gh", login: "" },
+    onProgress: (event) => {
+      if (event.type === "selected") events.push(`selected:${event.total}`);
+      if (event.type === "issue") {
+        const piCalls = runner.calls.filter(
+          (call) => call.command === "pi",
+        ).length;
+        events.push(
+          `issue:${event.completed}/${event.total}:#${event.issue.issueNumber}:pi=${piCalls}`,
+        );
+      }
+    },
+  });
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(events, [
+    "selected:2",
+    "issue:1/2:#1:pi=1",
+    "issue:2/2:#2:pi=2",
+  ]);
+});
+
 test("runTriage passes explicit tea login to Forgejo commands only", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const afterIssueJson = JSON.stringify([

@@ -65,6 +65,28 @@ async function tryWriteFailureLog(
   }).catch(() => undefined);
 }
 
+function cloneIssue(issue: IssueSummary): IssueSummary {
+  return {
+    ...issue,
+    labels: [...issue.labels],
+    comments: Array.isArray(issue.comments)
+      ? [...issue.comments]
+      : issue.comments,
+  };
+}
+
+async function snapshotIssue(
+  host: ReturnType<typeof createIssueHostProvider>,
+  issueNumber: number,
+): Promise<IssueSummary> {
+  const afterIssues = await host.listIssuesByNumbers([issueNumber]);
+  await host.hydrateIssueComments(afterIssues);
+  const after = afterIssues[0];
+  if (!after)
+    throw new Error(`Missing after snapshot for issue #${issueNumber}`);
+  return after;
+}
+
 export async function runTriage(
   runner: CommandRunner,
   config: TriageConfig,
@@ -167,49 +189,43 @@ export async function runTriage(
     }
   }
 
-  const beforeIssues = issues.map((issue) => ({
-    ...issue,
-    labels: [...issue.labels],
-    comments: Array.isArray(issue.comments)
-      ? [...issue.comments]
-      : issue.comments,
-  }));
+  const beforeIssues = issues.map(cloneIssue);
+  const logIssues: TriageLogIssueEntry[] = [];
 
   try {
-    await runTriageExecuteAgent(runner, config.repoRoot, {
-      issues,
-      projectPolicy,
-      stateMap: triagePolicy.stateMap,
-      host: config.host,
-      skills: config.skills,
-      thinking:
-        config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-    });
-  } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
-    throw error;
-  }
+    for (const [index, beforeIssue] of beforeIssues.entries()) {
+      await runTriageExecuteAgent(runner, config.repoRoot, {
+        issues: [beforeIssue],
+        projectPolicy,
+        stateMap: triagePolicy.stateMap,
+        host: config.host,
+        skills: config.skills,
+        thinking:
+          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+      });
 
-  let afterIssues: IssueSummary[];
-  try {
-    afterIssues = await host.listIssuesByNumbers(
-      beforeIssues.map((issue) => issue.number),
-    );
-    await host.hydrateIssueComments(afterIssues);
-  } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
-    throw error;
-  }
+      const afterIssue = await snapshotIssue(host, beforeIssue.number);
+      const [entry] = createObservedChangeEntries(
+        [beforeIssue],
+        [afterIssue],
+        triagePolicy.stateMap,
+      );
+      if (!entry) {
+        throw new Error(
+          `No observed change entry for issue #${beforeIssue.number}`,
+        );
+      }
 
-  let logIssues: TriageLogIssueEntry[];
-  try {
-    logIssues = createObservedChangeEntries(
-      beforeIssues,
-      afterIssues,
-      triagePolicy.stateMap,
-    );
+      logIssues.push(entry);
+      config.onProgress?.({
+        type: "issue",
+        issue: entry,
+        completed: index + 1,
+        total: beforeIssues.length,
+      });
+    }
   } catch (error) {
-    await tryWriteFailureLog(config, createdAt, [], error);
+    await tryWriteFailureLog(config, createdAt, logIssues, error);
     throw error;
   }
 
