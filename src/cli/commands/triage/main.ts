@@ -40,8 +40,84 @@ function formatLabels(labels: string[]): string {
   return labels.length > 0 ? labels.join(", ") : "(none)";
 }
 
+const DIVIDER =
+  "──────────────────────────────────────────────────────────────────────────────";
+
 function firstLine(value: string): string {
   return value.split(/\r?\n/u, 1)[0] ?? "";
+}
+
+function commandText(args: string[]): string {
+  return ["patchmill", "triage", ...args].join(" ").trim();
+}
+
+function truncateLines(lines: string[], maxLines: number): string[] {
+  return lines.slice(0, maxLines);
+}
+
+export function formatProgressIssueLines(
+  issue: TriageResult["issues"][number],
+  completed: number,
+  total: number,
+): string[] {
+  const lines = [DIVIDER, `#${issue.issueNumber} ${issue.title}`];
+
+  if (issue.url) lines.push(`  link: ${issue.url}`);
+
+  lines.push(
+    `  labels: ${formatLabels(issue.previousLabels)} -> ${formatLabels(issue.finalLabels)}`,
+  );
+
+  if (
+    issue.previousState &&
+    issue.finalState &&
+    issue.previousState !== issue.finalState
+  ) {
+    lines.push(`  state: ${issue.previousState} -> ${issue.finalState}`);
+  }
+
+  if (issue.comment) {
+    lines.push(
+      issue.mutationStatus === "observed" ? "  comment added:" : "  comment:",
+    );
+    lines.push(
+      ...truncateLines(issue.comment.split(/\r?\n/u), 5).map(
+        (line) => `  ${line}`,
+      ),
+    );
+  }
+
+  lines.push("", `progress: ${completed}/${total} triaged`, "");
+  return lines;
+}
+
+export function createTriageProgressReporter(options: {
+  command: string;
+  writeLine: (line: string) => void;
+}) {
+  return {
+    onProgress(event: import("./types.ts").TriageProgressEvent) {
+      if (event.type === "selected") {
+        options.writeLine(`> ${options.command}`);
+        options.writeLine("");
+        options.writeLine(`issues: ${event.total}`);
+        options.writeLine("");
+        return;
+      }
+
+      for (const line of formatProgressIssueLines(
+        event.issue,
+        event.completed,
+        event.total,
+      )) {
+        options.writeLine(line);
+      }
+    },
+    finish(result: TriageResult) {
+      options.writeLine(`agent issue triage: ${result.status}`);
+      options.writeLine(`log: ${result.logPath}`);
+    },
+  };
 }
 
 export function formatResultLines(result: TriageResult): string[] {
@@ -95,13 +171,15 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       return 0;
     }
 
-    const result = await runTriage(createCommandRunner(), config);
-    console.log(`agent issue triage: ${result.status}`);
-    console.log(`issues: ${result.issueCount}`);
-    console.log(`log: ${result.logPath}`);
-    for (const line of formatResultLines(result)) {
-      console.log(line);
-    }
+    const reporter = createTriageProgressReporter({
+      command: commandText(args),
+      writeLine: (line) => console.log(line),
+    });
+    const result = await runTriage(createCommandRunner(), {
+      ...config,
+      onProgress: reporter.onProgress,
+    });
+    reporter.finish(result);
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
