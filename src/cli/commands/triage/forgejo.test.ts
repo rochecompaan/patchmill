@@ -34,6 +34,7 @@ test("listOpenIssues parses tea issue JSON", async () => {
           body: "",
           state: "open",
           labels: ["enhancement"],
+          url: "https://forgejo.example/issues/1",
         },
       ]),
       stderr: "",
@@ -48,6 +49,7 @@ test("listOpenIssues parses tea issue JSON", async () => {
     [1, 2],
   );
   assert.deepEqual(issues[0].labels, ["enhancement"]);
+  assert.equal(issues[0]?.url, "https://forgejo.example/issues/1");
   assert.equal(runner.calls[0].command, "tea");
   assert.deepEqual(runner.calls[0].args.slice(0, 4), [
     "issues",

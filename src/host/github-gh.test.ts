@@ -51,7 +51,7 @@ function flagValue(args: string[], flag: string): string | undefined {
 
 test("GitHubGhHostProvider lists open issues", async () => {
   const runner = scriptedRunner({
-    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt":
+    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt,url":
       {
         code: 0,
         stdout: JSON.stringify([
@@ -63,6 +63,7 @@ test("GitHubGhHostProvider lists open issues", async () => {
             labels: [{ name: "agent-ready" }, { name: "bug" }],
             author: { login: "alice" },
             updatedAt: "2026-05-28T10:00:00Z",
+            url: "https://github.example/issues/12",
           },
         ]),
         stderr: "",
@@ -70,7 +71,9 @@ test("GitHubGhHostProvider lists open issues", async () => {
   });
   const provider = new GitHubGhHostProvider({ runner, repoRoot });
 
-  assert.deepEqual(await provider.listOpenIssues(), [
+  const issues = await provider.listOpenIssues();
+
+  assert.deepEqual(issues, [
     {
       number: 42,
       title: "Fix dashboard",
@@ -79,8 +82,10 @@ test("GitHubGhHostProvider lists open issues", async () => {
       labels: ["agent-ready", "bug"],
       author: "alice",
       updated: "2026-05-28T10:00:00Z",
+      url: "https://github.example/issues/12",
     },
   ]);
+  assert.equal(issues[0]?.url, "https://github.example/issues/12");
   assert.equal(runner.calls.length, 1);
   assertGhContext(runner.calls[0]!);
 });
@@ -141,7 +146,7 @@ test("GitHubGhHostProvider reports CLI authentication failures with remediation"
 test("GitHubGhHostProvider hydrates issue comments from gh issue view", async () => {
   const comments = [{ author: { login: "alice" }, body: "First comment" }];
   const runner = scriptedRunner({
-    "gh issue view 7 --json number,title,body,state,labels,author,updatedAt,comments":
+    "gh issue view 7 --json number,title,body,state,labels,author,updatedAt,url,comments":
       {
         code: 0,
         stdout: JSON.stringify({
@@ -153,6 +158,7 @@ test("GitHubGhHostProvider hydrates issue comments from gh issue view", async ()
           author: { login: "ana" },
           updatedAt: "2026-05-28T10:00:00Z",
           comments,
+          url: "https://github.example/issues/12",
         }),
         stderr: "",
       },
@@ -166,13 +172,13 @@ test("GitHubGhHostProvider hydrates issue comments from gh issue view", async ()
   assert.strictEqual(hydrated, issues);
   assert.deepEqual(issues[0]?.comments, comments);
   assert.deepEqual(commandLines(runner), [
-    "gh issue view 7 --json number,title,body,state,labels,author,updatedAt,comments",
+    "gh issue view 7 --json number,title,body,state,labels,author,updatedAt,url,comments",
   ]);
 });
 
 test("GitHubGhHostProvider lists requested issues by number", async () => {
   const runner = scriptedRunner({
-    "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,comments":
+    "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,url,comments":
       {
         code: 0,
         stdout: JSON.stringify({
@@ -184,10 +190,11 @@ test("GitHubGhHostProvider lists requested issues by number", async () => {
           author: { login: "alice" },
           updatedAt: "2026-05-28T10:00:00Z",
           comments: [],
+          url: "https://github.example/issues/12",
         }),
         stderr: "",
       },
-    "gh issue view 2 --json number,title,body,state,labels,author,updatedAt,comments":
+    "gh issue view 2 --json number,title,body,state,labels,author,updatedAt,url,comments":
       {
         code: 0,
         stdout: JSON.stringify({
@@ -199,6 +206,7 @@ test("GitHubGhHostProvider lists requested issues by number", async () => {
           author: { login: "bob" },
           updatedAt: "2026-05-28T11:00:00Z",
           comments: [{ body: "done" }],
+          url: "https://github.example/issues/2",
         }),
         stderr: "",
       },
@@ -207,13 +215,14 @@ test("GitHubGhHostProvider lists requested issues by number", async () => {
   const issues = await createProvider(runner).listIssuesByNumbers([1, 2]);
 
   assert.deepEqual(commandLines(runner), [
-    "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,comments",
-    "gh issue view 2 --json number,title,body,state,labels,author,updatedAt,comments",
+    "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,url,comments",
+    "gh issue view 2 --json number,title,body,state,labels,author,updatedAt,url,comments",
   ]);
   assert.deepEqual(
     issues.map((issue) => issue.number),
     [1, 2],
   );
+  assert.equal(issues[0]?.url, "https://github.example/issues/12");
   assert.equal(issues[1]?.body, "");
   assert.equal(issues[1]?.state, "closed");
   assert.deepEqual(issues[1]?.comments, [{ body: "done" }]);
@@ -319,7 +328,7 @@ test("GitHubGhHostProvider comments on issues", async () => {
 
 test("GitHubGhHostProvider command failures include gh and operation context", async () => {
   const issueRunner = scriptedRunner({
-    "gh issue view 3 --json number,title,body,state,labels,author,updatedAt,comments":
+    "gh issue view 3 --json number,title,body,state,labels,author,updatedAt,url,comments":
       { code: 1, stdout: "", stderr: "not found" },
   });
   await assert.rejects(

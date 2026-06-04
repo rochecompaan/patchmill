@@ -259,7 +259,7 @@ async function listIssuesByState(
           "--state",
           state,
           "--fields",
-          "index,title,body,state,labels,author,updated,comments",
+          "index,title,body,state,labels,author,updated,comments,url",
           "--page",
           String(page),
           "--limit",
@@ -289,7 +289,7 @@ async function listIssuesByState(
         throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
       }
 
-      return {
+      const parsedIssue: IssueSummary = {
         number,
         title: issue.title,
         body: typeof issue.body === "string" ? issue.body : "",
@@ -299,6 +299,13 @@ async function listIssuesByState(
         updated: typeof issue.updated === "string" ? issue.updated : undefined,
         comments: Array.isArray(issue.comments) ? issue.comments : undefined,
       };
+
+      if (typeof issue.url === "string") parsedIssue.url = issue.url;
+      if (typeof issue.html_url === "string" && !parsedIssue.url) {
+        parsedIssue.url = issue.html_url;
+      }
+
+      return parsedIssue;
     });
 
     if (pageIssues.length === 0) break;
