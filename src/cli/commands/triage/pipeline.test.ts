@@ -173,8 +173,8 @@ test("runTriage uses github-gh host provider from config host", async () => {
       .filter((call) => call.command === "gh")
       .map((call) => [call.command, ...call.args].join(" ")),
     [
-      "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt",
-      "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,comments",
+      "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt,url",
+      "gh issue view 1 --json number,title,body,state,labels,author,updatedAt,url,comments",
     ],
   );
   assert.equal(

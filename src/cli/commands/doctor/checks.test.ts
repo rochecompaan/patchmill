@@ -167,7 +167,7 @@ function successMocks(
     "git branch --show-current": { code: 0, stdout: "main\n" },
     "git status --porcelain=v1 --untracked-files=all": { code: 0, stdout: "" },
     "tea --help": { code: 0, stdout: "tea help" },
-    "tea issues list --state open --fields index,title,body,state,labels,author,updated,comments --page 1 --limit 1000 --output json --repo /repo --login triage-agent":
+    "tea issues list --state open --fields index,title,body,state,labels,author,updated,comments,url --page 1 --limit 1000 --output json --repo /repo --login triage-agent":
       {
         code: 0,
         stdout: "[]",
@@ -321,7 +321,7 @@ test("runDoctorChecks supports github-gh provider", async () => {
     },
     "gh --version": { code: 0, stdout: "gh version 2.0.0\n", stderr: "" },
     "gh auth status": { code: 0, stdout: "Logged in\n", stderr: "" },
-    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt":
+    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt,url":
       { code: 0, stdout: "[]", stderr: "" },
     "gh label list --limit 1000 --json name": {
       code: 0,
@@ -395,7 +395,7 @@ test("runDoctorChecks reports missing github labels with provider remediation", 
     "git status --porcelain=v1 --untracked-files=all": { code: 0, stdout: "" },
     "gh --version": { code: 0, stdout: "gh version 2.0.0\n" },
     "gh auth status": { code: 0, stdout: "Logged in\n" },
-    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt":
+    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,updatedAt,url":
       { code: 0, stdout: "[]" },
     "gh label list --limit 1000 --json name": { code: 0, stdout: "[]" },
     "pi --help": { code: 0, stdout: "pi help" },
