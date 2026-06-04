@@ -8,6 +8,7 @@ export type IssueSummary = {
   state: string;
   author?: string;
   updated?: string;
+  url?: string;
   comments?: unknown[];
 };
 
