@@ -41,6 +41,32 @@ function createProvider(runner: CommandRunner): ForgejoTeaHostProvider {
   return new ForgejoTeaHostProvider({ runner, repoRoot, login });
 }
 
+function createProviderWithResponses(responses: CommandResult[]): {
+  provider: ForgejoTeaHostProvider;
+  calls: RecordedCall[];
+} {
+  const calls: RecordedCall[] = [];
+  let index = 0;
+  const runner: CommandRunner = {
+    async run(command, args, options = {}) {
+      calls.push({ command, args: [...args], cwd: options.cwd });
+      const response = responses[index];
+      index += 1;
+      if (!response)
+        throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+      return response;
+    },
+  };
+  return {
+    provider: new ForgejoTeaHostProvider({
+      runner,
+      repoRoot,
+      login: "triage-agent",
+    }),
+    calls,
+  };
+}
+
 function assertTeaContext(call: RecordedCall): void {
   assert.equal(call.command, "tea");
   assert.equal(call.cwd, repoRoot);
@@ -311,4 +337,160 @@ test("ForgejoTeaHostProvider delegates issue comments to tea", async () => {
   const separatorIndex = runner.calls[0]!.args.indexOf("--");
   assert.ok(separatorIndex >= 0);
   assert.equal(runner.calls[0]!.args[separatorIndex + 1], body);
+});
+
+test("Forgejo provider checks repository existence with tea repos search", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          owner: { login: "OWNER" },
+          name: "patchmill-test",
+          url: "https://forgejo.example/OWNER/patchmill-test",
+          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
+        },
+      ]),
+      stderr: "",
+    },
+  ]);
+
+  assert.equal(
+    await provider.repoExists({
+      owner: "OWNER",
+      repo: "patchmill-test",
+      slug: "OWNER/patchmill-test",
+    }),
+    true,
+  );
+  assert.deepEqual(calls[0]?.args, [
+    "repos",
+    "search",
+    "patchmill-test",
+    "--owner",
+    "OWNER",
+    "--fields",
+    "owner,name,ssh,url",
+    "--limit",
+    "50",
+    "--output",
+    "json",
+    "--login",
+    "triage-agent",
+  ]);
+});
+
+test("Forgejo provider creates and deletes public repositories", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "{}", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+  const target = {
+    owner: "OWNER",
+    repo: "patchmill-test",
+    slug: "OWNER/patchmill-test",
+  };
+
+  await provider.createPublicRepo(target);
+  await provider.deleteRepo(target);
+
+  assert.deepEqual(
+    calls.map((call) => call.args),
+    [
+      [
+        "repos",
+        "create",
+        "--name",
+        "patchmill-test",
+        "--owner",
+        "OWNER",
+        "--output",
+        "json",
+        "--login",
+        "triage-agent",
+      ],
+      [
+        "repos",
+        "delete",
+        "--name",
+        "patchmill-test",
+        "--owner",
+        "OWNER",
+        "--force",
+        "--login",
+        "triage-agent",
+      ],
+    ],
+  );
+});
+
+test("Forgejo provider reads clone and public URLs from repository info", async () => {
+  const { provider } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          owner: "OWNER",
+          name: "patchmill-test",
+          url: "https://forgejo.example/OWNER/patchmill-test",
+          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
+        },
+      ]),
+      stderr: "",
+    },
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          owner: "OWNER",
+          name: "patchmill-test",
+          url: "https://forgejo.example/OWNER/patchmill-test",
+          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
+        },
+      ]),
+      stderr: "",
+    },
+  ]);
+  const target = {
+    owner: "OWNER",
+    repo: "patchmill-test",
+    slug: "OWNER/patchmill-test",
+  };
+
+  assert.equal(
+    await provider.gitRemoteUrl(target),
+    "git@forgejo.example:OWNER/patchmill-test.git",
+  );
+  assert.equal(
+    await provider.publicRepoUrl(target),
+    "https://forgejo.example/OWNER/patchmill-test",
+  );
+  assert.equal(provider.cloneCommand(target), "tea clone OWNER/patchmill-test");
+});
+
+test("Forgejo provider creates issues with labels", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  await provider.createIssue({
+    title: "Build the form",
+    body: "Create a useful form.\n",
+    labels: ["feature", "polish"],
+  });
+
+  assert.deepEqual(calls[0]?.args, [
+    "issues",
+    "create",
+    "--title",
+    "Build the form",
+    "--description",
+    "Create a useful form.\n",
+    "--labels",
+    "feature,polish",
+    "--repo",
+    "/repo",
+    "--login",
+    "triage-agent",
+  ]);
 });
