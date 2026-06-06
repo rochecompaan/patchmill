@@ -2,23 +2,25 @@
 
 ## Summary
 
-Create a reusable GitHub demo repository seeding workflow for testing
-Patchmill's `init` and `triage` commands against a greenfield project. The
-target repository is supplied explicitly on every run as `--repo OWNER/REPO`.
-The repository is disposable: reset means deleting and recreating it, then
-seeding it with a project brief, issue prompts, basic labels, and GitHub issues.
+Create a reusable GitHub demo repository setup workflow for testing Patchmill's
+`init` and `triage` commands against a greenfield project. The target repository
+is supplied explicitly on every run as `--repo OWNER/REPO`. The repository is
+disposable: setup creates and seeds it, and `--reset` deletes and recreates it
+before seeding it with a project brief, issue prompts, basic labels, and GitHub
+issues.
 
 The reusable source content lives in the Patchmill repository and is copied into
-the recreated demo repository on each reset. This keeps the live GitHub
-repository clean and disposable while preserving the project description and
-prompts for repeated use.
+the target demo repository on each setup or reset. This keeps the live GitHub
+repository disposable while preserving the project description and prompts for
+repeated use.
 
 ## Goals
 
 - Provide a realistic GitHub repository for manually testing `patchmill init`
   and `patchmill triage`.
-- Reset a caller-specified test repository to a clean state by deleting and
-  recreating it.
+- Set up a caller-specified test repository by creating and seeding it.
+- Reset a caller-specified test repository to a clean state when `--reset` is
+  passed.
 - Require the caller to pass `--repo OWNER/REPO`; there is no default target and
   the script never infers a target from the current git remote.
 - Allow any GitHub user or organization to reuse the prompts and script in a
@@ -38,12 +40,12 @@ prompts for repeated use.
 - Do not provide a default repository target.
 - Do not infer the target repository from the current directory, git remote, or
   GitHub CLI context.
-- Do not run `patchmill init` from the reset script; running init is part of the
+- Do not run `patchmill init` from the setup script; running init is part of the
   manual test.
 - Do not create or refresh a local clone of the target repository; print clone
   instructions instead.
 - Do not include expected triage outcomes in issue files.
-- Do not scaffold a runnable application in the reset repository. The seeded
+- Do not scaffold a runnable application in the target repository. The seeded
   issues should drive the app build from an almost empty repository.
 
 ## Demo Project
@@ -105,7 +107,7 @@ Rules:
 
 ## Seeded Labels
 
-The reset script creates basic type labels before creating issues. Initial
+The setup script creates basic type labels before creating issues. Initial
 labels should include:
 
 - `feature`
@@ -135,40 +137,44 @@ Seed 10–12 issues. The approved starting set is 12 issues:
 12. **Votes sometimes disappear when I refresh** — deliberately underspecified
     bug-like issue, useful for triage because the app does not exist yet.
 
-## Reset and Seed Workflow
+## Setup and Reset Workflow
 
 The primary workflow is this Patchmill-local shell script:
 
 ```bash
-scripts/reset-patchmill-test-repo.sh
+scripts/setup-patchmill-test-repo.sh
 ```
 
-The script requires an explicit `--repo OWNER/REPO` argument and always
-recreates the target repository as public. There is no default repository
+The script requires an explicit `--repo OWNER/REPO` argument and always creates
+or recreates the target repository as public. There is no default repository
 target.
 
 Example:
 
 ```bash
-scripts/reset-patchmill-test-repo.sh --repo rochecompaan/patchmill-test --yes
+scripts/setup-patchmill-test-repo.sh --repo rochecompaan/patchmill-test --reset
 ```
 
-The `--yes` flag is required for the destructive delete/recreate operation.
+The `--reset` flag is required for the destructive delete/recreate operation. If
+`--reset` is omitted and the target repository already exists, the script fails
+with instructions to rerun with `--reset` when the caller intends to replace it.
 
 Workflow:
 
 1. Verify required tools are available: `gh`, `git`, and `node`.
 2. Validate the required `--repo OWNER/REPO` argument.
-3. Require `--yes` before deleting or recreating a repository.
-4. Print the exact target repository and public URL.
-5. Delete the target repository if it exists.
-6. Recreate the target repository as a public GitHub repository.
-7. Create a temporary local git repository.
-8. Copy fixture files into the temporary repository.
-9. Commit and push `main` to the recreated GitHub repository.
-10. Create basic labels with `gh label create` or `gh api`.
-11. Use a small Node helper to parse `issues/*.md` and create GitHub issues.
-12. Print next-step commands for manual testing.
+3. Determine whether the caller requested `--reset`.
+4. If `--reset` is omitted, create the target public repository only when it
+   does not already exist.
+5. If `--reset` is provided, print the exact target repository and public URL,
+   delete the target repository if it exists, and recreate it as a public GitHub
+   repository.
+6. Create a temporary local git repository.
+7. Copy fixture files into the temporary repository.
+8. Commit and push `main` to the target GitHub repository.
+9. Create basic labels with `gh label create` or `gh api`.
+10. Use a small Node helper to parse `issues/*.md` and create GitHub issues.
+11. Print next-step commands for manual testing.
 
 Example final output for the requested target:
 
@@ -191,12 +197,13 @@ predictable issue creation commands or JSON records. The helper owns:
 - preserving issue body markdown exactly after the frontmatter,
 - deterministic ordering by filename.
 
-The shell wrapper owns destructive GitHub lifecycle operations and calls the
-helper during issue creation.
+The shell wrapper owns GitHub lifecycle operations and calls the helper during
+issue creation.
 
 ## Safety and Error Handling
 
-The reset flow is intentionally destructive and requires an explicit target.
+The setup flow requires an explicit target. The reset mode is intentionally
+destructive and requires `--reset`.
 
 Safety rules:
 
@@ -204,8 +211,8 @@ Safety rules:
 - Refuse malformed repository names.
 - Refuse to infer a target repository from the current directory, git remote, or
   GitHub CLI context.
-- Require `--yes` for the destructive delete/recreate operation.
-- Print each major destructive step.
+- Require `--reset` for the destructive delete/recreate operation.
+- Print each major step, including every destructive reset step.
 - Print the exact target repository and public URL before deletion.
 - Treat a missing repository during deletion as acceptable.
 - Fail fast when `gh`, `git`, or `node` is missing.
@@ -214,9 +221,9 @@ Safety rules:
 - Use a temporary directory for git operations.
 - Clean up the temporary directory automatically.
 
-Failure recovery is rerunning the reset script. If the script fails after
-recreation, the partially seeded repository may remain on GitHub, but the next
-run deletes and recreates it.
+Failure recovery is rerunning the setup script. If the script fails after
+creation or recreation, the partially seeded repository may remain on GitHub,
+but the next run with `--reset` deletes and recreates it.
 
 ## Verification
 
@@ -225,14 +232,16 @@ Implementation verification should include:
 - parser/helper tests for valid issue files, missing titles, optional labels,
   and invalid labels,
 - local validation that all fixture issue files parse,
-- running the reset script against GitHub with an explicit repository argument,
+- running the setup script against GitHub with an explicit repository argument
+  and `--reset`,
 - confirming the public repository exists at the requested GitHub URL,
 - confirming the seeded repository contains the copied project files,
 - confirming the expected labels exist,
 - confirming the expected 10–12 issues exist.
 
-For Patchmill's own verification, use `--repo rochecompaan/patchmill-test` and
-leave that repository live and seeded on GitHub.
+For Patchmill's own verification, use
+`--repo rochecompaan/patchmill-test --reset` and leave that repository live and
+seeded on GitHub.
 
 ## Documentation
 
@@ -241,8 +250,10 @@ Add documentation describing:
 - the purpose of the reusable Patchmill test repository fixture,
 - that the repository is disposable,
 - how to choose a disposable `OWNER/REPO` target,
-- how to run the reset/seed script with `--repo OWNER/REPO --yes`,
-- that the script deletes and recreates the public GitHub repository,
+- how to run the setup script with `--repo OWNER/REPO`,
+- how to reset an existing disposable repository with
+  `--repo OWNER/REPO --reset`,
+- that `--reset` deletes and recreates the public GitHub repository,
 - where the reusable project brief and issue prompts live,
 - how to clone the recreated repository,
 - how to manually test `patchmill init` and `patchmill triage` afterward.
