@@ -29,6 +29,9 @@ description and issue prompts for repeated use.
 - Expose the workflow as a packaged CLI command: `patchmill setup-test-repo`.
 - Let users run the demo setup after installing Patchmill, without cloning the
   Patchmill repository.
+- Update the README to present `patchmill setup-test-repo` as the quickest safe
+  way to see Patchmill in action without running it against a production
+  repository.
 - Set up a caller-specified public test repository by creating and seeding it.
 - Reset a caller-specified test repository to a clean state when `--reset` is
   passed.
@@ -309,10 +312,48 @@ patchmill setup-test-repo --repo rochecompaan/patchmill-test --reset
 
 Leave that repository live and seeded on GitHub.
 
+## README Promotion
+
+Update `README.md` so new users can discover the disposable test repository
+workflow before pointing Patchmill at production work.
+
+The README should include a short section near the first-use command overview
+that explains:
+
+- `patchmill setup-test-repo` creates a disposable greenfield GitHub repository
+  with reusable demo prompts and issues.
+- This is the recommended way to quickly see Patchmill in action without letting
+  it operate on a production repository.
+- The target must be an explicit disposable public repository passed as
+  `--repo OWNER/REPO`.
+- `--reset` deletes and recreates that repository, so users should only use it
+  with a repo they are comfortable losing.
+- After setup, users can clone the repo and run `patchmill init`,
+  `patchmill triage --dry-run`, and `patchmill triage`.
+
+Example README command flow:
+
+```bash
+patchmill setup-test-repo --repo OWNER/REPO
+gh repo clone OWNER/REPO
+cd REPO
+patchmill init
+patchmill triage --dry-run
+```
+
+The README should also show the reset form for rerunning the demo from a clean
+state:
+
+```bash
+patchmill setup-test-repo --repo OWNER/REPO --reset
+```
+
 ## Documentation
 
 Add documentation describing:
 
+- README guidance that promotes `patchmill setup-test-repo` as the safe quick
+  start path for trying Patchmill on a disposable repository,
 - the purpose of the reusable Patchmill test repository fixture,
 - that the target repository should be disposable,
 - how to choose a disposable `OWNER/REPO` target,
