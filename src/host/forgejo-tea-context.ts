@@ -74,7 +74,15 @@ export function withTeaContext(
   repoRoot: string,
   teaLogin?: string,
 ): string[] {
-  const repoArgs = insertBeforeSeparator(args, ["--repo", teaRepo(repoRoot)]);
+  return withTeaRepositoryContext(args, teaRepo(repoRoot), teaLogin);
+}
+
+export function withTeaRepositoryContext(
+  args: string[],
+  repoSlug: string,
+  teaLogin?: string,
+): string[] {
+  const repoArgs = insertBeforeSeparator(args, ["--repo", repoSlug]);
   if (!teaLogin) return repoArgs;
   return insertBeforeSeparator(repoArgs, ["--login", teaLogin]);
 }

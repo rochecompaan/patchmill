@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createGitHostProvider, createIssueHostProvider } from "./factory.ts";
+import {
+  createIssueHostProvider,
+  createRepositorySetupHostProvider,
+} from "./factory.ts";
 import { ForgejoTeaHostProvider } from "./forgejo-tea.ts";
 import { GitHubGhHostProvider } from "./github-gh.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
@@ -33,18 +36,18 @@ test("createIssueHostProvider constructs GitHub gh provider", () => {
   assert.equal(provider.id, "github-gh");
 });
 
-test("createGitHostProvider exposes generic repository capabilities", () => {
-  const provider = createGitHostProvider({
+test("createRepositorySetupHostProvider exposes setup repository capabilities", () => {
+  const provider = createRepositorySetupHostProvider({
     runner,
     repoRoot: "/repo",
     host: { provider: "github-gh", login: "" },
   });
 
-  assert.equal(typeof provider.repoExists, "function");
+  assert.equal(typeof provider.getRepository, "function");
   assert.equal(typeof provider.createPublicRepo, "function");
   assert.equal(typeof provider.deleteRepo, "function");
-  assert.equal(typeof provider.gitRemoteUrl, "function");
-  assert.equal(typeof provider.publicRepoUrl, "function");
   assert.equal(typeof provider.cloneCommand, "function");
+  assert.equal(typeof provider.listLabels, "function");
+  assert.equal(typeof provider.createLabel, "function");
   assert.equal(typeof provider.createIssue, "function");
 });

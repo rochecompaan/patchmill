@@ -351,20 +351,21 @@ Reuse rules:
 - Provider-specific subprocess calls belong in the existing provider modules:
   `src/host/github-gh.ts` and `src/host/forgejo-tea.ts`.
 - Do not create a setup-specific provider subtree such as
-  `src/host/setup-test-repo`. If a capability is a generic operation on a git
-  provider, add it to the existing provider module and shared host types.
+  `src/host/setup-test-repo`. Provider-specific subprocess calls still belong in
+  the existing provider modules, but setup should use a separate target-explicit
+  host interface instead of widening the triage interface.
 - Reuse the existing `CommandRunner`, `HostCliCheck`, `LabelDefinition`,
   `IssueHostProvider`, provider IDs, and provider readiness behavior from
   `src/host/types.ts`, `src/host/github-gh.ts`, `src/host/forgejo-tea.ts`, and
   `src/host/factory.ts`.
-- Add generic repository lifecycle and issue-creation capabilities to the
-  existing host providers rather than wrapping them in a parallel setup adapter.
-  These capabilities are broadly useful host operations: repository existence,
-  public repository creation, repository deletion, issue creation, git remote
-  URL, public URL, and clone command.
-- After the temporary git repository has the target remote configured, reuse the
-  existing repo-scoped provider behavior for readiness checks, label creation,
-  and issue creation where possible.
+- Add repository lifecycle and issue-creation capabilities through a dedicated
+  setup/admin host interface. Do not add these methods to the
+  `IssueHostProvider` contract used by triage. Triage remains configured-repo
+  scoped; setup remains explicit-target scoped.
+- All setup label and issue operations must accept the explicit
+  `RepositoryTarget`. Do not rely on temporary git remotes, cwd inference,
+  `GH_REPO`, or `tea --repo` inference to decide which repository receives
+  labels and issues.
 - If lifecycle or issue-creation logic requires provider-specific command
   builders, add them to the existing provider modules or shared `src/host`
   helpers. Do not duplicate command formatting, login handling, output parsing,
@@ -377,30 +378,33 @@ This keeps all supported-provider knowledge in `src/host` and prevents
 `setup-test-repo` from becoming a second, divergent implementation of GitHub or
 Forgejo/Gitea support.
 
-## Generic Host Provider Capabilities
+## Setup Host Provider Capabilities
 
 The existing `IssueHostProvider` interface supports Patchmill operations on an
 already-configured repository: list issues, inspect labels, comment, and apply
-labels. `setup-test-repo` needs repository lifecycle and issue creation before a
-repository has been initialized for Patchmill. Add those missing capabilities to
-the existing host-provider modules as generic provider operations, not as
-test-repo-specific setup code.
+labels. `setup-test-repo` has a different target model: it creates, deletes, and
+seeds an explicit repository that may not exist yet. Keep those concepts
+separate by adding a dedicated `RepositorySetupHostProvider` interface while
+implementing provider-specific commands in the existing provider classes.
 
-The existing provider classes should support:
+The setup provider interface should support:
 
 - `id` and `displayName`, using existing provider IDs.
 - `checkCli()` for provider tool/auth readiness.
-- `repoExists(target)`.
+- `getRepository(target)`, returning repository public and git remote URLs when
+  the target exists and `undefined` only for a verified not-found response.
 - `createPublicRepo(target)`.
 - `deleteRepo(target)` for reset mode.
-- `gitRemoteUrl(target)` for pushing the seeded commit.
-- `publicRepoUrl(target)` for output and verification.
 - `cloneCommand(target)` for final instructions.
-- `createIssue(issue)` as a repo-scoped operation after the target remote is
-  configured.
+- `listLabels(target)` for reading labels on the explicit target repository.
+- `createLabel(target, label)` for creating labels on the explicit target
+  repository.
+- `createIssue(target, issue)` for creating issues on the explicit target
+  repository.
 
-Existing `createLabel(label)` remains the generic label-creation operation for
-the configured repository and should be reused by `setup-test-repo`.
+Existing `IssueHostProvider` methods such as `listLabels()` and
+`createLabel(label)` remain configured-repo operations for triage. They should
+not be the setup command's target boundary.
 
 Provider implementation notes:
 
@@ -408,9 +412,9 @@ Provider implementation notes:
   matching the existing Patchmill GitHub provider.
 - `forgejo-tea` should use `tea` and pass `--login LOGIN` when supplied,
   matching the existing Patchmill Forgejo/Gitea named-login behavior.
-- `checkCli()` and label creation should delegate to the existing
-  `GitHubGhHostProvider` and `ForgejoTeaHostProvider` where possible after the
-  temporary repository remote is configured.
+- `checkCli()` can be reused from the existing provider classes, but setup label
+  creation and issue creation must pass the explicit target through to the host
+  command builder.
 - If `tea` lacks a convenient high-level subcommand for a specific lifecycle
   operation, `ForgejoTeaHostProvider` may use `tea api`. Keep those API details
   isolated to `src/host/forgejo-tea.ts` or shared helpers under `src/host`.
@@ -441,9 +445,12 @@ Safety rules:
 - Use a temporary directory for git operations.
 - Clean up the temporary directory automatically.
 
-Failure recovery is rerunning the command. If the command fails after creation
-or recreation, the partially seeded repository may remain on the selected host,
-but the next run with `--reset` deletes and recreates it.
+Before mutating the selected host, setup should validate and copy fixtures and
+create the local seed commit in the temporary repository. If setup creates or
+recreates a remote repository and a later push, label, or issue step fails, it
+should best-effort delete the repository it just created and report the rollback
+result. This avoids leaving an obviously half-seeded disposable repository when
+the failure happens after remote creation.
 
 ## Verification
 
@@ -454,13 +461,13 @@ Implementation verification should include:
 - issue parser tests for valid issue files, missing titles, optional labels, and
   invalid labels,
 - fixture resolution tests proving bundled fixture files can be found,
-- generic host-provider capability tests for both `GitHubGhHostProvider` and
-  `ForgejoTeaHostProvider`,
-- host-provider reuse tests proving setup orchestration calls existing
-  `src/host` provider capabilities instead of duplicating readiness and label
-  behavior,
+- setup host-provider capability tests for both `GitHubGhHostProvider` and
+  `ForgejoTeaHostProvider`, including explicit-target label and issue commands,
+- host-provider boundary tests proving setup orchestration calls `src/host`
+  provider capabilities instead of duplicating provider-specific CLI behavior,
 - orchestration tests using mocked host-provider capabilities for create-only,
-  existing-repo-without-reset failure, and reset flows,
+  existing-repo-without-reset failure, reset flows, local-validation-before-host
+  mutation, and rollback after post-create seeding failure,
 - mocked CLI-contract tests for provider commands generated by
   `src/host/github-gh.ts` and `src/host/forgejo-tea.ts`,
 - an architectural/static check that `src/cli/commands/setup-test-repo/*` does

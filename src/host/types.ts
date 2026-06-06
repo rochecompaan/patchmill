@@ -30,19 +30,26 @@ export type HostIssueCreateInput = {
   labels: string[];
 };
 
-export type RepositoryLifecycleHostProvider = {
-  repoExists(target: RepositoryTarget): Promise<boolean>;
-  createPublicRepo(target: RepositoryTarget): Promise<void>;
-  deleteRepo(target: RepositoryTarget): Promise<void>;
-  gitRemoteUrl(target: RepositoryTarget): Promise<string>;
-  publicRepoUrl(target: RepositoryTarget): Promise<string>;
-  cloneCommand(target: RepositoryTarget): string;
+export type RepositoryInfo = {
+  publicUrl: string;
+  gitRemoteUrl: string;
 };
 
-export type GitHostProvider = IssueHostProvider &
-  RepositoryLifecycleHostProvider & {
-    createIssue(issue: HostIssueCreateInput): Promise<void>;
-  };
+export type RepositorySetupHostProvider = {
+  readonly id: PatchmillHostProviderId;
+  readonly displayName: string;
+  checkCli(): Promise<HostCliCheck>;
+  getRepository(target: RepositoryTarget): Promise<RepositoryInfo | undefined>;
+  createPublicRepo(target: RepositoryTarget): Promise<void>;
+  deleteRepo(target: RepositoryTarget): Promise<void>;
+  cloneCommand(target: RepositoryTarget): string;
+  listLabels(target: RepositoryTarget): Promise<string[]>;
+  createLabel(target: RepositoryTarget, label: LabelDefinition): Promise<void>;
+  createIssue(
+    target: RepositoryTarget,
+    issue: HostIssueCreateInput,
+  ): Promise<void>;
+};
 
 export type LabelChangePlan = {
   issueNumber: number;

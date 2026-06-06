@@ -5,8 +5,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createCommandRunner } from "../triage/command.ts";
 import type { CommandRunner } from "../triage/types.ts";
-import { createGitHostProvider } from "../../../host/factory.ts";
-import type { GitHostProvider, RepositoryTarget } from "../../../host/types.ts";
+import { createRepositorySetupHostProvider } from "../../../host/factory.ts";
+import type {
+  RepositoryInfo,
+  RepositorySetupHostProvider,
+  RepositoryTarget,
+} from "../../../host/types.ts";
 import { parseArgs } from "./args.ts";
 import {
   copyFixtureToRepository,
@@ -43,7 +47,7 @@ export type SetupTestRepoDependencies = {
     repoRoot: string;
     provider: "github-gh" | "forgejo-tea";
     login: string;
-  }) => GitHostProvider;
+  }) => RepositorySetupHostProvider;
 };
 
 const DEFAULT_OUTPUT: SetupTestRepoOutput = {
@@ -76,8 +80,8 @@ function createProviderFromFactory(options: {
   repoRoot: string;
   provider: "github-gh" | "forgejo-tea";
   login: string;
-}): GitHostProvider {
-  return createGitHostProvider({
+}): RepositorySetupHostProvider {
+  return createRepositorySetupHostProvider({
     runner: options.runner,
     repoRoot: options.repoRoot,
     host: { provider: options.provider, login: options.login },
@@ -85,26 +89,24 @@ function createProviderFromFactory(options: {
 }
 
 async function prepareRepository(options: {
-  provider: GitHostProvider;
+  provider: RepositorySetupHostProvider;
   target: RepositoryTarget;
   reset: boolean;
   output: SetupTestRepoOutput;
-}): Promise<void> {
-  const exists = await options.provider.repoExists(options.target);
-  if (exists && !options.reset) {
+  markCreated: () => void;
+}): Promise<RepositoryInfo> {
+  const existing = await options.provider.getRepository(options.target);
+  if (existing && !options.reset) {
     throw new Error(
       `Repository ${options.target.slug} already exists. Rerun with --reset only if it is disposable and safe to delete.`,
     );
   }
 
   if (options.reset) {
-    const publicUrl = exists
-      ? await options.provider.publicRepoUrl(options.target)
-      : undefined;
     options.output.stdout(
-      `Resetting ${options.provider.displayName} repository ${options.target.slug}${publicUrl ? ` (${publicUrl})` : ""}`,
+      `Resetting ${options.provider.displayName} repository ${options.target.slug}${existing ? ` (${existing.publicUrl})` : ""}`,
     );
-    if (exists) {
+    if (existing) {
       options.output.stdout(`Deleting ${options.target.slug}`);
       await options.provider.deleteRepo(options.target);
     }
@@ -112,12 +114,19 @@ async function prepareRepository(options: {
   }
 
   await options.provider.createPublicRepo(options.target);
+  options.markCreated();
+  const created = await options.provider.getRepository(options.target);
+  if (!created) {
+    throw new Error(
+      `Repository ${options.target.slug} was created but could not be read back from ${options.provider.displayName}`,
+    );
+  }
+  return created;
 }
 
-async function seedGitRepository(options: {
+async function createSeedCommit(options: {
   runner: CommandRunner;
   repoRoot: string;
-  remoteUrl: string;
 }): Promise<void> {
   await runGit(options.runner, options.repoRoot, ["init", "-b", "main"]);
   await runGit(options.runner, options.repoRoot, [
@@ -135,6 +144,13 @@ async function seedGitRepository(options: {
     "-m",
     "Seed Team Lunch Poll demo",
   ]);
+}
+
+async function pushSeedCommit(options: {
+  runner: CommandRunner;
+  repoRoot: string;
+  remoteUrl: string;
+}): Promise<void> {
   await runGit(options.runner, options.repoRoot, [
     "remote",
     "add",
@@ -149,10 +165,30 @@ async function seedGitRepository(options: {
   ]);
 }
 
-async function createMissingLabels(provider: GitHostProvider): Promise<void> {
-  const existingLabels = new Set(await provider.listLabels());
+async function createMissingLabels(
+  provider: RepositorySetupHostProvider,
+  target: RepositoryTarget,
+): Promise<void> {
+  const existingLabels = new Set(await provider.listLabels(target));
   for (const label of SETUP_TEST_REPO_LABELS) {
-    if (!existingLabels.has(label.name)) await provider.createLabel(label);
+    if (!existingLabels.has(label.name))
+      await provider.createLabel(target, label);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function rollbackCreatedRepository(options: {
+  provider: RepositorySetupHostProvider;
+  target: RepositoryTarget;
+}): Promise<string> {
+  try {
+    await options.provider.deleteRepo(options.target);
+    return `Rolled back ${options.target.slug} after setup failure.`;
+  } catch (rollbackError) {
+    return `Rollback failed for ${options.target.slug}: ${errorMessage(rollbackError)}`;
   }
 }
 
@@ -191,26 +227,49 @@ export async function runSetupTestRepo(
         throw new Error([cli.message, ...cli.remediation].join("\n"));
       }
 
-      await prepareRepository({
-        provider,
-        target: config.target,
-        reset: config.reset,
-        output,
-      });
-
       const fixtureDir = await resolveFixtureDirectory();
       const issues = await loadSetupIssues(fixtureDir);
       await copyFixtureToRepository(fixtureDir, repoRoot);
-      await seedGitRepository({
+      await createSeedCommit({
         runner,
         repoRoot,
-        remoteUrl: await provider.gitRemoteUrl(config.target),
       });
 
-      await createMissingLabels(provider);
-      for (const issue of issues) await provider.createIssue(issue);
+      let createdRemote = false;
+      try {
+        const repository = await prepareRepository({
+          provider,
+          target: config.target,
+          reset: config.reset,
+          output,
+          markCreated: () => {
+            createdRemote = true;
+          },
+        });
 
-      output.stdout(`Seeded ${await provider.publicRepoUrl(config.target)}`);
+        await pushSeedCommit({
+          runner,
+          repoRoot,
+          remoteUrl: repository.gitRemoteUrl,
+        });
+
+        await createMissingLabels(provider, config.target);
+        for (const issue of issues)
+          await provider.createIssue(config.target, issue);
+
+        output.stdout(`Seeded ${repository.publicUrl}`);
+      } catch (error) {
+        if (createdRemote) {
+          const rollbackMessage = await rollbackCreatedRepository({
+            provider,
+            target: config.target,
+          });
+          throw new Error(`${errorMessage(error)}\n${rollbackMessage}`, {
+            cause: error,
+          });
+        }
+        throw error;
+      }
       output.stdout("");
       output.stdout("Next steps:");
       output.stdout(`  ${provider.cloneCommand(config.target)}`);

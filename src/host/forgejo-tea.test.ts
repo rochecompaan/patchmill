@@ -19,6 +19,11 @@ type RecordedCall = {
 
 const repoRoot = "/repo";
 const login = "bot";
+const target = {
+  owner: "OWNER",
+  repo: "patchmill-test",
+  slug: "OWNER/patchmill-test",
+};
 
 function createFakeRunner(
   respond: (
@@ -253,6 +258,32 @@ test("ForgejoTeaHostProvider delegates label listing to tea", async () => {
   assert.equal(flagValue(runner.calls[0]!.args, "--output"), "json");
 });
 
+test("Forgejo setup provider lists labels on an explicit repository", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify([{ name: "feature" }, { name: "bug" }]),
+      stderr: "",
+    },
+  ]);
+
+  const labels = await provider.listLabels(target);
+
+  assert.deepEqual(labels, ["bug", "feature"]);
+  assert.deepEqual(calls[0]?.args, [
+    "labels",
+    "list",
+    "--repo",
+    "OWNER/patchmill-test",
+    "--limit",
+    "1000",
+    "--output",
+    "json",
+    "--login",
+    "triage-agent",
+  ]);
+});
+
 test("ForgejoTeaHostProvider emits shell-safe missing-label remediation", () => {
   const label: LabelDefinition = {
     name: "agent ready; echo 'owned'",
@@ -291,6 +322,34 @@ test("ForgejoTeaHostProvider delegates label creation to tea", async () => {
     flagValue(runner.calls[0]!.args, "--description"),
     label.description,
   );
+});
+
+test("Forgejo setup provider creates labels on an explicit repository", async () => {
+  const label: LabelDefinition = {
+    name: "feature",
+    color: "0e8a16",
+    description: "New functionality",
+  };
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  await provider.createLabel(target, label);
+
+  assert.deepEqual(calls[0]?.args, [
+    "labels",
+    "create",
+    "--repo",
+    "OWNER/patchmill-test",
+    "--name",
+    "feature",
+    "--color",
+    "0e8a16",
+    "--description",
+    "New functionality",
+    "--login",
+    "triage-agent",
+  ]);
 });
 
 test("ForgejoTeaHostProvider delegates label application to tea", async () => {
@@ -339,7 +398,7 @@ test("ForgejoTeaHostProvider delegates issue comments to tea", async () => {
   assert.equal(runner.calls[0]!.args[separatorIndex + 1], body);
 });
 
-test("Forgejo provider checks repository existence with tea repos search", async () => {
+test("Forgejo setup provider returns repository info with tea repos search", async () => {
   const { provider, calls } = createProviderWithResponses([
     {
       code: 0,
@@ -355,14 +414,10 @@ test("Forgejo provider checks repository existence with tea repos search", async
     },
   ]);
 
-  assert.equal(
-    await provider.repoExists({
-      owner: "OWNER",
-      repo: "patchmill-test",
-      slug: "OWNER/patchmill-test",
-    }),
-    true,
-  );
+  assert.deepEqual(await provider.getRepository(target), {
+    publicUrl: "https://forgejo.example/OWNER/patchmill-test",
+    gitRemoteUrl: "git@forgejo.example:OWNER/patchmill-test.git",
+  });
   assert.deepEqual(calls[0]?.args, [
     "repos",
     "search",
@@ -380,16 +435,19 @@ test("Forgejo provider checks repository existence with tea repos search", async
   ]);
 });
 
+test("Forgejo setup provider returns undefined when tea search finds no repository", async () => {
+  const { provider } = createProviderWithResponses([
+    { code: 0, stdout: "[]", stderr: "" },
+  ]);
+
+  assert.equal(await provider.getRepository(target), undefined);
+});
+
 test("Forgejo provider creates and deletes public repositories", async () => {
   const { provider, calls } = createProviderWithResponses([
     { code: 0, stdout: "{}", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
   ]);
-  const target = {
-    owner: "OWNER",
-    repo: "patchmill-test",
-    slug: "OWNER/patchmill-test",
-  };
 
   await provider.createPublicRepo(target);
   await provider.deleteRepo(target);
@@ -424,7 +482,7 @@ test("Forgejo provider creates and deletes public repositories", async () => {
   );
 });
 
-test("Forgejo provider reads clone and public URLs from repository info", async () => {
+test("Forgejo provider reads repository info and clone command", async () => {
   const { provider } = createProviderWithResponses([
     {
       code: 0,
@@ -438,42 +496,21 @@ test("Forgejo provider reads clone and public URLs from repository info", async 
       ]),
       stderr: "",
     },
-    {
-      code: 0,
-      stdout: JSON.stringify([
-        {
-          owner: "OWNER",
-          name: "patchmill-test",
-          url: "https://forgejo.example/OWNER/patchmill-test",
-          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
-        },
-      ]),
-      stderr: "",
-    },
   ]);
-  const target = {
-    owner: "OWNER",
-    repo: "patchmill-test",
-    slug: "OWNER/patchmill-test",
-  };
 
-  assert.equal(
-    await provider.gitRemoteUrl(target),
-    "git@forgejo.example:OWNER/patchmill-test.git",
-  );
-  assert.equal(
-    await provider.publicRepoUrl(target),
-    "https://forgejo.example/OWNER/patchmill-test",
-  );
+  assert.deepEqual(await provider.getRepository(target), {
+    publicUrl: "https://forgejo.example/OWNER/patchmill-test",
+    gitRemoteUrl: "git@forgejo.example:OWNER/patchmill-test.git",
+  });
   assert.equal(provider.cloneCommand(target), "tea clone OWNER/patchmill-test");
 });
 
-test("Forgejo provider creates issues with labels", async () => {
+test("Forgejo setup provider creates issues with labels on an explicit repository", async () => {
   const { provider, calls } = createProviderWithResponses([
     { code: 0, stdout: "", stderr: "" },
   ]);
 
-  await provider.createIssue({
+  await provider.createIssue(target, {
     title: "Build the form",
     body: "Create a useful form.\n",
     labels: ["feature", "polish"],
@@ -482,14 +519,14 @@ test("Forgejo provider creates issues with labels", async () => {
   assert.deepEqual(calls[0]?.args, [
     "issues",
     "create",
+    "--repo",
+    "OWNER/patchmill-test",
     "--title",
     "Build the form",
     "--description",
     "Create a useful form.\n",
     "--labels",
     "feature,polish",
-    "--repo",
-    "/repo",
     "--login",
     "triage-agent",
   ]);

@@ -10,10 +10,12 @@ Lunch Poll repository on GitHub or Forgejo/Gitea and seed it with reusable demo
 files, labels, and issues.
 
 **Architecture:** Keep provider-specific `gh` and `tea` commands in the existing
-host provider modules. Keep Team Lunch Poll fixture parsing, copying, and setup
-orchestration in `src/cli/commands/setup-test-repo`. Use small modules for args,
-fixture discovery, issue parsing, labels, and command orchestration so no setup
-file becomes a provider integration duplicate.
+host provider modules, but expose setup through a dedicated target-explicit
+`RepositorySetupHostProvider` instead of widening the triage
+`IssueHostProvider`. Keep Team Lunch Poll fixture parsing, copying, and setup
+orchestration in `src/cli/commands/setup-test-repo`. Validate fixtures and
+create the local seed commit before mutating the host, then roll back the newly
+created remote repository on post-create seeding failures.
 
 **Tech Stack:** TypeScript, Node.js built-in test runner, `gh`, `tea`, `git`,
 npm package `files` allowlist.
@@ -24,6 +26,30 @@ npm package `files` allowlist.
 
 Implement against `docs/specs/2026-06-05-patchmill-test-repo-design.md` in this
 worktree.
+
+## Review remediation update
+
+The original plan below was amended after code-quality review findings about the
+host boundary and seeding atomicity. When executing or auditing this plan, apply
+these corrections over the older Task 4-6 snippets:
+
+- Do **not** add repository setup methods to `IssueHostProvider` and do **not**
+  introduce `GitHostProvider` as `IssueHostProvider & lifecycle methods`.
+  Instead add `RepositorySetupHostProvider` with target-explicit setup methods.
+- Use `getRepository(target): Promise<RepositoryInfo | undefined>` instead of
+  `repoExists(target): Promise<boolean>`. Return `undefined` only for verified
+  not-found responses; throw for auth, rate limit, network, and malformed
+  provider responses.
+- Setup label and issue methods must carry the explicit target:
+  `listLabels(target)`, `createLabel(target, label)`, and
+  `createIssue(target, issue)`. Do not rely on temporary git remotes, cwd,
+  `GH_REPO`, or `tea --repo` inference for setup seeding.
+- The factory entry point for setup is `createRepositorySetupHostProvider()`.
+  `createIssueHostProvider()` stays narrow for triage callers.
+- The setup orchestration validates/copies fixtures and creates the local seed
+  commit before `createPublicRepo()`. If any subsequent push, label, or issue
+  step fails after this run created/recreated the remote, best-effort delete the
+  newly created repository and include the rollback result in the error.
 
 ## File map
 
@@ -36,18 +62,20 @@ worktree.
 - Modify: `package.json`
   - Add `fixtures` to the npm package `files` allowlist.
 - Modify: `src/host/types.ts`
-  - Add generic repository target, issue creation, and repository lifecycle
-    provider types.
+  - Add `RepositoryTarget`, `RepositoryInfo`, `HostIssueCreateInput`, and a
+    target-explicit `RepositorySetupHostProvider` separate from
+    `IssueHostProvider`.
 - Modify: `src/host/factory.ts`
-  - Add `createGitHostProvider()` returning the expanded generic provider type.
+  - Add `createRepositorySetupHostProvider()` returning the setup provider type.
   - Keep `createIssueHostProvider()` for existing callers.
 - Modify: `src/host/factory.test.ts`
-  - Assert factory-created providers expose generic lifecycle methods.
+  - Assert factory-created setup providers expose target-explicit setup methods.
 - Modify: `src/host/github-gh.ts`
-  - Add generic repository lifecycle and issue creation methods to
-    `GitHubGhHostProvider`.
+  - Add setup repository lookup, lifecycle, target-explicit label creation, and
+    target-explicit issue creation methods to `GitHubGhHostProvider`.
 - Modify: `src/host/github-gh.test.ts`
-  - Cover GitHub lifecycle, URL, clone command, and issue creation commands.
+  - Cover GitHub repository lookup error handling, lifecycle, clone command, and
+    target-explicit label/issue commands.
 - Create: `src/host/forgejo-tea-context.ts`
   - Generic Forgejo/Gitea `tea` repo/login argument helper shared by the
     existing triage functions and the provider class.
@@ -57,11 +85,11 @@ worktree.
   - Import the shared `withTeaContext()` helper instead of owning duplicate
     context logic.
 - Modify: `src/host/forgejo-tea.ts`
-  - Add generic repository lifecycle and issue creation methods to
-    `ForgejoTeaHostProvider`.
+  - Add setup repository lookup, lifecycle, target-explicit label creation, and
+    target-explicit issue creation methods to `ForgejoTeaHostProvider`.
 - Modify: `src/host/forgejo-tea.test.ts`
-  - Cover Forgejo/Gitea lifecycle, URL lookup, clone command, login propagation,
-    and issue creation commands.
+  - Cover Forgejo/Gitea repository lookup, lifecycle, clone command, login
+    propagation, and target-explicit label/issue commands.
 - Create: `src/cli/commands/setup-test-repo/args.ts`
   - Parse `--provider`, `--repo OWNER/REPO`, `--login`, `--reset`, and help.
 - Create: `src/cli/commands/setup-test-repo/args.test.ts`
@@ -940,7 +968,15 @@ git add src/host/types.ts src/cli/commands/setup-test-repo/args.ts src/cli/comma
 git commit -m "feat: parse setup test repo arguments"
 ```
 
-## Task 4: Add generic GitHub host capabilities
+## Task 4: Add setup-specific GitHub host capabilities
+
+> **Review remediation:** The original snippets in this task used
+> `GitHostProvider`, `repoExists()`, `gitRemoteUrl()`, `publicRepoUrl()`, and
+> non-target `createIssue(issue)`. Those details are superseded. Implement the
+> GitHub setup boundary as `RepositorySetupHostProvider` with
+> `getRepository(target)`, `listLabels(target)`, `createLabel(target, label)`,
+> and `createIssue(target, issue)`. Keep configured-repo triage behavior on the
+> existing no-target `IssueHostProvider` methods.
 
 **Files:**
 
@@ -1240,7 +1276,12 @@ git add src/host/types.ts src/host/factory.ts src/host/factory.test.ts src/host/
 git commit -m "feat: add generic github host repository commands"
 ```
 
-## Task 5: Add generic Forgejo/Gitea host capabilities
+## Task 5: Add setup-specific Forgejo/Gitea host capabilities
+
+> **Review remediation:** The setup Forgejo/Gitea path must not reuse inferred
+> `withTeaContext()` repository selection for seeding labels or issues. Use the
+> explicit `RepositoryTarget` passed by `setup-test-repo` when building
+> `tea labels list`, `tea labels create`, and `tea issues create` commands.
 
 **Files:**
 
@@ -1705,6 +1746,14 @@ git commit -m "feat: add generic forgejo host repository commands"
 ```
 
 ## Task 6: Add setup command orchestration
+
+> **Review remediation:** The orchestration snippets in this task are superseded
+> where they call `repoExists()`, `gitRemoteUrl()`, `publicRepoUrl()`,
+> `createLabel(label)`, or `createIssue(issue)`. The current flow
+> validates/copies fixtures and creates the local seed commit before
+> `createPublicRepo()`, uses `getRepository(target)` for repository info, passes
+> `target` to label/issue setup calls, and rolls back the newly created remote
+> after post-create seeding failures.
 
 **Files:**
 
@@ -2584,8 +2633,9 @@ Expected: no output.
   - Package inclusion and live verification: Task 9.
 - Placeholder scan: no placeholder markers remain in this plan.
 - Type consistency:
-  - `RepositoryTarget`, `HostIssueCreateInput`, and `GitHostProvider` are
-    defined in Task 3 and Task 4 before orchestration uses them in Task 6.
+  - `RepositoryTarget`, `RepositoryInfo`, `HostIssueCreateInput`, and
+    `RepositorySetupHostProvider` are defined before orchestration uses them.
   - Provider lifecycle method names match across `src/host/types.ts`, provider
     classes, and setup orchestration.
-  - `createGitHostProvider()` is introduced before `main.ts` imports it.
+  - `createRepositorySetupHostProvider()` is introduced before `main.ts` imports
+    it.

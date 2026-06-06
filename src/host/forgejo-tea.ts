@@ -1,14 +1,13 @@
 import {
   applyIssueLabels,
   commentIssue,
-  createLabel,
+  createLabel as createLabelWithTea,
   hydrateIssueComments,
-  listLabels,
+  listLabels as listLabelsWithTea,
   listOpenIssues,
   viewIssue as viewIssueWithTea,
 } from "../cli/commands/triage/forgejo.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
-import { withTeaContext } from "./forgejo-tea-context.ts";
 import type {
   HostCliCheck,
   HostIssueCreateInput,
@@ -16,6 +15,8 @@ import type {
   IssueSummary,
   LabelChangePlan,
   LabelDefinition,
+  RepositoryInfo,
+  RepositorySetupHostProvider,
   RepositoryTarget,
 } from "./types.ts";
 
@@ -42,11 +43,6 @@ function shellQuote(value: string): string {
 }
 
 type TeaRepoPayload = Record<string, unknown>;
-
-type TeaRepoInfo = {
-  webUrl: string;
-  cloneUrl: string;
-};
 
 function parseJson(stdout: string, context: string): unknown {
   try {
@@ -77,7 +73,7 @@ function repoMatches(entry: TeaRepoPayload, target: RepositoryTarget): boolean {
 function repoInfo(
   entry: TeaRepoPayload,
   target: RepositoryTarget,
-): TeaRepoInfo {
+): RepositoryInfo {
   if (typeof entry.url !== "string") {
     throw new Error(
       `tea repos search did not return a web URL for ${target.slug}`,
@@ -88,10 +84,33 @@ function repoInfo(
       `tea repos search did not return an SSH URL for ${target.slug}`,
     );
   }
-  return { webUrl: entry.url, cloneUrl: entry.ssh };
+  return { publicUrl: entry.url, gitRemoteUrl: entry.ssh };
 }
 
-export class ForgejoTeaHostProvider implements IssueHostProvider {
+function parseLabelNames(stdout: string, context: string): string[] {
+  const parsed = parseJson(stdout, context);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${context} returned a non-array payload`);
+  }
+  return parsed
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (
+        entry &&
+        typeof entry === "object" &&
+        "name" in entry &&
+        typeof entry.name === "string"
+      ) {
+        return entry.name;
+      }
+      throw new Error(`Unexpected label payload: ${JSON.stringify(entry)}`);
+    })
+    .sort((a, b) => a.localeCompare(b));
+}
+
+export class ForgejoTeaHostProvider
+  implements IssueHostProvider, RepositorySetupHostProvider
+{
   readonly id = "forgejo-tea" as const;
   readonly displayName = "Forgejo via tea";
 
@@ -145,9 +164,26 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
     });
   }
 
+  private runTeaForTarget(
+    target: RepositoryTarget,
+    args: string[],
+  ): Promise<{ code: number; stdout: string; stderr: string }> {
+    const [command, subcommand, ...rest] = args;
+    if (!command || !subcommand) {
+      throw new Error("tea target command requires a command and subcommand");
+    }
+    const withRepo = [command, subcommand, "--repo", target.slug, ...rest];
+    const withLogin = this.options.login
+      ? [...withRepo, "--login", this.options.login]
+      : withRepo;
+    return this.options.runner.run("tea", withLogin, {
+      cwd: this.options.repoRoot,
+    });
+  }
+
   private async repositoryInfo(
     target: RepositoryTarget,
-  ): Promise<TeaRepoInfo | undefined> {
+  ): Promise<RepositoryInfo | undefined> {
     const result = await this.runTea([
       "repos",
       "search",
@@ -179,8 +215,8 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
     return match ? repoInfo(match, target) : undefined;
   }
 
-  async repoExists(target: RepositoryTarget): Promise<boolean> {
-    return (await this.repositoryInfo(target)) !== undefined;
+  getRepository(target: RepositoryTarget): Promise<RepositoryInfo | undefined> {
+    return this.repositoryInfo(target);
   }
 
   async createPublicRepo(target: RepositoryTarget): Promise<void> {
@@ -218,23 +254,14 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
     }
   }
 
-  async gitRemoteUrl(target: RepositoryTarget): Promise<string> {
-    const info = await this.repositoryInfo(target);
-    if (!info) throw new Error(`Repository not found: ${target.slug}`);
-    return info.cloneUrl;
-  }
-
-  async publicRepoUrl(target: RepositoryTarget): Promise<string> {
-    const info = await this.repositoryInfo(target);
-    if (!info) throw new Error(`Repository not found: ${target.slug}`);
-    return info.webUrl;
-  }
-
   cloneCommand(target: RepositoryTarget): string {
     return `tea clone ${target.slug}`;
   }
 
-  async createIssue(issue: HostIssueCreateInput): Promise<void> {
+  async createIssue(
+    target: RepositoryTarget,
+    issue: HostIssueCreateInput,
+  ): Promise<void> {
     const args = [
       "issues",
       "create",
@@ -247,11 +274,7 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
       args.push("--labels", issue.labels.join(","));
     }
 
-    const result = await this.options.runner.run(
-      "tea",
-      withTeaContext(args, this.options.repoRoot, this.options.login),
-      { cwd: this.options.repoRoot },
-    );
+    const result = await this.runTeaForTarget(target, args);
     if (result.code !== 0) {
       throw new Error(
         `tea issues create failed for ${issue.title}: ${commandOutput(result)}`,
@@ -286,21 +309,65 @@ export class ForgejoTeaHostProvider implements IssueHostProvider {
     return issues;
   }
 
-  listLabels(): Promise<string[]> {
-    return listLabels(
-      this.options.runner,
-      this.options.repoRoot,
-      this.options.login,
-    );
+  listLabels(): Promise<string[]>;
+  listLabels(target: RepositoryTarget): Promise<string[]>;
+  async listLabels(target?: RepositoryTarget): Promise<string[]> {
+    if (!target) {
+      return listLabelsWithTea(
+        this.options.runner,
+        this.options.repoRoot,
+        this.options.login,
+      );
+    }
+
+    const result = await this.runTeaForTarget(target, [
+      "labels",
+      "list",
+      "--limit",
+      "1000",
+      "--output",
+      "json",
+    ]);
+    if (result.code !== 0) {
+      throw new Error(
+        `tea labels list failed for ${target.slug}: ${commandOutput(result)}`,
+      );
+    }
+    return parseLabelNames(result.stdout, "tea labels list");
   }
 
-  createLabel(label: LabelDefinition): Promise<void> {
-    return createLabel(
-      this.options.runner,
-      this.options.repoRoot,
-      label,
-      this.options.login,
-    );
+  createLabel(label: LabelDefinition): Promise<void>;
+  createLabel(target: RepositoryTarget, label: LabelDefinition): Promise<void>;
+  async createLabel(
+    first: RepositoryTarget | LabelDefinition,
+    second?: LabelDefinition,
+  ): Promise<void> {
+    if (!second) {
+      return createLabelWithTea(
+        this.options.runner,
+        this.options.repoRoot,
+        first as LabelDefinition,
+        this.options.login,
+      );
+    }
+
+    const target = first as RepositoryTarget;
+    const label = second;
+    const result = await this.runTeaForTarget(target, [
+      "labels",
+      "create",
+      "--name",
+      label.name,
+      "--color",
+      label.color,
+      "--description",
+      label.description,
+    ]);
+    if (result.code !== 0) {
+      throw new Error(
+        `tea labels create failed for ${label.name}: ${commandOutput(result)}`,
+      );
+    }
   }
 
   applyLabels(change: LabelChangePlan): Promise<void> {

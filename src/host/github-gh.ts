@@ -9,12 +9,15 @@ import type {
   IssueSummary,
   LabelChangePlan,
   LabelDefinition,
+  RepositoryInfo,
+  RepositorySetupHostProvider,
   RepositoryTarget,
 } from "./types.ts";
 
 const ISSUE_LIST_JSON_FIELDS =
   "number,title,body,state,labels,author,updatedAt,url";
 const ISSUE_VIEW_JSON_FIELDS = `${ISSUE_LIST_JSON_FIELDS},comments`;
+const REPOSITORY_VIEW_JSON_FIELDS = "name,url,sshUrl";
 
 export type GitHubGhHostOptions = {
   runner: CommandRunner;
@@ -150,7 +153,40 @@ function parseLabelNames(stdout: string, context: string): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
-export class GitHubGhHostProvider implements IssueHostProvider {
+function parseRepositoryInfo(
+  stdout: string,
+  target: RepositoryTarget,
+): RepositoryInfo {
+  const parsed = parseJson(stdout, "gh repo view");
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("gh repo view returned unexpected repository payload");
+  }
+  const repository = parsed as Record<string, unknown>;
+  if (typeof repository.url !== "string") {
+    throw new Error(
+      `gh repo view did not return a public URL for ${target.slug}`,
+    );
+  }
+  if (typeof repository.sshUrl !== "string") {
+    throw new Error(
+      `gh repo view did not return an SSH URL for ${target.slug}`,
+    );
+  }
+  return {
+    publicUrl: repository.url,
+    gitRemoteUrl: repository.sshUrl,
+  };
+}
+
+function isRepositoryNotFound(result: CommandResult): boolean {
+  return /Could not resolve to a Repository|Not Found|repository not found/iu.test(
+    commandOutput(result),
+  );
+}
+
+export class GitHubGhHostProvider
+  implements IssueHostProvider, RepositorySetupHostProvider
+{
   readonly id = "github-gh" as const;
   readonly displayName = "GitHub via gh";
 
@@ -205,30 +241,40 @@ export class GitHubGhHostProvider implements IssueHostProvider {
     return issues;
   }
 
-  async listLabels(): Promise<string[]> {
-    const result = await this.runGh([
-      "label",
-      "list",
-      "--limit",
-      "1000",
-      "--json",
-      "name",
-    ]);
+  async listLabels(): Promise<string[]>;
+  async listLabels(target: RepositoryTarget): Promise<string[]>;
+  async listLabels(target?: RepositoryTarget): Promise<string[]> {
+    const args = ["label", "list"];
+    if (target) args.push("--repo", target.slug);
+    args.push("--limit", "1000", "--json", "name");
+
+    const result = await this.runGh(args);
     if (result.code !== 0)
       throw new Error(`gh label list failed: ${commandOutput(result)}`);
     return parseLabelNames(result.stdout, "gh label list");
   }
 
-  async createLabel(label: LabelDefinition): Promise<void> {
-    const result = await this.runGh([
-      "label",
-      "create",
-      label.name,
+  async createLabel(label: LabelDefinition): Promise<void>;
+  async createLabel(
+    target: RepositoryTarget,
+    label: LabelDefinition,
+  ): Promise<void>;
+  async createLabel(
+    first: RepositoryTarget | LabelDefinition,
+    second?: LabelDefinition,
+  ): Promise<void> {
+    const target = second ? (first as RepositoryTarget) : undefined;
+    const label = second ?? (first as LabelDefinition);
+    const args = ["label", "create", label.name];
+    if (target) args.push("--repo", target.slug);
+    args.push(
       "--color",
       stripLeadingHash(label.color),
       "--description",
       label.description,
-    ]);
+    );
+
+    const result = await this.runGh(args);
     if (result.code !== 0)
       throw new Error(
         `gh label create failed for ${label.name}: ${commandOutput(result)}`,
@@ -268,15 +314,23 @@ export class GitHubGhHostProvider implements IssueHostProvider {
       );
   }
 
-  async repoExists(target: RepositoryTarget): Promise<boolean> {
+  async getRepository(
+    target: RepositoryTarget,
+  ): Promise<RepositoryInfo | undefined> {
     const result = await this.runGh([
       "repo",
       "view",
       target.slug,
       "--json",
-      "name",
+      REPOSITORY_VIEW_JSON_FIELDS,
     ]);
-    return result.code === 0;
+    if (result.code !== 0) {
+      if (isRepositoryNotFound(result)) return undefined;
+      throw new Error(
+        `gh repo view failed for ${target.slug}: ${commandOutput(result)}`,
+      );
+    }
+    return parseRepositoryInfo(result.stdout, target);
   }
 
   async createPublicRepo(target: RepositoryTarget): Promise<void> {
@@ -302,22 +356,19 @@ export class GitHubGhHostProvider implements IssueHostProvider {
     }
   }
 
-  async gitRemoteUrl(target: RepositoryTarget): Promise<string> {
-    return `git@github.com:${target.slug}.git`;
-  }
-
-  async publicRepoUrl(target: RepositoryTarget): Promise<string> {
-    return `https://github.com/${target.slug}`;
-  }
-
   cloneCommand(target: RepositoryTarget): string {
     return `gh repo clone ${target.slug}`;
   }
 
-  async createIssue(issue: HostIssueCreateInput): Promise<void> {
+  async createIssue(
+    target: RepositoryTarget,
+    issue: HostIssueCreateInput,
+  ): Promise<void> {
     const args = [
       "issue",
       "create",
+      "--repo",
+      target.slug,
       "--title",
       issue.title,
       "--body",
