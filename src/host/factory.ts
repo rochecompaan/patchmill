@@ -2,13 +2,13 @@ import type { PatchmillHostConfig } from "../config/types.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import { ForgejoTeaHostProvider } from "./forgejo-tea.ts";
 import { GitHubGhHostProvider } from "./github-gh.ts";
-import type { IssueHostProvider } from "./types.ts";
+import type { GitHostProvider, IssueHostProvider } from "./types.ts";
 
-export function createIssueHostProvider(options: {
+export function createGitHostProvider(options: {
   runner: CommandRunner;
   repoRoot: string;
   host: PatchmillHostConfig;
-}): IssueHostProvider {
+}): GitHostProvider {
   switch (options.host.provider) {
     case "forgejo-tea":
       return new ForgejoTeaHostProvider({
@@ -22,4 +22,12 @@ export function createIssueHostProvider(options: {
         repoRoot: options.repoRoot,
       });
   }
+}
+
+export function createIssueHostProvider(options: {
+  runner: CommandRunner;
+  repoRoot: string;
+  host: PatchmillHostConfig;
+}): IssueHostProvider {
+  return createGitHostProvider(options);
 }

@@ -4,10 +4,12 @@ import type {
 } from "../cli/commands/triage/types.ts";
 import type {
   HostCliCheck,
+  HostIssueCreateInput,
   IssueHostProvider,
   IssueSummary,
   LabelChangePlan,
   LabelDefinition,
+  RepositoryTarget,
 } from "./types.ts";
 
 const ISSUE_LIST_JSON_FIELDS =
@@ -264,6 +266,71 @@ export class GitHubGhHostProvider implements IssueHostProvider {
       throw new Error(
         `gh issue comment failed for #${issueNumber}: ${commandOutput(result)}`,
       );
+  }
+
+  async repoExists(target: RepositoryTarget): Promise<boolean> {
+    const result = await this.runGh([
+      "repo",
+      "view",
+      target.slug,
+      "--json",
+      "name",
+    ]);
+    return result.code === 0;
+  }
+
+  async createPublicRepo(target: RepositoryTarget): Promise<void> {
+    const result = await this.runGh([
+      "repo",
+      "create",
+      target.slug,
+      "--public",
+    ]);
+    if (result.code !== 0) {
+      throw new Error(
+        `gh repo create failed for ${target.slug}: ${commandOutput(result)}`,
+      );
+    }
+  }
+
+  async deleteRepo(target: RepositoryTarget): Promise<void> {
+    const result = await this.runGh(["repo", "delete", target.slug, "--yes"]);
+    if (result.code !== 0) {
+      throw new Error(
+        `gh repo delete failed for ${target.slug}: ${commandOutput(result)}`,
+      );
+    }
+  }
+
+  async gitRemoteUrl(target: RepositoryTarget): Promise<string> {
+    return `https://github.com/${target.slug}.git`;
+  }
+
+  async publicRepoUrl(target: RepositoryTarget): Promise<string> {
+    return `https://github.com/${target.slug}`;
+  }
+
+  cloneCommand(target: RepositoryTarget): string {
+    return `gh repo clone ${target.slug}`;
+  }
+
+  async createIssue(issue: HostIssueCreateInput): Promise<void> {
+    const args = [
+      "issue",
+      "create",
+      "--title",
+      issue.title,
+      "--body",
+      issue.body,
+    ];
+    if (issue.labels.length > 0) args.push("--label", issue.labels.join(","));
+
+    const result = await this.runGh(args);
+    if (result.code !== 0) {
+      throw new Error(
+        `gh issue create failed for ${issue.title}: ${commandOutput(result)}`,
+      );
+    }
   }
 
   async viewIssue(issueNumber: number): Promise<IssueSummary> {

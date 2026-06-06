@@ -35,6 +35,25 @@ function createProvider(runner: CommandRunner): GitHubGhHostProvider {
   return new GitHubGhHostProvider({ runner, repoRoot });
 }
 
+function createProviderWithResponses(responses: CommandResult[]): {
+  provider: GitHubGhHostProvider;
+  calls: RecordedCall[];
+} {
+  const calls: RecordedCall[] = [];
+  let index = 0;
+  const runner: CommandRunner = {
+    async run(command, args, options = {}) {
+      calls.push({ command, args: [...args], cwd: options.cwd });
+      const response = responses[index];
+      index += 1;
+      if (!response)
+        throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+      return response;
+    },
+  };
+  return { provider: createProvider(runner), calls };
+}
+
 function commandLines(runner: { calls: RecordedCall[] }): string[] {
   return runner.calls.map((call) => [call.command, ...call.args].join(" "));
 }
@@ -346,4 +365,111 @@ test("GitHubGhHostProvider emits shell-safe missing-label remediation", () => {
     }),
     "  gh label create 'agent ready; echo '\"'\"'owned'\"'\"'' --color 2ea043 --description 'Ready for $(implementation) & review'",
   );
+});
+
+test("GitHub provider checks repository existence with gh repo view", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: '{"name":"patchmill-test"}', stderr: "" },
+  ]);
+
+  assert.equal(
+    await provider.repoExists({
+      owner: "OWNER",
+      repo: "patchmill-test",
+      slug: "OWNER/patchmill-test",
+    }),
+    true,
+  );
+  assert.deepEqual(calls[0], {
+    command: "gh",
+    args: ["repo", "view", "OWNER/patchmill-test", "--json", "name"],
+    cwd: "/repo",
+  });
+});
+
+test("GitHub provider returns false when gh repo view cannot find the repo", async () => {
+  const { provider } = createProviderWithResponses([
+    { code: 1, stdout: "", stderr: "Could not resolve to a Repository" },
+  ]);
+
+  assert.equal(
+    await provider.repoExists({
+      owner: "OWNER",
+      repo: "missing",
+      slug: "OWNER/missing",
+    }),
+    false,
+  );
+});
+
+test("GitHub provider creates and deletes public repositories", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+  const target = {
+    owner: "OWNER",
+    repo: "patchmill-test",
+    slug: "OWNER/patchmill-test",
+  };
+
+  await provider.createPublicRepo(target);
+  await provider.deleteRepo(target);
+
+  assert.deepEqual(
+    calls.map((call) => call.args),
+    [
+      ["repo", "create", "OWNER/patchmill-test", "--public"],
+      ["repo", "delete", "OWNER/patchmill-test", "--yes"],
+    ],
+  );
+});
+
+test("GitHub provider exposes remote URL, public URL, and clone command", async () => {
+  const { provider } = createProviderWithResponses([]);
+  const target = {
+    owner: "OWNER",
+    repo: "patchmill-test",
+    slug: "OWNER/patchmill-test",
+  };
+
+  assert.equal(
+    await provider.gitRemoteUrl(target),
+    "https://github.com/OWNER/patchmill-test.git",
+  );
+  assert.equal(
+    await provider.publicRepoUrl(target),
+    "https://github.com/OWNER/patchmill-test",
+  );
+  assert.equal(
+    provider.cloneCommand(target),
+    "gh repo clone OWNER/patchmill-test",
+  );
+});
+
+test("GitHub provider creates issues with labels when provided", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: "https://github.com/OWNER/patchmill-test/issues/1\n",
+      stderr: "",
+    },
+  ]);
+
+  await provider.createIssue({
+    title: "Build the form",
+    body: "Create a useful form.\n",
+    labels: ["feature", "polish"],
+  });
+
+  assert.deepEqual(calls[0]?.args, [
+    "issue",
+    "create",
+    "--title",
+    "Build the form",
+    "--body",
+    "Create a useful form.\n",
+    "--label",
+    "feature,polish",
+  ]);
 });

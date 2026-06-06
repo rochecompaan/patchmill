@@ -24,6 +24,26 @@ export type RepositoryTarget = {
   slug: string;
 };
 
+export type HostIssueCreateInput = {
+  title: string;
+  body: string;
+  labels: string[];
+};
+
+export type RepositoryLifecycleHostProvider = {
+  repoExists(target: RepositoryTarget): Promise<boolean>;
+  createPublicRepo(target: RepositoryTarget): Promise<void>;
+  deleteRepo(target: RepositoryTarget): Promise<void>;
+  gitRemoteUrl(target: RepositoryTarget): Promise<string>;
+  publicRepoUrl(target: RepositoryTarget): Promise<string>;
+  cloneCommand(target: RepositoryTarget): string;
+};
+
+export type GitHostProvider = IssueHostProvider &
+  RepositoryLifecycleHostProvider & {
+    createIssue(issue: HostIssueCreateInput): Promise<void>;
+  };
+
 export type LabelChangePlan = {
   issueNumber: number;
   oldLabels: string[];
