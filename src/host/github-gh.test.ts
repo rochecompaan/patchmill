@@ -473,3 +473,23 @@ test("GitHub provider creates issues with labels when provided", async () => {
     "feature,polish",
   ]);
 });
+
+test("GitHub provider clears ambient GH_REPO for gh commands", async () => {
+  let ghRepoOverrideWasCleared = false;
+  const provider = createProvider({
+    async run(_command, _args, options = {}) {
+      ghRepoOverrideWasCleared =
+        Object.hasOwn(options.env ?? {}, "GH_REPO") &&
+        options.env?.GH_REPO === undefined;
+      return { code: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  await provider.createIssue({
+    title: "Build the form",
+    body: "Create a useful form.\n",
+    labels: [],
+  });
+
+  assert.equal(ghRepoOverrideWasCleared, true);
+});

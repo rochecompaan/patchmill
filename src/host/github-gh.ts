@@ -349,7 +349,10 @@ export class GitHubGhHostProvider implements IssueHostProvider {
   }
 
   private runGh(args: string[]): Promise<CommandResult> {
-    return this.options.runner.run("gh", args, { cwd: this.options.repoRoot });
+    return this.options.runner.run("gh", args, {
+      cwd: this.options.repoRoot,
+      env: { GH_REPO: undefined },
+    });
   }
 
   private cliFailure(command: string, result: CommandResult): HostCliCheck {

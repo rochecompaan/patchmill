@@ -98,10 +98,17 @@ async function prepareRepository(options: {
   }
 
   if (options.reset) {
+    const publicUrl = exists
+      ? await options.provider.publicRepoUrl(options.target)
+      : undefined;
     options.output.stdout(
-      `Resetting ${options.provider.displayName} repository ${options.target.slug}`,
+      `Resetting ${options.provider.displayName} repository ${options.target.slug}${publicUrl ? ` (${publicUrl})` : ""}`,
     );
-    if (exists) await options.provider.deleteRepo(options.target);
+    if (exists) {
+      options.output.stdout(`Deleting ${options.target.slug}`);
+      await options.provider.deleteRepo(options.target);
+    }
+    options.output.stdout(`Creating public repository ${options.target.slug}`);
   }
 
   await options.provider.createPublicRepo(options.target);
@@ -120,6 +127,10 @@ async function seedGitRepository(options: {
     "issues",
   ]);
   await runGit(options.runner, options.repoRoot, [
+    "-c",
+    "user.name=Patchmill",
+    "-c",
+    "user.email=patchmill@example.invalid",
     "commit",
     "-m",
     "Seed Team Lunch Poll demo",

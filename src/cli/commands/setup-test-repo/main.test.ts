@@ -131,8 +131,16 @@ test("runSetupTestRepo creates a new repo, pushes fixtures, labels, and issues",
   ]);
   assert.deepEqual(
     gitCalls.map((args) => args[0]),
-    ["--version", "init", "add", "commit", "remote", "push"],
+    ["--version", "init", "add", "-c", "remote", "push"],
   );
+  const commitArgs = gitCalls.find((args) => args.includes("commit"));
+  assert.deepEqual(commitArgs?.slice(0, 5), [
+    "-c",
+    "user.name=Patchmill",
+    "-c",
+    "user.email=patchmill@example.invalid",
+    "commit",
+  ]);
   assert.deepEqual(
     labels.map((label) => label.name),
     ["feature", "bug", "docs", "polish"],
@@ -198,12 +206,13 @@ test("runSetupTestRepo refuses existing repo without reset", async () => {
 test("runSetupTestRepo deletes and recreates when reset is supplied", async () => {
   const { provider, calls } = createProvider({ exists: true });
   const { runner } = createGitRunner();
+  const stdout: string[] = [];
 
   const code = await runSetupTestRepo(
     ["--provider", "github-gh", "--repo", "OWNER/patchmill-test", "--reset"],
     {
       runner,
-      output: { stdout: () => undefined, stderr: () => undefined },
+      output: { stdout: (line) => stdout.push(line), stderr: () => undefined },
       createProvider: () => provider,
     },
   );
@@ -215,6 +224,15 @@ test("runSetupTestRepo deletes and recreates when reset is supplied", async () =
     "deleteRepo:OWNER/patchmill-test",
     "createPublicRepo:OWNER/patchmill-test",
   ]);
+  assert.match(
+    stdout.join("\n"),
+    /https:\/\/example\.test\/OWNER\/patchmill-test/u,
+  );
+  assert.match(stdout.join("\n"), /Deleting OWNER\/patchmill-test/u);
+  assert.match(
+    stdout.join("\n"),
+    /Creating public repository OWNER\/patchmill-test/u,
+  );
 });
 
 test("runSetupTestRepo reports provider CLI failures", async () => {
