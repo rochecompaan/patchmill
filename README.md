@@ -70,6 +70,42 @@ patchmill doctor
 patchmill triage --dry-run
 ```
 
+### Try Patchmill on a disposable demo repository
+
+Before pointing Patchmill at a production repository, create a disposable Team
+Lunch Poll demo repository and let Patchmill triage its seeded issues.
+
+For GitHub:
+
+```bash
+patchmill setup-test-repo --provider github-gh --repo OWNER/REPO
+gh repo clone OWNER/REPO
+cd REPO
+patchmill init
+patchmill triage --dry-run
+```
+
+For Forgejo or Gitea with a named `tea` login:
+
+```bash
+patchmill setup-test-repo --provider forgejo-tea --repo OWNER/REPO --login LOGIN
+tea clone OWNER/REPO
+cd REPO
+patchmill init
+patchmill triage --dry-run
+```
+
+Use an explicit disposable public repository for `OWNER/REPO`. The reset form
+deletes and recreates that repository:
+
+```bash
+patchmill setup-test-repo --provider github-gh --repo OWNER/REPO --reset
+patchmill setup-test-repo --provider forgejo-tea --repo OWNER/REPO --login LOGIN --reset
+```
+
+The reusable demo prompts live in the Patchmill package under
+`fixtures/patchmill-test-repo/`. See `docs/setup-test-repo.md` for details.
+
 `patchmill run-once` and `patchmill run` are still in progress; treat any
 experiments with them as development testing rather than supported usage.
 
