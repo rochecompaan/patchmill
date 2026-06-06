@@ -295,13 +295,15 @@ src/cli/commands/setup-test-repo/
   issue-parser.test.ts
   main.ts
   main.test.ts
-  provider.ts
-  provider.test.ts
-  providers/
-    forgejo-tea.ts
-    forgejo-tea.test.ts
-    github-gh.ts
-    github-gh.test.ts
+
+src/host/setup-test-repo/
+  factory.ts
+  factory.test.ts
+  forgejo-tea.ts
+  forgejo-tea.test.ts
+  github-gh.ts
+  github-gh.test.ts
+  types.ts
 ```
 
 Responsibilities:
@@ -312,15 +314,59 @@ Responsibilities:
   labels.
 - `fixtures.ts`: resolve and validate the bundled fixture directory from the
   installed package.
-- `provider.ts`: define the setup-specific provider adapter interface.
-- `providers/github-gh.ts`: implement repository lifecycle, labels, issues, git
-  remote, and clone instructions through `gh`.
-- `providers/forgejo-tea.ts`: implement repository lifecycle, labels, issues,
-  git remote, and clone instructions through `tea`.
+- `src/host/setup-test-repo/types.ts`: define the setup-specific provider
+  adapter interface.
+- `src/host/setup-test-repo/factory.ts`: resolve setup adapters by provider ID
+  and reuse the existing `src/host/factory.ts` issue-host factory where
+  applicable.
+- `src/host/setup-test-repo/github-gh.ts`: implement only GitHub-specific
+  repository lifecycle, issue creation, git remote, and clone instructions,
+  while reusing existing GitHub host-provider code for CLI readiness and label
+  creation.
+- `src/host/setup-test-repo/forgejo-tea.ts`: implement only
+  Forgejo/Gitea-specific repository lifecycle, issue creation, git remote, and
+  clone instructions, while reusing existing Forgejo/Gitea host-provider code
+  for CLI readiness, named-login handling, and label creation.
 - `main.ts`: orchestrate setup/reset, fixture copy, git push, label creation,
   issue creation, and final instructions.
 
 Register the command in `src/cli/main.ts` help and dispatch maps.
+
+## Host Provider Reuse Requirements
+
+`setup-test-repo` must reuse Patchmill's existing host-provider code in
+`src/host` instead of recreating provider-specific `gh` or `tea` integrations in
+the CLI command.
+
+Reuse rules:
+
+- No `gh` or `tea` subprocess calls should live in
+  `src/cli/commands/setup-test-repo/*`. The command layer parses arguments,
+  loads fixtures, and orchestrates high-level steps only.
+- Provider-specific subprocess calls belong under `src/host`, next to the
+  existing providers.
+- Reuse the existing `CommandRunner`, `HostCliCheck`, `LabelDefinition`,
+  provider IDs, and provider readiness behavior from `src/host/types.ts`,
+  `src/host/github-gh.ts`, `src/host/forgejo-tea.ts`, and `src/host/factory.ts`.
+- Reuse `createIssueHostProvider()` after the temporary git repository has the
+  target remote configured. That existing provider can perform common
+  repo-scoped operations that already exist today, especially CLI readiness and
+  label creation.
+- If lifecycle or issue-creation logic requires new provider-specific command
+  builders, add them in `src/host` and share them with the existing provider
+  modules where possible. Do not duplicate command formatting, login handling,
+  output parsing, color normalization, shell quoting, or error formatting in the
+  setup command directory.
+- If an existing helper is currently private but useful to setup providers,
+  refactor it into an exported `src/host` helper rather than copying it.
+- The setup-specific adapter should be a thin extension around current host
+  providers for missing capabilities: repository existence, public repository
+  creation, reset deletion, issue creation, git remote URL, public URL, and
+  clone instructions.
+
+This keeps all supported-provider knowledge in `src/host` and prevents
+`setup-test-repo` from becoming a second, divergent implementation of GitHub or
+Forgejo/Gitea support.
 
 ## Setup Provider Adapter
 
@@ -328,8 +374,9 @@ The existing `IssueHostProvider` interface supports Patchmill operations on an
 already-configured repository: list issues, inspect labels, comment, and apply
 labels. `setup-test-repo` needs repository lifecycle and issue creation before a
 repository has been initialized for Patchmill, so it should use a small
-setup-specific adapter rather than forcing lifecycle methods into
-`IssueHostProvider`.
+setup-specific adapter in `src/host/setup-test-repo`. Keep the adapter adjacent
+to the current host providers and delegate to current provider classes whenever
+the operation already exists.
 
 The adapter should support:
 
@@ -350,9 +397,13 @@ Provider implementation notes:
   matching the existing Patchmill GitHub provider.
 - `forgejo-tea` should use `tea` and pass `--login LOGIN` when supplied,
   matching the existing Patchmill Forgejo/Gitea named-login behavior.
+- `checkCli()` and label creation should delegate to the existing
+  `GitHubGhHostProvider` and `ForgejoTeaHostProvider` where possible after the
+  temporary repository remote is configured.
 - If `tea` lacks a convenient high-level subcommand for a specific lifecycle
   operation, the provider may use `tea api` behind the adapter. Keep those API
-  details isolated to `providers/forgejo-tea.ts`.
+  details isolated to `src/host/setup-test-repo/forgejo-tea.ts` or shared
+  helpers under `src/host`.
 
 ## Safety and Error Handling
 
@@ -394,10 +445,16 @@ Implementation verification should include:
   invalid labels,
 - fixture resolution tests proving bundled fixture files can be found,
 - setup provider adapter tests for both `github-gh` and `forgejo-tea`,
+- host-provider reuse tests proving setup adapters delegate shared operations to
+  existing `src/host` providers instead of duplicating readiness and label
+  behavior,
 - orchestration tests using mocked provider adapters for create-only,
   existing-repo-without-reset failure, and reset flows,
 - mocked CLI-contract tests for provider commands generated by `github-gh` and
   `forgejo-tea`,
+- an architectural/static check that `src/cli/commands/setup-test-repo/*` does
+  not invoke `gh` or `tea` directly; provider-specific CLI calls must remain
+  under `src/host`,
 - local validation that all fixture issue files parse,
 - package/build verification that fixture files are included in the installable
   package,
