@@ -18,6 +18,12 @@ export type LabelDefinition = {
   description: string;
 };
 
+export type RepositoryTarget = {
+  owner: string;
+  repo: string;
+  slug: string;
+};
+
 export type LabelChangePlan = {
   issueNumber: number;
   oldLabels: string[];
