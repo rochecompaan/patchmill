@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/rochecompaan/patchmill/compare/v0.7.1...v0.8.0) (2026-06-06)
+
+
+### Features
+
+* **cli:** add setup test repo command ([#21](https://github.com/rochecompaan/patchmill/issues/21)) ([581e907](https://github.com/rochecompaan/patchmill/commit/581e907100126e4af15ae497893bdc3e0d5628fa))
+* **triage:** stream progress output ([#19](https://github.com/rochecompaan/patchmill/issues/19)) ([6a0d009](https://github.com/rochecompaan/patchmill/commit/6a0d0098b5e31e6dbf32a2119f3464ddc5c5d932))
+
 ## [0.7.1](https://github.com/rochecompaan/patchmill/compare/v0.7.0...v0.7.1) (2026-06-03)
 
 
