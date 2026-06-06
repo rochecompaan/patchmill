@@ -1,6 +1,7 @@
 import { main as doctorMain } from "./commands/doctor/main.ts";
 import { main as initMain } from "./commands/init/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
+import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
 
 export const HELP_TEXT = `Usage:
@@ -11,6 +12,7 @@ Commands:
   doctor      Run read-only readiness checks.
   triage      Classify repository issues for agent readiness.
   run-once    Claim and process one agent-ready issue.
+  setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;
 
 export type CommandHandler = (args: string[]) => number | Promise<number>;
@@ -91,6 +93,7 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["doctor", doctorMain],
   ["triage", triageMain],
   ["run-once", runOnceMain],
+  ["setup-test-repo", setupTestRepoMain],
 ]);
 
 export const main = createCliMain(COMMANDS);

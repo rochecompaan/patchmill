@@ -4,15 +4,20 @@ import type {
 } from "../cli/commands/triage/types.ts";
 import type {
   HostCliCheck,
+  HostIssueCreateInput,
   IssueHostProvider,
   IssueSummary,
   LabelChangePlan,
   LabelDefinition,
+  RepositoryInfo,
+  RepositorySetupHostProvider,
+  RepositoryTarget,
 } from "./types.ts";
 
 const ISSUE_LIST_JSON_FIELDS =
   "number,title,body,state,labels,author,updatedAt,url";
 const ISSUE_VIEW_JSON_FIELDS = `${ISSUE_LIST_JSON_FIELDS},comments`;
+const REPOSITORY_VIEW_JSON_FIELDS = "name,url,sshUrl";
 
 export type GitHubGhHostOptions = {
   runner: CommandRunner;
@@ -148,7 +153,40 @@ function parseLabelNames(stdout: string, context: string): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
-export class GitHubGhHostProvider implements IssueHostProvider {
+function parseRepositoryInfo(
+  stdout: string,
+  target: RepositoryTarget,
+): RepositoryInfo {
+  const parsed = parseJson(stdout, "gh repo view");
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("gh repo view returned unexpected repository payload");
+  }
+  const repository = parsed as Record<string, unknown>;
+  if (typeof repository.url !== "string") {
+    throw new Error(
+      `gh repo view did not return a public URL for ${target.slug}`,
+    );
+  }
+  if (typeof repository.sshUrl !== "string") {
+    throw new Error(
+      `gh repo view did not return an SSH URL for ${target.slug}`,
+    );
+  }
+  return {
+    publicUrl: repository.url,
+    gitRemoteUrl: repository.sshUrl,
+  };
+}
+
+function isRepositoryNotFound(result: CommandResult): boolean {
+  return /Could not resolve to a Repository|Not Found|repository not found/iu.test(
+    commandOutput(result),
+  );
+}
+
+export class GitHubGhHostProvider
+  implements IssueHostProvider, RepositorySetupHostProvider
+{
   readonly id = "github-gh" as const;
   readonly displayName = "GitHub via gh";
 
@@ -203,30 +241,40 @@ export class GitHubGhHostProvider implements IssueHostProvider {
     return issues;
   }
 
-  async listLabels(): Promise<string[]> {
-    const result = await this.runGh([
-      "label",
-      "list",
-      "--limit",
-      "1000",
-      "--json",
-      "name",
-    ]);
+  async listLabels(): Promise<string[]>;
+  async listLabels(target: RepositoryTarget): Promise<string[]>;
+  async listLabels(target?: RepositoryTarget): Promise<string[]> {
+    const args = ["label", "list"];
+    if (target) args.push("--repo", target.slug);
+    args.push("--limit", "1000", "--json", "name");
+
+    const result = await this.runGh(args);
     if (result.code !== 0)
       throw new Error(`gh label list failed: ${commandOutput(result)}`);
     return parseLabelNames(result.stdout, "gh label list");
   }
 
-  async createLabel(label: LabelDefinition): Promise<void> {
-    const result = await this.runGh([
-      "label",
-      "create",
-      label.name,
+  async createLabel(label: LabelDefinition): Promise<void>;
+  async createLabel(
+    target: RepositoryTarget,
+    label: LabelDefinition,
+  ): Promise<void>;
+  async createLabel(
+    first: RepositoryTarget | LabelDefinition,
+    second?: LabelDefinition,
+  ): Promise<void> {
+    const target = second ? (first as RepositoryTarget) : undefined;
+    const label = second ?? (first as LabelDefinition);
+    const args = ["label", "create", label.name];
+    if (target) args.push("--repo", target.slug);
+    args.push(
       "--color",
       stripLeadingHash(label.color),
       "--description",
       label.description,
-    ]);
+    );
+
+    const result = await this.runGh(args);
     if (result.code !== 0)
       throw new Error(
         `gh label create failed for ${label.name}: ${commandOutput(result)}`,
@@ -266,6 +314,76 @@ export class GitHubGhHostProvider implements IssueHostProvider {
       );
   }
 
+  async getRepository(
+    target: RepositoryTarget,
+  ): Promise<RepositoryInfo | undefined> {
+    const result = await this.runGh([
+      "repo",
+      "view",
+      target.slug,
+      "--json",
+      REPOSITORY_VIEW_JSON_FIELDS,
+    ]);
+    if (result.code !== 0) {
+      if (isRepositoryNotFound(result)) return undefined;
+      throw new Error(
+        `gh repo view failed for ${target.slug}: ${commandOutput(result)}`,
+      );
+    }
+    return parseRepositoryInfo(result.stdout, target);
+  }
+
+  async createPublicRepo(target: RepositoryTarget): Promise<void> {
+    const result = await this.runGh([
+      "repo",
+      "create",
+      target.slug,
+      "--public",
+    ]);
+    if (result.code !== 0) {
+      throw new Error(
+        `gh repo create failed for ${target.slug}: ${commandOutput(result)}`,
+      );
+    }
+  }
+
+  async deleteRepo(target: RepositoryTarget): Promise<void> {
+    const result = await this.runGh(["repo", "delete", target.slug, "--yes"]);
+    if (result.code !== 0) {
+      throw new Error(
+        `gh repo delete failed for ${target.slug}: ${commandOutput(result)}`,
+      );
+    }
+  }
+
+  cloneCommand(target: RepositoryTarget): string {
+    return `gh repo clone ${target.slug}`;
+  }
+
+  async createIssue(
+    target: RepositoryTarget,
+    issue: HostIssueCreateInput,
+  ): Promise<void> {
+    const args = [
+      "issue",
+      "create",
+      "--repo",
+      target.slug,
+      "--title",
+      issue.title,
+      "--body",
+      issue.body,
+    ];
+    if (issue.labels.length > 0) args.push("--label", issue.labels.join(","));
+
+    const result = await this.runGh(args);
+    if (result.code !== 0) {
+      throw new Error(
+        `gh issue create failed for ${issue.title}: ${commandOutput(result)}`,
+      );
+    }
+  }
+
   async viewIssue(issueNumber: number): Promise<IssueSummary> {
     const result = await this.runGh([
       "issue",
@@ -282,7 +400,10 @@ export class GitHubGhHostProvider implements IssueHostProvider {
   }
 
   private runGh(args: string[]): Promise<CommandResult> {
-    return this.options.runner.run("gh", args, { cwd: this.options.repoRoot });
+    return this.options.runner.run("gh", args, {
+      cwd: this.options.repoRoot,
+      env: { GH_REPO: undefined },
+    });
   }
 
   private cliFailure(command: string, result: CommandResult): HostCliCheck {

@@ -19,6 +19,11 @@ type RecordedCall = {
 
 const repoRoot = "/repo";
 const login = "bot";
+const target = {
+  owner: "OWNER",
+  repo: "patchmill-test",
+  slug: "OWNER/patchmill-test",
+};
 
 function createFakeRunner(
   respond: (
@@ -39,6 +44,32 @@ function createFakeRunner(
 
 function createProvider(runner: CommandRunner): ForgejoTeaHostProvider {
   return new ForgejoTeaHostProvider({ runner, repoRoot, login });
+}
+
+function createProviderWithResponses(responses: CommandResult[]): {
+  provider: ForgejoTeaHostProvider;
+  calls: RecordedCall[];
+} {
+  const calls: RecordedCall[] = [];
+  let index = 0;
+  const runner: CommandRunner = {
+    async run(command, args, options = {}) {
+      calls.push({ command, args: [...args], cwd: options.cwd });
+      const response = responses[index];
+      index += 1;
+      if (!response)
+        throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+      return response;
+    },
+  };
+  return {
+    provider: new ForgejoTeaHostProvider({
+      runner,
+      repoRoot,
+      login: "triage-agent",
+    }),
+    calls,
+  };
 }
 
 function assertTeaContext(call: RecordedCall): void {
@@ -227,6 +258,32 @@ test("ForgejoTeaHostProvider delegates label listing to tea", async () => {
   assert.equal(flagValue(runner.calls[0]!.args, "--output"), "json");
 });
 
+test("Forgejo setup provider lists labels on an explicit repository", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify([{ name: "feature" }, { name: "bug" }]),
+      stderr: "",
+    },
+  ]);
+
+  const labels = await provider.listLabels(target);
+
+  assert.deepEqual(labels, ["bug", "feature"]);
+  assert.deepEqual(calls[0]?.args, [
+    "labels",
+    "list",
+    "--repo",
+    "OWNER/patchmill-test",
+    "--limit",
+    "1000",
+    "--output",
+    "json",
+    "--login",
+    "triage-agent",
+  ]);
+});
+
 test("ForgejoTeaHostProvider emits shell-safe missing-label remediation", () => {
   const label: LabelDefinition = {
     name: "agent ready; echo 'owned'",
@@ -265,6 +322,34 @@ test("ForgejoTeaHostProvider delegates label creation to tea", async () => {
     flagValue(runner.calls[0]!.args, "--description"),
     label.description,
   );
+});
+
+test("Forgejo setup provider creates labels on an explicit repository", async () => {
+  const label: LabelDefinition = {
+    name: "feature",
+    color: "0e8a16",
+    description: "New functionality",
+  };
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  await provider.createLabel(target, label);
+
+  assert.deepEqual(calls[0]?.args, [
+    "labels",
+    "create",
+    "--repo",
+    "OWNER/patchmill-test",
+    "--name",
+    "feature",
+    "--color",
+    "0e8a16",
+    "--description",
+    "New functionality",
+    "--login",
+    "triage-agent",
+  ]);
 });
 
 test("ForgejoTeaHostProvider delegates label application to tea", async () => {
@@ -311,4 +396,138 @@ test("ForgejoTeaHostProvider delegates issue comments to tea", async () => {
   const separatorIndex = runner.calls[0]!.args.indexOf("--");
   assert.ok(separatorIndex >= 0);
   assert.equal(runner.calls[0]!.args[separatorIndex + 1], body);
+});
+
+test("Forgejo setup provider returns repository info with tea repos search", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          owner: { login: "OWNER" },
+          name: "patchmill-test",
+          url: "https://forgejo.example/OWNER/patchmill-test",
+          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
+        },
+      ]),
+      stderr: "",
+    },
+  ]);
+
+  assert.deepEqual(await provider.getRepository(target), {
+    publicUrl: "https://forgejo.example/OWNER/patchmill-test",
+    gitRemoteUrl: "git@forgejo.example:OWNER/patchmill-test.git",
+  });
+  assert.deepEqual(calls[0]?.args, [
+    "repos",
+    "search",
+    "patchmill-test",
+    "--owner",
+    "OWNER",
+    "--fields",
+    "owner,name,ssh,url",
+    "--limit",
+    "50",
+    "--output",
+    "json",
+    "--login",
+    "triage-agent",
+  ]);
+});
+
+test("Forgejo setup provider returns undefined when tea search finds no repository", async () => {
+  const { provider } = createProviderWithResponses([
+    { code: 0, stdout: "[]", stderr: "" },
+  ]);
+
+  assert.equal(await provider.getRepository(target), undefined);
+});
+
+test("Forgejo provider creates and deletes public repositories", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "{}", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  await provider.createPublicRepo(target);
+  await provider.deleteRepo(target);
+
+  assert.deepEqual(
+    calls.map((call) => call.args),
+    [
+      [
+        "repos",
+        "create",
+        "--name",
+        "patchmill-test",
+        "--owner",
+        "OWNER",
+        "--output",
+        "json",
+        "--login",
+        "triage-agent",
+      ],
+      [
+        "repos",
+        "delete",
+        "--name",
+        "patchmill-test",
+        "--owner",
+        "OWNER",
+        "--force",
+        "--login",
+        "triage-agent",
+      ],
+    ],
+  );
+});
+
+test("Forgejo provider reads repository info and clone command", async () => {
+  const { provider } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          owner: "OWNER",
+          name: "patchmill-test",
+          url: "https://forgejo.example/OWNER/patchmill-test",
+          ssh: "git@forgejo.example:OWNER/patchmill-test.git",
+        },
+      ]),
+      stderr: "",
+    },
+  ]);
+
+  assert.deepEqual(await provider.getRepository(target), {
+    publicUrl: "https://forgejo.example/OWNER/patchmill-test",
+    gitRemoteUrl: "git@forgejo.example:OWNER/patchmill-test.git",
+  });
+  assert.equal(provider.cloneCommand(target), "tea clone OWNER/patchmill-test");
+});
+
+test("Forgejo setup provider creates issues with labels on an explicit repository", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  await provider.createIssue(target, {
+    title: "Build the form",
+    body: "Create a useful form.\n",
+    labels: ["feature", "polish"],
+  });
+
+  assert.deepEqual(calls[0]?.args, [
+    "issues",
+    "create",
+    "--repo",
+    "OWNER/patchmill-test",
+    "--title",
+    "Build the form",
+    "--description",
+    "Create a useful form.\n",
+    "--labels",
+    "feature,polish",
+    "--login",
+    "triage-agent",
+  ]);
 });

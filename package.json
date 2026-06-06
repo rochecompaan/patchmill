@@ -9,6 +9,7 @@
     "bin",
     "src",
     "dist",
+    "fixtures",
     "docs",
     "skills",
     "extensions",

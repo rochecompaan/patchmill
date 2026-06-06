@@ -18,6 +18,39 @@ export type LabelDefinition = {
   description: string;
 };
 
+export type RepositoryTarget = {
+  owner: string;
+  repo: string;
+  slug: string;
+};
+
+export type HostIssueCreateInput = {
+  title: string;
+  body: string;
+  labels: string[];
+};
+
+export type RepositoryInfo = {
+  publicUrl: string;
+  gitRemoteUrl: string;
+};
+
+export type RepositorySetupHostProvider = {
+  readonly id: PatchmillHostProviderId;
+  readonly displayName: string;
+  checkCli(): Promise<HostCliCheck>;
+  getRepository(target: RepositoryTarget): Promise<RepositoryInfo | undefined>;
+  createPublicRepo(target: RepositoryTarget): Promise<void>;
+  deleteRepo(target: RepositoryTarget): Promise<void>;
+  cloneCommand(target: RepositoryTarget): string;
+  listLabels(target: RepositoryTarget): Promise<string[]>;
+  createLabel(target: RepositoryTarget, label: LabelDefinition): Promise<void>;
+  createIssue(
+    target: RepositoryTarget,
+    issue: HostIssueCreateInput,
+  ): Promise<void>;
+};
+
 export type LabelChangePlan = {
   issueNumber: number;
   oldLabels: string[];

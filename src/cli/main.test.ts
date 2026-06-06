@@ -23,6 +23,19 @@ test("resolveCommand maps run-once to the public command name", () => {
   });
 });
 
+test("resolveCommand maps setup-test-repo to the public command name", () => {
+  assert.deepEqual(
+    resolveCommand(
+      ["setup-test-repo", "--provider", "github-gh"],
+      ["setup-test-repo"],
+    ),
+    {
+      command: "setup-test-repo",
+      args: ["--provider", "github-gh"],
+    },
+  );
+});
+
 test("resolveCommand maps init to the public command name", () => {
   assert.deepEqual(resolveCommand(["init"], ["init"]), {
     command: "init",
@@ -63,6 +76,10 @@ test("createCliMain prints top-level help", async () => {
   assert.equal(await main(["--help"]), 0);
   assert.match(HELP_TEXT, /init\s+Create a minimal patchmill\.config\.json\./);
   assert.match(HELP_TEXT, /doctor\s+Run read-only readiness checks\./);
+  assert.match(
+    HELP_TEXT,
+    /setup-test-repo\s+Create or reset a disposable Patchmill demo repository\./,
+  );
   assert.deepEqual(stdout, [HELP_TEXT]);
   assert.deepEqual(stderr, []);
 });
@@ -83,6 +100,35 @@ test("createCliMain dispatches selected command with remaining args", async () =
 
   assert.equal(await main(["triage", "--dry-run"]), 17);
   assert.deepEqual(calls, [["--dry-run"]]);
+});
+
+test("createCliMain dispatches setup-test-repo command", async () => {
+  const calls: string[][] = [];
+  const main = createCliMain(
+    new Map([
+      [
+        "setup-test-repo",
+        async (args) => {
+          calls.push(args);
+          return 0;
+        },
+      ],
+    ]),
+  );
+
+  assert.equal(
+    await main([
+      "setup-test-repo",
+      "--provider",
+      "github-gh",
+      "--repo",
+      "OWNER/REPO",
+    ]),
+    0,
+  );
+  assert.deepEqual(calls, [
+    ["--provider", "github-gh", "--repo", "OWNER/REPO"],
+  ]);
 });
 
 test("createCliMain dispatches init and doctor commands", async () => {

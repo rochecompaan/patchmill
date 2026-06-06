@@ -14,6 +14,11 @@ type RecordedCall = {
 };
 
 const repoRoot = "/repo";
+const target = {
+  owner: "OWNER",
+  repo: "patchmill-test",
+  slug: "OWNER/patchmill-test",
+};
 
 function scriptedRunner(
   responses: Record<string, CommandResult>,
@@ -33,6 +38,25 @@ function scriptedRunner(
 
 function createProvider(runner: CommandRunner): GitHubGhHostProvider {
   return new GitHubGhHostProvider({ runner, repoRoot });
+}
+
+function createProviderWithResponses(responses: CommandResult[]): {
+  provider: GitHubGhHostProvider;
+  calls: RecordedCall[];
+} {
+  const calls: RecordedCall[] = [];
+  let index = 0;
+  const runner: CommandRunner = {
+    async run(command, args, options = {}) {
+      calls.push({ command, args: [...args], cwd: options.cwd });
+      const response = responses[index];
+      index += 1;
+      if (!response)
+        throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+      return response;
+    },
+  };
+  return { provider: createProvider(runner), calls };
 }
 
 function commandLines(runner: { calls: RecordedCall[] }): string[] {
@@ -224,6 +248,23 @@ test("GitHubGhHostProvider lists labels", async () => {
   ]);
 });
 
+test("GitHub setup provider lists labels on an explicit repository", async () => {
+  const runner = scriptedRunner({
+    "gh label list --repo OWNER/patchmill-test --limit 1000 --json name": {
+      code: 0,
+      stdout: JSON.stringify([{ name: "feature" }, { name: "bug" }]),
+      stderr: "",
+    },
+  });
+
+  const labels = await createProvider(runner).listLabels(target);
+
+  assert.deepEqual(labels, ["bug", "feature"]);
+  assert.deepEqual(commandLines(runner), [
+    "gh label list --repo OWNER/patchmill-test --limit 1000 --json name",
+  ]);
+});
+
 test("GitHubGhHostProvider strips leading hash when creating labels", async () => {
   const label: LabelDefinition = {
     name: "agent-ready",
@@ -249,6 +290,24 @@ test("GitHubGhHostProvider strips leading hash when creating labels", async () =
     flagValue(runner.calls[0]!.args, "--description"),
     label.description,
   );
+});
+
+test("GitHub setup provider creates labels on an explicit repository", async () => {
+  const label: LabelDefinition = {
+    name: "feature",
+    color: "#0e8a16",
+    description: "New functionality",
+  };
+  const runner = scriptedRunner({
+    "gh label create feature --repo OWNER/patchmill-test --color 0e8a16 --description New functionality":
+      { code: 0, stdout: "", stderr: "" },
+  });
+
+  await createProvider(runner).createLabel(target, label);
+
+  assert.deepEqual(commandLines(runner), [
+    "gh label create feature --repo OWNER/patchmill-test --color 0e8a16 --description New functionality",
+  ]);
 });
 
 test("GitHubGhHostProvider applies label additions and removals", async () => {
@@ -346,4 +405,138 @@ test("GitHubGhHostProvider emits shell-safe missing-label remediation", () => {
     }),
     "  gh label create 'agent ready; echo '\"'\"'owned'\"'\"'' --color 2ea043 --description 'Ready for $(implementation) & review'",
   );
+});
+
+test("GitHub setup provider returns repository info with gh repo view", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify({
+        name: "patchmill-test",
+        url: "https://github.com/OWNER/patchmill-test",
+        sshUrl: "git@github.com:OWNER/patchmill-test.git",
+      }),
+      stderr: "",
+    },
+  ]);
+
+  assert.deepEqual(await provider.getRepository(target), {
+    publicUrl: "https://github.com/OWNER/patchmill-test",
+    gitRemoteUrl: "git@github.com:OWNER/patchmill-test.git",
+  });
+  assert.deepEqual(calls[0], {
+    command: "gh",
+    args: ["repo", "view", "OWNER/patchmill-test", "--json", "name,url,sshUrl"],
+    cwd: "/repo",
+  });
+});
+
+test("GitHub setup provider returns undefined when gh repo view cannot find the repo", async () => {
+  const { provider } = createProviderWithResponses([
+    { code: 1, stdout: "", stderr: "Could not resolve to a Repository" },
+  ]);
+
+  assert.equal(await provider.getRepository(target), undefined);
+});
+
+test("GitHub setup provider rejects malformed repository info", async () => {
+  const { provider } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: JSON.stringify({ name: "patchmill-test", url: null }),
+      stderr: "",
+    },
+  ]);
+
+  await assert.rejects(
+    () => provider.getRepository(target),
+    /gh repo view did not return a public URL for OWNER\/patchmill-test/u,
+  );
+});
+
+test("GitHub setup provider throws when repo view fails for reasons other than not found", async () => {
+  const { provider } = createProviderWithResponses([
+    { code: 1, stdout: "", stderr: "HTTP 403: API rate limit exceeded" },
+  ]);
+
+  await assert.rejects(
+    () => provider.getRepository(target),
+    /gh repo view failed for OWNER\/patchmill-test: HTTP 403/u,
+  );
+});
+
+test("GitHub provider creates and deletes public repositories", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    { code: 0, stdout: "", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  await provider.createPublicRepo(target);
+  await provider.deleteRepo(target);
+
+  assert.deepEqual(
+    calls.map((call) => call.args),
+    [
+      ["repo", "create", "OWNER/patchmill-test", "--public"],
+      ["repo", "delete", "OWNER/patchmill-test", "--yes"],
+    ],
+  );
+});
+
+test("GitHub provider exposes clone command", () => {
+  const { provider } = createProviderWithResponses([]);
+
+  assert.equal(
+    provider.cloneCommand(target),
+    "gh repo clone OWNER/patchmill-test",
+  );
+});
+
+test("GitHub setup provider creates issues with labels on an explicit repository", async () => {
+  const { provider, calls } = createProviderWithResponses([
+    {
+      code: 0,
+      stdout: "https://github.com/OWNER/patchmill-test/issues/1\n",
+      stderr: "",
+    },
+  ]);
+
+  await provider.createIssue(target, {
+    title: "Build the form",
+    body: "Create a useful form.\n",
+    labels: ["feature", "polish"],
+  });
+
+  assert.deepEqual(calls[0]?.args, [
+    "issue",
+    "create",
+    "--repo",
+    "OWNER/patchmill-test",
+    "--title",
+    "Build the form",
+    "--body",
+    "Create a useful form.\n",
+    "--label",
+    "feature,polish",
+  ]);
+});
+
+test("GitHub provider clears ambient GH_REPO for gh commands", async () => {
+  let ghRepoOverrideWasCleared = false;
+  const provider = createProvider({
+    async run(_command, _args, options = {}) {
+      ghRepoOverrideWasCleared =
+        Object.hasOwn(options.env ?? {}, "GH_REPO") &&
+        options.env?.GH_REPO === undefined;
+      return { code: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  await provider.createIssue(target, {
+    title: "Build the form",
+    body: "Create a useful form.\n",
+    labels: [],
+  });
+
+  assert.equal(ghRepoOverrideWasCleared, true);
 });
