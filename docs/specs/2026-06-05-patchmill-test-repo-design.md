@@ -240,7 +240,7 @@ with instructions to rerun with `--reset` when the caller intends to replace it.
 Workflow:
 
 1. Validate the required `--provider` and `--repo OWNER/REPO` arguments.
-2. Resolve the setup provider adapter for `github-gh` or `forgejo-tea`.
+2. Resolve the selected existing host provider for `github-gh` or `forgejo-tea`.
 3. Verify required external tools are available for the selected provider:
    - `git` for all providers.
    - `gh` for `github-gh`.
@@ -283,7 +283,7 @@ patchmill triage
 
 ## Implementation Components
 
-Add a new command directory:
+Add a new command directory for setup orchestration only:
 
 ```text
 src/cli/commands/setup-test-repo/
@@ -295,15 +295,18 @@ src/cli/commands/setup-test-repo/
   issue-parser.test.ts
   main.ts
   main.test.ts
+  host-boundary.test.ts
+```
 
-src/host/setup-test-repo/
-  factory.ts
-  factory.test.ts
-  forgejo-tea.ts
-  forgejo-tea.test.ts
-  github-gh.ts
-  github-gh.test.ts
-  types.ts
+Extend the existing host provider modules with generic provider capabilities:
+
+```text
+src/host/types.ts
+src/host/factory.ts
+src/host/github-gh.ts
+src/host/github-gh.test.ts
+src/host/forgejo-tea.ts
+src/host/forgejo-tea.test.ts
 ```
 
 Responsibilities:
@@ -314,21 +317,21 @@ Responsibilities:
   labels.
 - `fixtures.ts`: resolve and validate the bundled fixture directory from the
   installed package.
-- `src/host/setup-test-repo/types.ts`: define the setup-specific provider
-  adapter interface.
-- `src/host/setup-test-repo/factory.ts`: resolve setup adapters by provider ID
-  and reuse the existing `src/host/factory.ts` issue-host factory where
-  applicable.
-- `src/host/setup-test-repo/github-gh.ts`: implement only GitHub-specific
-  repository lifecycle, issue creation, git remote, and clone instructions,
-  while reusing existing GitHub host-provider code for CLI readiness and label
-  creation.
-- `src/host/setup-test-repo/forgejo-tea.ts`: implement only
-  Forgejo/Gitea-specific repository lifecycle, issue creation, git remote, and
-  clone instructions, while reusing existing Forgejo/Gitea host-provider code
-  for CLI readiness, named-login handling, and label creation.
 - `main.ts`: orchestrate setup/reset, fixture copy, git push, label creation,
-  issue creation, and final instructions.
+  issue creation, and final instructions by calling generic host-provider
+  capabilities.
+- `host-boundary.test.ts`: enforce that the setup command does not invoke `gh`
+  or `tea` directly and does not grow provider-specific integration code.
+- `src/host/types.ts`: add provider-neutral types for repository targets,
+  issue-creation input, and repository lifecycle capabilities.
+- `src/host/factory.ts`: continue resolving provider IDs to the existing host
+  provider classes, exposing the expanded generic capabilities.
+- `src/host/github-gh.ts`: add generic GitHub repository lifecycle, issue
+  creation, git remote URL, public URL, and clone-command capabilities to the
+  existing `GitHubGhHostProvider`.
+- `src/host/forgejo-tea.ts`: add generic Forgejo/Gitea repository lifecycle,
+  issue creation, git remote URL, public URL, and clone-command capabilities to
+  the existing `ForgejoTeaHostProvider`.
 
 Register the command in `src/cli/main.ts` help and dispatch maps.
 
@@ -336,60 +339,68 @@ Register the command in `src/cli/main.ts` help and dispatch maps.
 
 `setup-test-repo` must reuse Patchmill's existing host-provider code in
 `src/host` instead of recreating provider-specific `gh` or `tea` integrations in
-the CLI command.
+the CLI command. The `src/host` directory should contain only generic operations
+for interacting with supported git providers; Team Lunch Poll fixture handling
+and setup-test-repo orchestration belong in `src/cli/commands/setup-test-repo`.
 
 Reuse rules:
 
 - No `gh` or `tea` subprocess calls should live in
   `src/cli/commands/setup-test-repo/*`. The command layer parses arguments,
   loads fixtures, and orchestrates high-level steps only.
-- Provider-specific subprocess calls belong under `src/host`, next to the
-  existing providers.
+- Provider-specific subprocess calls belong in the existing provider modules:
+  `src/host/github-gh.ts` and `src/host/forgejo-tea.ts`.
+- Do not create a setup-specific provider subtree such as
+  `src/host/setup-test-repo`. If a capability is a generic operation on a git
+  provider, add it to the existing provider module and shared host types.
 - Reuse the existing `CommandRunner`, `HostCliCheck`, `LabelDefinition`,
-  provider IDs, and provider readiness behavior from `src/host/types.ts`,
-  `src/host/github-gh.ts`, `src/host/forgejo-tea.ts`, and `src/host/factory.ts`.
-- Reuse `createIssueHostProvider()` after the temporary git repository has the
-  target remote configured. That existing provider can perform common
-  repo-scoped operations that already exist today, especially CLI readiness and
-  label creation.
-- If lifecycle or issue-creation logic requires new provider-specific command
-  builders, add them in `src/host` and share them with the existing provider
-  modules where possible. Do not duplicate command formatting, login handling,
-  output parsing, color normalization, shell quoting, or error formatting in the
-  setup command directory.
+  `IssueHostProvider`, provider IDs, and provider readiness behavior from
+  `src/host/types.ts`, `src/host/github-gh.ts`, `src/host/forgejo-tea.ts`, and
+  `src/host/factory.ts`.
+- Add generic repository lifecycle and issue-creation capabilities to the
+  existing host providers rather than wrapping them in a parallel setup adapter.
+  These capabilities are broadly useful host operations: repository existence,
+  public repository creation, repository deletion, issue creation, git remote
+  URL, public URL, and clone command.
+- After the temporary git repository has the target remote configured, reuse the
+  existing repo-scoped provider behavior for readiness checks, label creation,
+  and issue creation where possible.
+- If lifecycle or issue-creation logic requires provider-specific command
+  builders, add them to the existing provider modules or shared `src/host`
+  helpers. Do not duplicate command formatting, login handling, output parsing,
+  color normalization, shell quoting, or error formatting in the setup command
+  directory.
 - If an existing helper is currently private but useful to setup providers,
   refactor it into an exported `src/host` helper rather than copying it.
-- The setup-specific adapter should be a thin extension around current host
-  providers for missing capabilities: repository existence, public repository
-  creation, reset deletion, issue creation, git remote URL, public URL, and
-  clone instructions.
 
 This keeps all supported-provider knowledge in `src/host` and prevents
 `setup-test-repo` from becoming a second, divergent implementation of GitHub or
 Forgejo/Gitea support.
 
-## Setup Provider Adapter
+## Generic Host Provider Capabilities
 
 The existing `IssueHostProvider` interface supports Patchmill operations on an
 already-configured repository: list issues, inspect labels, comment, and apply
 labels. `setup-test-repo` needs repository lifecycle and issue creation before a
-repository has been initialized for Patchmill, so it should use a small
-setup-specific adapter in `src/host/setup-test-repo`. Keep the adapter adjacent
-to the current host providers and delegate to current provider classes whenever
-the operation already exists.
+repository has been initialized for Patchmill. Add those missing capabilities to
+the existing host-provider modules as generic provider operations, not as
+test-repo-specific setup code.
 
-The adapter should support:
+The existing provider classes should support:
 
 - `id` and `displayName`, using existing provider IDs.
 - `checkCli()` for provider tool/auth readiness.
-- `repoExists(owner, repo)`.
-- `createPublicRepo(owner, repo)`.
-- `deleteRepo(owner, repo)` for reset mode.
-- `gitRemoteUrl(owner, repo)` for pushing the seeded commit.
-- `publicRepoUrl(owner, repo)` for output and verification.
-- `cloneCommand(owner, repo)` for final instructions.
-- `createLabel(owner, repo, label)`.
-- `createIssue(owner, repo, issue)`.
+- `repoExists(target)`.
+- `createPublicRepo(target)`.
+- `deleteRepo(target)` for reset mode.
+- `gitRemoteUrl(target)` for pushing the seeded commit.
+- `publicRepoUrl(target)` for output and verification.
+- `cloneCommand(target)` for final instructions.
+- `createIssue(issue)` as a repo-scoped operation after the target remote is
+  configured.
+
+Existing `createLabel(label)` remains the generic label-creation operation for
+the configured repository and should be reused by `setup-test-repo`.
 
 Provider implementation notes:
 
@@ -401,9 +412,8 @@ Provider implementation notes:
   `GitHubGhHostProvider` and `ForgejoTeaHostProvider` where possible after the
   temporary repository remote is configured.
 - If `tea` lacks a convenient high-level subcommand for a specific lifecycle
-  operation, the provider may use `tea api` behind the adapter. Keep those API
-  details isolated to `src/host/setup-test-repo/forgejo-tea.ts` or shared
-  helpers under `src/host`.
+  operation, `ForgejoTeaHostProvider` may use `tea api`. Keep those API details
+  isolated to `src/host/forgejo-tea.ts` or shared helpers under `src/host`.
 
 ## Safety and Error Handling
 
@@ -444,14 +454,15 @@ Implementation verification should include:
 - issue parser tests for valid issue files, missing titles, optional labels, and
   invalid labels,
 - fixture resolution tests proving bundled fixture files can be found,
-- setup provider adapter tests for both `github-gh` and `forgejo-tea`,
-- host-provider reuse tests proving setup adapters delegate shared operations to
-  existing `src/host` providers instead of duplicating readiness and label
+- generic host-provider capability tests for both `GitHubGhHostProvider` and
+  `ForgejoTeaHostProvider`,
+- host-provider reuse tests proving setup orchestration calls existing
+  `src/host` provider capabilities instead of duplicating readiness and label
   behavior,
-- orchestration tests using mocked provider adapters for create-only,
+- orchestration tests using mocked host-provider capabilities for create-only,
   existing-repo-without-reset failure, and reset flows,
-- mocked CLI-contract tests for provider commands generated by `github-gh` and
-  `forgejo-tea`,
+- mocked CLI-contract tests for provider commands generated by
+  `src/host/github-gh.ts` and `src/host/forgejo-tea.ts`,
 - an architectural/static check that `src/cli/commands/setup-test-repo/*` does
   not invoke `gh` or `tea` directly; provider-specific CLI calls must remain
   under `src/host`,
