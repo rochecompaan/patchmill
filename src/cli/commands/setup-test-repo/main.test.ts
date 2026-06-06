@@ -19,7 +19,11 @@ function okCli(): HostCliCheck {
 }
 
 function createProvider(
-  options: { exists?: boolean; cli?: HostCliCheck } = {},
+  options: {
+    exists?: boolean;
+    cli?: HostCliCheck;
+    existingLabels?: string[];
+  } = {},
 ): {
   provider: GitHostProvider;
   calls: string[];
@@ -49,7 +53,7 @@ function createProvider(
       return value;
     },
     async listLabels() {
-      return [];
+      return options.existingLabels ?? [];
     },
     async createLabel(label) {
       labels.push(label);
@@ -141,6 +145,33 @@ test("runSetupTestRepo creates a new repo, pushes fixtures, labels, and issues",
   );
   assert.match(stdout.join("\n"), /gh repo clone OWNER\/patchmill-test/u);
   assert.match(stdout.join("\n"), /patchmill init/u);
+
+  await rm(tempParent, { recursive: true, force: true });
+});
+
+test("runSetupTestRepo skips labels that already exist on the host", async () => {
+  const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
+  const { provider, labels } = createProvider({
+    exists: false,
+    existingLabels: ["bug"],
+  });
+  const { runner } = createGitRunner();
+
+  const code = await runSetupTestRepo(
+    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
+    {
+      runner,
+      tempParent,
+      output: { stdout: () => undefined, stderr: () => undefined },
+      createProvider: () => provider,
+    },
+  );
+
+  assert.equal(code, 0);
+  assert.deepEqual(
+    labels.map((label) => label.name),
+    ["feature", "docs", "polish"],
+  );
 
   await rm(tempParent, { recursive: true, force: true });
 });

@@ -435,7 +435,7 @@ test("GitHub provider exposes remote URL, public URL, and clone command", async 
 
   assert.equal(
     await provider.gitRemoteUrl(target),
-    "https://github.com/OWNER/patchmill-test.git",
+    "git@github.com:OWNER/patchmill-test.git",
   );
   assert.equal(
     await provider.publicRepoUrl(target),

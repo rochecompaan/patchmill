@@ -303,7 +303,7 @@ export class GitHubGhHostProvider implements IssueHostProvider {
   }
 
   async gitRemoteUrl(target: RepositoryTarget): Promise<string> {
-    return `https://github.com/${target.slug}.git`;
+    return `git@github.com:${target.slug}.git`;
   }
 
   async publicRepoUrl(target: RepositoryTarget): Promise<string> {

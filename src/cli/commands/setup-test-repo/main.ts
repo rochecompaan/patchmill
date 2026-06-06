@@ -138,6 +138,13 @@ async function seedGitRepository(options: {
   ]);
 }
 
+async function createMissingLabels(provider: GitHostProvider): Promise<void> {
+  const existingLabels = new Set(await provider.listLabels());
+  for (const label of SETUP_TEST_REPO_LABELS) {
+    if (!existingLabels.has(label.name)) await provider.createLabel(label);
+  }
+}
+
 export async function runSetupTestRepo(
   args: string[],
   dependencies: SetupTestRepoDependencies = {},
@@ -189,9 +196,7 @@ export async function runSetupTestRepo(
         remoteUrl: await provider.gitRemoteUrl(config.target),
       });
 
-      for (const label of SETUP_TEST_REPO_LABELS) {
-        await provider.createLabel(label);
-      }
+      await createMissingLabels(provider);
       for (const issue of issues) await provider.createIssue(issue);
 
       output.stdout(`Seeded ${await provider.publicRepoUrl(config.target)}`);
