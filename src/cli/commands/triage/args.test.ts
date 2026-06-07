@@ -24,7 +24,6 @@ test("parseArgs executes safe default triage when no args are provided", () => {
   assert.equal(config.teaLogin, "triage-agent");
   assert.equal(config.triageThinking, "high");
   assert.equal(config.logDir, "/repo/.patchmill/triage-runs");
-  assert.equal(config.verbose, false);
 });
 
 test("parseArgs shows help for help flags", () => {
@@ -38,14 +37,6 @@ test("parseArgs accepts dryrun alias", () => {
   assert.equal(config.showHelp, false);
   assert.equal(config.dryRun, true);
   assert.equal(config.execute, false);
-});
-
-test("parseArgs enables verbose live tool-call logging", () => {
-  const config = parseArgs(["--verbose"], "/repo");
-
-  assert.equal(config.verbose, true);
-  assert.equal(config.dryRun, false);
-  assert.equal(config.execute, true);
 });
 
 test("parseArgs carries normalized host config", () => {
@@ -133,6 +124,7 @@ test("HELP_TEXT documents host-neutral host-login and tea-login flags", () => {
   assert.match(HELP_TEXT, /--tea-login <name>/);
   assert.match(HELP_TEXT, /Compatibility alias for --host-login/);
   assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
+  assert.doesNotMatch(HELP_TEXT, /--verbose/);
   assert.doesNotMatch(HELP_TEXT, /Forgejo issue updates/);
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
 });
@@ -304,6 +296,13 @@ test("parseArgs rejects removed execute flag", () => {
   assert.throws(
     () => parseArgs(["--execute"], "/repo"),
     /Unknown argument: --execute/,
+  );
+});
+
+test("parseArgs rejects removed verbose flag because tool calls are default", () => {
+  assert.throws(
+    () => parseArgs(["--verbose"], "/repo"),
+    /Unknown argument: --verbose/,
   );
 });
 

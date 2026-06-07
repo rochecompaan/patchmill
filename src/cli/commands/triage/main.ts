@@ -28,7 +28,6 @@ Options:
   --dry-run, --dryrun Preview configured triage skill decisions without mutating the configured issue host.
   --issue <number>    Triage one open issue by number.
   --all               Re-triage selected open issues and include issues already carrying triage or protection labels such as in-progress or blocked.
-  --verbose           Print live Pi tool-call activity while triage runs.
   --limit <number>    Triage only the first N selected open issues.
   --log-dir <path>    Write triage logs to a custom directory.
   --host-login <name> Use a named host login when the provider supports named logins.
@@ -81,7 +80,6 @@ export type TriageCliDependencies = {
   runTriage(runner: CommandRunner, config: TriageConfig): Promise<TriageResult>;
   createProgressReporter(options: {
     command: string;
-    verbose?: boolean;
     writeLine: (line: string) => void;
   }): TriageCliProgressReporter;
   writeStdout(line: string): void;
@@ -114,7 +112,6 @@ export async function main(
 
     const reporter = dependencies.createProgressReporter({
       command: commandText(args),
-      verbose: config.verbose,
       writeLine: dependencies.writeStdout,
     });
     const result = await dependencies.runTriage(
@@ -122,7 +119,7 @@ export async function main(
       {
         ...config,
         onProgress: reporter.onProgress,
-        onToolCall: config.verbose ? reporter.onToolCall : undefined,
+        onToolCall: reporter.onToolCall,
       },
     );
     reporter.finish(result);

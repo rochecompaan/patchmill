@@ -110,7 +110,6 @@ export function formatProgressIssueLines(
 
 export function createTriageProgressReporter(options: {
   command: string;
-  verbose?: boolean;
   writeLine: (line: string) => void;
 }) {
   return {
@@ -132,7 +131,6 @@ export function createTriageProgressReporter(options: {
       }
     },
     onToolCall(event: TriageToolCallEvent) {
-      if (!options.verbose) return;
       options.writeLine(formatToolCallLine(event));
     },
     finish(result: TriageResult) {

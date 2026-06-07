@@ -49,7 +49,6 @@ export function parseArgs(
     showHelp: false,
     host,
     teaLogin: host.login,
-    verbose: false,
     logDir: normalizedConfig
       ? patchmillConfig.paths.triageLogDir
       : join(repoRoot, patchmillConfig.paths.triageLogDir),
@@ -70,8 +69,6 @@ export function parseArgs(
       config.execute = false;
     } else if (arg === "--all") {
       config.all = true;
-    } else if (arg === "--verbose") {
-      config.verbose = true;
     } else if (arg === "--issue") {
       config.issueNumber = parsePositiveInteger(
         arg,

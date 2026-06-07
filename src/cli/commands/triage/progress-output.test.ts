@@ -77,11 +77,10 @@ test("formatToolCallLine prints concise tool call details", () => {
   );
 });
 
-test("createTriageProgressReporter prints verbose tool calls when enabled", () => {
+test("createTriageProgressReporter prints tool calls by default", () => {
   const output: string[] = [];
   const reporter = createTriageProgressReporter({
-    command: "patchmill triage --verbose",
-    verbose: true,
+    command: "patchmill triage",
     writeLine: (line) => output.push(line),
   });
 
@@ -92,18 +91,6 @@ test("createTriageProgressReporter prints verbose tool calls when enabled", () =
   });
 
   assert.deepEqual(output, ["🔧 bash", "🤖 subagent (agent=worker)"]);
-});
-
-test("createTriageProgressReporter suppresses tool calls when verbose is disabled", () => {
-  const output: string[] = [];
-  const reporter = createTriageProgressReporter({
-    command: "patchmill triage",
-    writeLine: (line) => output.push(line),
-  });
-
-  reporter.onToolCall({ toolName: "bash" });
-
-  assert.deepEqual(output, []);
 });
 
 test("createTriageProgressReporter prints header, issue progress, and footer", () => {

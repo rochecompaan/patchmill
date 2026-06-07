@@ -101,10 +101,10 @@ host-side actions. For the bundled default triage skill, Patchmill also passes
 is configured to a custom skill name, Patchmill names that skill in the prompt
 instead of passing it with `--skill`.
 
-When `patchmill triage --verbose` is enabled, both triage agents replace
-`--no-session` with a temporary `--session-dir` and stream observed Pi tool
-calls to the live console. These verbose tool-call lines are not written to the
-triage JSON log.
+By default, both triage agents replace `--no-session` with a temporary
+`--session-dir` and stream observed Pi tool calls to the live console. These
+concise tool-call lines fill long-running gaps between issue summaries and are
+not written to the triage JSON log.
 
 Both prompts tell Pi:
 

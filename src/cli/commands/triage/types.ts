@@ -34,7 +34,6 @@ export type TriageConfig = {
   issueNumber?: number;
   limit?: number;
   all?: boolean;
-  verbose?: boolean;
   logDir: string;
   projectPolicy?: PatchmillProjectPolicy;
   triagePolicy?: PatchmillTriagePolicy;
