@@ -15,6 +15,14 @@ export type TriageProgressEvent =
 
 export type TriageProgressHandler = (event: TriageProgressEvent) => void;
 
+export type TriageToolCallEvent = {
+  toolName?: string;
+  toolCallId?: string;
+  arguments?: Record<string, unknown>;
+};
+
+export type TriageToolCallHandler = (event: TriageToolCallEvent) => void;
+
 export type TriageConfig = {
   repoRoot: string;
   dryRun: boolean;
@@ -31,6 +39,7 @@ export type TriageConfig = {
   triagePolicy?: PatchmillTriagePolicy;
   skills: PatchmillSkillsConfig;
   onProgress?: TriageProgressHandler;
+  onToolCall?: TriageToolCallHandler;
 };
 
 export type CommandResult = {

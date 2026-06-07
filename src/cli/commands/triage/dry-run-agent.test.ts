@@ -287,6 +287,22 @@ test("runTriageDryRunAgent invokes Pi with read-only tools", async () => {
   ]);
 });
 
+test("runTriageDryRunAgent enables session observation for tool-call logging", async () => {
+  const runner = new RecordingRunner();
+
+  await runTriageDryRunAgent(runner, "/repo", {
+    issues,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    stateMap,
+    onToolCall() {},
+  });
+
+  const call = runner.calls[0]!;
+  const sessionDirIndex = call.args.indexOf("--session-dir");
+  assert.notEqual(sessionDirIndex, -1);
+  assert.match(call.args[sessionDirIndex + 1] ?? "", /patchmill-triage-pi-/);
+});
+
 test("runTriageDryRunAgent adds bundled triage skill for default skills", async () => {
   const runner = new RecordingRunner();
 

@@ -124,6 +124,7 @@ test("HELP_TEXT documents host-neutral host-login and tea-login flags", () => {
   assert.match(HELP_TEXT, /--tea-login <name>/);
   assert.match(HELP_TEXT, /Compatibility alias for --host-login/);
   assert.match(HELP_TEXT, /PATCHMILL_HOST_LOGIN/);
+  assert.doesNotMatch(HELP_TEXT, /--verbose/);
   assert.doesNotMatch(HELP_TEXT, /Forgejo issue updates/);
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
 });
@@ -295,6 +296,13 @@ test("parseArgs rejects removed execute flag", () => {
   assert.throws(
     () => parseArgs(["--execute"], "/repo"),
     /Unknown argument: --execute/,
+  );
+});
+
+test("parseArgs rejects removed verbose flag because tool calls are default", () => {
+  assert.throws(
+    () => parseArgs(["--verbose"], "/repo"),
+    /Unknown argument: --verbose/,
   );
 });
 

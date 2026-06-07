@@ -1,4 +1,5 @@
 import { withPromptFile } from "./prompt-file.ts";
+import { runWithToolCallObservation } from "./tool-call-observer.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
@@ -7,7 +8,11 @@ import {
   skillInvocationPaths,
   type PatchmillSkillsConfig,
 } from "../../../workflow/skills.ts";
-import type { CommandRunner, IssueSummary } from "./types.ts";
+import type {
+  CommandRunner,
+  IssueSummary,
+  TriageToolCallHandler,
+} from "./types.ts";
 
 export type TriageExecutePromptInput = {
   issues: IssueSummary[];
@@ -16,6 +21,7 @@ export type TriageExecutePromptInput = {
   stateMap: PatchmillTriageStateMap;
   skills?: PatchmillSkillsConfig;
   thinking?: string;
+  onToolCall?: TriageToolCallHandler;
 };
 
 function issuePayload(issues: IssueSummary[]): string {
@@ -100,25 +106,30 @@ export async function runTriageExecuteAgent(
     (path) => ["--skill", path],
   );
   const thinking = input.thinking ?? "high";
-  await withPromptFile("agent-triage-execute-", prompt, async (promptPath) => {
-    const result = await runner.run(
-      "pi",
-      [
-        "--no-context-files",
-        "--no-session",
-        ...skillArgs,
-        "--thinking",
-        thinking,
-        "-p",
-        `@${promptPath}`,
-      ],
-      { cwd: repoRoot },
-    );
-
-    if (result.code !== 0) {
-      throw new Error(
-        `pi triage execute failed: ${result.stderr || result.stdout}`,
+  await withPromptFile("agent-triage-execute-", prompt, async (promptPath) =>
+    runWithToolCallObservation(input.onToolCall, async (sessionDir) => {
+      const sessionArgs = sessionDir
+        ? ["--session-dir", sessionDir]
+        : ["--no-session"];
+      const result = await runner.run(
+        "pi",
+        [
+          "--no-context-files",
+          ...sessionArgs,
+          ...skillArgs,
+          "--thinking",
+          thinking,
+          "-p",
+          `@${promptPath}`,
+        ],
+        { cwd: repoRoot },
       );
-    }
-  });
+
+      if (result.code !== 0) {
+        throw new Error(
+          `pi triage execute failed: ${result.stderr || result.stdout}`,
+        );
+      }
+    }),
+  );
 }

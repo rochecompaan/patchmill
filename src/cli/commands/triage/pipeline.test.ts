@@ -88,6 +88,30 @@ test("runTriage dry-run previews configured skill without mutating Forgejo", asy
   assert.deepEqual(result.issues, log.issues);
 });
 
+test("runTriage dry-run enables Pi session observation for tool-call logging", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: issueJson, stderr: "" },
+    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    noCommentsOutput,
+    { code: 0, stdout: needsInfoPreviewJson, stderr: "" },
+  ]);
+
+  await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+    onToolCall() {},
+  });
+
+  const piCall = runner.calls.find((call) => call.command === "pi");
+  assert.ok(piCall);
+  assert.notEqual(piCall.args.indexOf("--session-dir"), -1);
+  assert.equal(piCall.args.includes("--no-session"), false);
+});
+
 test("runTriage dry-run emits selected and issue progress events", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const events: string[] = [];

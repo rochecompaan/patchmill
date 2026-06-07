@@ -4,6 +4,7 @@ import {
   createTriageProgressReporter,
   formatProgressIssueLines,
   formatResultLines,
+  formatToolCallLine,
 } from "./progress-output.ts";
 
 test("formatProgressIssueLines matches the triage output demo layout", () => {
@@ -49,6 +50,47 @@ test("formatProgressIssueLines matches the triage output demo layout", () => {
     "progress: 2/49 triaged",
     "",
   ]);
+});
+
+test("formatToolCallLine prints concise tool call details", () => {
+  assert.equal(formatToolCallLine({ toolName: "bash" }), "🔧 bash");
+  assert.equal(
+    formatToolCallLine({
+      toolName: "read",
+      arguments: { path: "src/cli/commands/triage/main.ts" },
+    }),
+    "🔧 read (path=src/cli/commands/triage/main.ts)",
+  );
+  assert.equal(
+    formatToolCallLine({
+      toolName: "subagent",
+      arguments: { agent: "worker" },
+    }),
+    "🤖 subagent (agent=worker)",
+  );
+  assert.equal(
+    formatToolCallLine({
+      toolName: "subagent",
+      arguments: { tasks: [{ agent: "worker" }, { agent: "reviewer" }] },
+    }),
+    "🤖 subagent (agents=worker, reviewer)",
+  );
+});
+
+test("createTriageProgressReporter prints tool calls by default", () => {
+  const output: string[] = [];
+  const reporter = createTriageProgressReporter({
+    command: "patchmill triage",
+    writeLine: (line) => output.push(line),
+  });
+
+  reporter.onToolCall({ toolName: "bash" });
+  reporter.onToolCall({
+    toolName: "subagent",
+    arguments: { agent: "worker" },
+  });
+
+  assert.deepEqual(output, ["🔧 bash", "🤖 subagent (agent=worker)"]);
 });
 
 test("createTriageProgressReporter prints header, issue progress, and footer", () => {

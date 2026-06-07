@@ -9,6 +9,7 @@ import type {
   CommandRunner,
   IssueSummary,
   TriageLogIssueEntry,
+  TriageToolCallHandler,
 } from "./types.ts";
 
 export type ExecuteTriageIssuesOptions = {
@@ -21,6 +22,7 @@ export type ExecuteTriageIssuesOptions = {
   stateMap: PatchmillTriageStateMap;
   skills: PatchmillSkillsConfig;
   thinking: string;
+  onToolCall?: TriageToolCallHandler;
   onIssue?: (
     entry: TriageLogIssueEntry,
     completed: number,
@@ -66,6 +68,7 @@ export async function executeTriageIssues(
       host: options.hostConfig,
       skills: options.skills,
       thinking: options.thinking,
+      onToolCall: options.onToolCall,
     });
 
     const afterIssue = await snapshotIssue(options.host, beforeIssue.number);

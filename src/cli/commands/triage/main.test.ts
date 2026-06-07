@@ -120,6 +120,7 @@ test("main prints help and skips triage", async () => {
 test("main runs triage with the command runner and progress reporter", async () => {
   const events: string[] = [];
   const onProgress = () => events.push("progress");
+  const onToolCall = () => events.push("tool");
   const result = triageResult({ status: "applied" });
   const config = triageConfig({ dryRun: false, execute: true });
   let finishedWith: TriageResult | undefined;
@@ -134,6 +135,7 @@ test("main runs triage with the command runner and progress reporter", async () 
     async runTriage(runner, runConfig) {
       assert.strictEqual(runner, commandRunner);
       assert.strictEqual(runConfig.onProgress, onProgress);
+      assert.strictEqual(runConfig.onToolCall, onToolCall);
       assert.equal(runConfig.issueNumber, undefined);
       return result;
     },
@@ -141,6 +143,7 @@ test("main runs triage with the command runner and progress reporter", async () 
       assert.equal(options.command, "patchmill triage --issue 12");
       return {
         onProgress,
+        onToolCall,
         finish(finishedResult) {
           finishedWith = finishedResult;
         },
@@ -158,6 +161,46 @@ test("main runs triage with the command runner and progress reporter", async () 
 
   assert.equal(code, 0);
   assert.strictEqual(finishedWith, result);
+});
+
+test("main wires tool-call output to the live console by default", async () => {
+  const stdout: string[] = [];
+  const result = triageResult({ status: "applied" });
+  const config = triageConfig({ dryRun: false, execute: true });
+  const deps: TriageCliDependencies = {
+    async loadCliConfig(args) {
+      assert.deepEqual(args, []);
+      return config;
+    },
+    createCommandRunner() {
+      return commandRunner;
+    },
+    async runTriage(_runner, runConfig) {
+      runConfig.onToolCall?.({ toolName: "bash" });
+      return result;
+    },
+    createProgressReporter(options) {
+      assert.equal(options.command, "patchmill triage");
+      return {
+        onProgress() {},
+        onToolCall(event) {
+          stdout.push(`tool:${event.toolName ?? "tool"}`);
+        },
+        finish() {},
+      };
+    },
+    writeStdout() {
+      throw new Error("stdout should be owned by reporter");
+    },
+    writeStderr() {
+      throw new Error("stderr should not be written");
+    },
+  };
+
+  const code = await main([], deps);
+
+  assert.equal(code, 0);
+  assert.deepEqual(stdout, ["tool:bash"]);
 });
 
 test("main writes errors and returns one", async () => {

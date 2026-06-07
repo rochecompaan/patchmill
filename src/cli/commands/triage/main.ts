@@ -11,6 +11,7 @@ import type {
   TriageConfig,
   TriageProgressEvent,
   TriageResult,
+  TriageToolCallEvent,
 } from "./types.ts";
 
 // TODO: Remove compatibility alias for --tea-login in favor of --host-login
@@ -65,6 +66,7 @@ export async function loadCliConfig(
 
 export type TriageCliProgressReporter = {
   onProgress(event: TriageProgressEvent): void;
+  onToolCall?(event: TriageToolCallEvent): void;
   finish(result: TriageResult): void;
 };
 
@@ -117,6 +119,7 @@ export async function main(
       {
         ...config,
         onProgress: reporter.onProgress,
+        onToolCall: reporter.onToolCall,
       },
     );
     reporter.finish(result);

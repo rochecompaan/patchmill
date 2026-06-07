@@ -136,6 +136,7 @@ export async function runTriage(
         skills: config.skills,
         thinking:
           config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+        onToolCall: config.onToolCall,
       });
       const logIssues = createPreviewEntries(issues, previews);
       logIssues.forEach((issue, index) => {
@@ -178,6 +179,7 @@ export async function runTriage(
       skills: config.skills,
       thinking:
         config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+      onToolCall: config.onToolCall,
       onIssue(entry, completed, total) {
         logIssues.push(entry);
         config.onProgress?.({ type: "issue", issue: entry, completed, total });
