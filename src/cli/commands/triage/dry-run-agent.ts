@@ -1,4 +1,5 @@
 import { withPromptFile } from "./prompt-file.ts";
+import { runWithToolCallObservation } from "./tool-call-observer.ts";
 import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
 import { TRIAGE_CANONICAL_BUCKETS } from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
@@ -13,6 +14,7 @@ import type {
   RawTriagePreview,
   RawTriagePreviewDocument,
   TriagePreview,
+  TriageToolCallHandler,
 } from "./types.ts";
 
 export type TriageDryRunPromptInput = {
@@ -21,6 +23,7 @@ export type TriageDryRunPromptInput = {
   skills?: PatchmillSkillsConfig;
   stateMap: PatchmillTriageStateMap;
   thinking?: string;
+  onToolCall?: TriageToolCallHandler;
 };
 
 function issuePayload(issues: IssueSummary[]): string {
@@ -230,32 +233,37 @@ export async function runTriageDryRunAgent(
     (path) => ["--skill", path],
   );
   const thinking = input.thinking ?? "high";
-  return withPromptFile("agent-triage-dry-run-", prompt, async (promptPath) => {
-    const result = await runner.run(
-      "pi",
-      [
-        "--tools",
-        "read,grep,find,ls",
-        "--no-context-files",
-        "--no-session",
-        ...skillArgs,
-        "--thinking",
-        thinking,
-        "-p",
-        `@${promptPath}`,
-      ],
-      { cwd: repoRoot },
-    );
-
-    if (result.code !== 0) {
-      throw new Error(
-        `pi triage dry-run failed: ${result.stderr || result.stdout}`,
+  return withPromptFile("agent-triage-dry-run-", prompt, async (promptPath) =>
+    runWithToolCallObservation(input.onToolCall, async (sessionDir) => {
+      const sessionArgs = sessionDir
+        ? ["--session-dir", sessionDir]
+        : ["--no-session"];
+      const result = await runner.run(
+        "pi",
+        [
+          "--tools",
+          "read,grep,find,ls",
+          "--no-context-files",
+          ...sessionArgs,
+          ...skillArgs,
+          "--thinking",
+          thinking,
+          "-p",
+          `@${promptPath}`,
+        ],
+        { cwd: repoRoot },
       );
-    }
 
-    return validateTriagePreviewDocument(
-      parseTriagePreviewJson(result.stdout),
-      input.issues,
-    );
-  });
+      if (result.code !== 0) {
+        throw new Error(
+          `pi triage dry-run failed: ${result.stderr || result.stdout}`,
+        );
+      }
+
+      return validateTriagePreviewDocument(
+        parseTriagePreviewJson(result.stdout),
+        input.issues,
+      );
+    }),
+  );
 }

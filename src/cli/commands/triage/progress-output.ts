@@ -1,4 +1,8 @@
-import type { TriageProgressEvent, TriageResult } from "./types.ts";
+import type {
+  TriageProgressEvent,
+  TriageResult,
+  TriageToolCallEvent,
+} from "./types.ts";
 
 const DIVIDER =
   "──────────────────────────────────────────────────────────────────────────────";
@@ -13,6 +17,59 @@ function firstLine(value: string): string {
 
 function truncateLines(lines: string[], maxLines: number): string[] {
   return lines.slice(0, maxLines);
+}
+
+function truncate(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 3)}...`;
+}
+
+function formatArgumentValue(value: unknown): string {
+  const rendered = typeof value === "string" ? value : JSON.stringify(value);
+  return truncate(rendered ?? String(value), 50);
+}
+
+function subagentLabel(task: unknown): string | undefined {
+  if (typeof task !== "object" || task === null || Array.isArray(task)) {
+    return undefined;
+  }
+  const agent = (task as Record<string, unknown>).agent;
+  if (typeof agent !== "string") return undefined;
+  const count = (task as Record<string, unknown>).count;
+  return typeof count === "number" && count > 1 ? `${agent}×${count}` : agent;
+}
+
+function subagentLabels(args: Record<string, unknown> | undefined): string[] {
+  if (!args) return [];
+  const direct = subagentLabel(args);
+  if (direct) return [direct];
+
+  const tasks = args.tasks;
+  if (Array.isArray(tasks)) {
+    return tasks.flatMap((task) => subagentLabel(task) ?? []);
+  }
+
+  return [];
+}
+
+function formatSubagentCall(
+  args: Record<string, unknown> | undefined,
+): string | undefined {
+  const agents = subagentLabels(args);
+  if (agents.length === 1) return `🤖 subagent (agent=${agents[0]})`;
+  if (agents.length > 1) return `🤖 subagent (agents=${agents.join(", ")})`;
+  return undefined;
+}
+
+export function formatToolCallLine(event: TriageToolCallEvent): string {
+  const name = event.toolName ?? "tool";
+  const subagentCall =
+    name === "subagent" ? formatSubagentCall(event.arguments) : undefined;
+  if (subagentCall) return subagentCall;
+  const argPairs = Object.entries(event.arguments ?? {})
+    .map(([key, value]) => `${key}=${formatArgumentValue(value)}`)
+    .join(", ");
+  return argPairs ? `🔧 ${name} (${argPairs})` : `🔧 ${name}`;
 }
 
 export function formatProgressIssueLines(
@@ -53,6 +110,7 @@ export function formatProgressIssueLines(
 
 export function createTriageProgressReporter(options: {
   command: string;
+  verbose?: boolean;
   writeLine: (line: string) => void;
 }) {
   return {
@@ -72,6 +130,10 @@ export function createTriageProgressReporter(options: {
       )) {
         options.writeLine(line);
       }
+    },
+    onToolCall(event: TriageToolCallEvent) {
+      if (!options.verbose) return;
+      options.writeLine(formatToolCallLine(event));
     },
     finish(result: TriageResult) {
       options.writeLine(`agent issue triage: ${result.status}`);

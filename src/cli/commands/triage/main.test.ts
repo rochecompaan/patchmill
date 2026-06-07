@@ -20,6 +20,7 @@ function triageConfig(overrides: Partial<TriageConfig> = {}): TriageConfig {
     dryRun: true,
     execute: false,
     triageThinking: "high",
+    verbose: false,
     host: DEFAULT_PATCHMILL_CONFIG.host,
     logDir: "/repo/.patchmill/triage-runs",
     projectPolicy: DEFAULT_PATCHMILL_CONFIG.projectPolicy,
@@ -158,6 +159,47 @@ test("main runs triage with the command runner and progress reporter", async () 
 
   assert.equal(code, 0);
   assert.strictEqual(finishedWith, result);
+});
+
+test("main wires verbose tool-call output to the live console", async () => {
+  const stdout: string[] = [];
+  const result = triageResult({ status: "applied" });
+  const config = triageConfig({ dryRun: false, execute: true, verbose: true });
+  const deps: TriageCliDependencies = {
+    async loadCliConfig(args) {
+      assert.deepEqual(args, ["--verbose"]);
+      return config;
+    },
+    createCommandRunner() {
+      return commandRunner;
+    },
+    async runTriage(_runner, runConfig) {
+      runConfig.onToolCall?.({ toolName: "bash" });
+      return result;
+    },
+    createProgressReporter(options) {
+      assert.equal(options.command, "patchmill triage --verbose");
+      assert.equal(options.verbose, true);
+      return {
+        onProgress() {},
+        onToolCall(event) {
+          stdout.push(`tool:${event.toolName ?? "tool"}`);
+        },
+        finish() {},
+      };
+    },
+    writeStdout() {
+      throw new Error("stdout should be owned by reporter");
+    },
+    writeStderr() {
+      throw new Error("stderr should not be written");
+    },
+  };
+
+  const code = await main(["--verbose"], deps);
+
+  assert.equal(code, 0);
+  assert.deepEqual(stdout, ["tool:bash"]);
 });
 
 test("main writes errors and returns one", async () => {

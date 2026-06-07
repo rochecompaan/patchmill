@@ -185,6 +185,24 @@ test("runTriageExecuteAgent invokes Pi without read-only tool restriction", asyn
   assert.equal(call.args.includes("-p"), true);
 });
 
+test("runTriageExecuteAgent enables session observation for tool-call logging", async () => {
+  const runner = new RecordingRunner();
+
+  await runTriageExecuteAgent(runner, "/repo", {
+    issues,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    host: { provider: "forgejo-tea", login: "" },
+    stateMap,
+    onToolCall() {},
+  });
+
+  const call = runner.calls[0]!;
+  const sessionDirIndex = call.args.indexOf("--session-dir");
+  assert.notEqual(sessionDirIndex, -1);
+  assert.match(call.args[sessionDirIndex + 1] ?? "", /patchmill-triage-pi-/);
+  assert.equal(call.args.includes("--no-session"), false);
+});
+
 test("runTriageExecuteAgent adds bundled triage skill for default skills", async () => {
   const runner = new RecordingRunner();
 

@@ -24,6 +24,7 @@ test("parseArgs executes safe default triage when no args are provided", () => {
   assert.equal(config.teaLogin, "triage-agent");
   assert.equal(config.triageThinking, "high");
   assert.equal(config.logDir, "/repo/.patchmill/triage-runs");
+  assert.equal(config.verbose, false);
 });
 
 test("parseArgs shows help for help flags", () => {
@@ -37,6 +38,14 @@ test("parseArgs accepts dryrun alias", () => {
   assert.equal(config.showHelp, false);
   assert.equal(config.dryRun, true);
   assert.equal(config.execute, false);
+});
+
+test("parseArgs enables verbose live tool-call logging", () => {
+  const config = parseArgs(["--verbose"], "/repo");
+
+  assert.equal(config.verbose, true);
+  assert.equal(config.dryRun, false);
+  assert.equal(config.execute, true);
 });
 
 test("parseArgs carries normalized host config", () => {
