@@ -51,6 +51,7 @@ buildNpmPackageNode24 rec {
     cp -R "$package_dir/src" "$out/share/${pname}/src"
     cp -R "$package_dir/skills" "$out/share/${pname}/skills"
     cp -R "$package_dir/extensions" "$out/share/${pname}/extensions"
+    cp -R "$package_dir/fixtures" "$out/share/${pname}/fixtures"
     cp "$package_dir/THIRD_PARTY_NOTICES.md" "$out/share/${pname}/THIRD_PARTY_NOTICES.md"
     cp "$package_dir/package.json" "$out/share/${pname}/package.json"
     ln -s "$package_dir/node_modules" "$out/share/${pname}/node_modules"
@@ -73,6 +74,7 @@ buildNpmPackageNode24 rec {
         $out/bin/patchmill init >/dev/null
       test -f .patchmill/skills/patchmill-issue-triage/SKILL.md
     )
+    test -f "$out/share/${pname}/fixtures/patchmill-test-repo/README.md"
     runHook postInstallCheck
   '';
 
