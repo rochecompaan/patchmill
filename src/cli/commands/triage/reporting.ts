@@ -2,6 +2,7 @@ import {
   canonicalBucketForLabels,
   type PatchmillTriageStateMap,
 } from "../../../policy/triage-state.ts";
+import { blockedByFromIssue } from "./blocked.ts";
 import type {
   IssueSummary,
   TriageLogIssueEntry,
@@ -98,6 +99,8 @@ export function createObservedChangeEntries(
     }
     const newComments = addedComments(before, after);
     const primaryBucket = canonicalBucketForLabels(after.labels, stateMap);
+    const blockedBy =
+      primaryBucket === "blocked" ? blockedByFromIssue(after) : [];
     const questions =
       primaryBucket === "needs-info"
         ? newComments.flatMap(extractNeedsInfoFollowUps)
@@ -110,6 +113,7 @@ export function createObservedChangeEntries(
       previousLabels: before.labels,
       finalLabels: after.labels,
       ...(primaryBucket ? { primaryBucket } : {}),
+      ...(blockedBy.length > 0 ? { blockedBy } : {}),
       questions,
       comment: newComments[0] ?? null,
       ...(newComments.length > 0 ? { addedComments: newComments } : {}),
