@@ -3,6 +3,8 @@ title: Show live results and winner state
 labels: [feature]
 ---
 
+This should wait until #4 is closed because live results need votes to exist.
+
 Display vote totals for the current poll.
 
 The results view should update after each vote, show counts for every option,

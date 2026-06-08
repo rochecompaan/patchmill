@@ -67,7 +67,8 @@ pieces your repository needs.
     "stateMap": {
       "agent-ready": "agent-ready",
       "needs-info": "needs-info",
-      "agent-unsuitable": "agent-unsuitable"
+      "agent-unsuitable": "agent-unsuitable",
+      "blocked": "blocked"
     }
   },
   "skills": {
@@ -191,6 +192,7 @@ buckets. Keep the dashed `labels["in-progress"]` key exactly as shown in JSON.
       "ready-for-agent": "agent-ready",
       "needs-info": "needs-info",
       "ready-for-human": "agent-unsuitable",
+      "blocked": "blocked",
       "wontfix": "agent-unsuitable"
     }
   }
@@ -198,8 +200,17 @@ buckets. Keep the dashed `labels["in-progress"]` key exactly as shown in JSON.
 ```
 
 `triage.stateMap` keys are repository label names. Values are limited to
-`agent-ready`, `needs-info`, and `agent-unsuitable`, and the configured
-`labels.ready` label must map to `agent-ready`.
+`agent-ready`, `needs-info`, `agent-unsuitable`, and `blocked`, and the
+configured `labels.ready` label must map to `agent-ready`.
+
+### Blocked triage state
+
+`blocked` means the issue is clear and suitable for automation but must wait for
+specific same-repository issues to close. The triage agent must record those
+blockers as issue numbers in `blockedBy` and in a comment line such as
+`Blocked by: #1, #2`. Later triage runs re-check those blocker issues. When all
+blockers are closed, Patchmill removes the blocked label, adds the ready label,
+and posts a new unblock comment.
 
 `cleanupHook` is an optional repository-relative shell script path. Patchmill
 runs it with `bash` from the issue worktree root after a successful run. The

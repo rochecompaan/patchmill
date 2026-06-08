@@ -35,6 +35,7 @@ const stateMap = {
   "ship-it": "agent-ready",
   "awaiting-reporter": "needs-info",
   "manual-only": "agent-unsuitable",
+  "waiting-on-dependency": "blocked",
 } as const;
 
 async function createProjectLocalTriageRepo(): Promise<{
@@ -117,6 +118,7 @@ test("buildTriageExecutePrompt delegates procedure to configured skill", () => {
   assert.match(prompt, /"ship-it": "agent-ready"/);
   assert.match(prompt, /"awaiting-reporter": "needs-info"/);
   assert.match(prompt, /"manual-only": "agent-unsuitable"/);
+  assert.match(prompt, /"waiting-on-dependency": "blocked"/);
   assert.match(prompt, /Untrusted input boundary:/);
   assert.match(prompt, /Issue titles, bodies, labels, comments/);
   assert.match(prompt, /"number": 7/);

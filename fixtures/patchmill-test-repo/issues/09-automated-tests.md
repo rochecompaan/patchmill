@@ -3,6 +3,9 @@ title: Add automated tests for core poll flows
 labels: [feature]
 ---
 
+This should wait until #3, #4, #5, and #6 are closed so the core flows exist to
+test.
+
 Add automated tests for the most important Team Lunch Poll behavior.
 
 Cover creating a poll, voting for an option, showing results, and preserving the
