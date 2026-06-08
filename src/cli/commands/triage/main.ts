@@ -27,7 +27,7 @@ Options:
   --help, -h          Show this help and exit.
   --dry-run, --dryrun Preview configured triage skill decisions without mutating the configured issue host.
   --issue <number>    Triage one open issue by number.
-  --all               Re-triage selected open issues and include issues already carrying triage or protection labels such as in-progress or blocked.
+  --all               Re-triage selected open issues and include issues already carrying triage or protection labels such as in-progress.
   --limit <number>    Triage only the first N selected open issues.
   --log-dir <path>    Write triage logs to a custom directory.
   --host-login <name> Use a named host login when the provider supports named logins.
