@@ -2,6 +2,7 @@ export const TRIAGE_CANONICAL_BUCKETS = [
   "agent-ready",
   "needs-info",
   "agent-unsuitable",
+  "blocked",
 ] as const;
 
 export type PatchmillTriageCanonicalBucket =
@@ -16,6 +17,7 @@ type TriageStateMapLabels = {
   ready: string;
   needsInfo: string;
   unsuitable: string;
+  blocked: string;
 };
 
 function isCanonicalBucket(
@@ -33,6 +35,7 @@ export function defaultTriageStateMap(
     [labels.ready]: "agent-ready",
     [labels.needsInfo]: "needs-info",
     [labels.unsuitable]: "agent-unsuitable",
+    [labels.blocked]: "blocked",
   };
 }
 

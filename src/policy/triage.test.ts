@@ -30,6 +30,7 @@ test("createTriagePolicy uses configured labels, default stateMap, and allowed l
     "ready-for-bots": "agent-ready",
     "needs-clarification": "needs-info",
     "manual-only": "agent-unsuitable",
+    waiting: "blocked",
   });
   assert.ok(policy.allowedLabels.some((label) => label.name === "incident"));
   assert.ok(
