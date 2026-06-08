@@ -22,7 +22,7 @@ export const HELP_TEXT = `Usage:
   patchmill run-once [options]
   npm run run-once -- [options]
 
-Process one issue labeled agent-ready. Defaults to showing this help when no options are provided.
+Process one issue labeled agent-ready. Claims and processes one eligible issue by default.
 Use --dry-run to preview the next eligible issue without mutating the configured issue host or git.
 Progress is written to stderr by default. Final JSON is written to stdout.
 Run logs are written under the configured run state directory (default: .patchmill/runs/).
@@ -30,7 +30,6 @@ Run logs are written under the configured run state directory (default: .patchmi
 Options:
   --help, -h          Show this help and exit.
   --dry-run, --dryrun Preview the next eligible agent-ready issue without mutations.
-  --execute           Claim and process one eligible issue.
   --plan-only         Create or find the issue plan, then stop before implementation.
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
@@ -92,7 +91,7 @@ type JsonResult = JsonResultLog &
   );
 
 function isHelpOnlyInvocation(args: string[]): boolean {
-  return args.length === 0 || args.includes("--help") || args.includes("-h");
+  return args.includes("--help") || args.includes("-h");
 }
 
 function questionText(

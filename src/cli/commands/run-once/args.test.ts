@@ -17,13 +17,13 @@ import {
 } from "../../../../test-support/legacy-seed.ts";
 import { parseArgs } from "./args.ts";
 
-test("parseArgs shows help when no args are provided", () => {
+test("parseArgs executes by default when no args are provided", () => {
   const config = parseArgs([], cwd(), {});
 
-  assert.equal(config.showHelp, true);
+  assert.equal(config.showHelp, false);
   assert.equal(config.repoRoot, cwd());
-  assert.equal(config.dryRun, true);
-  assert.equal(config.execute, false);
+  assert.equal(config.dryRun, false);
+  assert.equal(config.execute, true);
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.planOnly, false);
   assert.equal(config.teaLogin, "triage-agent");
@@ -45,6 +45,17 @@ test("parseArgs shows help when no args are provided", () => {
 test("parseArgs shows help for help flags", () => {
   assert.equal(parseArgs(["--help"], "/repo", {}).showHelp, true);
   assert.equal(parseArgs(["-h"], "/repo", {}).showHelp, true);
+});
+
+test("parseArgs keeps help sticky when combined with other flags", () => {
+  for (const args of [
+    ["--help", "--dry-run"],
+    ["--help", "--quiet"],
+    ["--help", "--verbose-pi-output"],
+    ["--dry-run", "--help"],
+  ]) {
+    assert.equal(parseArgs(args, "/repo", {}).showHelp, true);
+  }
 });
 
 test("parseArgs does not show help when an option is provided", () => {
@@ -78,12 +89,13 @@ test("HELP_TEXT documents one-issue usage and host-neutral options", () => {
   assert.match(HELP_TEXT, /Usage:/);
   assert.match(HELP_TEXT, /patchmill run-once/);
   assert.match(HELP_TEXT, /Process one issue labeled agent-ready/);
+  assert.match(HELP_TEXT, /Claims and processes one eligible issue by default/);
   assert.doesNotMatch(HELP_TEXT, /Process one Forgejo issue/);
   assert.match(HELP_TEXT, /without mutating the configured issue host or git/);
   assert.doesNotMatch(HELP_TEXT, /without mutating Forgejo or git/);
   assert.match(HELP_TEXT, /--help/);
   assert.match(HELP_TEXT, /--dry-run/);
-  assert.match(HELP_TEXT, /--execute/);
+  assert.doesNotMatch(HELP_TEXT, /--execute/);
   assert.match(HELP_TEXT, /--plan-only/);
   assert.match(HELP_TEXT, /--issue <number>/);
   assert.match(HELP_TEXT, /--host-login <name>/);
@@ -99,11 +111,11 @@ test("HELP_TEXT documents one-issue usage and host-neutral options", () => {
   assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_TRIAGE_LOGIN_ENV));
 });
 
-test("parseArgs accepts execute mode", () => {
-  const config = parseArgs(["--execute"], "/repo");
-
-  assert.equal(config.dryRun, false);
-  assert.equal(config.execute, true);
+test("parseArgs rejects removed execute flag", () => {
+  assert.throws(
+    () => parseArgs(["--execute"], "/repo"),
+    /Unknown argument: --execute/,
+  );
 });
 
 test("parseArgs accepts quiet mode", () => {
@@ -114,7 +126,7 @@ test("parseArgs accepts quiet mode", () => {
 });
 
 test("parseArgs enables verbose Pi output", () => {
-  const config = parseArgs(["--execute", "--verbose-pi-output"], "/repo", {});
+  const config = parseArgs(["--verbose-pi-output"], "/repo", {});
 
   assert.equal(config.verbosePiOutput, true);
   assert.equal(config.execute, true);
@@ -236,7 +248,7 @@ test("parseArgs prefers PATCHMILL_HOST_LOGIN over legacy env values", () => {
 test("loadCliConfig uses normalized Patchmill defaults when no config file exists", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-args-"));
 
-  const config = await loadCliConfig(["--dry-run"], repoRoot, {
+  const config = await loadCliConfig([], repoRoot, {
     [LEGACY_RUN_ONCE_LOGIN_ENV]: "legacy-login",
   });
 
@@ -272,10 +284,13 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
     }),
   );
 
-  const config = await loadCliConfig(["--dry-run"], repoRoot, {
+  const config = await loadCliConfig([], repoRoot, {
     [LEGACY_RUN_ONCE_LOGIN_ENV]: "issue-agent",
   });
 
+  assert.equal(config.showHelp, false);
+  assert.equal(config.dryRun, false);
+  assert.equal(config.execute, true);
   assert.equal(config.teaLogin, "config-bot");
   assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
@@ -441,17 +456,15 @@ test("loadCliConfig shows help without reading malformed patchmill config", asyn
     "utf8",
   );
 
-  const noArgs = await loadCliConfig([], repoRoot, {});
   const helpLong = await loadCliConfig(["--help"], repoRoot, {});
   const helpShort = await loadCliConfig(["-h"], repoRoot, {});
 
-  assert.equal(noArgs.showHelp, true);
   assert.equal(helpLong.showHelp, true);
   assert.equal(helpShort.showHelp, true);
 });
 
-test("parseArgs accepts dry-run after execute", () => {
-  const config = parseArgs(["--execute", "--dry-run"], "/repo");
+test("parseArgs accepts dry-run mode", () => {
+  const config = parseArgs(["--dry-run"], "/repo");
 
   assert.equal(config.dryRun, true);
   assert.equal(config.execute, false);

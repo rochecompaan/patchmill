@@ -44,9 +44,9 @@ export function parseArgs(
   const projectPolicy = patchmillConfig.projectPolicy;
   const config: AgentIssueConfig = {
     repoRoot,
-    dryRun: true,
-    execute: false,
-    showHelp: args.length === 0,
+    dryRun: false,
+    execute: true,
+    showHelp: false,
     planOnly: false,
     host,
     teaLogin: host.login,
@@ -87,19 +87,13 @@ export function parseArgs(
     const arg = args[index];
     if (arg === "--help" || arg === "-h") {
       config.showHelp = true;
-    } else if (arg === "--execute") {
-      config.dryRun = false;
-      config.execute = true;
     } else if (arg === "--dry-run" || arg === "--dryrun") {
       config.dryRun = true;
       config.execute = false;
-      config.showHelp = false;
     } else if (arg === "--quiet") {
       config.quiet = true;
-      config.showHelp = false;
     } else if (arg === "--verbose-pi-output") {
       config.verbosePiOutput = true;
-      config.showHelp = false;
     } else if (arg === "--issue") {
       config.issueNumber = parsePositiveInteger(
         arg,
