@@ -95,6 +95,7 @@ export type RawTriagePreview = {
   currentLabels: unknown;
   proposedLabels: unknown;
   canonicalBucket: unknown;
+  blockedBy?: unknown;
   rationale: unknown;
   wouldComment?: unknown;
   wouldClose?: unknown;
@@ -110,6 +111,7 @@ export type TriagePreview = {
   currentLabels: string[];
   proposedLabels: string[];
   canonicalBucket: PatchmillTriageCanonicalBucket;
+  blockedBy: number[];
   rationale: string;
   wouldComment: string | null;
   wouldClose: boolean;
@@ -131,6 +133,7 @@ export type TriageLogIssueEntry = {
   previousLabels: string[];
   finalLabels: string[];
   primaryBucket?: PrimaryBucket;
+  blockedBy?: number[];
   rationale?: string;
   questions: TriageQuestion[];
   comment: string | null;

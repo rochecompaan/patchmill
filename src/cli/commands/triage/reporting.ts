@@ -75,6 +75,7 @@ export function createPreviewEntries(
       previousLabels: issue.labels,
       finalLabels: preview.proposedLabels,
       primaryBucket: preview.canonicalBucket,
+      ...(preview.blockedBy.length > 0 ? { blockedBy: preview.blockedBy } : {}),
       rationale: preview.rationale,
       questions: preview.questions,
       comment: preview.wouldComment,
