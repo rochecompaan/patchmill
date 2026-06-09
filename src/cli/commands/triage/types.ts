@@ -63,6 +63,12 @@ export type CommandRunner = {
   ): Promise<CommandResult>;
 };
 
+export type IssueCommentSummary = {
+  body: string;
+  authorLogin?: string;
+  created?: string;
+};
+
 export type IssueSummary = {
   number: number;
   title: string;
@@ -72,7 +78,7 @@ export type IssueSummary = {
   url?: string;
   author?: string;
   updated?: string;
-  comments?: unknown[];
+  comments?: IssueCommentSummary[];
 };
 
 export type LabelDefinition = {
@@ -95,6 +101,7 @@ export type RawTriagePreview = {
   currentLabels: unknown;
   proposedLabels: unknown;
   canonicalBucket: unknown;
+  blockedBy?: unknown;
   rationale: unknown;
   wouldComment?: unknown;
   wouldClose?: unknown;
@@ -110,6 +117,7 @@ export type TriagePreview = {
   currentLabels: string[];
   proposedLabels: string[];
   canonicalBucket: PatchmillTriageCanonicalBucket;
+  blockedBy: number[];
   rationale: string;
   wouldComment: string | null;
   wouldClose: boolean;
@@ -131,6 +139,7 @@ export type TriageLogIssueEntry = {
   previousLabels: string[];
   finalLabels: string[];
   primaryBucket?: PrimaryBucket;
+  blockedBy?: number[];
   rationale?: string;
   questions: TriageQuestion[];
   comment: string | null;

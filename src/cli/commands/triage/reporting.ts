@@ -2,6 +2,7 @@ import {
   canonicalBucketForLabels,
   type PatchmillTriageStateMap,
 } from "../../../policy/triage-state.ts";
+import { blockedByFromIssue } from "./blocked.ts";
 import type {
   IssueSummary,
   TriageLogIssueEntry,
@@ -12,19 +13,8 @@ function issueByNumber(issues: IssueSummary[]): Map<number, IssueSummary> {
   return new Map(issues.map((issue) => [issue.number, issue]));
 }
 
-function commentBody(comment: unknown): string | undefined {
-  if (typeof comment === "string") return comment;
-  if (comment && typeof comment === "object" && "body" in comment) {
-    const body = (comment as Record<string, unknown>).body;
-    if (typeof body === "string") return body;
-  }
-  return undefined;
-}
-
 function commentBodies(issue: IssueSummary): string[] {
-  return (issue.comments ?? [])
-    .map(commentBody)
-    .filter((body): body is string => Boolean(body));
+  return (issue.comments ?? []).map((comment) => comment.body);
 }
 
 function addedComments(before: IssueSummary, after: IssueSummary): string[] {
@@ -75,6 +65,7 @@ export function createPreviewEntries(
       previousLabels: issue.labels,
       finalLabels: preview.proposedLabels,
       primaryBucket: preview.canonicalBucket,
+      ...(preview.blockedBy.length > 0 ? { blockedBy: preview.blockedBy } : {}),
       rationale: preview.rationale,
       questions: preview.questions,
       comment: preview.wouldComment,
@@ -88,6 +79,7 @@ export function createObservedChangeEntries(
   beforeIssues: IssueSummary[],
   afterIssues: IssueSummary[],
   stateMap: PatchmillTriageStateMap,
+  trustedCommentAuthors: readonly string[],
 ): TriageLogIssueEntry[] {
   const afterByNumber = issueByNumber(afterIssues);
   return beforeIssues.map((before) => {
@@ -97,6 +89,10 @@ export function createObservedChangeEntries(
     }
     const newComments = addedComments(before, after);
     const primaryBucket = canonicalBucketForLabels(after.labels, stateMap);
+    const blockedBy =
+      primaryBucket === "blocked"
+        ? blockedByFromIssue(after, trustedCommentAuthors)
+        : [];
     const questions =
       primaryBucket === "needs-info"
         ? newComments.flatMap(extractNeedsInfoFollowUps)
@@ -109,6 +105,7 @@ export function createObservedChangeEntries(
       previousLabels: before.labels,
       finalLabels: after.labels,
       ...(primaryBucket ? { primaryBucket } : {}),
+      ...(blockedBy.length > 0 ? { blockedBy } : {}),
       questions,
       comment: newComments[0] ?? null,
       ...(newComments.length > 0 ? { addedComments: newComments } : {}),

@@ -116,6 +116,33 @@ test("ForgejoTeaHostProvider reports CLI readiness", async () => {
   assert.deepEqual(calls, ["tea --help"]);
 });
 
+test("ForgejoTeaHostProvider resolves tea login profile to trusted triage comment author", async () => {
+  const runner = createFakeRunner((_command, args) => {
+    if (args.join(" ") === "logins list --output json") {
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "bot", user: "triage-agent", default: "false" },
+          { name: "roche", user: "roche", default: "true" },
+        ]),
+        stderr: "",
+      };
+    }
+    throw new Error(`Unexpected command: ${args.join(" ")}`);
+  });
+
+  const authors = await createProvider(runner).trustedTriageCommentAuthors();
+
+  assert.deepEqual(authors, ["triage-agent"]);
+  assert.deepEqual(runner.calls[0]?.args, [
+    "logins",
+    "list",
+    "--output",
+    "json",
+  ]);
+  assert.equal(runner.calls[0]?.cwd, repoRoot);
+});
+
 test("ForgejoTeaHostProvider reports CLI failures with remediation", async () => {
   const provider = new ForgejoTeaHostProvider({
     repoRoot,
@@ -223,10 +250,14 @@ test("ForgejoTeaHostProvider hydrates issue comments through tea and returns the
 
   assert.strictEqual(hydrated, issues);
   assert.deepEqual(hydrated[0]?.comments, [
-    { author: "ana", created: "2026-05-08 10:30", body: "First comment." },
+    { authorLogin: "ana", created: "2026-05-08 10:30", body: "First comment." },
   ]);
   assert.deepEqual(hydrated[1]?.comments, [
-    { author: "sam", created: "2026-05-08 11:45", body: "Second comment." },
+    {
+      authorLogin: "sam",
+      created: "2026-05-08 11:45",
+      body: "Second comment.",
+    },
   ]);
   assert.equal(runner.calls.length, 2);
   for (const [index, issueNumber] of ["7", "8"].entries()) {

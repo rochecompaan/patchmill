@@ -167,8 +167,30 @@ test("GitHubGhHostProvider reports CLI authentication failures with remediation"
   });
 });
 
+test("GitHubGhHostProvider resolves active gh login as trusted triage comment author", async () => {
+  const runner = scriptedRunner({
+    "gh api user --jq .login": {
+      code: 0,
+      stdout: "triage-agent\n",
+      stderr: "",
+    },
+  });
+
+  const authors = await createProvider(runner).trustedTriageCommentAuthors();
+
+  assert.deepEqual(authors, ["triage-agent"]);
+  assert.deepEqual(commandLines(runner), ["gh api user --jq .login"]);
+  assertGhContext(runner.calls[0]!);
+});
+
 test("GitHubGhHostProvider hydrates issue comments from gh issue view", async () => {
-  const comments = [{ author: { login: "alice" }, body: "First comment" }];
+  const comments = [
+    {
+      author: { login: "alice" },
+      body: "First comment",
+      createdAt: "2026-05-28T12:00:00Z",
+    },
+  ];
   const runner = scriptedRunner({
     "gh issue view 7 --json number,title,body,state,labels,author,updatedAt,url,comments":
       {
@@ -194,7 +216,13 @@ test("GitHubGhHostProvider hydrates issue comments from gh issue view", async ()
   const hydrated = await createProvider(runner).hydrateIssueComments(issues);
 
   assert.strictEqual(hydrated, issues);
-  assert.deepEqual(issues[0]?.comments, comments);
+  assert.deepEqual(issues[0]?.comments, [
+    {
+      authorLogin: "alice",
+      body: "First comment",
+      created: "2026-05-28T12:00:00Z",
+    },
+  ]);
   assert.deepEqual(commandLines(runner), [
     "gh issue view 7 --json number,title,body,state,labels,author,updatedAt,url,comments",
   ]);
@@ -213,7 +241,7 @@ test("GitHubGhHostProvider views one issue by number", async () => {
           labels: [{ name: "docs" }],
           author: { login: "bob" },
           updatedAt: "2026-05-28T11:00:00Z",
-          comments: [{ body: "done" }],
+          comments: [{ author: { login: "alice" }, body: "done" }],
           url: "https://github.example/issues/2",
         }),
         stderr: "",
@@ -228,7 +256,7 @@ test("GitHubGhHostProvider views one issue by number", async () => {
   assert.equal(issue.number, 2);
   assert.equal(issue.body, "");
   assert.equal(issue.state, "closed");
-  assert.deepEqual(issue.comments, [{ body: "done" }]);
+  assert.deepEqual(issue.comments, [{ authorLogin: "alice", body: "done" }]);
 });
 
 test("GitHubGhHostProvider lists labels", async () => {

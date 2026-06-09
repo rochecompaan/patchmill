@@ -782,6 +782,7 @@ test("loadPatchmillConfig defaults triage state map from merged labels", async (
     "ready-for-agent": "agent-ready",
     "needs-info": "needs-info",
     "manual-only": "agent-unsuitable",
+    blocked: "blocked",
   });
 });
 
@@ -802,7 +803,7 @@ test("loadPatchmillConfig rejects invalid triage state map buckets", async () =>
 
   await assert.rejects(
     () => loadPatchmillConfig(repoRoot, {}, []),
-    /triage\.stateMap\.deferred must be one of agent-ready, needs-info, agent-unsuitable/,
+    /triage\.stateMap\.deferred must be one of agent-ready, needs-info, agent-unsuitable, blocked/,
   );
 });
 

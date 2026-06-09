@@ -1,6 +1,7 @@
 import { withTeaContext } from "../../../host/forgejo-tea-context.ts";
 import type {
   CommandRunner,
+  IssueCommentSummary,
   IssueSummary,
   LabelChangePlan,
   LabelDefinition,
@@ -64,6 +65,29 @@ function authorName(author: unknown): string | undefined {
   return undefined;
 }
 
+function parseIssueComment(comment: unknown): IssueCommentSummary | undefined {
+  if (!comment || typeof comment !== "object") return undefined;
+  const entry = comment as Record<string, unknown>;
+  if (typeof entry.body !== "string") return undefined;
+
+  const parsed: IssueCommentSummary = { body: entry.body };
+  const authorLogin = authorName(entry.author ?? entry.authorLogin);
+  if (authorLogin !== undefined) parsed.authorLogin = authorLogin;
+  if (typeof entry.created === "string") parsed.created = entry.created;
+  if (typeof entry.createdAt === "string" && !parsed.created) {
+    parsed.created = entry.createdAt;
+  }
+  return parsed;
+}
+
+function issueComments(comments: unknown): IssueCommentSummary[] | undefined {
+  if (!Array.isArray(comments)) return undefined;
+  return comments.flatMap((comment) => {
+    const parsed = parseIssueComment(comment);
+    return parsed ? [parsed] : [];
+  });
+}
+
 function parseIssuePayload(entry: unknown): IssueSummary {
   if (!entry || typeof entry !== "object")
     throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
@@ -81,7 +105,7 @@ function parseIssuePayload(entry: unknown): IssueSummary {
     labels: labelNames(issue.labels),
     author: authorName(issue.author),
     updated: typeof issue.updated === "string" ? issue.updated : undefined,
-    comments: Array.isArray(issue.comments) ? issue.comments : undefined,
+    comments: issueComments(issue.comments),
   };
 
   if (typeof issue.url === "string") parsedIssue.url = issue.url;
@@ -110,14 +134,14 @@ function trimBlankEdges(lines: string[]): string[] {
   return trimmed;
 }
 
-function parseIssueComments(stdout: string): unknown[] {
+function parseIssueComments(stdout: string): IssueCommentSummary[] {
   const lines = stdout.split(/\r?\n/u).map(normalizeTeaLine);
   const commentsStart = lines.findIndex(
     (line) => line.trim() === "## Comments",
   );
   if (commentsStart < 0) return [];
 
-  const comments: Array<{ author: string; created: string; body: string }> = [];
+  const comments: IssueCommentSummary[] = [];
   let current:
     | { author: string; created: string; bodyLines: string[] }
     | undefined;
@@ -125,7 +149,7 @@ function parseIssueComments(stdout: string): unknown[] {
   const flush = () => {
     if (!current) return;
     comments.push({
-      author: current.author,
+      authorLogin: current.author,
       created: current.created,
       body: trimBlankEdges(current.bodyLines).join("\n"),
     });
@@ -159,7 +183,7 @@ async function fetchIssueComments(
   repoRoot: string,
   issueNumber: number,
   teaLogin?: string,
-): Promise<unknown[]> {
+): Promise<IssueCommentSummary[]> {
   const result = await runner.run(
     "tea",
     withTeaContext(

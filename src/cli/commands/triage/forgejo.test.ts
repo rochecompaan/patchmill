@@ -220,14 +220,14 @@ test("hydrateIssueComments fetches and parses full comments for every selected i
 
   assert.deepEqual(issues[0].comments, [
     {
-      author: "ana",
+      authorLogin: "ana",
       created: "2026-05-08 10:30",
       body: "Clarification for issue 1.",
     },
   ]);
   assert.deepEqual(issues[1].comments, [
     {
-      author: "sam",
+      authorLogin: "sam",
       created: "2026-05-08 11:45",
       body: "Clarification for issue 2 line one.\nClarification line two.",
     },

@@ -13,11 +13,13 @@ test("defaultTriageStateMap maps configured bucket labels", () => {
       ready: "ready-for-agent",
       needsInfo: "needs-info",
       unsuitable: "ready-for-human",
+      blocked: "waiting-on-dependency",
     }),
     {
       "ready-for-agent": "agent-ready",
       "needs-info": "needs-info",
       "ready-for-human": "agent-unsuitable",
+      "waiting-on-dependency": "blocked",
     },
   );
 });
@@ -29,6 +31,7 @@ test("validateTriageStateMap accepts supported canonical buckets", () => {
         "ready-for-agent": "agent-ready",
         "needs-info": "needs-info",
         "ready-for-human": "agent-unsuitable",
+        "waiting-on-dependency": "blocked",
       },
       "ready-for-agent",
     ),
@@ -36,6 +39,7 @@ test("validateTriageStateMap accepts supported canonical buckets", () => {
       "ready-for-agent": "agent-ready",
       "needs-info": "needs-info",
       "ready-for-human": "agent-unsuitable",
+      "waiting-on-dependency": "blocked",
     },
   );
 });
@@ -50,7 +54,7 @@ test("validateTriageStateMap rejects unsupported canonical buckets", () => {
         } as Record<string, string>,
         "ready-for-agent",
       ),
-    /triage\.stateMap\.deferred must be one of agent-ready, needs-info, agent-unsuitable/,
+    /triage\.stateMap\.deferred must be one of agent-ready, needs-info, agent-unsuitable, blocked/,
   );
 });
 
@@ -73,9 +77,10 @@ test("nonReadyStateLabels returns labels that should block run-once", () => {
       "ready-for-agent": "agent-ready",
       "needs-info": "needs-info",
       "ready-for-human": "agent-unsuitable",
+      blocked: "blocked",
       wontfix: "agent-unsuitable",
     }),
-    ["needs-info", "ready-for-human", "wontfix"],
+    ["blocked", "needs-info", "ready-for-human", "wontfix"],
   );
 });
 
@@ -84,6 +89,7 @@ test("canonicalBucketForLabels resolves labels by configured precedence", () => 
     "ready-for-agent": "agent-ready",
     "needs-info": "needs-info",
     "ready-for-human": "agent-unsuitable",
+    blocked: "blocked",
   } as const;
 
   assert.equal(
@@ -97,6 +103,10 @@ test("canonicalBucketForLabels resolves labels by configured precedence", () => 
   assert.equal(
     canonicalBucketForLabels(["bug", "ready-for-human"], stateMap),
     "agent-unsuitable",
+  );
+  assert.equal(
+    canonicalBucketForLabels(["bug", "blocked"], stateMap),
+    "blocked",
   );
   assert.equal(canonicalBucketForLabels(["bug"], stateMap), undefined);
 });

@@ -5,6 +5,7 @@ import type {
 import type {
   HostCliCheck,
   HostIssueCreateInput,
+  IssueCommentSummary,
   IssueHostProvider,
   IssueSummary,
   LabelChangePlan,
@@ -93,6 +94,29 @@ function authorName(author: unknown): string | undefined {
   return undefined;
 }
 
+function parseIssueComment(comment: unknown): IssueCommentSummary | undefined {
+  if (!comment || typeof comment !== "object") return undefined;
+  const entry = comment as Record<string, unknown>;
+  if (typeof entry.body !== "string") return undefined;
+
+  const parsed: IssueCommentSummary = { body: entry.body };
+  const authorLogin = authorName(entry.author);
+  if (authorLogin !== undefined) parsed.authorLogin = authorLogin;
+  if (typeof entry.createdAt === "string") parsed.created = entry.createdAt;
+  if (typeof entry.created === "string" && !parsed.created) {
+    parsed.created = entry.created;
+  }
+  return parsed;
+}
+
+function issueComments(comments: unknown): IssueCommentSummary[] | undefined {
+  if (!Array.isArray(comments)) return undefined;
+  return comments.flatMap((comment) => {
+    const parsed = parseIssueComment(comment);
+    return parsed ? [parsed] : [];
+  });
+}
+
 function parseIssuePayload(payload: unknown, context: string): IssueSummary {
   if (!payload || typeof payload !== "object")
     throw new Error(`${context} returned unexpected issue payload`);
@@ -114,7 +138,8 @@ function parseIssuePayload(payload: unknown, context: string): IssueSummary {
   const author = authorName(issue.author);
   if (author !== undefined) parsed.author = author;
   if (typeof issue.updatedAt === "string") parsed.updated = issue.updatedAt;
-  if (Array.isArray(issue.comments)) parsed.comments = issue.comments;
+  const comments = issueComments(issue.comments);
+  if (comments !== undefined) parsed.comments = comments;
   if (typeof issue.url === "string") parsed.url = issue.url;
   if (typeof issue.html_url === "string" && !parsed.url) {
     parsed.url = issue.html_url;
@@ -239,6 +264,18 @@ export class GitHubGhHostProvider
       issue.comments = viewed.comments ?? [];
     }
     return issues;
+  }
+
+  async trustedTriageCommentAuthors(): Promise<string[]> {
+    const result = await this.runGh(["api", "user", "--jq", ".login"]);
+    if (result.code !== 0) {
+      throw new Error(
+        `gh api user failed while resolving trusted triage author: ${commandOutput(result)}`,
+      );
+    }
+
+    const login = result.stdout.trim();
+    return login ? [login] : [];
   }
 
   async listLabels(): Promise<string[]>;

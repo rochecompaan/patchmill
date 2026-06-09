@@ -68,6 +68,17 @@ function asStringArray(value: unknown, context: string): string[] {
   return value.map((entry, index) => asString(entry, `${context}[${index}]`));
 }
 
+function asIssueNumberArray(value: unknown, context: string): number[] {
+  if (!Array.isArray(value)) throw new Error(`${context} must be an array`);
+  const numbers = value.map((entry, index) => {
+    if (!Number.isInteger(entry) || Number(entry) <= 0) {
+      throw new Error(`${context}[${index}] must be a positive integer`);
+    }
+    return Number(entry);
+  });
+  return [...new Set(numbers)].sort((left, right) => left - right);
+}
+
 function asOptionalComment(value: unknown, context: string): string | null {
   if (value === null || value === undefined) return null;
   return asString(value, context);
@@ -108,6 +119,7 @@ Return this exact JSON shape:
       "currentLabels": ["needs-triage", "bug"],
       "proposedLabels": ["ready-for-agent", "bug"],
       "canonicalBucket": "agent-ready",
+      "blockedBy": [],
       "rationale": "Short reason for the dry-run report.",
       "wouldComment": null,
       "wouldClose": false,
@@ -119,6 +131,10 @@ Return this exact JSON shape:
 Rules:
 - Return exactly one preview for every input issue, exactly once.
 - Only use canonicalBucket values: ${TRIAGE_CANONICAL_BUCKETS.join(", ")}.
+- blockedBy must be [] except when canonicalBucket is blocked.
+- For blocked issues, blockedBy must list concrete same-repository issue numbers that block this issue.
+- Use canonicalBucket needs-info instead of blocked when blocker issue numbers cannot be identified.
+- Blocked comments must include a line like "Blocked by: #1" or "Blocked by: #1, #2".
 - proposedLabels should reflect the labels the configured skill would apply.
 - wouldComment should contain the comment the skill would post, or null.
 - questions should list needs-info questions extracted from the proposed comment or rationale.
@@ -166,6 +182,27 @@ function validateOnePreview(
     throw new Error(`Invalid canonicalBucket ${canonicalBucket}`);
   }
 
+  const blockedBy =
+    raw.blockedBy === undefined
+      ? []
+      : asIssueNumberArray(raw.blockedBy, `blockedBy for issue ${issueNumber}`);
+  if (canonicalBucket === "blocked") {
+    if (blockedBy.length === 0) {
+      throw new Error(
+        `blockedBy for issue ${issueNumber} must include at least one issue number`,
+      );
+    }
+    if (blockedBy.includes(Number(issueNumber))) {
+      throw new Error(
+        `blockedBy for issue ${issueNumber} must not include itself`,
+      );
+    }
+  } else if (blockedBy.length > 0) {
+    throw new Error(
+      `blockedBy for issue ${issueNumber} is only valid when canonicalBucket is blocked`,
+    );
+  }
+
   return {
     issueNumber: Number(issueNumber),
     currentLabels: asStringArray(
@@ -177,6 +214,7 @@ function validateOnePreview(
       `proposedLabels for issue ${issueNumber}`,
     ),
     canonicalBucket: canonicalBucket as TriagePreview["canonicalBucket"],
+    blockedBy,
     rationale: asString(raw.rationale, `rationale for issue ${issueNumber}`),
     wouldComment: asOptionalComment(
       raw.wouldComment,

@@ -52,6 +52,12 @@ Default rubric:
   prepare an agent brief with the problem statement, relevant code/context,
   acceptance criteria, constraints/non-goals, reproduction notes for bugs, and a
   suggested starting point.
+- `blocked`: clear work suitable for automation that cannot start yet because
+  one or more concrete same-repository issues must close first. Apply the
+  configured blocked label/state from the prompt. The triage comment must start
+  with the required AI-generated prefix and include `Blocked by: #N` or
+  `Blocked by: #N, #M` with the blocking issue numbers. Use `needs-info` instead
+  when a dependency exists but the blocker issue numbers cannot be identified.
 - `needs-info`: ambiguity in issue intent, feature behavior, expected user
   experience, architecture, scope, acceptance criteria, ownership, release
   timing, or missing reporter facts. Apply the configured needs-info label/state
@@ -101,6 +107,10 @@ Default rubric:
   - ...
   ```
 
+- For `blocked`, name concrete same-repository blocker issue numbers in both the
+  structured preview `blockedBy` field and the comment body. Do not use
+  `blocked` for vague external dependencies, missing reporter facts, or broad
+  sequencing guesses without issue numbers; use `needs-info` instead.
 - Use question objects with `question` and `recommendedAnswer` when the preview
   JSON explicitly asks for them.
 - When posting comments in execute mode, keep them actionable and consistent

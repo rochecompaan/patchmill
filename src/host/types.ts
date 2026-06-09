@@ -1,5 +1,11 @@
 import type { PatchmillHostProviderId } from "../config/types.ts";
 
+export type IssueCommentSummary = {
+  body: string;
+  authorLogin?: string;
+  created?: string;
+};
+
 export type IssueSummary = {
   number: number;
   title: string;
@@ -9,7 +15,7 @@ export type IssueSummary = {
   author?: string;
   updated?: string;
   url?: string;
-  comments?: unknown[];
+  comments?: IssueCommentSummary[];
 };
 
 export type LabelDefinition = {
@@ -71,6 +77,7 @@ export type IssueHostProvider = {
   listOpenIssues(): Promise<IssueSummary[]>;
   viewIssue(issueNumber: number): Promise<IssueSummary>;
   hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]>;
+  trustedTriageCommentAuthors(): Promise<string[]>;
   listLabels(): Promise<string[]>;
   createLabel(label: LabelDefinition): Promise<void>;
   applyLabels(change: LabelChangePlan): Promise<void>;

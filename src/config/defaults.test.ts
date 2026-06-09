@@ -38,6 +38,7 @@ test("defaults match the current patchmill baseline configuration", () => {
         "agent-ready": "agent-ready",
         "needs-info": "needs-info",
         "agent-unsuitable": "agent-unsuitable",
+        blocked: "blocked",
       },
     },
     skills: DEFAULT_PATCHMILL_SKILLS,

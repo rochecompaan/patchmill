@@ -5,8 +5,9 @@ of the software factory: intake/sorting for incoming work, then one-issue
 production runs for ready work.
 
 - **Triage** (`patchmill triage`) is the intake/sorting station. It classifies
-  open issues and, when executed, runs the configured triage skill, which may
-  apply labels/comments on the issue host.
+  open issues as ready, needs-info, unsuitable, or blocked and, when executed,
+  runs the configured triage skill, which may apply labels/comments on the issue
+  host.
 - **Run once** (`patchmill run-once`) is the one-issue production station. It
   claims one automation-ready issue, creates or uses an implementation plan,
   runs implementation/review/landing, then updates the issue host.
@@ -56,7 +57,10 @@ configured triage skill and writes preview entries to the triage log.
 
 `patchmill triage` executes the configured triage skill, snapshots selected
 issues before and after Pi runs, computes label/comment/state changes, writes a
-triage log, and prints a summary.
+triage log, and prints a summary. Default triage also re-evaluates issues in the
+canonical `blocked` bucket before invoking Pi; when every recorded blocker issue
+is closed, Patchmill removes the blocked label, adds the ready label, and posts
+an unblock comment.
 
 ```mermaid
 flowchart TD
@@ -122,10 +126,11 @@ Pi to review comments chronologically because later comments can clarify earlier
 ambiguity.
 
 Dry runs return one preview per input issue, including the current labels,
-proposed labels, canonical bucket, rationale, optional comment preview, close
-intent, and any extracted needs-info questions. Execute mode does not require a
-machine-readable response; Patchmill snapshots the issue host after Pi finishes
-and reports the observed changes in the triage log.
+proposed labels, canonical bucket, `blockedBy` blocker issue numbers when the
+bucket is `blocked`, rationale, optional comment preview, close intent, and any
+extracted needs-info questions. Execute mode does not require a machine-readable
+response; Patchmill snapshots the issue host after Pi finishes and reports the
+observed changes in the triage log.
 
 ## Full issue agent once workflow
 

@@ -1,8 +1,10 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
+import { canonicalBucketForLabels } from "../../../policy/triage-state.ts";
+import { preprocessBlockedIssues } from "./blocked-preprocessor.ts";
 import { runTriageDryRunAgent } from "./dry-run-agent.ts";
 import { executeTriageIssues } from "./execute-issues.ts";
-import { DEFAULT_TRIAGE_POLICY } from "./labels.ts";
+import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "./labels.ts";
 import { writeTriageLog } from "./log.ts";
 import { createPreviewEntries } from "./reporting.ts";
 import type {
@@ -19,7 +21,11 @@ function selectIssues(
 ): IssueSummary[] {
   let selected = issues;
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
-  const excludedLabels = new Set(triagePolicy.excludedLabels);
+  const excludedLabels = new Set(
+    triagePolicy.excludedLabels.filter(
+      (label) => triagePolicy.stateMap[label] !== "blocked",
+    ),
+  );
 
   if (config.issueNumber !== undefined) {
     selected = selected.filter(
@@ -38,6 +44,13 @@ function selectIssues(
   }
 
   return selected;
+}
+
+function blockedBucket(issue: IssueSummary, config: TriageConfig): boolean {
+  const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+  return (
+    canonicalBucketForLabels(issue.labels, triagePolicy.stateMap) === "blocked"
+  );
 }
 
 function logMode(config: TriageConfig): "dry-run" | "execute" {
@@ -129,22 +142,38 @@ export async function runTriage(
 
   if (config.dryRun) {
     try {
-      const previews = await runTriageDryRunAgent(runner, config.repoRoot, {
+      const { agentIssues, directEntries } = await preprocessBlockedIssues({
         issues,
-        projectPolicy,
+        host,
         stateMap: triagePolicy.stateMap,
-        skills: config.skills,
-        thinking:
-          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-        onToolCall: config.onToolCall,
+        readyLabel: triagePolicy.labels.ready,
+        mutationStatus: "preview",
+        isBlockedIssue: (issue) => blockedBucket(issue, config),
       });
-      const logIssues = createPreviewEntries(issues, previews);
+
+      const previews =
+        agentIssues.length === 0
+          ? []
+          : await runTriageDryRunAgent(runner, config.repoRoot, {
+              issues: agentIssues,
+              projectPolicy,
+              stateMap: triagePolicy.stateMap,
+              skills: config.skills,
+              thinking:
+                config.triageThinking ??
+                DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+              onToolCall: config.onToolCall,
+            });
+      const logIssues = [
+        ...directEntries,
+        ...createPreviewEntries(agentIssues, previews),
+      ];
       logIssues.forEach((issue, index) => {
         config.onProgress?.({
           type: "issue",
           issue,
           completed: index + 1,
-          total: logIssues.length,
+          total: issues.length,
         });
       });
       const logPath = await writeTriageLog(config.logDir, {
@@ -168,23 +197,60 @@ export async function runTriage(
   const logIssues: TriageLogIssueEntry[] = [];
 
   try {
-    await executeTriageIssues({
-      runner,
-      repoRoot: config.repoRoot,
-      host,
-      hostConfig: config.host,
+    const { agentIssues } = await preprocessBlockedIssues({
       issues,
-      projectPolicy,
+      host,
       stateMap: triagePolicy.stateMap,
-      skills: config.skills,
-      thinking:
-        config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-      onToolCall: config.onToolCall,
-      onIssue(entry, completed, total) {
+      readyLabel: triagePolicy.labels.ready,
+      mutationStatus: "observed",
+      isBlockedIssue: (issue) => blockedBucket(issue, config),
+      async onAutoUnblocked({ issue, comment, finalLabels }) {
+        await host.applyLabels(
+          planLabelChange(issue.number, issue.labels, finalLabels),
+        );
+        await host.commentIssue(issue.number, comment);
+        return {
+          addedComments: [comment],
+          previousState: issue.state,
+          finalState: issue.state,
+        };
+      },
+      onDirectEntry(entry) {
         logIssues.push(entry);
-        config.onProgress?.({ type: "issue", issue: entry, completed, total });
+        config.onProgress?.({
+          type: "issue",
+          issue: entry,
+          completed: logIssues.length,
+          total: issues.length,
+        });
       },
     });
+
+    const completedBeforeAgent = logIssues.length;
+    if (agentIssues.length > 0) {
+      await executeTriageIssues({
+        runner,
+        repoRoot: config.repoRoot,
+        host,
+        hostConfig: config.host,
+        issues: agentIssues,
+        projectPolicy,
+        stateMap: triagePolicy.stateMap,
+        skills: config.skills,
+        thinking:
+          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+        onToolCall: config.onToolCall,
+        onIssue(entry, completed) {
+          logIssues.push(entry);
+          config.onProgress?.({
+            type: "issue",
+            issue: entry,
+            completed: completedBeforeAgent + completed,
+            total: issues.length,
+          });
+        },
+      });
+    }
   } catch (error) {
     await tryWriteFailureLog(config, createdAt, logIssues, error);
     throw error;
