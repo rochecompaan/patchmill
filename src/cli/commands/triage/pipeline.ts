@@ -30,7 +30,7 @@ function selectIssues(
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
   const excludedLabels = new Set(
     triagePolicy.excludedLabels.filter(
-      (label) => label !== triagePolicy.labels.blocked,
+      (label) => triagePolicy.stateMap[label] !== "blocked",
     ),
   );
 
@@ -62,6 +62,11 @@ function blockedBucket(issue: IssueSummary, config: TriageConfig): boolean {
   return (
     canonicalBucketForLabels(issue.labels, triagePolicy.stateMap) === "blocked"
   );
+}
+
+function trustedTriageCommentAuthors(config: TriageConfig): string[] {
+  const login = config.host.login.trim();
+  return login ? [login] : [];
 }
 
 function autoUnblockPreviewEntry(
@@ -143,6 +148,7 @@ export async function runTriage(
   const projectPolicy =
     config.projectPolicy ?? DEFAULT_PATCHMILL_CONFIG.projectPolicy;
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+  const trustedCommentAuthors = trustedTriageCommentAuthors(config);
 
   let listedIssues: IssueSummary[];
   try {
@@ -205,7 +211,11 @@ export async function runTriage(
           continue;
         }
 
-        const resolution = await resolveBlockedIssue(host, issue);
+        const resolution = await resolveBlockedIssue(
+          host,
+          issue,
+          trustedCommentAuthors,
+        );
         if (resolution.status === "unblocked") {
           directLogIssues.push(
             autoUnblockPreviewEntry(
@@ -286,7 +296,11 @@ export async function runTriage(
         continue;
       }
 
-      const resolution = await resolveBlockedIssue(host, issue);
+      const resolution = await resolveBlockedIssue(
+        host,
+        issue,
+        trustedCommentAuthors,
+      );
       if (resolution.status === "unblocked") {
         const comment = createUnblockedComment(resolution.blockedBy);
         const finalLabels = replaceTriageStateLabels(
@@ -357,6 +371,7 @@ export async function runTriage(
         skills: config.skills,
         thinking:
           config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+        trustedCommentAuthors,
         onToolCall: config.onToolCall,
         onIssue(entry, completed) {
           logIssues.push(entry);

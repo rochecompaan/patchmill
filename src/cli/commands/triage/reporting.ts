@@ -90,6 +90,7 @@ export function createObservedChangeEntries(
   beforeIssues: IssueSummary[],
   afterIssues: IssueSummary[],
   stateMap: PatchmillTriageStateMap,
+  trustedCommentAuthors: readonly string[],
 ): TriageLogIssueEntry[] {
   const afterByNumber = issueByNumber(afterIssues);
   return beforeIssues.map((before) => {
@@ -100,7 +101,9 @@ export function createObservedChangeEntries(
     const newComments = addedComments(before, after);
     const primaryBucket = canonicalBucketForLabels(after.labels, stateMap);
     const blockedBy =
-      primaryBucket === "blocked" ? blockedByFromIssue(after) : [];
+      primaryBucket === "blocked"
+        ? blockedByFromIssue(after, trustedCommentAuthors)
+        : [];
     const questions =
       primaryBucket === "needs-info"
         ? newComments.flatMap(extractNeedsInfoFollowUps)

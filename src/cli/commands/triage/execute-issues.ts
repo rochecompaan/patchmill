@@ -22,6 +22,7 @@ export type ExecuteTriageIssuesOptions = {
   stateMap: PatchmillTriageStateMap;
   skills: PatchmillSkillsConfig;
   thinking: string;
+  trustedCommentAuthors: readonly string[];
   onToolCall?: TriageToolCallHandler;
   onIssue?: (
     entry: TriageLogIssueEntry,
@@ -76,6 +77,7 @@ export async function executeTriageIssues(
       [beforeIssue],
       [afterIssue],
       options.stateMap,
+      options.trustedCommentAuthors,
     );
     if (!entry) {
       throw new Error(
