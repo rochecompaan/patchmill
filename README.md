@@ -34,12 +34,12 @@ Functional:
 - `patchmill init` initializes local configuration and recommended skills.
 - `patchmill triage` is the intake/sorting station. It classifies open issues
   and can apply readiness labels or comments.
+- `patchmill run-once` is the one-issue production run. It claims one ready
+  issue, creates or reuses a plan, runs implementation, reviews or lands the
+  result, and records the outcome.
 
 In progress:
 
-- `patchmill run-once` is the one-issue production run. It is intended to claim
-  one ready issue, create or reuse a plan, run implementation, review or land
-  the result, and record the outcome.
 - `patchmill run` will start the factory loop. It will keep selecting the next
   ready issue and running the same controlled production process until there is
   no eligible work left, a configured issue/budget limit is reached, or a
@@ -60,14 +60,25 @@ through `gh` (`github-gh`). GitHub visual-evidence upload is not supported in
 the first `github-gh` version; Forgejo visual-evidence upload uses the
 `PATCHMILL_FORGEJO_*` environment variables.
 
-## First use
+## Quickstart
 
-After installing Patchmill, start with the safety-first alpha onboarding flow:
+Install the Patchmill CLI globally, then start with the onboarding flow:
 
 ```sh
+npm install -g @rochecompaan/patchmill
+
 patchmill init
 patchmill doctor
 patchmill triage --dry-run
+```
+
+If you prefer not to install Patchmill globally, use the scoped package name
+with `npx`:
+
+```sh
+npx @rochecompaan/patchmill init
+npx @rochecompaan/patchmill doctor
+npx @rochecompaan/patchmill triage --dry-run
 ```
 
 ### Try Patchmill on a disposable demo repository
@@ -106,8 +117,8 @@ patchmill setup-test-repo --provider forgejo-tea --repo OWNER/REPO --login LOGIN
 The reusable demo prompts live in the Patchmill package under
 `fixtures/patchmill-test-repo/`. See `docs/setup-test-repo.md` for details.
 
-`patchmill run-once` and `patchmill run` are still in progress; treat any
-experiments with them as development testing rather than supported usage.
+`patchmill run` is still in progress; treat experiments with the continuous
+factory loop as development testing rather than supported usage.
 
 `patchmill init` writes a minimal local `patchmill.config.json`, reminds you to
 change the default host login, installs Patchmill's recommended skills into
