@@ -63,6 +63,12 @@ export type CommandRunner = {
   ): Promise<CommandResult>;
 };
 
+export type IssueCommentSummary = {
+  body: string;
+  authorLogin?: string;
+  created?: string;
+};
+
 export type IssueSummary = {
   number: number;
   title: string;
@@ -72,7 +78,7 @@ export type IssueSummary = {
   url?: string;
   author?: string;
   updated?: string;
-  comments?: unknown[];
+  comments?: IssueCommentSummary[];
 };
 
 export type LabelDefinition = {

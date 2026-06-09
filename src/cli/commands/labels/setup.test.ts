@@ -41,6 +41,9 @@ function fakeHost(options: FakeHostOptions = {}) {
     ): Promise<IssueSummary[]> {
       return issues;
     },
+    async trustedTriageCommentAuthors(): Promise<string[]> {
+      return [];
+    },
     async listLabels(): Promise<string[]> {
       return options.existingLabels ?? requiredLabelNames;
     },

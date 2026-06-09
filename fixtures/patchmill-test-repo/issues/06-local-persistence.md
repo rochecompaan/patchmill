@@ -3,9 +3,6 @@ title: Persist polls locally
 labels: [feature]
 ---
 
-This should wait until #2 and #4 are closed because persistence needs the poll
-model and vote updates.
-
 Persist the current poll and votes in browser storage so a refresh does not wipe
 out the demo.
 

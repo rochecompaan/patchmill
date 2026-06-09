@@ -13,19 +13,8 @@ function issueByNumber(issues: IssueSummary[]): Map<number, IssueSummary> {
   return new Map(issues.map((issue) => [issue.number, issue]));
 }
 
-function commentBody(comment: unknown): string | undefined {
-  if (typeof comment === "string") return comment;
-  if (comment && typeof comment === "object" && "body" in comment) {
-    const body = (comment as Record<string, unknown>).body;
-    if (typeof body === "string") return body;
-  }
-  return undefined;
-}
-
 function commentBodies(issue: IssueSummary): string[] {
-  return (issue.comments ?? [])
-    .map(commentBody)
-    .filter((body): body is string => Boolean(body));
+  return (issue.comments ?? []).map((comment) => comment.body);
 }
 
 function addedComments(before: IssueSummary, after: IssueSummary): string[] {

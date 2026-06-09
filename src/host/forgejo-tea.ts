@@ -108,6 +108,38 @@ function parseLabelNames(stdout: string, context: string): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
+type TeaLoginEntry = {
+  name?: string;
+  user?: string;
+  default?: boolean | string;
+};
+
+function teaLoginEntries(stdout: string): TeaLoginEntry[] {
+  const parsed = parseJson(stdout, "tea logins list");
+  if (!Array.isArray(parsed)) {
+    throw new Error("tea logins list returned a non-array payload");
+  }
+  return parsed.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const value = entry as Record<string, unknown>;
+    return [
+      {
+        name: typeof value.name === "string" ? value.name : undefined,
+        user: typeof value.user === "string" ? value.user : undefined,
+        default:
+          typeof value.default === "boolean" ||
+          typeof value.default === "string"
+            ? value.default
+            : undefined,
+      },
+    ];
+  });
+}
+
+function isDefaultTeaLogin(entry: TeaLoginEntry): boolean {
+  return entry.default === true || entry.default === "true";
+}
+
 export class ForgejoTeaHostProvider
   implements IssueHostProvider, RepositorySetupHostProvider
 {
@@ -307,6 +339,26 @@ export class ForgejoTeaHostProvider
       this.options.login,
     );
     return issues;
+  }
+
+  async trustedTriageCommentAuthors(): Promise<string[]> {
+    const result = await this.options.runner.run(
+      "tea",
+      ["logins", "list", "--output", "json"],
+      { cwd: this.options.repoRoot },
+    );
+    if (result.code !== 0) {
+      throw new Error(
+        `tea logins list failed while resolving trusted triage author: ${commandOutput(result)}`,
+      );
+    }
+
+    const entries = teaLoginEntries(result.stdout);
+    const selected = this.options.login
+      ? entries.find((entry) => entry.name === this.options.login)
+      : entries.find(isDefaultTeaLogin);
+    const user = selected?.user?.trim();
+    return user ? [user] : [];
   }
 
   listLabels(): Promise<string[]>;

@@ -45,26 +45,6 @@ export function createUnblockedComment(blockedBy: readonly number[]): string {
   ].join("\n");
 }
 
-function commentBody(comment: unknown): string | undefined {
-  if (typeof comment === "string") return comment;
-  if (comment && typeof comment === "object" && "body" in comment) {
-    const body = (comment as Record<string, unknown>).body;
-    if (typeof body === "string") return body;
-  }
-  return undefined;
-}
-
-function commentAuthor(comment: unknown): string | undefined {
-  if (!comment || typeof comment !== "object") return undefined;
-  const author = (comment as Record<string, unknown>).author;
-  if (typeof author === "string") return author;
-  if (author && typeof author === "object" && "login" in author) {
-    const login = (author as Record<string, unknown>).login;
-    if (typeof login === "string") return login;
-  }
-  return undefined;
-}
-
 function trustedAuthorSet(trustedAuthors: readonly string[]): Set<string> {
   return new Set(
     trustedAuthors.map((author) => author.trim()).filter((author) => author),
@@ -91,11 +71,8 @@ export function blockedByFromIssue(
   if (trusted.size === 0) return [];
   const comments = [...(issue.comments ?? [])].reverse();
   for (const comment of comments) {
-    const author = commentAuthor(comment);
-    if (!author || !trusted.has(author)) continue;
-    const body = commentBody(comment);
-    if (!body) continue;
-    const blockedBy = blockedByFromComment(body);
+    if (!comment.authorLogin || !trusted.has(comment.authorLogin)) continue;
+    const blockedBy = blockedByFromComment(comment.body);
     if (blockedBy.length > 0) return blockedBy;
   }
   return [];

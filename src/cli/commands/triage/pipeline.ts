@@ -1,14 +1,7 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
-import {
-  canonicalBucketForLabels,
-  type PatchmillTriageStateMap,
-} from "../../../policy/triage-state.ts";
-import {
-  createUnblockedComment,
-  replaceTriageStateLabels,
-  resolveBlockedIssue,
-} from "./blocked.ts";
+import { canonicalBucketForLabels } from "../../../policy/triage-state.ts";
+import { preprocessBlockedIssues } from "./blocked-preprocessor.ts";
 import { runTriageDryRunAgent } from "./dry-run-agent.ts";
 import { executeTriageIssues } from "./execute-issues.ts";
 import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "./labels.ts";
@@ -53,64 +46,11 @@ function selectIssues(
   return selected;
 }
 
-function issueRefList(issueNumbers: readonly number[]): string {
-  return issueNumbers.map((issueNumber) => `#${issueNumber}`).join(", ");
-}
-
 function blockedBucket(issue: IssueSummary, config: TriageConfig): boolean {
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
   return (
     canonicalBucketForLabels(issue.labels, triagePolicy.stateMap) === "blocked"
   );
-}
-
-function trustedTriageCommentAuthors(config: TriageConfig): string[] {
-  const login = config.host.login.trim();
-  return login ? [login] : [];
-}
-
-function autoUnblockPreviewEntry(
-  issue: IssueSummary,
-  stateMap: PatchmillTriageStateMap,
-  readyLabel: string,
-  blockedBy: number[],
-): TriageLogIssueEntry {
-  const comment = createUnblockedComment(blockedBy);
-  return {
-    issueNumber: issue.number,
-    title: issue.title,
-    ...(issue.url ? { url: issue.url } : {}),
-    previousLabels: issue.labels,
-    finalLabels: replaceTriageStateLabels(issue.labels, stateMap, readyLabel),
-    primaryBucket: "agent-ready",
-    blockedBy,
-    rationale: `All blocking issues are closed: ${issueRefList(blockedBy)}.`,
-    questions: [],
-    comment,
-    wouldClose: false,
-    mutationStatus: "preview",
-  };
-}
-
-function stillBlockedEntry(
-  issue: IssueSummary,
-  blockedBy: number[],
-  openBlockers: number[],
-  mutationStatus: "preview" | "observed",
-): TriageLogIssueEntry {
-  return {
-    issueNumber: issue.number,
-    title: issue.title,
-    ...(issue.url ? { url: issue.url } : {}),
-    previousLabels: issue.labels,
-    finalLabels: issue.labels,
-    primaryBucket: "blocked",
-    blockedBy,
-    rationale: `Still blocked by open issue${openBlockers.length === 1 ? "" : "s"}: ${issueRefList(openBlockers)}.`,
-    questions: [],
-    comment: null,
-    mutationStatus,
-  };
 }
 
 function logMode(config: TriageConfig): "dry-run" | "execute" {
@@ -148,7 +88,6 @@ export async function runTriage(
   const projectPolicy =
     config.projectPolicy ?? DEFAULT_PATCHMILL_CONFIG.projectPolicy;
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
-  const trustedCommentAuthors = trustedTriageCommentAuthors(config);
 
   let listedIssues: IssueSummary[];
   try {
@@ -203,45 +142,14 @@ export async function runTriage(
 
   if (config.dryRun) {
     try {
-      const directLogIssues: TriageLogIssueEntry[] = [];
-      const agentIssues: IssueSummary[] = [];
-      for (const issue of issues) {
-        if (!blockedBucket(issue, config)) {
-          agentIssues.push(issue);
-          continue;
-        }
-
-        const resolution = await resolveBlockedIssue(
-          host,
-          issue,
-          trustedCommentAuthors,
-        );
-        if (resolution.status === "unblocked") {
-          directLogIssues.push(
-            autoUnblockPreviewEntry(
-              issue,
-              triagePolicy.stateMap,
-              triagePolicy.labels.ready,
-              resolution.blockedBy,
-            ),
-          );
-          continue;
-        }
-
-        if (resolution.status === "still-blocked") {
-          directLogIssues.push(
-            stillBlockedEntry(
-              issue,
-              resolution.blockedBy,
-              resolution.openBlockers,
-              "preview",
-            ),
-          );
-          continue;
-        }
-
-        agentIssues.push(issue);
-      }
+      const { agentIssues, directEntries } = await preprocessBlockedIssues({
+        issues,
+        host,
+        stateMap: triagePolicy.stateMap,
+        readyLabel: triagePolicy.labels.ready,
+        mutationStatus: "preview",
+        isBlockedIssue: (issue) => blockedBucket(issue, config),
+      });
 
       const previews =
         agentIssues.length === 0
@@ -257,7 +165,7 @@ export async function runTriage(
               onToolCall: config.onToolCall,
             });
       const logIssues = [
-        ...directLogIssues,
+        ...directEntries,
         ...createPreviewEntries(agentIssues, previews),
       ];
       logIssues.forEach((issue, index) => {
@@ -289,45 +197,25 @@ export async function runTriage(
   const logIssues: TriageLogIssueEntry[] = [];
 
   try {
-    const agentIssues: IssueSummary[] = [];
-    for (const issue of issues) {
-      if (!blockedBucket(issue, config)) {
-        agentIssues.push(issue);
-        continue;
-      }
-
-      const resolution = await resolveBlockedIssue(
-        host,
-        issue,
-        trustedCommentAuthors,
-      );
-      if (resolution.status === "unblocked") {
-        const comment = createUnblockedComment(resolution.blockedBy);
-        const finalLabels = replaceTriageStateLabels(
-          issue.labels,
-          triagePolicy.stateMap,
-          triagePolicy.labels.ready,
-        );
+    const { agentIssues } = await preprocessBlockedIssues({
+      issues,
+      host,
+      stateMap: triagePolicy.stateMap,
+      readyLabel: triagePolicy.labels.ready,
+      mutationStatus: "observed",
+      isBlockedIssue: (issue) => blockedBucket(issue, config),
+      async onAutoUnblocked({ issue, comment, finalLabels }) {
         await host.applyLabels(
           planLabelChange(issue.number, issue.labels, finalLabels),
         );
         await host.commentIssue(issue.number, comment);
-        const entry: TriageLogIssueEntry = {
-          issueNumber: issue.number,
-          title: issue.title,
-          ...(issue.url ? { url: issue.url } : {}),
-          previousLabels: issue.labels,
-          finalLabels,
-          primaryBucket: "agent-ready",
-          blockedBy: resolution.blockedBy,
-          rationale: `All blocking issues are closed: ${issueRefList(resolution.blockedBy)}.`,
-          questions: [],
-          comment,
+        return {
           addedComments: [comment],
           previousState: issue.state,
           finalState: issue.state,
-          mutationStatus: "observed",
         };
+      },
+      onDirectEntry(entry) {
         logIssues.push(entry);
         config.onProgress?.({
           type: "issue",
@@ -335,28 +223,8 @@ export async function runTriage(
           completed: logIssues.length,
           total: issues.length,
         });
-        continue;
-      }
-
-      if (resolution.status === "still-blocked") {
-        const entry = stillBlockedEntry(
-          issue,
-          resolution.blockedBy,
-          resolution.openBlockers,
-          "observed",
-        );
-        logIssues.push(entry);
-        config.onProgress?.({
-          type: "issue",
-          issue: entry,
-          completed: logIssues.length,
-          total: issues.length,
-        });
-        continue;
-      }
-
-      agentIssues.push(issue);
-    }
+      },
+    });
 
     const completedBeforeAgent = logIssues.length;
     if (agentIssues.length > 0) {
@@ -371,7 +239,6 @@ export async function runTriage(
         skills: config.skills,
         thinking:
           config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-        trustedCommentAuthors,
         onToolCall: config.onToolCall,
         onIssue(entry, completed) {
           logIssues.push(entry);

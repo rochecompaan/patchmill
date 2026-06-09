@@ -1,5 +1,8 @@
 import type { PatchmillHostConfig } from "../../../config/types.ts";
-import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
+import {
+  canonicalBucketForLabels,
+  type PatchmillTriageStateMap,
+} from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
@@ -15,14 +18,16 @@ import type {
 export type ExecuteTriageIssuesOptions = {
   runner: CommandRunner;
   repoRoot: string;
-  host: Pick<IssueHostProvider, "viewIssue" | "hydrateIssueComments">;
+  host: Pick<
+    IssueHostProvider,
+    "viewIssue" | "hydrateIssueComments" | "trustedTriageCommentAuthors"
+  >;
   hostConfig: PatchmillHostConfig;
   issues: IssueSummary[];
   projectPolicy: PatchmillProjectPolicy;
   stateMap: PatchmillTriageStateMap;
   skills: PatchmillSkillsConfig;
   thinking: string;
-  trustedCommentAuthors: readonly string[];
   onToolCall?: TriageToolCallHandler;
   onIssue?: (
     entry: TriageLogIssueEntry,
@@ -60,6 +65,19 @@ export async function executeTriageIssues(
 ): Promise<TriageLogIssueEntry[]> {
   const beforeIssues = options.issues.map(cloneIssue);
   const entries: TriageLogIssueEntry[] = [];
+  let trustedCommentAuthors: string[] | undefined;
+
+  async function trustedAuthorsForBlockedIssue(
+    issue: IssueSummary,
+  ): Promise<readonly string[]> {
+    if (
+      canonicalBucketForLabels(issue.labels, options.stateMap) !== "blocked"
+    ) {
+      return [];
+    }
+    trustedCommentAuthors ??= await options.host.trustedTriageCommentAuthors();
+    return trustedCommentAuthors;
+  }
 
   for (const [index, beforeIssue] of beforeIssues.entries()) {
     await runTriageExecuteAgent(options.runner, options.repoRoot, {
@@ -77,7 +95,7 @@ export async function executeTriageIssues(
       [beforeIssue],
       [afterIssue],
       options.stateMap,
-      options.trustedCommentAuthors,
+      await trustedAuthorsForBlockedIssue(afterIssue),
     );
     if (!entry) {
       throw new Error(

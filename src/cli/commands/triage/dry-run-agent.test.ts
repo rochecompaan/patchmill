@@ -29,7 +29,7 @@ const issues: IssueSummary[] = [
     state: "open",
     author: "ana",
     updated: "2026-05-25T12:00:00Z",
-    comments: [{ author: "sam", body: "CSV is enough." }],
+    comments: [{ authorLogin: "sam", body: "CSV is enough." }],
   },
 ];
 
