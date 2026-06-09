@@ -93,7 +93,8 @@ patchmill setup-test-repo --provider github-gh --repo OWNER/REPO
 gh repo clone OWNER/REPO
 cd REPO
 patchmill init
-patchmill triage --dry-run
+patchmill triage
+patchmill run-once
 ```
 
 For Forgejo or Gitea with a named `tea` login:
@@ -103,7 +104,8 @@ patchmill setup-test-repo --provider forgejo-tea --repo OWNER/REPO --login LOGIN
 tea clone OWNER/REPO
 cd REPO
 patchmill init
-patchmill triage --dry-run
+patchmill triage
+patchmill run-once
 ```
 
 Use an explicit disposable public repository for `OWNER/REPO`. The reset form
