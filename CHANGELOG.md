@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/rochecompaan/patchmill/compare/v0.8.0...v0.9.0) (2026-06-09)
+
+
+### Features
+
+* **run-once:** execute by default ([dab7ff0](https://github.com/rochecompaan/patchmill/commit/dab7ff06996fa7a1d667e30d93cba9aca3b4bffa))
+* **triage:** add blocked issue triage workflow ([#24](https://github.com/rochecompaan/patchmill/issues/24)) ([587333c](https://github.com/rochecompaan/patchmill/commit/587333cdd837e5df133ec3949192258f9f013e4e))
+* **triage:** stream tool-call output by default ([#23](https://github.com/rochecompaan/patchmill/issues/23)) ([1234556](https://github.com/rochecompaan/patchmill/commit/1234556811d0b1e4cfcf53dd78db9405f83ea433))
+
+
+### Bug Fixes
+
+* **nix:** include fixtures in runtime package ([7b6f879](https://github.com/rochecompaan/patchmill/commit/7b6f8791f487ee3e62bcd6badfea34cd238cecea))
+
 ## [0.8.0](https://github.com/rochecompaan/patchmill/compare/v0.7.1...v0.8.0) (2026-06-06)
 
 
