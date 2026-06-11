@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, cp, readdir, readFile } from "node:fs/promises";
+import { access, chmod, cp, readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseIssueFile, type SetupIssue } from "./issue-parser.ts";
@@ -72,4 +72,14 @@ export async function copyFixtureToRepository(
   await cp(join(fixtureDir, "issues"), join(destination, "issues"), {
     recursive: true,
   });
+  await makeWritable(join(destination, "issues"));
+}
+
+async function makeWritable(path: string): Promise<void> {
+  const info = await stat(path);
+  await chmod(path, info.mode | 0o200);
+  if (!info.isDirectory()) return;
+
+  for (const entry of await readdir(path))
+    await makeWritable(join(path, entry));
 }

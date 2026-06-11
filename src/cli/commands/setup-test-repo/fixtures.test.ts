@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -64,4 +71,24 @@ test("copyFixtureToRepository copies docs and issue prompts", async () => {
   );
 
   await rm(destination, { recursive: true, force: true });
+});
+
+test("copyFixtureToRepository makes copied fixture directories writable", async () => {
+  const fixtureDir = await tempDir();
+  const destination = await tempDir();
+  await mkdir(join(fixtureDir, "issues"), { recursive: true });
+  await writeFile(join(fixtureDir, "README.md"), "# Demo\n");
+  await writeFile(join(fixtureDir, "PROJECT_BRIEF.md"), "Brief\n");
+  await writeFile(join(fixtureDir, "issues", "01-demo.md"), "# Demo\n");
+  await chmod(join(fixtureDir, "issues"), 0o555);
+
+  try {
+    await copyFixtureToRepository(fixtureDir, destination);
+
+    await rm(destination, { recursive: true, force: true });
+  } finally {
+    await chmod(join(fixtureDir, "issues"), 0o755);
+    await rm(fixtureDir, { recursive: true, force: true });
+    await rm(destination, { recursive: true, force: true });
+  }
 });
