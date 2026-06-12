@@ -20,6 +20,17 @@ const DEFAULT_PATCHMILL_LABELS = {
   ],
 };
 
+const DEFAULT_PATCHMILL_WORKFLOW = {
+  specApproval: {
+    reviewLabel: "spec-review",
+    approvedLabel: "spec-approved",
+  },
+  planApproval: {
+    reviewLabel: "plan-review",
+    approvedLabel: "plan-approved",
+  },
+};
+
 export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
   host: {
     provider: "forgejo-tea",
@@ -32,6 +43,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
   triage: {
     stateMap: defaultTriageStateMap(DEFAULT_PATCHMILL_LABELS),
   },
+  workflow: DEFAULT_PATCHMILL_WORKFLOW,
   skills: DEFAULT_PATCHMILL_SKILLS,
   paths: {
     plansDir: "docs/plans",

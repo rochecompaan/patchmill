@@ -358,6 +358,55 @@ test("loadPatchmillConfig rejects blank skills", async () => {
   );
 });
 
+test("loadPatchmillConfig parses workflow approval config and preserves default labels", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-workflow-config-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        specApproval: { required: true },
+        planApproval: {
+          reviewLabel: "awaiting-plan-review",
+          approvedLabel: "plan-reviewed",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.deepEqual(config.workflow, {
+    specApproval: {
+      required: true,
+      reviewLabel: "spec-review",
+      approvedLabel: "spec-approved",
+    },
+    planApproval: {
+      reviewLabel: "awaiting-plan-review",
+      approvedLabel: "plan-reviewed",
+    },
+  });
+});
+
+test("loadPatchmillConfig rejects invalid workflow approval config", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-workflow-invalid-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        planApproval: { required: "yes" },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /workflow\.planApproval\.required must be a boolean/,
+  );
+});
+
 test("loadPatchmillConfig rejects removed skill workflow settings", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-removed-skill-settings-"),

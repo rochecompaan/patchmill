@@ -42,12 +42,22 @@ type PartialProjectPolicy = Partial<
   pi?: PartialPiWorkflowPolicy;
 };
 
+type PartialWorkflowApprovalConfig = Partial<
+  PatchmillConfig["workflow"]["specApproval"]
+>;
+
+type PartialWorkflowConfig = Partial<{
+  specApproval: PartialWorkflowApprovalConfig;
+  planApproval: PartialWorkflowApprovalConfig;
+}>;
+
 type PartialConfig = Partial<{
   host: Partial<PatchmillConfig["host"]>;
   pi: Partial<PatchmillConfig["pi"]>;
   paths: Partial<PatchmillConfig["paths"]>;
   labels: Partial<PatchmillConfig["labels"]>;
   triage: Partial<PatchmillConfig["triage"]>;
+  workflow: PartialWorkflowConfig;
   skills: PartialPatchmillSkillsConfig;
   git: Partial<PatchmillConfig["git"]>;
   cleanupHook: string;
@@ -269,6 +279,56 @@ function mergeTriageConfig(
   };
 }
 
+function cloneWorkflowApprovalConfig(
+  approval: PatchmillConfig["workflow"]["specApproval"],
+): PatchmillConfig["workflow"]["specApproval"] {
+  return {
+    ...(approval.required !== undefined ? { required: approval.required } : {}),
+    reviewLabel: approval.reviewLabel,
+    approvedLabel: approval.approvedLabel,
+  };
+}
+
+function mergeWorkflowApprovalConfig(
+  base: PatchmillConfig["workflow"]["specApproval"],
+  update: PartialWorkflowApprovalConfig | undefined,
+): PatchmillConfig["workflow"]["specApproval"] {
+  return {
+    ...(update?.required !== undefined
+      ? { required: update.required }
+      : base.required !== undefined
+        ? { required: base.required }
+        : {}),
+    reviewLabel: update?.reviewLabel ?? base.reviewLabel,
+    approvedLabel: update?.approvedLabel ?? base.approvedLabel,
+  };
+}
+
+function cloneWorkflowConfig(
+  workflow: PatchmillConfig["workflow"],
+): PatchmillConfig["workflow"] {
+  return {
+    specApproval: cloneWorkflowApprovalConfig(workflow.specApproval),
+    planApproval: cloneWorkflowApprovalConfig(workflow.planApproval),
+  };
+}
+
+function mergeWorkflowConfig(
+  base: PatchmillConfig["workflow"],
+  update: PartialWorkflowConfig | undefined,
+): PatchmillConfig["workflow"] {
+  return {
+    specApproval: mergeWorkflowApprovalConfig(
+      base.specApproval,
+      update?.specApproval,
+    ),
+    planApproval: mergeWorkflowApprovalConfig(
+      base.planApproval,
+      update?.planApproval,
+    ),
+  };
+}
+
 function mergeConfig(
   base: PatchmillConfig,
   update: PartialConfig,
@@ -288,6 +348,7 @@ function mergeConfig(
       ),
     },
     triage,
+    workflow: mergeWorkflowConfig(base.workflow, update.workflow),
     skills: mergeSkillsConfig(base.skills, update.skills),
     paths: {
       ...paths,
@@ -315,6 +376,7 @@ function absolutizePaths(
   return {
     ...config,
     triage: cloneTriageConfig(config.triage),
+    workflow: cloneWorkflowConfig(config.workflow),
     skills: cloneSkillsConfig(config.skills),
     paths: {
       plansDir: absolutize(root, config.paths.plansDir),
@@ -478,6 +540,73 @@ function readTriageConfig(
         `triage.${key}`,
         "a supported triage setting",
         value[key],
+      );
+    }
+  }
+
+  return hasEntries(parsed) ? parsed : undefined;
+}
+
+function readWorkflowApprovalConfig(
+  source: Record<string, unknown>,
+  key: "specApproval" | "planApproval",
+): PartialWorkflowApprovalConfig | undefined {
+  const value = readOptionalSection(source, key);
+  if (!value) return undefined;
+
+  const parsed: PartialWorkflowApprovalConfig = {};
+  const required = readOptionalBoolean(
+    value,
+    "required",
+    `workflow.${key}.required`,
+  );
+  const reviewLabel = readOptionalString(
+    value,
+    "reviewLabel",
+    `workflow.${key}.reviewLabel`,
+  );
+  const approvedLabel = readOptionalString(
+    value,
+    "approvedLabel",
+    `workflow.${key}.approvedLabel`,
+  );
+
+  if (required !== undefined) parsed.required = required;
+  if (reviewLabel !== undefined) parsed.reviewLabel = reviewLabel;
+  if (approvedLabel !== undefined) parsed.approvedLabel = approvedLabel;
+
+  for (const entry of Object.keys(value)) {
+    if (!["required", "reviewLabel", "approvedLabel"].includes(entry)) {
+      throw configError(
+        `workflow.${key}.${entry}`,
+        "a supported workflow approval setting",
+        value[entry],
+      );
+    }
+  }
+
+  return hasEntries(parsed) ? parsed : undefined;
+}
+
+function readWorkflowConfig(
+  source: Record<string, unknown>,
+): PartialWorkflowConfig | undefined {
+  const value = source.workflow;
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw configError("workflow", "an object", value);
+
+  const parsed: PartialWorkflowConfig = {};
+  const specApproval = readWorkflowApprovalConfig(value, "specApproval");
+  const planApproval = readWorkflowApprovalConfig(value, "planApproval");
+  if (specApproval !== undefined) parsed.specApproval = specApproval;
+  if (planApproval !== undefined) parsed.planApproval = planApproval;
+
+  for (const entry of Object.keys(value)) {
+    if (!["specApproval", "planApproval"].includes(entry)) {
+      throw configError(
+        `workflow.${entry}`,
+        "a supported workflow setting",
+        value[entry],
       );
     }
   }
@@ -820,6 +949,11 @@ function parseConfigFile(data: unknown): PartialConfig {
   const triage = readTriageConfig(data);
   if (triage !== undefined) {
     config.triage = triage;
+  }
+
+  const workflow = readWorkflowConfig(data);
+  if (workflow !== undefined) {
+    config.workflow = workflow;
   }
 
   const projectPolicy = readOptionalSection(data, "projectPolicy");

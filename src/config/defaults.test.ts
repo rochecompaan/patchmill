@@ -10,6 +10,16 @@ test("defaults match the current patchmill baseline configuration", () => {
     DEFAULT_PATCHMILL_POLICY,
   );
   assert.equal(DEFAULT_PATCHMILL_CONFIG.skills, DEFAULT_PATCHMILL_SKILLS);
+  assert.deepEqual(DEFAULT_PATCHMILL_CONFIG.workflow, {
+    specApproval: {
+      reviewLabel: "spec-review",
+      approvedLabel: "spec-approved",
+    },
+    planApproval: {
+      reviewLabel: "plan-review",
+      approvedLabel: "plan-approved",
+    },
+  });
   assert.deepEqual(DEFAULT_PATCHMILL_CONFIG, {
     host: {
       provider: "forgejo-tea",
@@ -39,6 +49,16 @@ test("defaults match the current patchmill baseline configuration", () => {
         "needs-info": "needs-info",
         "agent-unsuitable": "agent-unsuitable",
         blocked: "blocked",
+      },
+    },
+    workflow: {
+      specApproval: {
+        reviewLabel: "spec-review",
+        approvedLabel: "spec-approved",
+      },
+      planApproval: {
+        reviewLabel: "plan-review",
+        approvedLabel: "plan-approved",
       },
     },
     skills: DEFAULT_PATCHMILL_SKILLS,
