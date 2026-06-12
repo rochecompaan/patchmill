@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import {
   buildSkillPackMetadata,
   hashText,
@@ -312,7 +313,10 @@ async function makeConfig(
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
     readyLabel: "agent-ready",
     issueLimit: 1,
-    requirePlanApproval: false,
+    approvalPolicy: createWorkflowApprovalPolicy(
+      DEFAULT_PATCHMILL_CONFIG.workflow,
+      DEFAULT_PATCHMILL_POLICY,
+    ),
     baseBranch: "main",
     baseRef: "HEAD",
     remote: "origin",
@@ -1211,7 +1215,16 @@ test("runOneIssue stops after finding an existing plan when plan approval is req
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    requirePlanApproval: true,
+    approvalPolicy: createWorkflowApprovalPolicy(
+      {
+        ...DEFAULT_PATCHMILL_CONFIG.workflow,
+        planApproval: {
+          ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+          required: true,
+        },
+      },
+      DEFAULT_PATCHMILL_POLICY,
+    ),
   });
   const planPath = "docs/plans/2026-05-14-issue-47-approval-existing-plan.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -1272,7 +1285,16 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    requirePlanApproval: true,
+    approvalPolicy: createWorkflowApprovalPolicy(
+      {
+        ...DEFAULT_PATCHMILL_CONFIG.workflow,
+        planApproval: {
+          ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+          required: true,
+        },
+      },
+      DEFAULT_PATCHMILL_POLICY,
+    ),
   });
   const selected = issue(48, ["agent-ready", "bug"], "Approval created plan");
   const expectedPlanPath =

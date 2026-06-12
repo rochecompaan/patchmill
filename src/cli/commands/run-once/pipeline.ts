@@ -1030,7 +1030,7 @@ export async function runOneIssue(
       });
     }
 
-    if (config.planOnly || config.requirePlanApproval) {
+    if (config.planOnly || config.approvalPolicy.planApproval.required) {
       const finalLabels = nextLabels(labels, [inProgress], [ready]);
       if (!checkpoints.planReadyCommentPosted) {
         await host.commentIssue(
