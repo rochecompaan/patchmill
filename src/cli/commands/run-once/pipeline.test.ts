@@ -477,11 +477,13 @@ test("runOneIssue returns approval-required for explicit spec-unapproved issue",
     if (
       call.command === "tea" &&
       call.args[0] === "issues" &&
-      call.args[1] === "7"
+      call.args[1] === "list" &&
+      call.args[call.args.indexOf("--state") + 1] === "all" &&
+      call.args[call.args.indexOf("--keyword") + 1] === "7"
     ) {
       return {
         code: 0,
-        stdout: issueViewPayload(issue(7, ["agent-ready"])),
+        stdout: issueListPayload([issue(7, ["agent-ready"])]),
         stderr: "",
       };
     }
