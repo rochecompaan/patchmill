@@ -313,20 +313,33 @@ function cloneWorkflowConfig(
   };
 }
 
+function assertDistinctWorkflowApprovalLabels(
+  key: "specApproval" | "planApproval",
+  approval: PatchmillConfig["workflow"]["specApproval"],
+): void {
+  if (approval.reviewLabel !== approval.approvedLabel) return;
+  throw new Error(
+    `Invalid ${CONFIG_FILE_NAME}: workflow.${key}.approvedLabel must differ from workflow.${key}.reviewLabel`,
+  );
+}
+
 function mergeWorkflowConfig(
   base: PatchmillConfig["workflow"],
   update: PartialWorkflowConfig | undefined,
 ): PatchmillConfig["workflow"] {
-  return {
-    specApproval: mergeWorkflowApprovalConfig(
-      base.specApproval,
-      update?.specApproval,
-    ),
-    planApproval: mergeWorkflowApprovalConfig(
-      base.planApproval,
-      update?.planApproval,
-    ),
-  };
+  const specApproval = mergeWorkflowApprovalConfig(
+    base.specApproval,
+    update?.specApproval,
+  );
+  const planApproval = mergeWorkflowApprovalConfig(
+    base.planApproval,
+    update?.planApproval,
+  );
+
+  assertDistinctWorkflowApprovalLabels("specApproval", specApproval);
+  assertDistinctWorkflowApprovalLabels("planApproval", planApproval);
+
+  return { specApproval, planApproval };
 }
 
 function mergeConfig(

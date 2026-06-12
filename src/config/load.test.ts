@@ -407,6 +407,52 @@ test("loadPatchmillConfig rejects invalid workflow approval config", async () =>
   );
 });
 
+test("loadPatchmillConfig rejects identical spec approval review and approved labels", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-workflow-spec-duplicate-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        specApproval: {
+          reviewLabel: "spec-review",
+          approvedLabel: "spec-review",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /workflow\.specApproval\.approvedLabel must differ from workflow\.specApproval\.reviewLabel/,
+  );
+});
+
+test("loadPatchmillConfig rejects identical plan approval review and approved labels", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-workflow-plan-duplicate-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        planApproval: {
+          reviewLabel: "plan-review",
+          approvedLabel: "plan-review",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /workflow\.planApproval\.approvedLabel must differ from workflow\.planApproval\.reviewLabel/,
+  );
+});
+
 test("loadPatchmillConfig rejects removed skill workflow settings", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-removed-skill-settings-"),

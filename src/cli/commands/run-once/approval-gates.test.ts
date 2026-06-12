@@ -123,6 +123,22 @@ test("decidePlanApprovalGate proceeds when the approved plan label is present", 
   assert.deepEqual(decision, { action: "proceed" });
 });
 
+test("decidePlanApprovalGate ignores stale approval on a newly-created plan", () => {
+  const decision = decidePlanApprovalGate({
+    labels: ["in-progress", "plan-approved"],
+    planOnly: false,
+    planCreatedThisRun: true,
+    policy: planApprovalPolicy(true),
+  });
+
+  assert.deepEqual(decision, {
+    action: "stop-for-plan-review",
+    reviewLabel: "plan-review",
+    missingLabel: "plan-approved",
+    staleApprovedLabel: "plan-approved",
+  });
+});
+
 test("decidePlanApprovalGate stops for plan-only without workflow review labels", () => {
   const decision = decidePlanApprovalGate({
     labels: ["in-progress"],

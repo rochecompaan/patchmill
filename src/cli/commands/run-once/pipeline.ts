@@ -924,6 +924,7 @@ export async function runOneIssue(
   let branch: string | undefined;
   let worktreePath: string | undefined;
   let planCreated = false;
+  let planCreatedThisRun = false;
 
   try {
     if (!checkpoints.startedCommentPosted) {
@@ -1045,6 +1046,7 @@ export async function runOneIssue(
       planPath = repoPath(config.repoRoot, planned.planPath).relative;
       planCommit = planned.commit;
       planCreated = true;
+      planCreatedThisRun = true;
       await writeRunState(
         config.runStateDir,
         {
@@ -1074,6 +1076,7 @@ export async function runOneIssue(
     const planGate = decidePlanApprovalGate({
       labels,
       planOnly: config.planOnly,
+      planCreatedThisRun,
       policy: config.approvalPolicy,
     });
 
@@ -1082,7 +1085,14 @@ export async function runOneIssue(
         planGate.action === "stop-for-plan-review"
           ? [ready, planGate.reviewLabel]
           : [ready];
-      const finalLabels = nextLabels(labels, [inProgress], labelsToAdd);
+      const labelsToRemove = [
+        inProgress,
+        ...(planGate.action === "stop-for-plan-review" &&
+        planGate.staleApprovedLabel
+          ? [planGate.staleApprovedLabel]
+          : []),
+      ];
+      const finalLabels = nextLabels(labels, labelsToRemove, labelsToAdd);
       if (!checkpoints.planReadyCommentPosted) {
         await host.commentIssue(
           issue.number,

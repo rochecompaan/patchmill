@@ -49,23 +49,32 @@ export type PlanApprovalGateDecision =
       action: "stop-for-plan-review";
       reviewLabel: string;
       missingLabel: string;
+      staleApprovedLabel?: string;
     };
 
 export function decidePlanApprovalGate(options: {
   labels: string[];
   planOnly: boolean;
+  planCreatedThisRun?: boolean;
   policy: WorkflowApprovalPolicy;
 }): PlanApprovalGateDecision {
   if (options.planOnly) return { action: "stop-for-plan-only" };
   const approval = options.policy.planApproval;
   if (!approval.required) return { action: "proceed" };
-  if (options.labels.includes(approval.approvedLabel)) {
+  if (
+    !options.planCreatedThisRun &&
+    options.labels.includes(approval.approvedLabel)
+  ) {
     return { action: "proceed" };
   }
   return {
     action: "stop-for-plan-review",
     reviewLabel: approval.reviewLabel,
     missingLabel: approval.approvedLabel,
+    ...(options.planCreatedThisRun &&
+    options.labels.includes(approval.approvedLabel)
+      ? { staleApprovedLabel: approval.approvedLabel }
+      : {}),
   };
 }
 
