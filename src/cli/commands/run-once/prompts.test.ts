@@ -156,6 +156,42 @@ test("buildPlanCreationPrompt includes issue context, workflow rules, and result
   assert.match(prompt, /"status": "plan-created"/);
 });
 
+test("buildPlanCreationPrompt uses normalized plan approval requirement when provided", () => {
+  const prompt = buildPlanCreationPrompt({
+    issue,
+    planPath,
+    projectPolicy: { ...examplePolicy, planRequiresApproval: false },
+    planApprovalRequired: true,
+  });
+
+  assert.match(
+    prompt,
+    /Stop after writing the plan and wait for explicit manual approval before implementation continues/,
+  );
+  assert.doesNotMatch(
+    prompt,
+    /Do not stop for an additional manual plan-approval gate/,
+  );
+});
+
+test("buildPlanCreationPrompt lets normalized plan approval disable legacy alias prompt text", () => {
+  const prompt = buildPlanCreationPrompt({
+    issue,
+    planPath,
+    projectPolicy: { ...examplePolicy, planRequiresApproval: true },
+    planApprovalRequired: false,
+  });
+
+  assert.match(
+    prompt,
+    /Do not stop for an additional manual plan-approval gate/,
+  );
+  assert.doesNotMatch(
+    prompt,
+    /Stop after writing the plan and wait for explicit manual approval before implementation continues/,
+  );
+});
+
 test("buildPlanCreationPrompt uses deterministic fallbacks for missing fields", () => {
   const prompt = buildPlanCreationPrompt({
     issue: {

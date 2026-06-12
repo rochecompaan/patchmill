@@ -153,6 +153,10 @@ const REQUIRED_LABELS = [
   "priority:high",
   "priority:medium",
   "priority:low",
+  "spec-review",
+  "spec-approved",
+  "plan-review",
+  "plan-approved",
 ];
 
 function successMocks(

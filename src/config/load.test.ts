@@ -358,6 +358,192 @@ test("loadPatchmillConfig rejects blank skills", async () => {
   );
 });
 
+test("loadPatchmillConfig parses workflow approval config and preserves default labels", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-workflow-config-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        specApproval: { required: true },
+        planApproval: {
+          reviewLabel: "awaiting-plan-review",
+          approvedLabel: "plan-reviewed",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.deepEqual(config.workflow, {
+    specApproval: {
+      required: true,
+      reviewLabel: "spec-review",
+      approvedLabel: "spec-approved",
+    },
+    planApproval: {
+      required: false,
+      reviewLabel: "awaiting-plan-review",
+      approvedLabel: "plan-reviewed",
+    },
+  });
+});
+
+test("loadPatchmillConfig normalizes projectPolicy.planRequiresApproval into workflow plan approval", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-workflow-alias-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({ projectPolicy: { planRequiresApproval: true } }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.equal(config.workflow.planApproval.required, true);
+});
+
+test("loadPatchmillConfig lets workflow plan approval override projectPolicy alias", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-workflow-alias-override-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: { planApproval: { required: false } },
+      projectPolicy: { planRequiresApproval: true },
+    }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.equal(config.workflow.planApproval.required, false);
+});
+
+test("loadPatchmillConfig rejects invalid workflow approval config", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-workflow-invalid-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        planApproval: { required: "yes" },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /workflow\.planApproval\.required must be a boolean/,
+  );
+});
+
+test("loadPatchmillConfig rejects identical spec approval review and approved labels", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-workflow-spec-duplicate-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        specApproval: {
+          reviewLabel: "spec-review",
+          approvedLabel: "spec-review",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /workflow\.specApproval\.approvedLabel must differ from workflow\.specApproval\.reviewLabel/,
+  );
+});
+
+test("loadPatchmillConfig rejects identical plan approval review and approved labels", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-workflow-plan-duplicate-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        planApproval: {
+          reviewLabel: "plan-review",
+          approvedLabel: "plan-review",
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => loadPatchmillConfig(repoRoot, {}, []),
+    /workflow\.planApproval\.approvedLabel must differ from workflow\.planApproval\.reviewLabel/,
+  );
+});
+
+test("loadPatchmillConfig rejects workflow approval labels that collide with owned labels", async () => {
+  const cases = [
+    {
+      name: "workflow label reuses lifecycle label",
+      config: { workflow: { planApproval: { approvedLabel: "agent-ready" } } },
+      pattern:
+        /workflow\.planApproval\.approvedLabel must not reuse labels\.ready/,
+    },
+    {
+      name: "lifecycle label reuses default workflow label",
+      config: { labels: { ready: "spec-approved" } },
+      pattern:
+        /workflow\.specApproval\.approvedLabel must not reuse labels\.ready/,
+    },
+    {
+      name: "type label",
+      config: { workflow: { specApproval: { approvedLabel: "bug" } } },
+      pattern:
+        /workflow\.specApproval\.approvedLabel must not reuse labels\.types\[0\]/,
+    },
+    {
+      name: "priority label",
+      config: {
+        workflow: {
+          specApproval: { reviewLabel: "priority:high" },
+        },
+      },
+      pattern:
+        /workflow\.specApproval\.reviewLabel must not reuse labels\.priorities\[1\]/,
+    },
+    {
+      name: "another workflow approval label",
+      config: {
+        workflow: {
+          specApproval: { approvedLabel: "plan-approved" },
+        },
+      },
+      pattern:
+        /workflow\.planApproval\.approvedLabel must differ from workflow\.specApproval\.approvedLabel/,
+    },
+  ] as const;
+
+  for (const entry of cases) {
+    const repoRoot = await mkdtemp(
+      join(tmpdir(), `patchmill-workflow-collision-${entry.name}-`),
+    );
+    await writeFile(
+      join(repoRoot, "patchmill.config.json"),
+      JSON.stringify(entry.config),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => loadPatchmillConfig(repoRoot, {}, []),
+      entry.pattern,
+    );
+  }
+});
+
 test("loadPatchmillConfig rejects removed skill workflow settings", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-removed-skill-settings-"),

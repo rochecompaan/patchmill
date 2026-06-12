@@ -14,9 +14,25 @@ import {
   type PatchmillSkillKey,
 } from "../workflow/skills.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
+import {
+  CONFIG_FILE_NAME,
+  configError,
+  hasEntries,
+  isRecord,
+  readOptionalBoolean,
+  readOptionalLiteral,
+  readOptionalPositiveInteger,
+  readOptionalSection,
+  readOptionalString,
+  readOptionalStringArray,
+} from "./parse-helpers.ts";
 import type { PatchmillConfig } from "./types.ts";
-
-const CONFIG_FILE_NAME = "patchmill.config.json";
+import {
+  cloneWorkflowConfig,
+  mergeWorkflowConfig,
+  readWorkflowConfig,
+  type PartialWorkflowConfig,
+} from "./workflow.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -48,6 +64,7 @@ type PartialConfig = Partial<{
   paths: Partial<PatchmillConfig["paths"]>;
   labels: Partial<PatchmillConfig["labels"]>;
   triage: Partial<PatchmillConfig["triage"]>;
+  workflow: PartialWorkflowConfig;
   skills: PartialPatchmillSkillsConfig;
   git: Partial<PatchmillConfig["git"]>;
   cleanupHook: string;
@@ -273,21 +290,31 @@ function mergeConfig(
   base: PatchmillConfig,
   update: PartialConfig,
 ): PatchmillConfig {
-  const labels = { ...base.labels, ...update.labels };
+  const labels = {
+    ...base.labels,
+    ...update.labels,
+    types: cloneStringArray(update.labels?.types ?? base.labels.types),
+    priorities: cloneStringArray(
+      update.labels?.priorities ?? base.labels.priorities,
+    ),
+  };
   const triage = mergeTriageConfig(base, labels, update);
   const paths = { ...base.paths, ...update.paths };
+  const projectPolicy = mergeProjectPolicy(
+    base.projectPolicy,
+    update.projectPolicy,
+  );
+  const workflow = mergeWorkflowConfig(base.workflow, update.workflow, {
+    labels,
+    planRequiresApprovalAlias: update.projectPolicy?.planRequiresApproval,
+  });
 
   return {
     host: { ...base.host, ...update.host },
     pi: { ...base.pi, ...update.pi },
-    labels: {
-      ...labels,
-      types: cloneStringArray(update.labels?.types ?? base.labels.types),
-      priorities: cloneStringArray(
-        update.labels?.priorities ?? base.labels.priorities,
-      ),
-    },
+    labels,
     triage,
+    workflow,
     skills: mergeSkillsConfig(base.skills, update.skills),
     paths: {
       ...paths,
@@ -300,7 +327,7 @@ function mergeConfig(
     ...(update.cleanupHook !== undefined || base.cleanupHook !== undefined
       ? { cleanupHook: update.cleanupHook ?? base.cleanupHook }
       : {}),
-    projectPolicy: mergeProjectPolicy(base.projectPolicy, update.projectPolicy),
+    projectPolicy,
   };
 }
 
@@ -315,6 +342,7 @@ function absolutizePaths(
   return {
     ...config,
     triage: cloneTriageConfig(config.triage),
+    workflow: cloneWorkflowConfig(config.workflow),
     skills: cloneSkillsConfig(config.skills),
     paths: {
       plansDir: absolutize(root, config.paths.plansDir),
@@ -327,100 +355,6 @@ function absolutizePaths(
     },
     projectPolicy: cloneProjectPolicy(config.projectPolicy),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function describeValue(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return "an array";
-  if (typeof value === "object") return "an object";
-  return String(value);
-}
-
-function configError(path: string, expected: string, value: unknown): Error {
-  return new Error(
-    `Invalid ${CONFIG_FILE_NAME}: ${path} must be ${expected}; received ${describeValue(value)}`,
-  );
-}
-
-function readOptionalSection(
-  source: Record<string, unknown>,
-  key: string,
-): Record<string, unknown> | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (!isRecord(value)) throw configError(key, "an object", value);
-  return value;
-}
-
-function readOptionalString(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): string | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") throw configError(path, "a string", value);
-  return value;
-}
-
-function readOptionalBoolean(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): boolean | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "boolean") throw configError(path, "a boolean", value);
-  return value;
-}
-
-function readOptionalPositiveInteger(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): number | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw configError(path, "a positive integer", value);
-  }
-  return value;
-}
-
-function readOptionalStringArray(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): string[] | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw configError(path, "an array of strings", value);
-  }
-  return cloneStringArray(value);
-}
-
-function readOptionalLiteral<T extends string>(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-  allowed: readonly [T, ...T[]],
-): T | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !allowed.includes(value as T)) {
-    const expected =
-      allowed.length === 1
-        ? `the literal ${JSON.stringify(allowed[0])}`
-        : `one of ${allowed.map((entry) => JSON.stringify(entry)).join(", ")}`;
-    throw configError(path, expected, value);
-  }
-  return value as T;
 }
 
 function readSkillsConfig(
@@ -579,10 +513,6 @@ function readOptionalVisualEvidenceExample(
     ...(caption !== undefined ? { caption } : {}),
     ...(referencePaths !== undefined ? { referencePaths } : {}),
   };
-}
-
-function hasEntries(value: object): boolean {
-  return Object.keys(value).length > 0;
 }
 
 function rejectRemovedWorkflowSettings(
@@ -820,6 +750,11 @@ function parseConfigFile(data: unknown): PartialConfig {
   const triage = readTriageConfig(data);
   if (triage !== undefined) {
     config.triage = triage;
+  }
+
+  const workflow = readWorkflowConfig(data);
+  if (workflow !== undefined) {
+    config.workflow = workflow;
   }
 
   const projectPolicy = readOptionalSection(data, "projectPolicy");

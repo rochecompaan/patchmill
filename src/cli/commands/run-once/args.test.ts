@@ -39,7 +39,12 @@ test("parseArgs executes by default when no args are provided", () => {
   assert.deepEqual(config.projectPolicy, DEFAULT_PATCHMILL_POLICY);
   assert.equal(config.readyLabel, "agent-ready");
   assert.equal(config.issueLimit, 1);
-  assert.equal(config.requirePlanApproval, false);
+  assert.equal(config.approvalPolicy.specApproval.required, false);
+  assert.equal(config.approvalPolicy.planApproval.required, false);
+  assert.equal(
+    config.approvalPolicy.planApproval.approvedLabel,
+    "plan-approved",
+  );
 });
 
 test("parseArgs shows help for help flags", () => {
@@ -194,6 +199,31 @@ test("summarizeResult includes merged issue handoff fields", () => {
       reviewSummary: "reviewed",
       landingDecision: "direct squash-landed: simple localized bug fix",
       logPath: ".patchmill/runs/issue-42/run.jsonl",
+    },
+  );
+});
+
+test("summarizeResult includes approval-required details", () => {
+  assert.deepEqual(
+    summarizeResult({
+      status: "approval-required",
+      issue: {
+        number: 42,
+        title: "Needs spec approval",
+        body: "Body",
+        labels: ["agent-ready"],
+        state: "open",
+      },
+      approvalKind: "spec",
+      missingLabel: "spec-approved",
+      logPath: ".patchmill/runs/run.jsonl",
+    }),
+    {
+      status: "approval-required",
+      issueNumber: 42,
+      approvalKind: "spec",
+      missingLabel: "spec-approved",
+      logPath: ".patchmill/runs/run.jsonl",
     },
   );
 });
@@ -399,6 +429,30 @@ test("loadCliConfig passes configured skills and project policy through to run-o
     config.projectPolicy.visualEvidence.prEvidenceExample?.screenshotPath,
     ".tmp/issue-42-sentinel-after.png",
   );
+});
+
+test("loadCliConfig resolves workflow plan approval ahead of legacy project policy", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-run-once-approval-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      workflow: {
+        specApproval: { required: true, approvedLabel: "spec-ok" },
+        planApproval: { required: false, approvedLabel: "plan-ok" },
+      },
+      projectPolicy: { planRequiresApproval: true },
+    }),
+    "utf8",
+  );
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {});
+
+  assert.equal(config.approvalPolicy.specApproval.required, true);
+  assert.equal(config.approvalPolicy.specApproval.approvedLabel, "spec-ok");
+  assert.equal(config.approvalPolicy.planApproval.required, false);
+  assert.equal(config.approvalPolicy.planApproval.approvedLabel, "plan-ok");
 });
 
 test("loadCliConfig ignores removed legacy tea login when patchmill config only customizes paths", async () => {

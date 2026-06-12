@@ -83,6 +83,12 @@ type JsonResult = JsonResultLog &
         landingDecision?: string;
       }
     | {
+        status: "approval-required";
+        issueNumber: number;
+        approvalKind: "spec" | "plan";
+        missingLabel: string;
+      }
+    | {
         status: "blocked";
         issueNumber: number;
         reason: string;
@@ -177,6 +183,14 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
         landingDecision: result.landingDecision,
         ...withLogPath,
       };
+    case "approval-required":
+      return {
+        status: result.status,
+        issueNumber: result.issue.number,
+        approvalKind: result.approvalKind,
+        missingLabel: result.missingLabel,
+        ...withLogPath,
+      };
     case "blocked":
       return {
         status: result.status,
@@ -260,7 +274,9 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     console.log(
       JSON.stringify(summarizeResult({ ...result, logPath: outputLogPath })),
     );
-    return result.status === "blocked" ? 1 : 0;
+    return result.status === "blocked" || result.status === "approval-required"
+      ? 1
+      : 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.log(JSON.stringify({ status: "error", error: message }));

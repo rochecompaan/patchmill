@@ -338,8 +338,14 @@ test("runInit prints missing label review and edit guidance when label setup is 
         runPiSmokeTest: failingPiSmokeTest,
         isInteractive: false,
         checkPiAvailable: async () => false,
-        setupLabels: async () => {
+        setupLabels: async (options) => {
           labelSetupCalled = true;
+          assert.deepEqual(
+            options.labelCatalog.workflowApprovalPolicy.labelDefinitions.map(
+              (label) => label.name,
+            ),
+            ["spec-review", "spec-approved", "plan-review", "plan-approved"],
+          );
           return {
             status: "skipped",
             missingCount: 1,
@@ -379,6 +385,12 @@ test("runInit --yes approves setup-time label creation", async () => {
         checkPiAvailable: async () => false,
         setupLabels: async (options) => {
           assumeYes = options.assumeYes;
+          assert.deepEqual(
+            options.labelCatalog.workflowApprovalPolicy.labelDefinitions.map(
+              (label) => label.name,
+            ),
+            ["spec-review", "spec-approved", "plan-review", "plan-approved"],
+          );
           return {
             status: "satisfied",
             missingCount: 0,

@@ -1,7 +1,7 @@
 import { cwd } from "node:process";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import type { PatchmillConfig } from "../../../config/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
@@ -42,6 +42,7 @@ export function parseArgs(
   const patchmillConfig = normalizedConfig ?? DEFAULT_PATCHMILL_CONFIG;
   const host = hostConfig(env, patchmillConfig);
   const projectPolicy = patchmillConfig.projectPolicy;
+  const labelCatalog = createPatchmillLabelCatalog(patchmillConfig);
   const config: AgentIssueConfig = {
     repoRoot,
     dryRun: false,
@@ -67,13 +68,11 @@ export function parseArgs(
       : {}),
     projectPolicy,
     skills: patchmillConfig.skills,
-    triagePolicy: createTriagePolicy(
-      patchmillConfig.labels,
-      patchmillConfig.triage,
-    ),
+    triagePolicy: labelCatalog.triagePolicy,
     readyLabel: patchmillConfig.labels.ready,
     issueLimit: 1,
-    requirePlanApproval: projectPolicy.planRequiresApproval,
+    labelCatalog,
+    approvalPolicy: labelCatalog.workflowApprovalPolicy,
     baseBranch: patchmillConfig.git.baseBranch,
     baseRef: patchmillConfig.git.baseRef,
     remote: patchmillConfig.git.remote,

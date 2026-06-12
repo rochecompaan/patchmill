@@ -19,6 +19,7 @@ export type PlanPiInput = {
   issue: IssueSummary;
   planPath: string;
   projectPolicy?: PatchmillProjectPolicy;
+  planApprovalRequired?: boolean;
   skills?: PatchmillSkillsConfig;
   triageLabels?: Partial<PromptTriageLabels>;
   runOptions?: PiRunnerRunOptions;

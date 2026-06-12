@@ -12,6 +12,8 @@ import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
+import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import {
   buildSkillPackMetadata,
   hashText,
@@ -122,6 +124,10 @@ const DEFAULT_LABEL_NAMES = [
   "priority:medium",
   "priority:high",
   "priority:critical",
+  "spec-review",
+  "spec-approved",
+  "plan-review",
+  "plan-approved",
 ] as const;
 
 function labelListPayload(
@@ -291,6 +297,41 @@ async function writeTodo(
   );
 }
 
+function approvalPolicy(
+  overrides: {
+    specRequired?: boolean;
+    specApprovedLabel?: string;
+    planRequired?: boolean;
+    planReviewLabel?: string;
+    planApprovedLabel?: string;
+  } = {},
+) {
+  return createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    specApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
+      required:
+        overrides.specRequired ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.specApproval.required,
+      approvedLabel:
+        overrides.specApprovedLabel ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.specApproval.approvedLabel,
+    },
+    planApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+      required:
+        overrides.planRequired ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.required,
+      reviewLabel:
+        overrides.planReviewLabel ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.reviewLabel,
+      approvedLabel:
+        overrides.planApprovedLabel ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.approvedLabel,
+    },
+  });
+}
+
 async function makeConfig(
   overrides: Partial<AgentIssueConfig> = {},
 ): Promise<AgentIssueConfig> {
@@ -298,6 +339,13 @@ async function makeConfig(
   const plansDir = join(repoRoot, "docs", "plans");
   const runStateDir = join(repoRoot, ".patchmill", "runs");
   await mkdir(plansDir, { recursive: true });
+  const labelCatalog = createPatchmillLabelCatalog({
+    ...DEFAULT_PATCHMILL_CONFIG,
+    labels: overrides.triagePolicy?.labels ?? DEFAULT_PATCHMILL_CONFIG.labels,
+    triage: overrides.triagePolicy
+      ? { stateMap: overrides.triagePolicy.stateMap }
+      : DEFAULT_PATCHMILL_CONFIG.triage,
+  });
 
   return {
     repoRoot,
@@ -312,7 +360,10 @@ async function makeConfig(
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
     readyLabel: "agent-ready",
     issueLimit: 1,
-    requirePlanApproval: false,
+    labelCatalog,
+    approvalPolicy: createWorkflowApprovalPolicy(
+      DEFAULT_PATCHMILL_CONFIG.workflow,
+    ),
     baseBranch: "main",
     baseRef: "HEAD",
     remote: "origin",
@@ -372,6 +423,83 @@ test("runOneIssue dry-run lists open issues and returns the selected agent-ready
       (call) => `${call.command} ${call.args[0]} ${call.args[1]}`,
     ),
     ["tea issues list", "tea issues list"],
+  );
+});
+
+test("runOneIssue automatic selection skips spec-unapproved issues", async () => {
+  const config = await makeConfig({
+    approvalPolicy: approvalPolicy({ specRequired: true }),
+  });
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(1, ["agent-ready", "priority:critical"], "Needs spec"),
+                issue(
+                  2,
+                  ["agent-ready", "priority:high", "spec-approved"],
+                  "Spec approved",
+                ),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issue.number, 2);
+});
+
+test("runOneIssue returns approval-required for explicit spec-unapproved issue", async () => {
+  const config = await makeConfig({
+    issueNumber: 7,
+    approvalPolicy: approvalPolicy({
+      specRequired: true,
+      specApprovedLabel: "spec-ok",
+    }),
+  });
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "7"
+    ) {
+      return {
+        code: 0,
+        stdout: issueViewPayload(issue(7, ["agent-ready"])),
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "approval-required");
+  assert.equal(result.issue.number, 7);
+  assert.equal(result.approvalKind, "spec");
+  assert.equal(result.missingLabel, "spec-ok");
+  assert.equal(
+    runner.calls.some((call) => call.command === "git"),
+    false,
   );
 });
 
@@ -1211,7 +1339,7 @@ test("runOneIssue stops after finding an existing plan when plan approval is req
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    requirePlanApproval: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
   });
   const planPath = "docs/plans/2026-05-14-issue-47-approval-existing-plan.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -1266,13 +1394,25 @@ test("runOneIssue stops after finding an existing plan when plan approval is req
   );
   assert.equal(comments.length, 2);
   assert.match(commentBody(comments[1]), /Existing plan ready/);
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  const restoreCall = editCalls.at(-1);
+  assert.ok(restoreCall);
+  assert.equal(
+    restoreCall.args[restoreCall.args.indexOf("--add-labels") + 1],
+    "agent-ready,plan-review",
+  );
 });
 
 test("runOneIssue stops after creating a plan when plan approval is required", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    requirePlanApproval: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
   });
   const selected = issue(48, ["agent-ready", "bug"], "Approval created plan");
   const expectedPlanPath =
@@ -1333,6 +1473,195 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
       (call) => call.command === "git" && call.args[0] === "show-ref",
     ),
     false,
+  );
+});
+
+test("runOneIssue ignores stale plan approval when a new plan is created", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const selected = issue(
+    50,
+    ["agent-ready", "plan-approved", "bug"],
+    "Stale plan approval",
+  );
+  const expectedPlanPath =
+    "docs/plans/2026-05-09-issue-50-stale-plan-approval.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create an implementation plan/);
+      return {
+        code: 0,
+        stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, expectedPlanPath);
+  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  const restoreCall = editCalls.at(-1);
+  assert.ok(restoreCall);
+  assert.equal(
+    restoreCall.args[restoreCall.args.indexOf("--add-labels") + 1],
+    "agent-ready,plan-review",
+  );
+  assert.equal(
+    restoreCall.args[restoreCall.args.indexOf("--remove-labels") + 1],
+    "plan-approved,in-progress",
+  );
+});
+
+test("runOneIssue proceeds when plan approval label is present and clears plan-review", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const planPath = "docs/plans/2026-05-14-issue-49-approved-plan.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(
+    49,
+    ["agent-ready", "plan-review", "plan-approved", "bug"],
+    "Approved plan",
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return {
+        code: 0,
+        stdout: labelListPayload([
+          "agent-ready",
+          "in-progress",
+          "agent-done",
+          "plan-review",
+          "plan-approved",
+        ]),
+        stderr: "",
+      };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo/pr/49",
+          branch: "agent/issue-49-approved-plan",
+          commits: ["abc123"],
+          validation: [
+            "node --test src/cli/commands/run-once/pipeline.test.ts",
+          ],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  const claimCall = runner.calls.find(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit" &&
+      call.args.includes("--remove-labels"),
+  );
+  assert.ok(claimCall);
+  assert.equal(
+    claimCall.args[claimCall.args.indexOf("--remove-labels") + 1],
+    "agent-ready,plan-review",
+  );
+  assert.equal(
+    claimCall.args[claimCall.args.indexOf("--add-labels") + 1],
+    "in-progress",
   );
 });
 

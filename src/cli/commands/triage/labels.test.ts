@@ -39,6 +39,14 @@ test("missingLabelDefinitions returns labels absent from Forgejo", () => {
   );
 });
 
+test("missingLabelDefinitions uses the default Patchmill label catalog", () => {
+  const missing = missingLabelDefinitions([ready, "bug"]);
+
+  assert.ok(missing.some((label) => label.name === "needs-info"));
+  assert.ok(missing.some((label) => label.name === "spec-review"));
+  assert.ok(missing.some((label) => label.name === "spec-approved"));
+});
+
 test("planLabelChange computes additions and removals", () => {
   const change = planLabelChange(7, ["bug", "old", needsInfo], ["bug", ready]);
 

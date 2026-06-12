@@ -2,7 +2,7 @@ import type {
   IssueHostProvider,
   LabelDefinition,
 } from "../../../host/types.ts";
-import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
+import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import { missingLabelDefinitions } from "../triage/labels.ts";
 
 export type LabelSetupResult = {
@@ -14,7 +14,7 @@ export type LabelSetupResult = {
 
 export type LabelSetupOptions = {
   host: IssueHostProvider;
-  policy: PatchmillTriagePolicy;
+  labelCatalog: PatchmillLabelCatalog;
   prompt?: (question: string) => Promise<string>;
   isInteractive: boolean;
   assumeYes: boolean;
@@ -96,7 +96,7 @@ export async function ensureRequiredLabels(
 ): Promise<LabelSetupResult> {
   const missing = missingLabelDefinitions(
     await options.host.listLabels(),
-    options.policy,
+    options.labelCatalog,
   );
 
   if (missing.length === 0) {

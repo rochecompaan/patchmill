@@ -29,6 +29,17 @@ export type PatchmillTriageConfig = {
   stateMap: PatchmillTriageStateMap;
 };
 
+export type PatchmillWorkflowApprovalConfig = {
+  required: boolean;
+  reviewLabel: string;
+  approvedLabel: string;
+};
+
+export type PatchmillWorkflowConfig = {
+  specApproval: PatchmillWorkflowApprovalConfig;
+  planApproval: PatchmillWorkflowApprovalConfig;
+};
+
 export type PatchmillPathsConfig = {
   plansDir: string;
   runStateDir: string;
@@ -46,6 +57,7 @@ export type PatchmillConfig = {
   pi: PatchmillPiConfig;
   labels: PatchmillLabelsConfig;
   triage: PatchmillTriageConfig;
+  workflow: PatchmillWorkflowConfig;
   skills: PatchmillSkillsConfig;
   paths: PatchmillPathsConfig;
   git: PatchmillGitConfig;

@@ -1,11 +1,15 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { createTriagePolicy } from "../../../policy/triage.ts";
-import type { LabelChangePlan, LabelDefinition } from "./types.ts";
+import {
+  createPatchmillLabelCatalog,
+  type PatchmillLabelCatalog,
+} from "../../../policy/label-catalog.ts";
+import type { LabelChangePlan } from "./types.ts";
 
-export const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
-  DEFAULT_PATCHMILL_CONFIG.labels,
-  DEFAULT_PATCHMILL_CONFIG.triage,
+export const DEFAULT_LABEL_CATALOG = createPatchmillLabelCatalog(
+  DEFAULT_PATCHMILL_CONFIG,
 );
+
+export const DEFAULT_TRIAGE_POLICY = DEFAULT_LABEL_CATALOG.triagePolicy;
 
 export function uniqueSorted(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
@@ -17,10 +21,10 @@ function uniquePreserved(values: string[]): string[] {
 
 export function missingLabelDefinitions(
   existingNames: string[],
-  triagePolicy = DEFAULT_TRIAGE_POLICY,
-): LabelDefinition[] {
+  labelCatalog: PatchmillLabelCatalog = DEFAULT_LABEL_CATALOG,
+): PatchmillLabelCatalog["labelDefinitions"] {
   const existing = new Set(existingNames);
-  return triagePolicy.allowedLabels.filter(
+  return labelCatalog.labelDefinitions.filter(
     (label) => !existing.has(label.name),
   );
 }

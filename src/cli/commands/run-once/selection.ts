@@ -1,5 +1,9 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import {
+  assertExplicitIssueApprovals,
+  issueMeetsAutomaticApprovals,
+} from "./approval-gates.ts";
 import type { IssueSelectionOptions, IssueSummary } from "./types.ts";
 
 const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
@@ -9,6 +13,7 @@ const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
 type ResolvedIssueSelectionOptions = {
   issueNumber?: number;
   readyLabel: IssueSelectionOptions["readyLabel"];
+  approvalPolicy: IssueSelectionOptions["approvalPolicy"];
   priorityLabels: readonly string[];
   excludedLabels: Set<string>;
 };
@@ -28,6 +33,7 @@ function resolveSelectionOptions(
   return {
     issueNumber: options.issueNumber,
     readyLabel: options.readyLabel,
+    approvalPolicy: options.approvalPolicy,
     priorityLabels:
       options.priorityLabels ?? triagePolicy.runOnceSelection.priorityOrder,
     excludedLabels: new Set([
@@ -62,7 +68,8 @@ function isEligible(
   return (
     issue.state === "open" &&
     issue.labels.includes(options.readyLabel) &&
-    blockingLabels(issue.labels, options.excludedLabels).length === 0
+    blockingLabels(issue.labels, options.excludedLabels).length === 0 &&
+    issueMeetsAutomaticApprovals(issue, options.approvalPolicy)
   );
 }
 
@@ -102,6 +109,8 @@ export function selectIssue(
         `Issue #${issue.number} is open but not eligible because it has ${blockedBy.join(", ")}`,
       );
     }
+
+    assertExplicitIssueApprovals(issue, resolved.approvalPolicy);
 
     return issue;
   }

@@ -1,6 +1,8 @@
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
+import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
+import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
 export type {
@@ -33,7 +35,8 @@ export type AgentIssueConfig = {
   triagePolicy?: PatchmillTriagePolicy;
   readyLabel: string;
   issueLimit: 1;
-  requirePlanApproval: boolean;
+  labelCatalog: PatchmillLabelCatalog;
+  approvalPolicy: WorkflowApprovalPolicy;
   baseBranch: string;
   baseRef: string;
   remote: string;
@@ -47,6 +50,7 @@ export type IssueSelectionOptions = Pick<
   AgentIssueConfig,
   "issueNumber" | "readyLabel" | "triagePolicy"
 > & {
+  approvalPolicy?: AgentIssueConfig["approvalPolicy"];
   priorityLabels?: readonly string[];
   excludedLabels?: readonly string[];
 };
@@ -157,6 +161,13 @@ export type AgentIssuePlanCreatedResult = {
   commit?: string;
 };
 
+export type AgentIssueApprovalRequiredResult = {
+  status: "approval-required";
+  issue: IssueSummary;
+  approvalKind: "spec" | "plan";
+  missingLabel: string;
+};
+
 export type AgentIssueVisualEvidence = {
   screenshotPath: string;
   caption?: string;
@@ -202,6 +213,7 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         issue: IssueSummary;
         planPath: string;
       }
+    | AgentIssueApprovalRequiredResult
     | ({
         issue: IssueSummary;
         planPath: string;

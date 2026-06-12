@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
+import { ApprovalRequiredError } from "./approval-gates.ts";
 import { selectIssue } from "./selection.ts";
 import type { IssueSummary } from "./types.ts";
 
@@ -22,6 +24,17 @@ function issue(number: number, labels: string[], state = "open"): IssueSummary {
     labels,
     state,
   };
+}
+
+function specApprovalPolicy(approvedLabel = "spec-approved") {
+  return createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    specApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
+      required: true,
+      approvedLabel,
+    },
+  });
 }
 
 test("selectIssue chooses the highest-priority agent-ready issue", () => {
@@ -190,6 +203,31 @@ test("selectIssue blocks labels mapped to non-ready triage states", () => {
   );
 
   assert.equal(selected?.number, 5);
+});
+
+test("selectIssue skips spec-unapproved automatic candidates and can choose lower priority approved work", () => {
+  const selected = selectIssue(
+    [issue(1, [ready, critical]), issue(2, [ready, high, "spec-approved"])],
+    { readyLabel: ready, approvalPolicy: specApprovalPolicy() },
+  );
+
+  assert.equal(selected?.number, 2);
+});
+
+test("selectIssue rejects explicit issue missing required spec approval", () => {
+  assert.throws(
+    () =>
+      selectIssue([issue(5, [ready])], {
+        readyLabel: ready,
+        issueNumber: 5,
+        approvalPolicy: specApprovalPolicy("spec-ok"),
+      }),
+    (error: unknown) => {
+      assert(error instanceof ApprovalRequiredError);
+      assert.equal(error.missingLabel, "spec-ok");
+      return true;
+    },
+  );
 });
 
 test("selectIssue returns no issue when no open agent-ready issue exists", () => {

@@ -9,7 +9,6 @@ import {
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
-import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
@@ -27,6 +26,11 @@ import {
   readIssueTodoTasks,
 } from "./issue-todos.ts";
 import { runPiPrompt } from "./pi.ts";
+import {
+  ApprovalRequiredError,
+  approvedWorkflowReviewLabelsToRemove,
+  decidePlanApprovalGate,
+} from "./approval-gates.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
 import {
@@ -458,6 +462,7 @@ async function selectResumableIssue(
       issueNumber: config.issueNumber,
       readyLabel: ready,
       triagePolicy: config.triagePolicy,
+      approvalPolicy: config.approvalPolicy,
     });
     if (!selected) return undefined;
     if (resumable.length === 1 && resumable[0]?.number !== selected.number) {
@@ -479,6 +484,7 @@ async function selectResumableIssue(
     issueNumber: config.issueNumber,
     readyLabel: ready,
     triagePolicy: config.triagePolicy,
+    approvalPolicy: config.approvalPolicy,
   });
   return selected ? { issue: selected, resumed: false } : undefined;
 }
@@ -540,12 +546,12 @@ function unexpectedFailureCommentKey(
 
 async function ensureAutomationLabel(
   host: IssueHostProvider,
-  triagePolicy: PatchmillTriagePolicy | undefined,
+  config: Pick<AgentIssueConfig, "labelCatalog">,
   name: string,
 ): Promise<void> {
   const missing = missingLabelDefinitions(
     await host.listLabels(),
-    triagePolicy ?? DEFAULT_TRIAGE_POLICY,
+    config.labelCatalog,
   );
   const label = missing.find((definition) => definition.name === name);
   if (!label) return;
@@ -660,7 +666,7 @@ async function blockIssue(
     issueNumber: issue.number,
   });
   const blockedLabels = nextLabels(labels, [inProgress], [needsInfo]);
-  await ensureAutomationLabel(host, config.triagePolicy, needsInfo);
+  await ensureAutomationLabel(host, config, needsInfo);
   await host.applyLabels(planLabelChange(issue.number, labels, blockedLabels));
   await writeRunState(
     config.runStateDir,
@@ -696,7 +702,23 @@ export async function runOneIssue(
     host: config.host,
   });
   const issues = await loadSelectionIssues(host, config, options);
-  const selected = await selectResumableIssue(issues, config);
+  let selected: { issue: IssueSummary; resumed: boolean } | undefined;
+  try {
+    selected = await selectResumableIssue(issues, config);
+  } catch (error) {
+    if (error instanceof ApprovalRequiredError) {
+      return withLogPath(
+        {
+          status: "approval-required",
+          issue: error.issue,
+          approvalKind: error.approvalKind,
+          missingLabel: error.missingLabel,
+        },
+        options,
+      );
+    }
+    throw error;
+  }
   const issue = selected?.issue;
 
   if (!issue) {
@@ -840,11 +862,23 @@ export async function runOneIssue(
   const ignoredPaths = cleanStatusIgnoredPaths(config, options);
   await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
   const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
+  const workflowReviewLabelsToRemove = approvedWorkflowReviewLabelsToRemove(
+    issue.labels,
+    config.approvalPolicy,
+  );
   let labels = resumed
     ? issue.labels.includes(inProgress)
       ? issue.labels
-      : nextLabels(issue.labels, [ready], [inProgress])
-    : nextLabels(issue.labels, [ready], [inProgress]);
+      : nextLabels(
+          issue.labels,
+          [ready, ...workflowReviewLabelsToRemove],
+          [inProgress],
+        )
+    : nextLabels(
+        issue.labels,
+        [ready, ...workflowReviewLabelsToRemove],
+        [inProgress],
+      );
   if (!checkpoints.claimed) {
     await runStep("claim issue", async () => {
       await progress(
@@ -854,7 +888,7 @@ export async function runOneIssue(
         `ensuring ${inProgress} label exists`,
         { issueNumber: issue.number },
       );
-      await ensureAutomationLabel(host, config.triagePolicy, inProgress);
+      await ensureAutomationLabel(host, config, inProgress);
       await host.applyLabels(
         planLabelChange(issue.number, issue.labels, labels),
       );
@@ -884,6 +918,7 @@ export async function runOneIssue(
   let branch: string | undefined;
   let worktreePath: string | undefined;
   let planCreated = false;
+  let planCreatedThisRun = false;
 
   try {
     if (!checkpoints.startedCommentPosted) {
@@ -960,6 +995,7 @@ export async function runOneIssue(
             issue,
             planPath,
             projectPolicy: config.projectPolicy,
+            planApprovalRequired: config.approvalPolicy.planApproval.required,
             skills: config.skills,
             triageLabels: { ready, needsInfo },
           }),
@@ -1004,6 +1040,7 @@ export async function runOneIssue(
       planPath = repoPath(config.repoRoot, planned.planPath).relative;
       planCommit = planned.commit;
       planCreated = true;
+      planCreatedThisRun = true;
       await writeRunState(
         config.runStateDir,
         {
@@ -1030,8 +1067,26 @@ export async function runOneIssue(
       });
     }
 
-    if (config.planOnly || config.requirePlanApproval) {
-      const finalLabels = nextLabels(labels, [inProgress], [ready]);
+    const planGate = decidePlanApprovalGate({
+      labels,
+      planOnly: config.planOnly,
+      planCreatedThisRun,
+      policy: config.approvalPolicy,
+    });
+
+    if (planGate.action !== "proceed") {
+      const labelsToAdd =
+        planGate.action === "stop-for-plan-review"
+          ? [ready, planGate.reviewLabel]
+          : [ready];
+      const labelsToRemove = [
+        inProgress,
+        ...(planGate.action === "stop-for-plan-review" &&
+        planGate.staleApprovedLabel
+          ? [planGate.staleApprovedLabel]
+          : []),
+      ];
+      const finalLabels = nextLabels(labels, labelsToRemove, labelsToAdd);
       if (!checkpoints.planReadyCommentPosted) {
         await host.commentIssue(
           issue.number,
@@ -1051,6 +1106,9 @@ export async function runOneIssue(
         checkpoints.planReadyCommentPosted = true;
       }
       if (!checkpoints.readyLabelRestored) {
+        if (planGate.action === "stop-for-plan-review") {
+          await ensureAutomationLabel(host, config, planGate.reviewLabel);
+        }
         await host.applyLabels(
           planLabelChange(issue.number, labels, finalLabels),
         );
@@ -1527,7 +1585,7 @@ export async function runOneIssue(
       checkpoints.handoffCommentPosted = true;
     }
     if (!checkpoints.doneLabelEnsured) {
-      await ensureAutomationLabel(host, config.triagePolicy, done);
+      await ensureAutomationLabel(host, config, done);
       await writeRunState(
         config.runStateDir,
         {

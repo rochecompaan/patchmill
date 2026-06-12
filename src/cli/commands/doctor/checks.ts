@@ -5,7 +5,7 @@ import { localPiAgentDir, piAgentEnv } from "../init/pi-agent-settings.ts";
 import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
-import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import {
   assertCleanWorktree,
   cleanStatusIgnoredPaths,
@@ -477,13 +477,16 @@ export async function runDoctorChecks(
     }
 
     try {
-      const policy = createTriagePolicy(config.labels, config.triage);
-      const missing = missingLabelDefinitions(await host.listLabels(), policy);
+      const labelCatalog = createPatchmillLabelCatalog(config);
+      const missing = missingLabelDefinitions(
+        await host.listLabels(),
+        labelCatalog,
+      );
       if (missing.length === 0) {
         results.push(
           pass(
             "labels",
-            policy.allowedLabels.map((label) => label.name).join(", "),
+            labelCatalog.labelDefinitions.map((label) => label.name).join(", "),
           ),
         );
       } else {
