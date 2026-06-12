@@ -216,6 +216,46 @@ export async function hydrateIssueComments(
   }
 }
 
+async function listIssuePage(
+  runner: CommandRunner,
+  repoRoot: string,
+  state: "open" | "all",
+  page: number,
+  teaLogin?: string,
+  keyword?: string,
+): Promise<IssueSummary[]> {
+  const args = [
+    "issues",
+    "list",
+    "--state",
+    state,
+    "--fields",
+    ISSUE_FIELDS,
+    "--page",
+    String(page),
+    "--limit",
+    String(ISSUE_PAGE_SIZE),
+    "--output",
+    "json",
+  ];
+  if (keyword) args.push("--keyword", keyword);
+
+  const result = await runner.run(
+    "tea",
+    withTeaContext(args, repoRoot, teaLogin),
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0)
+    throw new Error(
+      `tea issues list failed: ${result.stderr || result.stdout}`,
+    );
+  const parsed = parseJson(result.stdout, "tea issues list");
+  if (!Array.isArray(parsed))
+    throw new Error("tea issues list returned a non-array payload");
+
+  return parsed.map((entry) => parseIssuePayload(entry));
+}
+
 async function listIssuesByState(
   runner: CommandRunner,
   repoRoot: string,
@@ -225,37 +265,13 @@ async function listIssuesByState(
   const issues: IssueSummary[] = [];
 
   for (let page = 1; ; page += 1) {
-    const result = await runner.run(
-      "tea",
-      withTeaContext(
-        [
-          "issues",
-          "list",
-          "--state",
-          state,
-          "--fields",
-          ISSUE_FIELDS,
-          "--page",
-          String(page),
-          "--limit",
-          String(ISSUE_PAGE_SIZE),
-          "--output",
-          "json",
-        ],
-        repoRoot,
-        teaLogin,
-      ),
-      { cwd: repoRoot },
+    const pageIssues = await listIssuePage(
+      runner,
+      repoRoot,
+      state,
+      page,
+      teaLogin,
     );
-    if (result.code !== 0)
-      throw new Error(
-        `tea issues list failed: ${result.stderr || result.stdout}`,
-      );
-    const parsed = parseJson(result.stdout, "tea issues list");
-    if (!Array.isArray(parsed))
-      throw new Error("tea issues list returned a non-array payload");
-
-    const pageIssues = parsed.map((entry) => parseIssuePayload(entry));
 
     if (pageIssues.length === 0) break;
     issues.push(...pageIssues);
@@ -278,36 +294,21 @@ export async function viewIssue(
   issueNumber: number,
   teaLogin?: string,
 ): Promise<IssueSummary> {
-  const result = await runner.run(
-    "tea",
-    withTeaContext(
-      [
-        "issues",
-        String(issueNumber),
-        "--fields",
-        ISSUE_FIELDS,
-        "--output",
-        "json",
-      ],
+  for (let page = 1; ; page += 1) {
+    const pageIssues = await listIssuePage(
+      runner,
       repoRoot,
+      "all",
+      page,
       teaLogin,
-    ),
-    { cwd: repoRoot },
-  );
-  if (result.code !== 0)
-    throw new Error(
-      `tea issue view failed for #${issueNumber}: ${result.stderr || result.stdout}`,
+      String(issueNumber),
     );
-
-  const issue = parseIssuePayload(
-    parseJson(result.stdout, `tea issue view #${issueNumber}`),
-  );
-  if (issue.number !== issueNumber) {
-    throw new Error(
-      `tea issue view #${issueNumber} returned issue #${issue.number}`,
-    );
+    const issue = pageIssues.find((entry) => entry.number === issueNumber);
+    if (issue) return issue;
+    if (pageIssues.length === 0) break;
   }
-  return issue;
+
+  throw new Error(`tea issue #${issueNumber} was not found`);
 }
 
 export async function listLabels(

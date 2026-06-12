@@ -266,20 +266,24 @@ test("runTriage targeted GitHub issue reads issue by number", async () => {
 
 test("runTriage executes configured skill by default and reports observed changes", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const beforeIssueJson = JSON.stringify({
-    index: 1,
-    title: "Needs triage",
-    body: "Broken",
-    state: "open",
-    labels: [{ name: "bug" }],
-  });
-  const afterIssueJson = JSON.stringify({
-    index: 1,
-    title: "Needs triage",
-    body: "Broken",
-    state: "open",
-    labels: [{ name: "ready-for-agent" }, { name: "bug" }],
-  });
+  const beforeIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs triage",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "bug" }],
+    },
+  ]);
+  const afterIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs triage",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "ready-for-agent" }, { name: "bug" }],
+    },
+  ]);
   const runner = createStaticCommandRunner([
     { code: 0, stdout: beforeIssueJson, stderr: "" },
     noCommentsOutput,
@@ -561,37 +565,41 @@ test("runTriage execute snapshots Forgejo issues without repeated all-issue scan
       call.args.slice(0, 2).join(" ") === "issues list" &&
       call.args[call.args.indexOf("--state") + 1] === "all",
   );
-  const singleIssueViewCalls = runner.calls.filter(
+  const unfilteredAllIssueScanCalls = allIssueScanCalls.filter(
+    (call) => !call.args.includes("--keyword"),
+  );
+  const keywordSnapshotCalls = allIssueScanCalls.filter(
     (call) =>
-      call.command === "tea" &&
-      call.args[0] === "issues" &&
-      ["1", "2"].includes(call.args[1] ?? "") &&
-      call.args.includes("--fields") &&
-      !call.args.includes("--comments"),
+      call.args.includes("--keyword") &&
+      ["1", "2"].includes(call.args[call.args.indexOf("--keyword") + 1] ?? ""),
   );
 
   assert.equal(result.status, "applied");
   assert.deepEqual(events, ["#1:agent-ready", "#2:agent-ready"]);
-  assert.equal(allIssueScanCalls.length, 0);
-  assert.equal(singleIssueViewCalls.length, 2);
+  assert.equal(unfilteredAllIssueScanCalls.length, 0);
+  assert.equal(keywordSnapshotCalls.length, 2);
 });
 
 test("runTriage passes explicit tea login to Forgejo commands only", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const beforeIssueJson = JSON.stringify({
-    index: 1,
-    title: "Needs info",
-    body: "Broken",
-    state: "open",
-    labels: [{ name: "bug" }],
-  });
-  const afterIssueJson = JSON.stringify({
-    index: 1,
-    title: "Needs info",
-    body: "Broken",
-    state: "open",
-    labels: [{ name: "agent-ready" }, { name: "bug" }],
-  });
+  const beforeIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs info",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "bug" }],
+    },
+  ]);
+  const afterIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs info",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "agent-ready" }, { name: "bug" }],
+    },
+  ]);
   const runner = createStaticCommandRunner([
     { code: 0, stdout: beforeIssueJson, stderr: "" },
     noCommentsOutput,
@@ -682,20 +690,24 @@ test("runTriage passes configured custom skills through to the triage agent", as
 
 test("runTriage execute passes configured state map to the Pi prompt", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const beforeIssueJson = JSON.stringify({
-    index: 1,
-    title: "Needs triage",
-    body: "Broken",
-    state: "open",
-    labels: [{ name: "bug" }],
-  });
-  const afterIssueJson = JSON.stringify({
-    index: 1,
-    title: "Needs triage",
-    body: "Broken",
-    state: "open",
-    labels: [{ name: "ship-it" }, { name: "bug" }],
-  });
+  const beforeIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs triage",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "bug" }],
+    },
+  ]);
+  const afterIssueJson = JSON.stringify([
+    {
+      index: 1,
+      title: "Needs triage",
+      body: "Broken",
+      state: "open",
+      labels: [{ name: "ship-it" }, { name: "bug" }],
+    },
+  ]);
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
@@ -704,7 +716,9 @@ test("runTriage execute passes configured state map to the Pi prompt", async () 
       if (
         command === "tea" &&
         args[0] === "issues" &&
-        args[1] === "1" &&
+        args[1] === "list" &&
+        args.includes("--keyword") &&
+        args[args.indexOf("--keyword") + 1] === "1" &&
         args.includes("--fields")
       ) {
         const piCalls = runner.calls.filter(
@@ -940,13 +954,15 @@ test("runTriage rejects targeted issues that are not open and logs the error", a
   const runner = createStaticCommandRunner([
     {
       code: 0,
-      stdout: JSON.stringify({
-        index: 123,
-        title: "Closed",
-        body: "Already closed",
-        state: "closed",
-        labels: [],
-      }),
+      stdout: JSON.stringify([
+        {
+          index: 123,
+          title: "Closed",
+          body: "Already closed",
+          state: "closed",
+          labels: [],
+        },
+      ]),
       stderr: "",
     },
     noCommentsOutput,

@@ -171,26 +171,30 @@ test("runTriage dry-run previews blocked issue auto-unblock when Forgejo blocker
     forgejoTrustedAuthorOutput,
     {
       code: 0,
-      stdout: JSON.stringify({
-        index: 1,
-        title: "Scaffold",
-        body: "Done",
-        state: "closed",
-        labels: [],
-        comments: [],
-      }),
+      stdout: JSON.stringify([
+        {
+          index: 1,
+          title: "Scaffold",
+          body: "Done",
+          state: "closed",
+          labels: [],
+          comments: [],
+        },
+      ]),
       stderr: "",
     },
     {
       code: 0,
-      stdout: JSON.stringify({
-        index: 2,
-        title: "Model",
-        body: "Done",
-        state: "closed",
-        labels: [],
-        comments: [],
-      }),
+      stdout: JSON.stringify([
+        {
+          index: 2,
+          title: "Model",
+          body: "Done",
+          state: "closed",
+          labels: [],
+          comments: [],
+        },
+      ]),
       stderr: "",
     },
   ]);

@@ -119,18 +119,27 @@ test("listOpenIssues paginates until an empty page is returned", async () => {
   );
 });
 
-test("viewIssue fetches one Forgejo issue directly", async () => {
+test("viewIssue finds the exact issue through tea list JSON", async () => {
   const runner = createStaticCommandRunner([
     {
       code: 0,
-      stdout: JSON.stringify({
-        index: 2,
-        title: "Two",
-        body: "Closed issue body",
-        state: "closed",
-        labels: ["wontfix"],
-        url: "https://forgejo.example/issues/2",
-      }),
+      stdout: JSON.stringify([
+        {
+          index: 1,
+          title: "One",
+          body: "Other issue body",
+          state: "open",
+          labels: ["enhancement"],
+        },
+        {
+          index: 2,
+          title: "Two",
+          body: "Closed issue body",
+          state: "closed",
+          labels: ["wontfix"],
+          url: "https://forgejo.example/issues/2",
+        },
+      ]),
       stderr: "",
     },
   ]);
@@ -141,8 +150,19 @@ test("viewIssue fetches one Forgejo issue directly", async () => {
   assert.equal(issue.state, "closed");
   assert.deepEqual(issue.labels, ["wontfix"]);
   assert.equal(issue.url, "https://forgejo.example/issues/2");
-  assert.deepEqual(runner.calls[0]?.args.slice(0, 2), ["issues", "2"]);
-  assert.equal(runner.calls[0]?.args.includes("--state"), false);
+  assert.deepEqual(runner.calls[0]?.args.slice(0, 4), [
+    "issues",
+    "list",
+    "--state",
+    "all",
+  ]);
+  assert.deepEqual(
+    runner.calls[0]?.args.slice(
+      runner.calls[0].args.indexOf("--keyword"),
+      runner.calls[0].args.indexOf("--keyword") + 2,
+    ),
+    ["--keyword", "2"],
+  );
 });
 
 test("listOpenIssues rejects empty stdout as invalid JSON", async () => {

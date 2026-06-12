@@ -189,14 +189,16 @@ test("runTriage includes blocked issues by default so they can be re-evaluated",
     forgejoTrustedAuthorOutput,
     {
       code: 0,
-      stdout: JSON.stringify({
-        index: 99,
-        title: "Prerequisite",
-        body: "Still open",
-        state: "open",
-        labels: [],
-        comments: [],
-      }),
+      stdout: JSON.stringify([
+        {
+          index: 99,
+          title: "Prerequisite",
+          body: "Still open",
+          state: "open",
+          labels: [],
+          comments: [],
+        },
+      ]),
       stderr: "",
     },
   ]);
@@ -298,13 +300,15 @@ test("runTriage --all includes in-progress issues for recovery", async () => {
 
 test("runTriage targeted issue overrides the in-progress default skip", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
-  const triagedIssue = JSON.stringify({
-    index: 1,
-    title: "Claimed",
-    body: "Already being worked",
-    state: "open",
-    labels: [{ name: "in-progress" }],
-  });
+  const triagedIssue = JSON.stringify([
+    {
+      index: 1,
+      title: "Claimed",
+      body: "Already being worked",
+      state: "open",
+      labels: [{ name: "in-progress" }],
+    },
+  ]);
   const runner = createStaticCommandRunner([
     { code: 0, stdout: triagedIssue, stderr: "" },
     noCommentsOutput,
