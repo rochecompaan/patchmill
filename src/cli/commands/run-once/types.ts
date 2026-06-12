@@ -48,6 +48,7 @@ export type IssueSelectionOptions = Pick<
   AgentIssueConfig,
   "issueNumber" | "readyLabel" | "triagePolicy"
 > & {
+  approvalPolicy?: AgentIssueConfig["approvalPolicy"];
   priorityLabels?: readonly string[];
   excludedLabels?: readonly string[];
 };
