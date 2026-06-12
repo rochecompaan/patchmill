@@ -6,6 +6,7 @@ import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import {
   assertCleanWorktree,
   cleanStatusIgnoredPaths,
@@ -478,12 +479,24 @@ export async function runDoctorChecks(
 
     try {
       const policy = createTriagePolicy(config.labels, config.triage);
-      const missing = missingLabelDefinitions(await host.listLabels(), policy);
+      const approvalPolicy = createWorkflowApprovalPolicy(
+        config.workflow,
+        config.projectPolicy,
+      );
+      const allLabelDefinitions = [
+        ...policy.allowedLabels,
+        ...approvalPolicy.labelDefinitions,
+      ];
+      const missing = missingLabelDefinitions(
+        await host.listLabels(),
+        policy,
+        approvalPolicy.labelDefinitions,
+      );
       if (missing.length === 0) {
         results.push(
           pass(
             "labels",
-            policy.allowedLabels.map((label) => label.name).join(", "),
+            allLabelDefinitions.map((label) => label.name).join(", "),
           ),
         );
       } else {

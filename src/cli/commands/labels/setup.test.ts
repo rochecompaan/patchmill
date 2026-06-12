@@ -134,6 +134,28 @@ test("ensureRequiredLabels creates missing labels after approval", async () => {
   assert.match(result.message, /Created 15 labels/);
 });
 
+test("ensureRequiredLabels creates extra workflow labels with triage labels", async () => {
+  const { host, created } = fakeHost({ existingLabels: requiredLabelNames });
+
+  const result = await ensureRequiredLabels({
+    host,
+    policy,
+    extraLabels: [
+      {
+        name: "plan-review",
+        color: "#5319e7",
+        description: "Awaiting implementation plan review",
+      },
+    ],
+    isInteractive: false,
+    assumeYes: true,
+    command: "doctor",
+  });
+
+  assert.equal(result.status, "created");
+  assert.deepEqual(created, ["plan-review"]);
+});
+
 test("ensureRequiredLabels creates without prompting when assumeYes is set", async () => {
   const { host, created } = fakeHost({
     existingLabels: requiredLabelNames.filter((name) => name !== "agent-ready"),

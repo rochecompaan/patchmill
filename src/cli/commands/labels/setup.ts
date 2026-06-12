@@ -15,6 +15,7 @@ export type LabelSetupResult = {
 export type LabelSetupOptions = {
   host: IssueHostProvider;
   policy: PatchmillTriagePolicy;
+  extraLabels?: readonly LabelDefinition[];
   prompt?: (question: string) => Promise<string>;
   isInteractive: boolean;
   assumeYes: boolean;
@@ -97,6 +98,7 @@ export async function ensureRequiredLabels(
   const missing = missingLabelDefinitions(
     await options.host.listLabels(),
     options.policy,
+    options.extraLabels,
   );
 
   if (missing.length === 0) {

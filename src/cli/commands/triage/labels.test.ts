@@ -39,6 +39,31 @@ test("missingLabelDefinitions returns labels absent from Forgejo", () => {
   );
 });
 
+test("missingLabelDefinitions can include workflow approval labels", () => {
+  const workflowLabels = [
+    {
+      name: "spec-review",
+      color: "#5319e7",
+      description: "Awaiting specification review",
+    },
+    {
+      name: "spec-approved",
+      color: "#0e8a16",
+      description: "Specification approved for automation",
+    },
+  ];
+
+  const missing = missingLabelDefinitions(
+    [ready, "bug"],
+    undefined,
+    workflowLabels,
+  );
+
+  assert.ok(missing.some((label) => label.name === "needs-info"));
+  assert.ok(missing.some((label) => label.name === "spec-review"));
+  assert.ok(missing.some((label) => label.name === "spec-approved"));
+});
+
 test("planLabelChange computes additions and removals", () => {
   const change = planLabelChange(7, ["bug", "old", needsInfo], ["bug", ready]);
 

@@ -8,10 +8,11 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
 import { createCommandRunner } from "../triage/command.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import { GLOBAL_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { ensureRequiredLabels } from "../labels/setup.ts";
 import {
   installProjectSkills,
@@ -213,13 +214,20 @@ export async function runInit(
       repoRoot: config.repoRoot,
       host: result.config.host,
     });
-    const policy = createTriagePolicy(
-      DEFAULT_PATCHMILL_CONFIG.labels,
-      DEFAULT_PATCHMILL_CONFIG.triage,
+    const labelConfig = {
+      ...DEFAULT_PATCHMILL_CONFIG,
+      host: result.config.host,
+      skills: { ...DEFAULT_PATCHMILL_CONFIG.skills, ...result.config.skills },
+    };
+    const policy = createTriagePolicy(labelConfig.labels, labelConfig.triage);
+    const approvalPolicy = createWorkflowApprovalPolicy(
+      labelConfig.workflow,
+      labelConfig.projectPolicy,
     );
     const labelSetup = await (options.setupLabels ?? ensureRequiredLabels)({
       host,
       policy,
+      extraLabels: approvalPolicy.labelDefinitions,
       prompt: options.prompt ?? defaultPrompt,
       isInteractive,
       assumeYes: config.yes,

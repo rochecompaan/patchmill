@@ -15,14 +15,25 @@ function uniquePreserved(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+function dedupeLabelDefinitions(labels: LabelDefinition[]): LabelDefinition[] {
+  const seen = new Set<string>();
+  return labels.filter((label) => {
+    if (seen.has(label.name)) return false;
+    seen.add(label.name);
+    return true;
+  });
+}
+
 export function missingLabelDefinitions(
   existingNames: string[],
   triagePolicy = DEFAULT_TRIAGE_POLICY,
+  extraLabels: readonly LabelDefinition[] = [],
 ): LabelDefinition[] {
   const existing = new Set(existingNames);
-  return triagePolicy.allowedLabels.filter(
-    (label) => !existing.has(label.name),
-  );
+  return dedupeLabelDefinitions([
+    ...triagePolicy.allowedLabels,
+    ...extraLabels,
+  ]).filter((label) => !existing.has(label.name));
 }
 
 export function planLabelChange(
