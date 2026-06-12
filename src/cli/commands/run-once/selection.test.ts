@@ -27,17 +27,14 @@ function issue(number: number, labels: string[], state = "open"): IssueSummary {
 }
 
 function specApprovalPolicy(approvedLabel = "spec-approved") {
-  return createWorkflowApprovalPolicy(
-    {
-      ...DEFAULT_PATCHMILL_CONFIG.workflow,
-      specApproval: {
-        ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
-        required: true,
-        approvedLabel,
-      },
+  return createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    specApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
+      required: true,
+      approvedLabel,
     },
-    DEFAULT_PATCHMILL_CONFIG.projectPolicy,
-  );
+  });
 }
 
 test("selectIssue chooses the highest-priority agent-ready issue", () => {

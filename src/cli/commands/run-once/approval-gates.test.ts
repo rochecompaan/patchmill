@@ -12,17 +12,14 @@ import {
 import type { IssueSummary } from "./types.ts";
 
 function approvalPolicy(overrides = {}) {
-  return createWorkflowApprovalPolicy(
-    {
-      ...DEFAULT_PATCHMILL_CONFIG.workflow,
-      specApproval: {
-        ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
-        required: true,
-        ...overrides,
-      },
+  return createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    specApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
+      required: true,
+      ...overrides,
     },
-    DEFAULT_PATCHMILL_CONFIG.projectPolicy,
-  );
+  });
 }
 
 function issue(labels: string[]): IssueSummary {
@@ -32,7 +29,6 @@ function issue(labels: string[]): IssueSummary {
 test("issueMeetsAutomaticApprovals accepts missing spec approval when the gate is disabled", () => {
   const policy = createWorkflowApprovalPolicy(
     DEFAULT_PATCHMILL_CONFIG.workflow,
-    DEFAULT_PATCHMILL_CONFIG.projectPolicy,
   );
 
   assert.equal(
@@ -76,17 +72,14 @@ function planApprovalPolicy(
   required: boolean,
   approvedLabel = "plan-approved",
 ) {
-  return createWorkflowApprovalPolicy(
-    {
-      ...DEFAULT_PATCHMILL_CONFIG.workflow,
-      planApproval: {
-        ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
-        required,
-        approvedLabel,
-      },
+  return createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    planApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+      required,
+      approvedLabel,
     },
-    DEFAULT_PATCHMILL_CONFIG.projectPolicy,
-  );
+  });
 }
 
 test("decidePlanApprovalGate proceeds when plan approval is disabled", () => {

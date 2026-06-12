@@ -13,8 +13,7 @@ import { formatDoctorReport, hasDoctorFailures } from "./reporting.ts";
 import type { CommandRunner } from "../triage/types.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
-import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
-import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import {
   ensureRequiredLabels,
   type LabelSetupResult,
@@ -74,16 +73,9 @@ async function runDoctorLabelSetup(
     repoRoot: options.repoRoot,
     host: loaded.config.host,
   });
-  const policy = createTriagePolicy(loaded.config.labels, loaded.config.triage);
-  const approvalPolicy = createWorkflowApprovalPolicy(
-    loaded.config.workflow,
-    loaded.config.projectPolicy,
-  );
-
   return ensureRequiredLabels({
     host,
-    policy,
-    extraLabels: approvalPolicy.labelDefinitions,
+    labelCatalog: createPatchmillLabelCatalog(loaded.config),
     prompt: options.prompt,
     isInteractive: options.isInteractive,
     assumeYes: options.assumeYes,

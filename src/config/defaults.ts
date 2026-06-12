@@ -22,10 +22,12 @@ const DEFAULT_PATCHMILL_LABELS = {
 
 const DEFAULT_PATCHMILL_WORKFLOW = {
   specApproval: {
+    required: false,
     reviewLabel: "spec-review",
     approvedLabel: "spec-approved",
   },
   planApproval: {
+    required: false,
     reviewLabel: "plan-review",
     approvedLabel: "plan-approved",
   },

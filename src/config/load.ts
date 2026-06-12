@@ -14,9 +14,25 @@ import {
   type PatchmillSkillKey,
 } from "../workflow/skills.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
+import {
+  CONFIG_FILE_NAME,
+  configError,
+  hasEntries,
+  isRecord,
+  readOptionalBoolean,
+  readOptionalLiteral,
+  readOptionalPositiveInteger,
+  readOptionalSection,
+  readOptionalString,
+  readOptionalStringArray,
+} from "./parse-helpers.ts";
 import type { PatchmillConfig } from "./types.ts";
-
-const CONFIG_FILE_NAME = "patchmill.config.json";
+import {
+  cloneWorkflowConfig,
+  mergeWorkflowConfig,
+  readWorkflowConfig,
+  type PartialWorkflowConfig,
+} from "./workflow.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -41,15 +57,6 @@ type PartialProjectPolicy = Partial<
   visualEvidence?: Partial<PatchmillConfig["projectPolicy"]["visualEvidence"]>;
   pi?: PartialPiWorkflowPolicy;
 };
-
-type PartialWorkflowApprovalConfig = Partial<
-  PatchmillConfig["workflow"]["specApproval"]
->;
-
-type PartialWorkflowConfig = Partial<{
-  specApproval: PartialWorkflowApprovalConfig;
-  planApproval: PartialWorkflowApprovalConfig;
-}>;
 
 type PartialConfig = Partial<{
   host: Partial<PatchmillConfig["host"]>;
@@ -279,89 +286,35 @@ function mergeTriageConfig(
   };
 }
 
-function cloneWorkflowApprovalConfig(
-  approval: PatchmillConfig["workflow"]["specApproval"],
-): PatchmillConfig["workflow"]["specApproval"] {
-  return {
-    ...(approval.required !== undefined ? { required: approval.required } : {}),
-    reviewLabel: approval.reviewLabel,
-    approvedLabel: approval.approvedLabel,
-  };
-}
-
-function mergeWorkflowApprovalConfig(
-  base: PatchmillConfig["workflow"]["specApproval"],
-  update: PartialWorkflowApprovalConfig | undefined,
-): PatchmillConfig["workflow"]["specApproval"] {
-  return {
-    ...(update?.required !== undefined
-      ? { required: update.required }
-      : base.required !== undefined
-        ? { required: base.required }
-        : {}),
-    reviewLabel: update?.reviewLabel ?? base.reviewLabel,
-    approvedLabel: update?.approvedLabel ?? base.approvedLabel,
-  };
-}
-
-function cloneWorkflowConfig(
-  workflow: PatchmillConfig["workflow"],
-): PatchmillConfig["workflow"] {
-  return {
-    specApproval: cloneWorkflowApprovalConfig(workflow.specApproval),
-    planApproval: cloneWorkflowApprovalConfig(workflow.planApproval),
-  };
-}
-
-function assertDistinctWorkflowApprovalLabels(
-  key: "specApproval" | "planApproval",
-  approval: PatchmillConfig["workflow"]["specApproval"],
-): void {
-  if (approval.reviewLabel !== approval.approvedLabel) return;
-  throw new Error(
-    `Invalid ${CONFIG_FILE_NAME}: workflow.${key}.approvedLabel must differ from workflow.${key}.reviewLabel`,
-  );
-}
-
-function mergeWorkflowConfig(
-  base: PatchmillConfig["workflow"],
-  update: PartialWorkflowConfig | undefined,
-): PatchmillConfig["workflow"] {
-  const specApproval = mergeWorkflowApprovalConfig(
-    base.specApproval,
-    update?.specApproval,
-  );
-  const planApproval = mergeWorkflowApprovalConfig(
-    base.planApproval,
-    update?.planApproval,
-  );
-
-  assertDistinctWorkflowApprovalLabels("specApproval", specApproval);
-  assertDistinctWorkflowApprovalLabels("planApproval", planApproval);
-
-  return { specApproval, planApproval };
-}
-
 function mergeConfig(
   base: PatchmillConfig,
   update: PartialConfig,
 ): PatchmillConfig {
-  const labels = { ...base.labels, ...update.labels };
+  const labels = {
+    ...base.labels,
+    ...update.labels,
+    types: cloneStringArray(update.labels?.types ?? base.labels.types),
+    priorities: cloneStringArray(
+      update.labels?.priorities ?? base.labels.priorities,
+    ),
+  };
   const triage = mergeTriageConfig(base, labels, update);
   const paths = { ...base.paths, ...update.paths };
+  const projectPolicy = mergeProjectPolicy(
+    base.projectPolicy,
+    update.projectPolicy,
+  );
+  const workflow = mergeWorkflowConfig(base.workflow, update.workflow, {
+    labels,
+    planRequiresApprovalAlias: update.projectPolicy?.planRequiresApproval,
+  });
 
   return {
     host: { ...base.host, ...update.host },
     pi: { ...base.pi, ...update.pi },
-    labels: {
-      ...labels,
-      types: cloneStringArray(update.labels?.types ?? base.labels.types),
-      priorities: cloneStringArray(
-        update.labels?.priorities ?? base.labels.priorities,
-      ),
-    },
+    labels,
     triage,
-    workflow: mergeWorkflowConfig(base.workflow, update.workflow),
+    workflow,
     skills: mergeSkillsConfig(base.skills, update.skills),
     paths: {
       ...paths,
@@ -374,7 +327,7 @@ function mergeConfig(
     ...(update.cleanupHook !== undefined || base.cleanupHook !== undefined
       ? { cleanupHook: update.cleanupHook ?? base.cleanupHook }
       : {}),
-    projectPolicy: mergeProjectPolicy(base.projectPolicy, update.projectPolicy),
+    projectPolicy,
   };
 }
 
@@ -402,100 +355,6 @@ function absolutizePaths(
     },
     projectPolicy: cloneProjectPolicy(config.projectPolicy),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function describeValue(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return "an array";
-  if (typeof value === "object") return "an object";
-  return String(value);
-}
-
-function configError(path: string, expected: string, value: unknown): Error {
-  return new Error(
-    `Invalid ${CONFIG_FILE_NAME}: ${path} must be ${expected}; received ${describeValue(value)}`,
-  );
-}
-
-function readOptionalSection(
-  source: Record<string, unknown>,
-  key: string,
-): Record<string, unknown> | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (!isRecord(value)) throw configError(key, "an object", value);
-  return value;
-}
-
-function readOptionalString(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): string | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") throw configError(path, "a string", value);
-  return value;
-}
-
-function readOptionalBoolean(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): boolean | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "boolean") throw configError(path, "a boolean", value);
-  return value;
-}
-
-function readOptionalPositiveInteger(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): number | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw configError(path, "a positive integer", value);
-  }
-  return value;
-}
-
-function readOptionalStringArray(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-): string[] | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw configError(path, "an array of strings", value);
-  }
-  return cloneStringArray(value);
-}
-
-function readOptionalLiteral<T extends string>(
-  source: Record<string, unknown>,
-  key: string,
-  path: string,
-  allowed: readonly [T, ...T[]],
-): T | undefined {
-  const value = source[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !allowed.includes(value as T)) {
-    const expected =
-      allowed.length === 1
-        ? `the literal ${JSON.stringify(allowed[0])}`
-        : `one of ${allowed.map((entry) => JSON.stringify(entry)).join(", ")}`;
-    throw configError(path, expected, value);
-  }
-  return value as T;
 }
 
 function readSkillsConfig(
@@ -553,73 +412,6 @@ function readTriageConfig(
         `triage.${key}`,
         "a supported triage setting",
         value[key],
-      );
-    }
-  }
-
-  return hasEntries(parsed) ? parsed : undefined;
-}
-
-function readWorkflowApprovalConfig(
-  source: Record<string, unknown>,
-  key: "specApproval" | "planApproval",
-): PartialWorkflowApprovalConfig | undefined {
-  const value = readOptionalSection(source, key);
-  if (!value) return undefined;
-
-  const parsed: PartialWorkflowApprovalConfig = {};
-  const required = readOptionalBoolean(
-    value,
-    "required",
-    `workflow.${key}.required`,
-  );
-  const reviewLabel = readOptionalString(
-    value,
-    "reviewLabel",
-    `workflow.${key}.reviewLabel`,
-  );
-  const approvedLabel = readOptionalString(
-    value,
-    "approvedLabel",
-    `workflow.${key}.approvedLabel`,
-  );
-
-  if (required !== undefined) parsed.required = required;
-  if (reviewLabel !== undefined) parsed.reviewLabel = reviewLabel;
-  if (approvedLabel !== undefined) parsed.approvedLabel = approvedLabel;
-
-  for (const entry of Object.keys(value)) {
-    if (!["required", "reviewLabel", "approvedLabel"].includes(entry)) {
-      throw configError(
-        `workflow.${key}.${entry}`,
-        "a supported workflow approval setting",
-        value[entry],
-      );
-    }
-  }
-
-  return hasEntries(parsed) ? parsed : undefined;
-}
-
-function readWorkflowConfig(
-  source: Record<string, unknown>,
-): PartialWorkflowConfig | undefined {
-  const value = source.workflow;
-  if (value === undefined) return undefined;
-  if (!isRecord(value)) throw configError("workflow", "an object", value);
-
-  const parsed: PartialWorkflowConfig = {};
-  const specApproval = readWorkflowApprovalConfig(value, "specApproval");
-  const planApproval = readWorkflowApprovalConfig(value, "planApproval");
-  if (specApproval !== undefined) parsed.specApproval = specApproval;
-  if (planApproval !== undefined) parsed.planApproval = planApproval;
-
-  for (const entry of Object.keys(value)) {
-    if (!["specApproval", "planApproval"].includes(entry)) {
-      throw configError(
-        `workflow.${entry}`,
-        "a supported workflow setting",
-        value[entry],
       );
     }
   }
@@ -721,10 +513,6 @@ function readOptionalVisualEvidenceExample(
     ...(caption !== undefined ? { caption } : {}),
     ...(referencePaths !== undefined ? { referencePaths } : {}),
   };
-}
-
-function hasEntries(value: object): boolean {
-  return Object.keys(value).length > 0;
 }
 
 function rejectRemovedWorkflowSettings(

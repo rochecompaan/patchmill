@@ -42,6 +42,7 @@ export class PiRunner implements PiPromptContracts {
         issue: input.issue,
         planPath: input.planPath,
         projectPolicy,
+        planApprovalRequired: input.planApprovalRequired,
         skills: input.skills,
         triageLabels: input.triageLabels,
       }),

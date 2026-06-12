@@ -341,7 +341,9 @@ test("runInit prints missing label review and edit guidance when label setup is 
         setupLabels: async (options) => {
           labelSetupCalled = true;
           assert.deepEqual(
-            options.extraLabels?.map((label) => label.name),
+            options.labelCatalog.workflowApprovalPolicy.labelDefinitions.map(
+              (label) => label.name,
+            ),
             ["spec-review", "spec-approved", "plan-review", "plan-approved"],
           );
           return {
@@ -384,7 +386,9 @@ test("runInit --yes approves setup-time label creation", async () => {
         setupLabels: async (options) => {
           assumeYes = options.assumeYes;
           assert.deepEqual(
-            options.extraLabels?.map((label) => label.name),
+            options.labelCatalog.workflowApprovalPolicy.labelDefinitions.map(
+              (label) => label.name,
+            ),
             ["spec-review", "spec-approved", "plan-review", "plan-approved"],
           );
           return {

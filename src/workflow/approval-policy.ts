@@ -1,6 +1,5 @@
 import type { PatchmillWorkflowConfig } from "../config/types.ts";
 import type { LabelDefinition } from "../host/types.ts";
-import type { PatchmillProjectPolicy } from "../policy/types.ts";
 
 export type WorkflowApprovalKind = "spec" | "plan";
 
@@ -36,18 +35,16 @@ function dedupeLabelDefinitions(labels: LabelDefinition[]): LabelDefinition[] {
 
 export function createWorkflowApprovalPolicy(
   workflow: PatchmillWorkflowConfig,
-  projectPolicy: Pick<PatchmillProjectPolicy, "planRequiresApproval">,
 ): WorkflowApprovalPolicy {
   const specApproval: WorkflowApprovalStagePolicy = {
     kind: "spec",
-    required: workflow.specApproval.required ?? false,
+    required: workflow.specApproval.required,
     reviewLabel: workflow.specApproval.reviewLabel,
     approvedLabel: workflow.specApproval.approvedLabel,
   };
   const planApproval: WorkflowApprovalStagePolicy = {
     kind: "plan",
-    required:
-      workflow.planApproval.required ?? projectPolicy.planRequiresApproval,
+    required: workflow.planApproval.required,
     reviewLabel: workflow.planApproval.reviewLabel,
     approvedLabel: workflow.planApproval.approvedLabel,
   };

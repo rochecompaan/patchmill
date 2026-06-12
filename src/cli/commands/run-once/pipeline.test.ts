@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import {
   buildSkillPackMetadata,
@@ -305,29 +306,30 @@ function approvalPolicy(
     planApprovedLabel?: string;
   } = {},
 ) {
-  return createWorkflowApprovalPolicy(
-    {
-      ...DEFAULT_PATCHMILL_CONFIG.workflow,
-      specApproval: {
-        ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
-        required: overrides.specRequired,
-        approvedLabel:
-          overrides.specApprovedLabel ??
-          DEFAULT_PATCHMILL_CONFIG.workflow.specApproval.approvedLabel,
-      },
-      planApproval: {
-        ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
-        required: overrides.planRequired,
-        reviewLabel:
-          overrides.planReviewLabel ??
-          DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.reviewLabel,
-        approvedLabel:
-          overrides.planApprovedLabel ??
-          DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.approvedLabel,
-      },
+  return createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    specApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
+      required:
+        overrides.specRequired ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.specApproval.required,
+      approvedLabel:
+        overrides.specApprovedLabel ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.specApproval.approvedLabel,
     },
-    DEFAULT_PATCHMILL_POLICY,
-  );
+    planApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+      required:
+        overrides.planRequired ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.required,
+      reviewLabel:
+        overrides.planReviewLabel ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.reviewLabel,
+      approvedLabel:
+        overrides.planApprovedLabel ??
+        DEFAULT_PATCHMILL_CONFIG.workflow.planApproval.approvedLabel,
+    },
+  });
 }
 
 async function makeConfig(
@@ -337,6 +339,13 @@ async function makeConfig(
   const plansDir = join(repoRoot, "docs", "plans");
   const runStateDir = join(repoRoot, ".patchmill", "runs");
   await mkdir(plansDir, { recursive: true });
+  const labelCatalog = createPatchmillLabelCatalog({
+    ...DEFAULT_PATCHMILL_CONFIG,
+    labels: overrides.triagePolicy?.labels ?? DEFAULT_PATCHMILL_CONFIG.labels,
+    triage: overrides.triagePolicy
+      ? { stateMap: overrides.triagePolicy.stateMap }
+      : DEFAULT_PATCHMILL_CONFIG.triage,
+  });
 
   return {
     repoRoot,
@@ -351,9 +360,9 @@ async function makeConfig(
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
     readyLabel: "agent-ready",
     issueLimit: 1,
+    labelCatalog,
     approvalPolicy: createWorkflowApprovalPolicy(
       DEFAULT_PATCHMILL_CONFIG.workflow,
-      DEFAULT_PATCHMILL_POLICY,
     ),
     baseBranch: "main",
     baseRef: "HEAD",

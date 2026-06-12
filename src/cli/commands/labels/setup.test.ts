@@ -8,14 +8,16 @@ import type {
   LabelChangePlan,
   LabelDefinition,
 } from "../../../host/types.ts";
-import { createTriagePolicy } from "../../../policy/triage.ts";
+import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import { ensureRequiredLabels } from "./setup.ts";
 
-const policy = createTriagePolicy(
-  DEFAULT_PATCHMILL_CONFIG.labels,
-  DEFAULT_PATCHMILL_CONFIG.triage,
+const labelCatalog = createPatchmillLabelCatalog(DEFAULT_PATCHMILL_CONFIG);
+const triageLabelNames = labelCatalog.triagePolicy.allowedLabels.map(
+  (label) => label.name,
 );
-const requiredLabelNames = policy.allowedLabels.map((label) => label.name);
+const requiredLabelNames = labelCatalog.labelDefinitions.map(
+  (label) => label.name,
+);
 
 type FakeHostOptions = {
   existingLabels?: string[];
@@ -69,7 +71,7 @@ test("ensureRequiredLabels reports satisfied when no labels are missing", async 
 
   const result = await ensureRequiredLabels({
     host,
-    policy,
+    labelCatalog,
     isInteractive: false,
     assumeYes: false,
     command: "init",
@@ -90,7 +92,7 @@ test("ensureRequiredLabels lists labels and skips creation when prompt is declin
 
   const result = await ensureRequiredLabels({
     host,
-    policy,
+    labelCatalog,
     isInteractive: true,
     assumeYes: false,
     command: "init",
@@ -119,7 +121,7 @@ test("ensureRequiredLabels creates missing labels after approval", async () => {
 
   const result = await ensureRequiredLabels({
     host,
-    policy,
+    labelCatalog,
     isInteractive: true,
     assumeYes: false,
     command: "doctor",
@@ -131,29 +133,27 @@ test("ensureRequiredLabels creates missing labels after approval", async () => {
   assert.equal(result.createdCount, requiredLabelNames.length);
   assert.deepEqual(created, requiredLabelNames);
   assert.match(result.message, /Patchmill needs these labels on GitHub via gh/);
-  assert.match(result.message, /Created 15 labels/);
+  assert.match(result.message, /Created 19 labels/);
 });
 
-test("ensureRequiredLabels creates extra workflow labels with triage labels", async () => {
-  const { host, created } = fakeHost({ existingLabels: requiredLabelNames });
+test("ensureRequiredLabels creates workflow labels from the catalog", async () => {
+  const { host, created } = fakeHost({ existingLabels: triageLabelNames });
 
   const result = await ensureRequiredLabels({
     host,
-    policy,
-    extraLabels: [
-      {
-        name: "plan-review",
-        color: "#5319e7",
-        description: "Awaiting implementation plan review",
-      },
-    ],
+    labelCatalog,
     isInteractive: false,
     assumeYes: true,
     command: "doctor",
   });
 
   assert.equal(result.status, "created");
-  assert.deepEqual(created, ["plan-review"]);
+  assert.deepEqual(created, [
+    "spec-review",
+    "spec-approved",
+    "plan-review",
+    "plan-approved",
+  ]);
 });
 
 test("ensureRequiredLabels creates without prompting when assumeYes is set", async () => {
@@ -164,7 +164,7 @@ test("ensureRequiredLabels creates without prompting when assumeYes is set", asy
 
   const result = await ensureRequiredLabels({
     host,
-    policy,
+    labelCatalog,
     isInteractive: false,
     assumeYes: true,
     command: "doctor",
@@ -187,7 +187,7 @@ test("ensureRequiredLabels skips in non-interactive mode without assumeYes", asy
 
   const result = await ensureRequiredLabels({
     host,
-    policy,
+    labelCatalog,
     isInteractive: false,
     assumeYes: false,
     command: "init",
@@ -207,7 +207,7 @@ test("ensureRequiredLabels reports creation failures with label names", async ()
 
   const result = await ensureRequiredLabels({
     host,
-    policy,
+    labelCatalog,
     isInteractive: false,
     assumeYes: true,
     command: "doctor",

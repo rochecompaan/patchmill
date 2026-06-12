@@ -39,25 +39,8 @@ test("missingLabelDefinitions returns labels absent from Forgejo", () => {
   );
 });
 
-test("missingLabelDefinitions can include workflow approval labels", () => {
-  const workflowLabels = [
-    {
-      name: "spec-review",
-      color: "#5319e7",
-      description: "Awaiting specification review",
-    },
-    {
-      name: "spec-approved",
-      color: "#0e8a16",
-      description: "Specification approved for automation",
-    },
-  ];
-
-  const missing = missingLabelDefinitions(
-    [ready, "bug"],
-    undefined,
-    workflowLabels,
-  );
+test("missingLabelDefinitions uses the default Patchmill label catalog", () => {
+  const missing = missingLabelDefinitions([ready, "bug"]);
 
   assert.ok(missing.some((label) => label.name === "needs-info"));
   assert.ok(missing.some((label) => label.name === "spec-review"));

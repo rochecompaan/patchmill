@@ -12,10 +12,12 @@ test("defaults match the current patchmill baseline configuration", () => {
   assert.equal(DEFAULT_PATCHMILL_CONFIG.skills, DEFAULT_PATCHMILL_SKILLS);
   assert.deepEqual(DEFAULT_PATCHMILL_CONFIG.workflow, {
     specApproval: {
+      required: false,
       reviewLabel: "spec-review",
       approvedLabel: "spec-approved",
     },
     planApproval: {
+      required: false,
       reviewLabel: "plan-review",
       approvedLabel: "plan-approved",
     },
@@ -53,10 +55,12 @@ test("defaults match the current patchmill baseline configuration", () => {
     },
     workflow: {
       specApproval: {
+        required: false,
         reviewLabel: "spec-review",
         approvedLabel: "spec-approved",
       },
       planApproval: {
+        required: false,
         reviewLabel: "plan-review",
         approvedLabel: "plan-approved",
       },

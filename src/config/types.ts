@@ -30,7 +30,7 @@ export type PatchmillTriageConfig = {
 };
 
 export type PatchmillWorkflowApprovalConfig = {
-  required?: boolean;
+  required: boolean;
   reviewLabel: string;
   approvedLabel: string;
 };

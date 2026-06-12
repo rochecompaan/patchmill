@@ -4,12 +4,9 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../config/defaults.ts";
 import { createTriagePolicy } from "../policy/triage.ts";
 import { createWorkflowApprovalPolicy } from "./approval-policy.ts";
 
-const projectPolicy = DEFAULT_PATCHMILL_CONFIG.projectPolicy;
-
 test("createWorkflowApprovalPolicy defaults both gates to not required", () => {
   const policy = createWorkflowApprovalPolicy(
     DEFAULT_PATCHMILL_CONFIG.workflow,
-    { ...projectPolicy, planRequiresApproval: false },
   );
 
   assert.equal(policy.specApproval.required, false);
@@ -20,28 +17,21 @@ test("createWorkflowApprovalPolicy defaults both gates to not required", () => {
   assert.equal(policy.planApproval.approvedLabel, "plan-approved");
 });
 
-test("createWorkflowApprovalPolicy treats projectPolicy.planRequiresApproval as plan alias", () => {
-  const policy = createWorkflowApprovalPolicy(
-    DEFAULT_PATCHMILL_CONFIG.workflow,
-    { ...projectPolicy, planRequiresApproval: true },
-  );
-
-  assert.equal(policy.planApproval.required, true);
-});
-
-test("createWorkflowApprovalPolicy lets workflow.planApproval.required override the alias", () => {
-  const policy = createWorkflowApprovalPolicy(
-    {
-      ...DEFAULT_PATCHMILL_CONFIG.workflow,
-      planApproval: {
-        ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
-        required: false,
-      },
+test("createWorkflowApprovalPolicy uses normalized workflow required flags", () => {
+  const policy = createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    specApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
+      required: true,
     },
-    { ...projectPolicy, planRequiresApproval: true },
-  );
+    planApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+      required: true,
+    },
+  });
 
-  assert.equal(policy.planApproval.required, false);
+  assert.equal(policy.specApproval.required, true);
+  assert.equal(policy.planApproval.required, true);
 });
 
 test("createWorkflowApprovalPolicy exposes workflow label definitions outside triage labels", () => {
@@ -51,7 +41,6 @@ test("createWorkflowApprovalPolicy exposes workflow label definitions outside tr
   );
   const policy = createWorkflowApprovalPolicy(
     DEFAULT_PATCHMILL_CONFIG.workflow,
-    projectPolicy,
   );
 
   assert.deepEqual(

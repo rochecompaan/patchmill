@@ -8,11 +8,7 @@ import {
 } from "../../../git/worktree-strategy.ts";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
-import type {
-  IssueHostProvider,
-  LabelDefinition,
-} from "../../../host/types.ts";
-import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
+import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import {
   DEFAULT_TRIAGE_POLICY,
@@ -550,14 +546,12 @@ function unexpectedFailureCommentKey(
 
 async function ensureAutomationLabel(
   host: IssueHostProvider,
-  triagePolicy: PatchmillTriagePolicy | undefined,
-  extraLabels: readonly LabelDefinition[],
+  config: Pick<AgentIssueConfig, "labelCatalog">,
   name: string,
 ): Promise<void> {
   const missing = missingLabelDefinitions(
     await host.listLabels(),
-    triagePolicy ?? DEFAULT_TRIAGE_POLICY,
-    extraLabels,
+    config.labelCatalog,
   );
   const label = missing.find((definition) => definition.name === name);
   if (!label) return;
@@ -672,7 +666,7 @@ async function blockIssue(
     issueNumber: issue.number,
   });
   const blockedLabels = nextLabels(labels, [inProgress], [needsInfo]);
-  await ensureAutomationLabel(host, config.triagePolicy, [], needsInfo);
+  await ensureAutomationLabel(host, config, needsInfo);
   await host.applyLabels(planLabelChange(issue.number, labels, blockedLabels));
   await writeRunState(
     config.runStateDir,
@@ -894,7 +888,7 @@ export async function runOneIssue(
         `ensuring ${inProgress} label exists`,
         { issueNumber: issue.number },
       );
-      await ensureAutomationLabel(host, config.triagePolicy, [], inProgress);
+      await ensureAutomationLabel(host, config, inProgress);
       await host.applyLabels(
         planLabelChange(issue.number, issue.labels, labels),
       );
@@ -1113,12 +1107,7 @@ export async function runOneIssue(
       }
       if (!checkpoints.readyLabelRestored) {
         if (planGate.action === "stop-for-plan-review") {
-          await ensureAutomationLabel(
-            host,
-            config.triagePolicy,
-            config.approvalPolicy.labelDefinitions,
-            planGate.reviewLabel,
-          );
+          await ensureAutomationLabel(host, config, planGate.reviewLabel);
         }
         await host.applyLabels(
           planLabelChange(issue.number, labels, finalLabels),
@@ -1596,7 +1585,7 @@ export async function runOneIssue(
       checkpoints.handoffCommentPosted = true;
     }
     if (!checkpoints.doneLabelEnsured) {
-      await ensureAutomationLabel(host, config.triagePolicy, [], done);
+      await ensureAutomationLabel(host, config, done);
       await writeRunState(
         config.runStateDir,
         {

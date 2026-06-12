@@ -1,6 +1,7 @@
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
+import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
@@ -34,6 +35,7 @@ export type AgentIssueConfig = {
   triagePolicy?: PatchmillTriagePolicy;
   readyLabel: string;
   issueLimit: 1;
+  labelCatalog: PatchmillLabelCatalog;
   approvalPolicy: WorkflowApprovalPolicy;
   baseBranch: string;
   baseRef: string;

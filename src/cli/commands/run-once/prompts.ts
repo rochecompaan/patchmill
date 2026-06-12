@@ -553,8 +553,7 @@ export function buildPlanCreationPrompt(
   input: PlanCreationPromptInput,
 ): string {
   const { issue, planPath, projectPolicy } = input;
-  const planApprovalRequired =
-    input.planApprovalRequired ?? projectPolicy.planRequiresApproval;
+  const planApprovalRequired = input.planApprovalRequired ?? false;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
   const workflow = numberedWorkflow([
