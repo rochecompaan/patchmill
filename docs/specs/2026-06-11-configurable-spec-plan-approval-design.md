@@ -40,73 +40,122 @@ Those capabilities should be added later once the approval model is stable.
 
 ## Configuration
 
-Add a top-level `workflow` config object:
+Add a top-level `workflow` config object with approval policy owned by the
+workflow domain:
 
 ```json
 {
   "workflow": {
-    "requireSpecApproval": false,
-    "requirePlanApproval": false,
-    "specStorage": "issue-comment",
-    "planStorage": "repository"
+    "specApproval": {
+      "required": false,
+      "reviewLabel": "spec-review",
+      "approvedLabel": "spec-approved"
+    },
+    "planApproval": {
+      "required": false,
+      "reviewLabel": "plan-review",
+      "approvedLabel": "plan-approved"
+    }
   }
 }
 ```
 
 Fields:
 
-- `requireSpecApproval`: when true, implementation is blocked until the issue
-  has the configured spec-approved label.
-- `requirePlanApproval`: when true, Patchmill creates or finds a plan, posts a
-  plan-ready comment, applies the configured plan-review label, restores the
-  ready label, and stops until the issue has the configured plan-approved label.
-- `specStorage`: v1 accepts `"issue-comment"`; it documents where reviewed
-  specifications are expected to live. Additional storage modes can be added
-  later.
-- `planStorage`: v1 accepts `"repository"`; it preserves the current plan-file
-  workflow. Additional storage modes can be added later.
+- `workflow.specApproval.required`: when true, implementation is blocked until
+  the issue has `workflow.specApproval.approvedLabel`.
+- `workflow.specApproval.reviewLabel`: the workflow-owned label that can mark an
+  issue as awaiting specification review.
+- `workflow.specApproval.approvedLabel`: the workflow-owned label that confirms
+  specification approval.
+- `workflow.planApproval.required`: when true, Patchmill creates or finds a
+  plan, posts a plan-ready comment, applies `workflow.planApproval.reviewLabel`,
+  restores the ready label, and stops until the issue has
+  `workflow.planApproval.approvedLabel`.
+- `workflow.planApproval.reviewLabel`: the workflow-owned label that marks an
+  issue as awaiting plan review.
+- `workflow.planApproval.approvedLabel`: the workflow-owned label that confirms
+  plan approval.
 
 Existing `projectPolicy.planRequiresApproval` remains supported. When
-`workflow.requirePlanApproval` is absent, Patchmill derives it from
+`workflow.planApproval.required` is absent, Patchmill derives it from
 `projectPolicy.planRequiresApproval`. When both are present,
-`workflow.requirePlanApproval` wins.
+`workflow.planApproval.required` wins.
 
-## Labels
+## Storage assumptions
 
-Extend `labels` with optional workflow labels:
+V1 does not expose `specStorage` or `planStorage` config. Specification review
+is assumed to happen in issue discussion/comments by convention, and plans
+continue to use the existing repository plan-file workflow. Add storage
+configuration only when Patchmill has multiple real storage implementations to
+choose from.
 
-```json
-{
-  "labels": {
-    "specReview": "spec-review",
-    "specApproved": "spec-approved",
-    "planReview": "plan-review",
-    "planApproved": "plan-approved"
-  }
-}
-```
+## Label ownership
 
-Default labels are added to the generated config and setup/doctor label checks.
-These labels are distinct from canonical triage states. They are
-workflow-control signals rather than replacements for `agent-ready`,
-`needs-info`, `blocked`, or `in-progress`.
+Workflow approval labels are not part of the flat triage `labels` object. They
+belong to `workflow.specApproval` and `workflow.planApproval` because they are
+workflow-control signals rather than canonical triage states such as
+`agent-ready`, `needs-info`, `blocked`, or `in-progress`.
+
+Setup, doctor, and host label creation should aggregate required label
+definitions from both triage policy and normalized workflow approval policy.
+This keeps approval labels discoverable without leaking them into generic triage
+label configuration.
+
+## Implementation boundaries
+
+Implementation must introduce approval-specific modules before wiring behavior
+into `run-once`:
+
+- `src/workflow/approval-policy.ts` owns the normalized approval model. It
+  resolves config defaults, the `projectPolicy.planRequiresApproval`
+  compatibility alias, workflow-owned label names, and the workflow label
+  definitions that setup/doctor should create or validate.
+- `src/cli/commands/run-once/approval-gates.ts` owns run-once approval
+  decisions. It consumes the normalized policy plus issue and plan state, then
+  returns a small decision object for selection and pipeline code to act on.
+
+`src/cli/commands/run-once/pipeline.ts` should consume these normalized policy
+and decision objects rather than adding scattered branches for spec approval,
+plan approval, plan-review labeling, ready restoration, or resume semantics.
+
+The decision shape should distinguish at least:
+
+- automatic-selection eligibility for spec approval;
+- explicit-issue `approval-required` failures with the missing label and
+  approval kind;
+- plan-review stops that describe the labels/comments/state transitions the
+  pipeline must apply;
+- approved/proceed decisions.
 
 ## Run-once behavior
 
 ### Selection
 
-`patchmill run-once` continues to select issues by the configured ready label
-and existing protection/exclusion labels. Before claiming a selected issue, it
-validates workflow approvals:
+`patchmill run-once` has separate automatic and explicit issue-selection paths.
 
-- If `workflow.requireSpecApproval` is true and the issue lacks
-  `labels.specApproved`, return `no-issue` for automatic selection.
-- If a specific issue was requested with `--issue` and the required spec
-  approval is missing, return a clear blocked/error result explaining the
-  missing approval label.
-- If `workflow.requirePlanApproval` is true and a plan already exists but the
-  issue lacks `labels.planApproved`, stop before implementation and post/ensure
-  the plan-ready path where possible.
+Automatic selection continues to consider issues by the configured ready label
+and existing protection/exclusion labels, but required specification approval is
+part of candidate eligibility. When normalized spec approval is required,
+automatic selection must filter out issues that lack
+`workflow.specApproval.approvedLabel` before choosing the best candidate. If no
+ready, unblocked, spec-approved candidate remains, return `no-issue`.
+
+Explicit `--issue` selection does not silently fall back to another issue. It
+should validate the requested issue fail-fast: if required spec approval is
+missing, return a typed `approval-required` result/error that includes the
+missing `workflow.specApproval.approvedLabel` and identifies the missing
+approval as specification approval.
+
+Plan approval remains a workflow stop rather than an automatic-selection filter:
+if normalized plan approval is required and a plan already exists but the issue
+lacks `workflow.planApproval.approvedLabel`, return a plan-review decision
+before implementation and post/ensure the plan-ready path where possible.
+
+Implementation should apply the spec-approval predicate before or inside
+`selectIssue`/candidate eligibility. Do not select a single automatic issue and
+then translate missing spec approval into `no-issue`, because a higher-priority
+unapproved issue could otherwise starve lower-priority ready and approved work.
 
 ### Plan approval stop
 
@@ -115,7 +164,7 @@ When plan approval is required and no approved plan label is present:
 1. claim the issue as usual;
 2. create or find the plan;
 3. post the existing plan-ready comment;
-4. apply the configured plan-review label;
+4. apply `workflow.planApproval.reviewLabel`;
 5. restore the ready label and remove `in-progress`;
 6. record run state as finished;
 7. return `plan-created` or `plan-found`.
@@ -125,24 +174,26 @@ explicit.
 
 ### Resuming after plan approval
 
-After a human applies `labels.planApproved`, the next `run-once` may select the
-issue again. If the plan file already exists, Patchmill reuses it and proceeds
-to implementation instead of stopping again. It may remove `labels.planReview`
-during claim or leave it as historical metadata; v1 should remove `planReview`
-when moving to `in-progress` to keep the active state clear.
+After a human applies `workflow.planApproval.approvedLabel`, the next `run-once`
+may select the issue again. If the plan file already exists, Patchmill reuses it
+and proceeds to implementation instead of stopping again. It may remove
+`workflow.planApproval.reviewLabel` during claim or leave it as historical
+metadata; v1 should remove the review label when moving to `in-progress` to keep
+the active state clear.
 
 ### Specification approval
 
 When spec approval is required, `run-once` does not create a plan or worktree
-unless `labels.specApproved` is present. This intentionally leaves spec drafting
-and review to triage or a future interactive spec command.
+unless `workflow.specApproval.approvedLabel` is present. This intentionally
+leaves spec drafting and review to triage or a future interactive spec command.
 
 ## Triage behavior
 
 The initial implementation does not need to change triage classification logic
-beyond label definitions and documentation. Triage skills can be updated later
-to produce `spec-review` rather than `agent-ready` when enough information
-exists but spec approval is required.
+beyond aggregating workflow label definitions for setup/doctor/documentation.
+Triage skills can be updated later to apply `workflow.specApproval.reviewLabel`
+rather than `agent-ready` when enough information exists but spec approval is
+required.
 
 For now, the run-once gate is the safety boundary: even if triage applies
 `agent-ready`, implementation will not proceed without required approvals.
@@ -164,10 +215,19 @@ No host-specific comment editing or issue body mutation is required.
 Automated tests should cover:
 
 - default config preserves current behavior;
-- `workflow.requirePlanApproval` overrides `projectPolicy.planRequiresApproval`;
-- partial config merging preserves default workflow labels and storage modes;
-- selection or pipeline gating skips unapproved spec-required issues;
-- plan-approval stop applies `plan-review` and restores the ready label;
+- `workflow.planApproval.required` overrides
+  `projectPolicy.planRequiresApproval`;
+- partial config merging preserves default workflow approval labels;
+- normalized approval policy exposes workflow label definitions for setup/doctor
+  aggregation without adding them to flat triage labels;
+- automatic selection skips unapproved spec-required issues and can still pick a
+  lower-priority ready, unblocked, spec-approved issue;
+- explicit `--issue` selection returns a typed `approval-required` result/error
+  when required spec approval is missing;
+- approval-gate decisions cover plan-review stops without requiring inline
+  approval branches in `run-once/pipeline.ts`;
+- plan-approval stop applies `workflow.planApproval.reviewLabel` and restores
+  the ready label;
 - approved plan issues proceed to implementation when the plan exists.
 
 Documentation/config-only details can be verified by type checks and existing
