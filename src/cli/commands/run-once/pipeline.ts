@@ -1000,6 +1000,7 @@ export async function runOneIssue(
             issue,
             planPath,
             projectPolicy: config.projectPolicy,
+            planApprovalRequired: config.approvalPolicy.planApproval.required,
             skills: config.skills,
             triageLabels: { ready, needsInfo },
           }),

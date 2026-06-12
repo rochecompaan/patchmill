@@ -25,6 +25,7 @@ export type PlanCreationPromptInput = {
   issue: IssueSummary;
   planPath: string;
   projectPolicy: PatchmillProjectPolicy;
+  planApprovalRequired?: boolean;
   skills?: PatchmillSkillsConfig;
   triageLabels?: Partial<PromptTriageLabels>;
 };
@@ -552,6 +553,8 @@ export function buildPlanCreationPrompt(
   input: PlanCreationPromptInput,
 ): string {
   const { issue, planPath, projectPolicy } = input;
+  const planApprovalRequired =
+    input.planApprovalRequired ?? projectPolicy.planRequiresApproval;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
   const workflow = numberedWorkflow([
@@ -559,7 +562,7 @@ export function buildPlanCreationPrompt(
     `Treat \`${ready}\` as meaning the issue is already clear and unambiguous enough to plan. Do not run a separate brainstorming/requirements-discovery process by default.`,
     renderPlanningSkillStep(skills),
     `Do not substitute an ad-hoc planning process for the configured planning skill. The plan must be saved to ${planPath} and use checkbox steps suitable for agent execution.`,
-    projectPolicy.planRequiresApproval
+    planApprovalRequired
       ? "Stop after writing the plan and wait for explicit manual approval before implementation continues."
       : "Do not stop for an additional manual plan-approval gate. Only use the blocker contract if the issue is unexpectedly not clear enough to plan safely.",
     renderTodoWorkflowStep(projectPolicy, "plan", issue.number),
