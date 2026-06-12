@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/rochecompaan/patchmill/compare/v0.9.0...v0.10.0) (2026-06-12)
+
+
+### Features
+
+* **workflow:** add configurable workflow approval gates ([#26](https://github.com/rochecompaan/patchmill/issues/26)) ([eedd881](https://github.com/rochecompaan/patchmill/commit/eedd881d3fc3ceb21d88a35b28b3cc94b7fe20b4))
+
+
+### Bug Fixes
+
+* **setup-test-repo:** make copied fixtures writable ([7ca5bc8](https://github.com/rochecompaan/patchmill/commit/7ca5bc8f3d0d1caced5e3d71681c1582499131d1))
+* **triage:** fetch Forgejo issue snapshots from list JSON ([239a9d8](https://github.com/rochecompaan/patchmill/commit/239a9d8854840417054e4cd5a5377e7dbfd7085a))
+
 ## [0.9.0](https://github.com/rochecompaan/patchmill/compare/v0.8.0...v0.9.0) (2026-06-09)
 
 
