@@ -71,6 +71,18 @@ pieces your repository needs.
       "blocked": "blocked"
     }
   },
+  "workflow": {
+    "specApproval": {
+      "required": false,
+      "reviewLabel": "spec-review",
+      "approvedLabel": "spec-approved"
+    },
+    "planApproval": {
+      "required": false,
+      "reviewLabel": "plan-review",
+      "approvedLabel": "plan-approved"
+    }
+  },
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
@@ -202,6 +214,48 @@ buckets. Keep the dashed `labels["in-progress"]` key exactly as shown in JSON.
 `triage.stateMap` keys are repository label names. Values are limited to
 `agent-ready`, `needs-info`, `agent-unsuitable`, and `blocked`, and the
 configured `labels.ready` label must map to `agent-ready`.
+
+## Workflow approval gates
+
+`workflow.specApproval` and `workflow.planApproval` configure approval labels
+that control when `patchmill run-once` may proceed. These labels are workflow
+signals, not triage buckets, so they are not nested under the flat `labels`
+object and are not added to `triage.stateMap`.
+
+```json
+{
+  "workflow": {
+    "specApproval": {
+      "required": true,
+      "reviewLabel": "spec-review",
+      "approvedLabel": "spec-approved"
+    },
+    "planApproval": {
+      "required": true,
+      "reviewLabel": "plan-review",
+      "approvedLabel": "plan-approved"
+    }
+  }
+}
+```
+
+When specification approval is required, automatic `run-once` selection ignores
+ready issues that do not have `workflow.specApproval.approvedLabel`. Explicit
+`patchmill run-once --issue <number>` fails with an `approval-required` result
+for the requested issue instead of silently choosing another issue.
+
+When plan approval is required, Patchmill creates or finds the issue plan,
+comments that the plan is ready, applies `workflow.planApproval.reviewLabel`,
+restores the ready label, removes `in-progress`, records the run as finished,
+and stops. After a human applies `workflow.planApproval.approvedLabel`, a later
+`run-once` reuses the existing plan and proceeds to implementation. During the
+claim step, Patchmill removes the active plan-review label when the approved
+label is present.
+
+`projectPolicy.planRequiresApproval` remains as a compatibility alias. If
+`workflow.planApproval.required` is omitted, Patchmill derives plan approval
+from `projectPolicy.planRequiresApproval`. If both are present,
+`workflow.planApproval.required` wins.
 
 ### Blocked triage state
 

@@ -159,7 +159,10 @@ flowchart TD
   F --> G{Eligible issue?}
   E --> H[Read run state/checkpoints]
   G -->|no| Z[Return no-issue]
-  G -->|yes| H
+  G -->|yes| G1{Spec approval required and missing?}
+  G1 -->|yes, automatic selection| Z
+  G1 -->|yes, explicit --issue| AR[Return approval-required]
+  G1 -->|no| H
   H --> I{Dry run?}
   I -->|yes| Y[Return selected issue]
   I -->|no| J[Assert clean worktree]
@@ -172,10 +175,11 @@ flowchart TD
   O1 -->|blocked| BQ[Move to needs-info and comment blocker]
   O1 -->|plan-created| P[Record plan path/commit]
   N -->|yes| P2[Use existing plan]
-  P --> R{Plan-only or approval required?}
+  P --> R{Plan-only or plan approval missing?}
   P2 --> R
-  R -->|yes| R1[Comment plan ready, restore ready label, finish]
-  R -->|no| S[Render subagent support guidance]
+  R -->|plan-only| R1[Comment plan ready, restore ready label, finish]
+  R -->|approval missing| R2[Comment plan ready, add plan-review, restore ready label, finish]
+  R -->|approved or not required| S[Render subagent support guidance]
   S --> T[Ensure issue worktree and branch]
   T --> U[Run Pi implementation prompt in worktree]
   U --> V{Pi result}
@@ -196,6 +200,12 @@ flowchart TD
 `in-progress` run with valid run state. Otherwise it selects an open issue
 carrying the configured ready label and no excluded/protection labels. Priority
 labels determine ordering, then lower issue number wins.
+
+When `workflow.specApproval.required` is true, the automatic candidate set is
+filtered before priority ordering so a high-priority unapproved issue does not
+starve a lower-priority approved issue. Explicit `--issue` selection validates
+the requested issue and returns `approval-required` with the missing spec
+approved label if the approval is absent.
 
 Before mutating, it checks the repository worktree is clean, ignoring configured
 local state paths such as the run-state directory and issue todo root. It
@@ -262,6 +272,12 @@ or:
 
 A blocked plan moves the issue from `in-progress` to `needs-info` and posts the
 blocker questions.
+
+Plan approval is a workflow stop. When required and missing, Patchmill comments
+that the plan is ready, applies the configured plan-review label, restores the
+ready label, removes `in-progress`, records the run as finished, and exits with
+`plan-created` or `plan-found`. Once the configured plan-approved label is
+present, a later `run-once` reuses the plan and proceeds to implementation.
 
 ### Implementation Pi prompt
 
