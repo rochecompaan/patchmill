@@ -205,19 +205,65 @@ test("selectIssue blocks labels mapped to non-ready triage states", () => {
   assert.equal(selected?.number, 5);
 });
 
-test("selectIssue skips spec-unapproved automatic candidates and can choose lower priority approved work", () => {
+test("selectIssue automatic selection includes agent-ready when spec approval is required", () => {
   const selected = selectIssue(
     [issue(1, [ready, critical]), issue(2, [ready, high, "spec-approved"])],
     { readyLabel: ready, approvalPolicy: specApprovalPolicy() },
   );
 
-  assert.equal(selected?.number, 2);
+  assert.equal(selected?.number, 1);
 });
 
-test("selectIssue rejects explicit issue missing required spec approval", () => {
+test("selectIssue automatic selection includes spec-approved without agent-ready", () => {
+  const selected = selectIssue(
+    [issue(1, ["spec-approved", high]), issue(2, [ready, low])],
+    { readyLabel: ready, approvalPolicy: specApprovalPolicy() },
+  );
+
+  assert.equal(selected?.number, 1);
+});
+
+test("selectIssue automatic selection includes plan-approved without agent-ready", () => {
+  const policyWithPlan = createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    planApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+      required: true,
+    },
+  });
+
+  const selected = selectIssue(
+    [issue(1, ["plan-approved", high]), issue(2, [ready, low])],
+    { readyLabel: ready, approvalPolicy: policyWithPlan },
+  );
+
+  assert.equal(selected?.number, 1);
+});
+
+test("selectIssue automatic selection ignores review-only workflow states", () => {
+  const policyWithBoth = createWorkflowApprovalPolicy({
+    specApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.specApproval,
+      required: true,
+    },
+    planApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+      required: true,
+    },
+  });
+
+  const selected = selectIssue(
+    [issue(1, ["spec-review", critical]), issue(2, ["plan-review", high])],
+    { readyLabel: ready, approvalPolicy: policyWithBoth },
+  );
+
+  assert.equal(selected, undefined);
+});
+
+test("selectIssue rejects explicit issue waiting for spec approval", () => {
   assert.throws(
     () =>
-      selectIssue([issue(5, [ready])], {
+      selectIssue([issue(5, ["spec-review"])], {
         readyLabel: ready,
         issueNumber: 5,
         approvalPolicy: specApprovalPolicy("spec-ok"),
@@ -228,6 +274,16 @@ test("selectIssue rejects explicit issue missing required spec approval", () => 
       return true;
     },
   );
+});
+
+test("selectIssue accepts explicit spec-approved issue without agent-ready", () => {
+  const selected = selectIssue([issue(5, ["spec-approved"])], {
+    readyLabel: ready,
+    issueNumber: 5,
+    approvalPolicy: specApprovalPolicy(),
+  });
+
+  assert.equal(selected?.number, 5);
 });
 
 test("selectIssue returns no issue when no open agent-ready issue exists", () => {

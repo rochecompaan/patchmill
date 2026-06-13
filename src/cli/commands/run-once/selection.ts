@@ -1,10 +1,12 @@
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
-import {
-  assertExplicitIssueApprovals,
-  issueMeetsAutomaticApprovals,
-} from "./approval-gates.ts";
+import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import type { IssueSelectionOptions, IssueSummary } from "./types.ts";
+import {
+  assertExplicitWorkflowState,
+  isActionableWorkflowState,
+  resolveWorkflowState,
+} from "./workflow-state.ts";
 
 const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
   DEFAULT_PATCHMILL_CONFIG.labels,
@@ -61,15 +63,27 @@ function blockingLabels(
   return labels.filter((label) => excludedLabels.has(label));
 }
 
+function approvalPolicy(options: ResolvedIssueSelectionOptions) {
+  return (
+    options.approvalPolicy ??
+    createWorkflowApprovalPolicy(DEFAULT_PATCHMILL_CONFIG.workflow)
+  );
+}
+
 function isEligible(
   issue: IssueSummary,
   options: ResolvedIssueSelectionOptions,
 ): boolean {
-  return (
-    issue.state === "open" &&
-    issue.labels.includes(options.readyLabel) &&
-    blockingLabels(issue.labels, options.excludedLabels).length === 0 &&
-    issueMeetsAutomaticApprovals(issue, options.approvalPolicy)
+  if (issue.state !== "open") return false;
+  if (blockingLabels(issue.labels, options.excludedLabels).length > 0) {
+    return false;
+  }
+
+  return isActionableWorkflowState(
+    resolveWorkflowState(issue.labels, {
+      readyLabel: options.readyLabel,
+      policy: approvalPolicy(options),
+    }),
   );
 }
 
@@ -97,12 +111,6 @@ export function selectIssue(
         candidate.number === resolved.issueNumber && candidate.state === "open",
     );
     if (!issue) return undefined;
-    if (!issue.labels.includes(resolved.readyLabel)) {
-      throw new Error(
-        `Issue #${issue.number} is open but not labeled ${resolved.readyLabel}`,
-      );
-    }
-
     const blockedBy = blockingLabels(issue.labels, resolved.excludedLabels);
     if (blockedBy.length > 0) {
       throw new Error(
@@ -110,7 +118,11 @@ export function selectIssue(
       );
     }
 
-    assertExplicitIssueApprovals(issue, resolved.approvalPolicy);
+    assertExplicitWorkflowState(issue.labels, {
+      readyLabel: resolved.readyLabel,
+      policy: approvalPolicy(resolved),
+      issue,
+    });
 
     return issue;
   }
