@@ -575,7 +575,7 @@ export function buildSpecCreationPrompt(
       ? "Stop after writing the spec and wait for explicit manual approval before planning continues."
       : "Do not stop for an additional manual spec-approval gate. Continue to planning in the next Patchmill workflow step.",
     renderPlanningSkillStep(skills),
-    renderTodoWorkflowStep(projectPolicy, "plan", issue.number),
+    "Do not create or update implementation-plan task todos during spec creation; those belong to the later plan-creation step.",
     "Commit only the spec document using a Conventional Commit message.",
   ]);
 

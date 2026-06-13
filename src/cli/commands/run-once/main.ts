@@ -52,7 +52,12 @@ type JsonResultLog = { logPath?: string };
 type JsonResult = JsonResultLog &
   (
     | { status: "no-issue" }
-    | { status: "dry-run"; issueNumber: number; title: string }
+    | {
+        status: "dry-run";
+        issueNumber: number;
+        title: string;
+        transition: string;
+      }
     | {
         status: "spec-created" | "spec-found";
         issueNumber: number;
@@ -153,6 +158,7 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
         status: result.status,
         issueNumber: result.issue.number,
         title: result.issue.title,
+        transition: result.transition,
         ...withLogPath,
       };
     case "spec-created":

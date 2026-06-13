@@ -1,6 +1,25 @@
 import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
-import { ApprovalRequiredError } from "./approval-gates.ts";
 import type { IssueSummary } from "./types.ts";
+
+export class ApprovalRequiredError extends Error {
+  readonly name = "ApprovalRequiredError";
+  readonly issue: IssueSummary;
+  readonly approvalKind: "spec" | "plan";
+  readonly missingLabel: string;
+
+  constructor(
+    issue: IssueSummary,
+    approvalKind: "spec" | "plan",
+    missingLabel: string,
+  ) {
+    super(
+      `Issue #${issue.number} requires ${approvalKind} approval label ${missingLabel}`,
+    );
+    this.issue = issue;
+    this.approvalKind = approvalKind;
+    this.missingLabel = missingLabel;
+  }
+}
 
 export type ActionableWorkflowState =
   | { kind: "agent-ready" }
@@ -20,6 +39,16 @@ export type WorkflowStateOptions = {
   readyLabel: string;
   policy: WorkflowApprovalPolicy;
 };
+
+export type PlanApprovalGateDecision =
+  | { action: "proceed" }
+  | { action: "stop-for-plan-only" }
+  | {
+      action: "stop-for-plan-review";
+      reviewLabel: string;
+      missingLabel: string;
+      staleApprovedLabel?: string;
+    };
 
 function has(labels: string[], label: string): boolean {
   return labels.includes(label);
@@ -87,6 +116,32 @@ export function assertExplicitWorkflowState(
   throw new Error(
     `Issue #${options.issue.number} is open but not labeled ${options.readyLabel}, ${options.policy.specApproval.approvedLabel}, or ${options.policy.planApproval.approvedLabel}`,
   );
+}
+
+export function decidePlanApprovalGate(options: {
+  labels: string[];
+  planOnly: boolean;
+  planCreatedThisRun?: boolean;
+  policy: WorkflowApprovalPolicy;
+}): PlanApprovalGateDecision {
+  if (options.planOnly) return { action: "stop-for-plan-only" };
+  const approval = options.policy.planApproval;
+  if (!approval.required) return { action: "proceed" };
+  if (
+    !options.planCreatedThisRun &&
+    options.labels.includes(approval.approvedLabel)
+  ) {
+    return { action: "proceed" };
+  }
+  return {
+    action: "stop-for-plan-review",
+    reviewLabel: approval.reviewLabel,
+    missingLabel: approval.approvedLabel,
+    ...(options.planCreatedThisRun &&
+    options.labels.includes(approval.approvedLabel)
+      ? { staleApprovedLabel: approval.approvedLabel }
+      : {}),
+  };
 }
 
 export function cleanupLabelsForSpecReview(

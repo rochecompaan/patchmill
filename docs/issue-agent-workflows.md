@@ -357,9 +357,11 @@ or missing statuses are errors.
 
 ### Logging and progress
 
-`patchmill run-once` writes final JSON to stdout. Progress goes to stderr unless
-`--quiet` is used, and every event is appended to a JSONL run log under the
-configured run-state directory.
+`patchmill run-once` writes final JSON to stdout. In dry-run mode, the summary
+includes the selected issue and planned workflow transition, such as
+`agent-ready -> spec-review` or `plan-approved -> agent-done`. Progress goes to
+stderr unless `--quiet` is used, and every event is appended to a JSONL run log
+under the configured run-state directory.
 
 Console progress includes:
 

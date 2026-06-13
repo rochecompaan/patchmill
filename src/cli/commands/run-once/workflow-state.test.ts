@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
-import { ApprovalRequiredError } from "./approval-gates.ts";
 import {
+  ApprovalRequiredError,
   cleanupLabelsForImplementation,
   cleanupLabelsForPlanReview,
   cleanupLabelsForSpecReview,
   assertExplicitWorkflowState,
+  decidePlanApprovalGate,
   resolveWorkflowState,
 } from "./workflow-state.ts";
 
@@ -24,6 +25,20 @@ const policy = createWorkflowApprovalPolicy({
     approvedLabel: "plan-approved",
   },
 });
+
+function planApprovalPolicy(
+  required: boolean,
+  approvedLabel = "plan-approved",
+) {
+  return createWorkflowApprovalPolicy({
+    ...DEFAULT_PATCHMILL_CONFIG.workflow,
+    planApproval: {
+      ...DEFAULT_PATCHMILL_CONFIG.workflow.planApproval,
+      required,
+      approvedLabel,
+    },
+  });
+}
 
 test("resolveWorkflowState treats agent-ready as actionable", () => {
   assert.deepEqual(
@@ -106,6 +121,66 @@ test("assertExplicitWorkflowState throws approval-required for waiting spec revi
       return true;
     },
   );
+});
+
+test("decidePlanApprovalGate proceeds when plan approval is disabled", () => {
+  const decision = decidePlanApprovalGate({
+    labels: ["agent-ready"],
+    planOnly: false,
+    policy: planApprovalPolicy(false),
+  });
+
+  assert.deepEqual(decision, { action: "proceed" });
+});
+
+test("decidePlanApprovalGate stops for review when plan approval is required and missing", () => {
+  const decision = decidePlanApprovalGate({
+    labels: ["in-progress"],
+    planOnly: false,
+    policy: planApprovalPolicy(true),
+  });
+
+  assert.deepEqual(decision, {
+    action: "stop-for-plan-review",
+    reviewLabel: "plan-review",
+    missingLabel: "plan-approved",
+  });
+});
+
+test("decidePlanApprovalGate proceeds when the approved plan label is present", () => {
+  const decision = decidePlanApprovalGate({
+    labels: ["in-progress", "plan-approved"],
+    planOnly: false,
+    policy: planApprovalPolicy(true),
+  });
+
+  assert.deepEqual(decision, { action: "proceed" });
+});
+
+test("decidePlanApprovalGate ignores stale approval on a newly-created plan", () => {
+  const decision = decidePlanApprovalGate({
+    labels: ["in-progress", "plan-approved"],
+    planOnly: false,
+    planCreatedThisRun: true,
+    policy: planApprovalPolicy(true),
+  });
+
+  assert.deepEqual(decision, {
+    action: "stop-for-plan-review",
+    reviewLabel: "plan-review",
+    missingLabel: "plan-approved",
+    staleApprovedLabel: "plan-approved",
+  });
+});
+
+test("decidePlanApprovalGate stops for plan-only without workflow review labels", () => {
+  const decision = decidePlanApprovalGate({
+    labels: ["in-progress"],
+    planOnly: true,
+    policy: planApprovalPolicy(false),
+  });
+
+  assert.deepEqual(decision, { action: "stop-for-plan-only" });
 });
 
 test("cleanupLabelsForSpecReview removes agent-ready and stale later approvals", () => {

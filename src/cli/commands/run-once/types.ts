@@ -222,7 +222,7 @@ type AgentIssuePipelineResultLog = { logPath?: string };
 export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
   (
     | { status: "no-issue" }
-    | { status: "dry-run"; issue: IssueSummary }
+    | { status: "dry-run"; issue: IssueSummary; transition: string }
     | {
         status: "spec-created" | "spec-found";
         issue: IssueSummary;

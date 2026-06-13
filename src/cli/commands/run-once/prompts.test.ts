@@ -95,6 +95,12 @@ test("buildSpecCreationPrompt instructs Pi to save and commit the spec", () => {
     prompt,
     /"specPath": "docs\/specs\/2026-06-13-issue-42-add-once-runner-design\.md"/,
   );
+  assert.doesNotMatch(
+    prompt,
+    /Create or update todos using the Pi `todo` tool for each implementation plan task/,
+  );
+  assert.doesNotMatch(prompt, /issue-42-task-<two-digit-number>-<slug>/);
+  assert.doesNotMatch(prompt, /mark the plan-related task todos complete/);
 });
 
 test("buildPlanCreationPrompt includes spec path when provided", () => {
