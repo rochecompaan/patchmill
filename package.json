@@ -34,7 +34,7 @@
     "orchestrator"
   ],
   "license": "Apache-2.0",
-  "description": "An agent-driven software factory that turns issues into reviewed diffs.",
+  "description": "An agent-driven software factory where humans and agents collaborate to preserve software craftsmanship.",
   "type": "module",
   "bin": {
     "patchmill": "./dist/bin/patchmill.js"
