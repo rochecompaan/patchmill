@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/rochecompaan/patchmill/compare/v0.11.0...v0.12.0) (2026-06-13)
+
+
+### Features
+
+* **cli:** add version command ([9149d64](https://github.com/rochecompaan/patchmill/commit/9149d64fbd56c207447a23a4f58afd7a4e1fac19))
+* **run-once:** advance run-once workflow states ([#30](https://github.com/rochecompaan/patchmill/issues/30)) ([fcdd44d](https://github.com/rochecompaan/patchmill/commit/fcdd44d49702b8e7b3b0eeffb4e61f0a5fe0cec0))
+
 ## [0.11.0](https://github.com/rochecompaan/patchmill/compare/v0.10.0...v0.11.0) (2026-06-13)
 
 
