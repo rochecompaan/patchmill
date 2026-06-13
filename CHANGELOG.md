@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.0](https://github.com/rochecompaan/patchmill/compare/v0.10.0...v0.11.0) (2026-06-13)
+
+
+### Features
+
+* **skills:** add full review implementation skill option ([#27](https://github.com/rochecompaan/patchmill/issues/27)) ([54d4862](https://github.com/rochecompaan/patchmill/commit/54d486272a19019a325e928bcae60a4728c6c2fb))
+* **skills:** add module-size to recommended pack ([24fa520](https://github.com/rochecompaan/patchmill/commit/24fa520f866880eab1279ac09d9b5e9a4c8aed2a))
+* **skills:** add single-worker review skill ([c9abd94](https://github.com/rochecompaan/patchmill/commit/c9abd946127adc99b96133e94e7daa4a12866aa5))
+
 ## [0.10.0](https://github.com/rochecompaan/patchmill/compare/v0.9.0...v0.10.0) (2026-06-12)
 
 
