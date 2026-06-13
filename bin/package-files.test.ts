@@ -60,6 +60,7 @@ test("npm pack dry-run includes bundled runtime resources and notices", () => {
   const packEntries = JSON.parse(result.stdout) as NpmPackEntry[];
   const files = new Set(packEntries[0]?.files?.map((file) => file.path) ?? []);
   assert.equal(files.has("skills/patchmill-issue-triage/SKILL.md"), true);
+  assert.equal(files.has("skills/module-size/SKILL.md"), true);
   assert.equal(files.has("extensions/todos.ts"), true);
   assert.equal(files.has("CHANGELOG.md"), true);
   assert.equal(files.has("LICENSES/Apache-2.0.txt"), false);

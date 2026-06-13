@@ -54,6 +54,7 @@ test("default pack records pinned external source", () => {
       name: "single-subagent-dev-with-codex-and-thermo-reviews",
       source: "patchmill",
     },
+    { name: "module-size", source: "patchmill" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },

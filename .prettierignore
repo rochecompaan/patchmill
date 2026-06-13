@@ -9,3 +9,5 @@ coverage/
 package-lock.json
 CHANGELOG.md
 extensions/todos.ts
+
+skills/module-size/SKILL.md

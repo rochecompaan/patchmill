@@ -315,6 +315,37 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   );
 });
 
+test("installProjectSkills installs module-size from the recommended pack", async () => {
+  const repoRoot = await tempRoot("patchmill-install-repo-");
+
+  const result = await installProjectSkills({
+    repoRoot,
+    installedAt: "2026-06-13T00:00:00.000Z",
+  });
+
+  assert.equal(
+    result.installedSkills.includes(".patchmill/skills/module-size"),
+    true,
+  );
+  assert.match(
+    await readFile(
+      join(repoRoot, ".patchmill", "skills", "module-size", "SKILL.md"),
+      "utf8",
+    ),
+    /^---\nname: module-size\n/mu,
+  );
+
+  const metadata = JSON.parse(
+    await readFile(result.metadataPath, "utf8"),
+  ) as ReturnType<typeof buildSkillPackMetadata>;
+  assert.equal(
+    metadata.files.some(
+      (file) => file.path === ".patchmill/skills/module-size/SKILL.md",
+    ),
+    true,
+  );
+});
+
 test("installProjectSkills makes copied skill pack owner-writable", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
   const patchmillSource = await tempRoot("patchmill-install-patchmill-");

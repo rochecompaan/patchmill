@@ -59,6 +59,7 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
       name: SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
       source: "patchmill",
     },
+    { name: "module-size", source: "patchmill" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
