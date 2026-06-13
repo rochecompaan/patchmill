@@ -127,6 +127,17 @@ export function parsePiResult(stdout: string): AgentIssuePiResult {
       }
 
       if (
+        parsed.status === "spec-created" &&
+        typeof parsed.specPath === "string"
+      ) {
+        return {
+          status: "spec-created",
+          specPath: parsed.specPath,
+          commit: typeof parsed.commit === "string" ? parsed.commit : undefined,
+        };
+      }
+
+      if (
         parsed.status === "plan-created" &&
         typeof parsed.planPath === "string"
       ) {

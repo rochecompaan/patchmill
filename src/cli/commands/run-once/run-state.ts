@@ -153,6 +153,8 @@ function mergeRunState(
     worktreePath:
       update.worktreePath ??
       (update.resetCheckpoints ? undefined : existing?.worktreePath),
+    specPath: update.specPath ?? existing?.specPath,
+    specCommit: update.specCommit ?? existing?.specCommit,
     planPath: update.planPath ?? existing?.planPath,
     planCommit: update.planCommit ?? existing?.planCommit,
     checkpoints,
@@ -179,6 +181,12 @@ function mergeRunState(
   }
   if (next.worktreePath === undefined) {
     delete next.worktreePath;
+  }
+  if (next.specPath === undefined) {
+    delete next.specPath;
+  }
+  if (next.specCommit === undefined) {
+    delete next.specCommit;
   }
   if (implementationStatus === undefined) {
     delete next.implementationStatus;

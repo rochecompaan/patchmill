@@ -92,7 +92,7 @@ const EXISTING_CONFIG_MESSAGE =
 
 function nextSteps(piReady: boolean) {
   return piReady
-    ? "Run `patchmill triage --dry-run` to preview issue triage.\n\nNext:\n  patchmill triage --dry-run"
+    ? "Run `patchmill triage` to triage issues.\n\nNext:\n  patchmill triage"
     : "Run `patchmill doctor` after completing Pi setup.\n\nNext:\n  patchmill doctor";
 }
 

@@ -35,9 +35,9 @@ Functional:
 - `patchmill version` prints the installed Patchmill CLI version.
 - `patchmill triage` is the intake/sorting station. It classifies open issues
   and can apply readiness labels or comments.
-- `patchmill run-once` is the one-issue production run. It claims one ready
-  issue, creates or reuses a plan, runs implementation, reviews or lands the
-  result, and records the outcome.
+- `patchmill run-once` is the one-issue production run. It advances one
+  actionable issue through spec writing, plan writing, implementation, and any
+  configured human approval stops.
 
 In progress:
 

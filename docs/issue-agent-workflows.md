@@ -196,16 +196,16 @@ flowchart TD
 
 ### Issue selection and safety gates
 
-`patchmill run-once` processes one issue. It prefers a single resumable
-`in-progress` run with valid run state. Otherwise it selects an open issue
-carrying the configured ready label and no excluded/protection labels. Priority
-labels determine ordering, then lower issue number wins.
+`patchmill run-once` processes one actionable issue. Actionable labels are the
+configured ready label, the configured spec-approved label, and the configured
+plan-approved label. Review labels without their approved counterparts are
+waiting states and are ignored by automatic selection.
 
-When `workflow.specApproval.required` is true, the automatic candidate set is
-filtered before priority ordering so a high-priority unapproved issue does not
-starve a lower-priority approved issue. Explicit `--issue` selection validates
-the requested issue and returns `approval-required` with the missing spec
-approved label if the approval is absent.
+It prefers a single resumable `in-progress` run with valid run state. Otherwise
+it selects an open actionable issue with no excluded/protection labels. Priority
+labels determine ordering, then lower issue number wins. Explicit `--issue`
+selection validates the requested issue and returns `approval-required` for a
+waiting review state with the missing approved label.
 
 Before mutating, it checks the repository worktree is clean, ignoring configured
 local state paths such as the run-state directory and issue todo root. It
@@ -273,10 +273,11 @@ A blocked plan moves the issue from `in-progress` to `needs-info` and posts the
 blocker questions.
 
 Plan approval is a workflow stop. When required and missing, Patchmill comments
-that the plan is ready, applies the configured plan-review label, restores the
-ready label, removes `in-progress`, records the run as finished, and exits with
-`plan-created` or `plan-found`. Once the configured plan-approved label is
-present, a later `run-once` reuses the plan and proceeds to implementation.
+that the plan is ready, applies the configured plan-review label, removes stale
+spec and plan approval labels, removes `in-progress`, records the run as
+finished, and exits with `plan-created` or `plan-found`. Once the configured
+plan-approved label is present, a later `run-once` reuses the plan and proceeds
+to implementation.
 
 ### Implementation Pi prompt
 
@@ -356,9 +357,11 @@ or missing statuses are errors.
 
 ### Logging and progress
 
-`patchmill run-once` writes final JSON to stdout. Progress goes to stderr unless
-`--quiet` is used, and every event is appended to a JSONL run log under the
-configured run-state directory.
+`patchmill run-once` writes final JSON to stdout. In dry-run mode, the summary
+includes the selected issue and planned workflow transition, such as
+`agent-ready -> spec-review` or `plan-approved -> agent-done`. Progress goes to
+stderr unless `--quiet` is used, and every event is appended to a JSONL run log
+under the configured run-state directory.
 
 Console progress includes:
 

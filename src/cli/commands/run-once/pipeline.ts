@@ -1,5 +1,4 @@
-import { access } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import { runCleanupHookScript } from "../../../pi/hooks.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import {
@@ -10,11 +9,8 @@ import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
-import {
-  DEFAULT_TRIAGE_POLICY,
-  missingLabelDefinitions,
-  planLabelChange,
-} from "../triage/labels.ts";
+import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "../triage/labels.ts";
+import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
   assertCleanWorktree,
   cleanStatusIgnoredPaths as buildCleanStatusIgnoredPaths,
@@ -26,17 +22,15 @@ import {
   readIssueTodoTasks,
 } from "./issue-todos.ts";
 import { runPiPrompt } from "./pi.ts";
+import { readPlanTaskLabels } from "./plan-tasks.ts";
+import { buildImplementationPrompt } from "./prompts.ts";
+import { advancePlanningStages } from "./stage-advancement.ts";
 import {
   ApprovalRequiredError,
-  approvedWorkflowReviewLabelsToRemove,
-  decidePlanApprovalGate,
-} from "./approval-gates.ts";
-import { readPlanTaskLabels } from "./plan-tasks.ts";
-import { buildPlanPath, findIssuePlan } from "./plans.ts";
-import {
-  buildImplementationPrompt,
-  buildPlanCreationPrompt,
-} from "./prompts.ts";
+  cleanupLabelsForImplementation,
+  resolveWorkflowState,
+  type RunOnceWorkflowState,
+} from "./workflow-state.ts";
 import type { ForgejoVisualEvidenceEnv } from "../../../host/forgejo-visual-evidence.ts";
 import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 import {
@@ -138,17 +132,6 @@ function cleanStatusIgnoredPaths(
   });
 }
 
-function repoPath(
-  repoRoot: string,
-  path: string,
-): { absolute: string; relative: string } {
-  if (isAbsolute(path)) {
-    return { absolute: path, relative: relative(repoRoot, path) };
-  }
-
-  return { absolute: join(repoRoot, path), relative: path };
-}
-
 function configuredWorktreeDir(
   config: Pick<AgentIssueConfig, "repoRoot" | "worktreeDir">,
 ): string {
@@ -197,6 +180,29 @@ function nextLabels(
   return [...kept, ...add.filter((label) => !kept.includes(label))];
 }
 
+function workflowTransition(
+  state: RunOnceWorkflowState,
+  config: Pick<AgentIssueConfig, "approvalPolicy">,
+): string {
+  if (state.kind === "plan-approved") return "plan-approved -> agent-done";
+  if (state.kind === "spec-approved") {
+    return config.approvalPolicy.planApproval.required
+      ? "spec-approved -> plan-review"
+      : "spec-approved -> agent-done";
+  }
+  if (state.kind === "agent-ready") {
+    if (config.approvalPolicy.specApproval.required) {
+      return "agent-ready -> spec-review";
+    }
+    if (config.approvalPolicy.planApproval.required) {
+      return "agent-ready -> plan-review";
+    }
+    return "agent-ready -> agent-done";
+  }
+
+  return `${state.kind} -> no-issue`;
+}
+
 function lifecycleLabels(
   config: Pick<AgentIssueConfig, "readyLabel" | "triagePolicy">,
 ): {
@@ -221,6 +227,7 @@ const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
   "claimed",
   "startedCommentPosted",
   "readyLabelRestored",
+  "specReadyCommentPosted",
   "planReadyCommentPosted",
   "worktreeReady",
   "implementationCompleted",
@@ -248,18 +255,10 @@ function effectiveCheckpoints(
   return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
 
-function promptBodyPath(repoRoot: string, absolutePlanPath: string): string {
-  return relative(repoRoot, absolutePlanPath);
-}
-
 function startedComment(issue: IssueSummary): string {
   return `Automation started for issue #${issue.number}.
 
 The issue has been claimed for plan and implementation orchestration.`;
-}
-
-function planComment(planPath: string, created: boolean): string {
-  return `${created ? "Plan ready" : "Existing plan ready"}: \`${planPath}\``;
 }
 
 function handoffComment(
@@ -544,26 +543,14 @@ function unexpectedFailureCommentKey(
   return `unexpected-failure:${status}`;
 }
 
-async function ensureAutomationLabel(
-  host: IssueHostProvider,
-  config: Pick<AgentIssueConfig, "labelCatalog">,
-  name: string,
-): Promise<void> {
-  const missing = missingLabelDefinitions(
-    await host.listLabels(),
-    config.labelCatalog,
-  );
-  const label = missing.find((definition) => definition.name === name);
-  if (!label) return;
-  await host.createLabel(label);
-}
-
 async function unexpectedFailure(
   host: IssueHostProvider,
   config: AgentIssueConfig,
   issue: IssueSummary,
   checkpoints: AgentIssueRunCheckpoints,
   details: {
+    specPath?: string;
+    specCommit?: string;
     planPath?: string;
     planCommit?: string;
     branch?: string;
@@ -580,7 +567,12 @@ async function unexpectedFailure(
     checkpoints.worktreeReady ||
     checkpoints.implementationCompleted
       ? "implementing"
-      : details.planPath ||
+      : details.specPath ||
+          details.specCommit ||
+          checkpoints.specPathResolved ||
+          checkpoints.specCreated ||
+          checkpoints.specReadyCommentPosted ||
+          details.planPath ||
           details.planCommit ||
           checkpoints.planPathResolved ||
           checkpoints.planCreated ||
@@ -597,6 +589,8 @@ async function unexpectedFailure(
       issueNumber: issue.number,
       title: issue.title,
       status,
+      specPath: details.specPath,
+      specCommit: details.specCommit,
       planPath: details.planPath,
       planCommit: details.planCommit,
       branch: details.branch,
@@ -619,6 +613,8 @@ async function unexpectedFailure(
         {
           issueNumber: issue.number,
           status,
+          specPath: details.specPath,
+          specCommit: details.specCommit,
           planPath: details.planPath,
           planCommit: details.planCommit,
           branch: details.branch,
@@ -653,6 +649,8 @@ async function blockIssue(
   labels: string[],
   result: AgentIssueBlockedResult,
   details: {
+    specPath?: string;
+    specCommit?: string;
     planPath?: string;
     planCommit?: string;
     branch?: string;
@@ -674,6 +672,8 @@ async function blockIssue(
       issueNumber: issue.number,
       title: issue.title,
       status: "blocked",
+      specPath: details.specPath,
+      specCommit: details.specCommit,
       planPath: details.planPath,
       planCommit: details.planCommit,
       branch: details.branch,
@@ -743,7 +743,21 @@ export async function runOneIssue(
     `${resumed ? "resuming" : "selected"} #${issue.number} ${issue.title}`,
     { issueNumber: issue.number },
   );
-  if (config.dryRun) return withLogPath({ status: "dry-run", issue }, options);
+  if (config.dryRun) {
+    const { ready } = lifecycleLabels(config);
+    const state = resolveWorkflowState(issue.labels, {
+      readyLabel: ready,
+      policy: config.approvalPolicy,
+    });
+    return withLogPath(
+      {
+        status: "dry-run",
+        issue,
+        transition: workflowTransition(state, config),
+      },
+      options,
+    );
+  }
 
   if (
     resetStaleCheckpoints &&
@@ -862,23 +876,11 @@ export async function runOneIssue(
   const ignoredPaths = cleanStatusIgnoredPaths(config, options);
   await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
   const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
-  const workflowReviewLabelsToRemove = approvedWorkflowReviewLabelsToRemove(
-    issue.labels,
-    config.approvalPolicy,
-  );
   let labels = resumed
     ? issue.labels.includes(inProgress)
       ? issue.labels
-      : nextLabels(
-          issue.labels,
-          [ready, ...workflowReviewLabelsToRemove],
-          [inProgress],
-        )
-    : nextLabels(
-        issue.labels,
-        [ready, ...workflowReviewLabelsToRemove],
-        [inProgress],
-      );
+      : nextLabels(issue.labels, [ready], [inProgress])
+    : nextLabels(issue.labels, [ready], [inProgress]);
   if (!checkpoints.claimed) {
     await runStep("claim issue", async () => {
       await progress(
@@ -913,12 +915,12 @@ export async function runOneIssue(
       checkpoints.claimed = true;
     });
   }
+  let specPath: string | undefined;
+  let specCommit: string | undefined;
   let planPath: string | undefined;
   let planCommit: string | undefined;
   let branch: string | undefined;
   let worktreePath: string | undefined;
-  let planCreated = false;
-  let planCreatedThisRun = false;
 
   try {
     if (!checkpoints.startedCommentPosted) {
@@ -936,219 +938,63 @@ export async function runOneIssue(
       checkpoints.startedCommentPosted = true;
     }
 
-    await progress(options, "info", "plan", "finding plan", {
-      issueNumber: issue.number,
-    });
-    let savedPlanExists = false;
-    if (existingState?.planPath) {
-      const savedPlanPath = repoPath(config.repoRoot, existingState.planPath);
-      try {
-        await access(savedPlanPath.absolute);
-        planPath = savedPlanPath.relative;
-        savedPlanExists = true;
-        planCreated = existingState.checkpoints?.planCreated === true;
-      } catch {
-        planPath = undefined;
-      }
-    }
-
-    const foundPlan = planPath
-      ? undefined
-      : await findIssuePlan(config.plansDir, issue.number);
-    planPath ??= foundPlan
-      ? repoPath(config.repoRoot, foundPlan).relative
-      : promptBodyPath(
-          config.repoRoot,
-          buildPlanPath(
-            config.plansDir,
-            issue.number,
-            issue.title,
-            options.now ?? new Date(),
-          ),
-        );
-    const hasExistingPlan = savedPlanExists || foundPlan !== undefined;
-    await writeRunState(
-      config.runStateDir,
-      {
-        issueNumber: issue.number,
-        status: "planning",
-        planPath,
-        checkpoints: {
-          planPathResolved: true,
-          ...(planCreated ? { planCreated: true } : {}),
-        },
-      },
+    const planningStages = await advancePlanningStages({
+      runner,
+      host,
+      config,
+      issue,
+      labels,
+      ready,
+      inProgress,
+      needsInfo,
+      existingState,
+      checkpoints,
       timestamp,
-    );
-    checkpoints.planPathResolved = true;
-    if (planCreated) checkpoints.planCreated = true;
-
-    if (!hasExistingPlan) {
-      const planned = await runStep("create plan", async () => {
-        await progress(options, "info", "pi-plan", "creating plan with pi", {
-          issueNumber: issue.number,
-        });
-        return await runPiPrompt(
-          runner,
-          config.repoRoot,
-          buildPlanCreationPrompt({
-            issue,
-            planPath,
-            projectPolicy: config.projectPolicy,
-            planApprovalRequired: config.approvalPolicy.planApproval.required,
-            skills: config.skills,
-            triageLabels: { ready, needsInfo },
-          }),
-          {
-            progress: options.progress,
-            stage: "pi-plan",
-            skillPaths: skillInvocationPaths(
-              [config.skills.planning],
-              config.repoRoot,
-            ),
-            streamOutput: options.streamPiOutput,
-            issueNumber: issue.number,
-            repoRoot: config.repoRoot,
-            heartbeatMs: options.heartbeatMs,
-            tokenUsageState,
-            observeSession: true,
-            verbosePiOutput: options.verbosePiOutput,
-            onObservation: observePi("pi-plan"),
-            taskContract: config.projectPolicy.pi.taskContract,
-            piAgentDir,
-          },
-        );
-      });
-      if (planned.status === "blocked") {
-        return blockIssue(
+      now: options.now ?? new Date(),
+      runOptions: options,
+      piAgentDir,
+      tokenUsageState,
+      progress: (level, stage, message, extras) =>
+        progress(options, level, stage, message, extras),
+      runStep,
+      observePi,
+      emitSimpleStep: (issueNumber, label) =>
+        emitSimpleStep(options, issueNumber, label),
+      blockIssue: (result, details) =>
+        blockIssue(
           host,
           config,
           issue,
           labels,
-          planned,
-          { planPath },
+          result,
+          details,
           timestamp,
           options,
-        );
-      }
-      if (planned.status !== "plan-created") {
-        throw new Error(
-          `Expected plan-created from Pi but received ${planned.status}`,
-        );
-      }
-
-      planPath = repoPath(config.repoRoot, planned.planPath).relative;
-      planCommit = planned.commit;
-      planCreated = true;
-      planCreatedThisRun = true;
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          status: "planning",
-          planPath,
-          planCommit,
-          checkpoints: { planCreated: true },
-        },
-        timestamp,
-      );
-      checkpoints.planCreated = true;
-      if (planCommit)
-        await emitSimpleStep(options, issue.number, "commit plan");
-    } else {
-      await runStep("use existing plan", async () => {
-        await progress(
-          options,
-          "info",
-          "plan",
-          `using existing plan ${planPath}`,
-          { issueNumber: issue.number },
-        );
-      });
+        ),
+    });
+    if (planningStages.kind === "finished") {
+      return withLogPath(planningStages.result, options);
     }
 
-    const planGate = decidePlanApprovalGate({
-      labels,
-      planOnly: config.planOnly,
-      planCreatedThisRun,
-      policy: config.approvalPolicy,
-    });
+    labels = planningStages.labels;
+    specPath = planningStages.specPath;
+    specCommit = planningStages.specCommit;
+    planPath = planningStages.planPath;
+    planCommit = planningStages.planCommit;
 
-    if (planGate.action !== "proceed") {
-      const labelsToAdd =
-        planGate.action === "stop-for-plan-review"
-          ? [ready, planGate.reviewLabel]
-          : [ready];
-      const labelsToRemove = [
-        inProgress,
-        ...(planGate.action === "stop-for-plan-review" &&
-        planGate.staleApprovedLabel
-          ? [planGate.staleApprovedLabel]
-          : []),
-      ];
-      const finalLabels = nextLabels(labels, labelsToRemove, labelsToAdd);
-      if (!checkpoints.planReadyCommentPosted) {
-        await host.commentIssue(
-          issue.number,
-          planComment(planPath, planCreated),
-        );
-        await writeRunState(
-          config.runStateDir,
-          {
-            issueNumber: issue.number,
-            status: "planning",
-            planPath,
-            planCommit,
-            checkpoints: { planReadyCommentPosted: true },
-          },
-          timestamp,
-        );
-        checkpoints.planReadyCommentPosted = true;
-      }
-      if (!checkpoints.readyLabelRestored) {
-        if (planGate.action === "stop-for-plan-review") {
-          await ensureAutomationLabel(host, config, planGate.reviewLabel);
-        }
-        await host.applyLabels(
-          planLabelChange(issue.number, labels, finalLabels),
-        );
-        labels = finalLabels;
-        await writeRunState(
-          config.runStateDir,
-          {
-            issueNumber: issue.number,
-            status: "finished",
-            planPath,
-            planCommit,
-            checkpoints: { readyLabelRestored: true },
-          },
-          timestamp,
-        );
-        checkpoints.readyLabelRestored = true;
-      }
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          status: "finished",
-          planPath,
-          planCommit,
-        },
-        timestamp,
+    const implementationLabels = nextLabels(
+      cleanupLabelsForImplementation(labels, {
+        readyLabel: ready,
+        policy: config.approvalPolicy,
+      }),
+      [],
+      [inProgress],
+    );
+    if (implementationLabels.join("\0") !== labels.join("\0")) {
+      await host.applyLabels(
+        planLabelChange(issue.number, labels, implementationLabels),
       );
-      await emitSimpleStep(
-        options,
-        issue.number,
-        `final result ${planCreated ? "plan-created" : "plan-found"}`,
-      );
-      return withLogPath(
-        {
-          status: planCreated ? "plan-created" : "plan-found",
-          issue,
-          planPath,
-        },
-        options,
-      );
+      labels = implementationLabels;
     }
 
     let implemented =
@@ -1248,6 +1094,8 @@ export async function runOneIssue(
       {
         issueNumber: issue.number,
         status: "implementing",
+        specPath,
+        specCommit,
         planPath,
         planCommit,
         branch,
@@ -1465,7 +1313,7 @@ export async function runOneIssue(
           issue,
           labels,
           piResult,
-          { planPath, planCommit, branch, worktreePath },
+          { specPath, specCommit, planPath, planCommit, branch, worktreePath },
           timestamp,
           options,
         );
@@ -1491,6 +1339,8 @@ export async function runOneIssue(
       {
         issueNumber: issue.number,
         status: "implementing",
+        specPath,
+        specCommit,
         planPath,
         planCommit,
         branch,
@@ -1545,6 +1395,8 @@ export async function runOneIssue(
         {
           issueNumber: issue.number,
           status: "implementing",
+          specPath,
+          specCommit,
           planPath,
           planCommit,
           branch,
@@ -1573,6 +1425,8 @@ export async function runOneIssue(
         {
           issueNumber: issue.number,
           status: "implementing",
+          specPath,
+          specCommit,
           planPath,
           planCommit,
           branch,
@@ -1591,6 +1445,8 @@ export async function runOneIssue(
         {
           issueNumber: issue.number,
           status: "implementing",
+          specPath,
+          specCommit,
           planPath,
           planCommit,
           branch,
@@ -1601,7 +1457,14 @@ export async function runOneIssue(
       );
       checkpoints.doneLabelEnsured = true;
     }
-    const doneLabels = nextLabels(labels, [inProgress], [done]);
+    const doneLabels = nextLabels(
+      cleanupLabelsForImplementation(labels, {
+        readyLabel: ready,
+        policy: config.approvalPolicy,
+      }),
+      [inProgress],
+      [done],
+    );
     if (!checkpoints.doneLabelApplied) {
       await host.applyLabels(planLabelChange(issue.number, labels, doneLabels));
       await writeRunState(
@@ -1609,6 +1472,8 @@ export async function runOneIssue(
         {
           issueNumber: issue.number,
           status: "finished",
+          specPath,
+          specCommit,
           planPath,
           planCommit,
           branch,
@@ -1634,6 +1499,8 @@ export async function runOneIssue(
       {
         issueNumber: issue.number,
         status: "finished",
+        specPath,
+        specCommit,
         planPath,
         planCommit,
         branch,
@@ -1664,7 +1531,7 @@ export async function runOneIssue(
     await runStep(`final result ${implemented.status}`, async () => undefined);
 
     return withLogPath(
-      { ...implemented, issue, planPath, worktreePath },
+      { ...implemented, issue, specPath, planPath, worktreePath },
       options,
     );
   } catch (error) {
@@ -1676,7 +1543,7 @@ export async function runOneIssue(
       config,
       issue,
       checkpoints,
-      { planPath, planCommit, branch, worktreePath },
+      { specPath, specCommit, planPath, planCommit, branch, worktreePath },
       timestamp,
       error,
       options,

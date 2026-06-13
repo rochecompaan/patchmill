@@ -22,18 +22,19 @@ export const HELP_TEXT = `Usage:
   patchmill run-once [options]
   npm run run-once -- [options]
 
-Process one issue labeled agent-ready. Claims and processes one eligible issue by default.
+Advance one actionable issue through spec, plan, or implementation workflow states.
+Claims and processes one eligible issue by default.
 Use --dry-run to preview the next eligible issue without mutating the configured issue host or git.
 Progress is written to stderr by default. Final JSON is written to stdout.
 Run logs are written under the configured run state directory (default: .patchmill/runs/).
 
 Options:
   --help, -h          Show this help and exit.
-  --dry-run, --dryrun Preview the next eligible agent-ready issue without mutations.
+  --dry-run, --dryrun Preview the next actionable issue without mutations.
   --plan-only         Create or find the issue plan, then stop before implementation.
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
-  --issue <number>    Process one specific open agent-ready issue.
+  --issue <number>    Process one specific open actionable issue.
   --host-login <name> Use a named host login when the provider supports named logins.
   --tea-login <name>  Compatibility alias for --host-login.
 
@@ -51,15 +52,27 @@ type JsonResultLog = { logPath?: string };
 type JsonResult = JsonResultLog &
   (
     | { status: "no-issue" }
-    | { status: "dry-run"; issueNumber: number; title: string }
+    | {
+        status: "dry-run";
+        issueNumber: number;
+        title: string;
+        transition: string;
+      }
+    | {
+        status: "spec-created" | "spec-found";
+        issueNumber: number;
+        specPath: string;
+      }
     | {
         status: "plan-created" | "plan-found";
         issueNumber: number;
+        specPath?: string;
         planPath: string;
       }
     | {
         status: "pr-created";
         issueNumber: number;
+        specPath?: string;
         planPath: string;
         branch: string;
         prUrl: string;
@@ -73,6 +86,7 @@ type JsonResult = JsonResultLog &
     | {
         status: "merged";
         issueNumber: number;
+        specPath?: string;
         planPath: string;
         branch: string;
         mergeCommit: string;
@@ -144,6 +158,15 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
         status: result.status,
         issueNumber: result.issue.number,
         title: result.issue.title,
+        transition: result.transition,
+        ...withLogPath,
+      };
+    case "spec-created":
+    case "spec-found":
+      return {
+        status: result.status,
+        issueNumber: result.issue.number,
+        specPath: result.specPath,
         ...withLogPath,
       };
     case "plan-created":
@@ -151,6 +174,7 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
       return {
         status: result.status,
         issueNumber: result.issue.number,
+        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
         planPath: result.planPath,
         ...withLogPath,
       };
@@ -158,6 +182,7 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
       return {
         status: result.status,
         issueNumber: result.issue.number,
+        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
         planPath: result.planPath,
         branch: result.branch,
         prUrl: result.prUrl,
@@ -173,6 +198,7 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
       return {
         status: result.status,
         issueNumber: result.issue.number,
+        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
         planPath: result.planPath,
         branch: result.branch,
         mergeCommit: result.mergeCommit,

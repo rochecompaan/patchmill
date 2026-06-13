@@ -27,6 +27,7 @@ test("parseArgs executes by default when no args are provided", () => {
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.planOnly, false);
   assert.equal(config.teaLogin, "triage-agent");
+  assert.equal(config.specsDir, join(cwd(), "docs", "specs"));
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
   assert.equal(config.runStateDir, join(cwd(), ".patchmill", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
@@ -93,7 +94,10 @@ test("parseArgs applies host-login to host config", () => {
 test("HELP_TEXT documents one-issue usage and host-neutral options", () => {
   assert.match(HELP_TEXT, /Usage:/);
   assert.match(HELP_TEXT, /patchmill run-once/);
-  assert.match(HELP_TEXT, /Process one issue labeled agent-ready/);
+  assert.match(
+    HELP_TEXT,
+    /Advance one actionable issue through spec, plan, or implementation/,
+  );
   assert.match(HELP_TEXT, /Claims and processes one eligible issue by default/);
   assert.doesNotMatch(HELP_TEXT, /Process one Forgejo issue/);
   assert.match(HELP_TEXT, /without mutating the configured issue host or git/);
@@ -203,6 +207,23 @@ test("summarizeResult includes merged issue handoff fields", () => {
   );
 });
 
+test("summarizeResult includes spec-created details", () => {
+  assert.deepEqual(
+    summarizeResult({
+      status: "spec-created",
+      issue: { number: 42, title: "Spec", body: "", labels: [], state: "open" },
+      specPath: "docs/specs/spec.md",
+      logPath: ".patchmill/runs/run.jsonl",
+    }),
+    {
+      status: "spec-created",
+      issueNumber: 42,
+      specPath: "docs/specs/spec.md",
+      logPath: ".patchmill/runs/run.jsonl",
+    },
+  );
+});
+
 test("summarizeResult includes approval-required details", () => {
   assert.deepEqual(
     summarizeResult({
@@ -305,6 +326,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
         priorities: ["priority:p1", "priority:p2"],
       },
       paths: {
+        specsDir: "pm-specs",
         plansDir: "pm-plans",
         runStateDir: ".patchmill/runs",
         triageLogDir: ".patchmill/triage-runs",
@@ -322,6 +344,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.equal(config.dryRun, false);
   assert.equal(config.execute, true);
   assert.equal(config.teaLogin, "config-bot");
+  assert.equal(config.specsDir, join(repoRoot, "pm-specs"));
   assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));

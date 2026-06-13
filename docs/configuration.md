@@ -239,18 +239,41 @@ object and are not added to `triage.stateMap`.
 }
 ```
 
-When specification approval is required, automatic `run-once` selection ignores
-ready issues that do not have `workflow.specApproval.approvedLabel`. Explicit
-`patchmill run-once --issue <number>` fails with an `approval-required` result
-for the requested issue instead of silently choosing another issue.
+`patchmill run-once` treats the configured ready label, spec-approved label, and
+plan-approved label as actionable workflow states. Review labels without
+matching approved labels are waiting states for human review.
 
-When plan approval is required, Patchmill creates or finds the issue plan,
-comments that the plan is ready, applies `workflow.planApproval.reviewLabel`,
-restores the ready label, removes `in-progress`, records the run as finished,
-and stops. After a human applies `workflow.planApproval.approvedLabel`, a later
-`run-once` reuses the existing plan and proceeds to implementation. During the
-claim step, Patchmill removes the active plan-review label when the approved
-label is present.
+When both spec and plan approval are required:
+
+```text
+agent-ready   --run-once--> write spec, stop at spec-review
+spec-approved --run-once--> write/reuse spec, write plan, stop at plan-review
+plan-approved --run-once--> write/reuse spec and plan, implement, stop at agent-done
+```
+
+When spec approval is required and plan approval is not required:
+
+```text
+agent-ready   --run-once--> write spec, stop at spec-review
+spec-approved --run-once--> write/reuse spec, write plan, implement, stop at agent-done
+```
+
+When spec approval is not required and plan approval is required:
+
+```text
+agent-ready   --run-once--> write spec, write plan, stop at plan-review
+plan-approved --run-once--> write/reuse spec and plan, implement, stop at agent-done
+```
+
+When neither approval is required:
+
+```text
+agent-ready --run-once--> write spec, write plan, implement, stop at agent-done
+```
+
+Humans may either replace review labels with approved labels or add approved
+labels while leaving review labels in place. Patchmill tolerates both and
+removes stale `spec-*` and `plan-*` workflow labels as it advances.
 
 `projectPolicy.planRequiresApproval` remains as a compatibility alias. If
 `workflow.planApproval.required` is omitted, Patchmill derives plan approval
