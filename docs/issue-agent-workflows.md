@@ -273,10 +273,11 @@ A blocked plan moves the issue from `in-progress` to `needs-info` and posts the
 blocker questions.
 
 Plan approval is a workflow stop. When required and missing, Patchmill comments
-that the plan is ready, applies the configured plan-review label, restores the
-ready label, removes `in-progress`, records the run as finished, and exits with
-`plan-created` or `plan-found`. Once the configured plan-approved label is
-present, a later `run-once` reuses the plan and proceeds to implementation.
+that the plan is ready, applies the configured plan-review label, removes stale
+spec and plan approval labels, removes `in-progress`, records the run as
+finished, and exits with `plan-created` or `plan-found`. Once the configured
+plan-approved label is present, a later `run-once` reuses the plan and proceeds
+to implementation.
 
 ### Implementation Pi prompt
 
