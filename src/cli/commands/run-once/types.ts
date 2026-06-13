@@ -71,6 +71,9 @@ export type AgentIssueRunStateStatus =
 export type AgentIssueRunCheckpoint =
   | "claimed"
   | "startedCommentPosted"
+  | "specPathResolved"
+  | "specCreated"
+  | "specReadyCommentPosted"
   | "planPathResolved"
   | "planCreated"
   | "planReadyCommentPosted"
@@ -92,6 +95,8 @@ export type AgentIssueRunState = {
   status: AgentIssueRunStateStatus;
   branch?: string;
   worktreePath?: string;
+  specPath?: string;
+  specCommit?: string;
   planPath?: string;
   planCommit?: string;
   checkpoints?: AgentIssueRunCheckpoints;
@@ -121,6 +126,8 @@ export type AgentIssueRunStateUpdate = {
   title?: string;
   branch?: string;
   worktreePath?: string;
+  specPath?: string;
+  specCommit?: string;
   planPath?: string;
   planCommit?: string;
   checkpoints?: AgentIssueRunCheckpoints;
@@ -154,6 +161,12 @@ export type AgentIssueBlockedResult = {
   questions: AgentIssueBlockerQuestion[];
   commits: string[];
   validation: string[];
+};
+
+export type AgentIssueSpecCreatedResult = {
+  status: "spec-created";
+  specPath: string;
+  commit?: string;
 };
 
 export type AgentIssuePlanCreatedResult = {
@@ -199,6 +212,7 @@ export type AgentIssueMergedResult = {
 
 export type AgentIssuePiResult =
   | AgentIssueBlockedResult
+  | AgentIssueSpecCreatedResult
   | AgentIssuePlanCreatedResult
   | AgentIssuePrCreatedResult
   | AgentIssueMergedResult;
@@ -210,18 +224,26 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
     | { status: "no-issue" }
     | { status: "dry-run"; issue: IssueSummary }
     | {
+        status: "spec-created" | "spec-found";
+        issue: IssueSummary;
+        specPath: string;
+      }
+    | {
         status: "plan-created" | "plan-found";
         issue: IssueSummary;
+        specPath?: string;
         planPath: string;
       }
     | AgentIssueApprovalRequiredResult
     | ({
         issue: IssueSummary;
+        specPath?: string;
         planPath: string;
         worktreePath: string;
       } & (AgentIssuePrCreatedResult | AgentIssueMergedResult))
     | ({
         issue: IssueSummary;
+        specPath?: string;
         planPath?: string;
         worktreePath?: string;
         branch?: string;

@@ -21,8 +21,18 @@ import {
   renderVisualEvidenceSkillStep,
 } from "./prompt-workflow.ts";
 
+export type SpecCreationPromptInput = {
+  issue: IssueSummary;
+  specPath: string;
+  projectPolicy: PatchmillProjectPolicy;
+  specApprovalRequired?: boolean;
+  skills?: PatchmillSkillsConfig;
+  triageLabels?: Partial<PromptTriageLabels>;
+};
+
 export type PlanCreationPromptInput = {
   issue: IssueSummary;
+  specPath?: string;
   planPath: string;
   projectPolicy: PatchmillProjectPolicy;
   planApprovalRequired?: boolean;
@@ -549,15 +559,84 @@ function numberedWorkflow(steps: string[]): string {
     .join("\n");
 }
 
+export function buildSpecCreationPrompt(
+  input: SpecCreationPromptInput,
+): string {
+  const { issue, specPath, projectPolicy } = input;
+  const specApprovalRequired = input.specApprovalRequired ?? false;
+  const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
+  const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
+  const workflow = numberedWorkflow([
+    renderPlanContextInstruction(projectPolicy),
+    `Treat \`${ready}\` as meaning the issue is clear enough for automation to write a design spec. Do not implement code.`,
+    "Write a concise design spec that captures requirements, proposed behavior, affected components, and verification strategy.",
+    `Save the spec to ${specPath}.`,
+    specApprovalRequired
+      ? "Stop after writing the spec and wait for explicit manual approval before planning continues."
+      : "Do not stop for an additional manual spec-approval gate. Continue to planning in the next Patchmill workflow step.",
+    renderPlanningSkillStep(skills),
+    renderTodoWorkflowStep(projectPolicy, "plan", issue.number),
+    "Commit only the spec document using a Conventional Commit message.",
+  ]);
+
+  return `Create a design spec for ${formatIssueTarget(projectPolicy)} #${issue.number}: ${issue.title}
+
+Issue data:
+- Number: #${issue.number}
+- Title: ${issue.title}
+- Labels: ${formatLabels(issue.labels)}
+- Author: ${issue.author ?? "unknown"}
+- Updated: ${issue.updated ?? "unknown"}
+
+${untrustedIssueContentBoundary()}
+
+Issue body:
+${issueBody(issue.body)}
+
+Recent issue comments:
+${formatComments(issue.comments)}
+
+Spec output path:
+${specPath}
+
+Required workflow:
+${workflow}
+
+Blocker contract:
+If the issue is not actually clear enough to write a safe spec, do not invent requirements. Instead, write no spec, make no code changes, keep the reason and questions concise enough to post directly as a \`${needsInfo}\` comment, and return this exact JSON object as the final response:
+{
+  "status": "blocked",
+  "reason": "short reason",
+  "questions": [
+    {
+      "question": "question a human must answer",
+      "recommendedAnswer": "recommended answer and reasoning"
+    }
+  ]
+}
+
+Successful final response:
+Return this exact JSON object after the spec commit succeeds:
+{
+  "status": "spec-created",
+  "specPath": "${specPath}",
+  "commit": "<commit sha>"
+}
+`;
+}
+
 export function buildPlanCreationPrompt(
   input: PlanCreationPromptInput,
 ): string {
-  const { issue, planPath, projectPolicy } = input;
+  const { issue, specPath, planPath, projectPolicy } = input;
   const planApprovalRequired = input.planApprovalRequired ?? false;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
+    specPath
+      ? `Read and base the implementation plan on the approved spec at ${specPath}.`
+      : "No separate spec artifact was found; write the minimum design context needed in the implementation plan before task steps.",
     `Treat \`${ready}\` as meaning the issue is already clear and unambiguous enough to plan. Do not run a separate brainstorming/requirements-discovery process by default.`,
     renderPlanningSkillStep(skills),
     `Do not substitute an ad-hoc planning process for the configured planning skill. The plan must be saved to ${planPath} and use checkbox steps suitable for agent execution.`,
@@ -576,7 +655,7 @@ Issue data:
 - Number: #${issue.number}
 - Title: ${issue.title}
 - Labels: ${formatLabels(issue.labels)}
-- Author: ${issue.author ?? "unknown"}
+${specPath ? `- Spec path: ${specPath}\n` : ""}- Author: ${issue.author ?? "unknown"}
 - Updated: ${issue.updated ?? "unknown"}
 
 ${untrustedIssueContentBoundary()}

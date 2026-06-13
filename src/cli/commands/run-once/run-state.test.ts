@@ -45,6 +45,28 @@ test("writeRunState creates issue run-state files", async () => {
   assert.equal(saved.status, "claimed");
 });
 
+test("writeRunState preserves spec path and commit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-run-state-spec-"));
+
+  await writeRunState(dir, {
+    issueNumber: 42,
+    title: "Spec issue",
+    status: "planning",
+    specPath: "docs/specs/spec.md",
+    specCommit: "abc123",
+    checkpoints: { specPathResolved: true, specCreated: true },
+  });
+
+  const state = await readRunState(dir, 42);
+
+  assert.equal(state?.specPath, "docs/specs/spec.md");
+  assert.equal(state?.specCommit, "abc123");
+  assert.deepEqual(state?.checkpoints, {
+    specPathResolved: true,
+    specCreated: true,
+  });
+});
+
 test("writeRunState preserves issue details, timestamps, and last error across status updates", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "agent-issue-run-state-updates-"),

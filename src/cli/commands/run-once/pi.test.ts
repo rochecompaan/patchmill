@@ -84,6 +84,19 @@ test("parsePiResult extracts a supported status from fenced JSON output", () => 
   });
 });
 
+test("parsePiResult parses spec-created result", () => {
+  assert.deepEqual(
+    parsePiResult(
+      'spec done\n{"status":"spec-created","specPath":"docs/specs/spec.md","commit":"abc123"}',
+    ),
+    {
+      status: "spec-created",
+      specPath: "docs/specs/spec.md",
+      commit: "abc123",
+    },
+  );
+});
+
 test("parsePiResult extracts a merged implementation result", () => {
   const result = parsePiResult(
     'done\n{"status":"merged","branch":"agent/issue-42-add-once-runner-helpers","mergeCommit":"abc123","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
