@@ -29,7 +29,7 @@ Use the top-level `skills` key with a supported reference form (examples):
   "skills": {
     "triage": "patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
-    "implementation": "superpowers:subagent-driven-development",
+    "implementation": ".patchmill/skills/subagent-driven-development",
     "visualEvidence": "capturing-proof-screenshots"
   }
 }
@@ -74,6 +74,17 @@ Supported keys:
 `patchmill init` installs Patchmill's recommended skill pack into
 `.patchmill/skills/` by default (mode `project`). If you choose another
 `--skills` mode, the default pack is not installed.
+
+The project-local implementation skill configured by default is
+`.patchmill/skills/subagent-driven-development`. The recommended skill pack also
+installs `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` as an
+opt-in alternative. That optional skill composes the Superpowers
+subagent-driven-development workflow and then requires two full final worktree
+review loops using Pi `reviewer` subagents: Armin Ronacher's Codex review prompt
+adaptation first, then the Cursor Team Kit
+[thermo-nuclear code quality review](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md)
+rubric. Compatibility/no-init defaults can still point directly at
+`superpowers:subagent-driven-development`.
 
 Project-local skills are local-only by default. For consistent Patchmill runs
 across local machines and CI, consider committing `patchmill.config.json` and

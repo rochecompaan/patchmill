@@ -320,8 +320,11 @@ It always renders:
 - `Use the configured implementation skill: <skills.implementation>.`
 
 For initialized repositories, `skills.implementation` is set to the project path
-`.patchmill/skills/subagent-driven-development`; legacy/no-override configs use
-the built-in compatibility default `superpowers:subagent-driven-development`.
+`.patchmill/skills/subagent-driven-development`. The recommended skill pack also
+installs `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` for
+repositories that opt into final standard and thermo-nuclear full-worktree Pi
+reviewer loops. Legacy/no-override configs use the built-in compatibility
+default `superpowers:subagent-driven-development`.
 
 When present, the prompt renders these additional configured skill lines
 separately:

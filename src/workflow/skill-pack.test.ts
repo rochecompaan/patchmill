@@ -46,6 +46,10 @@ test("default pack records pinned external source", () => {
   });
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
+    {
+      name: "subagent-dev-with-standard-and-thermo-reviews",
+      source: "patchmill",
+    },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },

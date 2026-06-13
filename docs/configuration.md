@@ -301,8 +301,12 @@ compatibility:
 ### Subagents
 
 Patchmill bundles `pi-subagents`; initialized repositories set
-`skills.implementation` to `.patchmill/skills/subagent-driven-development`.
-Legacy repos with no init override use the built-in compatibility default
+`skills.implementation` to `.patchmill/skills/subagent-driven-development`. The
+recommended skill pack also installs
+`.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` as an opt-in
+implementation skill for repositories that want final standard plus
+thermo-nuclear full-worktree Pi reviewer loops. Legacy repos with no init
+override use the built-in compatibility default
 `superpowers:subagent-driven-development`.
 
 Customize subagent roles and runtime settings through pi-subagents configuration
