@@ -3,8 +3,8 @@ import type { PatchmillSkillsConfig } from "./skills.ts";
 
 export const DEFAULT_PROJECT_SKILL_DIR = ".patchmill/skills";
 export const SKILL_PACK_METADATA_FILE = "patchmill-skill-pack.json";
-export const SUBAGENT_DEV_WITH_STANDARD_AND_THERMO_REVIEWS_SKILL =
-  "subagent-dev-with-standard-and-thermo-reviews";
+export const SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
+  "subagent-dev-with-codex-and-thermo-reviews";
 
 export type SkillPackSource = {
   type: "github-release";
@@ -50,7 +50,7 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   skills: [
     { name: "patchmill-issue-triage", source: "patchmill" },
     {
-      name: SUBAGENT_DEV_WITH_STANDARD_AND_THERMO_REVIEWS_SKILL,
+      name: SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
       source: "patchmill",
     },
     { name: "brainstorming", source: "superpowers" },

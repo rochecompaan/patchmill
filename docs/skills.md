@@ -77,7 +77,7 @@ Supported keys:
 
 The project-local implementation skill configured by default is
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
-installs `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` as an
+installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` as an
 opt-in alternative. That optional skill composes the Superpowers
 subagent-driven-development workflow and then requires two full final worktree
 review loops using Pi `reviewer` subagents: Armin Ronacher's Codex review prompt

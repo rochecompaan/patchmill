@@ -319,8 +319,8 @@ It always renders:
 
 For initialized repositories, `skills.implementation` is set to the project path
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
-installs `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` for
-repositories that opt into final standard and thermo-nuclear full-worktree Pi
+installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` for
+repositories that opt into final Codex and thermo-nuclear full-worktree Pi
 reviewer loops.
 
 When present, the prompt renders these additional configured skill lines

@@ -180,9 +180,9 @@ The default skills keep the workflow small and explicit:
   changes.
 - `.patchmill/skills/subagent-driven-development` executes approved plans with
   Superpowers-style worker/reviewer handoffs.
-- `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` is also
+- `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` is also
   installed as an opt-in implementation skill for repositories that want the
-  same subagent workflow plus final full-worktree standard and thermo-nuclear
+  same subagent workflow plus final full-worktree Codex and thermo-nuclear
   review loops before landing.
 
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
@@ -226,8 +226,8 @@ under the configured `projectPolicy.pi.taskContract.todoRoot` (default:
 prompts can rely on the Pi `subagent` tool and the agents discovered by
 pi-subagents. For initialized repositories, the default implementation skill is
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
-installs `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` as an
-opt-in alternative for repositories that want final standard and thermo-nuclear
+installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` as an
+opt-in alternative for repositories that want final Codex and thermo-nuclear
 full-worktree review loops. Both workflows can use pi-subagents builtin agents
 such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
 `researcher`, `delegate`, and `oracle`.

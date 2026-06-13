@@ -296,9 +296,9 @@ consistent Patchmill runs across local machines and CI, consider committing
 Patchmill bundles `pi-subagents`; initialized repositories set
 `skills.implementation` to `.patchmill/skills/subagent-driven-development`. The
 recommended skill pack also installs
-`.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` as an opt-in
-implementation skill for repositories that want final standard plus
-thermo-nuclear full-worktree Pi reviewer loops.
+`.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` as an opt-in
+implementation skill for repositories that want final Codex plus thermo-nuclear
+full-worktree Pi reviewer loops.
 
 Customize subagent roles and runtime settings through pi-subagents configuration
 rather than `patchmill.config.json`:

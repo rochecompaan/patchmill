@@ -1,15 +1,15 @@
 ---
-name: subagent-dev-with-standard-and-thermo-reviews
+name: subagent-dev-with-codex-and-thermo-reviews
 description:
   Use when executing Patchmill implementation plans that require final
   full-worktree readiness review before landing
 ---
 
-# Patchmill Subagent Dev with Standard and Thermo Reviews
+# Patchmill Subagent Dev with Codex and Thermo Reviews
 
 Execute the implementation plan with Superpowers' subagent-driven-development
 pattern, then close the work with two mandatory full-worktree Pi review loops:
-standard first, thermo-nuclear second.
+Codex first, thermo-nuclear second.
 
 **Core principle:** task-level reviews catch local issues; final full-worktree
 reviews catch integration, regression, and structural issues before Patchmill
@@ -80,7 +80,7 @@ to inspect the next version.
 
 If validation fails, fix validation failures before requesting final reviews.
 
-### 3. Run final review pass 1: standard review
+### 3. Run final review pass 1: Codex review
 
 Dispatch a fresh-context, review-only `reviewer` subagent using
 `prompts/final-review.md` and Armin Ronacher's Codex review prompt adaptation.
@@ -88,22 +88,22 @@ Dispatch a fresh-context, review-only `reviewer` subagent using
 Use:
 
 - `rubrics/armin-codex-review-prompt.md`
-- Review name: `Final standard full-worktree review`
+- Review name: `Final Codex full-worktree review`
 - Scope: the entire final worktree and full implementation diff
 
 The reviewer must not edit files. It must inspect the code directly, cite
 file/line evidence, and return a clear verdict.
 
-### 4. Fix standard-review findings
+### 4. Fix Codex-review findings
 
-If the standard reviewer reports Critical or Important findings, or any Minor
+If the Codex reviewer reports Critical or Important findings, or any Minor
 finding that should be fixed before landing:
 
 1. Synthesize accepted findings.
 2. Dispatch `worker` using `prompts/fix-review-findings.md`.
 3. Instruct the worker to apply only accepted fixes, preserve approved scope,
    and validate.
-4. Re-run the standard final review until it passes or only explicitly deferred
+4. Re-run the Codex final review until it passes or only explicitly deferred
    findings remain.
 
 Ask the human before applying any review item that changes product scope,
@@ -112,7 +112,7 @@ landing policy.
 
 ### 5. Run final review pass 2: Cursor thermo-nuclear rubric
 
-Only start this after the standard final review loop is closed.
+Only start this after the Codex final review loop is closed.
 
 Dispatch a fresh-context, review-only `reviewer` subagent using
 `prompts/final-review.md`.
@@ -121,7 +121,7 @@ Use:
 
 - `rubrics/cursor-thermo-nuclear-code-quality-review.md`
 - Review name: `Final thermo-nuclear full-worktree review`
-- Scope: the entire final worktree after standard-review fixes
+- Scope: the entire final worktree after Codex-review fixes
 
 The reviewer must focus on structural maintainability, abstraction quality,
 codebase health, and code-judo simplifications without changing behavior.
@@ -145,7 +145,7 @@ Escalate scope or architecture changes to the human first.
 After both final review loops are closed:
 
 1. Run final verification commands.
-2. Summarize implementation commits, validation, standard review result,
+2. Summarize implementation commits, validation, Codex review result,
    thermo-nuclear review result, and any deferred findings.
 3. Continue with the configured landing skill or Patchmill PR/direct-land
    instructions.
@@ -165,7 +165,7 @@ Never:
 
 - Point Patchmill directly at `superpowers:subagent-driven-development` when
   this final-readiness workflow is required.
-- Run the thermo-nuclear review before the standard review loop is closed.
+- Run the thermo-nuclear review before the Codex review loop is closed.
 - Let a reviewer edit files during review-only passes.
 - Treat one review pass as satisfying both rubrics.
 - Review only the last task; final reviews cover the full final worktree.

@@ -1,4 +1,4 @@
-# Subagent Dev with Standard and Thermo Reviews Skill Design
+# Subagent Dev with Codex and Thermo Reviews Skill Design
 
 ## Goal
 
@@ -19,14 +19,14 @@ review profiles over the entire final worktree.
 ## New behavior
 
 Patchmill's project-local recommended skill pack installs a new
-`subagent-dev-with-standard-and-thermo-reviews` skill alongside the existing
+`subagent-dev-with-codex-and-thermo-reviews` skill alongside the existing
 `subagent-driven-development` skill. Newly initialized repositories still map
 `skills.implementation` to `.patchmill/skills/subagent-driven-development` by
 default.
 
 Repositories that want the stricter final review workflow can opt in by setting
 `skills.implementation` to
-`.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews`.
+`.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews`.
 
 The new skill is a composite implementation skill. It instructs Pi to:
 
@@ -37,7 +37,7 @@ The new skill is a composite implementation skill. It instructs Pi to:
 3. Run a fresh-context Pi `reviewer` subagent over the full final worktree using
    Armin Ronacher's adaptation of the Codex review prompt.
 4. Dispatch a `worker` subagent to fix accepted findings, validate, and re-run
-   the standard review until clear.
+   the Codex review until clear.
 5. Run a fresh-context Pi `reviewer` subagent over the full final worktree using
    the Cursor thermo-nuclear code quality review rubric.
 6. Dispatch a `worker` subagent to fix accepted findings, validate, and re-run
@@ -50,15 +50,15 @@ Project-local defaults continue to use
 
 ## Files and responsibilities
 
-- `skills/subagent-dev-with-standard-and-thermo-reviews/SKILL.md`: the
+- `skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md`: the
   project-owned composite workflow skill.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/rubrics/armin-codex-review-prompt.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md`:
   Armin Ronacher adaptation of the Codex review prompt supporting file.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/rubrics/cursor-thermo-nuclear-code-quality-review.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/cursor-thermo-nuclear-code-quality-review.md`:
   Cursor thermo-nuclear code quality review rubric supporting file.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/prompts/final-review.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md`:
   reusable reviewer prompt contract for final full-worktree review passes.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/prompts/fix-review-findings.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-review-findings.md`:
   reusable worker prompt contract for fixing accepted review findings.
 - `src/workflow/skill-pack.ts`: add the Patchmill skill to the recommended pack
   while keeping the project-local implementation stage mapped to
@@ -76,7 +76,7 @@ Project-local defaults continue to use
 
 The supporting rubric files keep separate provenance:
 
-- Standard: Armin Ronacher's adaptation of the Codex review prompt.
+- Codex: Armin Ronacher's adaptation of the Codex review prompt.
 - Thermo-nuclear: from Cursor Team Kit's
   [thermo-nuclear code quality review](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md).
 

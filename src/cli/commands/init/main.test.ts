@@ -121,7 +121,7 @@ test("runInit installs project-local skills by default", async () => {
       repoRoot,
       ".patchmill",
       "skills",
-      "subagent-dev-with-standard-and-thermo-reviews",
+      "subagent-dev-with-codex-and-thermo-reviews",
       "SKILL.md",
     ),
   );

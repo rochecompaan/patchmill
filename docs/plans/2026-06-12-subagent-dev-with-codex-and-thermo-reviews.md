@@ -1,4 +1,4 @@
-# Subagent Dev with Standard and Thermo Reviews Skill Implementation Plan
+# Subagent Dev with Codex and Thermo Reviews Skill Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
@@ -6,7 +6,7 @@
 > checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an optional Patchmill composite implementation skill that reuses
-Superpowers subagent-driven-development and then requires standard plus
+Superpowers subagent-driven-development and then requires Codex plus
 thermo-nuclear full-worktree review loops.
 
 **Architecture:** Keep the project-local default implementation skill as
@@ -28,15 +28,15 @@ skill-pack installer.
   implementation mapping.
 - `src/cli/commands/init/skill-installer.test.ts`: installer behavior test with
   a fake Patchmill skill source.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/SKILL.md`: composite
+- `skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md`: composite
   implementation workflow skill.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/rubrics/armin-codex-review-prompt.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md`:
   copied Armin Ronacher adaptation of the Codex review prompt.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/rubrics/cursor-thermo-nuclear-code-quality-review.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/cursor-thermo-nuclear-code-quality-review.md`:
   copied Cursor thermo-nuclear code quality review rubric.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/prompts/final-review.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md`:
   reviewer prompt template.
-- `skills/subagent-dev-with-standard-and-thermo-reviews/prompts/fix-review-findings.md`:
+- `skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-review-findings.md`:
   worker prompt template.
 - `docs/skills.md`, `docs/issue-agent-workflows.md`, `docs/configuration.md`:
   documentation updates.
@@ -56,15 +56,15 @@ Keep the expected implementation path at
 - [ ] **Step 2: Update recommended pack expectation**
 
 Add
-`{ name: "subagent-dev-with-standard-and-thermo-reviews", source: "patchmill" }`
+`{ name: "subagent-dev-with-codex-and-thermo-reviews", source: "patchmill" }`
 immediately after `patchmill-issue-triage` in
 `PATCHMILL_RECOMMENDED_SKILL_PACK.skills`.
 
 - [ ] **Step 3: Update installer fixture**
 
-Add a fake Patchmill-owned `subagent-dev-with-standard-and-thermo-reviews` skill
-to the installer test fixture, include it in `packSkills`, and assert it is
-copied and recorded in metadata.
+Add a fake Patchmill-owned `subagent-dev-with-codex-and-thermo-reviews` skill to
+the installer test fixture, include it in `packSkills`, and assert it is copied
+and recorded in metadata.
 
 - [ ] **Step 4: Verify RED**
 
@@ -81,15 +81,15 @@ provide the new optional skill.
 
 **Files:**
 
-- Create: `skills/subagent-dev-with-standard-and-thermo-reviews/SKILL.md`
+- Create: `skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md`
 - Create:
-  `skills/subagent-dev-with-standard-and-thermo-reviews/rubrics/armin-codex-review-prompt.md`
+  `skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md`
 - Create:
-  `skills/subagent-dev-with-standard-and-thermo-reviews/rubrics/cursor-thermo-nuclear-code-quality-review.md`
+  `skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/cursor-thermo-nuclear-code-quality-review.md`
 - Create:
-  `skills/subagent-dev-with-standard-and-thermo-reviews/prompts/final-review.md`
+  `skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md`
 - Create:
-  `skills/subagent-dev-with-standard-and-thermo-reviews/prompts/fix-review-findings.md`
+  `skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-review-findings.md`
 
 - [ ] **Step 1: Write `SKILL.md`**
 
@@ -119,7 +119,7 @@ summarize changes.
 - [ ] **Step 1: Add a named constant**
 
 Add
-`SUBAGENT_DEV_WITH_STANDARD_AND_THERMO_REVIEWS_SKILL = "subagent-dev-with-standard-and-thermo-reviews"`
+`SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL = "subagent-dev-with-codex-and-thermo-reviews"`
 near skill-pack constants.
 
 - [ ] **Step 2: Add skill to the recommended pack**
