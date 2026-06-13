@@ -32,6 +32,7 @@ Current command status:
 Functional:
 
 - `patchmill init` initializes local configuration and recommended skills.
+- `patchmill version` prints the installed Patchmill CLI version.
 - `patchmill triage` is the intake/sorting station. It classifies open issues
   and can apply readiness labels or comments.
 - `patchmill run-once` is the one-issue production run. It claims one ready

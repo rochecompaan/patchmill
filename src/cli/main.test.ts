@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { HELP_TEXT, createCliMain, resolveCommand } from "./main.ts";
+import { fileURLToPath } from "node:url";
+import { HELP_TEXT, createCliMain, main, resolveCommand } from "./main.ts";
 
 test("resolveCommand returns help with no command", () => {
   assert.equal(
@@ -50,6 +53,30 @@ test("resolveCommand maps doctor to the public command name", () => {
   });
 });
 
+test("main prints the package version", async () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+  const packageJson = JSON.parse(
+    readFileSync(join(repoRoot, "package.json"), "utf8"),
+  ) as { version: string };
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+
+  try {
+    console.log = (line?: unknown) => stdout.push(String(line));
+    console.error = (line?: unknown) => stderr.push(String(line));
+
+    assert.equal(await main(["version"]), 0);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  assert.deepEqual(stdout, [packageJson.version]);
+  assert.deepEqual(stderr, []);
+});
+
 test("resolveCommand rejects unknown commands", () => {
   assert.throws(
     () => resolveCommand(["queue"], ["init", "doctor", "triage", "run-once"]),
@@ -76,6 +103,7 @@ test("createCliMain prints top-level help", async () => {
   assert.equal(await main(["--help"]), 0);
   assert.match(HELP_TEXT, /init\s+Create a minimal patchmill\.config\.json\./);
   assert.match(HELP_TEXT, /doctor\s+Run read-only readiness checks\./);
+  assert.match(HELP_TEXT, /version\s+Print the Patchmill CLI version\./);
   assert.match(
     HELP_TEXT,
     /setup-test-repo\s+Create or reset a disposable Patchmill demo repository\./,

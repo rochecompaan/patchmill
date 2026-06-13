@@ -3,6 +3,7 @@ import { main as initMain } from "./commands/init/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
+import { main as versionMain } from "./commands/version/main.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill <command> [options]
@@ -12,6 +13,7 @@ Commands:
   doctor      Run read-only readiness checks.
   triage      Classify repository issues for agent readiness.
   run-once    Claim and process one agent-ready issue.
+  version     Print the Patchmill CLI version.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;
 
@@ -93,6 +95,7 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["doctor", doctorMain],
   ["triage", triageMain],
   ["run-once", runOnceMain],
+  ["version", versionMain],
   ["setup-test-repo", setupTestRepoMain],
 ]);
 
