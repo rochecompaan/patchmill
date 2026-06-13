@@ -92,6 +92,13 @@ description: Use when executing Patchmill implementation plans that require fina
 # Subagent Dev with Codex and Thermo Reviews
 `;
 
+const singleSubagentReviewedImplementationSkill = `---
+name: single-subagent-dev-with-codex-and-thermo-reviews
+description: Use when executing Patchmill implementation plans with one implementation subagent and final full-worktree readiness review before landing
+---
+# Single Subagent Dev with Codex and Thermo Reviews
+`;
+
 test("installProjectSkills copies skills and writes metadata", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
   const patchmillSource = await tempRoot("patchmill-install-patchmill-");
@@ -105,6 +112,14 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       "prompts/final-review.md": "review the final worktree\n",
       "rubrics/armin-codex-review-prompt.md":
         "review using Armin's Codex adaptation\n",
+    },
+  );
+  await writeSkill(
+    patchmillSource,
+    "single-subagent-dev-with-codex-and-thermo-reviews",
+    singleSubagentReviewedImplementationSkill,
+    {
+      "prompts/implement-plan.md": "implement the full plan with one worker\n",
     },
   );
   await writeSkill(superpowersSource, "writing-plans", planningSkill, {
@@ -129,6 +144,10 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         name: "subagent-dev-with-codex-and-thermo-reviews",
         source: "patchmill",
       },
+      {
+        name: "single-subagent-dev-with-codex-and-thermo-reviews",
+        source: "patchmill",
+      },
       { name: "writing-plans", source: "superpowers" },
       { name: "subagent-driven-development", source: "superpowers" },
     ],
@@ -139,6 +158,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   assert.deepEqual(result.installedSkills, [
     ".patchmill/skills/patchmill-issue-triage",
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
+    ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/writing-plans",
     ".patchmill/skills/subagent-driven-development",
   ]);
@@ -154,6 +174,33 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       "utf8",
     ),
     finalReviewedImplementationSkill,
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "single-subagent-dev-with-codex-and-thermo-reviews",
+        "SKILL.md",
+      ),
+      "utf8",
+    ),
+    singleSubagentReviewedImplementationSkill,
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "single-subagent-dev-with-codex-and-thermo-reviews",
+        "prompts",
+        "implement-plan.md",
+      ),
+      "utf8",
+    ),
+    "implement the full plan with one worker\n",
   );
   assert.equal(
     await readFile(
@@ -224,6 +271,14 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       {
         path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md",
         sha256: hashText("review using Armin's Codex adaptation\n"),
+      },
+      {
+        path: ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
+        sha256: hashText(singleSubagentReviewedImplementationSkill),
+      },
+      {
+        path: ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/prompts/implement-plan.md",
+        sha256: hashText("implement the full plan with one worker\n"),
       },
       {
         path: ".patchmill/skills/writing-plans/SKILL.md",
@@ -610,6 +665,13 @@ test("defaultSkillSourceRoots resolves bundled and dependency skill roots", asyn
 
   await access(
     join(roots.patchmillSkillsDir, "patchmill-issue-triage", "SKILL.md"),
+  );
+  await access(
+    join(
+      roots.patchmillSkillsDir,
+      "single-subagent-dev-with-codex-and-thermo-reviews",
+      "SKILL.md",
+    ),
   );
   await access(join(roots.superpowersSkillsDir, "writing-plans", "SKILL.md"));
 });

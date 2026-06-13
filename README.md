@@ -182,8 +182,11 @@ The default skills keep the workflow small and explicit:
   Superpowers-style worker/reviewer handoffs.
 - `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` is also
   installed as an opt-in implementation skill for repositories that want the
-  same subagent workflow plus final full-worktree Codex and thermo-nuclear
-  review loops before landing.
+  same task-by-task subagent workflow plus final full-worktree Codex and
+  thermo-nuclear review loops before landing.
+- `.patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews` is a
+  second opt-in implementation skill for repositories that want one worker
+  subagent to implement the whole plan before those same final review loops.
 
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
 `tea` and `github-gh` for GitHub through `gh`.
@@ -226,11 +229,13 @@ under the configured `projectPolicy.pi.taskContract.todoRoot` (default:
 prompts can rely on the Pi `subagent` tool and the agents discovered by
 pi-subagents. For initialized repositories, the default implementation skill is
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
-installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` as an
-opt-in alternative for repositories that want final Codex and thermo-nuclear
-full-worktree review loops. Both workflows can use pi-subagents builtin agents
-such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
-`researcher`, `delegate`, and `oracle`.
+installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` as a
+task-by-task opt-in alternative, plus
+`.patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews` as a
+single-worker opt-in alternative. Both alternatives add final Codex and
+thermo-nuclear full-worktree review loops. These workflows can use pi-subagents
+builtin agents such as `worker`, `reviewer`, `scout`, `planner`,
+`context-builder`, `researcher`, `delegate`, and `oracle`.
 
 Agent files define reusable delegated roles and can live in:
 

@@ -319,9 +319,13 @@ It always renders:
 
 For initialized repositories, `skills.implementation` is set to the project path
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
-installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` for
-repositories that opt into final Codex and thermo-nuclear full-worktree Pi
-reviewer loops.
+installs two opt-in final-readiness alternatives:
+`.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` for repositories
+that want task-by-task worker/reviewer handoffs before final Codex and
+thermo-nuclear full-worktree Pi reviewer loops, and
+`.patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews` for
+repositories that want one worker subagent to implement the whole plan before
+those same final review loops.
 
 When present, the prompt renders these additional configured skill lines
 separately:

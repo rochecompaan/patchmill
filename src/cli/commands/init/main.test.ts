@@ -125,6 +125,15 @@ test("runInit installs project-local skills by default", async () => {
       "SKILL.md",
     ),
   );
+  await access(
+    join(
+      repoRoot,
+      ".patchmill",
+      "skills",
+      "single-subagent-dev-with-codex-and-thermo-reviews",
+      "SKILL.md",
+    ),
+  );
   assert.match(stdout.join("\n"), /Installed project-local skills/);
   assert.match(
     stdout.join("\n"),
