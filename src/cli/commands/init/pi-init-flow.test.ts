@@ -126,7 +126,7 @@ test("runInit uses Pi-reported ready configuration without launching a prompt se
     stdout.join("\n"),
     /Using Pi model Anthropic \/ Claude Sonnet 4.5/,
   );
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage$/);
 });
 
 test("runInit starts Patchmill-owned interactive Pi setup when readiness is missing", async () => {
@@ -177,7 +177,7 @@ test("runInit starts Patchmill-owned interactive Pi setup when readiness is miss
   assert.equal(setupAgentDir, join(repoRoot, ".patchmill", "pi-agent"));
   assert.equal(smokeModel, "anthropic/claude-sonnet-4-5");
   assert.doesNotMatch(stdout.join("\n"), /Run `pi`, then `\/login`/);
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage$/);
 });
 
 test("runInit reports Patchmill setup guidance when Pi readiness remains missing", async () => {
@@ -450,7 +450,7 @@ test("runInit runs Pi smoke test when Pi readiness is available", async () => {
 
   assert.equal(smokeModel, "anthropic/claude-sonnet-4-5");
   assert.match(stdout.join("\n"), /Pi completed the provider smoke test/);
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage$/);
 });
 
 test("runInit warns about Pi registry errors while using available models", async () => {
@@ -490,7 +490,7 @@ test("runInit warns about Pi registry errors while using available models", asyn
     stdout.join("\n"),
     /Pi model registry reported provider configuration issues: bad models\.json/,
   );
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage --dry-run/);
+  assert.match(stdout.join("\n"), /Next:\n {2}patchmill triage$/);
 });
 
 test("runInit keeps config but reports incomplete Pi setup when smoke test fails", async () => {
@@ -555,7 +555,7 @@ test("runInit does not print manual login remediation after non-interactive read
 
   const output = stdout.join("\n");
   assert.doesNotMatch(output, /Run `pi`, then `\/login`/);
-  assert.match(output, /Next:\n {2}patchmill triage --dry-run/);
+  assert.match(output, /Next:\n {2}patchmill triage$/);
 });
 
 test("runInit aborts when the required interactive model selector is cancelled", async () => {
