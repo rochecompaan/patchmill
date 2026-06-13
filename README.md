@@ -179,7 +179,11 @@ The default skills keep the workflow small and explicit:
 - `.patchmill/skills/writing-plans` writes implementation plans before code
   changes.
 - `.patchmill/skills/subagent-driven-development` executes approved plans with
-  worker/reviewer handoffs.
+  Superpowers-style worker/reviewer handoffs.
+- `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` is also
+  installed as an opt-in implementation skill for repositories that want the
+  same subagent workflow plus final full-worktree Codex and thermo-nuclear
+  review loops before landing.
 
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
 `tea` and `github-gh` for GitHub through `gh`.
@@ -221,10 +225,11 @@ under the configured `projectPolicy.pi.taskContract.todoRoot` (default:
 `.pi/todos`) without requiring a separate Pi package install. Implementation
 prompts can rely on the Pi `subagent` tool and the agents discovered by
 pi-subagents. For initialized repositories, the default implementation skill is
-`.patchmill/skills/subagent-driven-development`; legacy setups without
-project-local defaults fall back to the built-in compatibility skill
-`superpowers:subagent-driven-development`, and both can use pi-subagents builtin
-agents such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
+`.patchmill/skills/subagent-driven-development`. The recommended skill pack also
+installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` as an
+opt-in alternative for repositories that want final Codex and thermo-nuclear
+full-worktree review loops. Both workflows can use pi-subagents builtin agents
+such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
 `researcher`, `delegate`, and `oracle`.
 
 Agent files define reusable delegated roles and can live in:

@@ -12,6 +12,7 @@
   },
   "globs": ["README.md", "docs/**/*.md", "skills/**/*.md"],
   "ignores": [
+    "skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/**",
     "node_modules/**",
     "coverage/**",
     ".devenv/**",
