@@ -80,8 +80,9 @@ The project-local implementation skill configured by default is
 installs `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` as an
 opt-in alternative. That optional skill composes the Superpowers
 subagent-driven-development workflow and then requires two full final worktree
-review loops using Pi `reviewer` subagents: Armin Ronacher's Codex review prompt
-adaptation first, then the Cursor Team Kit
+review loops using Pi `reviewer` subagents:
+[Armin Ronacher's Codex review prompt adaptation](https://github.com/mitsuhiko/agent-stuff/blob/main/extensions/review.ts#L389)
+first, then the Cursor Team Kit
 [thermo-nuclear code quality review](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md)
 rubric.
 
