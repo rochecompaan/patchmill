@@ -83,8 +83,7 @@ subagent-driven-development workflow and then requires two full final worktree
 review loops using Pi `reviewer` subagents: Armin Ronacher's Codex review prompt
 adaptation first, then the Cursor Team Kit
 [thermo-nuclear code quality review](https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md)
-rubric. Compatibility/no-init defaults can still point directly at
-`superpowers:subagent-driven-development`.
+rubric.
 
 Project-local skills are local-only by default. For consistent Patchmill runs
 across local machines and CI, consider committing `patchmill.config.json` and

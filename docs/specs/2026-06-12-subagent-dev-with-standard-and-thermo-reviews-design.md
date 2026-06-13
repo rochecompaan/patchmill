@@ -9,10 +9,8 @@ before landing or PR handoff.
 
 ## Current behavior
 
-Patchmill's compatibility defaults point `skills.implementation` at
-`superpowers:subagent-driven-development`. `patchmill init` installs the
-recommended project-local skill pack and currently maps implementation to
-`.patchmill/skills/subagent-driven-development`.
+`patchmill init` installs the recommended project-local skill pack and currently
+maps implementation to `.patchmill/skills/subagent-driven-development`.
 
 The Superpowers implementation skill reviews each task during plan execution,
 then only calls for a single final code reviewer. It does not require both Pi
@@ -47,10 +45,8 @@ The new skill is a composite implementation skill. It instructs Pi to:
 7. Proceed to the configured landing/PR completion workflow only after both
    review loops are closed or explicitly deferred with rationale.
 
-Compatibility defaults remain unchanged: project-local defaults use
-`.patchmill/skills/subagent-driven-development`, while
-`DEFAULT_PATCHMILL_SKILLS` and `GLOBAL_PATCHMILL_SKILLS` continue to use
-`superpowers:subagent-driven-development`.
+Project-local defaults continue to use
+`.patchmill/skills/subagent-driven-development`.
 
 ## Files and responsibilities
 
@@ -92,7 +88,6 @@ other, summarize them, or load dynamic `/review` behavior at runtime.
 - Do not change `skills.review` semantics; it remains an optional explicit
   review-stage skill outside the implementation skill.
 - Do not change the runtime prompt line renderer.
-- Do not change legacy compatibility defaults for non-initialized repositories.
 - Do not add new Pi subagent types or depend on the disabled legacy
   `code-reviewer` agent.
 - Do not execute the actual final review loops inside Patchmill code; the

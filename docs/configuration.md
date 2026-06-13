@@ -291,13 +291,6 @@ Path-like skill references resolve relative to the config file directory. For
 consistent Patchmill runs across local machines and CI, consider committing
 `patchmill.config.json` and `.patchmill/skills/` explicitly.
 
-Older repos and no config overrides still use the built-in defaults for
-compatibility:
-
-- `patchmill-issue-triage`
-- `superpowers:writing-plans`
-- `superpowers:subagent-driven-development`
-
 ### Subagents
 
 Patchmill bundles `pi-subagents`; initialized repositories set
@@ -305,9 +298,7 @@ Patchmill bundles `pi-subagents`; initialized repositories set
 recommended skill pack also installs
 `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` as an opt-in
 implementation skill for repositories that want final standard plus
-thermo-nuclear full-worktree Pi reviewer loops. Legacy repos with no init
-override use the built-in compatibility default
-`superpowers:subagent-driven-development`.
+thermo-nuclear full-worktree Pi reviewer loops.
 
 Customize subagent roles and runtime settings through pi-subagents configuration
 rather than `patchmill.config.json`:

@@ -159,10 +159,10 @@ State that initialized repositories still point `skills.implementation` to
 Document that the new optional skill internally uses/adapts Superpowers
 subagent-driven-development, then adds the two final review loops.
 
-- [ ] **Step 3: Preserve compatibility docs**
+- [ ] **Step 3: Keep docs focused on initialized repositories**
 
-Mention that legacy/no-override defaults may still use
-`superpowers:subagent-driven-development`.
+Document the initialized project-local default and the optional final-reviewed
+implementation skill only.
 
 ## Task 5: Verify all behavior
 

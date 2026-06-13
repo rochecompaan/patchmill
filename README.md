@@ -228,11 +228,9 @@ pi-subagents. For initialized repositories, the default implementation skill is
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
 installs `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` as an
 opt-in alternative for repositories that want final standard and thermo-nuclear
-full-worktree review loops. Legacy setups without project-local defaults fall
-back to the built-in compatibility skill
-`superpowers:subagent-driven-development`. Both workflows can use pi-subagents
-builtin agents such as `worker`, `reviewer`, `scout`, `planner`,
-`context-builder`, `researcher`, `delegate`, and `oracle`.
+full-worktree review loops. Both workflows can use pi-subagents builtin agents
+such as `worker`, `reviewer`, `scout`, `planner`, `context-builder`,
+`researcher`, `delegate`, and `oracle`.
 
 Agent files define reusable delegated roles and can live in:
 

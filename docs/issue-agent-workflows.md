@@ -233,8 +233,7 @@ The plan prompt includes:
 - instruction that the ready label means the issue is already clear enough to
   plan;
 - required use of configured `skills.planning`; initialized repositories default
-  to `.patchmill/skills/writing-plans`, while legacy/no-override compatibility
-  defaults fall back to `superpowers:writing-plans`;
+  to `.patchmill/skills/writing-plans`;
 - whether to stop for manual plan approval;
 - the project task-contract instructions for one todo per implementation-plan
   task;
@@ -292,8 +291,7 @@ asks Pi to implement from the issue worktree. The prompt includes:
 - required project context-file instructions;
 - the implementation task-contract instructions;
 - the configured `skills.implementation` line; initialized repositories default
-  to `.patchmill/skills/subagent-driven-development`, while legacy compatibility
-  defaults use `superpowers:subagent-driven-development`;
+  to `.patchmill/skills/subagent-driven-development`;
 - when configured, separate lines for `skills.toolchain`, `skills.review`,
   `skills.visualEvidence`, and `skills.landing`;
 - Conventional Commit expectations;
@@ -323,8 +321,7 @@ For initialized repositories, `skills.implementation` is set to the project path
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
 installs `.patchmill/skills/subagent-dev-with-standard-and-thermo-reviews` for
 repositories that opt into final standard and thermo-nuclear full-worktree Pi
-reviewer loops. Legacy/no-override configs use the built-in compatibility
-default `superpowers:subagent-driven-development`.
+reviewer loops.
 
 When present, the prompt renders these additional configured skill lines
 separately:
