@@ -196,16 +196,16 @@ flowchart TD
 
 ### Issue selection and safety gates
 
-`patchmill run-once` processes one issue. It prefers a single resumable
-`in-progress` run with valid run state. Otherwise it selects an open issue
-carrying the configured ready label and no excluded/protection labels. Priority
-labels determine ordering, then lower issue number wins.
+`patchmill run-once` processes one actionable issue. Actionable labels are the
+configured ready label, the configured spec-approved label, and the configured
+plan-approved label. Review labels without their approved counterparts are
+waiting states and are ignored by automatic selection.
 
-When `workflow.specApproval.required` is true, the automatic candidate set is
-filtered before priority ordering so a high-priority unapproved issue does not
-starve a lower-priority approved issue. Explicit `--issue` selection validates
-the requested issue and returns `approval-required` with the missing spec
-approved label if the approval is absent.
+It prefers a single resumable `in-progress` run with valid run state. Otherwise
+it selects an open actionable issue with no excluded/protection labels. Priority
+labels determine ordering, then lower issue number wins. Explicit `--issue`
+selection validates the requested issue and returns `approval-required` for a
+waiting review state with the missing approved label.
 
 Before mutating, it checks the repository worktree is clean, ignoring configured
 local state paths such as the run-state directory and issue todo root. It

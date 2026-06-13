@@ -116,6 +116,6 @@ classification logic and reports proposed labels, comments, closures, canonical
 bucket, and rationale without mutating the issue host.
 
 Patchmill still owns the automation intake contract used by
-`patchmill run-once`: an issue is eligible only when it is open, has the
-configured ready label, and has none of the configured protection or non-ready
-triage labels.
+`patchmill run-once`: an issue is eligible when it is open, has no
+protection/exclusion label, and carries an actionable workflow label:
+`agent-ready`, `spec-approved`, or `plan-approved` by default.

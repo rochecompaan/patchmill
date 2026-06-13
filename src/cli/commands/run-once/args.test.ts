@@ -94,7 +94,10 @@ test("parseArgs applies host-login to host config", () => {
 test("HELP_TEXT documents one-issue usage and host-neutral options", () => {
   assert.match(HELP_TEXT, /Usage:/);
   assert.match(HELP_TEXT, /patchmill run-once/);
-  assert.match(HELP_TEXT, /Process one issue labeled agent-ready/);
+  assert.match(
+    HELP_TEXT,
+    /Advance one actionable issue through spec, plan, or implementation/,
+  );
   assert.match(HELP_TEXT, /Claims and processes one eligible issue by default/);
   assert.doesNotMatch(HELP_TEXT, /Process one Forgejo issue/);
   assert.match(HELP_TEXT, /without mutating the configured issue host or git/);
@@ -200,6 +203,23 @@ test("summarizeResult includes merged issue handoff fields", () => {
       reviewSummary: "reviewed",
       landingDecision: "direct squash-landed: simple localized bug fix",
       logPath: ".patchmill/runs/issue-42/run.jsonl",
+    },
+  );
+});
+
+test("summarizeResult includes spec-created details", () => {
+  assert.deepEqual(
+    summarizeResult({
+      status: "spec-created",
+      issue: { number: 42, title: "Spec", body: "", labels: [], state: "open" },
+      specPath: "docs/specs/spec.md",
+      logPath: ".patchmill/runs/run.jsonl",
+    }),
+    {
+      status: "spec-created",
+      issueNumber: 42,
+      specPath: "docs/specs/spec.md",
+      logPath: ".patchmill/runs/run.jsonl",
     },
   );
 });
