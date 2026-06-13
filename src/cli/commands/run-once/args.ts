@@ -51,6 +51,9 @@ export function parseArgs(
     planOnly: false,
     host,
     teaLogin: host.login,
+    specsDir:
+      normalizedConfig?.paths.specsDir ??
+      join(repoRoot, patchmillConfig.paths.specsDir),
     plansDir:
       normalizedConfig?.paths.plansDir ??
       join(repoRoot, patchmillConfig.paths.plansDir),

@@ -25,6 +25,7 @@ export type AgentIssueConfig = {
   planOnly: boolean;
   host: PatchmillHostConfig;
   teaLogin?: string;
+  specsDir: string;
   plansDir: string;
   runStateDir: string;
   worktreeDir: string;

@@ -27,6 +27,7 @@ test("parseArgs executes by default when no args are provided", () => {
   assert.equal(config.issueNumber, undefined);
   assert.equal(config.planOnly, false);
   assert.equal(config.teaLogin, "triage-agent");
+  assert.equal(config.specsDir, join(cwd(), "docs", "specs"));
   assert.equal(config.plansDir, join(cwd(), "docs", "plans"));
   assert.equal(config.runStateDir, join(cwd(), ".patchmill", "runs"));
   assert.equal(config.worktreeDir, join(cwd(), ".worktrees"));
@@ -305,6 +306,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
         priorities: ["priority:p1", "priority:p2"],
       },
       paths: {
+        specsDir: "pm-specs",
         plansDir: "pm-plans",
         runStateDir: ".patchmill/runs",
         triageLogDir: ".patchmill/triage-runs",
@@ -322,6 +324,7 @@ test("loadCliConfig applies normalized patchmill defaults for run-once", async (
   assert.equal(config.dryRun, false);
   assert.equal(config.execute, true);
   assert.equal(config.teaLogin, "config-bot");
+  assert.equal(config.specsDir, join(repoRoot, "pm-specs"));
   assert.equal(config.plansDir, join(repoRoot, "pm-plans"));
   assert.equal(config.runStateDir, join(repoRoot, ".patchmill/runs"));
   assert.equal(config.worktreeDir, join(repoRoot, ".patchmill/worktrees"));

@@ -345,6 +345,7 @@ function absolutizePaths(
     workflow: cloneWorkflowConfig(config.workflow),
     skills: cloneSkillsConfig(config.skills),
     paths: {
+      specsDir: absolutize(root, config.paths.specsDir),
       plansDir: absolutize(root, config.paths.plansDir),
       runStateDir: absolutize(root, config.paths.runStateDir),
       triageLogDir: absolutize(root, config.paths.triageLogDir),
@@ -671,6 +672,7 @@ function parseConfigFile(data: unknown): PartialConfig {
   const paths = readOptionalSection(data, "paths");
   if (paths) {
     const parsed: Partial<PatchmillConfig["paths"]> = {};
+    const specsDir = readOptionalString(paths, "specsDir", "paths.specsDir");
     const plansDir = readOptionalString(paths, "plansDir", "paths.plansDir");
     const runStateDir = readOptionalString(
       paths,
@@ -692,6 +694,7 @@ function parseConfigFile(data: unknown): PartialConfig {
       "cleanStatusIgnorePrefixes",
       "paths.cleanStatusIgnorePrefixes",
     );
+    if (specsDir !== undefined) parsed.specsDir = specsDir;
     if (plansDir !== undefined) parsed.plansDir = plansDir;
     if (runStateDir !== undefined) parsed.runStateDir = runStateDir;
     if (triageLogDir !== undefined) parsed.triageLogDir = triageLogDir;

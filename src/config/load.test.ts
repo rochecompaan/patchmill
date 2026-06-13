@@ -11,6 +11,7 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   const config = await loadPatchmillConfig(dir, {}, []);
   assert.equal(config.host.login, "triage-agent");
   assert.deepEqual(config.skills, DEFAULT_PATCHMILL_CONFIG.skills);
+  assert.equal(config.paths.specsDir, join(dir, "docs/specs"));
   assert.equal(config.paths.runStateDir, join(dir, ".patchmill/runs"));
   assert.equal(config.git.worktreePrefix, "patchmill-issue-");
   assert.equal(config.cleanupHook, undefined);
@@ -592,6 +593,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
         visualEvidence: "capturing-proof-screenshots",
       },
       paths: {
+        specsDir: "engineering/specs",
         plansDir: "engineering/plans",
         cleanStatusIgnorePrefixes: ["scratch/", ".patchmill/custom-runs/"],
       },
@@ -658,6 +660,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
     toolchain: "bootstrapping-tilt-worktrees",
     visualEvidence: "capturing-proof-screenshots",
   });
+  assert.equal(config.paths.specsDir, join(dir, "engineering/specs"));
   assert.equal(config.paths.plansDir, join(dir, "engineering/plans"));
   assert.deepEqual(config.paths.cleanStatusIgnorePrefixes, [
     "scratch/",
@@ -725,6 +728,19 @@ test("loadPatchmillConfig accepts tea-login as a host-login alias", async () => 
     "cli-login",
   ]);
   assert.equal(config.host.login, "cli-login");
+});
+
+test("loadPatchmillConfig parses specsDir path", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-specs-dir-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({ paths: { specsDir: "engineering/specs" } }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(dir);
+
+  assert.equal(config.paths.specsDir, join(dir, "engineering/specs"));
 });
 
 test("loadPatchmillConfig absolutizes paths from a relative repo root", async () => {

@@ -41,6 +41,7 @@ export type PatchmillWorkflowConfig = {
 };
 
 export type PatchmillPathsConfig = {
+  specsDir: string;
   plansDir: string;
   runStateDir: string;
   triageLogDir: string;

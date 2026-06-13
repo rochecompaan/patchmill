@@ -67,6 +67,7 @@ test("defaults match the current patchmill baseline configuration", () => {
     },
     skills: DEFAULT_PATCHMILL_SKILLS,
     paths: {
+      specsDir: "docs/specs",
       plansDir: "docs/plans",
       runStateDir: ".patchmill/runs",
       triageLogDir: ".patchmill/triage-runs",
