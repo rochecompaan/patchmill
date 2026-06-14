@@ -23,7 +23,7 @@ export type InitGitPolicyResult = {
 export type InitGitPolicyPrompt = (question: string) => Promise<string>;
 
 function normalEntry(entry: string): string {
-  return entry.trim().replace(/\/+$/u, "");
+  return entry.trim().replace(/^\//u, "").replace(/\/+$/u, "");
 }
 
 function hasEntry(lines: string[], entry: string): boolean {
@@ -76,6 +76,46 @@ function formatEntries(entries: readonly string[]): string {
   return entries.map((entry) => `  ${entry}`).join("\n");
 }
 
+function formatPathList(paths: readonly string[]): string {
+  if (paths.length <= 1) return paths[0] ?? "nothing";
+  if (paths.length === 2) return `${paths[0]} and ${paths[1]}`;
+  return `${paths.slice(0, -1).join(", ")}, and ${paths.at(-1)}`;
+}
+
+function safeRelativePath(path: string): boolean {
+  return (
+    path !== "." &&
+    path !== ".." &&
+    !isAbsolute(path) &&
+    !path.startsWith("../")
+  );
+}
+
+async function existingPaths(
+  repoRoot: string,
+  paths: readonly string[],
+): Promise<string[]> {
+  const uniquePaths = [...new Set(paths)].filter(safeRelativePath);
+  const existing: string[] = [];
+  for (const path of uniquePaths) {
+    try {
+      await stat(join(repoRoot, path));
+      existing.push(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return existing;
+}
+
+function manualExcludeWarning(reason: string): string {
+  return [
+    `Warning: Patchmill could not update .git/info/exclude (${reason}).`,
+    "Add these entries manually to keep Patchmill files local:",
+    formatEntries(PATCHMILL_GIT_IGNORE_ENTRIES),
+  ].join("\n");
+}
+
 export async function selectInitGitPolicy(options: {
   isInteractive: boolean;
   assumeYes: boolean;
@@ -110,6 +150,7 @@ export async function applyInitGitPolicy(options: {
   repoRoot: string;
   policy: InitGitPolicy;
   runner: CommandRunner;
+  skillRoots?: readonly string[];
 }): Promise<InitGitPolicyResult> {
   if (options.policy === "add") {
     const gitignorePath = join(options.repoRoot, ".gitignore");
@@ -117,26 +158,37 @@ export async function applyInitGitPolicy(options: {
       gitignorePath,
       PATCHMILL_ADD_TO_GIT_IGNORE_ENTRIES,
     );
-    const gitAdd = await options.runner.run(
-      "git",
-      ["add", "patchmill.config.json", ".patchmill/skills", ".gitignore"],
-      { cwd: options.repoRoot },
-    );
-    const gitAddMessage =
-      gitAdd.code === 0
-        ? "Staged patchmill.config.json, .patchmill/skills, and .gitignore."
+    const skillRoots = options.skillRoots ?? [".patchmill/skills"];
+    const pathsToStage = await existingPaths(options.repoRoot, [
+      "patchmill.config.json",
+      ...skillRoots,
+      ".gitignore",
+    ]);
+    const gitAdd =
+      pathsToStage.length > 0
+        ? await options.runner.run("git", ["add", "-f", ...pathsToStage], {
+            cwd: options.repoRoot,
+          })
+        : undefined;
+    const gitAddMessage = !gitAdd
+      ? "No Patchmill files were available to stage."
+      : gitAdd.code === 0
+        ? `Staged ${formatPathList(pathsToStage)}.`
         : `Warning: git add failed: ${gitAdd.stderr || gitAdd.stdout || "unknown error"}`;
     const ignoreMessage =
       added.length > 0
         ? `Added local Patchmill runtime directories to .gitignore:\n${formatEntries(added)}`
         : "Local Patchmill runtime directories were already listed in .gitignore.";
+    const stagedSkills = pathsToStage.some((path) => skillRoots.includes(path));
+    const addSummary =
+      gitAdd?.code === 0
+        ? stagedSkills
+          ? "Added Patchmill config and skills to git."
+          : "Added Patchmill config to git."
+        : "Warning: Patchmill could not add files to git.";
     return {
       policy: options.policy,
-      message: [
-        "Added Patchmill config and skills to git.",
-        gitAddMessage,
-        ignoreMessage,
-      ].join("\n"),
+      message: [addSummary, gitAddMessage, ignoreMessage].join("\n"),
     };
   }
 
@@ -154,23 +206,41 @@ export async function applyInitGitPolicy(options: {
     };
   }
 
-  const gitDir = await resolveGitDir(options.repoRoot);
-  const excludePath = gitDir
-    ? join(gitDir, "info", "exclude")
-    : join(options.repoRoot, ".git", "info", "exclude");
+  let gitDir: string | undefined;
+  try {
+    gitDir = await resolveGitDir(options.repoRoot);
+  } catch (error) {
+    return {
+      policy: options.policy,
+      message: manualExcludeWarning(
+        error instanceof Error ? error.message : String(error),
+      ),
+    };
+  }
   if (!gitDir) {
     return {
       policy: options.policy,
-      message: [
-        "Warning: Patchmill could not update .git/info/exclude because this directory is not inside a git repository.",
-        "Add these entries manually to keep Patchmill files local:",
-        formatEntries(PATCHMILL_GIT_IGNORE_ENTRIES),
-      ].join("\n"),
+      message: manualExcludeWarning(
+        "not inside a git repository with a local exclude file",
+      ),
     };
   }
 
-  await mkdir(join(gitDir, "info"), { recursive: true });
-  const added = await appendEntries(excludePath, PATCHMILL_GIT_IGNORE_ENTRIES);
+  let added: string[];
+  try {
+    await mkdir(join(gitDir, "info"), { recursive: true });
+    added = await appendEntries(
+      join(gitDir, "info", "exclude"),
+      PATCHMILL_GIT_IGNORE_ENTRIES,
+    );
+  } catch (error) {
+    return {
+      policy: options.policy,
+      message: manualExcludeWarning(
+        error instanceof Error ? error.message : String(error),
+      ),
+    };
+  }
   return {
     policy: options.policy,
     message:

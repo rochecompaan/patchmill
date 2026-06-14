@@ -5,6 +5,7 @@ import {
   cwd,
 } from "node:process";
 import { createInterface } from "node:readline/promises";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
 import { createCommandRunner } from "../triage/command.ts";
@@ -87,6 +88,18 @@ const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
   planning: GLOBAL_PATCHMILL_SKILLS.planning,
   implementation: GLOBAL_PATCHMILL_SKILLS.implementation,
 };
+
+function stageableSkillRoots(
+  skills: InitialConfigSkills | undefined,
+): string[] {
+  if (!skills) return [];
+  const roots = Object.values(skills).flatMap((skill) => {
+    if (!skill.includes("/")) return [];
+    const root = dirname(skill);
+    return root === "." ? [] : [root];
+  });
+  return [...new Set(roots)];
+}
 
 const EXISTING_CONFIG_MESSAGE =
   "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor";
@@ -195,6 +208,7 @@ export async function runInit(
     repoRoot: config.repoRoot,
     policy: gitPolicy,
     runner: options.commandRunner ?? createCommandRunner(),
+    skillRoots: stageableSkillRoots(result.config.skills),
   });
   const piAgentDir = localPiAgentDir(config.repoRoot);
   let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>> =

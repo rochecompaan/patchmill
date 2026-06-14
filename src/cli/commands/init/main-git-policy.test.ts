@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,6 +10,15 @@ async function tempRepo(): Promise<string> {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-init-git-policy-"));
   await mkdir(join(repoRoot, ".git", "info"), { recursive: true });
   return repoRoot;
+}
+
+async function writeSkill(repoRoot: string, skillRoot: string, name: string) {
+  const dir = join(repoRoot, skillRoot, name);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "SKILL.md"),
+    `---\nname: ${name}\ndescription: Test skill\n---\n`,
+  );
 }
 
 function missingPiReadiness() {
@@ -99,6 +108,7 @@ test("interactive init add-to-git stages config, skills, and gitignore", async (
     [
       "git",
       "add",
+      "-f",
       "patchmill.config.json",
       ".patchmill/skills",
       ".gitignore",
@@ -111,6 +121,60 @@ test("interactive init add-to-git stages config, skills, and gitignore", async (
   );
   assert.match(output, /Added Patchmill config and skills to git/u);
   assert.doesNotMatch(output, /local-only by default/u);
+});
+
+test("interactive init add-to-git with no skills stages config and gitignore only", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+
+  const output = await runInitForGitPolicy(repoRoot, {
+    args: ["--skills", "none"],
+    isInteractive: true,
+    promptAnswer: "1",
+    calls,
+  });
+
+  assert.deepEqual(calls, [
+    [
+      "git",
+      "add",
+      "-f",
+      "patchmill.config.json",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
+  ]);
+  assert.match(output, /Added Patchmill config to git/u);
+  assert.doesNotMatch(output, /.patchmill\/skills/u);
+});
+
+test("interactive init add-to-git with path skills stages the provided skill root", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+  await writeSkill(repoRoot, "custom-skills", "patchmill-issue-triage");
+  await writeSkill(repoRoot, "custom-skills", "writing-plans");
+  await writeSkill(repoRoot, "custom-skills", "subagent-driven-development");
+
+  const output = await runInitForGitPolicy(repoRoot, {
+    args: ["--skills", "path:custom-skills"],
+    isInteractive: true,
+    promptAnswer: "1",
+    calls,
+  });
+
+  assert.deepEqual(calls, [
+    [
+      "git",
+      "add",
+      "-f",
+      "patchmill.config.json",
+      "custom-skills",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
+  ]);
+  assert.match(output, /Added Patchmill config and skills to git/u);
+  assert.doesNotMatch(output, /.patchmill\/skills/u);
 });
 
 test("interactive init git-ignore writes config and .patchmill to .gitignore", async () => {
