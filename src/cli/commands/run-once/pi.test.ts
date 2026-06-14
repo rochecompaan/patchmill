@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 import {
-  parseImplementationReadinessResult,
+  parseDevelopmentEnvironmentResult,
   parsePiResult,
   runPiPrompt,
 } from "./pi.ts";
@@ -157,9 +157,9 @@ test("parsePiResult rejects unsupported final JSON statuses", () => {
   );
 });
 
-test("parseImplementationReadinessResult parses ready output", () => {
+test("parseDevelopmentEnvironmentResult parses ready output", () => {
   assert.deepEqual(
-    parseImplementationReadinessResult(
+    parseDevelopmentEnvironmentResult(
       'ready\n{"status":"ready","summary":"Tilt ready","evidence":["just tilt-ready passed"],"environment":{"namespace":"issue-84","tiltPort":"10384","ignored":12}}',
     ),
     {
@@ -171,9 +171,9 @@ test("parseImplementationReadinessResult parses ready output", () => {
   );
 });
 
-test("parseImplementationReadinessResult parses not-ready output", () => {
+test("parseDevelopmentEnvironmentResult parses not-ready output", () => {
   assert.deepEqual(
-    parseImplementationReadinessResult(
+    parseDevelopmentEnvironmentResult(
       'blocked\n{"status":"not-ready","reason":"Kubernetes API unavailable","evidence":["localhost:8080 refused connection"],"remediation":["Run devenv shell -- just tilt-up","Re-run patchmill run-once"]}',
     ),
     {
@@ -188,10 +188,10 @@ test("parseImplementationReadinessResult parses not-ready output", () => {
   );
 });
 
-test("parseImplementationReadinessResult rejects unsupported readiness statuses", () => {
+test("parseDevelopmentEnvironmentResult rejects unsupported development environment statuses", () => {
   assert.throws(
-    () => parseImplementationReadinessResult('{"status":"blocked"}'),
-    /supported implementation readiness JSON status/,
+    () => parseDevelopmentEnvironmentResult('{"status":"blocked"}'),
+    /supported development environment JSON status/,
   );
 });
 
@@ -242,7 +242,7 @@ test("runPiPrompt loads bundled Pi extensions before the prompt argument", async
   await runPiPrompt(runner, "/repo", "prompt", { stage: "pi-plan" });
 });
 
-test("runPiPrompt can parse implementation readiness results", async () => {
+test("runPiPrompt can parse development environment results", async () => {
   const runner = createMockRunner(() => ({
     code: 0,
     stdout: '{"status":"ready","summary":"ready","evidence":["check passed"]}',
@@ -252,10 +252,10 @@ test("runPiPrompt can parse implementation readiness results", async () => {
   const result = await runPiPrompt(
     runner,
     "/repo/worktree",
-    "readiness prompt",
+    "development environment prompt",
     {
-      stage: "pi-implementation-ready",
-      parseResult: parseImplementationReadinessResult,
+      stage: "pi-development-environment",
+      parseResult: parseDevelopmentEnvironmentResult,
     },
   );
 

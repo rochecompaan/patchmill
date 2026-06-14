@@ -21,11 +21,11 @@ import {
   issueTodoProgress,
   readIssueTodoTasks,
 } from "./issue-todos.ts";
-import { parseImplementationReadinessResult, runPiPrompt } from "./pi.ts";
+import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
 import {
   buildImplementationPrompt,
-  buildImplementationReadinessPrompt,
+  buildDevelopmentEnvironmentPrompt,
 } from "./prompts.ts";
 import { advancePlanningStages } from "./stage-advancement.ts";
 import {
@@ -51,8 +51,8 @@ import type {
   AgentIssueBlockedResult,
   AgentIssueBlockerQuestion,
   AgentIssueConfig,
-  AgentIssueImplementationReadyResult,
-  AgentIssueImplementationReadinessResult,
+  AgentIssueDevelopmentEnvironmentReadyResult,
+  AgentIssueDevelopmentEnvironmentResult,
   AgentIssuePiResult,
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,
@@ -226,8 +226,8 @@ function lifecycleLabels(
   };
 }
 
-type AgentIssueImplementationReadinessHandoff =
-  AgentIssueImplementationReadyResult & {
+type AgentIssueDevelopmentEnvironmentHandoff =
+  AgentIssueDevelopmentEnvironmentReadyResult & {
     completedAt: string;
   };
 
@@ -652,7 +652,7 @@ async function unexpectedFailure(
   );
 }
 
-function retryableLabelsAfterReadinessFailure(
+function retryableLabelsAfterDevelopmentEnvironmentFailure(
   issue: IssueSummary,
   labels: string[],
   config: AgentIssueConfig,
@@ -678,7 +678,7 @@ async function implementationNotReady(
   issue: IssueSummary,
   labels: string[],
   result: Extract<
-    AgentIssueImplementationReadinessResult,
+    AgentIssueDevelopmentEnvironmentResult,
     { status: "not-ready" }
   >,
   details: {
@@ -695,11 +695,11 @@ async function implementationNotReady(
   await progress(
     options,
     "error",
-    "implementation-ready",
-    `implementation environment not ready: ${result.reason}`,
+    "development-environment",
+    `development environment not ready: ${result.reason}`,
     { issueNumber: issue.number, data: result },
   );
-  const retryableLabels = retryableLabelsAfterReadinessFailure(
+  const retryableLabels = retryableLabelsAfterDevelopmentEnvironmentFailure(
     issue,
     labels,
     config,
@@ -728,12 +728,12 @@ async function implementationNotReady(
   await emitSimpleStep(
     options,
     issue.number,
-    "final result implementation-not-ready",
+    "final result development-environment-not-ready",
   );
 
   return withLogPath(
     {
-      status: "implementation-not-ready",
+      status: "development-environment-not-ready",
       issue,
       specPath: details.specPath,
       planPath: details.planPath,
@@ -948,7 +948,7 @@ export async function runOneIssue(
     }
   };
   const observePi =
-    (stage: "pi-plan" | "pi-implementation-ready" | "pi-implementation") =>
+    (stage: "pi-plan" | "pi-development-environment" | "pi-implementation") =>
     async (
       observation: AgentIssueProgressEvent["observation"],
     ): Promise<void> => {
@@ -1212,22 +1212,24 @@ export async function runOneIssue(
     checkpoints.worktreeReady = true;
 
     const worktreeRoot = join(config.repoRoot, worktreePath);
-    let readiness: AgentIssueImplementationReadinessHandoff | undefined;
-    if (!implemented && config.skills.implementationReady) {
-      const readinessResult = await runStep(
-        "implementation readiness",
-        async (): Promise<AgentIssueImplementationReadinessResult> => {
+    let developmentEnvironment:
+      | AgentIssueDevelopmentEnvironmentHandoff
+      | undefined;
+    if (!implemented && config.skills.developmentEnvironment) {
+      const developmentEnvironmentResult = await runStep(
+        "development environment",
+        async (): Promise<AgentIssueDevelopmentEnvironmentResult> => {
           await progress(
             options,
             "info",
-            "implementation-ready",
-            "running implementation readiness with pi",
+            "development-environment",
+            "running development environment with pi",
             { issueNumber: issue.number },
           );
           return await runPiPrompt(
             runner,
             worktreeRoot,
-            buildImplementationReadinessPrompt({
+            buildDevelopmentEnvironmentPrompt({
               issue: { ...issue, labels },
               planPath,
               branch,
@@ -1237,10 +1239,10 @@ export async function runOneIssue(
             }),
             {
               progress: options.progress,
-              stage: "pi-implementation-ready",
-              parseResult: parseImplementationReadinessResult,
+              stage: "pi-development-environment",
+              parseResult: parseDevelopmentEnvironmentResult,
               skillPaths: skillInvocationPaths(
-                [config.skills.toolchain, config.skills.implementationReady],
+                [config.skills.toolchain, config.skills.developmentEnvironment],
                 config.repoRoot,
               ),
               streamOutput: options.streamPiOutput,
@@ -1250,7 +1252,7 @@ export async function runOneIssue(
               tokenUsageState,
               observeSession: true,
               verbosePiOutput: options.verbosePiOutput,
-              onObservation: observePi("pi-implementation-ready"),
+              onObservation: observePi("pi-development-environment"),
               taskContract: config.projectPolicy.pi.taskContract,
               piAgentDir,
             },
@@ -1258,20 +1260,23 @@ export async function runOneIssue(
         },
       );
 
-      if (readinessResult.status === "not-ready") {
+      if (developmentEnvironmentResult.status === "not-ready") {
         return implementationNotReady(
           host,
           config,
           issue,
           labels,
-          readinessResult,
+          developmentEnvironmentResult,
           { specPath, specCommit, planPath, planCommit, branch, worktreePath },
           timestamp,
           options,
         );
       }
 
-      readiness = { ...readinessResult, completedAt: timestamp };
+      developmentEnvironment = {
+        ...developmentEnvironmentResult,
+        completedAt: timestamp,
+      };
     }
 
     if (!implemented) {
@@ -1423,7 +1428,7 @@ export async function runOneIssue(
               worktreeCreated: worktree.created,
               existingCommits: worktree.existingCommits,
             },
-            readiness,
+            developmentEnvironment,
           }),
           {
             progress: options.progress,

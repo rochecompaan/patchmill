@@ -4274,11 +4274,12 @@ test("runOneIssue starts implementation without an agent team", async () => {
   );
 });
 
-test("runOneIssue skips implementation readiness when no readiness skill is configured", async () => {
-  const planPath = "docs/plans/2026-05-14-issue-45-no-readiness.md";
+test("runOneIssue skips development environment when no development environment skill is configured", async () => {
+  const planPath =
+    "docs/plans/2026-05-14-issue-45-no-development-environment.md";
   const config = await makeConfig({ dryRun: false, execute: true });
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
-  const selected = issue(45, ["plan-approved"], "No readiness");
+  const selected = issue(45, ["plan-approved"], "No development environment");
   let implementationPrompt = "";
   const runner = createMockRunner(async (call) => {
     if (
@@ -4325,7 +4326,7 @@ test("runOneIssue skips implementation readiness when no readiness skill is conf
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-no-readiness","commits":["123abc"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-no-development-environment","commits":["123abc"],"validation":["npm test"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -4338,22 +4339,22 @@ test("runOneIssue skips implementation readiness when no readiness skill is conf
 
   assert.equal(result.status, "pr-created");
   assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
-  assert.doesNotMatch(implementationPrompt, /Implementation readiness:/);
+  assert.doesNotMatch(implementationPrompt, /Development environment:/);
 });
 
-test("runOneIssue runs implementation readiness before implementation when configured", async () => {
-  const planPath = "docs/plans/2026-05-14-issue-46-readiness.md";
+test("runOneIssue runs development environment before implementation when configured", async () => {
+  const planPath = "docs/plans/2026-05-14-issue-46-development-environment.md";
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     skills: {
       ...DEFAULT_PATCHMILL_CONFIG.skills,
-      implementationReady: "./skills/implementation-ready",
+      developmentEnvironment: "./skills/development-environment",
       landing: "project-landing",
     },
   });
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
-  const selected = issue(46, ["plan-approved"], "Readiness");
+  const selected = issue(46, ["plan-approved"], "Development environment");
   const piPrompts: string[] = [];
   const runner = createMockRunner(async (call) => {
     if (
@@ -4398,10 +4399,15 @@ test("runOneIssue runs implementation readiness before implementation when confi
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       piPrompts.push(prompt);
-      if (/Prepare implementation readiness/.test(prompt)) {
+      if (/Prepare development environment/.test(prompt)) {
         assert.equal(
           call.args.includes(
-            join(config.repoRoot, "skills", "implementation-ready", "SKILL.md"),
+            join(
+              config.repoRoot,
+              "skills",
+              "development-environment",
+              "SKILL.md",
+            ),
           ),
           true,
         );
@@ -4412,14 +4418,14 @@ test("runOneIssue runs implementation readiness before implementation when confi
           stderr: "",
         };
       }
-      assert.match(prompt, /Implementation readiness:/);
+      assert.match(prompt, /Development environment:/);
       assert.match(prompt, /Summary: Tilt ready/);
       assert.match(prompt, /just tilt-ready passed/);
       assert.match(prompt, /namespace: issue-46/);
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/46","branch":"agent/issue-46-readiness","commits":["456def"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/46","branch":"agent/issue-46-development-environment","commits":["456def"],"validation":["npm test"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -4432,18 +4438,18 @@ test("runOneIssue runs implementation readiness before implementation when confi
 
   assert.equal(result.status, "pr-created");
   assert.equal(piPrompts.length, 2);
-  assert.match(piPrompts[0] ?? "", /Prepare implementation readiness/);
+  assert.match(piPrompts[0] ?? "", /Prepare development environment/);
   assert.match(piPrompts[1] ?? "", /Implement repository issue #46/);
 });
 
-test("runOneIssue returns implementation-not-ready without starting implementation", async () => {
+test("runOneIssue returns development-environment-not-ready without starting implementation", async () => {
   const planPath = "docs/plans/2026-05-14-issue-47-not-ready.md";
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     skills: {
       ...DEFAULT_PATCHMILL_CONFIG.skills,
-      implementationReady: "./skills/implementation-ready",
+      developmentEnvironment: "./skills/development-environment",
     },
   });
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -4493,7 +4499,7 @@ test("runOneIssue returns implementation-not-ready without starting implementati
       return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
-      assert.match(prompt, /Prepare implementation readiness/);
+      assert.match(prompt, /Prepare development environment/);
       return {
         code: 0,
         stdout:
@@ -4508,7 +4514,7 @@ test("runOneIssue returns implementation-not-ready without starting implementati
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "implementation-not-ready");
+  assert.equal(result.status, "development-environment-not-ready");
   assert.equal(result.reason, "Kubernetes API unavailable");
   assert.deepEqual(result.evidence, ["localhost:8080 refused connection"]);
   assert.deepEqual(result.remediation, [
@@ -4544,7 +4550,7 @@ test("runOneIssue returns implementation-not-ready without starting implementati
   assert.equal(finalEdit?.args.includes("needs-info"), false);
 });
 
-test("runOneIssue preserves approval labels after implementation readiness failure", async () => {
+test("runOneIssue preserves approval labels after development environment failure", async () => {
   const planPath = "docs/plans/2026-05-14-issue-49-approved-not-ready.md";
   const config = await makeConfig({
     dryRun: false,
@@ -4552,7 +4558,7 @@ test("runOneIssue preserves approval labels after implementation readiness failu
     approvalPolicy: specAndPlanApprovalPolicy(),
     skills: {
       ...DEFAULT_PATCHMILL_CONFIG.skills,
-      implementationReady: "./skills/implementation-ready",
+      developmentEnvironment: "./skills/development-environment",
     },
   });
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -4606,7 +4612,7 @@ test("runOneIssue preserves approval labels after implementation readiness failu
       return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
-      assert.match(prompt, /Prepare implementation readiness/);
+      assert.match(prompt, /Prepare development environment/);
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -4625,7 +4631,7 @@ test("runOneIssue preserves approval labels after implementation readiness failu
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "implementation-not-ready");
+  assert.equal(result.status, "development-environment-not-ready");
   const finalEdit = runner.calls
     .filter(
       (call) =>
@@ -4644,14 +4650,14 @@ test("runOneIssue preserves approval labels after implementation readiness failu
   );
 });
 
-test("runOneIssue restores a retryable label after resumed implementation readiness failure", async () => {
+test("runOneIssue restores a retryable label after resumed development environment failure", async () => {
   const planPath = "docs/plans/2026-05-14-issue-48-resumed-not-ready.md";
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     skills: {
       ...DEFAULT_PATCHMILL_CONFIG.skills,
-      implementationReady: "./skills/implementation-ready",
+      developmentEnvironment: "./skills/development-environment",
     },
   });
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
@@ -4729,7 +4735,7 @@ test("runOneIssue restores a retryable label after resumed implementation readin
       return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
-      assert.match(prompt, /Prepare implementation readiness/);
+      assert.match(prompt, /Prepare development environment/);
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -4748,7 +4754,7 @@ test("runOneIssue restores a retryable label after resumed implementation readin
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "implementation-not-ready");
+  assert.equal(result.status, "development-environment-not-ready");
   const finalEdit = runner.calls
     .filter(
       (call) =>

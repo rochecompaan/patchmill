@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildImplementationPrompt,
-  buildImplementationReadinessPrompt,
+  buildDevelopmentEnvironmentPrompt,
   buildPlanCreationPrompt,
   buildSpecCreationPrompt,
 } from "./prompts.ts";
@@ -292,8 +292,8 @@ test("buildPlanCreationPrompt renders configured ready and needs-info labels", (
   assert.doesNotMatch(prompt, /post directly as a `needs-info` comment/);
 });
 
-test("buildImplementationReadinessPrompt renders the optional readiness skill contract", () => {
-  const prompt = buildImplementationReadinessPrompt({
+test("buildDevelopmentEnvironmentPrompt renders the optional development environment skill contract", () => {
+  const prompt = buildDevelopmentEnvironmentPrompt({
     issue,
     planPath,
     branch: "agent/issue-42-add-once-runner-helpers",
@@ -301,13 +301,13 @@ test("buildImplementationReadinessPrompt renders the optional readiness skill co
     projectPolicy: examplePolicy,
     skills: {
       ...DEFAULT_PATCHMILL_SKILLS,
-      implementationReady: ".patchmill/skills/implementation-ready",
+      developmentEnvironment: ".patchmill/skills/development-environment",
     },
   });
 
   assert.match(
     prompt,
-    /Prepare implementation readiness for ExampleApp issue #42/,
+    /Prepare development environment for ExampleApp issue #42/,
   );
   assert.match(
     prompt,
@@ -320,7 +320,7 @@ test("buildImplementationReadinessPrompt renders the optional readiness skill co
   );
   assert.match(
     prompt,
-    /Use the configured implementation-ready skill: `\.patchmill\/skills\/implementation-ready`\./,
+    /Use the configured development-environment skill: `\.patchmill\/skills\/development-environment`\./,
   );
   assert.match(prompt, /Do not implement product changes/);
   assert.match(prompt, /"status": "ready"/);
@@ -328,7 +328,7 @@ test("buildImplementationReadinessPrompt renders the optional readiness skill co
   assert.doesNotMatch(prompt, /"questions"/);
 });
 
-test("buildImplementationPrompt includes readiness handoff when provided", () => {
+test("buildImplementationPrompt includes development environment handoff when provided", () => {
   const prompt = buildImplementationPrompt({
     issue,
     planPath,
@@ -336,7 +336,7 @@ test("buildImplementationPrompt includes readiness handoff when provided", () =>
     worktreePath: ".worktrees/patchmill-issue-42-add-once-runner-helpers",
     git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
     projectPolicy: examplePolicy,
-    readiness: {
+    developmentEnvironment: {
       completedAt: "2026-06-14T06:00:00.000Z",
       status: "ready",
       summary: "Tilt/k3d environment is ready",
@@ -345,7 +345,7 @@ test("buildImplementationPrompt includes readiness handoff when provided", () =>
     },
   });
 
-  assert.match(prompt, /Implementation readiness:/);
+  assert.match(prompt, /Development environment:/);
   assert.match(prompt, /completed at 2026-06-14T06:00:00\.000Z/);
   assert.match(prompt, /Summary: Tilt\/k3d environment is ready/);
   assert.match(prompt, /devenv shell -- just tilt-ready passed/);

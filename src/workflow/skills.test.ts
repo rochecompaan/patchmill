@@ -48,16 +48,16 @@ test("mergeSkillsConfig preserves defaults when update contains explicit undefin
   assert.equal(merged.triage, BUNDLED_TRIAGE_SKILL_REFERENCE);
 });
 
-test("mergeSkillsConfig preserves optional implementationReady skill", () => {
+test("mergeSkillsConfig preserves optional development environment skill", () => {
   const merged = mergeSkillsConfig(DEFAULT_PATCHMILL_SKILLS, {
-    implementationReady: ".patchmill/skills/implementation-ready",
+    developmentEnvironment: ".patchmill/skills/development-environment",
   });
 
   assert.equal(
-    merged.implementationReady,
-    ".patchmill/skills/implementation-ready",
+    merged.developmentEnvironment,
+    ".patchmill/skills/development-environment",
   );
-  assert.equal(DEFAULT_PATCHMILL_SKILLS.implementationReady, undefined);
+  assert.equal(DEFAULT_PATCHMILL_SKILLS.developmentEnvironment, undefined);
 });
 
 test("cloneSkillsConfig returns an independent object", () => {

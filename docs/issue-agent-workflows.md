@@ -181,9 +181,9 @@ flowchart TD
   R -->|approval missing| R2[Comment plan ready, add plan-review, restore ready label, finish]
   R -->|approved or not required| S[Render subagent support guidance]
   S --> T[Ensure issue worktree and branch]
-  T --> U0{Implementation-ready skill configured?}
-  U0 -->|yes| U1[Run Pi implementation-readiness prompt in worktree]
-  U1 --> U2{Readiness result}
+  T --> U0{Development-environment skill configured?}
+  U0 -->|yes| U1[Run Pi development-environment prompt in worktree]
+  U1 --> U2{Development environment result}
   U2 -->|not-ready| U3[Restore retryable label and return operator remediation]
   U2 -->|ready| U[Run Pi implementation prompt in worktree]
   U0 -->|no| U
@@ -285,18 +285,19 @@ finished, and exits with `plan-created` or `plan-found`. Once the configured
 plan-approved label is present, a later `run-once` reuses the plan and proceeds
 to implementation.
 
-### Optional implementation-readiness Pi prompt
+### Optional development-environment Pi prompt
 
-If `skills.implementationReady` is configured, `run-once` runs a separate Pi
+If `skills.developmentEnvironment` is configured, `run-once` runs a separate Pi
 prompt from the issue worktree before implementation. The prompt uses the
-configured readiness skill and accepts only `ready` or `not-ready` final JSON.
+configured development-environment skill and accepts only `ready` or `not-ready`
+final JSON.
 
 `ready` records a summary, evidence, and optional non-secret environment details
 for the later implementation prompt. `not-ready` stops the run before
 implementation, removes the in-progress claim, leaves the issue retryable, and
-returns operator remediation in the final command output. Readiness failures do
-not use issue-style `questions` because they describe local environment repair,
-not product requirements.
+returns operator remediation in the final command output. Development
+environment failures do not use issue-style `questions` because they describe
+local environment repair, not product requirements.
 
 ### Implementation Pi prompt
 
@@ -307,8 +308,8 @@ asks Pi to implement from the issue worktree. The prompt includes:
 - the untrusted issue-content boundary;
 - subagent support guidance for delegated implementation and review roles;
 - resume context, when continuing an existing run;
-- implementation readiness summary, evidence, and environment details when the
-  optional readiness stage ran;
+- development environment summary, evidence, and environment details when the
+  optional development-environment stage ran;
 - issue body and relevant comments;
 - required project context-file instructions;
 - the implementation task-contract instructions;
@@ -341,7 +342,7 @@ It always renders:
 
 For initialized repositories, `skills.implementation` is set to the project path
 `.patchmill/skills/subagent-driven-development`. The recommended skill pack also
-installs two opt-in final-readiness alternatives:
+installs two opt-in final-review alternatives:
 `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` for repositories
 that want task-by-task worker/reviewer handoffs before final Codex and
 thermo-nuclear full-worktree Pi reviewer loops, and
@@ -396,4 +397,4 @@ Console progress includes:
 The final JSON summary includes the run log path and, depending on status, issue
 number, plan path, worktree path, branch, PR URL or merge commit, commits,
 validation, review summary, landing decision, visual evidence, blocker
-questions, or implementation-readiness remediation.
+questions, or development-environment remediation.

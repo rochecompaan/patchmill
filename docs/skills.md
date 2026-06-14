@@ -29,7 +29,7 @@ Use the top-level `skills` key with a supported reference form (examples):
   "skills": {
     "triage": "patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
-    "implementationReady": ".patchmill/skills/implementation-ready",
+    "developmentEnvironment": ".patchmill/skills/development-environment",
     "implementation": ".patchmill/skills/subagent-driven-development",
     "visualEvidence": "capturing-proof-screenshots"
   }
@@ -63,7 +63,7 @@ Supported keys:
 - `triage`: skill used to classify issues for automation readiness.
 - `planning`: skill used to write implementation plans.
 - `implementation`: skill used to execute implementation plans.
-- `implementationReady`: optional skill used after worktree preparation and
+- `developmentEnvironment`: optional skill used after worktree preparation and
   before implementation to prepare and verify local runtime prerequisites. A
   `not-ready` result stops the run locally without posting issue `needs-info`
   questions.
@@ -74,17 +74,18 @@ Supported keys:
   required for direct squash-land eligibility; without it, Patchmill uses PR
   fallback even when direct land is enabled.
 
-## Implementation readiness
+## Development environment
 
-Use `skills.implementationReady` when a repository needs mutable local services
-before implementation can safely start. Examples include Kubernetes/Tilt, Docker
-Compose, seeded databases, browser automation infrastructure, or a per-worktree
-development namespace.
+Use `skills.developmentEnvironment` when a repository needs mutable local
+services before implementation can safely start. Examples include
+Kubernetes/Tilt, Docker Compose, seeded databases, browser automation
+infrastructure, or a per-worktree development namespace.
 
-The readiness skill owns project-specific setup and repair logic. Patchmill only
-enforces the stage boundary: if the skill returns `ready`, Patchmill passes its
-summary and evidence into the implementation prompt; if it returns `not-ready`,
-Patchmill stops before implementation and prints operator-facing remediation.
+The development-environment skill owns project-specific setup and repair logic.
+Patchmill only enforces the stage boundary: if the skill returns `ready`,
+Patchmill passes its summary and evidence into the implementation prompt; if it
+returns `not-ready`, Patchmill stops before implementation and prints
+operator-facing remediation.
 
 ## Project-local default skills
 

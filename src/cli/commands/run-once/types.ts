@@ -182,23 +182,23 @@ export type AgentIssueApprovalRequiredResult = {
   missingLabel: string;
 };
 
-export type AgentIssueImplementationReadyResult = {
+export type AgentIssueDevelopmentEnvironmentReadyResult = {
   status: "ready";
   summary: string;
   evidence: string[];
   environment?: Record<string, string>;
 };
 
-export type AgentIssueImplementationNotReadyResult = {
+export type AgentIssueDevelopmentEnvironmentNotReadyResult = {
   status: "not-ready";
   reason: string;
   evidence: string[];
   remediation: string[];
 };
 
-export type AgentIssueImplementationReadinessResult =
-  | AgentIssueImplementationReadyResult
-  | AgentIssueImplementationNotReadyResult;
+export type AgentIssueDevelopmentEnvironmentResult =
+  | AgentIssueDevelopmentEnvironmentReadyResult
+  | AgentIssueDevelopmentEnvironmentNotReadyResult;
 
 export type AgentIssueVisualEvidence = {
   screenshotPath: string;
@@ -254,7 +254,7 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
       }
     | AgentIssueApprovalRequiredResult
     | {
-        status: "implementation-not-ready";
+        status: "development-environment-not-ready";
         issue: IssueSummary;
         specPath?: string;
         planPath: string;

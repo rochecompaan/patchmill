@@ -11,12 +11,12 @@ import {
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
 import type {
-  AgentIssueImplementationReadyResult,
+  AgentIssueDevelopmentEnvironmentReadyResult,
   AgentIssueImplementationResumeContext,
   IssueSummary,
 } from "./types.ts";
 import {
-  renderImplementationReadySkillStep,
+  renderDevelopmentEnvironmentSkillStep,
   renderImplementationSkillSteps,
   renderLandingSkillStep,
   renderPlanningSkillStep,
@@ -59,10 +59,10 @@ export type ImplementationPromptInput = {
   projectPolicy: PatchmillProjectPolicy;
   skills?: PatchmillSkillsConfig;
   resume?: AgentIssueImplementationResumeContext;
-  readiness?: ImplementationReadinessHandoff;
+  developmentEnvironment?: DevelopmentEnvironmentHandoff;
 };
 
-export type ImplementationReadinessPromptInput = {
+export type DevelopmentEnvironmentPromptInput = {
   issue: IssueSummary;
   planPath: string;
   branch: string;
@@ -71,8 +71,8 @@ export type ImplementationReadinessPromptInput = {
   skills?: PatchmillSkillsConfig;
 };
 
-export type ImplementationReadinessHandoff =
-  AgentIssueImplementationReadyResult & {
+export type DevelopmentEnvironmentHandoff =
+  AgentIssueDevelopmentEnvironmentReadyResult & {
     completedAt: string;
   };
 
@@ -183,16 +183,20 @@ function formatResumeContext(
   ].join("\n");
 }
 
-function formatImplementationReadiness(
-  readiness?: ImplementationReadinessHandoff,
+function formatDevelopmentEnvironment(
+  developmentEnvironment?: DevelopmentEnvironmentHandoff,
 ): string {
-  if (!readiness) return "";
+  if (!developmentEnvironment) return "";
 
   const evidence =
-    readiness.evidence.length > 0
-      ? readiness.evidence.map((entry) => `  - ${entry}`).join("\n")
+    developmentEnvironment.evidence.length > 0
+      ? developmentEnvironment.evidence
+          .map((entry) => `  - ${entry}`)
+          .join("\n")
       : "  - (no evidence reported)";
-  const environmentEntries = Object.entries(readiness.environment ?? {});
+  const environmentEntries = Object.entries(
+    developmentEnvironment.environment ?? {},
+  );
   const environment =
     environmentEntries.length > 0
       ? [
@@ -202,13 +206,13 @@ function formatImplementationReadiness(
       : "- Environment: (none reported)";
 
   return [
-    "Implementation readiness:",
-    `- The configured implementation-ready skill completed at ${readiness.completedAt}.`,
-    `- Summary: ${readiness.summary}`,
+    "Development environment:",
+    `- The configured development-environment skill completed at ${developmentEnvironment.completedAt}.`,
+    `- Summary: ${developmentEnvironment.summary}`,
     "- Evidence:",
     evidence,
     environment,
-    "- This readiness evidence allows implementation to start; it is not permission to skip later validation commands.",
+    "- This development environment evidence allows implementation to start; it is not permission to skip later validation commands.",
     "",
   ].join("\n");
 }
@@ -742,21 +746,21 @@ Return this exact JSON object after the plan commit succeeds:
 `;
 }
 
-export function buildImplementationReadinessPrompt(
-  input: ImplementationReadinessPromptInput,
+export function buildDevelopmentEnvironmentPrompt(
+  input: DevelopmentEnvironmentPromptInput,
 ): string {
   const { issue, planPath, branch, worktreePath, projectPolicy } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const workflow = numberedWorkflow([
     renderImplementationContextInstruction(projectPolicy, planPath),
-    renderImplementationReadySkillStep(skills),
-    "Prepare and verify only the local implementation environment required before implementation can begin.",
+    renderDevelopmentEnvironmentSkillStep(skills),
+    "Prepare and verify only the local development environment required before implementation can begin.",
     "Do not implement product changes, dispatch implementation workers, run review loops, land code, push branches, or open pull requests.",
-    "Leave tracked product files unchanged unless the configured implementation-ready skill explicitly documents a safe repository-owned readiness change.",
-    "Return the readiness result contract as the final response.",
+    "Leave tracked product files unchanged unless the configured development-environment skill explicitly documents a safe repository-owned development environment change.",
+    "Return the development environment result contract as the final response.",
   ]);
 
-  return `Prepare implementation readiness for ${formatIssueTarget(projectPolicy)} #${issue.number}: ${issue.title}
+  return `Prepare development environment for ${formatIssueTarget(projectPolicy)} #${issue.number}: ${issue.title}
 
 Issue data:
 - Number: #${issue.number}
@@ -780,10 +784,10 @@ Required workflow:
 ${workflow}
 
 Ready final response:
-Return this exact JSON object after the implementation environment is ready:
+Return this exact JSON object after the development environment is ready:
 {
   "status": "ready",
-  "summary": "short readiness summary",
+  "summary": "short development environment summary",
   "evidence": ["command or check and result summary"],
   "environment": {
     "detailName": "optional non-secret detail useful to implementation"
@@ -791,7 +795,7 @@ Return this exact JSON object after the implementation environment is ready:
 }
 
 Not-ready final response:
-Return this exact JSON object when the local implementation environment cannot be made ready:
+Return this exact JSON object when the local development environment cannot be made ready:
 {
   "status": "not-ready",
   "reason": "short operator-facing reason",
@@ -812,7 +816,7 @@ export function buildImplementationPrompt(
     git,
     projectPolicy,
     resume,
-    readiness,
+    developmentEnvironment,
   } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const visualEvidenceExample = resolvePrVisualEvidenceExample(projectPolicy);
@@ -841,7 +845,7 @@ ${untrustedIssueContentBoundary()}
 
 ${formatSubagentSupport()}
 
-${formatResumeContext(resume)}${formatImplementationReadiness(readiness)}Issue body:
+${formatResumeContext(resume)}${formatDevelopmentEnvironment(developmentEnvironment)}Issue body:
 ${issueBody(issue.body)}
 
 Relevant issue comments:

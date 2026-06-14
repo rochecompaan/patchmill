@@ -103,7 +103,7 @@ type JsonResult = JsonResultLog &
         missingLabel: string;
       }
     | {
-        status: "implementation-not-ready";
+        status: "development-environment-not-ready";
         issueNumber: number;
         specPath?: string;
         planPath: string;
@@ -228,7 +228,7 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
         missingLabel: result.missingLabel,
         ...withLogPath,
       };
-    case "implementation-not-ready":
+    case "development-environment-not-ready":
       return {
         status: result.status,
         issueNumber: result.issue.number,
@@ -328,7 +328,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     );
     return result.status === "blocked" ||
       result.status === "approval-required" ||
-      result.status === "implementation-not-ready"
+      result.status === "development-environment-not-ready"
       ? 1
       : 0;
   } catch (error) {

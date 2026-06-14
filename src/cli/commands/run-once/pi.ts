@@ -16,7 +16,7 @@ import {
 } from "./pi-session-stream.ts";
 import type {
   AgentIssueBlockerQuestion,
-  AgentIssueImplementationReadinessResult,
+  AgentIssueDevelopmentEnvironmentResult,
   AgentIssuePiResult,
   AgentIssueVisualEvidence,
   CommandResult,
@@ -219,9 +219,9 @@ export function parsePiResult(stdout: string): AgentIssuePiResult {
   throw new Error("Pi output did not include a supported final JSON status");
 }
 
-export function parseImplementationReadinessResult(
+export function parseDevelopmentEnvironmentResult(
   stdout: string,
-): AgentIssueImplementationReadinessResult {
+): AgentIssueDevelopmentEnvironmentResult {
   for (const parsed of finalJsonCandidates(stdout)) {
     if (parsed.status === "ready") {
       const environment = stringRecord(parsed.environment);
@@ -247,7 +247,7 @@ export function parseImplementationReadinessResult(
   }
 
   throw new Error(
-    "Pi output did not include a supported implementation readiness JSON status",
+    "Pi output did not include a supported development environment JSON status",
   );
 }
 
@@ -259,7 +259,7 @@ export type PiTaskProgress = {
 
 export type RunPiPromptStage =
   | "pi-plan"
-  | "pi-implementation-ready"
+  | "pi-development-environment"
   | "pi-implementation";
 
 export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
@@ -287,7 +287,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
 
 function stageStatus(stage: RunPiPromptStage): string {
   if (stage === "pi-plan") return "planning";
-  if (stage === "pi-implementation-ready") return "implementation readiness";
+  if (stage === "pi-development-environment") return "development environment";
   return "implementing";
 }
 

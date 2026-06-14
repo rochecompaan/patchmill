@@ -1,47 +1,47 @@
-# Optional Implementation-Ready Skill Design
+# Optional Development-Environment Skill Design
 
 ## Summary
 
-Patchmill should support an optional `skills.implementationReady` stage that
+Patchmill should support an optional `skills.developmentEnvironment` stage that
 runs between issue worktree preparation and implementation. Repositories with
 project-specific runtime requirements can use this stage to prepare and verify a
 local development environment before Patchmill spends implementation-agent time.
 
 The stage is generic. Patchmill does not know about Tilt, k3d, Docker, devenv,
 ports, namespaces, browsers, or other project-specific tooling. Patchmill only
-knows that, when `skills.implementationReady` is configured, the configured
-skill must return a small readiness result before `skills.implementation`
-starts.
+knows that, when `skills.developmentEnvironment` is configured, the configured
+skill must return a small development-environment result before
+`skills.implementation` starts.
 
 If the skill is omitted, `patchmill run-once` behaves exactly as it does today.
 
 ## Goals
 
-- Make implementation-environment readiness a first-class optional workflow
+- Make development-environment preparation a first-class optional workflow
   stage.
 - Keep Patchmill generic and avoid hardcoding Tilt/k3d or any other project
   runtime.
-- Let repositories express readiness and repair logic in a project-local Pi
-  skill.
+- Let repositories express development-environment setup and repair logic in a
+  project-local Pi skill.
 - Prevent long implementation runs from starting when the repository's required
   local verification environment is unavailable.
 - Distinguish local operator/environment failures from issue requirement
   questions.
-- Pass readiness evidence into the later implementation prompt when readiness
-  succeeds.
+- Pass development-environment evidence into the later implementation prompt
+  when setup succeeds.
 - Preserve current behavior for repositories that do not configure the new
   skill.
 
 ## Non-goals
 
-- Add hardcoded readiness commands to `projectPolicy.validation`.
+- Add hardcoded development-environment commands to `projectPolicy.validation`.
 - Teach Patchmill how to start or repair specific tools such as Tilt, k3d,
   Docker, Playwright, or devenv.
-- Require every repository to configure an implementation-readiness stage.
+- Require every repository to configure a development-environment stage.
 - Post issue-host `needs-info` questions for local environment failures.
-- Replace implementation-time validation rules. The readiness stage only
-  verifies that implementation may start; implementation still follows the
-  configured validation policy.
+- Replace implementation-time validation rules. The development-environment
+  stage only verifies that implementation may start; implementation still
+  follows the configured validation policy.
 
 ## Configuration
 
@@ -50,7 +50,7 @@ Add one optional skill key:
 ```json
 {
   "skills": {
-    "implementationReady": ".patchmill/skills/bootstrapping-tilt-worktrees",
+    "developmentEnvironment": ".patchmill/skills/bootstrapping-tilt-worktrees",
     "implementation": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews"
   }
 }
@@ -64,48 +64,52 @@ The key follows the same resolution rules as other skill keys:
 - `patchmill doctor` verifies path-like configured skills and warns for named
   skills it cannot statically inspect.
 
-`patchmill init` should not configure `implementationReady` by default. The
+`patchmill init` should not configure `developmentEnvironment` by default. The
 feature is opt-in because many projects do not need a runtime bootstrap before
 implementation.
 
 ## Run-once workflow
 
-When `skills.implementationReady` is omitted, the existing implementation flow
-is unchanged.
+When `skills.developmentEnvironment` is omitted, the existing implementation
+flow is unchanged.
 
 When it is configured, `patchmill run-once` uses this sequence after a plan is
 available and implementation is allowed:
 
 1. prepare or reuse the issue worktree;
-2. run the configured implementation-ready skill from the issue worktree root;
-3. parse the readiness result;
-4. if ready, record readiness evidence and proceed to implementation;
+2. run the configured development-environment skill from the issue worktree
+   root;
+3. parse the development-environment result;
+4. if ready, record development-environment evidence and proceed to
+   implementation;
 5. if not ready, stop before implementation and return an operator-facing
-   readiness failure.
+   development-environment failure.
 
 The stage should run before any implementation subagents are dispatched. The
 implementation skill should not be responsible for remembering to invoke the
-readiness skill itself; Patchmill owns the stage ordering.
+development-environment skill itself; Patchmill owns the stage ordering.
 
-Readiness is ephemeral. Patchmill may record the successful result in run state
-for logging and prompt handoff, but a later `run-once` should run the readiness
-stage again instead of treating a previous ready result as permanently valid.
-Project skills can make the check cheap by returning quickly when the
-environment is already usable.
+Development-environment setup is ephemeral. Patchmill may record the successful
+result in run state for logging and prompt handoff, but a later `run-once`
+should run the development-environment stage again instead of treating a
+previous ready result as permanently valid. Project skills can make the check
+cheap by returning quickly when the environment is already usable.
 
-## Readiness prompt contract
+## Development-environment prompt contract
 
-Patchmill should run Pi with a dedicated readiness prompt. The prompt includes:
+Patchmill should run Pi with a dedicated development-environment prompt. The
+prompt includes:
 
 - issue number, title, labels, branch, worktree path, and plan path;
 - the untrusted issue-content boundary;
 - required repository context-file instructions;
-- the configured `skills.implementationReady` line;
+- the configured `skills.developmentEnvironment` line;
 - an instruction not to implement product changes or dispatch implementation
   workers;
 - instructions to leave tracked product files unchanged unless the configured
-  readiness skill explicitly documents a safe, repository-owned change;
-- the readiness result contract below.
+  development-environment skill explicitly documents a safe, repository-owned
+  change;
+- the development-environment result contract below.
 
 The prompt should tell Pi to return only one of two statuses.
 
@@ -140,13 +144,13 @@ Not ready:
 }
 ```
 
-`questions` are intentionally absent. A readiness failure usually means the
-operator's local runtime is unavailable, not that the issue author needs to
-clarify product requirements.
+`questions` are intentionally absent. A development-environment failure usually
+means the operator's local runtime is unavailable, not that the issue author
+needs to clarify product requirements.
 
 `environment` is optional and intended for small, non-secret facts that help the
-implementation session, such as a namespace, port, profile name, or readiness
-script version. Secrets and tokens must not be returned.
+implementation session, such as a namespace, port, profile name, or setup script
+version. Secrets and tokens must not be returned.
 
 ## Not-ready behavior
 
@@ -167,7 +171,7 @@ A possible final Patchmill result shape is:
 
 ```json
 {
-  "status": "implementation-not-ready",
+  "status": "development-environment-not-ready",
   "issueNumber": 84,
   "reason": "Tilt/k3d environment unavailable",
   "evidence": ["devenv shell -- just tilt-ready failed"],
@@ -180,17 +184,18 @@ A possible final Patchmill result shape is:
 ```
 
 The existing `blocked` issue workflow remains available for spec, plan, and
-implementation cases where product or maintainer input is required. Readiness
-failures should use the new local-environment result instead.
+implementation cases where product or maintainer input is required.
+Development-environment failures should use the new local-environment result
+instead.
 
 ## Ready handoff into implementation
 
-When readiness succeeds, Patchmill includes a concise readiness section in the
-implementation prompt, for example:
+When development-environment setup succeeds, Patchmill includes a concise
+Development environment section in the implementation prompt, for example:
 
 ```text
-Implementation readiness:
-- The configured implementation-ready skill completed at 2026-06-14T06:00:00Z.
+Development environment:
+- The configured development-environment skill completed at 2026-06-14T06:00:00Z.
 - Summary: Tilt/k3d environment is ready.
 - Evidence:
   - devenv shell -- just tilt-ready passed
@@ -209,33 +214,37 @@ or landing contract and the repository's validation policy.
 
 ## Documentation and generated skill packs
 
-Documentation should explain that `implementationReady` is useful when a project
-requires local services, Kubernetes/Tilt, browser automation infrastructure,
-containers, seeded databases, or other mutable runtime setup before tests can
-run.
+Documentation should explain that `developmentEnvironment` is useful when a
+project requires local services, Kubernetes/Tilt, browser automation
+infrastructure, containers, seeded databases, or other mutable runtime setup
+before tests can run.
 
-The default skill pack should not install a generic implementation-ready skill.
-Project owners can add a local skill such as
+The default skill pack should not install a generic development-environment
+skill. Project owners can add a local skill such as
 `.patchmill/skills/bootstrapping-tilt-worktrees` and configure the key when they
 need it.
 
 Existing implementation skills may mention that Patchmill can run an optional
-readiness stage before implementation, but they should not duplicate the stage
-or require project-specific readiness commands themselves.
+development-environment stage before implementation, but they should not
+duplicate the stage or require project-specific development-environment commands
+themselves.
 
 ## Testing and verification
 
 Automated tests should cover reusable Patchmill behavior:
 
-- config loading accepts optional `skills.implementationReady`;
-- doctor validates path-like `implementationReady` skills with the existing
+- config loading accepts optional `skills.developmentEnvironment`;
+- doctor validates path-like `developmentEnvironment` skills with the existing
   skill-check mechanism;
-- `run-once` skips the readiness stage when the key is omitted;
-- `run-once` runs readiness before implementation when the key is present;
+- `run-once` skips the development-environment stage when the key is omitted;
+- `run-once` runs development-environment setup before implementation when the
+  key is present;
 - a `ready` result is recorded and passed into the implementation prompt;
 - a `not-ready` result stops before implementation and returns
-  `implementation-not-ready` diagnostics;
-- malformed readiness JSON fails clearly without starting implementation.
+  `development-environment-not-ready` diagnostics;
+- malformed development-environment JSON fails clearly without starting
+  implementation.
 
-No tests should hardcode Tilt/k3d behavior. Project-specific readiness commands
-belong in project-local skills and can be verified in those projects.
+No tests should hardcode Tilt/k3d behavior. Project-specific
+development-environment commands belong in project-local skills and can be
+verified in those projects.
