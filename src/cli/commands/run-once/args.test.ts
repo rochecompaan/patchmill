@@ -249,6 +249,41 @@ test("summarizeResult includes approval-required details", () => {
   );
 });
 
+test("summarizeResult includes implementation-not-ready remediation", () => {
+  assert.deepEqual(
+    summarizeResult({
+      status: "implementation-not-ready",
+      issue: {
+        number: 47,
+        title: "Runtime missing",
+        body: "Body",
+        labels: ["plan-approved"],
+        state: "open",
+      },
+      specPath: "docs/specs/spec.md",
+      planPath: "docs/plans/plan.md",
+      branch: "agent/issue-47-runtime-missing",
+      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
+      reason: "Kubernetes API unavailable",
+      evidence: ["localhost:8080 refused connection"],
+      remediation: ["Run devenv shell -- just tilt-up"],
+      logPath: ".patchmill/runs/run.jsonl",
+    }),
+    {
+      status: "implementation-not-ready",
+      issueNumber: 47,
+      specPath: "docs/specs/spec.md",
+      planPath: "docs/plans/plan.md",
+      branch: "agent/issue-47-runtime-missing",
+      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
+      reason: "Kubernetes API unavailable",
+      evidence: ["localhost:8080 refused connection"],
+      remediation: ["Run devenv shell -- just tilt-up"],
+      logPath: ".patchmill/runs/run.jsonl",
+    },
+  );
+});
+
 test("parseArgs accepts an explicit issue number", () => {
   const config = parseArgs(["--issue", "42"], "/repo");
 

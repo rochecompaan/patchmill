@@ -668,9 +668,7 @@ function retryableLabelsAfterReadinessFailure(
       ? [ready]
       : workflowState.kind === "spec-approved"
         ? [config.approvalPolicy.specApproval.approvedLabel]
-        : workflowState.kind === "plan-approved"
-          ? [config.approvalPolicy.planApproval.approvedLabel]
-          : [];
+        : [config.approvalPolicy.planApproval.approvedLabel];
 
   return nextLabels(withoutInProgress, [], restore);
 }

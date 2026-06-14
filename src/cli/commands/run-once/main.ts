@@ -103,6 +103,17 @@ type JsonResult = JsonResultLog &
         missingLabel: string;
       }
     | {
+        status: "implementation-not-ready";
+        issueNumber: number;
+        specPath?: string;
+        planPath: string;
+        branch?: string;
+        worktreePath?: string;
+        reason: string;
+        evidence: string[];
+        remediation: string[];
+      }
+    | {
         status: "blocked";
         issueNumber: number;
         reason: string;
@@ -217,6 +228,21 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
         missingLabel: result.missingLabel,
         ...withLogPath,
       };
+    case "implementation-not-ready":
+      return {
+        status: result.status,
+        issueNumber: result.issue.number,
+        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
+        planPath: result.planPath,
+        ...(result.branch !== undefined ? { branch: result.branch } : {}),
+        ...(result.worktreePath !== undefined
+          ? { worktreePath: result.worktreePath }
+          : {}),
+        reason: result.reason,
+        evidence: result.evidence,
+        remediation: result.remediation,
+        ...withLogPath,
+      };
     case "blocked":
       return {
         status: result.status,
@@ -300,7 +326,9 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     console.log(
       JSON.stringify(summarizeResult({ ...result, logPath: outputLogPath })),
     );
-    return result.status === "blocked" || result.status === "approval-required"
+    return result.status === "blocked" ||
+      result.status === "approval-required" ||
+      result.status === "implementation-not-ready"
       ? 1
       : 0;
   } catch (error) {
