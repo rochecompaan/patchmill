@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
-import { parsePiResult, runPiPrompt } from "./pi.ts";
+import {
+  parseImplementationReadinessResult,
+  parsePiResult,
+  runPiPrompt,
+} from "./pi.ts";
 import {
   sessionEntryToObservations,
   sessionEntryToStreamText,
@@ -153,6 +157,44 @@ test("parsePiResult rejects unsupported final JSON statuses", () => {
   );
 });
 
+test("parseImplementationReadinessResult parses ready output", () => {
+  assert.deepEqual(
+    parseImplementationReadinessResult(
+      'ready\n{"status":"ready","summary":"Tilt ready","evidence":["just tilt-ready passed"],"environment":{"namespace":"issue-84","tiltPort":"10384","ignored":12}}',
+    ),
+    {
+      status: "ready",
+      summary: "Tilt ready",
+      evidence: ["just tilt-ready passed"],
+      environment: { namespace: "issue-84", tiltPort: "10384" },
+    },
+  );
+});
+
+test("parseImplementationReadinessResult parses not-ready output", () => {
+  assert.deepEqual(
+    parseImplementationReadinessResult(
+      'blocked\n{"status":"not-ready","reason":"Kubernetes API unavailable","evidence":["localhost:8080 refused connection"],"remediation":["Run devenv shell -- just tilt-up","Re-run patchmill run-once"]}',
+    ),
+    {
+      status: "not-ready",
+      reason: "Kubernetes API unavailable",
+      evidence: ["localhost:8080 refused connection"],
+      remediation: [
+        "Run devenv shell -- just tilt-up",
+        "Re-run patchmill run-once",
+      ],
+    },
+  );
+});
+
+test("parseImplementationReadinessResult rejects unsupported readiness statuses", () => {
+  assert.throws(
+    () => parseImplementationReadinessResult('{"status":"blocked"}'),
+    /supported implementation readiness JSON status/,
+  );
+});
+
 test("runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failures", async () => {
   const runner = createMockRunner(async (call) => {
     assert.equal(call.command, "pi");
@@ -198,6 +240,30 @@ test("runPiPrompt loads bundled Pi extensions before the prompt argument", async
   });
 
   await runPiPrompt(runner, "/repo", "prompt", { stage: "pi-plan" });
+});
+
+test("runPiPrompt can parse implementation readiness results", async () => {
+  const runner = createMockRunner(() => ({
+    code: 0,
+    stdout: '{"status":"ready","summary":"ready","evidence":["check passed"]}',
+    stderr: "",
+  }));
+
+  const result = await runPiPrompt(
+    runner,
+    "/repo/worktree",
+    "readiness prompt",
+    {
+      stage: "pi-implementation-ready",
+      parseResult: parseImplementationReadinessResult,
+    },
+  );
+
+  assert.deepEqual(result, {
+    status: "ready",
+    summary: "ready",
+    evidence: ["check passed"],
+  });
 });
 
 test("runPiPrompt passes configured skill files before the prompt argument", async () => {

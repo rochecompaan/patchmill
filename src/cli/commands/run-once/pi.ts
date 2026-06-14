@@ -16,6 +16,7 @@ import {
 } from "./pi-session-stream.ts";
 import type {
   AgentIssueBlockerQuestion,
+  AgentIssueImplementationReadinessResult,
   AgentIssuePiResult,
   AgentIssueVisualEvidence,
   CommandResult,
@@ -96,13 +97,25 @@ function visualEvidence(
   return entries.length > 0 ? entries : undefined;
 }
 
-export function parsePiResult(stdout: string): AgentIssuePiResult {
+function stringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function finalJsonCandidates(stdout: string): Record<string, unknown>[] {
   const trimmed = stdout.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```\s*$/);
   const body = fenced ? fenced[1] : trimmed;
   const end = body.lastIndexOf("}");
   if (end < 0) throw new Error("Pi output did not include a final JSON object");
 
+  const candidates: Record<string, unknown>[] = [];
   for (
     let start = body.lastIndexOf("{", end);
     start >= 0;
@@ -113,91 +126,129 @@ export function parsePiResult(stdout: string): AgentIssuePiResult {
         string,
         unknown
       >;
-      if (parsed.status === "blocked") {
-        return {
-          status: "blocked",
-          reason:
-            typeof parsed.reason === "string"
-              ? parsed.reason
-              : "Unknown blocker",
-          questions: questions(parsed.questions),
-          commits: stringArray(parsed.commits),
-          validation: stringArray(parsed.validation),
-        };
-      }
-
-      if (
-        parsed.status === "spec-created" &&
-        typeof parsed.specPath === "string"
-      ) {
-        return {
-          status: "spec-created",
-          specPath: parsed.specPath,
-          commit: typeof parsed.commit === "string" ? parsed.commit : undefined,
-        };
-      }
-
-      if (
-        parsed.status === "plan-created" &&
-        typeof parsed.planPath === "string"
-      ) {
-        return {
-          status: "plan-created",
-          planPath: parsed.planPath,
-          commit: typeof parsed.commit === "string" ? parsed.commit : undefined,
-        };
-      }
-
-      if (
-        parsed.status === "pr-created" &&
-        typeof parsed.prUrl === "string" &&
-        typeof parsed.branch === "string"
-      ) {
-        return {
-          status: "pr-created",
-          prUrl: parsed.prUrl,
-          branch: parsed.branch,
-          commits: stringArray(parsed.commits),
-          validation: stringArray(parsed.validation),
-          reviewSummary:
-            typeof parsed.reviewSummary === "string"
-              ? parsed.reviewSummary
-              : undefined,
-          landingDecision:
-            typeof parsed.landingDecision === "string"
-              ? parsed.landingDecision
-              : undefined,
-          visualEvidence: visualEvidence(parsed.visualEvidence),
-        };
-      }
-
-      if (
-        parsed.status === "merged" &&
-        typeof parsed.branch === "string" &&
-        typeof parsed.mergeCommit === "string"
-      ) {
-        return {
-          status: "merged",
-          branch: parsed.branch,
-          mergeCommit: parsed.mergeCommit,
-          commits: stringArray(parsed.commits),
-          validation: stringArray(parsed.validation),
-          reviewSummary:
-            typeof parsed.reviewSummary === "string"
-              ? parsed.reviewSummary
-              : undefined,
-          landingDecision:
-            typeof parsed.landingDecision === "string"
-              ? parsed.landingDecision
-              : undefined,
-        };
-      }
+      candidates.push(parsed);
     } catch {
       continue;
     }
   }
 
+  return candidates;
+}
+
+export function parsePiResult(stdout: string): AgentIssuePiResult {
+  for (const parsed of finalJsonCandidates(stdout)) {
+    if (parsed.status === "blocked") {
+      return {
+        status: "blocked",
+        reason:
+          typeof parsed.reason === "string" ? parsed.reason : "Unknown blocker",
+        questions: questions(parsed.questions),
+        commits: stringArray(parsed.commits),
+        validation: stringArray(parsed.validation),
+      };
+    }
+
+    if (
+      parsed.status === "spec-created" &&
+      typeof parsed.specPath === "string"
+    ) {
+      return {
+        status: "spec-created",
+        specPath: parsed.specPath,
+        commit: typeof parsed.commit === "string" ? parsed.commit : undefined,
+      };
+    }
+
+    if (
+      parsed.status === "plan-created" &&
+      typeof parsed.planPath === "string"
+    ) {
+      return {
+        status: "plan-created",
+        planPath: parsed.planPath,
+        commit: typeof parsed.commit === "string" ? parsed.commit : undefined,
+      };
+    }
+
+    if (
+      parsed.status === "pr-created" &&
+      typeof parsed.prUrl === "string" &&
+      typeof parsed.branch === "string"
+    ) {
+      return {
+        status: "pr-created",
+        prUrl: parsed.prUrl,
+        branch: parsed.branch,
+        commits: stringArray(parsed.commits),
+        validation: stringArray(parsed.validation),
+        reviewSummary:
+          typeof parsed.reviewSummary === "string"
+            ? parsed.reviewSummary
+            : undefined,
+        landingDecision:
+          typeof parsed.landingDecision === "string"
+            ? parsed.landingDecision
+            : undefined,
+        visualEvidence: visualEvidence(parsed.visualEvidence),
+      };
+    }
+
+    if (
+      parsed.status === "merged" &&
+      typeof parsed.branch === "string" &&
+      typeof parsed.mergeCommit === "string"
+    ) {
+      return {
+        status: "merged",
+        branch: parsed.branch,
+        mergeCommit: parsed.mergeCommit,
+        commits: stringArray(parsed.commits),
+        validation: stringArray(parsed.validation),
+        reviewSummary:
+          typeof parsed.reviewSummary === "string"
+            ? parsed.reviewSummary
+            : undefined,
+        landingDecision:
+          typeof parsed.landingDecision === "string"
+            ? parsed.landingDecision
+            : undefined,
+      };
+    }
+  }
+
   throw new Error("Pi output did not include a supported final JSON status");
+}
+
+export function parseImplementationReadinessResult(
+  stdout: string,
+): AgentIssueImplementationReadinessResult {
+  for (const parsed of finalJsonCandidates(stdout)) {
+    if (parsed.status === "ready") {
+      const environment = stringRecord(parsed.environment);
+      return {
+        status: "ready",
+        summary: typeof parsed.summary === "string" ? parsed.summary : "Ready",
+        evidence: stringArray(parsed.evidence),
+        ...(environment ? { environment } : {}),
+      };
+    }
+
+    if (parsed.status === "not-ready") {
+      return {
+        status: "not-ready",
+        reason:
+          typeof parsed.reason === "string"
+            ? parsed.reason
+            : "Implementation environment is not ready",
+        evidence: stringArray(parsed.evidence),
+        remediation: stringArray(parsed.remediation),
+      };
+    }
+  }
+
+  throw new Error(
+    "Pi output did not include a supported implementation readiness JSON status",
+  );
 }
 
 export type PiTaskProgress = {
@@ -206,9 +257,15 @@ export type PiTaskProgress = {
   label?: string;
 };
 
-export type RunPiPromptOptions = {
+export type RunPiPromptStage =
+  | "pi-plan"
+  | "pi-implementation-ready"
+  | "pi-implementation";
+
+export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   progress?: ProgressReporter;
-  stage: "pi-plan" | "pi-implementation";
+  stage: RunPiPromptStage;
+  parseResult?: (stdout: string) => Result;
   skillPaths?: string[];
   heartbeatMs?: number;
   streamOutput?: (chunk: string) => void;
@@ -228,8 +285,10 @@ export type RunPiPromptOptions = {
   piAgentDir?: string;
 };
 
-function stageStatus(stage: RunPiPromptOptions["stage"]): string {
-  return stage === "pi-plan" ? "planning" : "implementing";
+function stageStatus(stage: RunPiPromptStage): string {
+  if (stage === "pi-plan") return "planning";
+  if (stage === "pi-implementation-ready") return "implementation readiness";
+  return "implementing";
 }
 
 function formatElapsed(seconds: number): string {
@@ -299,12 +358,12 @@ async function emitPiOutput(
   });
 }
 
-export async function runPiPrompt(
+export async function runPiPrompt<Result = AgentIssuePiResult>(
   runner: CommandRunner,
   cwd: string,
   prompt: string,
-  options?: RunPiPromptOptions,
-): Promise<AgentIssuePiResult> {
+  options?: RunPiPromptOptions<Result>,
+): Promise<Result> {
   const dir = await mkdtemp(join(tmpdir(), "agent-issue-prompt-"));
   const promptPath = join(dir, "prompt.md");
   await writeFile(promptPath, prompt, "utf8");
@@ -405,7 +464,8 @@ export async function runPiPrompt(
       throw new Error(`pi failed: ${result.stderr || stdout || result.stdout}`);
     }
 
-    return parsePiResult(stdout);
+    const parseResult = options?.parseResult ?? parsePiResult;
+    return parseResult(stdout) as Result;
   } finally {
     if (timer) clearInterval(timer);
     await Promise.all(pendingHeartbeats);
