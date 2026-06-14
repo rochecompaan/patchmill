@@ -11,10 +11,12 @@ import {
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
 import type {
+  AgentIssueImplementationReadyResult,
   AgentIssueImplementationResumeContext,
   IssueSummary,
 } from "./types.ts";
 import {
+  renderImplementationReadySkillStep,
   renderImplementationSkillSteps,
   renderLandingSkillStep,
   renderPlanningSkillStep,
@@ -57,7 +59,22 @@ export type ImplementationPromptInput = {
   projectPolicy: PatchmillProjectPolicy;
   skills?: PatchmillSkillsConfig;
   resume?: AgentIssueImplementationResumeContext;
+  readiness?: ImplementationReadinessHandoff;
 };
+
+export type ImplementationReadinessPromptInput = {
+  issue: IssueSummary;
+  planPath: string;
+  branch: string;
+  worktreePath: string;
+  projectPolicy: PatchmillProjectPolicy;
+  skills?: PatchmillSkillsConfig;
+};
+
+export type ImplementationReadinessHandoff =
+  AgentIssueImplementationReadyResult & {
+    completedAt: string;
+  };
 
 function formatLabels(labels: string[]): string {
   return labels.length > 0 ? labels.join(", ") : "(none)";
@@ -162,6 +179,36 @@ function formatResumeContext(
     "- Continue from current branch state.",
     `- Worktree ${resume.worktreeCreated ? "was created/recreated during this run" : "was reused from the prior run"}.`,
     existingCommits,
+    "",
+  ].join("\n");
+}
+
+function formatImplementationReadiness(
+  readiness?: ImplementationReadinessHandoff,
+): string {
+  if (!readiness) return "";
+
+  const evidence =
+    readiness.evidence.length > 0
+      ? readiness.evidence.map((entry) => `  - ${entry}`).join("\n")
+      : "  - (no evidence reported)";
+  const environmentEntries = Object.entries(readiness.environment ?? {});
+  const environment =
+    environmentEntries.length > 0
+      ? [
+          "- Environment:",
+          ...environmentEntries.map(([key, value]) => `  - ${key}: ${value}`),
+        ].join("\n")
+      : "- Environment: (none reported)";
+
+  return [
+    "Implementation readiness:",
+    `- The configured implementation-ready skill completed at ${readiness.completedAt}.`,
+    `- Summary: ${readiness.summary}`,
+    "- Evidence:",
+    evidence,
+    environment,
+    "- This readiness evidence allows implementation to start; it is not permission to skip later validation commands.",
     "",
   ].join("\n");
 }
@@ -695,11 +742,78 @@ Return this exact JSON object after the plan commit succeeds:
 `;
 }
 
+export function buildImplementationReadinessPrompt(
+  input: ImplementationReadinessPromptInput,
+): string {
+  const { issue, planPath, branch, worktreePath, projectPolicy } = input;
+  const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
+  const workflow = numberedWorkflow([
+    renderImplementationContextInstruction(projectPolicy, planPath),
+    renderImplementationReadySkillStep(skills),
+    "Prepare and verify only the local implementation environment required before implementation can begin.",
+    "Do not implement product changes, dispatch implementation workers, run review loops, land code, push branches, or open pull requests.",
+    "Leave tracked product files unchanged unless the configured implementation-ready skill explicitly documents a safe repository-owned readiness change.",
+    "Return the readiness result contract as the final response.",
+  ]);
+
+  return `Prepare implementation readiness for ${formatIssueTarget(projectPolicy)} #${issue.number}: ${issue.title}
+
+Issue data:
+- Number: #${issue.number}
+- Title: ${issue.title}
+- Labels: ${formatLabels(issue.labels)}
+- Plan path: ${planPath}
+- Branch: ${branch}
+- Worktree: ${worktreePath}
+- Author: ${issue.author ?? "unknown"}
+- Updated: ${issue.updated ?? "unknown"}
+
+${untrustedIssueContentBoundary()}
+
+Issue body:
+${issueBody(issue.body)}
+
+Relevant issue comments:
+${formatComments(issue.comments)}
+
+Required workflow:
+${workflow}
+
+Ready final response:
+Return this exact JSON object after the implementation environment is ready:
+{
+  "status": "ready",
+  "summary": "short readiness summary",
+  "evidence": ["command or check and result summary"],
+  "environment": {
+    "detailName": "optional non-secret detail useful to implementation"
+  }
+}
+
+Not-ready final response:
+Return this exact JSON object when the local implementation environment cannot be made ready:
+{
+  "status": "not-ready",
+  "reason": "short operator-facing reason",
+  "evidence": ["failed command or check and result summary"],
+  "remediation": ["operator action to repair the environment", "rerun patchmill run-once"]
+}
+`;
+}
+
 export function buildImplementationPrompt(
   input: ImplementationPromptInput,
 ): string {
-  const { issue, planPath, branch, worktreePath, git, projectPolicy, resume } =
-    input;
+  const {
+    issue,
+    planPath,
+    branch,
+    worktreePath,
+    git,
+    projectPolicy,
+    resume,
+    readiness,
+  } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const visualEvidenceExample = resolvePrVisualEvidenceExample(projectPolicy);
 
@@ -727,7 +841,7 @@ ${untrustedIssueContentBoundary()}
 
 ${formatSubagentSupport()}
 
-${formatResumeContext(resume)}Issue body:
+${formatResumeContext(resume)}${formatImplementationReadiness(readiness)}Issue body:
 ${issueBody(issue.body)}
 
 Relevant issue comments:

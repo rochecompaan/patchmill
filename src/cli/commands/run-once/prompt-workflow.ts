@@ -29,6 +29,15 @@ export function renderImplementationSkillSteps(
   ].filter((line) => line.length > 0);
 }
 
+export function renderImplementationReadySkillStep(
+  skills: PatchmillSkillsConfig,
+): string {
+  return renderConfiguredSkillLine(
+    "Use the configured implementation-ready skill",
+    skills.implementationReady,
+  );
+}
+
 export function renderVisualEvidenceSkillStep(
   skills: PatchmillSkillsConfig,
 ): string {

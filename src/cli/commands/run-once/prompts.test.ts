@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildImplementationPrompt,
+  buildImplementationReadinessPrompt,
   buildPlanCreationPrompt,
   buildSpecCreationPrompt,
 } from "./prompts.ts";
@@ -289,6 +290,68 @@ test("buildPlanCreationPrompt renders configured ready and needs-info labels", (
     /Treat `agent-ready` as meaning the issue is already clear and unambiguous enough to plan/,
   );
   assert.doesNotMatch(prompt, /post directly as a `needs-info` comment/);
+});
+
+test("buildImplementationReadinessPrompt renders the optional readiness skill contract", () => {
+  const prompt = buildImplementationReadinessPrompt({
+    issue,
+    planPath,
+    branch: "agent/issue-42-add-once-runner-helpers",
+    worktreePath: ".worktrees/patchmill-issue-42-add-once-runner-helpers",
+    projectPolicy: examplePolicy,
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      implementationReady: ".patchmill/skills/implementation-ready",
+    },
+  });
+
+  assert.match(
+    prompt,
+    /Prepare implementation readiness for ExampleApp issue #42/,
+  );
+  assert.match(
+    prompt,
+    /Plan path: docs\/plans\/2026-05-09-issue-42-add-once-runner-helpers\.md/,
+  );
+  assert.match(prompt, /Branch: agent\/issue-42-add-once-runner-helpers/);
+  assert.match(
+    prompt,
+    /Worktree: \.worktrees\/patchmill-issue-42-add-once-runner-helpers/,
+  );
+  assert.match(
+    prompt,
+    /Use the configured implementation-ready skill: `\.patchmill\/skills\/implementation-ready`\./,
+  );
+  assert.match(prompt, /Do not implement product changes/);
+  assert.match(prompt, /"status": "ready"/);
+  assert.match(prompt, /"status": "not-ready"/);
+  assert.doesNotMatch(prompt, /"questions"/);
+});
+
+test("buildImplementationPrompt includes readiness handoff when provided", () => {
+  const prompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    branch: "agent/issue-42-add-once-runner-helpers",
+    worktreePath: ".worktrees/patchmill-issue-42-add-once-runner-helpers",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    projectPolicy: examplePolicy,
+    readiness: {
+      completedAt: "2026-06-14T06:00:00.000Z",
+      status: "ready",
+      summary: "Tilt/k3d environment is ready",
+      evidence: ["devenv shell -- just tilt-ready passed"],
+      environment: { namespace: "issue-42", tiltPort: "1042" },
+    },
+  });
+
+  assert.match(prompt, /Implementation readiness:/);
+  assert.match(prompt, /completed at 2026-06-14T06:00:00\.000Z/);
+  assert.match(prompt, /Summary: Tilt\/k3d environment is ready/);
+  assert.match(prompt, /devenv shell -- just tilt-ready passed/);
+  assert.match(prompt, /namespace: issue-42/);
+  assert.match(prompt, /tiltPort: 1042/);
+  assert.match(prompt, /not permission to skip later validation commands/);
 });
 
 test("buildImplementationPrompt includes plan-first execution, review loop, validation rules, and result contracts", () => {
