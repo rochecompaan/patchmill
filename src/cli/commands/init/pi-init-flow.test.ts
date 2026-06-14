@@ -90,6 +90,13 @@ async function skippedLabels() {
   };
 }
 
+function assertOnlyGitPolicyPrompt(prompts: string[]) {
+  assert.deepEqual(
+    prompts.map((prompt) => prompt.split("\n")[0]),
+    ["How should Patchmill files be handled by git?"],
+  );
+}
+
 test("runInit uses Pi-reported ready configuration without launching a prompt selector", async () => {
   const repoRoot = await tempRepo();
   const stdout: string[] = [];
@@ -120,7 +127,7 @@ test("runInit uses Pi-reported ready configuration without launching a prompt se
     0,
   );
 
-  assert.deepEqual(prompts, []);
+  assertOnlyGitPolicyPrompt(prompts);
   assert.match(stdout.join("\n"), /Pi reported 1 provider\/model option/);
   assert.match(
     stdout.join("\n"),
@@ -142,6 +149,7 @@ test("runInit starts Patchmill-owned interactive Pi setup when readiness is miss
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
         isInteractive: true,
+        prompt: async () => "",
         detectPiReadiness: missingPiReadiness,
         resolvePiInitSetup: (setupOptions) =>
           resolvePiInitSetup({
@@ -221,6 +229,7 @@ test("runInit persists selected model to local Pi settings and smoke-tests it", 
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
         isInteractive: true,
+        prompt: async () => "",
         setupLabels: skippedLabels,
         detectPiReadiness: () =>
           readyReadiness([anthropicModel(), codexModel()]),
@@ -284,6 +293,7 @@ test("runInit warns when saving the selected model to local Pi settings fails", 
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
         isInteractive: true,
+        prompt: async () => "",
         setupLabels: skippedLabels,
         detectPiReadiness: () =>
           readyReadiness([anthropicModel(), codexModel()]),
@@ -345,6 +355,7 @@ test("runInit warns and preserves invalid local Pi settings while using a ready 
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
         isInteractive: true,
+        prompt: async () => "",
         setupLabels: skippedLabels,
         detectPiReadiness: () =>
           readyReadiness([anthropicModel(), codexModel()]),
@@ -388,6 +399,7 @@ test("runInit skips model selector and local settings when no models are availab
       { stdout: () => undefined, stderr: () => undefined },
       {
         isInteractive: true,
+        prompt: async () => "",
         detectPiReadiness: missingPiReadiness,
         resolvePiInitSetup: (setupOptions) =>
           resolvePiInitSetup({
@@ -592,7 +604,7 @@ test("runInit aborts when the required interactive model selector is cancelled",
   );
 
   assert.equal(smokeCalled, false);
-  assert.deepEqual(prompts, []);
+  assertOnlyGitPolicyPrompt(prompts);
   assert.match(stdout.join("\n"), /Pi model selection was cancelled/);
   assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
 });

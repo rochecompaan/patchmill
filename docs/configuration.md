@@ -297,8 +297,11 @@ process shutdown.
 ## Skills
 
 The required skill keys are `triage`, `planning`, and `implementation`. For new
-repositories, `patchmill init` defaults them to local-only skill paths and adds
-`.patchmill` plus `patchmill.config.json` to `.git/info/exclude`:
+repositories, `patchmill init` defaults them to project-local skill paths. In an
+interactive terminal, init asks whether to add generated config and skills to
+git, add Patchmill files to `.gitignore`, or add Patchmill files to
+`.git/info/exclude`. Non-interactive and `--yes` runs keep the files local by
+adding `patchmill.config.json` and `.patchmill/` to `.git/info/exclude`:
 
 ```json
 {
@@ -310,9 +313,11 @@ repositories, `patchmill init` defaults them to local-only skill paths and adds
 }
 ```
 
-Path-like skill references resolve relative to the config file directory. For
-consistent Patchmill runs across local machines and CI, consider committing
-`patchmill.config.json` and `.patchmill/skills/` explicitly.
+Path-like skill references resolve relative to the config file directory. When
+choosing **Add to git**, init stages `patchmill.config.json`,
+`.patchmill/skills`, and `.gitignore`; `.gitignore` keeps `.patchmill/pi-agent`,
+`.patchmill/runs`, and `.patchmill/triage-runs` local because they contain
+machine-specific auth, session, and run output.
 
 ### Subagents
 

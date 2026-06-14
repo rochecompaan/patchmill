@@ -5,9 +5,11 @@ import {
   cwd,
 } from "node:process";
 import { createInterface } from "node:readline/promises";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
 import { createCommandRunner } from "../triage/command.ts";
+import type { CommandRunner } from "../triage/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { GLOBAL_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
@@ -23,7 +25,7 @@ import {
   writeInitialConfig,
   type InitialConfigSkills,
 } from "./config-writer.ts";
-import { ensurePatchmillLocalExcludeEntries } from "./local-ignore.ts";
+import { applyInitGitPolicy, selectInitGitPolicy } from "./git-policy.ts";
 import {
   localPiAgentDir,
   readLocalPiDefaultModel,
@@ -87,6 +89,18 @@ const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
   implementation: GLOBAL_PATCHMILL_SKILLS.implementation,
 };
 
+function stageableSkillRoots(
+  skills: InitialConfigSkills | undefined,
+): string[] {
+  if (!skills) return [];
+  const roots = Object.values(skills).flatMap((skill) => {
+    if (!skill.includes("/")) return [];
+    const root = dirname(skill);
+    return root === "." ? [] : [root];
+  });
+  return [...new Set(roots)];
+}
+
 const EXISTING_CONFIG_MESSAGE =
   "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor";
 
@@ -142,6 +156,7 @@ export async function runInit(
     installProjectSkills?: ProjectSkillInstaller;
     validateExistingSkillDirectory?: ExistingSkillDirectoryValidator;
     setupLabels?: typeof ensureRequiredLabels;
+    commandRunner?: CommandRunner;
   } = {},
 ): Promise<number> {
   const config = parseArgs(args, repoRoot);
@@ -163,7 +178,7 @@ export async function runInit(
       options.installProjectSkills ?? installProjectSkills
     )({ repoRoot: config.repoRoot });
     skills = installResult.skillConfig;
-    skillsMessage = `Installed project-local skills:\n  ${installResult.installedSkills.join("\n  ")}\n\nProject-local skills are local-only by default.\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
+    skillsMessage = `Installed project-local skills:\n  ${installResult.installedSkills.join("\n  ")}\n\nUsing Patchmill defaults for labels, paths, and git policy.`;
   } else if (config.skills.mode === "global") {
     skills = DEFAULT_GLOBAL_SKILLS;
     skillsMessage =
@@ -183,17 +198,18 @@ export async function runInit(
     output.stdout(EXISTING_CONFIG_MESSAGE);
     return 1;
   }
-  const localExclude = await ensurePatchmillLocalExcludeEntries(
-    config.repoRoot,
-  );
-  const localExcludeMessage = localExclude.skipped
-    ? `Warning: Patchmill could not update .git/info/exclude (${localExclude.skipped}).\nAdd .patchmill and patchmill.config.json to your local git excludes to keep the worktree clean.`
-    : localExclude.added.length > 0
-      ? `Added Patchmill local files to .git/info/exclude:\n  ${localExclude.added.join("\n  ")}`
-      : "Patchmill local files were already ignored by .git/info/exclude.";
-  const consistencyWarning =
-    "Warning: Patchmill config and skills are local-only by default. For consistent Patchmill runs across local machines and CI, consider committing patchmill.config.json and .patchmill/skills/ explicitly.";
   const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
+  const gitPolicy = await selectInitGitPolicy({
+    isInteractive,
+    assumeYes: config.yes,
+    prompt: options.prompt ?? defaultPrompt,
+  });
+  const gitPolicyResult = await applyInitGitPolicy({
+    repoRoot: config.repoRoot,
+    policy: gitPolicy,
+    runner: options.commandRunner ?? createCommandRunner(),
+    skillRoots: stageableSkillRoots(result.config.skills),
+  });
   const piAgentDir = localPiAgentDir(config.repoRoot);
   let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>> =
     undefined;
@@ -271,7 +287,7 @@ export async function runInit(
     : "";
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${localExcludeMessage}\n\n${consistencyWarning}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${gitPolicyResult.message}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
   );
   return shouldAbortPiSetup(piSetup) ? 1 : 0;
 }
