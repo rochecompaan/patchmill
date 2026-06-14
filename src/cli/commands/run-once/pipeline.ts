@@ -21,9 +21,12 @@ import {
   issueTodoProgress,
   readIssueTodoTasks,
 } from "./issue-todos.ts";
-import { runPiPrompt } from "./pi.ts";
+import { parseImplementationReadinessResult, runPiPrompt } from "./pi.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
-import { buildImplementationPrompt } from "./prompts.ts";
+import {
+  buildImplementationPrompt,
+  buildImplementationReadinessPrompt,
+} from "./prompts.ts";
 import { advancePlanningStages } from "./stage-advancement.ts";
 import {
   ApprovalRequiredError,
@@ -48,6 +51,8 @@ import type {
   AgentIssueBlockedResult,
   AgentIssueBlockerQuestion,
   AgentIssueConfig,
+  AgentIssueImplementationReadyResult,
+  AgentIssueImplementationReadinessResult,
   AgentIssuePiResult,
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,
@@ -220,6 +225,11 @@ function lifecycleLabels(
     needsInfo: triagePolicy.labels.needsInfo,
   };
 }
+
+type AgentIssueImplementationReadinessHandoff =
+  AgentIssueImplementationReadyResult & {
+    completedAt: string;
+  };
 
 const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
   keyof AgentIssueRunCheckpoints
@@ -642,6 +652,104 @@ async function unexpectedFailure(
   );
 }
 
+function retryableLabelsAfterReadinessFailure(
+  issue: IssueSummary,
+  labels: string[],
+  config: AgentIssueConfig,
+): string[] {
+  const { ready, inProgress } = lifecycleLabels(config);
+  const withoutInProgress = nextLabels(labels, [inProgress], []);
+  const workflowState = resolveWorkflowState(issue.labels, {
+    readyLabel: ready,
+    policy: config.approvalPolicy,
+  });
+  const restore =
+    workflowState.kind === "agent-ready"
+      ? [ready]
+      : workflowState.kind === "spec-approved"
+        ? [config.approvalPolicy.specApproval.approvedLabel]
+        : workflowState.kind === "plan-approved"
+          ? [config.approvalPolicy.planApproval.approvedLabel]
+          : [];
+
+  return nextLabels(withoutInProgress, [], restore);
+}
+
+async function implementationNotReady(
+  host: IssueHostProvider,
+  config: AgentIssueConfig,
+  issue: IssueSummary,
+  labels: string[],
+  result: Extract<
+    AgentIssueImplementationReadinessResult,
+    { status: "not-ready" }
+  >,
+  details: {
+    specPath?: string;
+    specCommit?: string;
+    planPath: string;
+    planCommit?: string;
+    branch?: string;
+    worktreePath?: string;
+  },
+  timestamp: string,
+  options: RunOneIssueOptions,
+): Promise<AgentIssuePipelineResult> {
+  await progress(
+    options,
+    "error",
+    "implementation-ready",
+    `implementation environment not ready: ${result.reason}`,
+    { issueNumber: issue.number, data: result },
+  );
+  const retryableLabels = retryableLabelsAfterReadinessFailure(
+    issue,
+    labels,
+    config,
+  );
+
+  if (retryableLabels.join("\0") !== labels.join("\0")) {
+    await host.applyLabels(
+      planLabelChange(issue.number, labels, retryableLabels),
+    );
+  }
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: issue.number,
+      title: issue.title,
+      status: "finished",
+      resetCheckpoints: true,
+      specPath: details.specPath,
+      specCommit: details.specCommit,
+      planPath: details.planPath,
+      planCommit: details.planCommit,
+      lastError: result.reason,
+    },
+    timestamp,
+  );
+  await emitSimpleStep(
+    options,
+    issue.number,
+    "final result implementation-not-ready",
+  );
+
+  return withLogPath(
+    {
+      status: "implementation-not-ready",
+      issue,
+      specPath: details.specPath,
+      planPath: details.planPath,
+      branch: details.branch,
+      worktreePath: details.worktreePath,
+      reason: result.reason,
+      evidence: result.evidence,
+      remediation: result.remediation,
+    },
+    options,
+  );
+}
+
 async function blockIssue(
   host: IssueHostProvider,
   config: AgentIssueConfig,
@@ -843,7 +951,7 @@ export async function runOneIssue(
     }
   };
   const observePi =
-    (stage: "pi-plan" | "pi-implementation") =>
+    (stage: "pi-plan" | "pi-implementation-ready" | "pi-implementation") =>
     async (
       observation: AgentIssueProgressEvent["observation"],
     ): Promise<void> => {
@@ -1106,6 +1214,69 @@ export async function runOneIssue(
     );
     checkpoints.worktreeReady = true;
 
+    const worktreeRoot = join(config.repoRoot, worktreePath);
+    let readiness: AgentIssueImplementationReadinessHandoff | undefined;
+    if (!implemented && config.skills.implementationReady) {
+      const readinessResult = await runStep(
+        "implementation readiness",
+        async (): Promise<AgentIssueImplementationReadinessResult> => {
+          await progress(
+            options,
+            "info",
+            "implementation-ready",
+            "running implementation readiness with pi",
+            { issueNumber: issue.number },
+          );
+          return await runPiPrompt(
+            runner,
+            worktreeRoot,
+            buildImplementationReadinessPrompt({
+              issue: { ...issue, labels },
+              planPath,
+              branch,
+              worktreePath,
+              projectPolicy: config.projectPolicy,
+              skills: config.skills,
+            }),
+            {
+              progress: options.progress,
+              stage: "pi-implementation-ready",
+              parseResult: parseImplementationReadinessResult,
+              skillPaths: skillInvocationPaths(
+                [config.skills.toolchain, config.skills.implementationReady],
+                config.repoRoot,
+              ),
+              streamOutput: options.streamPiOutput,
+              issueNumber: issue.number,
+              repoRoot: worktreeRoot,
+              heartbeatMs: options.heartbeatMs,
+              tokenUsageState,
+              observeSession: true,
+              verbosePiOutput: options.verbosePiOutput,
+              onObservation: observePi("pi-implementation-ready"),
+              taskContract: config.projectPolicy.pi.taskContract,
+              piAgentDir,
+            },
+          );
+        },
+      );
+
+      if (readinessResult.status === "not-ready") {
+        return implementationNotReady(
+          host,
+          config,
+          issue,
+          labels,
+          readinessResult,
+          { specPath, specCommit, planPath, planCommit, branch, worktreePath },
+          timestamp,
+          options,
+        );
+      }
+
+      readiness = { ...readinessResult, completedAt: timestamp };
+    }
+
     if (!implemented) {
       await progress(
         options,
@@ -1114,7 +1285,6 @@ export async function runOneIssue(
         "running implementation with pi",
         { issueNumber: issue.number },
       );
-      const worktreeRoot = join(config.repoRoot, worktreePath);
       const taskContract = config.projectPolicy.pi.taskContract;
       const planTaskLabels = await readPlanTaskLabels(
         config.repoRoot,
@@ -1256,6 +1426,7 @@ export async function runOneIssue(
               worktreeCreated: worktree.created,
               existingCommits: worktree.existingCommits,
             },
+            readiness,
           }),
           {
             progress: options.progress,

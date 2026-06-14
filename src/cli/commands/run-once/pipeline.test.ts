@@ -4274,6 +4274,276 @@ test("runOneIssue starts implementation without an agent team", async () => {
   );
 });
 
+test("runOneIssue skips implementation readiness when no readiness skill is configured", async () => {
+  const planPath = "docs/plans/2026-05-14-issue-45-no-readiness.md";
+  const config = await makeConfig({ dryRun: false, execute: true });
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(45, ["plan-approved"], "No readiness");
+  let implementationPrompt = "";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      implementationPrompt = await readFile(promptPath(call.args), "utf8");
+      return {
+        code: 0,
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-no-readiness","commits":["123abc"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.doesNotMatch(implementationPrompt, /Implementation readiness:/);
+});
+
+test("runOneIssue runs implementation readiness before implementation when configured", async () => {
+  const planPath = "docs/plans/2026-05-14-issue-46-readiness.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    skills: {
+      ...DEFAULT_PATCHMILL_CONFIG.skills,
+      implementationReady: "./skills/implementation-ready",
+      landing: "project-landing",
+    },
+  });
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(46, ["plan-approved"], "Readiness");
+  const piPrompts: string[] = [];
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      piPrompts.push(prompt);
+      if (/Prepare implementation readiness/.test(prompt)) {
+        assert.equal(
+          call.args.includes(
+            join(config.repoRoot, "skills", "implementation-ready", "SKILL.md"),
+          ),
+          true,
+        );
+        return {
+          code: 0,
+          stdout:
+            '{"status":"ready","summary":"Tilt ready","evidence":["just tilt-ready passed"],"environment":{"namespace":"issue-46"}}',
+          stderr: "",
+        };
+      }
+      assert.match(prompt, /Implementation readiness:/);
+      assert.match(prompt, /Summary: Tilt ready/);
+      assert.match(prompt, /just tilt-ready passed/);
+      assert.match(prompt, /namespace: issue-46/);
+      return {
+        code: 0,
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/46","branch":"agent/issue-46-readiness","commits":["456def"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(piPrompts.length, 2);
+  assert.match(piPrompts[0] ?? "", /Prepare implementation readiness/);
+  assert.match(piPrompts[1] ?? "", /Implement repository issue #46/);
+});
+
+test("runOneIssue returns implementation-not-ready without starting implementation", async () => {
+  const planPath = "docs/plans/2026-05-14-issue-47-not-ready.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    skills: {
+      ...DEFAULT_PATCHMILL_CONFIG.skills,
+      implementationReady: "./skills/implementation-ready",
+    },
+  });
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(47, ["plan-approved"], "Not ready");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Prepare implementation readiness/);
+      return {
+        code: 0,
+        stdout:
+          '{"status":"not-ready","reason":"Kubernetes API unavailable","evidence":["localhost:8080 refused connection"],"remediation":["Run devenv shell -- just tilt-up","Re-run patchmill run-once"]}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "implementation-not-ready");
+  assert.equal(result.reason, "Kubernetes API unavailable");
+  assert.deepEqual(result.evidence, ["localhost:8080 refused connection"]);
+  assert.deepEqual(result.remediation, [
+    "Run devenv shell -- just tilt-up",
+    "Re-run patchmill run-once",
+  ]);
+  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "comment" &&
+        /needs more information/.test(commentBody(call)),
+    ),
+    false,
+  );
+  const finalEdit = runner.calls
+    .filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    )
+    .at(-1);
+  assert.equal(
+    finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
+    "plan-approved",
+  );
+  assert.equal(
+    finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
+    "in-progress",
+  );
+  assert.equal(finalEdit?.args.includes("needs-info"), false);
+});
+
 test("runOneIssue replaces stale implementation result fields when Pi changes implementationStatus", async () => {
   const config = await makeConfig({
     dryRun: false,
