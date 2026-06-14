@@ -301,7 +301,13 @@ repositories, `patchmill init` defaults them to project-local skill paths. In an
 interactive terminal, init asks whether to add generated config and skills to
 git, add Patchmill files to `.gitignore`, or add Patchmill files to
 `.git/info/exclude`. Non-interactive and `--yes` runs keep the files local by
-adding `patchmill.config.json` and `.patchmill/` to `.git/info/exclude`:
+adding `patchmill.config.json` and `.patchmill/` to `.git/info/exclude`.
+
+`implementationReady` is optional. When configured, `patchmill run-once` runs
+that skill from the issue worktree after the plan is available and before the
+implementation skill starts. The skill should prepare and verify local runtime
+prerequisites, then return either `ready` or `not-ready`. When the key is
+omitted, implementation starts exactly as it did before this feature.
 
 ```json
 {
@@ -309,6 +315,17 @@ adding `patchmill.config.json` and `.patchmill/` to `.git/info/exclude`:
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
     "implementation": ".patchmill/skills/subagent-driven-development"
+  }
+}
+```
+
+A repository can opt into readiness without changing the required keys:
+
+```json
+{
+  "skills": {
+    "implementationReady": ".patchmill/skills/bootstrapping-tilt-worktrees",
+    "implementation": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews"
   }
 }
 ```
@@ -339,6 +356,8 @@ rather than `patchmill.config.json`:
 
 Optional skill keys let a repository add procedure at specific workflow stages:
 
+- `implementationReady`: local runtime setup and readiness verification before
+  implementation starts.
 - `toolchain`: setup and validation conventions.
 - `review`: explicit review passes.
 - `visualEvidence`: screenshots or other UI proof.
