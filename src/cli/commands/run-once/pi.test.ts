@@ -160,7 +160,7 @@ test("parsePiResult rejects unsupported final JSON statuses", () => {
 test("parseDevelopmentEnvironmentResult parses ready output", () => {
   assert.deepEqual(
     parseDevelopmentEnvironmentResult(
-      'ready\n{"status":"ready","summary":"Tilt ready","evidence":["just tilt-ready passed"],"environment":{"namespace":"issue-84","tiltPort":"10384","ignored":12}}',
+      'ready\n{"status":"ready","summary":"Tilt ready","evidence":["just tilt-ready passed"],"environment":{"namespace":"issue-84","tiltPort":"10384"}}',
     ),
     {
       status: "ready",
@@ -185,6 +185,48 @@ test("parseDevelopmentEnvironmentResult parses not-ready output", () => {
         "Re-run patchmill run-once",
       ],
     },
+  );
+});
+
+test("parseDevelopmentEnvironmentResult rejects malformed ready output", () => {
+  assert.throws(
+    () => parseDevelopmentEnvironmentResult('{"status":"ready"}'),
+    /development environment ready result/i,
+  );
+  assert.throws(
+    () =>
+      parseDevelopmentEnvironmentResult(
+        '{"status":"ready","summary":"Tilt ready","evidence":"passed"}',
+      ),
+    /development environment ready result/i,
+  );
+  assert.throws(
+    () =>
+      parseDevelopmentEnvironmentResult(
+        '{"status":"ready","summary":"Tilt ready","evidence":["passed",12]}',
+      ),
+    /development environment ready result/i,
+  );
+  assert.throws(
+    () =>
+      parseDevelopmentEnvironmentResult(
+        '{"status":"ready","summary":"Tilt ready","evidence":["passed"],"environment":{"namespace":12}}',
+      ),
+    /development environment ready result/i,
+  );
+});
+
+test("parseDevelopmentEnvironmentResult rejects malformed not-ready output", () => {
+  assert.throws(
+    () => parseDevelopmentEnvironmentResult('{"status":"not-ready"}'),
+    /development environment not-ready result/i,
+  );
+  assert.throws(
+    () =>
+      parseDevelopmentEnvironmentResult(
+        '{"status":"not-ready","reason":"API unavailable","evidence":["failed"],"remediation":"Run setup"}',
+      ),
+    /development environment not-ready result/i,
   );
 });
 

@@ -293,11 +293,13 @@ configured development-environment skill and accepts only `ready` or `not-ready`
 final JSON.
 
 `ready` records a summary, evidence, and optional non-secret environment details
-for the later implementation prompt. `not-ready` stops the run before
-implementation, removes the in-progress claim, leaves the issue retryable, and
-returns operator remediation in the final command output. Development
-environment failures do not use issue-style `questions` because they describe
-local environment repair, not product requirements.
+for the later implementation prompt. Patchmill serializes those fields as
+untrusted JSON handoff data so implementation agents do not treat field contents
+as instructions. `not-ready` stops the run before implementation, removes the
+in-progress claim, leaves the issue retryable, and returns operator remediation
+in the final command output. Development environment failures do not use
+issue-style `questions` because they describe local environment repair, not
+product requirements.
 
 ### Implementation Pi prompt
 
@@ -308,8 +310,8 @@ asks Pi to implement from the issue worktree. The prompt includes:
 - the untrusted issue-content boundary;
 - subagent support guidance for delegated implementation and review roles;
 - resume context, when continuing an existing run;
-- development environment summary, evidence, and environment details when the
-  optional development-environment stage ran;
+- untrusted development-environment JSON handoff data when the optional
+  development-environment stage ran;
 - issue body and relevant comments;
 - required project context-file instructions;
 - the implementation task-contract instructions;

@@ -97,15 +97,56 @@ function visualEvidence(
   return entries.length > 0 ? entries : undefined;
 }
 
-function stringRecord(value: unknown): Record<string, string> | undefined {
+function requiredString(
+  value: unknown,
+  field: string,
+  context: string,
+): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${context} must include a non-empty ${field} string`);
+  }
+  return value;
+}
+
+function requiredStringArray(
+  value: unknown,
+  field: string,
+  context: string,
+): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(
+      (entry): entry is string =>
+        typeof entry === "string" && entry.trim().length > 0,
+    )
+  ) {
+    throw new Error(
+      `${context} must include a non-empty ${field} string array`,
+    );
+  }
+  return value;
+}
+
+function optionalStringRecord(
+  value: unknown,
+  field: string,
+  context: string,
+): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
+    throw new Error(`${context} ${field} must be an object of string values`);
   }
 
-  const entries = Object.entries(value).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string",
-  );
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  const entries = Object.entries(value);
+  if (
+    !entries.every(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    )
+  ) {
+    throw new Error(`${context} ${field} must be an object of string values`);
+  }
+  return Object.fromEntries(entries);
 }
 
 function finalJsonCandidates(stdout: string): Record<string, unknown>[] {
@@ -224,24 +265,31 @@ export function parseDevelopmentEnvironmentResult(
 ): AgentIssueDevelopmentEnvironmentResult {
   for (const parsed of finalJsonCandidates(stdout)) {
     if (parsed.status === "ready") {
-      const environment = stringRecord(parsed.environment);
+      const context = "Development environment ready result";
+      const environment = optionalStringRecord(
+        parsed.environment,
+        "environment",
+        context,
+      );
       return {
         status: "ready",
-        summary: typeof parsed.summary === "string" ? parsed.summary : "Ready",
-        evidence: stringArray(parsed.evidence),
+        summary: requiredString(parsed.summary, "summary", context),
+        evidence: requiredStringArray(parsed.evidence, "evidence", context),
         ...(environment ? { environment } : {}),
       };
     }
 
     if (parsed.status === "not-ready") {
+      const context = "Development environment not-ready result";
       return {
         status: "not-ready",
-        reason:
-          typeof parsed.reason === "string"
-            ? parsed.reason
-            : "Implementation environment is not ready",
-        evidence: stringArray(parsed.evidence),
-        remediation: stringArray(parsed.remediation),
+        reason: requiredString(parsed.reason, "reason", context),
+        evidence: requiredStringArray(parsed.evidence, "evidence", context),
+        remediation: requiredStringArray(
+          parsed.remediation,
+          "remediation",
+          context,
+        ),
       };
     }
   }

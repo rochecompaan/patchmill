@@ -83,9 +83,9 @@ infrastructure, or a per-worktree development namespace.
 
 The development-environment skill owns project-specific setup and repair logic.
 Patchmill only enforces the stage boundary: if the skill returns `ready`,
-Patchmill passes its summary and evidence into the implementation prompt; if it
-returns `not-ready`, Patchmill stops before implementation and prints
-operator-facing remediation.
+Patchmill passes its summary and evidence into the implementation prompt as
+untrusted JSON handoff data; if it returns `not-ready`, Patchmill stops before
+implementation and prints operator-facing remediation.
 
 ## Project-local default skills
 
