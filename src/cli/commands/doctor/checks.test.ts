@@ -540,6 +540,51 @@ test("runDoctorChecks fails when a configured path-like skill is missing", async
   assert.match(skills?.message ?? "", /configured path unreadable/);
 });
 
+test("runDoctorChecks verifies configured implementationReady skill paths", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      planning: "./skills/planning",
+      implementation: "./skills/implementation",
+      implementationReady: "./skills/implementation-ready",
+    },
+  });
+  await writeSkillFile(
+    join(repoRoot, "skills"),
+    "planning",
+    skillDocument("planning", "Plan work"),
+  );
+  await writeSkillFile(
+    join(repoRoot, "skills"),
+    "implementation",
+    skillDocument("implementation", "Implement work"),
+  );
+  await writeSkillFile(
+    join(repoRoot, "skills"),
+    "implementation-ready",
+    skillDocument(
+      "implementation-ready",
+      "Prepare the local implementation environment",
+    ),
+  );
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+  const runner = runnerFrom(successMocks());
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "pass");
+  assert.match(
+    skills?.message ?? "",
+    /implementationReady: `\.\/skills\/implementation-ready` \(path verified\)/,
+  );
+});
+
 test("runDoctorChecks resolves configured skill directories to their SKILL.md target", async () => {
   const repoRoot = await tempRepo();
   await writeFile(

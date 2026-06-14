@@ -4,6 +4,7 @@ export type PatchmillSkillsConfig = {
   triage: string;
   planning: string;
   implementation: string;
+  implementationReady?: string;
   toolchain?: string;
   review?: string;
   visualEvidence?: string;
@@ -14,6 +15,7 @@ export const PATCHMILL_SKILL_KEYS = [
   "triage",
   "planning",
   "implementation",
+  "implementationReady",
   "toolchain",
   "review",
   "visualEvidence",

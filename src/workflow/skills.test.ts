@@ -48,6 +48,18 @@ test("mergeSkillsConfig preserves defaults when update contains explicit undefin
   assert.equal(merged.triage, BUNDLED_TRIAGE_SKILL_REFERENCE);
 });
 
+test("mergeSkillsConfig preserves optional implementationReady skill", () => {
+  const merged = mergeSkillsConfig(DEFAULT_PATCHMILL_SKILLS, {
+    implementationReady: ".patchmill/skills/implementation-ready",
+  });
+
+  assert.equal(
+    merged.implementationReady,
+    ".patchmill/skills/implementation-ready",
+  );
+  assert.equal(DEFAULT_PATCHMILL_SKILLS.implementationReady, undefined);
+});
+
 test("cloneSkillsConfig returns an independent object", () => {
   const cloned = cloneSkillsConfig(DEFAULT_PATCHMILL_SKILLS);
   cloned.planning = "changed";

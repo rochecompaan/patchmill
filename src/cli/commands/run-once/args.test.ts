@@ -420,6 +420,7 @@ test("loadCliConfig passes configured skills and project policy through to run-o
     join(repoRoot, "patchmill.config.json"),
     JSON.stringify({
       skills: {
+        implementationReady: "sentinel-ready",
         implementation: "sentinel-implementation",
         visualEvidence: "sentinel-screenshots",
         landing: "sentinel-landing",
@@ -441,6 +442,7 @@ test("loadCliConfig passes configured skills and project policy through to run-o
   const config = await loadCliConfig(["--dry-run"], repoRoot, {});
 
   assert.equal(config.projectPolicy.projectName, "Sentinel");
+  assert.equal(config.skills.implementationReady, "sentinel-ready");
   assert.equal(config.skills.implementation, "sentinel-implementation");
   assert.equal(config.skills.visualEvidence, "sentinel-screenshots");
   assert.equal(config.skills.landing, "sentinel-landing");
