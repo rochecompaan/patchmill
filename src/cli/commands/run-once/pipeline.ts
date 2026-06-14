@@ -659,16 +659,15 @@ function retryableLabelsAfterReadinessFailure(
 ): string[] {
   const { ready, inProgress } = lifecycleLabels(config);
   const withoutInProgress = nextLabels(labels, [inProgress], []);
-  const workflowState = resolveWorkflowState(issue.labels, {
-    readyLabel: ready,
-    policy: config.approvalPolicy,
-  });
+  const originalActionableLabels = [
+    ready,
+    config.approvalPolicy.specApproval.approvedLabel,
+    config.approvalPolicy.planApproval.approvedLabel,
+  ].filter((label) => issue.labels.includes(label));
   const restore =
-    workflowState.kind === "agent-ready"
-      ? [ready]
-      : workflowState.kind === "spec-approved"
-        ? [config.approvalPolicy.specApproval.approvedLabel]
-        : [config.approvalPolicy.planApproval.approvedLabel];
+    originalActionableLabels.length > 0
+      ? originalActionableLabels
+      : [config.approvalPolicy.planApproval.approvedLabel];
 
   return nextLabels(withoutInProgress, [], restore);
 }

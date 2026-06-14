@@ -4544,6 +4544,106 @@ test("runOneIssue returns implementation-not-ready without starting implementati
   assert.equal(finalEdit?.args.includes("needs-info"), false);
 });
 
+test("runOneIssue preserves approval labels after implementation readiness failure", async () => {
+  const planPath = "docs/plans/2026-05-14-issue-49-approved-not-ready.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+    skills: {
+      ...DEFAULT_PATCHMILL_CONFIG.skills,
+      implementationReady: "./skills/implementation-ready",
+    },
+  });
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(
+    49,
+    ["spec-approved", "plan-approved"],
+    "Approved but not ready",
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Prepare implementation readiness/);
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "not-ready",
+          reason: "Browser grid unavailable",
+          evidence: ["playwright install missing"],
+          remediation: ["Install browser dependencies", "Re-run patchmill"],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "implementation-not-ready");
+  const finalEdit = runner.calls
+    .filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    )
+    .at(-1);
+  assert.equal(
+    finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
+    "spec-approved,plan-approved",
+  );
+  assert.equal(
+    finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
+    "in-progress",
+  );
+});
+
 test("runOneIssue restores a retryable label after resumed implementation readiness failure", async () => {
   const planPath = "docs/plans/2026-05-14-issue-48-resumed-not-ready.md";
   const config = await makeConfig({
