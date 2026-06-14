@@ -137,16 +137,13 @@ test("runInit installs project-local skills by default", async () => {
   assert.match(stdout.join("\n"), /Installed project-local skills/);
   assert.match(
     stdout.join("\n"),
-    /Added Patchmill local files to \.git\/info\/exclude/,
+    /Added Patchmill files to \.git\/info\/exclude/,
   );
   assert.match(
     await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    /\.patchmill\npatchmill\.config\.json\n/u,
+    /patchmill\.config\.json\n\.patchmill\/\n/u,
   );
-  assert.match(
-    stdout.join("\n"),
-    /Warning: Patchmill config and skills are local-only by default/u,
-  );
+  assert.doesNotMatch(stdout.join("\n"), /local-only by default/u);
   assert.doesNotMatch(stdout.join("\n"), /Commit \.patchmill\/skills\//);
   assert.match(
     stdout.join("\n"),
