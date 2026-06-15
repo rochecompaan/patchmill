@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.0](https://github.com/rochecompaan/patchmill/compare/v0.11.0...v0.12.0) (2026-06-15)
+
+
+### Features
+
+* **cli:** add version command ([9149d64](https://github.com/rochecompaan/patchmill/commit/9149d64fbd56c207447a23a4f58afd7a4e1fac19))
+* **init:** prompt for git policy ([#31](https://github.com/rochecompaan/patchmill/issues/31)) ([aac22a6](https://github.com/rochecompaan/patchmill/commit/aac22a6028175a0a04a4b6bf75243550c6b27358))
+* **run-once:** add development environment readiness stage ([#32](https://github.com/rochecompaan/patchmill/issues/32)) ([00043a3](https://github.com/rochecompaan/patchmill/commit/00043a3c5ad97cac1b6e8ec9ee75a0d6b9b9bfd7))
+* **run-once:** advance run-once workflow states ([#30](https://github.com/rochecompaan/patchmill/issues/30)) ([fcdd44d](https://github.com/rochecompaan/patchmill/commit/fcdd44d49702b8e7b3b0eeffb4e61f0a5fe0cec0))
+
 ## [0.11.0](https://github.com/rochecompaan/patchmill/compare/v0.10.0...v0.11.0) (2026-06-13)
 
 
