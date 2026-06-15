@@ -10,6 +10,7 @@ import {
   assertExplicitWorkflowState,
   decidePlanApprovalGate,
   resolveWorkflowState,
+  retryableLabelsAfterDevelopmentEnvironmentFailure,
 } from "./workflow-state.ts";
 
 const ready = DEFAULT_PATCHMILL_CONFIG.labels.ready;
@@ -223,5 +224,29 @@ test("cleanupLabelsForImplementation removes all workflow review and approval la
       { readyLabel: ready, policy },
     ),
     ["bug"],
+  );
+});
+
+test("retryableLabelsAfterDevelopmentEnvironmentFailure restores original actionable labels", () => {
+  assert.deepEqual(
+    retryableLabelsAfterDevelopmentEnvironmentFailure(["in-progress", "bug"], {
+      readyLabel: ready,
+      policy,
+      originalLabels: ["spec-approved", "plan-approved"],
+      inProgressLabel: "in-progress",
+    }),
+    ["bug", "spec-approved", "plan-approved"],
+  );
+});
+
+test("retryableLabelsAfterDevelopmentEnvironmentFailure restores plan approval for resumed in-progress issues", () => {
+  assert.deepEqual(
+    retryableLabelsAfterDevelopmentEnvironmentFailure(["in-progress", "bug"], {
+      readyLabel: ready,
+      policy,
+      originalLabels: ["in-progress"],
+      inProgressLabel: "in-progress",
+    }),
+    ["bug", "plan-approved"],
   );
 });

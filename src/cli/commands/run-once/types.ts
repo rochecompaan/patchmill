@@ -200,6 +200,11 @@ export type AgentIssueDevelopmentEnvironmentResult =
   | AgentIssueDevelopmentEnvironmentReadyResult
   | AgentIssueDevelopmentEnvironmentNotReadyResult;
 
+export type AgentIssueDevelopmentEnvironmentHandoff =
+  AgentIssueDevelopmentEnvironmentReadyResult & {
+    completedAt: string;
+  };
+
 export type AgentIssueVisualEvidence = {
   screenshotPath: string;
   caption?: string;

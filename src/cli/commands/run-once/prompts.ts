@@ -11,7 +11,7 @@ import {
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
 import type {
-  AgentIssueDevelopmentEnvironmentReadyResult,
+  AgentIssueDevelopmentEnvironmentHandoff,
   AgentIssueImplementationResumeContext,
   IssueSummary,
 } from "./types.ts";
@@ -59,7 +59,7 @@ export type ImplementationPromptInput = {
   projectPolicy: PatchmillProjectPolicy;
   skills?: PatchmillSkillsConfig;
   resume?: AgentIssueImplementationResumeContext;
-  developmentEnvironment?: DevelopmentEnvironmentHandoff;
+  developmentEnvironment?: AgentIssueDevelopmentEnvironmentHandoff;
 };
 
 export type DevelopmentEnvironmentPromptInput = {
@@ -70,11 +70,6 @@ export type DevelopmentEnvironmentPromptInput = {
   projectPolicy: PatchmillProjectPolicy;
   skills?: PatchmillSkillsConfig;
 };
-
-export type DevelopmentEnvironmentHandoff =
-  AgentIssueDevelopmentEnvironmentReadyResult & {
-    completedAt: string;
-  };
 
 function formatLabels(labels: string[]): string {
   return labels.length > 0 ? labels.join(", ") : "(none)";
@@ -184,11 +179,11 @@ function formatResumeContext(
 }
 
 function formatDevelopmentEnvironment(
-  developmentEnvironment?: DevelopmentEnvironmentHandoff,
+  developmentEnvironment?: AgentIssueDevelopmentEnvironmentHandoff,
 ): string {
   if (!developmentEnvironment) return "";
 
-  const handoff: DevelopmentEnvironmentHandoff = {
+  const handoff: AgentIssueDevelopmentEnvironmentHandoff = {
     completedAt: developmentEnvironment.completedAt,
     status: developmentEnvironment.status,
     summary: developmentEnvironment.summary,

@@ -21,12 +21,10 @@ import {
   issueTodoProgress,
   readIssueTodoTasks,
 } from "./issue-todos.ts";
-import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
+import { runPiPrompt } from "./pi.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
-import {
-  buildImplementationPrompt,
-  buildDevelopmentEnvironmentPrompt,
-} from "./prompts.ts";
+import { buildImplementationPrompt } from "./prompts.ts";
+import { runDevelopmentEnvironmentStage } from "./development-environment-stage.ts";
 import { advancePlanningStages } from "./stage-advancement.ts";
 import {
   ApprovalRequiredError,
@@ -51,8 +49,7 @@ import type {
   AgentIssueBlockedResult,
   AgentIssueBlockerQuestion,
   AgentIssueConfig,
-  AgentIssueDevelopmentEnvironmentReadyResult,
-  AgentIssueDevelopmentEnvironmentResult,
+  AgentIssueDevelopmentEnvironmentHandoff,
   AgentIssuePiResult,
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,
@@ -225,11 +222,6 @@ function lifecycleLabels(
     needsInfo: triagePolicy.labels.needsInfo,
   };
 }
-
-type AgentIssueDevelopmentEnvironmentHandoff =
-  AgentIssueDevelopmentEnvironmentReadyResult & {
-    completedAt: string;
-  };
 
 const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
   keyof AgentIssueRunCheckpoints
@@ -647,101 +639,6 @@ async function unexpectedFailure(
       validation: [],
       ...details,
       issue,
-    },
-    options,
-  );
-}
-
-function retryableLabelsAfterDevelopmentEnvironmentFailure(
-  issue: IssueSummary,
-  labels: string[],
-  config: AgentIssueConfig,
-): string[] {
-  const { ready, inProgress } = lifecycleLabels(config);
-  const withoutInProgress = nextLabels(labels, [inProgress], []);
-  const originalActionableLabels = [
-    ready,
-    config.approvalPolicy.specApproval.approvedLabel,
-    config.approvalPolicy.planApproval.approvedLabel,
-  ].filter((label) => issue.labels.includes(label));
-  const restore =
-    originalActionableLabels.length > 0
-      ? originalActionableLabels
-      : [config.approvalPolicy.planApproval.approvedLabel];
-
-  return nextLabels(withoutInProgress, [], restore);
-}
-
-async function implementationNotReady(
-  host: IssueHostProvider,
-  config: AgentIssueConfig,
-  issue: IssueSummary,
-  labels: string[],
-  result: Extract<
-    AgentIssueDevelopmentEnvironmentResult,
-    { status: "not-ready" }
-  >,
-  details: {
-    specPath?: string;
-    specCommit?: string;
-    planPath: string;
-    planCommit?: string;
-    branch?: string;
-    worktreePath?: string;
-  },
-  timestamp: string,
-  options: RunOneIssueOptions,
-): Promise<AgentIssuePipelineResult> {
-  await progress(
-    options,
-    "error",
-    "development-environment",
-    `development environment not ready: ${result.reason}`,
-    { issueNumber: issue.number, data: result },
-  );
-  const retryableLabels = retryableLabelsAfterDevelopmentEnvironmentFailure(
-    issue,
-    labels,
-    config,
-  );
-
-  if (retryableLabels.join("\0") !== labels.join("\0")) {
-    await host.applyLabels(
-      planLabelChange(issue.number, labels, retryableLabels),
-    );
-  }
-  await writeRunState(
-    config.runStateDir,
-    {
-      issueNumber: issue.number,
-      title: issue.title,
-      status: "finished",
-      resetCheckpoints: true,
-      specPath: details.specPath,
-      specCommit: details.specCommit,
-      planPath: details.planPath,
-      planCommit: details.planCommit,
-      lastError: result.reason,
-    },
-    timestamp,
-  );
-  await emitSimpleStep(
-    options,
-    issue.number,
-    "final result development-environment-not-ready",
-  );
-
-  return withLogPath(
-    {
-      status: "development-environment-not-ready",
-      issue,
-      specPath: details.specPath,
-      planPath: details.planPath,
-      branch: details.branch,
-      worktreePath: details.worktreePath,
-      reason: result.reason,
-      evidence: result.evidence,
-      remediation: result.remediation,
     },
     options,
   );
@@ -1216,67 +1113,41 @@ export async function runOneIssue(
       | AgentIssueDevelopmentEnvironmentHandoff
       | undefined;
     if (!implemented && config.skills.developmentEnvironment) {
-      const developmentEnvironmentResult = await runStep(
-        "development environment",
-        async (): Promise<AgentIssueDevelopmentEnvironmentResult> => {
-          await progress(
-            options,
-            "info",
-            "development-environment",
-            "running development environment with pi",
-            { issueNumber: issue.number },
-          );
-          return await runPiPrompt(
-            runner,
-            worktreeRoot,
-            buildDevelopmentEnvironmentPrompt({
-              issue: { ...issue, labels },
-              planPath,
-              branch,
-              worktreePath,
-              projectPolicy: config.projectPolicy,
-              skills: config.skills,
-            }),
-            {
-              progress: options.progress,
-              stage: "pi-development-environment",
-              parseResult: parseDevelopmentEnvironmentResult,
-              skillPaths: skillInvocationPaths(
-                [config.skills.toolchain, config.skills.developmentEnvironment],
-                config.repoRoot,
-              ),
-              streamOutput: options.streamPiOutput,
-              issueNumber: issue.number,
-              repoRoot: worktreeRoot,
-              heartbeatMs: options.heartbeatMs,
-              tokenUsageState,
-              observeSession: true,
-              verbosePiOutput: options.verbosePiOutput,
-              onObservation: observePi("pi-development-environment"),
-              taskContract: config.projectPolicy.pi.taskContract,
-              piAgentDir,
-            },
-          );
-        },
-      );
+      const developmentEnvironmentStage = await runDevelopmentEnvironmentStage({
+        runner,
+        host,
+        config,
+        issue,
+        labels,
+        readyLabel: ready,
+        inProgressLabel: inProgress,
+        specPath,
+        specCommit,
+        planPath,
+        planCommit,
+        branch,
+        worktreePath,
+        timestamp,
+        logPath: options.logPath,
+        streamPiOutput: options.streamPiOutput,
+        verbosePiOutput: options.verbosePiOutput,
+        heartbeatMs: options.heartbeatMs,
+        piAgentDir,
+        tokenUsageState,
+        progressReporter: options.progress,
+        progress: (level, stage, message, extras) =>
+          progress(options, level, stage, message, extras),
+        runStep,
+        observePi,
+        emitSimpleStep: (issueNumber, label) =>
+          emitSimpleStep(options, issueNumber, label),
+      });
 
-      if (developmentEnvironmentResult.status === "not-ready") {
-        return implementationNotReady(
-          host,
-          config,
-          issue,
-          labels,
-          developmentEnvironmentResult,
-          { specPath, specCommit, planPath, planCommit, branch, worktreePath },
-          timestamp,
-          options,
-        );
+      if (developmentEnvironmentStage.kind === "not-ready") {
+        return developmentEnvironmentStage.result;
       }
 
-      developmentEnvironment = {
-        ...developmentEnvironmentResult,
-        completedAt: timestamp,
-      };
+      developmentEnvironment = developmentEnvironmentStage.handoff;
     }
 
     if (!implemented) {
