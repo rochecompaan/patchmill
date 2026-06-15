@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
-import { parsePiResult, runPiPrompt } from "./pi.ts";
+import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import {
   sessionEntryToObservations,
   sessionEntryToStreamText,
@@ -72,87 +72,6 @@ async function writeTodo(
   );
 }
 
-test("parsePiResult extracts a supported status from fenced JSON output", () => {
-  const result = parsePiResult(`planning complete\n\n\`\`\`json
-{"status":"plan-created","planPath":"docs/plans/plan.md","commit":"abc123"}
-\`\`\``);
-
-  assert.deepEqual(result, {
-    status: "plan-created",
-    planPath: "docs/plans/plan.md",
-    commit: "abc123",
-  });
-});
-
-test("parsePiResult parses spec-created result", () => {
-  assert.deepEqual(
-    parsePiResult(
-      'spec done\n{"status":"spec-created","specPath":"docs/specs/spec.md","commit":"abc123"}',
-    ),
-    {
-      status: "spec-created",
-      specPath: "docs/specs/spec.md",
-      commit: "abc123",
-    },
-  );
-});
-
-test("parsePiResult extracts a merged implementation result", () => {
-  const result = parsePiResult(
-    'done\n{"status":"merged","branch":"agent/issue-42-add-once-runner-helpers","mergeCommit":"abc123","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
-  );
-
-  assert.deepEqual(result, {
-    status: "merged",
-    branch: "agent/issue-42-add-once-runner-helpers",
-    mergeCommit: "abc123",
-    commits: ["def456"],
-    validation: ["just issue-runner-test ok"],
-    reviewSummary: "reviewed",
-    landingDecision: "direct squash-landed: simple localized bug fix",
-  });
-});
-
-test("parsePiResult extracts visual evidence from a pr-created result", () => {
-  const result = parsePiResult(
-    'done\n{"status":"pr-created","prUrl":"https://forgejo.example/pulls/42","branch":"agent/issue-42-dashboard","commits":["def456"],"validation":["just playwright-test ok"],"visualEvidence":[{"screenshotPath":".tmp/issue-42-dashboard.png","caption":"Dashboard after selecting last 8 weeks","referencePaths":["docs/visual-baselines/web/01-dashboard.png"]}]}',
-  );
-
-  assert.deepEqual(result, {
-    status: "pr-created",
-    prUrl: "https://forgejo.example/pulls/42",
-    branch: "agent/issue-42-dashboard",
-    commits: ["def456"],
-    validation: ["just playwright-test ok"],
-    reviewSummary: undefined,
-    landingDecision: undefined,
-    visualEvidence: [
-      {
-        screenshotPath: ".tmp/issue-42-dashboard.png",
-        caption: "Dashboard after selecting last 8 weeks",
-        referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
-      },
-    ],
-  });
-});
-
-test("parsePiResult rejects malformed fenced JSON when no supported final object exists", () => {
-  assert.throws(
-    () =>
-      parsePiResult(`\`\`\`json
-{"status":"plan-created","planPath":"docs/plans/plan.md"
-\`\`\``),
-    /supported final JSON status|final JSON object/,
-  );
-});
-
-test("parsePiResult rejects unsupported final JSON statuses", () => {
-  assert.throws(
-    () => parsePiResult('{"status":"unknown"}'),
-    /supported final JSON status/,
-  );
-});
-
 test("runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failures", async () => {
   const runner = createMockRunner(async (call) => {
     assert.equal(call.command, "pi");
@@ -198,6 +117,30 @@ test("runPiPrompt loads bundled Pi extensions before the prompt argument", async
   });
 
   await runPiPrompt(runner, "/repo", "prompt", { stage: "pi-plan" });
+});
+
+test("runPiPrompt can parse development environment results", async () => {
+  const runner = createMockRunner(() => ({
+    code: 0,
+    stdout: '{"status":"ready","summary":"ready","evidence":["check passed"]}',
+    stderr: "",
+  }));
+
+  const result = await runPiPrompt(
+    runner,
+    "/repo/worktree",
+    "development environment prompt",
+    {
+      stage: "pi-development-environment",
+      parseResult: parseDevelopmentEnvironmentResult,
+    },
+  );
+
+  assert.deepEqual(result, {
+    status: "ready",
+    summary: "ready",
+    evidence: ["check passed"],
+  });
 });
 
 test("runPiPrompt passes configured skill files before the prompt argument", async () => {

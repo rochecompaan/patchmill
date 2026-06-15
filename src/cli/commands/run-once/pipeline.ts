@@ -24,6 +24,7 @@ import {
 import { runPiPrompt } from "./pi.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
 import { buildImplementationPrompt } from "./prompts.ts";
+import { runDevelopmentEnvironmentStage } from "./development-environment-stage.ts";
 import { advancePlanningStages } from "./stage-advancement.ts";
 import {
   ApprovalRequiredError,
@@ -48,6 +49,7 @@ import type {
   AgentIssueBlockedResult,
   AgentIssueBlockerQuestion,
   AgentIssueConfig,
+  AgentIssueDevelopmentEnvironmentHandoff,
   AgentIssuePiResult,
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,
@@ -843,7 +845,7 @@ export async function runOneIssue(
     }
   };
   const observePi =
-    (stage: "pi-plan" | "pi-implementation") =>
+    (stage: "pi-plan" | "pi-development-environment" | "pi-implementation") =>
     async (
       observation: AgentIssueProgressEvent["observation"],
     ): Promise<void> => {
@@ -1106,6 +1108,48 @@ export async function runOneIssue(
     );
     checkpoints.worktreeReady = true;
 
+    const worktreeRoot = join(config.repoRoot, worktreePath);
+    let developmentEnvironment:
+      | AgentIssueDevelopmentEnvironmentHandoff
+      | undefined;
+    if (!implemented && config.skills.developmentEnvironment) {
+      const developmentEnvironmentStage = await runDevelopmentEnvironmentStage({
+        runner,
+        host,
+        config,
+        issue,
+        labels,
+        readyLabel: ready,
+        inProgressLabel: inProgress,
+        specPath,
+        specCommit,
+        planPath,
+        planCommit,
+        branch,
+        worktreePath,
+        timestamp,
+        logPath: options.logPath,
+        streamPiOutput: options.streamPiOutput,
+        verbosePiOutput: options.verbosePiOutput,
+        heartbeatMs: options.heartbeatMs,
+        piAgentDir,
+        tokenUsageState,
+        progressReporter: options.progress,
+        progress: (level, stage, message, extras) =>
+          progress(options, level, stage, message, extras),
+        runStep,
+        observePi,
+        emitSimpleStep: (issueNumber, label) =>
+          emitSimpleStep(options, issueNumber, label),
+      });
+
+      if (developmentEnvironmentStage.kind === "not-ready") {
+        return developmentEnvironmentStage.result;
+      }
+
+      developmentEnvironment = developmentEnvironmentStage.handoff;
+    }
+
     if (!implemented) {
       await progress(
         options,
@@ -1114,7 +1158,6 @@ export async function runOneIssue(
         "running implementation with pi",
         { issueNumber: issue.number },
       );
-      const worktreeRoot = join(config.repoRoot, worktreePath);
       const taskContract = config.projectPolicy.pi.taskContract;
       const planTaskLabels = await readPlanTaskLabels(
         config.repoRoot,
@@ -1256,6 +1299,7 @@ export async function runOneIssue(
               worktreeCreated: worktree.created,
               existingCommits: worktree.existingCommits,
             },
+            developmentEnvironment,
           }),
           {
             progress: options.progress,

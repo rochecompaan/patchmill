@@ -249,6 +249,41 @@ test("summarizeResult includes approval-required details", () => {
   );
 });
 
+test("summarizeResult includes development-environment-not-ready remediation", () => {
+  assert.deepEqual(
+    summarizeResult({
+      status: "development-environment-not-ready",
+      issue: {
+        number: 47,
+        title: "Runtime missing",
+        body: "Body",
+        labels: ["plan-approved"],
+        state: "open",
+      },
+      specPath: "docs/specs/spec.md",
+      planPath: "docs/plans/plan.md",
+      branch: "agent/issue-47-runtime-missing",
+      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
+      reason: "Kubernetes API unavailable",
+      evidence: ["localhost:8080 refused connection"],
+      remediation: ["Run devenv shell -- just tilt-up"],
+      logPath: ".patchmill/runs/run.jsonl",
+    }),
+    {
+      status: "development-environment-not-ready",
+      issueNumber: 47,
+      specPath: "docs/specs/spec.md",
+      planPath: "docs/plans/plan.md",
+      branch: "agent/issue-47-runtime-missing",
+      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
+      reason: "Kubernetes API unavailable",
+      evidence: ["localhost:8080 refused connection"],
+      remediation: ["Run devenv shell -- just tilt-up"],
+      logPath: ".patchmill/runs/run.jsonl",
+    },
+  );
+});
+
 test("parseArgs accepts an explicit issue number", () => {
   const config = parseArgs(["--issue", "42"], "/repo");
 
@@ -420,6 +455,7 @@ test("loadCliConfig passes configured skills and project policy through to run-o
     join(repoRoot, "patchmill.config.json"),
     JSON.stringify({
       skills: {
+        developmentEnvironment: "sentinel-ready",
         implementation: "sentinel-implementation",
         visualEvidence: "sentinel-screenshots",
         landing: "sentinel-landing",
@@ -441,6 +477,7 @@ test("loadCliConfig passes configured skills and project policy through to run-o
   const config = await loadCliConfig(["--dry-run"], repoRoot, {});
 
   assert.equal(config.projectPolicy.projectName, "Sentinel");
+  assert.equal(config.skills.developmentEnvironment, "sentinel-ready");
   assert.equal(config.skills.implementation, "sentinel-implementation");
   assert.equal(config.skills.visualEvidence, "sentinel-screenshots");
   assert.equal(config.skills.landing, "sentinel-landing");

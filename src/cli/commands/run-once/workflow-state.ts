@@ -186,3 +186,24 @@ export function cleanupLabelsForImplementation(
     options.policy.planApproval.approvedLabel,
   ]);
 }
+
+export function retryableLabelsAfterDevelopmentEnvironmentFailure(
+  labels: string[],
+  options: WorkflowStateOptions & {
+    originalLabels: string[];
+    inProgressLabel: string;
+  },
+): string[] {
+  const withoutInProgress = removeLabels(labels, [options.inProgressLabel]);
+  const originalActionableLabels = [
+    options.readyLabel,
+    options.policy.specApproval.approvedLabel,
+    options.policy.planApproval.approvedLabel,
+  ].filter((label) => options.originalLabels.includes(label));
+  const restore =
+    originalActionableLabels.length > 0
+      ? originalActionableLabels
+      : [options.policy.planApproval.approvedLabel];
+
+  return restore.reduce(addLabel, withoutInProgress);
+}

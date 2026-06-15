@@ -29,6 +29,15 @@ export function renderImplementationSkillSteps(
   ].filter((line) => line.length > 0);
 }
 
+export function renderDevelopmentEnvironmentSkillStep(
+  skills: PatchmillSkillsConfig,
+): string {
+  return renderConfiguredSkillLine(
+    "Use the configured development-environment skill",
+    skills.developmentEnvironment,
+  );
+}
+
 export function renderVisualEvidenceSkillStep(
   skills: PatchmillSkillsConfig,
 ): string {
