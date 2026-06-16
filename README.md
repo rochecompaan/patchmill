@@ -66,21 +66,33 @@ the first `github-gh` version; Forgejo visual-evidence upload uses the
 Install the Patchmill CLI globally, then start with the onboarding flow:
 
 ```sh
-npm install -g @rochecompaan/patchmill
+npm install -g patchmill
 
 patchmill init
 patchmill doctor
 patchmill triage --dry-run
 ```
 
-If you prefer not to install Patchmill globally, use the scoped package name
-with `npx`:
+If you prefer not to install Patchmill globally, use `npx`:
 
 ```sh
-npx @rochecompaan/patchmill init
-npx @rochecompaan/patchmill doctor
-npx @rochecompaan/patchmill triage --dry-run
+npx patchmill init
+npx patchmill doctor
+npx patchmill triage --dry-run
 ```
+
+### Migrating from `@rochecompaan/patchmill`
+
+The scoped npm package `@rochecompaan/patchmill` is deprecated. Install the
+unscoped package instead:
+
+```sh
+npm uninstall -g @rochecompaan/patchmill
+npm install -g patchmill
+```
+
+For one-off usage, replace `npx @rochecompaan/patchmill ...` with
+`npx patchmill ...`.
 
 ### Try Patchmill on a disposable demo repository
 
