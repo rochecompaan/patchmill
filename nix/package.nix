@@ -25,7 +25,7 @@ buildNpmPackageNode24 rec {
         || baseName == "result");
   };
 
-  npmDepsHash = "sha256-3MlGzlwzuntPCK7cFjRnZsdiz79H3oL6PTwHpkKI6wM=";
+  npmDepsHash = "sha256-lnLDh+1JrACIf7QDxejIQj9Rb9jCSLNa5HYr3EfUKz8=";
   npmDepsFetcherVersion = 2;
 
   dontNpmBuild = true;
@@ -44,7 +44,7 @@ buildNpmPackageNode24 rec {
   '';
 
   postInstall = ''
-    package_dir="$out/lib/node_modules/@rochecompaan/${pname}"
+    package_dir="$out/lib/node_modules/${pname}"
 
     mkdir -p "$out/share/${pname}"
     cp -R "$package_dir/bin" "$out/share/${pname}/bin"
