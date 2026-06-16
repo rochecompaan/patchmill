@@ -6,7 +6,9 @@ coverage/
 .env
 .env.*
 !.env.example
-.patchmill/
+.patchmill/pi-agent/
+.patchmill/runs/
+.patchmill/triage-runs/
 .pi/todos/
 .worktrees/
 .tmp/
