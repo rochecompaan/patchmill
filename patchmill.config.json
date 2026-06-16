@@ -1,0 +1,12 @@
+{
+  "host": {
+    "provider": "github-gh",
+    "login": ""
+  },
+  "skills": {
+    "triage": ".patchmill/skills/patchmill-issue-triage",
+    "planning": ".patchmill/skills/writing-plans",
+    "implementation": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
+    "developmentEnvironment": ".patchmill/skills/patchmill-development-environment"
+  }
+}
