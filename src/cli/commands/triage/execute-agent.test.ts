@@ -16,7 +16,11 @@ import {
   buildTriageExecutePrompt,
   runTriageExecuteAgent,
 } from "./execute-agent.ts";
-import type { CommandRunner, IssueSummary } from "./types.ts";
+import type {
+  CommandRunOptions,
+  CommandRunner,
+  IssueSummary,
+} from "./types.ts";
 
 const issues: IssueSummary[] = [
   {
@@ -78,10 +82,20 @@ async function createProjectLocalTriageRepo(): Promise<{
 }
 
 class RecordingRunner implements CommandRunner {
-  readonly calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+  readonly calls: Array<{
+    command: string;
+    args: string[];
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+  }> = [];
 
-  async run(command: string, args: string[], options = {}) {
-    this.calls.push({ command, args: [...args], cwd: options.cwd });
+  async run(command: string, args: string[], options: CommandRunOptions = {}) {
+    this.calls.push({
+      command,
+      args: [...args],
+      cwd: options.cwd,
+      env: options.env,
+    });
     const promptPath = args[args.indexOf("-p") + 1]?.slice(1);
     assert.ok(promptPath);
     const prompt = await readFile(promptPath, "utf8");
@@ -179,7 +193,12 @@ test("runTriageExecuteAgent invokes Pi without read-only tool restriction", asyn
   });
 
   const call = runner.calls[0]!;
-  assert.equal(call.command, "pi");
+  assert.equal(call.command, process.execPath);
+  assert.match(
+    call.args[0] ?? "",
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+  );
+  assert.equal(call.env?.PI_CODING_AGENT_DIR, "/repo/.patchmill/pi-agent");
   assert.equal(call.args.includes("--tools"), false);
   assert.equal(call.args.includes("--no-context-files"), true);
   assert.equal(call.args.includes("--no-session"), true);

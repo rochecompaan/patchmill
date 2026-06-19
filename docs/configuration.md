@@ -22,8 +22,13 @@ smoke test. When the smoke test passes, continue with:
 patchmill triage --dry-run
 ```
 
-If the smoke test fails, complete Pi setup with `pi` and `/login`, then run
-`patchmill doctor`.
+If the smoke test fails, repair repo-local Pi provider/model setup, then run the
+read-only checks:
+
+```sh
+patchmill auth
+patchmill doctor
+```
 
 By default, init writes host fields and project-local skill mappings for
 required stages (`triage`, `planning`, and `implementation`); Patchmill fills

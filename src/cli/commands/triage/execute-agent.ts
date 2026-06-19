@@ -1,3 +1,10 @@
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
+import {
+  piAgentCommandEnv,
+  piCommandArgs,
+  resolveBundledPiCommand,
+  type PiCommandSpec,
+} from "../../pi-cli.ts";
 import { withPromptFile } from "./prompt-file.ts";
 import { runWithToolCallObservation } from "./tool-call-observer.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
@@ -22,6 +29,8 @@ export type TriageExecutePromptInput = {
   skills?: PatchmillSkillsConfig;
   thinking?: string;
   onToolCall?: TriageToolCallHandler;
+  piAgentDir?: string;
+  piCommand?: PiCommandSpec;
 };
 
 function issuePayload(issues: IssueSummary[]): string {
@@ -113,9 +122,10 @@ export async function runTriageExecuteAgent(
       const sessionArgs = sessionDir
         ? ["--session-dir", sessionDir]
         : ["--no-session"];
+      const piCommand = input.piCommand ?? resolveBundledPiCommand();
       const result = await runner.run(
-        "pi",
-        [
+        piCommand.command,
+        piCommandArgs(piCommand, [
           "--no-context-files",
           ...sessionArgs,
           ...skillArgs,
@@ -123,8 +133,11 @@ export async function runTriageExecuteAgent(
           thinking,
           "-p",
           `@${promptPath}`,
-        ],
-        { cwd: repoRoot },
+        ]),
+        {
+          cwd: repoRoot,
+          env: piAgentCommandEnv(input.piAgentDir ?? localPiAgentDir(repoRoot)),
+        },
       );
 
       if (result.code !== 0) {

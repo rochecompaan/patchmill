@@ -61,6 +61,15 @@ function createFakeRunner(
   };
 }
 
+function assertBundledPiCall(call: RecordedCall): string[] {
+  assert.equal(call.command, process.execPath);
+  assert.match(
+    call.args[0] ?? "",
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+  );
+  return call.args.slice(1);
+}
+
 function createProgressRecorder(): {
   events: AgentIssueProgressEvent[];
   reporter: ProgressReporter;
@@ -106,7 +115,7 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
   const planPath = "docs/plans/2026-05-23-pi-runner.md";
   const { events, reporter } = createProgressRecorder();
   const runner = createFakeRunner((call) => {
-    assert.equal(call.command, "pi");
+    assertBundledPiCall(call);
     assert.equal(call.cwd, repoRoot);
     assert.ok(call.args.includes("-p"));
     assert.ok(call.args.includes("--session-dir"));
@@ -154,7 +163,7 @@ test("PiRunner plan passes configured ready and needs-info labels into the promp
   const repoRoot = "/repo";
   const planPath = "docs/plans/2026-05-23-pi-runner-custom-labels.md";
   const runner = createFakeRunner((call) => {
-    assert.equal(call.command, "pi");
+    assertBundledPiCall(call);
     assert.match(
       call.prompt,
       /Treat `ready-for-bots` as meaning the issue is already clear and unambiguous enough to plan/,
@@ -260,7 +269,7 @@ test("PiRunner implementation uses the worktree root, derives the default landin
 
   const { events, reporter } = createProgressRecorder();
   const runner = createFakeRunner(async (call) => {
-    assert.equal(call.command, "pi");
+    assertBundledPiCall(call);
     assert.equal(call.cwd, worktreeRoot);
     assert.ok(call.args.includes("--session-dir"));
     assert.match(call.prompt, /Resume context:/);

@@ -1,8 +1,13 @@
 import { constants } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
-import { localPiAgentDir, piAgentEnv } from "../init/pi-agent-settings.ts";
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
+import {
+  piAgentCommandEnv,
+  piCommandArgs,
+  resolveBundledPiCommand,
+} from "../../pi-cli.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
@@ -151,12 +156,17 @@ async function checkPiBinary(
   runner: CommandRunner,
   repoRoot: string,
 ): Promise<DoctorCheckResult> {
-  const result = await runner.run("pi", ["--help"], { cwd: repoRoot });
+  const piCommand = resolveBundledPiCommand();
+  const result = await runner.run(
+    piCommand.command,
+    piCommandArgs(piCommand, ["--help"]),
+    { cwd: repoRoot },
+  );
   return result.code === 0
     ? pass("pi", "binary available")
     : fail("pi", `binary unavailable: ${commandOutput(result)}`, [
-        "Install Pi, then rerun:",
-        "  npm install -g @earendil-works/pi-coding-agent",
+        "Patchmill could not run its bundled Pi dependency. Reinstall dependencies, then rerun:",
+        "  npm install",
         "  patchmill doctor",
       ]);
 }
@@ -177,13 +187,8 @@ async function checkPiProvider(
       "Patchmill doctor did not change the repository or issue host.",
       "The Pi check made no Patchmill workflow changes, but it could not reach a configured model provider.",
       "",
-      "Run Patchmill's guided setup, then rerun doctor:",
-      "  patchmill init",
-      "  patchmill doctor",
-      "",
-      "Manual Pi setup is also supported:",
-      "  pi",
-      "  /login",
+      "Run Patchmill's guided auth repair, then rerun doctor:",
+      "  patchmill auth",
       "  patchmill doctor",
       "",
       result.details ? `Details: ${result.details}` : "",
@@ -313,17 +318,19 @@ async function smokeTestProjectLocalSkills(
   skillPaths: string[],
   piAgentDir: string,
 ): Promise<SkillCheckEntry> {
+  const piCommand = resolveBundledPiCommand();
+  const args = [
+    "--no-session",
+    "--no-context-files",
+    "--no-prompt-templates",
+    ...skillPaths.flatMap((path) => ["--skill", path]),
+    "-p",
+    PROJECT_LOCAL_SKILLS_PROMPT,
+  ];
   const result = await runner.run(
-    "pi",
-    [
-      "--no-session",
-      "--no-context-files",
-      "--no-prompt-templates",
-      ...skillPaths.flatMap((path) => ["--skill", path]),
-      "-p",
-      PROJECT_LOCAL_SKILLS_PROMPT,
-    ],
-    { cwd: repoRoot, env: piAgentEnv(piAgentDir) },
+    piCommand.command,
+    piCommandArgs(piCommand, args),
+    { cwd: repoRoot, env: piAgentCommandEnv(piAgentDir) },
   );
 
   if (result.code === 0 && result.stdout.includes("PATCHMILL_SKILLS_OK")) {

@@ -211,9 +211,12 @@ test("runInit reports Patchmill setup guidance when Pi readiness remains missing
   assert.match(stdout.join("\n"), /Pi provider\/model setup is incomplete/);
   assert.match(
     stdout.join("\n"),
-    /Run `patchmill init` in an interactive terminal to configure provider auth and select a model/,
+    /Run `patchmill auth` in an interactive terminal to configure provider auth and select a model/,
   );
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+  assert.match(
+    stdout.join("\n"),
+    /Next:\n {2}patchmill auth\n {2}patchmill doctor/,
+  );
 });
 
 test("runInit persists selected model to local Pi settings and smoke-tests it", async () => {
@@ -530,11 +533,11 @@ test("runInit keeps config but reports incomplete Pi setup when smoke test fails
   assert.match(output, /After setup, run `patchmill doctor`/);
   assert.match(
     output,
-    /Run `patchmill init` in an interactive terminal to configure provider auth and select a model/,
+    /Run `patchmill auth` in an interactive terminal to configure provider auth and select a model/,
   );
   assert.doesNotMatch(output, /Run `pi`, then `\/login`/);
   assert.doesNotMatch(output, /rerun `patchmill init`/);
-  assert.match(output, /Next:\n {2}patchmill doctor/);
+  assert.match(output, /Next:\n {2}patchmill auth\n {2}patchmill doctor/);
   assert.doesNotMatch(
     await readFile(join(repoRoot, "patchmill.config.json"), "utf8"),
     /missing key|sk-/u,
@@ -606,5 +609,8 @@ test("runInit aborts when the required interactive model selector is cancelled",
   assert.equal(smokeCalled, false);
   assertOnlyGitPolicyPrompt(prompts);
   assert.match(stdout.join("\n"), /Pi model selection was cancelled/);
-  assert.match(stdout.join("\n"), /Next:\n {2}patchmill doctor/);
+  assert.match(
+    stdout.join("\n"),
+    /Next:\n {2}patchmill auth\n {2}patchmill doctor/,
+  );
 });

@@ -102,12 +102,12 @@ function stageableSkillRoots(
 }
 
 const EXISTING_CONFIG_MESSAGE =
-  "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill doctor";
+  "patchmill.config.json already exists.\n\nPatchmill did not overwrite it.\n\nNext:\n  patchmill auth\n  patchmill doctor";
 
 function nextSteps(piReady: boolean) {
   return piReady
     ? "Run `patchmill triage` to triage issues.\n\nNext:\n  patchmill triage"
-    : "Run `patchmill doctor` after completing Pi setup.\n\nNext:\n  patchmill doctor";
+    : "Run `patchmill auth` in an interactive terminal, then run `patchmill doctor`.\n\nNext:\n  patchmill auth\n  patchmill doctor";
 }
 
 function formatPiSetupMessage(setup: PiInitSetupResult): string {
@@ -129,7 +129,7 @@ function formatPiSetupMessage(setup: PiInitSetupResult): string {
     "Pi provider/model setup is incomplete.",
     setup.smoke.message,
     setup.smoke.details ? `Details:\n${setup.smoke.details}` : undefined,
-    "Run `patchmill init` in an interactive terminal to configure provider auth and select a model.",
+    "Run `patchmill auth` in an interactive terminal to configure provider auth and select a model.",
     "After setup, run `patchmill doctor`.",
   ]
     .filter(Boolean)

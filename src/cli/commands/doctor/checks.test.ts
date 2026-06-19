@@ -118,12 +118,22 @@ function projectLocalPiSmokeCommand(paths: string[]): string {
   ].join(" ");
 }
 
+function normalizePiCommandKey(command: string, args: string[]): string {
+  if (
+    command === process.execPath &&
+    args[0]?.includes("@earendil-works/pi-coding-agent")
+  ) {
+    return ["pi", ...args.slice(1)].join(" ");
+  }
+  return [command, ...args].join(" ");
+}
+
 function runnerFrom(
   map: Record<string, { code: number; stdout?: string; stderr?: string }>,
 ): CommandRunner {
   return {
     async run(command, args) {
-      const key = [command, ...args].join(" ");
+      const key = normalizePiCommandKey(command, args);
       const result = map[key] ?? {
         code: 127,
         stderr: `missing mock for ${key}`,
@@ -253,7 +263,11 @@ test("runDoctorChecks points Pi provider failures to guided setup", async () => 
   const piProvider = results.find((result) => result.name === "pi provider");
 
   assert.equal(piProvider?.status, "fail");
-  assert.match((piProvider?.remediation ?? []).join("\n"), /patchmill init/);
+  assert.match((piProvider?.remediation ?? []).join("\n"), /patchmill auth/);
+  assert.doesNotMatch(
+    (piProvider?.remediation ?? []).join("\n"),
+    /patchmill init/,
+  );
   assert.match((piProvider?.remediation ?? []).join("\n"), /missing key/);
 });
 
@@ -272,7 +286,7 @@ test("runDoctorChecks scopes Pi provider smoke test to local agent dir", async (
   const runner: CommandRunner = {
     async run(command, args, options = {}) {
       calls.push({ command, args: [...args], env: options.env });
-      const key = [command, ...args].join(" ");
+      const key = normalizePiCommandKey(command, args);
       const result = successMocks()[key] ?? {
         code: 127,
         stdout: "",
@@ -295,10 +309,8 @@ test("runDoctorChecks scopes Pi provider smoke test to local agent dir", async (
     results.find((result) => result.name === "pi provider")?.status,
     "pass",
   );
-  const smokeCall = calls.find(
-    (call) =>
-      call.command === "pi" &&
-      call.args.includes("Reply with PATCHMILL_PI_OK and nothing else."),
+  const smokeCall = calls.find((call) =>
+    call.args.includes("Reply with PATCHMILL_PI_OK and nothing else."),
   );
   assert.equal(
     smokeCall?.env?.PI_CODING_AGENT_DIR,
@@ -647,7 +659,7 @@ test("runDoctorChecks passes for fresh configured project-local skills", async (
   const calls: string[] = [];
   const runner: CommandRunner = {
     async run(command, args) {
-      const key = [command, ...args].join(" ");
+      const key = normalizePiCommandKey(command, args);
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
@@ -734,7 +746,7 @@ test("runDoctorChecks ignores unused .patchmill skills when config uses global/n
   const calls: string[] = [];
   const runner: CommandRunner = {
     async run(command, args) {
-      const key = [command, ...args].join(" ");
+      const key = normalizePiCommandKey(command, args);
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS)[key] ?? {
@@ -803,7 +815,7 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
   const calls: string[] = [];
   const runner: CommandRunner = {
     async run(command, args) {
-      const key = [command, ...args].join(" ");
+      const key = normalizePiCommandKey(command, args);
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
@@ -882,7 +894,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
     const calls: string[] = [];
     const runner: CommandRunner = {
       async run(command, args) {
-        const key = [command, ...args].join(" ");
+        const key = normalizePiCommandKey(command, args);
         calls.push(key);
         return (
           successMocks(REQUIRED_LABELS, {
@@ -1017,7 +1029,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
   const calls: string[] = [];
   const runner: CommandRunner = {
     async run(command, args) {
-      const key = [command, ...args].join(" ");
+      const key = normalizePiCommandKey(command, args);
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {

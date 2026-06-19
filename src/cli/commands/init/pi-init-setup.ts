@@ -76,12 +76,16 @@ export async function resolvePiInitSetup(options: {
   persistDefaultModel?: PersistDefaultModel;
   setupPiInteractively?: InteractivePiSetup;
   runPiSmokeTest?: PiSmokeTestRunner;
+  forceInteractiveSetup?: boolean;
 }): Promise<PiInitSetupResult> {
   const interactiveSetup = options.setupPiInteractively ?? setupPiInteractively;
   let readiness = options.readiness;
   let selection: PiModelSelection;
 
-  if (readiness.status !== "ready" && options.isInteractive) {
+  if (
+    options.isInteractive &&
+    (readiness.status !== "ready" || options.forceInteractiveSetup === true)
+  ) {
     const setup = await interactiveSetup({
       repoRoot: options.repoRoot,
       agentDir: options.piAgentDir,
