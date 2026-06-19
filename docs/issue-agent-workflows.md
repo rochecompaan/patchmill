@@ -62,6 +62,14 @@ canonical `blocked` bucket before invoking Pi; when every recorded blocker issue
 is closed, Patchmill removes the blocked label, adds the ready label, and posts
 an unblock comment.
 
+Batch triage orders selected issues oldest-created first before applying
+`--limit`. When creation timestamps are unavailable or invalid, Patchmill uses
+lower issue number as the fallback and tie-breaker. Default triage applies this
+ordering after excluded/protection label filtering, `--all` applies it to all
+open issues, and targeted `--issue <number>` remains a single-issue selection.
+Dry-run prompts, execution prompts, progress output, blocked preprocessing, and
+triage logs preserve this selected order.
+
 ```mermaid
 flowchart TD
   A[CLI loads Patchmill config and args] --> B[List open issues from host]
