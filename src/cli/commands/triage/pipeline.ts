@@ -85,6 +85,19 @@ function logMode(config: TriageConfig): "dry-run" | "execute" {
   return config.execute ? "execute" : "dry-run";
 }
 
+function entriesBySelectedIssueOrder(
+  selectedIssues: readonly IssueSummary[],
+  entries: readonly TriageLogIssueEntry[],
+): TriageLogIssueEntry[] {
+  const entriesByIssueNumber = new Map(
+    entries.map((entry) => [entry.issueNumber, entry]),
+  );
+  return selectedIssues.flatMap((issue) => {
+    const entry = entriesByIssueNumber.get(issue.number);
+    return entry ? [entry] : [];
+  });
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -192,10 +205,10 @@ export async function runTriage(
                 DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
               onToolCall: config.onToolCall,
             });
-      const logIssues = [
+      const logIssues = entriesBySelectedIssueOrder(issues, [
         ...directEntries,
         ...createPreviewEntries(agentIssues, previews),
-      ];
+      ]);
       logIssues.forEach((issue, index) => {
         config.onProgress?.({
           type: "issue",
@@ -225,6 +238,27 @@ export async function runTriage(
   const logIssues: TriageLogIssueEntry[] = [];
 
   try {
+    const pendingEntries = new Map<number, TriageLogIssueEntry>();
+    let nextProgressIndex = 0;
+
+    function flushPendingEntries(): void {
+      while (nextProgressIndex < issues.length) {
+        const issueNumber = issues[nextProgressIndex]?.number;
+        if (issueNumber === undefined) return;
+        const entry = pendingEntries.get(issueNumber);
+        if (!entry) return;
+        pendingEntries.delete(issueNumber);
+        logIssues.push(entry);
+        config.onProgress?.({
+          type: "issue",
+          issue: entry,
+          completed: logIssues.length,
+          total: issues.length,
+        });
+        nextProgressIndex += 1;
+      }
+    }
+
     const { agentIssues } = await preprocessBlockedIssues({
       issues,
       host,
@@ -244,17 +278,11 @@ export async function runTriage(
         };
       },
       onDirectEntry(entry) {
-        logIssues.push(entry);
-        config.onProgress?.({
-          type: "issue",
-          issue: entry,
-          completed: logIssues.length,
-          total: issues.length,
-        });
+        pendingEntries.set(entry.issueNumber, entry);
+        flushPendingEntries();
       },
     });
 
-    const completedBeforeAgent = logIssues.length;
     if (agentIssues.length > 0) {
       await executeTriageIssues({
         runner,
@@ -268,14 +296,9 @@ export async function runTriage(
         thinking:
           config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
         onToolCall: config.onToolCall,
-        onIssue(entry, completed) {
-          logIssues.push(entry);
-          config.onProgress?.({
-            type: "issue",
-            issue: entry,
-            completed: completedBeforeAgent + completed,
-            total: issues.length,
-          });
+        onIssue(entry) {
+          pendingEntries.set(entry.issueNumber, entry);
+          flushPendingEntries();
         },
       });
     }
