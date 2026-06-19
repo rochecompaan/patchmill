@@ -202,15 +202,15 @@ test("runTriage orders by issue number when created dates are missing or invalid
   assert.equal(result.issues[0]?.issueNumber, 10);
 });
 
-test("runTriage uses deterministic issue-number fallback for mixed created dates", async () => {
+test("runTriage prioritizes valid created dates in mixed timestamp batches", async () => {
   const mixedIssues = [
     {
-      index: 30,
-      title: "Valid oldest date",
-      body: "Has a valid older date but a higher issue number",
+      index: 20,
+      title: "Invalid date",
+      body: "Has invalid creation data",
       state: "open",
       labels: [{ name: "bug" }],
-      created: "2026-06-01T00:00:00Z",
+      created: "not-a-date",
     },
     {
       index: 10,
@@ -221,12 +221,19 @@ test("runTriage uses deterministic issue-number fallback for mixed created dates
       created: "2026-06-03T00:00:00Z",
     },
     {
-      index: 20,
-      title: "Invalid date",
-      body: "Has invalid creation data",
+      index: 30,
+      title: "Valid oldest date",
+      body: "Has a valid older date but a higher issue number",
       state: "open",
       labels: [{ name: "bug" }],
-      created: "not-a-date",
+      created: "2026-06-01T00:00:00Z",
+    },
+    {
+      index: 5,
+      title: "Missing date",
+      body: "Has no creation data and the lowest issue number",
+      state: "open",
+      labels: [{ name: "bug" }],
     },
   ];
 
@@ -236,7 +243,7 @@ test("runTriage uses deterministic issue-number fallback for mixed created dates
       { code: 0, stdout: JSON.stringify(issues), stderr: "" },
       { code: 0, stdout: JSON.stringify([]), stderr: "" },
       noCommentsOutput,
-      { code: 0, stdout: agentReadyPreviewJson(10), stderr: "" },
+      { code: 0, stdout: agentReadyPreviewJson(30), stderr: "" },
     ]);
 
     const result = await runTriage(runner, {
@@ -249,7 +256,7 @@ test("runTriage uses deterministic issue-number fallback for mixed created dates
     });
 
     assert.equal(result.status, "dry-run");
-    assert.equal(result.issues[0]?.issueNumber, 10);
+    assert.equal(result.issues[0]?.issueNumber, 30);
   }
 });
 

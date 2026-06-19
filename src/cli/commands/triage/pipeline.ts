@@ -32,18 +32,19 @@ function compareIssuesByCreated(
   left: IssueSummary,
   right: IssueSummary,
 ): number {
-  return (
-    createdMillis(left)! - createdMillis(right)! ||
-    compareIssuesByNumber(left, right)
-  );
+  const leftCreated = createdMillis(left);
+  const rightCreated = createdMillis(right);
+
+  if (leftCreated !== undefined && rightCreated !== undefined) {
+    return leftCreated - rightCreated || compareIssuesByNumber(left, right);
+  }
+  if (leftCreated !== undefined) return -1;
+  if (rightCreated !== undefined) return 1;
+  return compareIssuesByNumber(left, right);
 }
 
 function orderTriageIssues(issues: IssueSummary[]): IssueSummary[] {
-  const ordered = [...issues];
-  if (ordered.every((issue) => createdMillis(issue) !== undefined)) {
-    return ordered.sort(compareIssuesByCreated);
-  }
-  return ordered.sort(compareIssuesByNumber);
+  return [...issues].sort(compareIssuesByCreated);
 }
 
 function selectIssues(
