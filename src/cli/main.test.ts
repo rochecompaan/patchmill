@@ -46,6 +46,13 @@ test("resolveCommand maps init to the public command name", () => {
   });
 });
 
+test("resolveCommand maps auth to the public command name", () => {
+  assert.deepEqual(resolveCommand(["auth", "--help"], ["auth"]), {
+    command: "auth",
+    args: ["--help"],
+  });
+});
+
 test("resolveCommand maps doctor to the public command name", () => {
   assert.deepEqual(resolveCommand(["doctor", "--quiet"], ["doctor"]), {
     command: "doctor",
@@ -102,6 +109,10 @@ test("createCliMain prints top-level help", async () => {
 
   assert.equal(await main(["--help"]), 0);
   assert.match(HELP_TEXT, /init\s+Create a minimal patchmill\.config\.json\./);
+  assert.match(
+    HELP_TEXT,
+    /auth\s+Configure or repair repo-local Pi provider authentication\./,
+  );
   assert.match(HELP_TEXT, /doctor\s+Run read-only readiness checks\./);
   assert.match(HELP_TEXT, /version\s+Print the Patchmill CLI version\./);
   assert.match(
@@ -157,6 +168,24 @@ test("createCliMain dispatches setup-test-repo command", async () => {
   assert.deepEqual(calls, [
     ["--provider", "github-gh", "--repo", "OWNER/REPO"],
   ]);
+});
+
+test("createCliMain dispatches auth command", async () => {
+  const calls: string[][] = [];
+  const main = createCliMain(
+    new Map([
+      [
+        "auth",
+        async (args) => {
+          calls.push(args);
+          return 0;
+        },
+      ],
+    ]),
+  );
+
+  assert.equal(await main(["auth", "--help"]), 0);
+  assert.deepEqual(calls, [["--help"]]);
 });
 
 test("createCliMain dispatches init and doctor commands", async () => {

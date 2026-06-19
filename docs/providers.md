@@ -42,6 +42,22 @@ set the host provider explicitly:
 The first `github-gh` version uses the active `gh` authentication context. It
 does not support named logins or GitHub visual-evidence upload.
 
+## Runtime Pi authentication
+
+Patchmill uses Pi as its runtime harness and keeps Patchmill-owned Pi provider
+authentication in the repository-local `.patchmill/pi-agent` directory. Run the
+guided auth command to configure or repair provider login and default model
+selection:
+
+```sh
+patchmill auth
+patchmill doctor
+```
+
+Issue-host authentication remains separate: use `gh auth login` for GitHub and
+`tea` login configuration for Forgejo/Gitea access. `patchmill auth` only
+manages Patchmill's repo-local Pi provider state.
+
 ## Configuration surface
 
 Patchmill reads provider and workflow settings from `patchmill.config.json` and

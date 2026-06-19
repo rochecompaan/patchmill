@@ -147,7 +147,7 @@ test("runInit installs project-local skills by default", async () => {
   assert.doesNotMatch(stdout.join("\n"), /Commit \.patchmill\/skills\//);
   assert.match(
     stdout.join("\n"),
-    /Run `patchmill doctor` after completing Pi setup/,
+    /Run `patchmill auth` in an interactive terminal/,
   );
 });
 
@@ -331,7 +331,7 @@ test("runInit creates config and prints next step", async () => {
   assert.match(stdout.join("\n"), /PATCHMILL_HOST_LOGIN/);
   assert.match(
     stdout.join("\n"),
-    /Run `patchmill doctor` after completing Pi setup/,
+    /Run `patchmill auth` in an interactive terminal/,
   );
   assert.match(stdout.join("\n"), /patchmill doctor/);
 });
@@ -447,4 +447,6 @@ test("runInit refuses existing config without installing skills", async () => {
   assert.equal(installCalled, false);
   assert.match(stdout.join("\n"), /already exists/);
   assert.match(stdout.join("\n"), /did not overwrite/);
+  assert.match(stdout.join("\n"), /patchmill auth/);
+  assert.match(stdout.join("\n"), /patchmill doctor/);
 });

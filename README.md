@@ -32,6 +32,9 @@ Current command status:
 Functional:
 
 - `patchmill init` initializes local configuration and recommended skills.
+- `patchmill auth` configures or repairs repo-local Pi provider authentication
+  under `.patchmill/pi-agent`.
+- `patchmill doctor` runs read-only readiness checks.
 - `patchmill version` prints the installed Patchmill CLI version.
 - `patchmill triage` is the intake/sorting station. It classifies open issues
   and can apply readiness labels or comments.
@@ -69,6 +72,7 @@ Install the Patchmill CLI globally, then start with the onboarding flow:
 npm install -g patchmill
 
 patchmill init
+patchmill auth
 patchmill doctor
 patchmill triage --dry-run
 ```
@@ -77,6 +81,7 @@ If you prefer not to install Patchmill globally, use `npx`:
 
 ```sh
 npx patchmill init
+npx patchmill auth
 npx patchmill doctor
 npx patchmill triage --dry-run
 ```
@@ -150,6 +155,11 @@ patchmill init --skills global
 patchmill init --skills none
 patchmill init --skills path:project-skills
 ```
+
+`patchmill auth` reruns the repo-local Pi provider/model setup used by init. It
+stores Patchmill-owned Pi authentication state under `.patchmill/pi-agent`, so
+it is the canonical repair command when provider auth or model selection
+changes.
 
 `patchmill doctor` is read-only: it checks git, host access, labels, configured
 skills, runtime access, and local paths, verifying bundled/path-like skills and

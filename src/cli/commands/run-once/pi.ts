@@ -7,7 +7,8 @@ import {
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
-import { piAgentEnv } from "../init/pi-agent-settings.ts";
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
+import { piAgentCommandEnv } from "../../pi-cli.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   createPiSessionMessageStreamer,
@@ -494,12 +495,11 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
         piPromptArgs(promptPath, sessionDir, options?.skillPaths),
         {
           cwd,
-          env: {
-            ...(options?.piAgentDir ? piAgentEnv(options.piAgentDir) : {}),
+          env: piAgentCommandEnv(options?.piAgentDir ?? localPiAgentDir(cwd), {
             PI_TODO_PATH:
               options?.taskContract?.todoRoot ??
               DEFAULT_PI_TASK_CONTRACT.todoRoot,
-          },
+          }),
         },
       );
     } finally {

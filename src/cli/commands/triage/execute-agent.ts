@@ -1,3 +1,5 @@
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
+import { piAgentCommandEnv } from "../../pi-cli.ts";
 import { withPromptFile } from "./prompt-file.ts";
 import { runWithToolCallObservation } from "./tool-call-observer.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
@@ -22,6 +24,7 @@ export type TriageExecutePromptInput = {
   skills?: PatchmillSkillsConfig;
   thinking?: string;
   onToolCall?: TriageToolCallHandler;
+  piAgentDir?: string;
 };
 
 function issuePayload(issues: IssueSummary[]): string {
@@ -124,7 +127,10 @@ export async function runTriageExecuteAgent(
           "-p",
           `@${promptPath}`,
         ],
-        { cwd: repoRoot },
+        {
+          cwd: repoRoot,
+          env: piAgentCommandEnv(input.piAgentDir ?? localPiAgentDir(repoRoot)),
+        },
       );
 
       if (result.code !== 0) {

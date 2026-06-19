@@ -3,6 +3,8 @@ import { test } from "node:test";
 import type { CommandRunner } from "../triage/types.ts";
 import { runPiSmokeTest } from "./pi-smoke-test.ts";
 
+const FAKE_PI_COMMAND = { command: "pi", argsPrefix: [] };
+
 function runner(result: {
   code: number;
   stdout?: string;
@@ -36,6 +38,7 @@ test("runPiSmokeTest succeeds when Pi prints sentinel", async () => {
   const result = await runPiSmokeTest(fake, {
     repoRoot: "/repo",
     model: "anthropic/claude-sonnet-4-5",
+    piCommand: FAKE_PI_COMMAND,
   });
 
   assert.deepEqual(result, {
@@ -63,6 +66,21 @@ test("runPiSmokeTest succeeds when Pi prints sentinel", async () => {
   ]);
 });
 
+test("runPiSmokeTest uses injectable bundled command spec without spawning real Pi", async () => {
+  const fake = runner({ code: 0, stdout: "PATCHMILL_PI_OK\n" });
+
+  await runPiSmokeTest(fake, {
+    repoRoot: "/repo",
+    piCommand: { command: "node", argsPrefix: ["/pkg/dist/cli.js"] },
+  });
+
+  assert.equal(fake.calls[0]?.command, "node");
+  assert.deepEqual(fake.calls[0]?.args.slice(0, 2), [
+    "/pkg/dist/cli.js",
+    "--no-session",
+  ]);
+});
+
 test("runPiSmokeTest scopes Pi to the provided local agent dir", async () => {
   const fake = runner({ code: 0, stdout: "PATCHMILL_PI_OK\n" });
 
@@ -70,6 +88,7 @@ test("runPiSmokeTest scopes Pi to the provided local agent dir", async () => {
     repoRoot: "/repo",
     model: "openai-codex/gpt-5.5",
     piAgentDir: "/repo/.patchmill/pi-agent",
+    piCommand: FAKE_PI_COMMAND,
   });
 
   assert.equal(
@@ -81,7 +100,7 @@ test("runPiSmokeTest scopes Pi to the provided local agent dir", async () => {
 test("runPiSmokeTest omits model when no model is selected", async () => {
   const fake = runner({ code: 0, stdout: "PATCHMILL_PI_OK\n" });
 
-  await runPiSmokeTest(fake, { repoRoot: "/repo" });
+  await runPiSmokeTest(fake, { repoRoot: "/repo", piCommand: FAKE_PI_COMMAND });
 
   assert.deepEqual(fake.calls[0]?.args, [
     "--no-session",
@@ -95,7 +114,10 @@ test("runPiSmokeTest omits model when no model is selected", async () => {
 test("runPiSmokeTest fails when Pi exits non-zero", async () => {
   const fake = runner({ code: 1, stderr: "missing key" });
 
-  const result = await runPiSmokeTest(fake, { repoRoot: "/repo" });
+  const result = await runPiSmokeTest(fake, {
+    repoRoot: "/repo",
+    piCommand: FAKE_PI_COMMAND,
+  });
 
   assert.equal(result.status, "fail");
   assert.match(result.message, /Pi could not complete the provider smoke test/);
@@ -105,7 +127,10 @@ test("runPiSmokeTest fails when Pi exits non-zero", async () => {
 test("runPiSmokeTest fails when sentinel is absent", async () => {
   const fake = runner({ code: 0, stdout: "hello\n" });
 
-  const result = await runPiSmokeTest(fake, { repoRoot: "/repo" });
+  const result = await runPiSmokeTest(fake, {
+    repoRoot: "/repo",
+    piCommand: FAKE_PI_COMMAND,
+  });
 
   assert.equal(result.status, "fail");
   assert.match(result.details ?? "", /hello/);

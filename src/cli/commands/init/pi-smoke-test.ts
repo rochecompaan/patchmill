@@ -1,5 +1,10 @@
 import type { CommandRunner } from "../triage/types.ts";
-import { piAgentEnv } from "./pi-agent-settings.ts";
+import {
+  piAgentCommandEnv,
+  piCommandArgs,
+  resolveBundledPiCommand,
+  type PiCommandSpec,
+} from "../../pi-cli.ts";
 
 const PI_SMOKE_PROMPT = "Reply with PATCHMILL_PI_OK and nothing else.";
 const PI_SMOKE_SENTINEL = "PATCHMILL_PI_OK";
@@ -15,8 +20,8 @@ function shellQuote(value: string): string {
   return /\s/u.test(value) ? value : value;
 }
 
-function formatCommand(args: string[]): string {
-  return ["pi", ...args.map(shellQuote)].join(" ");
+function formatCommand(spec: PiCommandSpec, args: string[]): string {
+  return [spec.command, ...piCommandArgs(spec, args).map(shellQuote)].join(" ");
 }
 
 function commandOutput(stdout: string, stderr: string): string {
@@ -25,17 +30,29 @@ function commandOutput(stdout: string, stderr: string): string {
 
 export async function runPiSmokeTest(
   runner: CommandRunner,
-  options: { repoRoot: string; model?: string; piAgentDir?: string },
+  options: {
+    repoRoot: string;
+    model?: string;
+    piAgentDir?: string;
+    piCommand?: PiCommandSpec;
+  },
 ): Promise<PiSmokeTestResult> {
   const args = ["--no-session", "--no-context-files", "--no-prompt-templates"];
   if (options.model) args.push("--model", options.model);
   args.push("-p", PI_SMOKE_PROMPT);
 
-  const result = await runner.run("pi", args, {
-    cwd: options.repoRoot,
-    ...(options.piAgentDir ? { env: piAgentEnv(options.piAgentDir) } : {}),
-  });
-  const command = formatCommand(args);
+  const piCommand = options.piCommand ?? resolveBundledPiCommand();
+  const result = await runner.run(
+    piCommand.command,
+    piCommandArgs(piCommand, args),
+    {
+      cwd: options.repoRoot,
+      ...(options.piAgentDir
+        ? { env: piAgentCommandEnv(options.piAgentDir) }
+        : {}),
+    },
+  );
+  const command = formatCommand(piCommand, args);
   if (result.code === 0 && result.stdout.includes(PI_SMOKE_SENTINEL)) {
     return {
       status: "pass",

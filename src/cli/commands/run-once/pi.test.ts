@@ -208,7 +208,6 @@ test("runPiPrompt passes the local Pi agent dir to Pi", async () => {
 
   await runPiPrompt(runner, "/repo", "prompt", {
     stage: "pi-plan",
-    piAgentDir: "/repo/.patchmill/pi-agent",
   });
 });
 

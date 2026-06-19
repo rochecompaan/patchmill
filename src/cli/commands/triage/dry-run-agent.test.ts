@@ -18,7 +18,11 @@ import {
   runTriageDryRunAgent,
   validateTriagePreviewDocument,
 } from "./dry-run-agent.ts";
-import type { CommandRunner, IssueSummary } from "./types.ts";
+import type {
+  CommandRunOptions,
+  CommandRunner,
+  IssueSummary,
+} from "./types.ts";
 
 const issues: IssueSummary[] = [
   {
@@ -80,10 +84,20 @@ async function createProjectLocalTriageRepo(): Promise<{
 }
 
 class RecordingRunner implements CommandRunner {
-  readonly calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+  readonly calls: Array<{
+    command: string;
+    args: string[];
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+  }> = [];
 
-  async run(command: string, args: string[], options = {}) {
-    this.calls.push({ command, args: [...args], cwd: options.cwd });
+  async run(command: string, args: string[], options: CommandRunOptions = {}) {
+    this.calls.push({
+      command,
+      args: [...args],
+      cwd: options.cwd,
+      env: options.env,
+    });
     const promptPath = args[args.indexOf("-p") + 1]?.slice(1);
     assert.ok(promptPath);
     const prompt = await readFile(promptPath, "utf8");
@@ -380,6 +394,7 @@ test("runTriageDryRunAgent invokes Pi with read-only tools", async () => {
   assert.equal(previews[0]?.canonicalBucket, "agent-ready");
   const call = runner.calls[0]!;
   assert.equal(call.command, "pi");
+  assert.equal(call.env?.PI_CODING_AGENT_DIR, "/repo/.patchmill/pi-agent");
   assert.deepEqual(call.args.slice(0, 4), [
     "--tools",
     "read,grep,find,ls",

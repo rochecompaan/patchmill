@@ -1,3 +1,5 @@
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
+import { piAgentCommandEnv } from "../../pi-cli.ts";
 import { withPromptFile } from "./prompt-file.ts";
 import { runWithToolCallObservation } from "./tool-call-observer.ts";
 import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
@@ -24,6 +26,7 @@ export type TriageDryRunPromptInput = {
   stateMap: PatchmillTriageStateMap;
   thinking?: string;
   onToolCall?: TriageToolCallHandler;
+  piAgentDir?: string;
 };
 
 function issuePayload(issues: IssueSummary[]): string {
@@ -289,7 +292,10 @@ export async function runTriageDryRunAgent(
           "-p",
           `@${promptPath}`,
         ],
-        { cwd: repoRoot },
+        {
+          cwd: repoRoot,
+          env: piAgentCommandEnv(input.piAgentDir ?? localPiAgentDir(repoRoot)),
+        },
       );
 
       if (result.code !== 0) {
