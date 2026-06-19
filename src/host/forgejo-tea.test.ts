@@ -209,6 +209,10 @@ test("ForgejoTeaHostProvider delegates open issue listing to tea", async () => {
   assertTeaContext(runner.calls[0]!);
   assert.deepEqual(runner.calls[0]!.args.slice(0, 2), ["issues", "list"]);
   assert.equal(flagValue(runner.calls[0]!.args, "--state"), "open");
+  assert.equal(
+    flagValue(runner.calls[0]!.args, "--fields"),
+    "index,title,body,state,labels,author,created,updated,comments,url",
+  );
   assert.equal(flagValue(runner.calls[0]!.args, "--output"), "json");
   assert.equal(flagValue(runner.calls[0]!.args, "--page"), "1");
   assertTeaContext(runner.calls[1]!);

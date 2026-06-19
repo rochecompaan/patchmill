@@ -9,7 +9,7 @@ import type {
 
 const ISSUE_PAGE_SIZE = 1000;
 const ISSUE_FIELDS =
-  "index,title,body,state,labels,author,updated,comments,url";
+  "index,title,body,state,labels,author,created,updated,comments,url";
 
 function parseJson(stdout: string, context: string): unknown {
   try {
