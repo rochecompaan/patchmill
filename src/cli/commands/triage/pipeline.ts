@@ -236,9 +236,9 @@ export async function runTriage(
   }
 
   const logIssues: TriageLogIssueEntry[] = [];
+  const pendingEntries = new Map<number, TriageLogIssueEntry>();
 
   try {
-    const pendingEntries = new Map<number, TriageLogIssueEntry>();
     let nextProgressIndex = 0;
 
     function flushPendingEntries(): void {
@@ -303,7 +303,11 @@ export async function runTriage(
       });
     }
   } catch (error) {
-    await tryWriteFailureLog(config, createdAt, logIssues, error);
+    const failureLogIssues = entriesBySelectedIssueOrder(issues, [
+      ...logIssues,
+      ...pendingEntries.values(),
+    ]);
+    await tryWriteFailureLog(config, createdAt, failureLogIssues, error);
     throw error;
   }
 
