@@ -193,7 +193,11 @@ test("runTriageExecuteAgent invokes Pi without read-only tool restriction", asyn
   });
 
   const call = runner.calls[0]!;
-  assert.equal(call.command, "pi");
+  assert.equal(call.command, process.execPath);
+  assert.match(
+    call.args[0] ?? "",
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+  );
   assert.equal(call.env?.PI_CODING_AGENT_DIR, "/repo/.patchmill/pi-agent");
   assert.equal(call.args.includes("--tools"), false);
   assert.equal(call.args.includes("--no-context-files"), true);

@@ -393,9 +393,15 @@ test("runTriageDryRunAgent invokes Pi with read-only tools", async () => {
 
   assert.equal(previews[0]?.canonicalBucket, "agent-ready");
   const call = runner.calls[0]!;
-  assert.equal(call.command, "pi");
+  assert.equal(call.command, process.execPath);
+  assert.match(
+    call.args[0] ?? "",
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+  );
   assert.equal(call.env?.PI_CODING_AGENT_DIR, "/repo/.patchmill/pi-agent");
-  assert.deepEqual(call.args.slice(0, 4), [
+  const toolsIndex = call.args.indexOf("--tools");
+  assert.notEqual(toolsIndex, -1);
+  assert.deepEqual(call.args.slice(toolsIndex, toolsIndex + 4), [
     "--tools",
     "read,grep,find,ls",
     "--no-context-files",

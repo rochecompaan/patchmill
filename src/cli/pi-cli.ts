@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type PiCommandSpec = { command: string; argsPrefix: string[] };
@@ -9,7 +9,22 @@ type PackageJson = { bin?: unknown };
 
 const require = createRequire(import.meta.url);
 
-function resolvePackageJsonPath(): string {
+function bundledPiPackageJsonPathFrom(startDir: string): string | undefined {
+  const root = parse(startDir).root;
+  for (let dir = startDir; ; dir = dirname(dir)) {
+    const candidate = join(
+      dir,
+      "node_modules",
+      "@earendil-works",
+      "pi-coding-agent",
+      "package.json",
+    );
+    if (existsSync(candidate)) return candidate;
+    if (dir === root) return undefined;
+  }
+}
+
+function resolvePackageJsonPath(moduleUrl = import.meta.url): string {
   try {
     return require.resolve("@earendil-works/pi-coding-agent/package.json");
   } catch (error) {
@@ -23,26 +38,9 @@ function resolvePackageJsonPath(): string {
     }
   }
 
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(
-      moduleDir,
-      "..",
-      "..",
-      "node_modules",
-      "@earendil-works",
-      "pi-coding-agent",
-      "package.json",
-    ),
-    join(
-      process.cwd(),
-      "node_modules",
-      "@earendil-works",
-      "pi-coding-agent",
-      "package.json",
-    ),
-  ];
-  const packageJsonPath = candidates.find((candidate) => existsSync(candidate));
+  const packageJsonPath = bundledPiPackageJsonPathFrom(
+    dirname(fileURLToPath(moduleUrl)),
+  );
   if (packageJsonPath) return packageJsonPath;
 
   throw new Error("Could not locate bundled Pi package.json");
@@ -61,14 +59,18 @@ function piBinFromPackage(packageJsonPath: string): string {
   return "dist/cli.js";
 }
 
-export function resolveBundledPiCommand(): PiCommandSpec {
-  const packageJsonPath = resolvePackageJsonPath();
+export function resolveBundledPiCommandFrom(moduleUrl: string): PiCommandSpec {
+  const packageJsonPath = resolvePackageJsonPath(moduleUrl);
   return {
     command: process.execPath,
     argsPrefix: [
       join(dirname(packageJsonPath), piBinFromPackage(packageJsonPath)),
     ],
   };
+}
+
+export function resolveBundledPiCommand(): PiCommandSpec {
+  return resolveBundledPiCommandFrom(import.meta.url);
 }
 
 export function piAgentCommandEnv(

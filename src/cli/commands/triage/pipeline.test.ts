@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
-import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
+import {
+  createStaticCommandRunner,
+  normalizeRecordedPiCall,
+} from "../../../../test-support/command-runner.ts";
 import { runTriage } from "./pipeline.ts";
 
 const issueJson = JSON.stringify([
@@ -210,7 +213,10 @@ test("runTriage targeted GitHub issue reads issue by number", async () => {
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
-      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const recordedCall = normalizeRecordedPiCall(command, args, options.cwd);
+      runner.calls.push(recordedCall);
+      command = recordedCall.command;
+      args = recordedCall.args;
 
       if (command === "gh" && args[0] === "issue" && args[1] === "view") {
         return {
@@ -345,7 +351,10 @@ test("runTriage execute emits each issue after its own snapshot", async () => {
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
-      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const recordedCall = normalizeRecordedPiCall(command, args, options.cwd);
+      runner.calls.push(recordedCall);
+      command = recordedCall.command;
+      args = recordedCall.args;
 
       if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
         return {
@@ -451,7 +460,10 @@ test("runTriage execute snapshots Forgejo issues without repeated all-issue scan
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
-      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const recordedCall = normalizeRecordedPiCall(command, args, options.cwd);
+      runner.calls.push(recordedCall);
+      command = recordedCall.command;
+      args = recordedCall.args;
 
       if (command === "tea" && args.slice(0, 2).join(" ") === "issues list") {
         const state = args[args.indexOf("--state") + 1];
@@ -636,7 +648,10 @@ test("runTriage passes configured custom skills through to the triage agent", as
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
-      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const recordedCall = normalizeRecordedPiCall(command, args, options.cwd);
+      runner.calls.push(recordedCall);
+      command = recordedCall.command;
+      args = recordedCall.args;
 
       if (
         command === "tea" &&
@@ -711,7 +726,10 @@ test("runTriage execute passes configured state map to the Pi prompt", async () 
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
-      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const recordedCall = normalizeRecordedPiCall(command, args, options.cwd);
+      runner.calls.push(recordedCall);
+      command = recordedCall.command;
+      args = recordedCall.args;
 
       if (
         command === "tea" &&
@@ -818,6 +836,10 @@ test("runTriage execute failure log keeps completed issue entries", async () => 
   let piCalls = 0;
   const runner = {
     async run(command: string, args: string[]) {
+      const recordedCall = normalizeRecordedPiCall(command, args);
+      command = recordedCall.command;
+      args = recordedCall.args;
+
       if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
         return {
           code: 0,

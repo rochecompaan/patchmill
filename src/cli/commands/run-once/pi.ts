@@ -8,7 +8,12 @@ import {
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
-import { piAgentCommandEnv } from "../../pi-cli.ts";
+import {
+  piAgentCommandEnv,
+  piCommandArgs,
+  resolveBundledPiCommand,
+  type PiCommandSpec,
+} from "../../pi-cli.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   createPiSessionMessageStreamer,
@@ -332,6 +337,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   verbosePiOutput?: boolean;
   taskContract?: PatchmillPiTaskContract;
   piAgentDir?: string;
+  piCommand?: PiCommandSpec;
 };
 
 function stageStatus(stage: RunPiPromptStage): string {
@@ -490,9 +496,13 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
     sessionStreamer?.start();
     let result: CommandResult;
     try {
+      const piCommand = options?.piCommand ?? resolveBundledPiCommand();
       result = await runner.run(
-        "pi",
-        piPromptArgs(promptPath, sessionDir, options?.skillPaths),
+        piCommand.command,
+        piCommandArgs(
+          piCommand,
+          piPromptArgs(promptPath, sessionDir, options?.skillPaths),
+        ),
         {
           cwd,
           env: piAgentCommandEnv(options?.piAgentDir ?? localPiAgentDir(cwd), {

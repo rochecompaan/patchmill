@@ -160,6 +160,30 @@ test("incomplete non-interactive setup exits before prompt-capable setup", async
   ]);
 });
 
+test("local Pi default model read failures are surfaced", async () => {
+  await assert.rejects(
+    runAuth(
+      [],
+      "/repo",
+      {
+        stdout: () => undefined,
+        stderr: () => undefined,
+      },
+      {
+        isInteractive: true,
+        detectPiReadiness: () => readyReadiness(),
+        readLocalPiDefaultModel: async () => {
+          throw new Error("settings are malformed");
+        },
+        resolvePiInitSetup: async () => {
+          throw new Error("setup should not run");
+        },
+      },
+    ),
+    /settings are malformed/,
+  );
+});
+
 test("ready state still forces interactive setup", async () => {
   let forceInteractiveSetup: boolean | undefined;
 

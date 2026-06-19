@@ -4,7 +4,10 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
+import {
+  createStaticCommandRunner,
+  normalizeRecordedPiCall,
+} from "../../../../test-support/command-runner.ts";
 import { runTriage } from "./pipeline.ts";
 
 function previewJson(previews: unknown[]): string {
@@ -25,7 +28,10 @@ test("runTriage dry-run trusts active GitHub user for blocked metadata when conf
   const runner = {
     calls,
     async run(command: string, args: string[], options = {}) {
-      calls.push({ command, args: [...args], cwd: options.cwd });
+      const recordedCall = normalizeRecordedPiCall(command, args, options.cwd);
+      calls.push(recordedCall);
+      command = recordedCall.command;
+      args = recordedCall.args;
 
       if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
         return {
@@ -246,7 +252,10 @@ test("runTriage execute removes blocked and adds agent-ready when blockers are c
   const runner = {
     calls: [] as Array<{ command: string; args: string[]; cwd?: string }>,
     async run(command: string, args: string[], options = {}) {
-      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const recordedCall = normalizeRecordedPiCall(command, args, options.cwd);
+      runner.calls.push(recordedCall);
+      command = recordedCall.command;
+      args = recordedCall.args;
 
       if (command === "gh" && args.slice(0, 2).join(" ") === "issue list") {
         return {

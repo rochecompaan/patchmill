@@ -104,14 +104,9 @@ export async function runAuth(
     return 1;
   }
 
-  let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>>;
-  try {
-    currentDefault = await (
-      options.readLocalPiDefaultModel ?? readLocalPiDefaultModel
-    )(piAgentDir);
-  } catch {
-    currentDefault = undefined;
-  }
+  const currentDefault = await (
+    options.readLocalPiDefaultModel ?? readLocalPiDefaultModel
+  )(piAgentDir);
 
   const persistDefaultModel = async (
     model: Parameters<typeof writeLocalPiDefaultModel>[1],

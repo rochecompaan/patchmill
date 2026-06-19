@@ -51,6 +51,15 @@ function createStaticCommandRunner(results: CommandResult[]): CommandRunner {
   });
 }
 
+function assertBundledPiCall(call: Call): string[] {
+  assert.equal(call.command, process.execPath);
+  assert.match(
+    call.args[0] ?? "",
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+  );
+  return call.args.slice(1);
+}
+
 function promptPath(args: string[]): string {
   const promptArg = args.find((arg) => arg.startsWith("@"));
   assert.ok(promptArg, `expected prompt path in ${args.join(" ")}`);
@@ -74,18 +83,12 @@ async function writeTodo(
 
 test("runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failures", async () => {
   const runner = createMockRunner(async (call) => {
-    assert.equal(call.command, "pi");
+    const args = assertBundledPiCall(call);
     assert.equal(call.cwd, "/repo/worktree");
-    assert.deepEqual(call.args.slice(0, 5), [
-      "-e",
-      call.args[1],
-      "-e",
-      call.args[3],
-      "-p",
-    ]);
-    assert.match(call.args[1] ?? "", /node_modules\/pi-subagents$/);
-    assert.match(call.args[3] ?? "", /extensions\/todos\.ts$/);
-    const prompt = await readFile(promptPath(call.args), "utf8");
+    assert.deepEqual(args.slice(0, 5), ["-e", args[1], "-e", args[3], "-p"]);
+    assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
+    assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
+    const prompt = await readFile(promptPath(args), "utf8");
     assert.equal(prompt, "prompt body");
     return { code: 9, stdout: "", stderr: "pi exploded" };
   });
@@ -98,17 +101,11 @@ test("runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failu
 
 test("runPiPrompt loads bundled Pi extensions before the prompt argument", async () => {
   const runner = createMockRunner(async (call) => {
-    assert.equal(call.command, "pi");
-    assert.deepEqual(call.args.slice(0, 5), [
-      "-e",
-      call.args[1],
-      "-e",
-      call.args[3],
-      "-p",
-    ]);
-    assert.match(call.args[1] ?? "", /node_modules\/pi-subagents$/);
-    assert.match(call.args[3] ?? "", /extensions\/todos\.ts$/);
-    assert.equal(call.args[5]?.startsWith("@"), true);
+    const args = assertBundledPiCall(call);
+    assert.deepEqual(args.slice(0, 5), ["-e", args[1], "-e", args[3], "-p"]);
+    assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
+    assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
+    assert.equal(args[5]?.startsWith("@"), true);
     return {
       code: 0,
       stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
@@ -145,21 +142,21 @@ test("runPiPrompt can parse development environment results", async () => {
 
 test("runPiPrompt passes configured skill files before the prompt argument", async () => {
   const runner = createMockRunner(async (call) => {
-    assert.equal(call.command, "pi");
-    assert.deepEqual(call.args.slice(0, 9), [
+    const args = assertBundledPiCall(call);
+    assert.deepEqual(args.slice(0, 9), [
       "-e",
-      call.args[1],
+      args[1],
       "-e",
-      call.args[3],
+      args[3],
       "--skill",
       "/repo/.patchmill/skills/writing-plans/SKILL.md",
       "--skill",
       "/repo/.patchmill/skills/review/SKILL.md",
       "-p",
     ]);
-    assert.match(call.args[1] ?? "", /node_modules\/pi-subagents$/);
-    assert.match(call.args[3] ?? "", /extensions\/todos\.ts$/);
-    assert.equal(call.args[9]?.startsWith("@"), true);
+    assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
+    assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
+    assert.equal(args[9]?.startsWith("@"), true);
     return {
       code: 0,
       stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
@@ -246,22 +243,17 @@ test("runPiPrompt logs pi stdout and stderr chunks", async () => {
 test("runPiPrompt streams messages appended to the prompted pi session JSONL", async () => {
   const streamed: string[] = [];
   const runner = createMockRunner(async (call) => {
-    assert.deepEqual(call.args.slice(0, 5), [
-      "-e",
-      call.args[1],
-      "-e",
-      call.args[3],
-      "-p",
-    ]);
-    assert.match(call.args[1] ?? "", /node_modules\/pi-subagents$/);
-    assert.match(call.args[3] ?? "", /extensions\/todos\.ts$/);
-    assert.equal(call.args.includes("--mode"), false);
-    const sessionDirIndex = call.args.indexOf("--session-dir");
+    const args = assertBundledPiCall(call);
+    assert.deepEqual(args.slice(0, 5), ["-e", args[1], "-e", args[3], "-p"]);
+    assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
+    assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
+    assert.equal(args.includes("--mode"), false);
+    const sessionDirIndex = args.indexOf("--session-dir");
     assert.ok(
       sessionDirIndex >= 0,
-      `expected --session-dir in ${call.args.join(" ")}`,
+      `expected --session-dir in ${args.join(" ")}`,
     );
-    const sessionDir = call.args[sessionDirIndex + 1];
+    const sessionDir = args[sessionDirIndex + 1];
     assert.ok(sessionDir);
 
     const sessionPath = join(sessionDir, "--repo--", "session.jsonl");

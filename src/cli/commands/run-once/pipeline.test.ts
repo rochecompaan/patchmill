@@ -152,6 +152,18 @@ function collectProgressEvents(): {
   };
 }
 
+function normalizeRecordedPiCall(call: Call): Call {
+  if (
+    call.command === process.execPath &&
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/.test(
+      call.args[0] ?? "",
+    )
+  ) {
+    return { ...call, command: "pi", args: call.args.slice(1) };
+  }
+  return call;
+}
+
 function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
 ): MockRunner {
@@ -159,16 +171,16 @@ function createMockRunner(
   return {
     calls,
     async run(command, args, options = {}) {
-      const call = {
+      const call = normalizeRecordedPiCall({
         command,
         args: [...args],
         cwd: options.cwd,
         ...(options.env ? { env: options.env } : {}),
         onStdout: options.onStdout,
         onStderr: options.onStderr,
-      };
+      });
       calls.push(call);
-      if (command === "pi") {
+      if (call.command === "pi") {
         try {
           return await normalizePiResult(call, await handler(call));
         } catch (error) {
