@@ -15,6 +15,32 @@ import type {
   TriageResult,
 } from "./types.ts";
 
+function createdMillis(issue: IssueSummary): number | undefined {
+  if (!issue.created) return undefined;
+  const millis = Date.parse(issue.created);
+  return Number.isFinite(millis) ? millis : undefined;
+}
+
+function compareTriageIssueOrder(
+  left: IssueSummary,
+  right: IssueSummary,
+): number {
+  const leftCreated = createdMillis(left);
+  const rightCreated = createdMillis(right);
+  if (
+    leftCreated !== undefined &&
+    rightCreated !== undefined &&
+    leftCreated !== rightCreated
+  ) {
+    return leftCreated - rightCreated;
+  }
+  return left.number - right.number;
+}
+
+function orderTriageIssues(issues: IssueSummary[]): IssueSummary[] {
+  return [...issues].sort(compareTriageIssueOrder);
+}
+
 function selectIssues(
   issues: IssueSummary[],
   config: TriageConfig,
@@ -38,6 +64,8 @@ function selectIssues(
       (issue) => !issue.labels.some((label) => excludedLabels.has(label)),
     );
   }
+
+  selected = orderTriageIssues(selected);
 
   if (config.limit !== undefined) {
     selected = selected.slice(0, config.limit);

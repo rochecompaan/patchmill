@@ -55,6 +55,58 @@ function agentReadyPreviewJson(issueNumber: number): string {
   ]);
 }
 
+test("runTriage applies limit after oldest-first default selection", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const runner = createStaticCommandRunner([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          index: 20,
+          title: "Newest eligible",
+          body: "Newer work",
+          state: "open",
+          labels: [{ name: "bug" }],
+          created: "2026-06-03T00:00:00Z",
+        },
+        {
+          index: 30,
+          title: "Oldest eligible",
+          body: "Older work",
+          state: "open",
+          labels: [{ name: "bug" }],
+          created: "2026-06-01T00:00:00Z",
+        },
+        {
+          index: 10,
+          title: "Skipped middle",
+          body: "Already ready",
+          state: "open",
+          labels: [{ name: "agent-ready" }],
+          created: "2026-06-02T00:00:00Z",
+        },
+      ]),
+      stderr: "",
+    },
+    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    noCommentsOutput,
+    { code: 0, stdout: agentReadyPreviewJson(30), stderr: "" },
+  ]);
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    limit: 1,
+    logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issueCount, 1);
+  assert.equal(result.issues[0]?.issueNumber, 30);
+});
+
 test("runTriage dry-run previews configured skill without mutating Forgejo", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([
