@@ -202,6 +202,57 @@ test("runTriage orders by issue number when created dates are missing or invalid
   assert.equal(result.issues[0]?.issueNumber, 10);
 });
 
+test("runTriage uses deterministic issue-number fallback for mixed created dates", async () => {
+  const mixedIssues = [
+    {
+      index: 30,
+      title: "Valid oldest date",
+      body: "Has a valid older date but a higher issue number",
+      state: "open",
+      labels: [{ name: "bug" }],
+      created: "2026-06-01T00:00:00Z",
+    },
+    {
+      index: 10,
+      title: "Valid newest date",
+      body: "Has a valid newer date and the lowest issue number",
+      state: "open",
+      labels: [{ name: "bug" }],
+      created: "2026-06-03T00:00:00Z",
+    },
+    {
+      index: 20,
+      title: "Invalid date",
+      body: "Has invalid creation data",
+      state: "open",
+      labels: [{ name: "bug" }],
+      created: "not-a-date",
+    },
+  ];
+
+  for (const issues of [mixedIssues, [...mixedIssues].reverse()]) {
+    const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+    const runner = createStaticCommandRunner([
+      { code: 0, stdout: JSON.stringify(issues), stderr: "" },
+      { code: 0, stdout: JSON.stringify([]), stderr: "" },
+      noCommentsOutput,
+      { code: 0, stdout: agentReadyPreviewJson(10), stderr: "" },
+    ]);
+
+    const result = await runTriage(runner, {
+      repoRoot: "/repo",
+      dryRun: true,
+      execute: false,
+      limit: 1,
+      logDir,
+      host: DEFAULT_PATCHMILL_CONFIG.host,
+    });
+
+    assert.equal(result.status, "dry-run");
+    assert.equal(result.issues[0]?.issueNumber, 10);
+  }
+});
+
 test("runTriage dry-run previews configured skill without mutating Forgejo", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([

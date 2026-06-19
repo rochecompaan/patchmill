@@ -21,24 +21,29 @@ function createdMillis(issue: IssueSummary): number | undefined {
   return Number.isFinite(millis) ? millis : undefined;
 }
 
-function compareTriageIssueOrder(
+function compareIssuesByNumber(
   left: IssueSummary,
   right: IssueSummary,
 ): number {
-  const leftCreated = createdMillis(left);
-  const rightCreated = createdMillis(right);
-  if (
-    leftCreated !== undefined &&
-    rightCreated !== undefined &&
-    leftCreated !== rightCreated
-  ) {
-    return leftCreated - rightCreated;
-  }
   return left.number - right.number;
 }
 
+function compareIssuesByCreated(
+  left: IssueSummary,
+  right: IssueSummary,
+): number {
+  return (
+    createdMillis(left)! - createdMillis(right)! ||
+    compareIssuesByNumber(left, right)
+  );
+}
+
 function orderTriageIssues(issues: IssueSummary[]): IssueSummary[] {
-  return [...issues].sort(compareTriageIssueOrder);
+  const ordered = [...issues];
+  if (ordered.every((issue) => createdMillis(issue) !== undefined)) {
+    return ordered.sort(compareIssuesByCreated);
+  }
+  return ordered.sort(compareIssuesByNumber);
 }
 
 function selectIssues(
