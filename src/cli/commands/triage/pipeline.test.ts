@@ -107,6 +107,101 @@ test("runTriage applies limit after oldest-first default selection", async () =>
   assert.equal(result.issues[0]?.issueNumber, 30);
 });
 
+test("runTriage --all applies limit after oldest-first ordering", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const runner = createStaticCommandRunner([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          index: 20,
+          title: "Newest normal",
+          body: "Newer work",
+          state: "open",
+          labels: [{ name: "bug" }],
+          created: "2026-06-03T00:00:00Z",
+        },
+        {
+          index: 30,
+          title: "Oldest excluded",
+          body: "Older protected work",
+          state: "open",
+          labels: [{ name: "agent-ready" }],
+          created: "2026-06-01T00:00:00Z",
+        },
+        {
+          index: 10,
+          title: "Middle normal",
+          body: "Middle work",
+          state: "open",
+          labels: [{ name: "bug" }],
+          created: "2026-06-02T00:00:00Z",
+        },
+      ]),
+      stderr: "",
+    },
+    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    noCommentsOutput,
+    { code: 0, stdout: agentReadyPreviewJson(30), stderr: "" },
+  ]);
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    all: true,
+    limit: 1,
+    logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issueCount, 1);
+  assert.equal(result.issues[0]?.issueNumber, 30);
+});
+
+test("runTriage orders by issue number when created dates are missing or invalid", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
+  const runner = createStaticCommandRunner([
+    {
+      code: 0,
+      stdout: JSON.stringify([
+        {
+          index: 30,
+          title: "Invalid date",
+          body: "Bad date",
+          state: "open",
+          labels: [{ name: "bug" }],
+          created: "not-a-date",
+        },
+        {
+          index: 10,
+          title: "Missing date",
+          body: "No date",
+          state: "open",
+          labels: [{ name: "bug" }],
+        },
+      ]),
+      stderr: "",
+    },
+    { code: 0, stdout: JSON.stringify([]), stderr: "" },
+    noCommentsOutput,
+    { code: 0, stdout: agentReadyPreviewJson(10), stderr: "" },
+  ]);
+
+  const result = await runTriage(runner, {
+    repoRoot: "/repo",
+    dryRun: true,
+    execute: false,
+    limit: 1,
+    logDir,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+  });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issues[0]?.issueNumber, 10);
+});
+
 test("runTriage dry-run previews configured skill without mutating Forgejo", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "triage-pipeline-"));
   const runner = createStaticCommandRunner([
