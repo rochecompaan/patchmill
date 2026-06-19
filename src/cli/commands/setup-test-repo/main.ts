@@ -50,6 +50,32 @@ export type SetupTestRepoDependencies = {
   }) => RepositorySetupHostProvider;
 };
 
+type SetupSeedProgressEvent =
+  | { type: "push-seed-commit" }
+  | { type: "ensure-labels" }
+  | { type: "seed-issues-start"; total: number }
+  | { type: "seed-issue"; completed: number; total: number; title: string };
+
+function formatSetupSeedProgress(event: SetupSeedProgressEvent): string {
+  switch (event.type) {
+    case "push-seed-commit":
+      return "Pushing seed commit";
+    case "ensure-labels":
+      return "Ensuring labels";
+    case "seed-issues-start":
+      return `Seeding issues (${event.total})`;
+    case "seed-issue":
+      return `  [${event.completed}/${event.total}] ${event.title}`;
+  }
+}
+
+function emitSetupSeedProgress(
+  output: SetupTestRepoOutput,
+  event: SetupSeedProgressEvent,
+): void {
+  output.stdout(formatSetupSeedProgress(event));
+}
+
 const DEFAULT_OUTPUT: SetupTestRepoOutput = {
   stdout: (line) => console.log(line),
   stderr: (line) => console.error(line),
@@ -247,15 +273,29 @@ export async function runSetupTestRepo(
           },
         });
 
+        emitSetupSeedProgress(output, { type: "push-seed-commit" });
         await pushSeedCommit({
           runner,
           repoRoot,
           remoteUrl: repository.gitRemoteUrl,
         });
 
+        emitSetupSeedProgress(output, { type: "ensure-labels" });
         await createMissingLabels(provider, config.target);
-        for (const issue of issues)
+
+        emitSetupSeedProgress(output, {
+          type: "seed-issues-start",
+          total: issues.length,
+        });
+        for (const [index, issue] of issues.entries()) {
+          emitSetupSeedProgress(output, {
+            type: "seed-issue",
+            completed: index + 1,
+            total: issues.length,
+            title: issue.title,
+          });
           await provider.createIssue(config.target, issue);
+        }
 
         output.stdout(`Seeded ${repository.publicUrl}`);
       } catch (error) {

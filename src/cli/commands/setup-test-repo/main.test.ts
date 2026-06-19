@@ -76,9 +76,11 @@ function createProvider(
       return `gh repo clone ${target.slug}`;
     },
     async createLabel(target: RepositoryTarget, label: LabelDefinition) {
+      events?.push(`createLabel:${label.name}`);
       labels.push({ target, label });
     },
     async createIssue(target: RepositoryTarget, issue: HostIssueCreateInput) {
+      events?.push(`createIssue:${issue.title}`);
       if (options.failCreateIssue) throw new Error("issue create failed");
       issues.push({ target, issue });
     },
@@ -180,6 +182,24 @@ test("runSetupTestRepo creates a new repo, pushes fixtures, labels, and issues",
   );
   assert.match(stdout.join("\n"), /gh repo clone OWNER\/patchmill-test/u);
   assert.match(stdout.join("\n"), /patchmill init/u);
+  assert.deepEqual(stdout.slice(0, 16), [
+    "Pushing seed commit",
+    "Ensuring labels",
+    "Seeding issues (12)",
+    "  [1/12] Create the Team Lunch Poll app scaffold",
+    "  [2/12] Define the poll, option, and vote data model",
+    "  [3/12] Build the create-poll form",
+    "  [4/12] Add the option voting flow",
+    "  [5/12] Show live results and winner state",
+    "  [6/12] Persist polls locally",
+    "  [7/12] Add validation, empty states, and error states",
+    "  [8/12] Improve responsive visual polish",
+    "  [9/12] Add automated tests for core poll flows",
+    "  [10/12] Document setup and usage",
+    "  [11/12] Make lunch polls more social",
+    "  [12/12] Votes sometimes disappear when I refresh",
+    "Seeded https://example.test/OWNER/patchmill-test",
+  ]);
 
   await rm(tempParent, { recursive: true, force: true });
 });
@@ -262,6 +282,17 @@ test("runSetupTestRepo deletes and recreates when reset is supplied", async () =
     stdout.join("\n"),
     /Creating public repository OWNER\/patchmill-test/u,
   );
+  const resetOutput = stdout.join("\n");
+  assert.ok(
+    resetOutput.indexOf("Creating public repository OWNER/patchmill-test") <
+      resetOutput.indexOf("Pushing seed commit"),
+    resetOutput,
+  );
+  assert.ok(
+    resetOutput.indexOf("Pushing seed commit") <
+      resetOutput.indexOf("Seeded https://example.test/OWNER/patchmill-test"),
+    resetOutput,
+  );
 });
 
 test("runSetupTestRepo prepares and commits local fixtures before mutating the host", async () => {
@@ -289,6 +320,43 @@ test("runSetupTestRepo prepares and commits local fixtures before mutating the h
   await rm(tempParent, { recursive: true, force: true });
 });
 
+test("runSetupTestRepo prints per-issue progress before creating each issue", async () => {
+  const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
+  const events: string[] = [];
+  const { provider } = createProvider({ exists: false, events });
+
+  const code = await runSetupTestRepo(
+    ["--provider", "github-gh", "--repo", "OWNER/patchmill-test"],
+    {
+      runner: createEventedGitRunner(events),
+      tempParent,
+      output: {
+        stdout: (line) => events.push(`stdout:${line}`),
+        stderr: () => undefined,
+      },
+      createProvider: () => provider,
+    },
+  );
+
+  assert.equal(code, 0);
+  assert.ok(
+    events.indexOf("stdout:Pushing seed commit") < events.indexOf("git:push"),
+    events.join("\n"),
+  );
+  assert.ok(
+    events.indexOf("stdout:Ensuring labels") <
+      events.indexOf("createLabel:feature"),
+    events.join("\n"),
+  );
+  assert.ok(
+    events.indexOf("stdout:  [1/12] Create the Team Lunch Poll app scaffold") <
+      events.indexOf("createIssue:Create the Team Lunch Poll app scaffold"),
+    events.join("\n"),
+  );
+
+  await rm(tempParent, { recursive: true, force: true });
+});
+
 test("runSetupTestRepo rolls back the created repository when seeding fails", async () => {
   const tempParent = await mkdtemp(join(tmpdir(), "patchmill-setup-test-"));
   const { provider, calls } = createProvider({
@@ -296,6 +364,7 @@ test("runSetupTestRepo rolls back the created repository when seeding fails", as
     failCreateIssue: true,
   });
   const { runner } = createGitRunner();
+  const stdout: string[] = [];
   const stderr: string[] = [];
 
   const code = await runSetupTestRepo(
@@ -303,12 +372,22 @@ test("runSetupTestRepo rolls back the created repository when seeding fails", as
     {
       runner,
       tempParent,
-      output: { stdout: () => undefined, stderr: (line) => stderr.push(line) },
+      output: {
+        stdout: (line) => stdout.push(line),
+        stderr: (line) => stderr.push(line),
+      },
       createProvider: () => provider,
     },
   );
 
   assert.equal(code, 1);
+  assert.match(stdout.join("\n"), /Pushing seed commit/u);
+  assert.match(stdout.join("\n"), /Ensuring labels/u);
+  assert.match(stdout.join("\n"), /Seeding issues \(12\)/u);
+  assert.match(
+    stdout.join("\n"),
+    /\[1\/12\] Create the Team Lunch Poll app scaffold/u,
+  );
   assert.ok(calls.includes("deleteRepo:OWNER/patchmill-test"));
   assert.match(stderr.join("\n"), /issue create failed/u);
   assert.match(stderr.join("\n"), /Rolled back OWNER\/patchmill-test/u);
