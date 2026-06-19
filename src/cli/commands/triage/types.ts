@@ -77,6 +77,7 @@ export type IssueSummary = {
   state: string;
   url?: string;
   author?: string;
+  created?: string;
   updated?: string;
   comments?: IssueCommentSummary[];
 };

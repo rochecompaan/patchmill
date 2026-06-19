@@ -16,7 +16,7 @@ import type {
 } from "./types.ts";
 
 const ISSUE_LIST_JSON_FIELDS =
-  "number,title,body,state,labels,author,updatedAt,url";
+  "number,title,body,state,labels,author,createdAt,updatedAt,url";
 const ISSUE_VIEW_JSON_FIELDS = `${ISSUE_LIST_JSON_FIELDS},comments`;
 const REPOSITORY_VIEW_JSON_FIELDS = "name,url,sshUrl";
 
@@ -137,6 +137,7 @@ function parseIssuePayload(payload: unknown, context: string): IssueSummary {
 
   const author = authorName(issue.author);
   if (author !== undefined) parsed.author = author;
+  if (typeof issue.createdAt === "string") parsed.created = issue.createdAt;
   if (typeof issue.updatedAt === "string") parsed.updated = issue.updatedAt;
   const comments = issueComments(issue.comments);
   if (comments !== undefined) parsed.comments = comments;
@@ -248,6 +249,8 @@ export class GitHubGhHostProvider
       "list",
       "--state",
       "open",
+      "--search",
+      "sort:created-asc",
       "--limit",
       "1000",
       "--json",
