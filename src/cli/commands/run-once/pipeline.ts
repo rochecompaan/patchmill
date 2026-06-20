@@ -767,26 +767,6 @@ export async function runOneIssue(
   const resumed = selected?.resumed ?? false;
   const ordinaryResumableState =
     resumed && !!existingState && isResumableRunState(existingState);
-  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
-  const blockedRecoveryReport =
-    existingState?.status === "blocked" &&
-    (existingState.branch || existingState.worktreePath)
-      ? await inspectBlockedRunRecovery({
-          runner,
-          repoRoot: config.repoRoot,
-          runStatePath: runStatePath(config.runStateDir, issue.number),
-          state: existingState,
-          baseRef: config.baseRef,
-          ignoredPaths,
-        })
-      : undefined;
-  const blockedRecoveryResumable =
-    blockedRecoveryReport?.kind === "recoverable-clean";
-  const resumableState = ordinaryResumableState || blockedRecoveryResumable;
-  const resetStaleCheckpoints = !!existingState && !resumableState;
-  const checkpoints = {
-    ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
-  };
 
   await progress(
     options,
@@ -810,6 +790,27 @@ export async function runOneIssue(
       options,
     );
   }
+
+  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
+  const blockedRecoveryReport =
+    existingState?.status === "blocked" &&
+    (existingState.branch || existingState.worktreePath)
+      ? await inspectBlockedRunRecovery({
+          runner,
+          repoRoot: config.repoRoot,
+          runStatePath: runStatePath(config.runStateDir, issue.number),
+          state: existingState,
+          baseRef: config.baseRef,
+          ignoredPaths,
+        })
+      : undefined;
+  const blockedRecoveryResumable =
+    blockedRecoveryReport?.kind === "recoverable-clean";
+  const resumableState = ordinaryResumableState || blockedRecoveryResumable;
+  const resetStaleCheckpoints = !!existingState && !resumableState;
+  const checkpoints = {
+    ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
+  };
 
   if (blockedRecoveryReport && !blockedRecoveryResumable) {
     throw new AgentIssueSafetyError(

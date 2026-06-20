@@ -636,6 +636,42 @@ test("runOneIssue dry-run lists open issues and returns the selected agent-ready
   );
 });
 
+test("runOneIssue dry-run for blocked saved workspace skips recovery inspection", async () => {
+  const config = await makeConfig({ issueNumber: 45 });
+  await writeBlockedRecoveryRunState(config);
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list" &&
+      call.args[call.args.indexOf("--state") + 1] === "all" &&
+      call.args[call.args.indexOf("--keyword") + 1] === "45"
+    ) {
+      return {
+        code: 0,
+        stdout: issueListPayload([
+          issue(45, ["agent-ready"], "Recover blocked run"),
+        ]),
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issue.number, 45);
+  assert.equal(result.transition, "agent-ready -> agent-done");
+  assert.equal(
+    runner.calls.some((call) => call.command === "git"),
+    false,
+  );
+});
+
 test("runOneIssue automatic selection includes agent-ready when spec approval is required", async () => {
   const config = await makeConfig({
     approvalPolicy: approvalPolicy({ specRequired: true }),
