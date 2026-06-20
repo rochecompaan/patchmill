@@ -37,8 +37,13 @@ import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 import {
   isResumableRunState,
   readRunState,
+  runStatePath,
   writeRunState,
 } from "./run-state.ts";
+import {
+  formatBlockedRunRecoveryReport,
+  inspectBlockedRunRecovery,
+} from "./recovery.ts";
 import { selectIssue } from "./selection.ts";
 import {
   defaultVisualEvidenceUploader,
@@ -203,6 +208,15 @@ function workflowTransition(
   }
 
   return `${state.kind} -> no-issue`;
+}
+
+function hasBlockedSavedWorkspaceState(
+  state: Awaited<ReturnType<typeof readRunState>>,
+): boolean {
+  return (
+    state?.status === "blocked" &&
+    (state.branch !== undefined || state.worktreePath !== undefined)
+  );
 }
 
 function lifecycleLabels(
@@ -442,7 +456,11 @@ async function selectResumableIssue(
     for (const issue of issues) {
       if (!issue.labels.includes(inProgress)) continue;
       const state = await readRunState(config.runStateDir, issue.number);
-      if (state && isResumableRunState(state)) resumable.push(issue);
+      if (
+        state &&
+        (isResumableRunState(state) || hasBlockedSavedWorkspaceState(state))
+      )
+        resumable.push(issue);
     }
   }
 
@@ -458,6 +476,18 @@ async function selectResumableIssue(
     );
     if (resumableSelected) {
       return { issue: resumableSelected, resumed: true };
+    }
+    if (shouldResume) {
+      const explicitIssue = issues.find(
+        (candidate) =>
+          candidate.number === config.issueNumber && candidate.state === "open",
+      );
+      const explicitState = explicitIssue
+        ? await readRunState(config.runStateDir, explicitIssue.number)
+        : undefined;
+      if (explicitIssue && hasBlockedSavedWorkspaceState(explicitState)) {
+        return { issue: explicitIssue, resumed: true };
+      }
     }
     const selected = selectIssue(issues, {
       issueNumber: config.issueNumber,
@@ -731,8 +761,22 @@ export async function runOneIssue(
   const existingState = await readRunState(config.runStateDir, issue.number);
   const piAgentDir = localPiAgentDir(config.repoRoot);
   const resumed = selected?.resumed ?? false;
-  const resumableState =
+  const ordinaryResumableState =
     resumed && !!existingState && isResumableRunState(existingState);
+  const blockedRecoveryReport =
+    existingState?.status === "blocked" &&
+    (existingState.branch || existingState.worktreePath)
+      ? await inspectBlockedRunRecovery({
+          runner,
+          repoRoot: config.repoRoot,
+          runStatePath: runStatePath(config.runStateDir, issue.number),
+          state: existingState,
+          baseRef: config.baseRef,
+        })
+      : undefined;
+  const blockedRecoveryResumable =
+    blockedRecoveryReport?.kind === "recoverable-clean";
+  const resumableState = ordinaryResumableState || blockedRecoveryResumable;
   const resetStaleCheckpoints = !!existingState && !resumableState;
   const checkpoints = {
     ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
@@ -758,6 +802,12 @@ export async function runOneIssue(
         transition: workflowTransition(state, config),
       },
       options,
+    );
+  }
+
+  if (blockedRecoveryReport && !blockedRecoveryResumable) {
+    throw new AgentIssueSafetyError(
+      formatBlockedRunRecoveryReport(blockedRecoveryReport),
     );
   }
 
