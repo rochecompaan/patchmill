@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { blockingStatusOutput } from "./git.ts";
 import type {
   AgentIssueRunState,
   CommandResult,
@@ -104,6 +105,7 @@ async function worktreeStatus(input: {
   runner: CommandRunner;
   repoRoot: string;
   worktreePath: string;
+  ignoredPaths: string[];
 }): Promise<{ clean: boolean; dirtyStatus?: string }> {
   const result = await input.runner.run(
     "git",
@@ -118,7 +120,11 @@ async function worktreeStatus(input: {
   );
   if (result.code !== 0)
     throw commandFailure(`git status failed for ${input.worktreePath}`, result);
-  const dirtyStatus = result.stdout.trim();
+  const dirtyStatus = blockingStatusOutput(
+    result.stdout,
+    resolve(input.repoRoot, input.worktreePath),
+    input.ignoredPaths,
+  ).trim();
   return dirtyStatus === "" ? { clean: true } : { clean: false, dirtyStatus };
 }
 
@@ -249,6 +255,7 @@ export async function inspectBlockedRunRecovery(input: {
   runStatePath: string;
   state: AgentIssueRunState;
   baseRef: string;
+  ignoredPaths?: string[];
 }): Promise<BlockedRunRecoveryReport> {
   const baseReport = {
     runStatePath: input.runStatePath,
@@ -302,6 +309,7 @@ export async function inspectBlockedRunRecovery(input: {
         runner: input.runner,
         repoRoot: input.repoRoot,
         worktreePath: input.state.worktreePath,
+        ignoredPaths: input.ignoredPaths ?? [],
       }),
     );
   }

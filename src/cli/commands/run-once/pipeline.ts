@@ -767,6 +767,7 @@ export async function runOneIssue(
   const resumed = selected?.resumed ?? false;
   const ordinaryResumableState =
     resumed && !!existingState && isResumableRunState(existingState);
+  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
   const blockedRecoveryReport =
     existingState?.status === "blocked" &&
     (existingState.branch || existingState.worktreePath)
@@ -776,6 +777,7 @@ export async function runOneIssue(
           runStatePath: runStatePath(config.runStateDir, issue.number),
           state: existingState,
           baseRef: config.baseRef,
+          ignoredPaths,
         })
       : undefined;
   const blockedRecoveryResumable =
@@ -929,7 +931,6 @@ export async function runOneIssue(
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
-  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
   await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
   const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
   let labels = resumed

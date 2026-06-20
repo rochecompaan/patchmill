@@ -98,7 +98,7 @@ function cleanRunner(
 
 async function inspect(
   overrides?: Parameters<typeof cleanRunner>[0],
-  options?: { worktreeExists?: boolean },
+  options?: { worktreeExists?: boolean; ignoredPaths?: string[] },
 ) {
   return inspectBlockedRunRecovery({
     runner: cleanRunner(overrides),
@@ -106,6 +106,7 @@ async function inspect(
     runStatePath: ".patchmill/runs/issue-45.json",
     state: baseState,
     baseRef: "main",
+    ignoredPaths: options?.ignoredPaths,
   });
 }
 
@@ -127,6 +128,28 @@ test("inspectBlockedRunRecovery classifies dirty saved worktree", async () => {
   assert.equal(report.kind, "dirty-worktree");
   assert.equal(report.worktree.clean, false);
   assert.match(report.worktree.dirtyStatus ?? "", /src\/index\.ts/);
+});
+
+test("inspectBlockedRunRecovery ignores configured clean-status paths in saved worktree", async () => {
+  const report = await inspect(
+    { dirtyStatus: "?? .patchmill/runs/issue-45.json\n" },
+    { ignoredPaths: [".patchmill/runs/"] },
+  );
+
+  assert.equal(report.kind, "recoverable-clean");
+  assert.equal(report.worktree.clean, true);
+  assert.equal(report.worktree.dirtyStatus, undefined);
+});
+
+test("inspectBlockedRunRecovery still blocks non-ignored dirty status with ignored paths configured", async () => {
+  const report = await inspect(
+    { dirtyStatus: "?? .patchmill/runs/issue-45.json\n M src/index.ts\n" },
+    { ignoredPaths: [".patchmill/runs/"] },
+  );
+
+  assert.equal(report.kind, "dirty-worktree");
+  assert.equal(report.worktree.clean, false);
+  assert.equal(report.worktree.dirtyStatus, "M src/index.ts");
 });
 
 test("inspectBlockedRunRecovery classifies already merged branch", async () => {

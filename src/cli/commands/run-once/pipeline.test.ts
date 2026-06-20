@@ -3254,6 +3254,26 @@ test("runOneIssue resumes clean blocked implementation workspace after external 
   assert.deepEqual(state.failureCommentKeys, ["blocked:verification"]);
 });
 
+test("runOneIssue treats configured ignored dirty paths as clean blocked recovery", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config);
+  const runner = blockedRecoveryRunner(config, {
+    dirtyStatus: "?? .patchmill/runs/issue-45.json\n",
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    true,
+  );
+});
+
 test("runOneIssue reports dirty blocked recovery before mutations", async () => {
   const config = await makeConfig({
     dryRun: false,
