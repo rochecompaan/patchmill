@@ -169,6 +169,12 @@ test("inspectBlockedRunRecovery classifies registered but missing worktree path 
   assert.equal(report.branch.exists, true);
   assert.equal(report.worktree.exists, false);
   assert.equal(report.worktree.registered, true);
+  assert.match(report.recommendedActions[0] ?? "", /still registered with Git/);
+  assert.match(
+    report.recommendedActions[1] ?? "",
+    /prune or remove the stale worktree registration/,
+  );
+  assert.doesNotMatch(report.recommendedActions[0] ?? "", /git worktree add/);
   assert.equal(
     runner.calls.some(
       (call) => call.args[0] === "-C" && call.args[2] === "status",
@@ -331,6 +337,27 @@ test("formatBlockedRunRecoveryReport includes missing worktree recovery guidance
 
   assert.match(message, /path missing, not registered/);
   assert.match(message, /git worktree add/);
+});
+
+test("formatBlockedRunRecoveryReport distinguishes registered missing worktree guidance", () => {
+  const missing = report("missing-worktree-existing-branch");
+  missing.worktree.exists = false;
+  missing.worktree.registered = true;
+  delete missing.worktree.clean;
+  missing.recommendedActions = [
+    "The saved worktree path .worktrees/patchmill-issue-45-recover-blocked-run is still registered with Git but the path is missing; repair or restore the missing path if local files need preservation.",
+    "If no local files need preservation at that path, prune or remove the stale worktree registration, then reattach the saved branch.",
+    "After repair, retry with: patchmill run-once --issue 45",
+  ];
+  const message = formatBlockedRunRecoveryReport(missing);
+
+  assert.match(message, /path missing, registered/);
+  assert.match(message, /still registered with Git but the path is missing/);
+  assert.match(message, /prune or remove the stale worktree registration/);
+  assert.doesNotMatch(
+    message.split("Recommended actions:")[1]?.split("\n")[1] ?? "",
+    /git worktree add/,
+  );
 });
 
 test("formatBlockedRunRecoveryReport includes missing branch and worktree recovery guidance", () => {

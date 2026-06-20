@@ -216,16 +216,24 @@ function recommendations(
         `After recovery, retry with: patchmill run-once --issue ${report.issueNumber}`,
       ];
     case "missing-worktree-existing-branch":
-      return report.worktree.exists
-        ? [
-            `The saved path ${report.worktree.path ?? "<savedPath>"} exists but is not registered as a git worktree; inspect and move or archive it before reattaching the branch.`,
-            `After preserving that path, reattach with: git worktree add ${report.worktree.path ?? "<savedPath>"} ${report.branch.name ?? "<branch>"}`,
-            `Then retry with: patchmill run-once --issue ${report.issueNumber}`,
-          ]
-        : [
-            `Reattach the saved branch with: git worktree add ${report.worktree.path ?? "<savedPath>"} ${report.branch.name ?? "<branch>"}`,
-            `Then retry with: patchmill run-once --issue ${report.issueNumber}`,
-          ];
+      if (report.worktree.exists) {
+        return [
+          `The saved path ${report.worktree.path ?? "<savedPath>"} exists but is not registered as a git worktree; inspect and move or archive it before reattaching the branch.`,
+          `After preserving that path, reattach with: git worktree add ${report.worktree.path ?? "<savedPath>"} ${report.branch.name ?? "<branch>"}`,
+          `Then retry with: patchmill run-once --issue ${report.issueNumber}`,
+        ];
+      }
+      if (report.worktree.registered) {
+        return [
+          `The saved worktree path ${report.worktree.path ?? "<savedPath>"} is still registered with Git but the path is missing; repair or restore the missing path if local files need preservation.`,
+          "If no local files need preservation at that path, prune or remove the stale worktree registration, then reattach the saved branch.",
+          `After repair, retry with: patchmill run-once --issue ${report.issueNumber}`,
+        ];
+      }
+      return [
+        `Reattach the saved branch with: git worktree add ${report.worktree.path ?? "<savedPath>"} ${report.branch.name ?? "<branch>"}`,
+        `Then retry with: patchmill run-once --issue ${report.issueNumber}`,
+      ];
     case "missing-branch-or-worktree":
       return [
         "Archive or remove stale run state only after confirming no saved branch or worktree needs preservation.",
