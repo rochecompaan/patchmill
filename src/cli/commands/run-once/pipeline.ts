@@ -482,6 +482,14 @@ async function selectResumableIssue(
         ? await readRunState(config.runStateDir, explicitIssue.number)
         : undefined;
       if (explicitIssue && hasBlockedSavedWorkspaceState(explicitState)) {
+        if (
+          resumable.length === 1 &&
+          resumable[0]?.number !== explicitIssue.number
+        ) {
+          throw new Error(
+            `Resumable ${inProgress} automation run #${resumable[0]?.number} exists; resume it before processing #${explicitIssue.number}`,
+          );
+        }
         return { issue: explicitIssue, resumed: true };
       }
     }
@@ -1595,6 +1603,7 @@ export async function runOneIssue(
         planCommit,
         branch,
         worktreePath,
+        clearLastError: true,
       },
       timestamp,
     );

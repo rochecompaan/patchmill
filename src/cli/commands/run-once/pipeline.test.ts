@@ -1231,6 +1231,81 @@ test("runOneIssue rejects a different explicit issue when a resumable run exists
   );
 });
 
+test("runOneIssue rejects a different explicit blocked recovery issue when a resumable run exists", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Blocked saved workspace",
+      status: "blocked",
+      branch: "agent/issue-45-blocked-saved-workspace",
+      worktreePath: ".worktrees/patchmill-issue-45-blocked-saved-workspace",
+    },
+    NOW.toISOString(),
+  );
+  await writeRunState(
+    config.runStateDir,
+    { issueNumber: 46, title: "Resume first", status: "planning" },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "45"
+    ) {
+      return {
+        code: 0,
+        stdout: issueViewPayload(
+          issue(45, ["in-progress", "bug"], "Blocked saved workspace"),
+        ),
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Blocked saved workspace"),
+                issue(46, ["in-progress", "bug"], "Resume first"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Resumable in-progress automation run #46 exists; resume it before processing #45/,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        (call.args[0] === "show-ref" || call.args[0] === "worktree"),
+    ),
+    false,
+  );
+});
+
 test("runOneIssue allows an explicit resumable issue", async () => {
   const config = await makeConfig({
     dryRun: false,
@@ -3175,6 +3250,7 @@ test("runOneIssue resumes clean blocked implementation workspace after external 
   );
   assert.equal(state.specCommit, "spec123");
   assert.equal(state.planCommit, "plan123");
+  assert.equal(state.lastError, undefined);
   assert.deepEqual(state.failureCommentKeys, ["blocked:verification"]);
 });
 
