@@ -1050,6 +1050,87 @@ test("runOneIssue rejects multiple resumable in-progress issues", async () => {
   );
 });
 
+test("runOneIssue does not count blocked saved workspace as resumable before recovery inspection", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Blocked saved workspace",
+      status: "blocked",
+      branch: "agent/issue-45-blocked-saved-workspace",
+      worktreePath: ".worktrees/patchmill-issue-45-blocked-saved-workspace",
+    },
+    NOW.toISOString(),
+  );
+  const planPath = "docs/plans/2026-05-14-issue-46-resumable-plan.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 46,
+      title: "Resumable plan",
+      status: "planning",
+      planPath,
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress"], "Blocked saved workspace"),
+                issue(46, ["in-progress"], "Resumable plan"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-found");
+  assert.equal(result.issue.number, 46);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        (call.args[0] === "show-ref" || call.args[0] === "worktree"),
+    ),
+    false,
+  );
+});
+
 test("runOneIssue rejects an explicit open issue that is not agent-ready with a clear message", async () => {
   const config = await makeConfig({
     dryRun: false,

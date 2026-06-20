@@ -456,11 +456,7 @@ async function selectResumableIssue(
     for (const issue of issues) {
       if (!issue.labels.includes(inProgress)) continue;
       const state = await readRunState(config.runStateDir, issue.number);
-      if (
-        state &&
-        (isResumableRunState(state) || hasBlockedSavedWorkspaceState(state))
-      )
-        resumable.push(issue);
+      if (state && isResumableRunState(state)) resumable.push(issue);
     }
   }
 
