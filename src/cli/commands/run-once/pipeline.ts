@@ -1556,7 +1556,7 @@ export async function runOneIssue(
         readyLabel: ready,
         policy: config.approvalPolicy,
       }),
-      [inProgress],
+      [inProgress, needsInfo],
       [done],
     );
     if (!checkpoints.doneLabelApplied) {

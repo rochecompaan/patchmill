@@ -2848,11 +2848,22 @@ async function writeBlockedRecoveryRunState(
     issueNumber: 45,
     status: "blocked",
   },
+  options: { createWorktreePath?: boolean } = {},
 ): Promise<void> {
   const planPath =
     overrides.planPath ??
     "docs/plans/2026-06-20-issue-45-recover-blocked-run.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  if (options.createWorktreePath !== false) {
+    await mkdir(
+      join(
+        config.repoRoot,
+        overrides.worktreePath ??
+          ".worktrees/patchmill-issue-45-recover-blocked-run",
+      ),
+      { recursive: true },
+    );
+  }
   await writeRunState(
     config.runStateDir,
     {
@@ -3049,6 +3060,25 @@ test("runOneIssue resumes clean blocked implementation workspace after external 
     ),
     false,
   );
+  const finalLabelCall = runner.calls.find(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit" &&
+      call.args.includes("--add-labels") &&
+      call.args.includes("agent-done"),
+  );
+  assert.ok(finalLabelCall, "expected final done label update");
+  assert.equal(
+    finalLabelCall.args.includes("--remove-labels"),
+    true,
+    "expected final label update to remove stale labels",
+  );
+  assert.match(
+    finalLabelCall.args[finalLabelCall.args.indexOf("--remove-labels") + 1] ??
+      "",
+    /needs-info/,
+  );
   const state = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
@@ -3143,7 +3173,9 @@ test("runOneIssue reports missing worktree with existing branch blocked recovery
     execute: true,
     issueNumber: 45,
   });
-  await writeBlockedRecoveryRunState(config);
+  await writeBlockedRecoveryRunState(config, undefined, {
+    createWorktreePath: false,
+  });
   const runner = blockedRecoveryRunner(config, { worktreeRegistered: false });
 
   await assert.rejects(
@@ -3162,7 +3194,9 @@ test("runOneIssue reports missing branch and worktree blocked recovery before mu
     execute: true,
     issueNumber: 45,
   });
-  await writeBlockedRecoveryRunState(config);
+  await writeBlockedRecoveryRunState(config, undefined, {
+    createWorktreePath: false,
+  });
   const runner = blockedRecoveryRunner(config, {
     branchExists: false,
     worktreeRegistered: false,

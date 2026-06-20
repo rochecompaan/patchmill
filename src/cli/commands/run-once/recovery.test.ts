@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   formatBlockedRunRecoveryReport,
   inspectBlockedRunRecovery,
@@ -35,6 +38,14 @@ const baseState = {
   updatedAt: "2026-06-20T08:10:00.000Z",
 };
 
+async function tempRepo(options: { worktreeExists?: boolean } = {}) {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-recovery-"));
+  if (options.worktreeExists !== false) {
+    await mkdir(join(repoRoot, baseState.worktreePath), { recursive: true });
+  }
+  return repoRoot;
+}
+
 function cleanRunner(
   overrides: Partial<{
     branchExists: boolean;
@@ -59,7 +70,7 @@ function cleanRunner(
         stdout:
           overrides.worktreeRegistered === false
             ? ""
-            : "worktree /repo/.worktrees/patchmill-issue-45-recover-blocked-run\nbranch refs/heads/agent/issue-45-recover-blocked-run\n",
+            : `worktree ${join(call.cwd ?? "/repo", baseState.worktreePath)}\nbranch refs/heads/agent/issue-45-recover-blocked-run\n`,
         stderr: "",
       };
     }
@@ -85,10 +96,13 @@ function cleanRunner(
   });
 }
 
-async function inspect(overrides?: Parameters<typeof cleanRunner>[0]) {
+async function inspect(
+  overrides?: Parameters<typeof cleanRunner>[0],
+  options?: { worktreeExists?: boolean },
+) {
   return inspectBlockedRunRecovery({
     runner: cleanRunner(overrides),
-    repoRoot: "/repo",
+    repoRoot: await tempRepo(options),
     runStatePath: ".patchmill/runs/issue-45.json",
     state: baseState,
     baseRef: "main",
@@ -130,10 +144,14 @@ test("inspectBlockedRunRecovery classifies diverged branch", async () => {
 });
 
 test("inspectBlockedRunRecovery classifies missing worktree with existing branch", async () => {
-  const report = await inspect({ worktreeRegistered: false });
+  const report = await inspect(
+    { worktreeRegistered: false },
+    { worktreeExists: false },
+  );
 
   assert.equal(report.kind, "missing-worktree-existing-branch");
   assert.equal(report.branch.exists, true);
+  assert.equal(report.worktree.exists, false);
   assert.equal(report.worktree.registered, false);
 });
 
@@ -144,7 +162,7 @@ test("inspectBlockedRunRecovery classifies missing branch and worktree", async (
   });
   const report = await inspectBlockedRunRecovery({
     runner,
-    repoRoot: "/repo",
+    repoRoot: await tempRepo({ worktreeExists: false }),
     runStatePath: ".patchmill/runs/issue-45.json",
     state: baseState,
     baseRef: "main",
@@ -153,6 +171,26 @@ test("inspectBlockedRunRecovery classifies missing branch and worktree", async (
   assert.equal(report.kind, "missing-branch-or-worktree");
   assert.equal(report.branch.exists, false);
   assert.equal(report.worktree.registered, false);
+  assert.equal(report.worktree.exists, false);
+});
+
+test("inspectBlockedRunRecovery distinguishes unregistered existing saved path", async () => {
+  const report = await inspect({ worktreeRegistered: false });
+
+  assert.equal(report.kind, "missing-worktree-existing-branch");
+  assert.equal(report.worktree.exists, true);
+  assert.equal(report.worktree.registered, false);
+  assert.match(
+    report.recommendedActions[0] ?? "",
+    /exists but is not registered/,
+  );
+});
+
+test("inspectBlockedRunRecovery fails fast on unparseable divergence", async () => {
+  await assert.rejects(
+    () => inspect({ revList: "unexpected output\n" }),
+    /unparseable divergence/,
+  );
 });
 
 function report(
@@ -224,7 +262,7 @@ test("formatBlockedRunRecoveryReport includes clean recovery details", () => {
   );
   assert.match(
     message,
-    /Saved worktree: \.worktrees\/patchmill-issue-45-recover-blocked-run \(registered, clean\)/,
+    /Saved worktree: \.worktrees\/patchmill-issue-45-recover-blocked-run \(path exists, registered, clean\)/,
   );
   assert.match(message, /def456 add verification/);
   assert.match(message, /patchmill run-once --issue 45/);
@@ -269,7 +307,7 @@ test("formatBlockedRunRecoveryReport includes missing worktree recovery guidance
   delete missing.worktree.clean;
   const message = formatBlockedRunRecoveryReport(missing);
 
-  assert.match(message, /missing/);
+  assert.match(message, /path missing, not registered/);
   assert.match(message, /git worktree add/);
 });
 

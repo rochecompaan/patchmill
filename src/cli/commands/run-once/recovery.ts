@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
   AgentIssueRunState,
@@ -64,6 +65,27 @@ function worktreePaths(stdout: string): string[] {
     .map((line) => resolve(line.slice("worktree ".length).trim()));
 }
 
+async function physicalWorktreeExists(
+  repoRoot: string,
+  worktreePath: string | undefined,
+): Promise<boolean> {
+  if (!worktreePath) return false;
+  try {
+    await stat(resolve(repoRoot, worktreePath));
+    return true;
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function registeredWorktreeExists(
   runner: CommandRunner,
   repoRoot: string,
@@ -121,7 +143,7 @@ async function branchDivergence(input: {
   repoRoot: string;
   branch: string;
   baseRef: string;
-}): Promise<{ ahead: number; behind: number } | undefined> {
+}): Promise<{ ahead: number; behind: number }> {
   const result = await input.runner.run(
     "git",
     [
@@ -134,12 +156,21 @@ async function branchDivergence(input: {
   );
   if (result.code !== 0)
     throw commandFailure(`git rev-list failed for ${input.branch}`, result);
-  const [behindText, aheadText] = result.stdout.trim().split(/\s+/u);
-  const behind = Number.parseInt(behindText ?? "0", 10);
-  const ahead = Number.parseInt(aheadText ?? "0", 10);
-  return Number.isFinite(behind) && Number.isFinite(ahead)
-    ? { ahead, behind }
-    : undefined;
+  const fields = result.stdout.trim().split(/\s+/u);
+  if (fields.length !== 2) {
+    throw new Error(
+      `git rev-list returned unparseable divergence for ${input.branch}: ${result.stdout.trim() || "(empty output)"}`,
+    );
+  }
+  const [behindText, aheadText] = fields;
+  if (!/^\d+$/u.test(behindText) || !/^\d+$/u.test(aheadText)) {
+    throw new Error(
+      `git rev-list returned unparseable divergence for ${input.branch}: ${result.stdout.trim()}`,
+    );
+  }
+  const behind = Number.parseInt(behindText, 10);
+  const ahead = Number.parseInt(aheadText, 10);
+  return { ahead, behind };
 }
 
 async function unmergedCommitLines(input: {
@@ -185,10 +216,16 @@ function recommendations(
         `After recovery, retry with: patchmill run-once --issue ${report.issueNumber}`,
       ];
     case "missing-worktree-existing-branch":
-      return [
-        `Reattach the saved branch with: git worktree add ${report.worktree.path ?? "<savedPath>"} ${report.branch.name ?? "<branch>"}`,
-        `Then retry with: patchmill run-once --issue ${report.issueNumber}`,
-      ];
+      return report.worktree.exists
+        ? [
+            `The saved path ${report.worktree.path ?? "<savedPath>"} exists but is not registered as a git worktree; inspect and move or archive it before reattaching the branch.`,
+            `After preserving that path, reattach with: git worktree add ${report.worktree.path ?? "<savedPath>"} ${report.branch.name ?? "<branch>"}`,
+            `Then retry with: patchmill run-once --issue ${report.issueNumber}`,
+          ]
+        : [
+            `Reattach the saved branch with: git worktree add ${report.worktree.path ?? "<savedPath>"} ${report.branch.name ?? "<branch>"}`,
+            `Then retry with: patchmill run-once --issue ${report.issueNumber}`,
+          ];
     case "missing-branch-or-worktree":
       return [
         "Archive or remove stale run state only after confirming no saved branch or worktree needs preservation.",
@@ -237,12 +274,19 @@ export async function inspectBlockedRunRecovery(input: {
     input.repoRoot,
     input.state.branch,
   );
-  const registered = await registeredWorktreeExists(
-    input.runner,
-    input.repoRoot,
-    input.state.worktreePath,
-  );
-  const worktree = { ...baseReport.worktree, exists: registered, registered };
+  const [physicalExists, registered] = await Promise.all([
+    physicalWorktreeExists(input.repoRoot, input.state.worktreePath),
+    registeredWorktreeExists(
+      input.runner,
+      input.repoRoot,
+      input.state.worktreePath,
+    ),
+  ]);
+  const worktree = {
+    ...baseReport.worktree,
+    exists: physicalExists,
+    registered,
+  };
   if (registered && input.state.worktreePath) {
     Object.assign(
       worktree,
@@ -310,7 +354,8 @@ function branchStatus(report: BlockedRunRecoveryReport): string {
 }
 
 function worktreeStatusText(report: BlockedRunRecoveryReport): string {
-  const parts = [report.worktree.registered ? "registered" : "missing"];
+  const parts = [report.worktree.exists ? "path exists" : "path missing"];
+  parts.push(report.worktree.registered ? "registered" : "not registered");
   if (report.worktree.clean === true) parts.push("clean");
   if (report.worktree.clean === false) parts.push("dirty");
   return parts.join(", ");
