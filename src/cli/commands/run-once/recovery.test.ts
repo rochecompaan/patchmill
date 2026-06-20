@@ -155,6 +155,28 @@ test("inspectBlockedRunRecovery classifies missing worktree with existing branch
   assert.equal(report.worktree.registered, false);
 });
 
+test("inspectBlockedRunRecovery classifies registered but missing worktree path without status", async () => {
+  const runner = cleanRunner();
+  const report = await inspectBlockedRunRecovery({
+    runner,
+    repoRoot: await tempRepo({ worktreeExists: false }),
+    runStatePath: ".patchmill/runs/issue-45.json",
+    state: baseState,
+    baseRef: "main",
+  });
+
+  assert.equal(report.kind, "missing-worktree-existing-branch");
+  assert.equal(report.branch.exists, true);
+  assert.equal(report.worktree.exists, false);
+  assert.equal(report.worktree.registered, true);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.args[0] === "-C" && call.args[2] === "status",
+    ),
+    false,
+  );
+});
+
 test("inspectBlockedRunRecovery classifies missing branch and worktree", async () => {
   const runner = cleanRunner({
     branchExists: false,

@@ -287,7 +287,7 @@ export async function inspectBlockedRunRecovery(input: {
     exists: physicalExists,
     registered,
   };
-  if (registered && input.state.worktreePath) {
+  if (registered && physicalExists && input.state.worktreePath) {
     Object.assign(
       worktree,
       await worktreeStatus({
@@ -325,7 +325,8 @@ export async function inspectBlockedRunRecovery(input: {
 
   let kind: BlockedRunRecoveryKind;
   if (!exists) kind = "missing-branch-or-worktree";
-  else if (!registered) kind = "missing-worktree-existing-branch";
+  else if (!registered || !worktree.exists)
+    kind = "missing-worktree-existing-branch";
   else if (worktree.clean === false) kind = "dirty-worktree";
   else if (merged) kind = "already-merged";
   else if ((divergence?.behind ?? 0) > 0) kind = "diverged";
