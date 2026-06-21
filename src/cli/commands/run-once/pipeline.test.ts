@@ -636,6 +636,42 @@ test("runOneIssue dry-run lists open issues and returns the selected agent-ready
   );
 });
 
+test("runOneIssue dry-run for blocked saved workspace skips recovery inspection", async () => {
+  const config = await makeConfig({ issueNumber: 45 });
+  await writeBlockedRecoveryRunState(config);
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list" &&
+      call.args[call.args.indexOf("--state") + 1] === "all" &&
+      call.args[call.args.indexOf("--keyword") + 1] === "45"
+    ) {
+      return {
+        code: 0,
+        stdout: issueListPayload([
+          issue(45, ["agent-ready"], "Recover blocked run"),
+        ]),
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issue.number, 45);
+  assert.equal(result.transition, "agent-ready -> agent-done");
+  assert.equal(
+    runner.calls.some((call) => call.command === "git"),
+    false,
+  );
+});
+
 test("runOneIssue automatic selection includes agent-ready when spec approval is required", async () => {
   const config = await makeConfig({
     approvalPolicy: approvalPolicy({ specRequired: true }),
@@ -1050,6 +1086,87 @@ test("runOneIssue rejects multiple resumable in-progress issues", async () => {
   );
 });
 
+test("runOneIssue does not count blocked saved workspace as resumable before recovery inspection", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Blocked saved workspace",
+      status: "blocked",
+      branch: "agent/issue-45-blocked-saved-workspace",
+      worktreePath: ".worktrees/patchmill-issue-45-blocked-saved-workspace",
+    },
+    NOW.toISOString(),
+  );
+  const planPath = "docs/plans/2026-05-14-issue-46-resumable-plan.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 46,
+      title: "Resumable plan",
+      status: "planning",
+      planPath,
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress"], "Blocked saved workspace"),
+                issue(46, ["in-progress"], "Resumable plan"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-found");
+  assert.equal(result.issue.number, 46);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        (call.args[0] === "show-ref" || call.args[0] === "worktree"),
+    ),
+    false,
+  );
+});
+
 test("runOneIssue rejects an explicit open issue that is not agent-ready with a clear message", async () => {
   const config = await makeConfig({
     dryRun: false,
@@ -1147,6 +1264,81 @@ test("runOneIssue rejects a different explicit issue when a resumable run exists
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
     /Resumable in-progress automation run #45 exists; resume it before processing #46/,
+  );
+});
+
+test("runOneIssue rejects a different explicit blocked recovery issue when a resumable run exists", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Blocked saved workspace",
+      status: "blocked",
+      branch: "agent/issue-45-blocked-saved-workspace",
+      worktreePath: ".worktrees/patchmill-issue-45-blocked-saved-workspace",
+    },
+    NOW.toISOString(),
+  );
+  await writeRunState(
+    config.runStateDir,
+    { issueNumber: 46, title: "Resume first", status: "planning" },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "45"
+    ) {
+      return {
+        code: 0,
+        stdout: issueViewPayload(
+          issue(45, ["in-progress", "bug"], "Blocked saved workspace"),
+        ),
+        stderr: "",
+      };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Blocked saved workspace"),
+                issue(46, ["in-progress", "bug"], "Resume first"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Resumable in-progress automation run #46 exists; resume it before processing #45/,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        (call.args[0] === "show-ref" || call.args[0] === "worktree"),
+    ),
+    false,
   );
 });
 
@@ -2840,6 +3032,397 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
     false,
   );
   assert.ok(runner.calls.find((call) => call.command === "pi"));
+});
+
+async function writeBlockedRecoveryRunState(
+  config: AgentIssueConfig,
+  overrides: Parameters<typeof writeRunState>[1] = {
+    issueNumber: 45,
+    status: "blocked",
+  },
+  options: { createWorktreePath?: boolean } = {},
+): Promise<void> {
+  const planPath =
+    overrides.planPath ??
+    "docs/plans/2026-06-20-issue-45-recover-blocked-run.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  if (options.createWorktreePath !== false) {
+    await mkdir(
+      join(
+        config.repoRoot,
+        overrides.worktreePath ??
+          ".worktrees/patchmill-issue-45-recover-blocked-run",
+      ),
+      { recursive: true },
+    );
+  }
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Recover blocked run",
+      status: "blocked",
+      specPath: "docs/specs/2026-06-20-issue-45-recover-blocked-run.md",
+      specCommit: "spec123",
+      planPath,
+      planCommit: "plan123",
+      branch: "agent/issue-45-recover-blocked-run",
+      worktreePath: ".worktrees/patchmill-issue-45-recover-blocked-run",
+      commits: ["abc123", "def456"],
+      validation: ["formatting passed", "verification environment unavailable"],
+      failureCommentKeys: ["blocked:verification"],
+      lastError: "Required verification environment is unavailable.",
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        specPathResolved: true,
+        planPathResolved: true,
+        worktreeReady: true,
+      },
+      ...overrides,
+    },
+    NOW.toISOString(),
+  );
+}
+
+function blockedRecoveryRunner(
+  config: AgentIssueConfig,
+  options: {
+    selectedLabels?: string[];
+    branchExists?: boolean;
+    worktreeRegistered?: boolean;
+    dirtyStatus?: string;
+    merged?: boolean;
+    revList?: string;
+    log?: string;
+    onPi?: (prompt: string) => CommandResult;
+  } = {},
+): MockRunner {
+  return createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(
+                  45,
+                  options.selectedLabels ?? ["needs-info"],
+                  "Recover blocked run",
+                ),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return {
+        code: options.branchExists === false ? 1 : 0,
+        stdout: "",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout:
+          options.worktreeRegistered === false
+            ? ""
+            : `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-recover-blocked-run")}\n`,
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "status"
+    ) {
+      return { code: 0, stdout: options.dirtyStatus ?? "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-recover-blocked-run\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "merge-base") {
+      return { code: options.merged ? 0 : 1, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "rev-list") {
+      return { code: 0, stdout: options.revList ?? "0\t2\n", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return {
+        code: 0,
+        stdout:
+          options.log ?? "def456 add verification\nabc123 implement feature\n",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      return options.onPi
+        ? options.onPi(prompt)
+        : {
+            code: 0,
+            stdout: JSON.stringify({
+              status: "pr-created",
+              prUrl: "https://forgejo/pr/45",
+              branch: "agent/issue-45-recover-blocked-run",
+              commits: ["abc123", "def456", "789abc"],
+              validation: ["npm test passed"],
+              reviewSummary: "reviewed",
+            }),
+            stderr: "",
+          };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+}
+
+test("runOneIssue resumes clean blocked implementation workspace after external prerequisite is fixed", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config);
+  let implementationPrompt = "";
+  const runner = blockedRecoveryRunner(config, {
+    onPi(prompt) {
+      implementationPrompt = prompt;
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo/pr/45",
+          branch: "agent/issue-45-recover-blocked-run",
+          commits: ["789abc"],
+          validation: ["verification passed"],
+          reviewSummary: "reviewed",
+        }),
+        stderr: "",
+      };
+    },
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.match(implementationPrompt, /Resume context:/);
+  assert.match(implementationPrompt, /def456 add verification/);
+  assert.match(implementationPrompt, /Continue from current branch state/);
+  assert.match(implementationPrompt, /was reused from the prior run/);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    false,
+  );
+  const finalLabelCall = runner.calls.find(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit" &&
+      call.args.includes("--add-labels") &&
+      call.args.includes("agent-done"),
+  );
+  assert.ok(finalLabelCall, "expected final done label update");
+  assert.equal(
+    finalLabelCall.args.includes("--remove-labels"),
+    true,
+    "expected final label update to remove stale labels",
+  );
+  assert.match(
+    finalLabelCall.args[finalLabelCall.args.indexOf("--remove-labels") + 1] ??
+      "",
+    /needs-info/,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  );
+  assert.equal(state.status, "finished");
+  assert.equal(state.branch, "agent/issue-45-recover-blocked-run");
+  assert.equal(
+    state.worktreePath,
+    ".worktrees/patchmill-issue-45-recover-blocked-run",
+  );
+  assert.equal(
+    state.specPath,
+    "docs/specs/2026-06-20-issue-45-recover-blocked-run.md",
+  );
+  assert.equal(state.specCommit, "spec123");
+  assert.equal(state.planCommit, "plan123");
+  assert.equal(state.lastError, undefined);
+  assert.deepEqual(state.failureCommentKeys, ["blocked:verification"]);
+});
+
+test("runOneIssue treats configured ignored dirty paths as clean blocked recovery", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config);
+  const runner = blockedRecoveryRunner(config, {
+    dirtyStatus: "?? .patchmill/runs/issue-45.json\n",
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    true,
+  );
+});
+
+test("runOneIssue reports dirty blocked recovery before mutations", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config);
+  const runner = blockedRecoveryRunner(config, {
+    dirtyStatus: " M src/index.ts\n",
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Commit, stash, or clean local modifications/,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] !== "issues",
+    ),
+    false,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  );
+  assert.equal(state.status, "blocked");
+  assert.equal(state.branch, "agent/issue-45-recover-blocked-run");
+});
+
+test("runOneIssue reports already merged blocked recovery before mutations", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config);
+  const runner = blockedRecoveryRunner(config, { merged: true, log: "" });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Confirm the work is landed/,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+});
+
+test("runOneIssue reports diverged blocked recovery before mutations", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config);
+  const runner = blockedRecoveryRunner(config, { revList: "3\t2\n" });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Rebase or cherry-pick/,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+});
+
+test("runOneIssue reports missing worktree with existing branch blocked recovery before mutations", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config, undefined, {
+    createWorktreePath: false,
+  });
+  const runner = blockedRecoveryRunner(config, { worktreeRegistered: false });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /git worktree add \.worktrees\/patchmill-issue-45-recover-blocked-run agent\/issue-45-recover-blocked-run/,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+});
+
+test("runOneIssue reports missing branch and worktree blocked recovery before mutations", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(config, undefined, {
+    createWorktreePath: false,
+  });
+  const runner = blockedRecoveryRunner(config, {
+    branchExists: false,
+    worktreeRegistered: false,
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Archive or remove stale run state/,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
 });
 
 test("runOneIssue reuses existing implementation result on resume without rerunning pi", async () => {

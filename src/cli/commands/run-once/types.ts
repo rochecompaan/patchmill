@@ -143,6 +143,7 @@ export type AgentIssueRunStateUpdate = {
   handoffCommentPosted?: boolean;
   failureCommentKeys?: string[];
   lastError?: string;
+  clearLastError?: boolean;
 };
 
 export type AgentIssueImplementationResumeContext = {

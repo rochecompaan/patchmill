@@ -116,7 +116,7 @@ function isIgnoredStatusPath(path: string, ignoredPrefixes: string[]): boolean {
   );
 }
 
-function blockingStatusOutput(
+export function blockingStatusOutput(
   stdout: string,
   repoRoot: string,
   ignoredPaths: string[] = [],

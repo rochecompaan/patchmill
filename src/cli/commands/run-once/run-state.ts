@@ -170,7 +170,9 @@ function mergeRunState(
     failureCommentKeys,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    lastError: update.lastError ?? existing?.lastError,
+    lastError: update.clearLastError
+      ? undefined
+      : (update.lastError ?? existing?.lastError),
   };
 
   if (checkpoints === undefined) {
@@ -217,6 +219,9 @@ function mergeRunState(
   }
   if (failureCommentKeys === undefined) {
     delete next.failureCommentKeys;
+  }
+  if (next.lastError === undefined) {
+    delete next.lastError;
   }
 
   const timestampField = STATUS_TIMESTAMPS[update.status];

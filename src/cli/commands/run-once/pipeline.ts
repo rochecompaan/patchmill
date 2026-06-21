@@ -37,8 +37,13 @@ import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 import {
   isResumableRunState,
   readRunState,
+  runStatePath,
   writeRunState,
 } from "./run-state.ts";
+import {
+  formatBlockedRunRecoveryReport,
+  inspectBlockedRunRecovery,
+} from "./recovery.ts";
 import { selectIssue } from "./selection.ts";
 import {
   defaultVisualEvidenceUploader,
@@ -203,6 +208,15 @@ function workflowTransition(
   }
 
   return `${state.kind} -> no-issue`;
+}
+
+function hasBlockedSavedWorkspaceState(
+  state: Awaited<ReturnType<typeof readRunState>>,
+): boolean {
+  return (
+    state?.status === "blocked" &&
+    (state.branch !== undefined || state.worktreePath !== undefined)
+  );
 }
 
 function lifecycleLabels(
@@ -458,6 +472,26 @@ async function selectResumableIssue(
     );
     if (resumableSelected) {
       return { issue: resumableSelected, resumed: true };
+    }
+    if (shouldResume) {
+      const explicitIssue = issues.find(
+        (candidate) =>
+          candidate.number === config.issueNumber && candidate.state === "open",
+      );
+      const explicitState = explicitIssue
+        ? await readRunState(config.runStateDir, explicitIssue.number)
+        : undefined;
+      if (explicitIssue && hasBlockedSavedWorkspaceState(explicitState)) {
+        if (
+          resumable.length === 1 &&
+          resumable[0]?.number !== explicitIssue.number
+        ) {
+          throw new Error(
+            `Resumable ${inProgress} automation run #${resumable[0]?.number} exists; resume it before processing #${explicitIssue.number}`,
+          );
+        }
+        return { issue: explicitIssue, resumed: true };
+      }
     }
     const selected = selectIssue(issues, {
       issueNumber: config.issueNumber,
@@ -731,12 +765,8 @@ export async function runOneIssue(
   const existingState = await readRunState(config.runStateDir, issue.number);
   const piAgentDir = localPiAgentDir(config.repoRoot);
   const resumed = selected?.resumed ?? false;
-  const resumableState =
+  const ordinaryResumableState =
     resumed && !!existingState && isResumableRunState(existingState);
-  const resetStaleCheckpoints = !!existingState && !resumableState;
-  const checkpoints = {
-    ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
-  };
 
   await progress(
     options,
@@ -758,6 +788,33 @@ export async function runOneIssue(
         transition: workflowTransition(state, config),
       },
       options,
+    );
+  }
+
+  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
+  const blockedRecoveryReport =
+    existingState?.status === "blocked" &&
+    (existingState.branch || existingState.worktreePath)
+      ? await inspectBlockedRunRecovery({
+          runner,
+          repoRoot: config.repoRoot,
+          runStatePath: runStatePath(config.runStateDir, issue.number),
+          state: existingState,
+          baseRef: config.baseRef,
+          ignoredPaths,
+        })
+      : undefined;
+  const blockedRecoveryResumable =
+    blockedRecoveryReport?.kind === "recoverable-clean";
+  const resumableState = ordinaryResumableState || blockedRecoveryResumable;
+  const resetStaleCheckpoints = !!existingState && !resumableState;
+  const checkpoints = {
+    ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
+  };
+
+  if (blockedRecoveryReport && !blockedRecoveryResumable) {
+    throw new AgentIssueSafetyError(
+      formatBlockedRunRecoveryReport(blockedRecoveryReport),
     );
   }
 
@@ -875,7 +932,6 @@ export async function runOneIssue(
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
-  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
   await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
   const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
   let labels = resumed
@@ -1506,7 +1562,7 @@ export async function runOneIssue(
         readyLabel: ready,
         policy: config.approvalPolicy,
       }),
-      [inProgress],
+      [inProgress, needsInfo],
       [done],
     );
     if (!checkpoints.doneLabelApplied) {
@@ -1549,6 +1605,7 @@ export async function runOneIssue(
         planCommit,
         branch,
         worktreePath,
+        clearLastError: true,
       },
       timestamp,
     );
