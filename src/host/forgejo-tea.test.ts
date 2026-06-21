@@ -178,6 +178,7 @@ test("ForgejoTeaHostProvider delegates open issue listing to tea", async () => {
             body: "Update docs",
             state: "open",
             labels: [{ name: "docs" }],
+            created: "2026-05-27T09:00:00Z",
           },
         ]),
         stderr: "",
@@ -199,6 +200,7 @@ test("ForgejoTeaHostProvider delegates open issue listing to tea", async () => {
       state: "open",
       labels: ["docs"],
       author: undefined,
+      created: "2026-05-27T09:00:00Z",
       updated: undefined,
       comments: undefined,
     },
@@ -207,6 +209,10 @@ test("ForgejoTeaHostProvider delegates open issue listing to tea", async () => {
   assertTeaContext(runner.calls[0]!);
   assert.deepEqual(runner.calls[0]!.args.slice(0, 2), ["issues", "list"]);
   assert.equal(flagValue(runner.calls[0]!.args, "--state"), "open");
+  assert.equal(
+    flagValue(runner.calls[0]!.args, "--fields"),
+    "index,title,body,state,labels,author,created,updated,comments,url",
+  );
   assert.equal(flagValue(runner.calls[0]!.args, "--output"), "json");
   assert.equal(flagValue(runner.calls[0]!.args, "--page"), "1");
   assertTeaContext(runner.calls[1]!);

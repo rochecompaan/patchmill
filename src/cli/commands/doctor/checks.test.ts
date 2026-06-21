@@ -181,7 +181,7 @@ function successMocks(
     "git branch --show-current": { code: 0, stdout: "main\n" },
     "git status --porcelain=v1 --untracked-files=all": { code: 0, stdout: "" },
     "tea --help": { code: 0, stdout: "tea help" },
-    "tea issues list --state open --fields index,title,body,state,labels,author,updated,comments,url --page 1 --limit 1000 --output json --repo /repo --login triage-agent":
+    "tea issues list --state open --fields index,title,body,state,labels,author,created,updated,comments,url --page 1 --limit 1000 --output json --repo /repo --login triage-agent":
       {
         code: 0,
         stdout: "[]",

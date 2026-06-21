@@ -15,6 +15,38 @@ import type {
   TriageResult,
 } from "./types.ts";
 
+function createdMillis(issue: IssueSummary): number | undefined {
+  if (!issue.created) return undefined;
+  const millis = Date.parse(issue.created);
+  return Number.isFinite(millis) ? millis : undefined;
+}
+
+function compareIssuesByNumber(
+  left: IssueSummary,
+  right: IssueSummary,
+): number {
+  return left.number - right.number;
+}
+
+function compareIssuesByCreated(
+  left: IssueSummary,
+  right: IssueSummary,
+): number {
+  const leftCreated = createdMillis(left);
+  const rightCreated = createdMillis(right);
+
+  if (leftCreated !== undefined && rightCreated !== undefined) {
+    return leftCreated - rightCreated || compareIssuesByNumber(left, right);
+  }
+  if (leftCreated !== undefined) return -1;
+  if (rightCreated !== undefined) return 1;
+  return compareIssuesByNumber(left, right);
+}
+
+function orderTriageIssues(issues: IssueSummary[]): IssueSummary[] {
+  return [...issues].sort(compareIssuesByCreated);
+}
+
 function selectIssues(
   issues: IssueSummary[],
   config: TriageConfig,
@@ -39,6 +71,8 @@ function selectIssues(
     );
   }
 
+  selected = orderTriageIssues(selected);
+
   if (config.limit !== undefined) {
     selected = selected.slice(0, config.limit);
   }
@@ -55,6 +89,19 @@ function blockedBucket(issue: IssueSummary, config: TriageConfig): boolean {
 
 function logMode(config: TriageConfig): "dry-run" | "execute" {
   return config.execute ? "execute" : "dry-run";
+}
+
+function entriesBySelectedIssueOrder(
+  selectedIssues: readonly IssueSummary[],
+  entries: readonly TriageLogIssueEntry[],
+): TriageLogIssueEntry[] {
+  const entriesByIssueNumber = new Map(
+    entries.map((entry) => [entry.issueNumber, entry]),
+  );
+  return selectedIssues.flatMap((issue) => {
+    const entry = entriesByIssueNumber.get(issue.number);
+    return entry ? [entry] : [];
+  });
 }
 
 function errorMessage(error: unknown): string {
@@ -164,10 +211,10 @@ export async function runTriage(
                 DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
               onToolCall: config.onToolCall,
             });
-      const logIssues = [
+      const logIssues = entriesBySelectedIssueOrder(issues, [
         ...directEntries,
         ...createPreviewEntries(agentIssues, previews),
-      ];
+      ]);
       logIssues.forEach((issue, index) => {
         config.onProgress?.({
           type: "issue",
@@ -195,8 +242,29 @@ export async function runTriage(
   }
 
   const logIssues: TriageLogIssueEntry[] = [];
+  const pendingEntries = new Map<number, TriageLogIssueEntry>();
 
   try {
+    let nextProgressIndex = 0;
+
+    function flushPendingEntries(): void {
+      while (nextProgressIndex < issues.length) {
+        const issueNumber = issues[nextProgressIndex]?.number;
+        if (issueNumber === undefined) return;
+        const entry = pendingEntries.get(issueNumber);
+        if (!entry) return;
+        pendingEntries.delete(issueNumber);
+        logIssues.push(entry);
+        config.onProgress?.({
+          type: "issue",
+          issue: entry,
+          completed: logIssues.length,
+          total: issues.length,
+        });
+        nextProgressIndex += 1;
+      }
+    }
+
     const { agentIssues } = await preprocessBlockedIssues({
       issues,
       host,
@@ -216,17 +284,11 @@ export async function runTriage(
         };
       },
       onDirectEntry(entry) {
-        logIssues.push(entry);
-        config.onProgress?.({
-          type: "issue",
-          issue: entry,
-          completed: logIssues.length,
-          total: issues.length,
-        });
+        pendingEntries.set(entry.issueNumber, entry);
+        flushPendingEntries();
       },
     });
 
-    const completedBeforeAgent = logIssues.length;
     if (agentIssues.length > 0) {
       await executeTriageIssues({
         runner,
@@ -240,19 +302,18 @@ export async function runTriage(
         thinking:
           config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
         onToolCall: config.onToolCall,
-        onIssue(entry, completed) {
-          logIssues.push(entry);
-          config.onProgress?.({
-            type: "issue",
-            issue: entry,
-            completed: completedBeforeAgent + completed,
-            total: issues.length,
-          });
+        onIssue(entry) {
+          pendingEntries.set(entry.issueNumber, entry);
+          flushPendingEntries();
         },
       });
     }
   } catch (error) {
-    await tryWriteFailureLog(config, createdAt, logIssues, error);
+    const failureLogIssues = entriesBySelectedIssueOrder(issues, [
+      ...logIssues,
+      ...pendingEntries.values(),
+    ]);
+    await tryWriteFailureLog(config, createdAt, failureLogIssues, error);
     throw error;
   }
 

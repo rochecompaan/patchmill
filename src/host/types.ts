@@ -13,6 +13,7 @@ export type IssueSummary = {
   labels: string[];
   state: string;
   author?: string;
+  created?: string;
   updated?: string;
   url?: string;
   comments?: IssueCommentSummary[];

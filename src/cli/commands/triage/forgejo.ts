@@ -9,7 +9,7 @@ import type {
 
 const ISSUE_PAGE_SIZE = 1000;
 const ISSUE_FIELDS =
-  "index,title,body,state,labels,author,updated,comments,url";
+  "index,title,body,state,labels,author,created,updated,comments,url";
 
 function parseJson(stdout: string, context: string): unknown {
   try {
@@ -65,6 +65,14 @@ function authorName(author: unknown): string | undefined {
   return undefined;
 }
 
+function issueCreated(issue: Record<string, unknown>): string | undefined {
+  for (const field of ["created", "createdAt", "created_at"]) {
+    const value = issue[field];
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
 function parseIssueComment(comment: unknown): IssueCommentSummary | undefined {
   if (!comment || typeof comment !== "object") return undefined;
   const entry = comment as Record<string, unknown>;
@@ -104,6 +112,7 @@ function parseIssuePayload(entry: unknown): IssueSummary {
     state: typeof issue.state === "string" ? issue.state : "open",
     labels: labelNames(issue.labels),
     author: authorName(issue.author),
+    created: issueCreated(issue),
     updated: typeof issue.updated === "string" ? issue.updated : undefined,
     comments: issueComments(issue.comments),
   };
