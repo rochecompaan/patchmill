@@ -185,7 +185,7 @@ test("runInit preserves existing local exclude entries and does not touch gitign
   );
   assert.equal(
     await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    "node_modules\n.patchmill\npatchmill.config.json\n",
+    "node_modules\n.patchmill\npatchmill.config.json\n.worktrees/\n.pi/todos/\n",
   );
 });
 

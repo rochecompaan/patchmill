@@ -68,10 +68,11 @@ async function runInitForGitPolicy(
     isInteractive: boolean;
     promptAnswer?: string;
     calls?: string[][];
+    commandRunner?: CommandRunner;
   },
 ) {
   const stdout: string[] = [];
-  await runInit(
+  const exitCode = await runInit(
     options.args ?? [],
     repoRoot,
     {
@@ -84,21 +85,21 @@ async function runInitForGitPolicy(
       resolvePiInitSetup: incompletePiSetup,
       isInteractive: options.isInteractive,
       prompt: async () => options.promptAnswer ?? "",
-      commandRunner: runner(options.calls ?? []),
+      commandRunner: options.commandRunner ?? runner(options.calls ?? []),
       setupLabels: async () => ({
         status: "skipped",
         message: "Label setup skipped.",
       }),
     },
   );
-  return stdout.join("\n");
+  return { exitCode, output: stdout.join("\n") };
 }
 
-test("interactive init add-to-git stages config, skills, and gitignore", async () => {
+test("interactive init add-to-git commits config, skills, and gitignore", async () => {
   const repoRoot = await tempRepo();
   const calls: string[][] = [];
 
-  const output = await runInitForGitPolicy(repoRoot, {
+  const { output } = await runInitForGitPolicy(repoRoot, {
     isInteractive: true,
     promptAnswer: "1",
     calls,
@@ -114,20 +115,34 @@ test("interactive init add-to-git stages config, skills, and gitignore", async (
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill",
+      "--",
+      "patchmill.config.json",
+      ".patchmill/skills",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
   ]);
   assert.equal(
     await readFile(join(repoRoot, ".gitignore"), "utf8"),
-    ".patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n",
+    ".patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n.worktrees/\n.pi/todos/\n",
   );
-  assert.match(output, /Added Patchmill config and skills to git/u);
+  assert.match(
+    output,
+    /Patchmill config, skills, and local artifact ignore rules were committed/u,
+  );
   assert.doesNotMatch(output, /local-only by default/u);
 });
 
-test("interactive init add-to-git with no skills stages config and gitignore only", async () => {
+test("interactive init add-to-git with no skills commits config and gitignore only", async () => {
   const repoRoot = await tempRepo();
   const calls: string[][] = [];
 
-  const output = await runInitForGitPolicy(repoRoot, {
+  const { output } = await runInitForGitPolicy(repoRoot, {
     args: ["--skills", "none"],
     isInteractive: true,
     promptAnswer: "1",
@@ -143,19 +158,32 @@ test("interactive init add-to-git with no skills stages config and gitignore onl
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill",
+      "--",
+      "patchmill.config.json",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
   ]);
-  assert.match(output, /Added Patchmill config to git/u);
+  assert.match(
+    output,
+    /Patchmill config and local artifact ignore rules were committed/u,
+  );
   assert.doesNotMatch(output, /.patchmill\/skills/u);
 });
 
-test("interactive init add-to-git with path skills stages the provided skill root", async () => {
+test("interactive init add-to-git with path skills commits the provided skill root", async () => {
   const repoRoot = await tempRepo();
   const calls: string[][] = [];
   await writeSkill(repoRoot, "custom-skills", "patchmill-issue-triage");
   await writeSkill(repoRoot, "custom-skills", "writing-plans");
   await writeSkill(repoRoot, "custom-skills", "subagent-driven-development");
 
-  const output = await runInitForGitPolicy(repoRoot, {
+  const { output } = await runInitForGitPolicy(repoRoot, {
     args: ["--skills", "path:custom-skills"],
     isInteractive: true,
     promptAnswer: "1",
@@ -172,39 +200,70 @@ test("interactive init add-to-git with path skills stages the provided skill roo
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill",
+      "--",
+      "patchmill.config.json",
+      "custom-skills",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
   ]);
-  assert.match(output, /Added Patchmill config and skills to git/u);
+  assert.match(
+    output,
+    /Patchmill config, skills, and local artifact ignore rules were committed/u,
+  );
   assert.doesNotMatch(output, /.patchmill\/skills/u);
 });
 
-test("interactive init git-ignore writes config and .patchmill to .gitignore", async () => {
+test("interactive init git-ignore commits .gitignore hygiene rules", async () => {
   const repoRoot = await tempRepo();
+  const calls: string[][] = [];
 
-  const output = await runInitForGitPolicy(repoRoot, {
+  const { output } = await runInitForGitPolicy(repoRoot, {
     isInteractive: true,
     promptAnswer: "2",
+    calls,
   });
 
+  assert.deepEqual(calls, [
+    ["git", "add", ".gitignore", `cwd=${repoRoot}`],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill git hygiene",
+      "--",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
+  ]);
   assert.equal(
     await readFile(join(repoRoot, ".gitignore"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n",
+    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
   );
-  assert.match(output, /Added Patchmill files to .gitignore/u);
+  assert.match(output, /.gitignore git hygiene rules were committed/u);
   assert.doesNotMatch(output, /local-only by default/u);
 });
 
 test("interactive init git-exclude writes config and .patchmill to local exclude", async () => {
   const repoRoot = await tempRepo();
+  const calls: string[][] = [];
 
-  const output = await runInitForGitPolicy(repoRoot, {
+  const { output } = await runInitForGitPolicy(repoRoot, {
     isInteractive: true,
     promptAnswer: "3",
+    calls,
   });
 
   assert.equal(
     await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n",
+    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
   );
+  assert.deepEqual(calls, []);
   assert.match(output, /Added Patchmill files to .git\/info\/exclude/u);
 });
 
@@ -244,10 +303,37 @@ test("non-interactive and --yes init choose git-exclude without prompting", asyn
   assert.equal(prompted, false);
   assert.equal(
     await readFile(join(nonInteractiveRoot, ".git", "info", "exclude"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n",
+    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
   );
   assert.equal(
     await readFile(join(yesRoot, ".git", "info", "exclude"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n",
+    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
   );
+});
+
+test("interactive init reports commit failures without aborting label or Pi setup", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+  const failingCommitRunner: CommandRunner = {
+    async run(command, args, options) {
+      calls.push([command, ...args, `cwd=${options?.cwd ?? ""}`]);
+      if (args[0] === "commit") {
+        return { code: 1, stdout: "", stderr: "author identity unknown" };
+      }
+      return { code: 0, stdout: "", stderr: "" };
+    },
+  };
+
+  const { exitCode, output } = await runInitForGitPolicy(repoRoot, {
+    isInteractive: true,
+    promptAnswer: "1",
+    commandRunner: failingCommitRunner,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(calls.filter((call) => call[1] === "commit").length, 1);
+  assert.match(output, /Warning: git commit failed/u);
+  assert.match(output, /author identity unknown/u);
+  assert.match(output, /Label setup skipped\./u);
+  assert.match(output, /Pi provider\/model setup is incomplete/u);
 });

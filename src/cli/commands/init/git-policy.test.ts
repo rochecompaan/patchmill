@@ -23,6 +23,23 @@ function recordingRunner(calls: string[][] = []): CommandRunner {
   };
 }
 
+function scriptedRunner(
+  calls: string[][] = [],
+  results: Array<{ code: number; stdout?: string; stderr?: string }> = [],
+): CommandRunner {
+  return {
+    async run(command, args, options) {
+      calls.push([command, ...args, `cwd=${options?.cwd ?? ""}`]);
+      const result = results.shift() ?? { code: 0, stdout: "", stderr: "" };
+      return {
+        code: result.code,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+      };
+    },
+  };
+}
+
 test("selectInitGitPolicy defaults to git-exclude for non-interactive runs", async () => {
   assert.equal(
     await selectInitGitPolicy({ isInteractive: false, assumeYes: false }),
@@ -75,7 +92,7 @@ test("applyInitGitPolicy add stages config, skills, and runtime ignore entries",
 
   assert.equal(
     await readFile(join(repoRoot, ".gitignore"), "utf8"),
-    ".patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n",
+    ".patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n.worktrees/\n.pi/todos/\n",
   );
   assert.deepEqual(calls, [
     [
@@ -87,8 +104,22 @@ test("applyInitGitPolicy add stages config, skills, and runtime ignore entries",
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill",
+      "--",
+      "patchmill.config.json",
+      ".patchmill/skills",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
   ]);
-  assert.match(result.message, /Added Patchmill config and skills to git/u);
+  assert.match(
+    result.message,
+    /Patchmill config, skills, and local artifact ignore rules were committed/u,
+  );
 });
 
 test("applyInitGitPolicy add omits missing skills directory", async () => {
@@ -111,8 +142,21 @@ test("applyInitGitPolicy add omits missing skills directory", async () => {
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill",
+      "--",
+      "patchmill.config.json",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
   ]);
-  assert.match(result.message, /Staged patchmill.config.json and .gitignore/u);
+  assert.match(
+    result.message,
+    /Patchmill config and local artifact ignore rules were committed/u,
+  );
   assert.doesNotMatch(result.message, /.patchmill\/skills/u);
 });
 
@@ -139,8 +183,22 @@ test("applyInitGitPolicy add stages provided repo-local skill roots", async () =
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill",
+      "--",
+      "patchmill.config.json",
+      "custom-skills",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
   ]);
-  assert.match(result.message, /Added Patchmill config and skills to git/u);
+  assert.match(
+    result.message,
+    /Patchmill config, skills, and local artifact ignore rules were committed/u,
+  );
 });
 
 test("applyInitGitPolicy add force-stages skills when .patchmill is ignored", async () => {
@@ -163,49 +221,90 @@ test("applyInitGitPolicy add force-stages skills when .patchmill is ignored", as
     "patchmill.config.json",
   ]);
   assert.ok(calls[0]?.includes(".patchmill/skills"));
+  assert.deepEqual(calls[1]?.slice(0, 6), [
+    "git",
+    "commit",
+    "-m",
+    "chore: initialize Patchmill",
+    "--",
+    "patchmill.config.json",
+  ]);
 });
 
-test("applyInitGitPolicy ignore writes patchmill.config.json and .patchmill to .gitignore", async () => {
+test("applyInitGitPolicy ignore writes patchmill entries to .gitignore and commits .gitignore", async () => {
   const repoRoot = await tempRepo();
+  const calls: string[][] = [];
 
   const result = await applyInitGitPolicy({
     repoRoot,
     policy: "ignore",
-    runner: recordingRunner(),
+    runner: recordingRunner(calls),
   });
 
   assert.equal(
     await readFile(join(repoRoot, ".gitignore"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n",
+    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
   );
-  assert.match(result.message, /Added Patchmill files to .gitignore/u);
+  assert.deepEqual(calls, [
+    ["git", "add", ".gitignore", `cwd=${repoRoot}`],
+    [
+      "git",
+      "commit",
+      "-m",
+      "chore: initialize Patchmill git hygiene",
+      "--",
+      ".gitignore",
+      `cwd=${repoRoot}`,
+    ],
+  ]);
+  assert.match(result.message, /.gitignore git hygiene rules were committed/u);
 });
 
-test("applyInitGitPolicy exclude writes patchmill.config.json and .patchmill to local exclude", async () => {
+test("applyInitGitPolicy exclude writes patchmill entries to local exclude without git commands", async () => {
   const repoRoot = await tempRepo();
+  const calls: string[][] = [];
 
   const result = await applyInitGitPolicy({
     repoRoot,
     policy: "exclude",
-    runner: recordingRunner(),
+    runner: recordingRunner(calls),
   });
 
   assert.equal(
     await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n",
+    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
   );
+  assert.deepEqual(calls, []);
   assert.match(result.message, /Added Patchmill files to .git\/info\/exclude/u);
+});
+
+test("applyInitGitPolicy ignore skips commit when entries already exist", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+  await writeFile(
+    join(repoRoot, ".gitignore"),
+    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
+  );
+
+  const result = await applyInitGitPolicy({
+    repoRoot,
+    policy: "ignore",
+    runner: recordingRunner(calls),
+  });
+
+  assert.deepEqual(calls, []);
+  assert.match(result.message, /No git hygiene commit was needed/u);
 });
 
 test("applyInitGitPolicy does not duplicate existing ignore or exclude entries", async () => {
   const repoRoot = await tempRepo();
   await writeFile(
     join(repoRoot, ".gitignore"),
-    "node_modules\n.patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n",
+    "node_modules\n.patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n/.worktrees/\n.pi/todos\n",
   );
   await writeFile(
     join(repoRoot, ".git", "info", "exclude"),
-    "node_modules\n.patchmill\npatchmill.config.json\n",
+    "node_modules\n.patchmill\npatchmill.config.json\n.worktrees\n/.pi/todos/\n",
   );
 
   await applyInitGitPolicy({
@@ -221,31 +320,71 @@ test("applyInitGitPolicy does not duplicate existing ignore or exclude entries",
 
   assert.equal(
     await readFile(join(repoRoot, ".gitignore"), "utf8"),
-    "node_modules\n.patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n",
+    "node_modules\n.patchmill/pi-agent\n.patchmill/runs\n.patchmill/triage-runs\n/.worktrees/\n.pi/todos\n",
   );
   assert.equal(
     await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    "node_modules\n.patchmill\npatchmill.config.json\n",
+    "node_modules\n.patchmill\npatchmill.config.json\n.worktrees\n/.pi/todos/\n",
   );
 });
 
-test("applyInitGitPolicy treats root-anchored exclude entries as duplicates", async () => {
+test("applyInitGitPolicy treats root-anchored ignore entries as duplicates", async () => {
   const repoRoot = await tempRepo();
   await writeFile(
-    join(repoRoot, ".git", "info", "exclude"),
-    "node_modules\n/.patchmill/\n/patchmill.config.json\n",
+    join(repoRoot, ".gitignore"),
+    "/patchmill.config.json\n/.patchmill/\n/.worktrees/\n/.pi/todos/\n",
   );
+  const calls: string[][] = [];
 
-  await applyInitGitPolicy({
+  const result = await applyInitGitPolicy({
     repoRoot,
-    policy: "exclude",
-    runner: recordingRunner(),
+    policy: "ignore",
+    runner: recordingRunner(calls),
   });
 
+  assert.deepEqual(calls, []);
   assert.equal(
-    await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    "node_modules\n/.patchmill/\n/patchmill.config.json\n",
+    await readFile(join(repoRoot, ".gitignore"), "utf8"),
+    "/patchmill.config.json\n/.patchmill/\n/.worktrees/\n/.pi/todos/\n",
   );
+  assert.match(result.message, /No git hygiene commit was needed/u);
+});
+
+test("applyInitGitPolicy reports git add failures as non-fatal warnings", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+  await writeFile(join(repoRoot, "patchmill.config.json"), "{}\n");
+
+  const result = await applyInitGitPolicy({
+    repoRoot,
+    policy: "add",
+    runner: scriptedRunner(calls, [{ code: 1, stderr: "index locked" }]),
+  });
+
+  assert.equal(calls.filter((call) => call[1] === "commit").length, 0);
+  assert.match(result.message, /Warning/u);
+  assert.match(result.message, /git add failed/u);
+  assert.match(result.message, /index locked/u);
+});
+
+test("applyInitGitPolicy reports git commit failures as non-fatal warnings", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+  await writeFile(join(repoRoot, "patchmill.config.json"), "{}\n");
+
+  const result = await applyInitGitPolicy({
+    repoRoot,
+    policy: "add",
+    runner: scriptedRunner(calls, [
+      { code: 0 },
+      { code: 1, stderr: "author identity unknown" },
+    ]),
+  });
+
+  assert.equal(calls.filter((call) => call[1] === "commit").length, 1);
+  assert.match(result.message, /Warning/u);
+  assert.match(result.message, /git commit failed/u);
+  assert.match(result.message, /author identity unknown/u);
 });
 
 test("applyInitGitPolicy reports missing git metadata without failing init", async () => {
@@ -263,6 +402,8 @@ test("applyInitGitPolicy reports missing git metadata without failing init", asy
   );
   assert.match(result.message, /patchmill.config.json/u);
   assert.match(result.message, /.patchmill\//u);
+  assert.match(result.message, /.worktrees\//u);
+  assert.match(result.message, /.pi\/todos\//u);
 });
 
 test("applyInitGitPolicy reports local exclude write failures without failing init", async () => {
@@ -283,4 +424,6 @@ test("applyInitGitPolicy reports local exclude write failures without failing in
   assert.match(result.message, /not a directory|EEXIST/u);
   assert.match(result.message, /patchmill.config.json/u);
   assert.match(result.message, /.patchmill\//u);
+  assert.match(result.message, /.worktrees\//u);
+  assert.match(result.message, /.pi\/todos\//u);
 });
