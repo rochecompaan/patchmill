@@ -7,12 +7,16 @@ export type InitGitPolicy = "add" | "ignore" | "exclude";
 export const PATCHMILL_GIT_IGNORE_ENTRIES = [
   "patchmill.config.json",
   ".patchmill/",
+  ".worktrees/",
+  ".pi/todos/",
 ] as const;
 
 export const PATCHMILL_ADD_TO_GIT_IGNORE_ENTRIES = [
   ".patchmill/pi-agent",
   ".patchmill/runs",
   ".patchmill/triage-runs",
+  ".worktrees/",
+  ".pi/todos/",
 ] as const;
 
 export type InitGitPolicyResult = {
@@ -21,6 +25,13 @@ export type InitGitPolicyResult = {
 };
 
 export type InitGitPolicyPrompt = (question: string) => Promise<string>;
+
+type GitCommitOutcome =
+  | { status: "committed"; paths: string[] }
+  | { status: "nothing"; paths: string[] }
+  | { status: "missing"; paths: string[] }
+  | { status: "stage-warning"; warning: string; paths: string[] }
+  | { status: "commit-warning"; warning: string; paths: string[] };
 
 function normalEntry(entry: string): string {
   return entry.trim().replace(/^\//u, "").replace(/\/+$/u, "");
@@ -76,10 +87,14 @@ function formatEntries(entries: readonly string[]): string {
   return entries.map((entry) => `  ${entry}`).join("\n");
 }
 
-function formatPathList(paths: readonly string[]): string {
-  if (paths.length <= 1) return paths[0] ?? "nothing";
-  if (paths.length === 2) return `${paths[0]} and ${paths[1]}`;
-  return `${paths.slice(0, -1).join(", ")}, and ${paths.at(-1)}`;
+function gitOutput(result: { stdout: string; stderr: string }): string {
+  return result.stderr || result.stdout || "unknown error";
+}
+
+function isNothingToCommit(output: string): boolean {
+  return /nothing to commit|no changes added to commit|nothing added to commit|no changes/u.test(
+    output.toLowerCase(),
+  );
 }
 
 function safeRelativePath(path: string): boolean {
@@ -114,6 +129,46 @@ function manualExcludeWarning(reason: string): string {
     "Add these entries manually to keep Patchmill files local:",
     formatEntries(PATCHMILL_GIT_IGNORE_ENTRIES),
   ].join("\n");
+}
+
+async function commitInitGitHygiene(options: {
+  repoRoot: string;
+  runner: CommandRunner;
+  paths: readonly string[];
+  message: string;
+  forceAdd?: boolean;
+}): Promise<GitCommitOutcome> {
+  const paths = await existingPaths(options.repoRoot, options.paths);
+  if (paths.length === 0) return { status: "missing", paths };
+
+  const addArgs = options.forceAdd
+    ? ["add", "-f", ...paths]
+    : ["add", ...paths];
+  const addResult = await options.runner.run("git", addArgs, {
+    cwd: options.repoRoot,
+  });
+  if (addResult.code !== 0) {
+    return {
+      status: "stage-warning",
+      warning: `Warning: git add failed while preparing init git hygiene commit; continuing without committing. ${gitOutput(addResult)}`,
+      paths,
+    };
+  }
+
+  const commitResult = await options.runner.run(
+    "git",
+    ["commit", "-m", options.message, "--", ...paths],
+    { cwd: options.repoRoot },
+  );
+  if (commitResult.code === 0) return { status: "committed", paths };
+
+  const output = gitOutput(commitResult);
+  if (isNothingToCommit(output)) return { status: "nothing", paths };
+  return {
+    status: "commit-warning",
+    warning: `Warning: git commit failed while finalizing init git hygiene; continuing. ${output}`,
+    paths,
+  };
 }
 
 export async function selectInitGitPolicy(options: {
@@ -159,36 +214,31 @@ export async function applyInitGitPolicy(options: {
       PATCHMILL_ADD_TO_GIT_IGNORE_ENTRIES,
     );
     const skillRoots = options.skillRoots ?? [".patchmill/skills"];
-    const pathsToStage = await existingPaths(options.repoRoot, [
-      "patchmill.config.json",
-      ...skillRoots,
-      ".gitignore",
-    ]);
-    const gitAdd =
-      pathsToStage.length > 0
-        ? await options.runner.run("git", ["add", "-f", ...pathsToStage], {
-            cwd: options.repoRoot,
-          })
-        : undefined;
-    const gitAddMessage = !gitAdd
-      ? "No Patchmill files were available to stage."
-      : gitAdd.code === 0
-        ? `Staged ${formatPathList(pathsToStage)}.`
-        : `Warning: git add failed: ${gitAdd.stderr || gitAdd.stdout || "unknown error"}`;
+    const commit = await commitInitGitHygiene({
+      repoRoot: options.repoRoot,
+      runner: options.runner,
+      paths: ["patchmill.config.json", ...skillRoots, ".gitignore"],
+      message: "chore: initialize Patchmill",
+      forceAdd: true,
+    });
     const ignoreMessage =
       added.length > 0
         ? `Added local Patchmill runtime directories to .gitignore:\n${formatEntries(added)}`
         : "Local Patchmill runtime directories were already listed in .gitignore.";
-    const stagedSkills = pathsToStage.some((path) => skillRoots.includes(path));
+    const stagedSkills = commit.paths.some((path) => skillRoots.includes(path));
     const addSummary =
-      gitAdd?.code === 0
+      commit.status === "committed"
         ? stagedSkills
-          ? "Added Patchmill config and skills to git."
-          : "Added Patchmill config to git."
-        : "Warning: Patchmill could not add files to git.";
+          ? "Patchmill config, skills, and local artifact ignore rules were committed."
+          : "Patchmill config and local artifact ignore rules were committed."
+        : commit.status === "nothing"
+          ? "No Patchmill git hygiene commit was needed."
+          : commit.status === "missing"
+            ? "No Patchmill files were available to commit."
+            : commit.warning;
     return {
       policy: options.policy,
-      message: [addSummary, gitAddMessage, ignoreMessage].join("\n"),
+      message: [addSummary, ignoreMessage].join("\n"),
     };
   }
 
@@ -197,12 +247,34 @@ export async function applyInitGitPolicy(options: {
       join(options.repoRoot, ".gitignore"),
       PATCHMILL_GIT_IGNORE_ENTRIES,
     );
+    if (added.length === 0) {
+      return {
+        policy: options.policy,
+        message:
+          "No git hygiene commit was needed; Patchmill files were already listed in .gitignore.",
+      };
+    }
+
+    const commit = await commitInitGitHygiene({
+      repoRoot: options.repoRoot,
+      runner: options.runner,
+      paths: [".gitignore"],
+      message: "chore: initialize Patchmill git hygiene",
+    });
+    const commitMessage =
+      commit.status === "committed"
+        ? ".gitignore git hygiene rules were committed."
+        : commit.status === "nothing"
+          ? "No git hygiene commit was needed."
+          : commit.status === "missing"
+            ? "Warning: .gitignore was not available to commit after init updated git hygiene rules."
+            : commit.warning;
     return {
       policy: options.policy,
-      message:
-        added.length > 0
-          ? `Added Patchmill files to .gitignore:\n${formatEntries(added)}`
-          : "Patchmill files were already listed in .gitignore.",
+      message: [
+        commitMessage,
+        `Added Patchmill files to .gitignore:\n${formatEntries(added)}`,
+      ].join("\n"),
     };
   }
 
