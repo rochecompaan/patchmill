@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.0](https://github.com/rochecompaan/patchmill/compare/v0.12.0...v0.13.0) (2026-06-23)
+
+
+### Features
+
+* **auth:** add patchmill auth command ([#41](https://github.com/rochecompaan/patchmill/issues/41)) ([c368a73](https://github.com/rochecompaan/patchmill/commit/c368a731edecf986289ac4ce745ce4fc89490ef2))
+* **run-once:** recover blocked run workspaces ([#45](https://github.com/rochecompaan/patchmill/issues/45)) ([4a43a77](https://github.com/rochecompaan/patchmill/commit/4a43a77e7c5ccaee0eb51c92d2fe066a99266021))
+* **setup-test-repo:** show setup-test-repo seed progress ([#42](https://github.com/rochecompaan/patchmill/issues/42)) ([b8815be](https://github.com/rochecompaan/patchmill/commit/b8815be1bc0abb29da4d890e7e4e2a45df73c381))
+* **triage:** process triage issues oldest first ([#44](https://github.com/rochecompaan/patchmill/issues/44)) ([db97966](https://github.com/rochecompaan/patchmill/commit/db97966f7d4bcdd0d1d3d16c3c5e6451082206e6))
+
+
+### Bug Fixes
+
+* **init:** improve init git hygiene ([#46](https://github.com/rochecompaan/patchmill/issues/46)) ([558c8a0](https://github.com/rochecompaan/patchmill/commit/558c8a04247afa167d20f67806cd33d28ecca1d7))
+
 ## [0.12.0](https://github.com/rochecompaan/patchmill/compare/v0.11.0...v0.12.0) (2026-06-15)
 
 
