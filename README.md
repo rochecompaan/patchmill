@@ -10,10 +10,6 @@ Patchmill is an agent-driven software factory for turning product work into
 reviewed, landed changes without hiding the engineering judgment between idea
 and production.
 
-> **Alpha status:** Patchmill is early alpha software and is not ready for
-> production use yet. Expect incomplete workflows, sharp edges, and breaking
-> changes while the factory loop is still being built.
-
 It gives automated development an explicit production line: intake incoming
 work, sort what is ready, write or reuse a plan, implement in an isolated
 worktree, review the result, collect evidence when needed, land the change, and
