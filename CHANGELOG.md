@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.0](https://github.com/rochecompaan/patchmill/compare/v0.13.0...v0.14.0) (2026-06-25)
+
+
+### Features
+
+* **skill-pack:** bump Superpowers to v6.0.3 ([#49](https://github.com/rochecompaan/patchmill/issues/49)) ([2b6b3c5](https://github.com/rochecompaan/patchmill/commit/2b6b3c56ef877d114e0e990131165a1dbefa9a67))
+
+
+### Bug Fixes
+
+* **npm:** normalize package bin path ([#47](https://github.com/rochecompaan/patchmill/issues/47)) ([49363ff](https://github.com/rochecompaan/patchmill/commit/49363ff565c1f2f9fc6f1130980b824031a000be))
+
 ## [0.13.0](https://github.com/rochecompaan/patchmill/compare/v0.12.0...v0.13.0) (2026-06-23)
 
 
