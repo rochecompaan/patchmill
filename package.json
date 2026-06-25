@@ -80,6 +80,6 @@
     "@earendil-works/pi-coding-agent": "^0.77.0",
     "@earendil-works/pi-tui": "^0.77.0",
     "pi-subagents": "^0.25.0",
-    "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz"
+    "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
   }
 }
