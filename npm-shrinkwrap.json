@@ -12,7 +12,7 @@
         "@earendil-works/pi-coding-agent": "^0.77.0",
         "@earendil-works/pi-tui": "^0.77.0",
         "pi-subagents": "^0.25.0",
-        "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz"
+        "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
       },
       "bin": {
         "patchmill": "dist/bin/patchmill.js"
@@ -4599,9 +4599,9 @@
       }
     },
     "node_modules/superpowers": {
-      "version": "5.0.7",
-      "resolved": "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
-      "integrity": "sha512-xGb/ZAZjyimxdRzR26KLzMz4IwIzsVSg9appLnbpCuZlVbtiu2YUBZiaxuB9G8oqGamkY71Zbxut2L2mf/RVNw=="
+      "version": "6.0.3",
+      "resolved": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
+      "integrity": "sha512-Vr0Zf1OW0k1agb0u6pnW34BppBtVFeiYfpwse+ywTC9xlQjgDgwhn9gg9NkPPcbBnEIpSC+IfBb4CeKQNkjjvg=="
     },
     "node_modules/tinyexec": {
       "version": "1.2.2",

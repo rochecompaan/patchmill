@@ -40,9 +40,9 @@ test("default pack records pinned external source", () => {
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.source, {
     type: "github-release",
     repository: "obra/superpowers",
-    tag: "v5.0.7",
+    tag: "v6.0.3",
     tarballUrl:
-      "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
+      "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
   });
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
@@ -111,9 +111,9 @@ test("buildSkillPackMetadata records installed file hashes", () => {
       source: {
         type: "github-release",
         repository: "obra/superpowers",
-        tag: "v5.0.7",
+        tag: "v6.0.3",
         tarballUrl:
-          "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
+          "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
       },
     },
     installedAt: "<generated-by-init>",

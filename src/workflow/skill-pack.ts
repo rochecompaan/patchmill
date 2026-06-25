@@ -11,8 +11,8 @@ export const SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
 export type SkillPackSource = {
   type: "github-release";
   repository: "obra/superpowers";
-  tag: "v5.0.7";
-  tarballUrl: "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz";
+  tag: "v6.0.3";
+  tarballUrl: "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz";
 };
 
 export type SkillPackSkill = {
@@ -45,9 +45,9 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   source: {
     type: "github-release",
     repository: "obra/superpowers",
-    tag: "v5.0.7",
+    tag: "v6.0.3",
     tarballUrl:
-      "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
+      "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
   },
   skills: [
     { name: "patchmill-issue-triage", source: "patchmill" },
