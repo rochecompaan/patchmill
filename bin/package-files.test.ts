@@ -26,7 +26,7 @@ test("package metadata identifies Patchmill as Apache-2.0", () => {
   );
 
   assert.equal(packageJson.license, "Apache-2.0");
-  assert.equal(packageJson.bin?.patchmill, "./dist/bin/patchmill.js");
+  assert.equal(packageJson.bin?.patchmill, "dist/bin/patchmill.js");
   assert.equal(packageJson.scripts?.prepack, "npm run build");
   assert.match(license, /^Copyright 2026 Roché Compaan\n/u);
   assert.match(license, /Apache License\n\s+Version 2\.0, January 2004/u);

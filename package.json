@@ -37,7 +37,7 @@
   "description": "An agent-driven software factory where humans and agents collaborate to preserve software craftsmanship.",
   "type": "module",
   "bin": {
-    "patchmill": "./dist/bin/patchmill.js"
+    "patchmill": "dist/bin/patchmill.js"
   },
   "scripts": {
     "patchmill": "node bin/patchmill.ts",
