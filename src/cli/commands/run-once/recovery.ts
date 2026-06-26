@@ -345,7 +345,6 @@ export async function inspectBlockedRunRecovery(input: {
     kind = "missing-worktree-existing-branch";
   else if (worktree.clean === false) kind = "dirty-worktree";
   else if (merged) kind = "already-merged";
-  else if ((divergence?.behind ?? 0) > 0) kind = "diverged";
   else kind = "recoverable-clean";
 
   const report: Omit<BlockedRunRecoveryReport, "recommendedActions"> = {

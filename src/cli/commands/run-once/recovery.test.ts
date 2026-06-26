@@ -159,10 +159,10 @@ test("inspectBlockedRunRecovery classifies already merged branch", async () => {
   assert.equal(report.branch.merged, true);
 });
 
-test("inspectBlockedRunRecovery classifies diverged branch", async () => {
+test("inspectBlockedRunRecovery classifies clean behind saved workspace as recoverable", async () => {
   const report = await inspect({ revList: "3\t2\n" });
 
-  assert.equal(report.kind, "diverged");
+  assert.equal(report.kind, "recoverable-clean");
   assert.deepEqual(report.divergence, { ahead: 2, behind: 3 });
 });
 

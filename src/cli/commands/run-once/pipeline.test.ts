@@ -3361,7 +3361,7 @@ test("runOneIssue reports already merged blocked recovery before mutations", asy
   );
 });
 
-test("runOneIssue reports diverged blocked recovery before mutations", async () => {
+test("runOneIssue resumes clean behind blocked recovery", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -3370,13 +3370,12 @@ test("runOneIssue reports diverged blocked recovery before mutations", async () 
   await writeBlockedRecoveryRunState(config);
   const runner = blockedRecoveryRunner(config, { revList: "3\t2\n" });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /Rebase or cherry-pick/,
-  );
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.equal(
     runner.calls.some((call) => call.command === "pi"),
-    false,
+    true,
   );
 });
 
