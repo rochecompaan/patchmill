@@ -15,6 +15,7 @@ import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueRunCheckpoints,
+  AgentIssueRunStateStatus,
   CommandRunner,
   IssueSummary,
 } from "./types.ts";
@@ -46,6 +47,11 @@ type BlockIssue = (
 ) => Promise<AgentIssuePipelineResult>;
 
 type ExistingPlanningState = {
+  status?: AgentIssueRunStateStatus;
+  branch?: string;
+  worktreePath?: string;
+  blockedAt?: string;
+  lastError?: string;
   specPath?: string;
   specCommit?: string;
   planPath?: string;
@@ -137,6 +143,23 @@ function specComment(specPath: string, created: boolean): string {
 
 function planComment(planPath: string, created: boolean): string {
   return `${created ? "Plan ready" : "Existing plan ready"}: \`${planPath}\``;
+}
+
+function reviewStopStatus(
+  existingState: ExistingPlanningState | undefined,
+): "blocked" | "finished" {
+  if (
+    !existingState ||
+    (!existingState.branch && !existingState.worktreePath)
+  ) {
+    return "finished";
+  }
+  return existingState.status === "blocked" ||
+    (existingState.status === "finished" &&
+      !!existingState.blockedAt &&
+      !!existingState.lastError)
+    ? "blocked"
+    : "finished";
 }
 
 async function resolveWorkflowArtifact(options: {
@@ -410,7 +433,7 @@ export async function advancePlanningStages({
       config.runStateDir,
       {
         issueNumber: issue.number,
-        status: "finished",
+        status: reviewStopStatus(existingState),
         specPath,
         specCommit,
         checkpoints: { readyLabelRestored: true },
@@ -592,7 +615,7 @@ export async function advancePlanningStages({
         config.runStateDir,
         {
           issueNumber: issue.number,
-          status: "finished",
+          status: reviewStopStatus(existingState),
           specPath,
           specCommit,
           planPath,
@@ -607,7 +630,7 @@ export async function advancePlanningStages({
       config.runStateDir,
       {
         issueNumber: issue.number,
-        status: "finished",
+        status: reviewStopStatus(existingState),
         specPath,
         specCommit,
         planPath,

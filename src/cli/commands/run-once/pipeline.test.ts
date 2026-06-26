@@ -3290,6 +3290,67 @@ test("runOneIssue resumes clean blocked implementation workspace after external 
   assert.deepEqual(state.failureCommentKeys, ["blocked:verification"]);
 });
 
+test("runOneIssue preserves blocked recovery state when spec review interrupts resume", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  await writeBlockedRecoveryRunState(config);
+  await writeFile(
+    join(
+      config.repoRoot,
+      "docs/specs/2026-06-20-issue-45-recover-blocked-run.md",
+    ),
+    "# spec\n",
+    "utf8",
+  );
+  const runner = blockedRecoveryRunner(config);
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "spec-found", JSON.stringify(result));
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  );
+  assert.equal(state.status, "blocked");
+  assert.equal(state.branch, "agent/issue-45-recover-blocked-run");
+  assert.equal(
+    state.worktreePath,
+    ".worktrees/patchmill-issue-45-recover-blocked-run",
+  );
+});
+
+test("runOneIssue recovers blocked state overwritten by spec review stop", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  await writeBlockedRecoveryRunState(config);
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      status: "finished",
+    },
+    NOW.toISOString(),
+  );
+  const runner = blockedRecoveryRunner(config, {
+    selectedLabels: ["spec-review", "spec-approved", "plan-approved"],
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    true,
+  );
+});
+
 test("runOneIssue treats configured ignored dirty paths as clean blocked recovery", async () => {
   const config = await makeConfig({
     dryRun: false,

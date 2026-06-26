@@ -36,6 +36,14 @@ export type BlockedRunRecoveryReport = {
   recommendedActions: string[];
 };
 
+export function hasBlockedRunRecoveryState(
+  state: AgentIssueRunState | undefined,
+): state is AgentIssueRunState {
+  if (!state || (!state.branch && !state.worktreePath)) return false;
+  if (state.status === "blocked") return true;
+  return state.status === "finished" && !!state.blockedAt && !!state.lastError;
+}
+
 function commandFailure(message: string, result: CommandResult): Error {
   const output =
     [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
@@ -272,10 +280,7 @@ export async function inspectBlockedRunRecovery(input: {
     commits: input.state.commits ?? [],
   } satisfies Omit<BlockedRunRecoveryReport, "kind" | "recommendedActions">;
 
-  if (
-    input.state.status !== "blocked" ||
-    (!input.state.branch && !input.state.worktreePath)
-  ) {
+  if (!hasBlockedRunRecoveryState(input.state)) {
     const kind = "not-blocked-recovery";
     return {
       ...baseReport,

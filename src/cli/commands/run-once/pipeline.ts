@@ -42,6 +42,7 @@ import {
 } from "./run-state.ts";
 import {
   formatBlockedRunRecoveryReport,
+  hasBlockedRunRecoveryState,
   inspectBlockedRunRecovery,
 } from "./recovery.ts";
 import { selectIssue } from "./selection.ts";
@@ -792,18 +793,16 @@ export async function runOneIssue(
   }
 
   const ignoredPaths = cleanStatusIgnoredPaths(config, options);
-  const blockedRecoveryReport =
-    existingState?.status === "blocked" &&
-    (existingState.branch || existingState.worktreePath)
-      ? await inspectBlockedRunRecovery({
-          runner,
-          repoRoot: config.repoRoot,
-          runStatePath: runStatePath(config.runStateDir, issue.number),
-          state: existingState,
-          baseRef: config.baseRef,
-          ignoredPaths,
-        })
-      : undefined;
+  const blockedRecoveryReport = hasBlockedRunRecoveryState(existingState)
+    ? await inspectBlockedRunRecovery({
+        runner,
+        repoRoot: config.repoRoot,
+        runStatePath: runStatePath(config.runStateDir, issue.number),
+        state: existingState,
+        baseRef: config.baseRef,
+        ignoredPaths,
+      })
+    : undefined;
   const blockedRecoveryResumable =
     blockedRecoveryReport?.kind === "recoverable-clean";
   const resumableState = ordinaryResumableState || blockedRecoveryResumable;
