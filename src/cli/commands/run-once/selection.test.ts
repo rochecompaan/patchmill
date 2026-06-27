@@ -4,7 +4,7 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import { ApprovalRequiredError } from "./workflow-state.ts";
-import { selectIssue } from "./selection.ts";
+import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import type { IssueSummary } from "./types.ts";
 
 const {
@@ -258,6 +258,74 @@ test("selectIssue automatic selection ignores review-only workflow states", () =
   );
 
   assert.equal(selected, undefined);
+});
+
+test("selectIssueWithDiagnostics explains automatic rejection reasons", () => {
+  const result = selectIssueWithDiagnostics(
+    [
+      issue(1, [ready, needsInfo]),
+      issue(2, ["bug"]),
+      issue(3, ["spec-review"]),
+      issue(4, [ready], "closed"),
+    ],
+    { readyLabel: ready, approvalPolicy: specApprovalPolicy() },
+  );
+
+  assert.equal(result.issue, undefined);
+  assert.deepEqual(
+    result.rejections.map((entry) => ({
+      issueNumber: entry.issueNumber,
+      reason: entry.reason,
+      workflowState: entry.workflowState,
+      blockingLabels: entry.blockingLabels,
+      state: entry.state,
+    })),
+    [
+      {
+        issueNumber: 1,
+        reason: "blocking-labels",
+        workflowState: "agent-ready",
+        blockingLabels: [needsInfo],
+        state: "open",
+      },
+      {
+        issueNumber: 2,
+        reason: "not-actionable",
+        workflowState: "not-actionable",
+        blockingLabels: undefined,
+        state: "open",
+      },
+      {
+        issueNumber: 3,
+        reason: "waiting-spec-approval",
+        workflowState: "waiting-spec-review",
+        blockingLabels: undefined,
+        state: "open",
+      },
+      {
+        issueNumber: 4,
+        reason: "non-open-state",
+        workflowState: "agent-ready",
+        blockingLabels: undefined,
+        state: "closed",
+      },
+    ],
+  );
+});
+
+test("selectIssueWithDiagnostics preserves selected candidate priority and reports no skip diagnostics when selected", () => {
+  const result = selectIssueWithDiagnostics(
+    [
+      issue(8, [ready, medium]),
+      issue(3, [ready, critical]),
+      issue(2, [ready, high]),
+      issue(1, [ready]),
+    ],
+    { readyLabel: ready },
+  );
+
+  assert.equal(result.issue?.number, 3);
+  assert.deepEqual(result.rejections, []);
 });
 
 test("selectIssue rejects explicit issue waiting for spec approval", () => {
