@@ -222,9 +222,25 @@ labels determine ordering, then lower issue number wins. Explicit `--issue`
 selection validates the requested issue and returns `approval-required` for a
 waiting review state with the missing approved label.
 
-Before mutating, it checks the repository worktree is clean, ignoring configured
-local state paths such as the run-state directory and issue todo root. It
-records checkpoints so retries can skip already-completed side effects safely.
+After selecting an eligible issue and before any mutation, `run-once` verifies
+that the configured issue branch base (`git.baseRef`) is already contained in
+the configured PR target base. The target base is derived from `git.remote` and
+`git.baseBranch` as `refs/remotes/<remote>/<baseBranch>`, for example
+`refs/remotes/origin/main`. If `git.baseRef` has commits not present in that
+remote-tracking ref, Patchmill exits non-zero before claiming the issue,
+commenting, writing run state, creating a worktree, or invoking Pi. The error
+lists the commits that would leak into the issue PR and tells the operator to
+push or merge setup commits, fetch a stale remote-tracking ref, or configure
+`git.baseRef` to an upstream ref already contained in the PR base.
+
+Dry runs perform the same branch-base safety check because they preview whether
+`run-once` is safe to start. When no eligible issue exists, `run-once` returns
+`no-issue` without running this check because no issue branch would be created.
+
+After the branch-base check passes in execute mode, `run-once` checks the
+repository worktree is clean, ignoring configured local state paths such as the
+run-state directory and issue todo root. It records checkpoints so retries can
+skip already-completed side effects safely.
 
 ### Plan-creation Pi prompt
 

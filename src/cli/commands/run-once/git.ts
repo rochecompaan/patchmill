@@ -82,6 +82,26 @@ function formatCommandFailure(message: string, result: CommandResult): string {
   return `${message} with exit code ${result.code}: ${output}`;
 }
 
+function issueBaseTargetRef(remote: string, baseBranch: string): string {
+  return `refs/remotes/${remote}/${baseBranch}`;
+}
+
+async function verifyCommitRef(
+  runner: CommandRunner,
+  repoRoot: string,
+  ref: string,
+  failure: string,
+): Promise<void> {
+  const result = await runner.run(
+    "git",
+    ["rev-parse", "--verify", `${ref}^{commit}`],
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0) {
+    throw new Error(formatCommandFailure(failure, result));
+  }
+}
+
 function normalizeGitPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/\/+$/u, "");
 }
@@ -154,6 +174,59 @@ export async function assertCleanWorktree(
   if (dirtyOutput !== "") {
     throw new Error(`Repository worktree is not clean: ${dirtyOutput}`);
   }
+}
+
+export async function assertIssueBaseContainedInPrBase(
+  runner: CommandRunner,
+  repoRoot: string,
+  baseRef: string,
+  remote: string,
+  baseBranch: string,
+): Promise<void> {
+  const targetRef = issueBaseTargetRef(remote, baseBranch);
+
+  await verifyCommitRef(
+    runner,
+    repoRoot,
+    baseRef,
+    `Configured git.baseRef ${baseRef} could not be resolved to a commit`,
+  );
+  await verifyCommitRef(
+    runner,
+    repoRoot,
+    targetRef,
+    `Configured PR target base ${targetRef} could not be resolved to a commit. Run git fetch ${remote}, or fix git.remote/git.baseBranch`,
+  );
+
+  const result = await runner.run(
+    "git",
+    ["log", "--oneline", `${targetRef}..${baseRef}`],
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0) {
+    throw new Error(
+      formatCommandFailure(
+        `git log failed while checking whether git.baseRef ${baseRef} is contained in ${targetRef}`,
+        result,
+      ),
+    );
+  }
+
+  const leakedCommits = result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (leakedCommits.length === 0) return;
+
+  throw new Error(
+    [
+      `Configured git.baseRef ${baseRef} is not contained in ${targetRef}.`,
+      `These commits would be included in the issue PR:`,
+      ...leakedCommits,
+      ``,
+      `Push or merge these commits into ${remote}/${baseBranch}, run git fetch if the remote ref is stale, or configure git.baseRef to a ref already contained in ${targetRef}.`,
+    ].join("\n"),
+  );
 }
 
 export async function createIssueWorktree(

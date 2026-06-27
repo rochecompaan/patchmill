@@ -164,6 +164,40 @@ function normalizeRecordedPiCall(call: Call): Call {
   return call;
 }
 
+function gitBaseContainmentResult(call: Call): CommandResult | undefined {
+  if (call.command !== "git") return undefined;
+  if (call.args[0] === "rev-parse" && call.args[1] === "--verify") {
+    return { code: 0, stdout: "commit-sha\n", stderr: "" };
+  }
+  if (
+    call.args[0] === "log" &&
+    call.args[1] === "--oneline" &&
+    call.args[2]?.startsWith("refs/remotes/")
+  ) {
+    return { code: 0, stdout: "", stderr: "" };
+  }
+  return undefined;
+}
+
+function gitBaseContainmentFailure(call: Call): CommandResult | undefined {
+  if (call.command !== "git") return undefined;
+  if (call.args[0] === "rev-parse" && call.args[1] === "--verify") {
+    return { code: 0, stdout: "commit-sha\n", stderr: "" };
+  }
+  if (
+    call.args[0] === "log" &&
+    call.args[1] === "--oneline" &&
+    call.args[2]?.startsWith("refs/remotes/")
+  ) {
+    return {
+      code: 0,
+      stdout: "abc1234 chore: initialize Patchmill\n",
+      stderr: "",
+    };
+  }
+  return undefined;
+}
+
 function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
 ): MockRunner {
@@ -188,6 +222,20 @@ function createMockRunner(
           if (fallback) return fallback;
           throw error;
         }
+      }
+      const baseContainment = gitBaseContainmentResult(call);
+      if (baseContainment) {
+        try {
+          const result = await handler(call);
+          if (result.stdout.includes("abc1234 chore: initialize Patchmill")) {
+            return result;
+          }
+        } catch {
+          // Most existing tests predate this preflight and throw on the new git
+          // commands. Treat those as a clean base unless a test explicitly
+          // returns the unsafe marker above.
+        }
+        return baseContainment;
       }
       return await handler(call);
     },
@@ -626,13 +674,139 @@ test("runOneIssue dry-run lists open issues and returns the selected agent-ready
   assert.equal(result.logPath, logPath);
   assert.deepEqual(
     events.map((event) => event.message),
-    ["listing open issues", "selected #3 Issue 3"],
+    [
+      "listing open issues",
+      "selected #3 Issue 3",
+      "checking issue branch base containment",
+    ],
   );
   assert.deepEqual(
     runner.calls.map(
       (call) => `${call.command} ${call.args[0]} ${call.args[1]}`,
     ),
-    ["tea issues list", "tea issues list"],
+    [
+      "tea issues list",
+      "tea issues list",
+      "git rev-parse --verify",
+      "git rev-parse --verify",
+      "git log --oneline",
+    ],
+  );
+});
+
+test("runOneIssue dry-run blocks when the configured issue base is ahead of the target PR base", async () => {
+  const config = await makeConfig();
+  const selected = issue(45, ["agent-ready"], "Unsafe base");
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args.includes("issues")) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    const preflight = gitBaseContainmentFailure(call);
+    if (preflight) return preflight;
+    return { code: 0, stdout: "", stderr: "" };
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /Configured git\.baseRef HEAD is not contained in refs\/remotes\/origin\/main/,
+  );
+
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "status",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args.includes("labels"),
+    ),
+    false,
+  );
+});
+
+test("runOneIssue execute blocks unsafe issue base before claim, comments, run state, worktree, or Pi", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const selected = issue(45, ["agent-ready"], "Unsafe base");
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args.includes("issues")) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    const preflight = gitBaseContainmentFailure(call);
+    if (preflight) return preflight;
+    return { code: 0, stdout: "", stderr: "" };
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /abc1234 chore: initialize Patchmill/);
+      return true;
+    },
+  );
+
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "status",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args.includes("comment"),
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args.includes("labels"),
+    ),
+    false,
+  );
+  await assert.rejects(
+    () => readFile(runStatePath(config.runStateDir, selected.number), "utf8"),
+    /ENOENT/,
+  );
+});
+
+test("runOneIssue skips base containment preflight when no eligible issue exists", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args.includes("issues")) {
+      return { code: 0, stdout: issueListPayload([]), stderr: "" };
+    }
+    throw new Error(
+      `unexpected command ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  assert.equal(
+    runner.calls.some((call) => call.command === "git"),
+    false,
   );
 });
 
@@ -667,7 +841,11 @@ test("runOneIssue dry-run for blocked saved workspace skips recovery inspection"
   assert.equal(result.issue.number, 45);
   assert.equal(result.transition, "agent-ready -> agent-done");
   assert.equal(
-    runner.calls.some((call) => call.command === "git"),
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        (call.args[0] === "status" || call.args[0] === "worktree"),
+    ),
     false,
   );
 });
@@ -831,7 +1009,12 @@ test("runOneIssue targeted GitHub issue reads issue by number", async () => {
     runner.calls.map((call) =>
       [call.command, ...call.args.slice(0, 3)].join(" "),
     ),
-    ["gh issue view 1001"],
+    [
+      "gh issue view 1001",
+      "git rev-parse --verify HEAD^{commit}",
+      "git rev-parse --verify refs/remotes/origin/main^{commit}",
+      "git log --oneline refs/remotes/origin/main..HEAD",
+    ],
   );
 });
 
@@ -5618,6 +5801,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
     [
       "listing open issues",
       "selected #15 Ship automation pipeline",
+      "checking issue branch base containment",
       "checking repository status",
       "ensuring in-progress label exists",
       "claimed #15: agent-ready -> in-progress",
@@ -6067,6 +6251,8 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
+    const preflight = gitBaseContainmentResult(call);
+    if (preflight) return preflight;
     if (call.command === "git" && call.args[0] === "status")
       return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "show-ref")
@@ -6154,6 +6340,22 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
   assert.equal(
     runState.worktreePath,
     ".patchmill/worktrees/pm-issue-16-use-custom-worktrees",
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args.join(" ") ===
+          "rev-parse --verify refs/remotes/upstream/release/1.2^{commit}",
+    ),
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args.join(" ") ===
+          "log --oneline refs/remotes/upstream/release/1.2..refs/remotes/upstream/release/1.2",
+    ),
   );
 });
 

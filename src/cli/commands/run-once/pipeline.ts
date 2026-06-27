@@ -13,6 +13,7 @@ import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "../triage/labels.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
   assertCleanWorktree,
+  assertIssueBaseContainedInPrBase,
   cleanStatusIgnoredPaths as buildCleanStatusIgnoredPaths,
   ensureIssueWorktree,
 } from "./git.ts";
@@ -775,6 +776,20 @@ export async function runOneIssue(
     "select",
     `${resumed ? "resuming" : "selected"} #${issue.number} ${issue.title}`,
     { issueNumber: issue.number },
+  );
+  await progress(
+    options,
+    "info",
+    "git",
+    "checking issue branch base containment",
+    { issueNumber: issue.number },
+  );
+  await assertIssueBaseContainedInPrBase(
+    runner,
+    config.repoRoot,
+    config.baseRef,
+    config.remote,
+    config.baseBranch,
   );
   if (config.dryRun) {
     const { ready } = lifecycleLabels(config);

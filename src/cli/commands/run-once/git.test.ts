@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
 import {
   assertCleanWorktree,
+  assertIssueBaseContainedInPrBase,
   buildIssueBranchName,
   buildIssueWorktreePath,
   createIssueWorktree,
@@ -45,6 +46,166 @@ test("issue branch and worktree slugs truncate deterministically", () => {
   assert.equal(
     buildIssueWorktreePath(42, title),
     ".worktrees/patchmill-issue-42-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstu",
+  );
+});
+
+test("assertIssueBaseContainedInPrBase accepts a base contained in the target remote ref", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "base-sha\n", stderr: "" },
+    { code: 0, stdout: "target-sha\n", stderr: "" },
+    { code: 0, stdout: "\n", stderr: "" },
+  ]);
+
+  await assertIssueBaseContainedInPrBase(
+    runner,
+    "/repo",
+    "HEAD",
+    "origin",
+    "main",
+  );
+
+  assert.deepEqual(runner.calls, [
+    {
+      command: "git",
+      args: ["rev-parse", "--verify", "HEAD^{commit}"],
+      cwd: "/repo",
+    },
+    {
+      command: "git",
+      args: ["rev-parse", "--verify", "refs/remotes/origin/main^{commit}"],
+      cwd: "/repo",
+    },
+    {
+      command: "git",
+      args: ["log", "--oneline", "refs/remotes/origin/main..HEAD"],
+      cwd: "/repo",
+    },
+  ]);
+});
+
+test("assertIssueBaseContainedInPrBase rejects commits that are not in the target remote ref", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "base-sha\n", stderr: "" },
+    { code: 0, stdout: "target-sha\n", stderr: "" },
+    {
+      code: 0,
+      stdout:
+        "abc1234 chore: initialize Patchmill\ndef5678 docs: local setup\n",
+      stderr: "",
+    },
+  ]);
+
+  await assert.rejects(
+    () =>
+      assertIssueBaseContainedInPrBase(
+        runner,
+        "/repo",
+        "HEAD",
+        "origin",
+        "main",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(
+        error.message,
+        /Configured git\.baseRef HEAD is not contained in refs\/remotes\/origin\/main\./,
+      );
+      assert.match(error.message, /abc1234 chore: initialize Patchmill/);
+      assert.match(error.message, /def5678 docs: local setup/);
+      assert.match(
+        error.message,
+        /Push or merge these commits into origin\/main/,
+      );
+      assert.match(
+        error.message,
+        /configure git\.baseRef to a ref already contained/,
+      );
+      return true;
+    },
+  );
+});
+
+test("assertIssueBaseContainedInPrBase reports an unresolvable configured base ref", async () => {
+  const runner = createStaticCommandRunner([
+    {
+      code: 128,
+      stdout: "",
+      stderr: "fatal: Needed a single revision",
+    },
+  ]);
+
+  await assert.rejects(
+    () =>
+      assertIssueBaseContainedInPrBase(
+        runner,
+        "/repo",
+        "not-a-ref",
+        "origin",
+        "main",
+      ),
+    /Configured git\.baseRef not-a-ref could not be resolved to a commit with exit code 128: fatal: Needed a single revision/,
+  );
+});
+
+test("assertIssueBaseContainedInPrBase reports a missing target remote ref with remediation", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "base-sha\n", stderr: "" },
+    {
+      code: 128,
+      stdout: "",
+      stderr: "fatal: Needed a single revision",
+    },
+  ]);
+
+  await assert.rejects(
+    () =>
+      assertIssueBaseContainedInPrBase(
+        runner,
+        "/repo",
+        "HEAD",
+        "origin",
+        "main",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(
+        error.message,
+        /Configured PR target base refs\/remotes\/origin\/main could not be resolved to a commit/,
+      );
+      assert.match(error.message, /Run git fetch origin/);
+      assert.match(error.message, /git\.remote/);
+      assert.match(error.message, /git\.baseBranch/);
+      return true;
+    },
+  );
+});
+
+test("assertIssueBaseContainedInPrBase uses configured remote and base branch", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "base-sha\n", stderr: "" },
+    { code: 0, stdout: "target-sha\n", stderr: "" },
+    { code: 0, stdout: "\n", stderr: "" },
+  ]);
+
+  await assertIssueBaseContainedInPrBase(
+    runner,
+    "/repo",
+    "refs/remotes/upstream/release/1.2",
+    "upstream",
+    "release/1.2",
+  );
+
+  assert.deepEqual(
+    runner.calls.map((call) => call.args),
+    [
+      ["rev-parse", "--verify", "refs/remotes/upstream/release/1.2^{commit}"],
+      ["rev-parse", "--verify", "refs/remotes/upstream/release/1.2^{commit}"],
+      [
+        "log",
+        "--oneline",
+        "refs/remotes/upstream/release/1.2..refs/remotes/upstream/release/1.2",
+      ],
+    ],
   );
 });
 
