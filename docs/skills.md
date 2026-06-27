@@ -64,9 +64,9 @@ Supported keys:
 - `planning`: skill used to write implementation plans.
 - `implementation`: skill used to execute implementation plans.
 - `developmentEnvironment`: optional skill used after worktree preparation and
-  before implementation to prepare and verify local runtime prerequisites. A
-  `not-ready` result stops the run locally without posting issue `needs-info`
-  questions.
+  before implementation to prepare, minimally repair, and verify local runtime
+  prerequisites. A `not-ready` result stops the run locally without posting
+  issue `needs-info` questions.
 - `toolchain`: optional skill used before setup or validation commands.
 - `review`: optional skill used for explicit review passes.
 - `visualEvidence`: optional skill used when visible UI changes.
@@ -82,10 +82,14 @@ Kubernetes/Tilt, Docker Compose, seeded databases, browser automation
 infrastructure, or a per-worktree development namespace.
 
 The development-environment skill owns project-specific setup and repair logic.
+It may make and commit minimal code or configuration changes required to get the
+local development environment ready, but it must not implement planned feature
+scope, refactor broadly, land code, push branches, or open pull requests.
 Patchmill only enforces the stage boundary: if the skill returns `ready`,
 Patchmill passes its summary and evidence into the implementation prompt as
 untrusted JSON handoff data; if it returns `not-ready`, Patchmill stops before
-implementation and prints operator-facing remediation.
+implementation and prints operator-facing remediation for external tooling,
+infrastructure, credential, or operator problems.
 
 ## Project-local default skills
 

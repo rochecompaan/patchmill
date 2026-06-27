@@ -322,7 +322,19 @@ test("buildDevelopmentEnvironmentPrompt renders the optional development environ
     prompt,
     /Use the configured development-environment skill: `\.patchmill\/skills\/development-environment`\./,
   );
-  assert.match(prompt, /Do not implement product changes/);
+  assert.match(
+    prompt,
+    /Make only minimal code or config changes required to get the local development environment ready/,
+  );
+  assert.match(
+    prompt,
+    /Commit any tracked file changes before returning `ready`/,
+  );
+  assert.match(
+    prompt,
+    /Return `not-ready` only for external tooling, infrastructure, credential, or operator problems/,
+  );
+  assert.doesNotMatch(prompt, /Do not implement product changes/);
   assert.match(prompt, /"status": "ready"/);
   assert.match(prompt, /"status": "not-ready"/);
   assert.doesNotMatch(prompt, /"questions"/);

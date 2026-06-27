@@ -299,7 +299,10 @@ to implementation.
 If `skills.developmentEnvironment` is configured, `run-once` runs a separate Pi
 prompt from the issue worktree before implementation. The prompt uses the
 configured development-environment skill and accepts only `ready` or `not-ready`
-final JSON.
+final JSON. The development-environment agent may make and commit only minimal
+code or configuration changes required to get the local environment ready; it
+must not implement planned feature scope, refactor broadly, land code, push
+branches, or open pull requests.
 
 `ready` records a summary, evidence, and optional non-secret environment details
 for the later implementation prompt. Patchmill serializes those fields as
@@ -307,8 +310,8 @@ untrusted JSON handoff data so implementation agents do not treat field contents
 as instructions. `not-ready` stops the run before implementation, removes the
 in-progress claim, leaves the issue retryable, and returns operator remediation
 in the final command output. Development environment failures do not use
-issue-style `questions` because they describe local environment repair, not
-product requirements.
+issue-style `questions` because they describe external tooling, infrastructure,
+credential, or operator repair needs, not product requirements.
 
 ### Implementation Pi prompt
 

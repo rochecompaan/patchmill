@@ -742,9 +742,10 @@ export function buildDevelopmentEnvironmentPrompt(
   const workflow = numberedWorkflow([
     renderImplementationContextInstruction(projectPolicy, planPath),
     renderDevelopmentEnvironmentSkillStep(skills),
-    "Prepare and verify only the local development environment required before implementation can begin.",
-    "Do not implement product changes, dispatch implementation workers, run review loops, land code, push branches, or open pull requests.",
-    "Leave tracked product files unchanged unless the configured development-environment skill explicitly documents a safe repository-owned development environment change.",
+    "Prepare and verify the local development environment required before implementation can begin.",
+    "Make only minimal code or config changes required to get the local development environment ready; do not implement planned feature scope, refactors, review loops, landing, pushes, or pull requests.",
+    "Commit any tracked file changes before returning `ready`, and include the commit/check evidence in the ready summary or evidence.",
+    "Return `not-ready` only for external tooling, infrastructure, credential, or operator problems that cannot be fixed from the issue branch.",
     "Return the development environment result contract as the final response.",
   ]);
 
@@ -783,7 +784,7 @@ Return this exact JSON object after the development environment is ready:
 }
 
 Not-ready final response:
-Return this exact JSON object when the local development environment cannot be made ready:
+Return this exact JSON object only when external tooling, infrastructure, credentials, or operator action prevents the local development environment from being made ready:
 {
   "status": "not-ready",
   "reason": "short operator-facing reason",
