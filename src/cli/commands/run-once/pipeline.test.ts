@@ -810,6 +810,48 @@ test("runOneIssue skips base containment preflight when no eligible issue exists
   );
 });
 
+test("runOneIssue dry-run does not log skip diagnostics when automatic selection succeeds", async () => {
+  const config = await makeConfig();
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(10, ["needs-info"], "Skipped but not logged"),
+                issue(3, ["agent-ready", "priority:high"], "Selected issue"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issue.number, 3);
+  assert.deepEqual(
+    events.map((event) => event.message),
+    ["listing open issues", "selected #3 Selected issue"],
+  );
+  assert.equal(
+    events.some((event) => event.level === "debug"),
+    false,
+  );
+});
+
 test("runOneIssue dry-run for blocked saved workspace skips recovery inspection", async () => {
   const config = await makeConfig({ issueNumber: 45 });
   await writeBlockedRecoveryRunState(config);
@@ -959,6 +1001,80 @@ test("runOneIssue returns no-issue when no eligible issue exists and performs no
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.deepEqual(result, { status: "no-issue" });
+  assert.equal(runner.calls.length, 2);
+});
+
+test("runOneIssue dry-run logs skip diagnostics when automatic selection finds no eligible issue", async () => {
+  const config = await makeConfig();
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(2, ["needs-info"], "Needs more detail"),
+                issue(4, ["agent-ready", "in-progress"], "Already claimed"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  const skipEvents = events.filter((event) => event.level === "debug");
+  assert.deepEqual(
+    skipEvents.map((event) => ({
+      message: event.message,
+      issueNumber: event.issueNumber,
+      data: event.data,
+    })),
+    [
+      {
+        message: "skipped #2: blocking labels",
+        issueNumber: 2,
+        data: {
+          issueNumber: 2,
+          title: "Needs more detail",
+          state: "open",
+          labels: ["needs-info"],
+          workflowState: "not-actionable",
+          reason: "blocking-labels",
+          blockingLabels: ["needs-info"],
+        },
+      },
+      {
+        message: "skipped #4: blocking labels",
+        issueNumber: 4,
+        data: {
+          issueNumber: 4,
+          title: "Already claimed",
+          state: "open",
+          labels: ["agent-ready", "in-progress"],
+          workflowState: "agent-ready",
+          reason: "blocking-labels",
+          blockingLabels: ["in-progress"],
+        },
+      },
+    ],
+  );
+  assert.equal(
+    events.at(-1)?.message,
+    "no eligible issue found after considering 2 open issues; see run log for skip details",
+  );
   assert.equal(runner.calls.length, 2);
 });
 
