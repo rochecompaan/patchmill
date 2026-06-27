@@ -163,6 +163,37 @@ pieces your repository needs.
 }
 ```
 
+## Git branch-base safety
+
+`patchmill run-once` creates issue branches from `git.baseRef`. The default is
+`"HEAD"`, which is convenient after a normal clone but can be unsafe just after
+initializing Patchmill: if you commit generated config locally and do not push
+or merge that commit to the PR target branch, every issue branch created from
+local `HEAD` would include that setup commit.
+
+Before claiming an issue, commenting, writing run state, creating a worktree, or
+running Pi, `run-once` checks that `git.baseRef` is contained in the configured
+PR target base. The target base is derived from:
+
+```text
+refs/remotes/<git.remote>/<git.baseBranch>
+```
+
+With the defaults, that is `refs/remotes/origin/main`.
+
+If `git.baseRef` has commits that are not in the target base, `run-once` exits
+non-zero and lists the commits that would leak into the issue PR. There is no
+CLI or config override for this guardrail. Fix the repository state by doing one
+of the following:
+
+- push or merge the local setup commits into `<git.remote>/<git.baseBranch>`;
+- run `git fetch <git.remote>` if the remote-tracking ref is stale;
+- set `git.baseRef` to an upstream ref that is already contained in the target
+  base, such as `refs/remotes/origin/main`.
+
+`--dry-run` performs the same check because it previews whether a real
+`run-once` can safely start.
+
 ## Host providers
 
 `host.provider` must be one of:
