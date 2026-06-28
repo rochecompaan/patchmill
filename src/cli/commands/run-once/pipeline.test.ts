@@ -844,7 +844,11 @@ test("runOneIssue dry-run does not log skip diagnostics when automatic selection
   assert.equal(result.issue.number, 3);
   assert.deepEqual(
     events.map((event) => event.message),
-    ["listing open issues", "selected #3 Selected issue"],
+    [
+      "listing open issues",
+      "selected #3 Selected issue",
+      "checking issue branch base containment",
+    ],
   );
   assert.equal(
     events.some((event) => event.level === "debug"),
