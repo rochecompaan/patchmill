@@ -56,6 +56,30 @@ export type IssueSelectionOptions = Pick<
   excludedLabels?: readonly string[];
 };
 
+export type IssueSelectionRejectionReason =
+  | "non-open-state"
+  | "blocking-labels"
+  | "not-actionable"
+  | "waiting-spec-approval"
+  | "waiting-plan-approval";
+
+export type IssueSelectionRejection = {
+  issueNumber: number;
+  title: string;
+  state: string;
+  labels: string[];
+  workflowState: string;
+  reason: IssueSelectionRejectionReason;
+  blockingLabels?: string[];
+  missingLabel?: string;
+};
+
+export type IssueSelectionDiagnostics = {
+  issue?: IssueSummary;
+  rejections: IssueSelectionRejection[];
+  consideredCount: number;
+};
+
 export type AgentIssuePlan = {
   issueNumber: number;
   path: string;

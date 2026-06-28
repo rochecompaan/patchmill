@@ -46,7 +46,7 @@ import {
   hasBlockedRunRecoveryState,
   inspectBlockedRunRecovery,
 } from "./recovery.ts";
-import { selectIssue } from "./selection.ts";
+import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import {
   defaultVisualEvidenceUploader,
   uploadPrVisualEvidence,
@@ -62,6 +62,7 @@ import type {
   AgentIssueVisualEvidence,
   AgentIssueRunCheckpoints,
   CommandRunner,
+  IssueSelectionRejection,
   IssueSummary,
 } from "./types.ts";
 
@@ -330,6 +331,29 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function rejectionMessage(reason: IssueSelectionRejection["reason"]): string {
+  if (reason === "blocking-labels") return "blocking labels";
+  if (reason === "non-open-state") return "non-open state";
+  if (reason === "waiting-spec-approval") return "waiting for spec approval";
+  if (reason === "waiting-plan-approval") return "waiting for plan approval";
+  return "no actionable workflow state";
+}
+
+async function emitSelectionDiagnostics(
+  rejections: IssueSelectionRejection[],
+  options: RunOneIssueOptions,
+): Promise<void> {
+  for (const rejection of rejections) {
+    await progress(
+      options,
+      "debug",
+      "select",
+      `skipped #${rejection.issueNumber}: ${rejectionMessage(rejection.reason)}`,
+      { issueNumber: rejection.issueNumber, data: rejection },
+    );
+  }
+}
+
 class AgentIssueSafetyError extends Error {
   readonly name = "AgentIssueSafetyError";
 }
@@ -517,13 +541,15 @@ async function selectResumableIssue(
     return { issue: resumable[0], resumed: true };
   }
 
-  const selected = selectIssue(issues, {
+  const diagnostics = selectIssueWithDiagnostics(issues, {
     issueNumber: config.issueNumber,
     readyLabel: ready,
     triagePolicy: config.triagePolicy,
     approvalPolicy: config.approvalPolicy,
   });
-  return selected ? { issue: selected, resumed: false } : undefined;
+  return diagnostics.issue
+    ? { issue: diagnostics.issue, resumed: false }
+    : undefined;
 }
 
 function mergeIssueLists(
@@ -760,7 +786,22 @@ export async function runOneIssue(
   const issue = selected?.issue;
 
   if (!issue) {
-    await progress(options, "info", "select", "no eligible issue found");
+    if (config.issueNumber === undefined) {
+      const diagnostics = selectIssueWithDiagnostics(issues, {
+        readyLabel: lifecycleLabels(config).ready,
+        triagePolicy: config.triagePolicy,
+        approvalPolicy: config.approvalPolicy,
+      });
+      await emitSelectionDiagnostics(diagnostics.rejections, options);
+      await progress(
+        options,
+        "info",
+        "select",
+        `no eligible issue found after considering ${diagnostics.consideredCount} open issues; see run log for skip details`,
+      );
+    } else {
+      await progress(options, "info", "select", "no eligible issue found");
+    }
     return withLogPath({ status: "no-issue" }, options);
   }
 
