@@ -249,15 +249,15 @@ export class GitHubGhHostProvider
       "list",
       "--state",
       "open",
-      "--search",
-      "sort:created-asc",
       "--limit",
       "1000",
       "--json",
       ISSUE_LIST_JSON_FIELDS,
     ]);
     if (result.code !== 0)
-      throw new Error(`gh issue list failed: ${commandOutput(result)}`);
+      throw new Error(
+        `gh issue list failed; check GitHub authentication, repository remote, and repository permissions: ${commandOutput(result)}`,
+      );
     return parseIssueArray(result.stdout, "gh issue list");
   }
 
