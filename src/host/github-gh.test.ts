@@ -75,7 +75,7 @@ function flagValue(args: string[], flag: string): string | undefined {
 
 test("GitHubGhHostProvider lists open issues", async () => {
   const runner = scriptedRunner({
-    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
+    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
       {
         code: 0,
         stdout: JSON.stringify([
@@ -121,10 +121,39 @@ test("GitHubGhHostProvider lists open issues", async () => {
     "--state",
     "open",
     "--limit",
-    "1000",
+    "1001",
     "--json",
     "number,title,body,state,labels,author,createdAt,updatedAt,url",
   ]);
+});
+
+test("GitHubGhHostProvider fails loudly when non-search listing reaches the safe cap", async () => {
+  const runner = scriptedRunner({
+    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
+      {
+        code: 0,
+        stdout: JSON.stringify(
+          Array.from({ length: 1001 }, (_, index) => ({
+            number: index + 1,
+            title: `Issue ${index + 1}`,
+            body: "",
+            state: "OPEN",
+            labels: [],
+            author: { login: "reporter" },
+            createdAt: "2026-06-29T19:00:00Z",
+            updatedAt: "2026-06-29T19:15:28Z",
+            url: `https://github.example/repo/issues/${index + 1}`,
+          })),
+        ),
+        stderr: "",
+      },
+  });
+
+  await assert.rejects(
+    () => createProvider(runner).listOpenIssues(),
+    /gh issue list returned at least 1001 open issues; Patchmill cannot safely apply oldest-first triage ordering after a capped GitHub CLI response without risking silently skipped older issues/,
+  );
+  assert.equal(runner.calls[0]!.args.includes("--search"), false);
 });
 
 test("GitHubGhHostProvider avoids search-backed list for redirected repository slugs", async () => {
@@ -138,7 +167,7 @@ test("GitHubGhHostProvider avoids search-backed list for redirected repository s
       }
       assert.equal(
         line,
-        "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,createdAt,updatedAt,url",
+        "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url",
       );
       return {
         code: 0,
@@ -479,7 +508,7 @@ test("GitHubGhHostProvider command failures include gh and operation context", a
 
 test("GitHubGhHostProvider reports actionable gh issue list failures", async () => {
   const runner = scriptedRunner({
-    "gh issue list --state open --limit 1000 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
+    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
       { code: 1, stdout: "", stderr: "HTTP 403: Resource not accessible" },
   });
 
