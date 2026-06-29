@@ -520,7 +520,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Landing result contracts:/);
   assert.match(
     prompt,
-    /Push the branch to `origin` and open a pull request using the repository's configured host tooling\./,
+    /Push the branch to `origin` and open a pull request using the repository's configured host tooling\. Include `Closes #42` in the pull request description\/body\./,
   );
   assert.match(
     prompt,
@@ -801,7 +801,7 @@ test("buildImplementationPrompt removes direct-land eligibility instructions whe
   );
   assert.match(
     prompt,
-    /Push the branch to `origin` and open a pull request using the repository's configured host tooling\./,
+    /Push the branch to `origin` and open a pull request using the repository's configured host tooling\. Include `Closes #42` in the pull request description\/body\./,
   );
   assert.match(prompt, /Do not land directly on `main`\./);
   assert.doesNotMatch(prompt, /forgejo pr/);
