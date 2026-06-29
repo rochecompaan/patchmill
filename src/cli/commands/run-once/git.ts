@@ -75,6 +75,10 @@ export function cleanStatusIgnoredPaths(config: {
   ];
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function formatCommandFailure(message: string, result: CommandResult): string {
   const output =
     [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
@@ -495,9 +499,24 @@ export async function cleanupIssueWorkspace(
   workspace: { branch: string; worktreePath: string },
 ): Promise<CleanupIssueWorkspaceResult[]> {
   const worktreeArgs = ["worktree", "remove", workspace.worktreePath];
-  const worktreeResult = await runner.run("git", worktreeArgs, {
-    cwd: repoRoot,
-  });
+  let worktreeResult: CommandResult;
+  try {
+    worktreeResult = await runner.run("git", worktreeArgs, {
+      cwd: repoRoot,
+    });
+  } catch (error) {
+    return [
+      cleanupResult({
+        step: "worktree",
+        successMessage: `removed local worktree ${workspace.worktreePath}`,
+        failureMessage: `git worktree remove failed for ${workspace.worktreePath}: ${errorMessage(error)}`,
+        command: "git",
+        args: worktreeArgs,
+        cwd: repoRoot,
+        result: { code: -1, stdout: "", stderr: errorMessage(error) },
+      }),
+    ];
+  }
   const results: CleanupIssueWorkspaceResult[] = [
     cleanupResult({
       step: "worktree",
@@ -513,7 +532,23 @@ export async function cleanupIssueWorkspace(
   if (worktreeResult.code !== 0) return results;
 
   const branchArgs = ["branch", "-D", workspace.branch];
-  const branchResult = await runner.run("git", branchArgs, { cwd: repoRoot });
+  let branchResult: CommandResult;
+  try {
+    branchResult = await runner.run("git", branchArgs, { cwd: repoRoot });
+  } catch (error) {
+    results.push(
+      cleanupResult({
+        step: "branch",
+        successMessage: `deleted local branch ${workspace.branch}`,
+        failureMessage: `git branch -D failed for ${workspace.branch}: ${errorMessage(error)}`,
+        command: "git",
+        args: branchArgs,
+        cwd: repoRoot,
+        result: { code: -1, stdout: "", stderr: errorMessage(error) },
+      }),
+    );
+    return results;
+  }
   results.push(
     cleanupResult({
       step: "branch",
