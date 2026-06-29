@@ -465,8 +465,11 @@ function renderVisualEvidenceDataSection(
   return lines.join("\n");
 }
 
-function renderPrCreationInstruction(remote: string): string {
-  return `Push the branch to \`${remote}\` and open a pull request using the repository's configured host tooling.`;
+function renderPrCreationInstruction(
+  remote: string,
+  issueNumber: number,
+): string {
+  return `Push the branch to \`${remote}\` and open a pull request using the repository's configured host tooling. Include \`Closes #${issueNumber}\` in the pull request description/body.`;
 }
 
 function renderBlockedContract(): string {
@@ -531,7 +534,7 @@ function renderLandingResultContracts(input: {
     branch,
     visualEvidenceExample,
   } = input;
-  const prInstruction = renderPrCreationInstruction(remote);
+  const prInstruction = renderPrCreationInstruction(remote, issueNumber);
 
   if (!allowDirectLand) {
     return `Landing result contracts:

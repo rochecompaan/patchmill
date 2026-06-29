@@ -4256,6 +4256,16 @@ test("runOneIssue runs configured cleanup hook script", async () => {
       call.cwd === worktreeRoot
     )
       return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args.join(" ") === `worktree remove ${worktreePath}`
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args.join(" ") === "branch -D agent/issue-45-cleanup-example"
+    )
+      return { code: 0, stdout: "", stderr: "" };
     throw new Error(
       `unexpected command: ${call.command} ${call.args.join(" ")}`,
     );
@@ -4285,6 +4295,164 @@ test("runOneIssue runs configured cleanup hook script", async () => {
         event.message ===
           "cleanup hook ./scripts/cleanup.sh: completed for .worktrees/patchmill-issue-45-cleanup-example",
     ),
+  );
+  const cleanupGitCalls = runner.calls.filter(
+    (call) =>
+      call.command === "git" &&
+      (call.args[0] === "worktree" || call.args[0] === "branch") &&
+      (call.args.includes("remove") || call.args.includes("-D")),
+  );
+  assert.deepEqual(
+    cleanupGitCalls.map((call) => call.args),
+    [
+      ["worktree", "remove", worktreePath],
+      ["branch", "-D", "agent/issue-45-cleanup-example"],
+    ],
+  );
+  const hookIndex = runner.calls.findIndex(
+    (call) => call.command === "bash" && call.args[0] === cleanupHook,
+  );
+  const worktreeRemoveIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "git" &&
+      call.args.join(" ") === `worktree remove ${worktreePath}`,
+  );
+  assert.ok(hookIndex >= 0);
+  assert.ok(worktreeRemoveIndex > hookIndex);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.stage === "cleanup" &&
+        event.level === "info" &&
+        event.message === `removed local worktree ${worktreePath}`,
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.stage === "cleanup" &&
+        event.level === "info" &&
+        event.message === "deleted local branch agent/issue-45-cleanup-example",
+    ),
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  );
+  assert.equal(state.branch, "agent/issue-45-cleanup-example");
+  assert.equal(state.worktreePath, worktreePath);
+});
+
+test("runOneIssue reports pr cleanup failures without failing handoff", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    worktreePrefix: "patchmill-issue-",
+  });
+  const planPath = "docs/plans/2026-05-14-issue-45-cleanup-failure.md";
+  const worktreePath = ".worktrees/patchmill-issue-45-cleanup-failure";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+  await mkdir(worktreeRoot, { recursive: true });
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Cleanup Failure",
+      status: "implementing",
+      planPath,
+      branch: "agent/issue-45-cleanup-failure",
+      worktreePath,
+      implementationStatus: "pr-created",
+      prUrl: "https://forgejo/pr/45",
+      commits: ["abc123"],
+      validation: ["just issue-runner-test ok"],
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+        worktreeReady: true,
+        implementationCompleted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Cleanup Failure")])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    )
+      return {
+        code: 0,
+        stdout: "agent/issue-45-cleanup-failure\n",
+        stderr: "",
+      };
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args.join(" ") === `worktree remove ${worktreePath}`
+    )
+      return { code: 128, stdout: "", stderr: "fatal: worktree is dirty" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.equal(result.status, "pr-created");
+  assert.ok(
+    events.some(
+      (event) =>
+        event.stage === "cleanup" &&
+        event.level === "error" &&
+        /git worktree remove failed/.test(event.message),
+    ),
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "branch" &&
+        call.args[1] === "-D",
+    ),
+    false,
   );
 });
 
@@ -5833,6 +6001,10 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       return { code: 0, stdout: "", stderr: "" };
     }
 
+    if (call.command === "git" && call.args[0] === "branch") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
     if (call.command === "git" && call.args[0] === "show-ref") {
       return { code: 1, stdout: "", stderr: "" };
     }
@@ -5932,6 +6104,8 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       "creating worktree .worktrees/patchmill-issue-15-ship-automation-pipeline",
       "running implementation with pi",
       "PR created: https://forgejo.example/pr/15",
+      "removed local worktree .worktrees/patchmill-issue-15-ship-automation-pipeline",
+      "deleted local branch agent/issue-15-ship-automation-pipeline",
     ],
   );
   assert.equal(result.planPath, expectedPlanPath);

@@ -75,6 +75,10 @@ export function cleanStatusIgnoredPaths(config: {
   ];
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function formatCommandFailure(message: string, result: CommandResult): string {
   const output =
     [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
@@ -269,6 +273,20 @@ export type IssueWorktreeResult = {
   existingCommits: string[];
 };
 
+export type CleanupIssueWorkspaceStep = "worktree" | "branch";
+
+export type CleanupIssueWorkspaceResult = {
+  step: CleanupIssueWorkspaceStep;
+  status: "cleaned" | "failed";
+  message: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  stdout: string;
+  stderr: string;
+  code: number;
+};
+
 async function commandOutput(
   runner: CommandRunner,
   repoRoot: string,
@@ -447,6 +465,103 @@ export async function ensureIssueWorktree(
     hasExistingCommits: false,
     existingCommits: [],
   };
+}
+
+function cleanupResult(config: {
+  step: CleanupIssueWorkspaceStep;
+  successMessage: string;
+  failureMessage: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  result: CommandResult;
+}): CleanupIssueWorkspaceResult {
+  const status = config.result.code === 0 ? "cleaned" : "failed";
+  return {
+    step: config.step,
+    status,
+    message:
+      status === "cleaned"
+        ? config.successMessage
+        : `${config.failureMessage} with exit code ${config.result.code}`,
+    command: config.command,
+    args: config.args,
+    cwd: config.cwd,
+    stdout: config.result.stdout,
+    stderr: config.result.stderr,
+    code: config.result.code,
+  };
+}
+
+export async function cleanupIssueWorkspace(
+  runner: CommandRunner,
+  repoRoot: string,
+  workspace: { branch: string; worktreePath: string },
+): Promise<CleanupIssueWorkspaceResult[]> {
+  const worktreeArgs = ["worktree", "remove", workspace.worktreePath];
+  let worktreeResult: CommandResult;
+  try {
+    worktreeResult = await runner.run("git", worktreeArgs, {
+      cwd: repoRoot,
+    });
+  } catch (error) {
+    return [
+      cleanupResult({
+        step: "worktree",
+        successMessage: `removed local worktree ${workspace.worktreePath}`,
+        failureMessage: `git worktree remove failed for ${workspace.worktreePath}: ${errorMessage(error)}`,
+        command: "git",
+        args: worktreeArgs,
+        cwd: repoRoot,
+        result: { code: -1, stdout: "", stderr: errorMessage(error) },
+      }),
+    ];
+  }
+  const results: CleanupIssueWorkspaceResult[] = [
+    cleanupResult({
+      step: "worktree",
+      successMessage: `removed local worktree ${workspace.worktreePath}`,
+      failureMessage: `git worktree remove failed for ${workspace.worktreePath}`,
+      command: "git",
+      args: worktreeArgs,
+      cwd: repoRoot,
+      result: worktreeResult,
+    }),
+  ];
+
+  if (worktreeResult.code !== 0) return results;
+
+  const branchArgs = ["branch", "-D", workspace.branch];
+  let branchResult: CommandResult;
+  try {
+    branchResult = await runner.run("git", branchArgs, { cwd: repoRoot });
+  } catch (error) {
+    results.push(
+      cleanupResult({
+        step: "branch",
+        successMessage: `deleted local branch ${workspace.branch}`,
+        failureMessage: `git branch -D failed for ${workspace.branch}: ${errorMessage(error)}`,
+        command: "git",
+        args: branchArgs,
+        cwd: repoRoot,
+        result: { code: -1, stdout: "", stderr: errorMessage(error) },
+      }),
+    );
+    return results;
+  }
+  results.push(
+    cleanupResult({
+      step: "branch",
+      successMessage: `deleted local branch ${workspace.branch}`,
+      failureMessage: `git branch -D failed for ${workspace.branch}`,
+      command: "git",
+      args: branchArgs,
+      cwd: repoRoot,
+      result: branchResult,
+    }),
+  );
+
+  return results;
 }
 
 export async function pushBranch(

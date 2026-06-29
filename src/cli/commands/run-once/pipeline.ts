@@ -15,6 +15,7 @@ import {
   assertCleanWorktree,
   assertIssueBaseContainedInPrBase,
   cleanStatusIgnoredPaths as buildCleanStatusIgnoredPaths,
+  cleanupIssueWorkspace,
   ensureIssueWorktree,
 } from "./git.ts";
 import {
@@ -1682,6 +1683,35 @@ export async function runOneIssue(
           data: { hook: cleanup.name, status: cleanup.status },
         },
       );
+    }
+
+    if (implemented.status === "pr-created") {
+      const workspaceCleanupResults = await cleanupIssueWorkspace(
+        runner,
+        config.repoRoot,
+        { branch, worktreePath },
+      );
+      for (const cleanup of workspaceCleanupResults) {
+        await progress(
+          options,
+          cleanup.status === "failed" ? "error" : "info",
+          "cleanup",
+          cleanup.message,
+          {
+            issueNumber: issue.number,
+            data: {
+              step: cleanup.step,
+              status: cleanup.status,
+              command: cleanup.command,
+              args: cleanup.args,
+              cwd: cleanup.cwd,
+              code: cleanup.code,
+              stdout: cleanup.stdout,
+              stderr: cleanup.stderr,
+            },
+          },
+        );
+      }
     }
 
     await runStep(`final result ${implemented.status}`, async () => undefined);

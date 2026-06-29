@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
 import {
   assertCleanWorktree,
+  cleanupIssueWorkspace,
   assertIssueBaseContainedInPrBase,
   buildIssueBranchName,
   buildIssueWorktreePath,
@@ -757,4 +758,87 @@ test("git helpers include exit code and fallback output when commands fail silen
       ),
     /git push failed for agent\/issue-42-add-user-tags with exit code 13: \(no output\)/,
   );
+});
+
+test("cleanupIssueWorkspace removes the local worktree then local branch", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+  ]);
+
+  const results = await cleanupIssueWorkspace(runner, "/repo", {
+    branch: "agent/issue-42-add-user-tags",
+    worktreePath: ".worktrees/patchmill-issue-42-add-user-tags",
+  });
+
+  assert.deepEqual(
+    results.map((result) => result.status),
+    ["cleaned", "cleaned"],
+  );
+  assert.deepEqual(runner.calls, [
+    {
+      command: "git",
+      args: [
+        "worktree",
+        "remove",
+        ".worktrees/patchmill-issue-42-add-user-tags",
+      ],
+      cwd: "/repo",
+    },
+    {
+      command: "git",
+      args: ["branch", "-D", "agent/issue-42-add-user-tags"],
+      cwd: "/repo",
+    },
+  ]);
+  assert.equal(
+    runner.calls.some((call) => call.args.includes("push")),
+    false,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.args.includes("--delete")),
+    false,
+  );
+});
+
+test("cleanupIssueWorkspace skips local branch deletion when worktree removal fails", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 128, stdout: "", stderr: "fatal: worktree is dirty" },
+  ]);
+
+  const results = await cleanupIssueWorkspace(runner, "/repo", {
+    branch: "agent/issue-42-add-user-tags",
+    worktreePath: ".worktrees/patchmill-issue-42-add-user-tags",
+  });
+
+  assert.deepEqual(
+    results.map((result) => result.status),
+    ["failed"],
+  );
+  assert.match(results[0]?.message ?? "", /git worktree remove failed/);
+  assert.equal(results[0]?.stdout, "");
+  assert.equal(results[0]?.stderr, "fatal: worktree is dirty");
+  assert.deepEqual(
+    runner.calls.map((call) => call.args),
+    [["worktree", "remove", ".worktrees/patchmill-issue-42-add-user-tags"]],
+  );
+});
+
+test("cleanupIssueWorkspace reports branch deletion failures without throwing", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "", stderr: "" },
+    { code: 1, stdout: "", stderr: "error: branch not found" },
+  ]);
+
+  const results = await cleanupIssueWorkspace(runner, "/repo", {
+    branch: "agent/issue-42-add-user-tags",
+    worktreePath: ".worktrees/patchmill-issue-42-add-user-tags",
+  });
+
+  assert.deepEqual(
+    results.map((result) => result.status),
+    ["cleaned", "failed"],
+  );
+  assert.equal(results[1]?.step, "branch");
+  assert.match(results[1]?.message ?? "", /git branch -D failed/);
 });
