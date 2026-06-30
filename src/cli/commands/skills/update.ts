@@ -94,7 +94,18 @@ function isProjectSkillFilePath(path: unknown): path is string {
   return (
     typeof path === "string" &&
     path.startsWith(`${DEFAULT_PROJECT_SKILL_DIR}/`) &&
+    !path.includes("\\") &&
     !path.split("/").includes("..")
+  );
+}
+
+function isSkillPackSource(source: unknown): boolean {
+  return (
+    isRecord(source) &&
+    source.type === "github-release" &&
+    typeof source.repository === "string" &&
+    typeof source.tag === "string" &&
+    typeof source.tarballUrl === "string"
   );
 }
 
@@ -106,6 +117,8 @@ function assertPatchmillManagedProjectLocal(
   }
   if (
     metadata.pack.name !== PATCHMILL_RECOMMENDED_SKILL_PACK.name ||
+    typeof metadata.pack.version !== "string" ||
+    !isSkillPackSource(metadata.pack.source) ||
     metadata.skillDir !== DEFAULT_PROJECT_SKILL_DIR ||
     metadata.metadataFile !== SKILL_PACK_METADATA_FILE ||
     !Array.isArray(metadata.files) ||

@@ -341,7 +341,7 @@ test("updateProjectSkills rejects malformed metadata shapes", async () => {
   await writeFileEnsuringParent(
     join(repoRoot, ".patchmill", "skills", SKILL_PACK_METADATA_FILE),
     JSON.stringify({
-      pack: { name: "patchmill-recommended" },
+      pack: { name: "patchmill-recommended", version: "2026.04" },
       skillDir: ".patchmill/skills",
       metadataFile: SKILL_PACK_METADATA_FILE,
       files: [null, { path: ".patchmill/skills/writing-plans/SKILL.md" }],
@@ -355,21 +355,26 @@ test("updateProjectSkills rejects malformed metadata shapes", async () => {
 });
 
 test("updateProjectSkills rejects metadata paths outside project-local skills", async () => {
-  const repoRoot = await tempRoot("patchmill-skills-unsafe-metadata-repo-");
-  await writeMetadata(
-    repoRoot,
-    oldMetadata([
-      {
-        path: ".patchmill/skills/../outside.md",
-        sha256: hashText(oldWritingPlans),
-      },
-    ]),
-  );
+  for (const unsafePath of [
+    ".patchmill/skills/../outside.md",
+    ".patchmill/skills/writing-plans\\..\\..\\outside.md",
+  ]) {
+    const repoRoot = await tempRoot("patchmill-skills-unsafe-metadata-repo-");
+    await writeMetadata(
+      repoRoot,
+      oldMetadata([
+        {
+          path: unsafePath,
+          sha256: hashText(oldWritingPlans),
+        },
+      ]),
+    );
 
-  await assert.rejects(
-    updateProjectSkills({ repoRoot, dependencies }),
-    /No Patchmill-managed project-local skill pack found\. Run `patchmill init` first,\nor reinstall project-local skills\./u,
-  );
+    await assert.rejects(
+      updateProjectSkills({ repoRoot, dependencies }),
+      /No Patchmill-managed project-local skill pack found\. Run `patchmill init` first,\nor reinstall project-local skills\./u,
+    );
+  }
 });
 
 test("updateProjectSkills aborts when new bundled files would overwrite local files", async () => {
