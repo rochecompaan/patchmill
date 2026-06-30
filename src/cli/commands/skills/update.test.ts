@@ -119,6 +119,7 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
     "SKILL.md": newWritingPlans,
     "notes.md": "new notes\n",
   });
+  await chmod(join(superpowersSource, "writing-plans", "notes.md"), 0o400);
 
   await writeFileEnsuringParent(
     join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
@@ -167,13 +168,15 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
     ),
     newWritingPlans,
   );
-  assert.equal(
-    await readFile(
-      join(repoRoot, ".patchmill", "skills", "writing-plans", "notes.md"),
-      "utf8",
-    ),
-    "new notes\n",
+  const updatedNotesPath = join(
+    repoRoot,
+    ".patchmill",
+    "skills",
+    "writing-plans",
+    "notes.md",
   );
+  assert.equal(await readFile(updatedNotesPath, "utf8"), "new notes\n");
+  assert.notEqual((await stat(updatedNotesPath)).mode & 0o200, 0);
   await assert.rejects(
     access(
       join(repoRoot, ".patchmill", "skills", "obsolete-skill", "SKILL.md"),
@@ -341,7 +344,7 @@ test("updateProjectSkills rejects malformed metadata shapes", async () => {
       pack: { name: "patchmill-recommended" },
       skillDir: ".patchmill/skills",
       metadataFile: SKILL_PACK_METADATA_FILE,
-      files: [null],
+      files: [null, { path: ".patchmill/skills/writing-plans/SKILL.md" }],
     }),
   );
 

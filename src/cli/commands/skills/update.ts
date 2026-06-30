@@ -27,6 +27,7 @@ import {
   comparePaths,
   defaultSkillSourceRoots,
   hashFile,
+  makeOwnerWritableRecursive,
   pathExists,
   sourceRootFor,
   type SkillInstallerDependencies,
@@ -109,7 +110,10 @@ function assertPatchmillManagedProjectLocal(
     metadata.metadataFile !== SKILL_PACK_METADATA_FILE ||
     !Array.isArray(metadata.files) ||
     metadata.files.some(
-      (file) => !isRecord(file) || !isProjectSkillFilePath(file.path),
+      (file) =>
+        !isRecord(file) ||
+        !isProjectSkillFilePath(file.path) ||
+        typeof file.sha256 !== "string",
     )
   ) {
     throw new Error(MISSING_METADATA_MESSAGE);
@@ -220,6 +224,7 @@ async function copyBundledSkills(options: {
       force: true,
       errorOnExist: false,
     });
+    await makeOwnerWritableRecursive(targetDir, options.dependencies);
   }
 }
 

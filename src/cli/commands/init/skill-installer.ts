@@ -176,7 +176,7 @@ export async function collectSourceFiles(
   return files;
 }
 
-async function makeOwnerWritableRecursive(
+export async function makeOwnerWritableRecursive(
   path: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
 ): Promise<void> {
