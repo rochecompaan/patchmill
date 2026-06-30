@@ -80,7 +80,7 @@ export function defaultSkillSourceRoots(): SourceRoots {
   };
 }
 
-async function pathExists(
+export async function pathExists(
   path: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
 ): Promise<boolean> {
@@ -92,13 +92,16 @@ async function pathExists(
   }
 }
 
-function sourceRootFor(skill: SkillPackSkill, roots: SourceRoots): string {
+export function sourceRootFor(
+  skill: SkillPackSkill,
+  roots: SourceRoots,
+): string {
   return skill.source === "patchmill"
     ? roots.patchmillSkillsDir
     : roots.superpowersSkillsDir;
 }
 
-async function assertSkillFile(
+export async function assertSkillFile(
   path: string,
   displayPath: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
@@ -114,13 +117,13 @@ async function assertSkillFile(
   }
 }
 
-function comparePaths(a: string, b: string): number {
+export function comparePaths(a: string, b: string): number {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
 }
 
-async function hashFile(
+export async function hashFile(
   path: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
 ): Promise<string> {
@@ -129,7 +132,7 @@ async function hashFile(
     .digest("hex");
 }
 
-async function collectSourceFiles(
+export async function collectSourceFiles(
   skillRoot: string,
   currentDir: string,
   targetRelativeDir: string,
@@ -173,7 +176,7 @@ async function collectSourceFiles(
   return files;
 }
 
-async function makeOwnerWritableRecursive(
+export async function makeOwnerWritableRecursive(
   path: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
 ): Promise<void> {

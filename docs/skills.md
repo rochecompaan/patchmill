@@ -119,6 +119,20 @@ Project-local skills are local-only by default. For consistent Patchmill runs
 across local machines and CI, consider committing `patchmill.config.json` and
 `.patchmill/skills/` explicitly.
 
+### Updating project-local skills
+
+When Patchmill publishes a newer bundled skill pack, update a repository with
+the latest CLI:
+
+```sh
+npx patchmill@latest skills update
+```
+
+The command only updates Patchmill-managed project-local skills under
+`.patchmill/skills/`. It refuses to run if managed skill files were edited or
+removed locally. Review the resulting `git diff`, then commit the skill changes
+with the repository.
+
 Patchmill treats installed files as project-owned. It will not silently
 overwrite edited skill files and will preserve local edits.
 
