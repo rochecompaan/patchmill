@@ -201,6 +201,21 @@ test("parseTriagePreviewJson recovers preview document with trailing extra brace
   });
 });
 
+test("parseTriagePreviewJson rejects leading text before a preview document", () => {
+  const stdout = 'Pi runner log: {"previews":[]}';
+
+  assert.throws(
+    () => parseTriagePreviewJson(stdout),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /^Pi triage dry-run returned invalid JSON:/);
+      assert.match(error.message, /stdout near parse failure:/);
+      assert.match(error.message, /"previews"/);
+      return true;
+    },
+  );
+});
+
 test("parseTriagePreviewJson reports a bounded stdout snippet when recovery fails", () => {
   const stdout = `${"x".repeat(90)}{"previews":[{"issueNumber":123,]${"y".repeat(90)}`;
 

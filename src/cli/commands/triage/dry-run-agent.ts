@@ -201,10 +201,11 @@ function stdoutSnippet(stdout: string, position?: number): string {
 function recoverPreviewJsonDocument(
   body: string,
 ): RawTriagePreviewDocument | undefined {
+  if (body[0] !== "{") return undefined;
+
   let inString = false;
   let escaped = false;
   let depth = 0;
-  let start = -1;
 
   for (let index = 0; index < body.length; index += 1) {
     const char = body[index]!;
@@ -226,24 +227,22 @@ function recoverPreviewJsonDocument(
     }
 
     if (char === "{") {
-      if (depth === 0) start = index;
       depth += 1;
       continue;
     }
 
     if (char !== "}") continue;
-    if (depth === 0) continue;
+    if (depth === 0) return undefined;
 
     depth -= 1;
-    if (depth !== 0 || start < 0) continue;
+    if (depth !== 0) continue;
 
     try {
-      const parsed = JSON.parse(body.slice(start, index + 1)) as unknown;
-      if (hasTopLevelPreviews(parsed)) return parsed;
+      const parsed = JSON.parse(body.slice(0, index + 1)) as unknown;
+      return hasTopLevelPreviews(parsed) ? parsed : undefined;
     } catch {
-      // Keep scanning for the next complete top-level object candidate.
+      return undefined;
     }
-    start = -1;
   }
 
   return undefined;
