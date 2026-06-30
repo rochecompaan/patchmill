@@ -333,6 +333,24 @@ test("updateProjectSkills requires Patchmill-managed project-local metadata", as
   );
 });
 
+test("updateProjectSkills rejects metadata paths outside project-local skills", async () => {
+  const repoRoot = await tempRoot("patchmill-skills-unsafe-metadata-repo-");
+  await writeMetadata(
+    repoRoot,
+    oldMetadata([
+      {
+        path: ".patchmill/skills/../outside.md",
+        sha256: hashText(oldWritingPlans),
+      },
+    ]),
+  );
+
+  await assert.rejects(
+    updateProjectSkills({ repoRoot, dependencies }),
+    /No Patchmill-managed project-local skill pack found\. Run `patchmill init` first,\nor reinstall project-local skills\./u,
+  );
+});
+
 test("updateProjectSkills aborts when new bundled files would overwrite local files", async () => {
   const repoRoot = await tempRoot("patchmill-skills-collision-repo-");
   const superpowersSource = await tempRoot(

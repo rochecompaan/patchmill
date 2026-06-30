@@ -158,6 +158,14 @@ async function readInstalledMetadata(
   return parsed as SkillPackMetadataFile;
 }
 
+function isProjectSkillFilePath(path: unknown): path is string {
+  return (
+    typeof path === "string" &&
+    path.startsWith(`${DEFAULT_PROJECT_SKILL_DIR}/`) &&
+    !path.split("/").includes("..")
+  );
+}
+
 function assertPatchmillManagedProjectLocal(
   metadata: SkillPackMetadataFile,
 ): void {
@@ -165,7 +173,8 @@ function assertPatchmillManagedProjectLocal(
     metadata.pack?.name !== PATCHMILL_RECOMMENDED_SKILL_PACK.name ||
     metadata.skillDir !== DEFAULT_PROJECT_SKILL_DIR ||
     metadata.metadataFile !== SKILL_PACK_METADATA_FILE ||
-    !Array.isArray(metadata.files)
+    !Array.isArray(metadata.files) ||
+    metadata.files.some((file) => !isProjectSkillFilePath(file.path))
   ) {
     throw new Error(MISSING_METADATA_MESSAGE);
   }
