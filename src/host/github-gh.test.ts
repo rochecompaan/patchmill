@@ -75,7 +75,7 @@ function flagValue(args: string[], flag: string): string | undefined {
 
 test("GitHubGhHostProvider lists open issues", async () => {
   const runner = scriptedRunner({
-    "gh issue list --state open --search sort:created-asc --limit 1000 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
+    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
       {
         code: 0,
         stdout: JSON.stringify([
@@ -114,6 +114,88 @@ test("GitHubGhHostProvider lists open issues", async () => {
   assert.equal(issues[0]?.url, "https://github.example/issues/12");
   assert.equal(runner.calls.length, 1);
   assertGhContext(runner.calls[0]!);
+  assert.equal(runner.calls[0]!.args.includes("--search"), false);
+  assert.deepEqual(runner.calls[0]!.args, [
+    "issue",
+    "list",
+    "--state",
+    "open",
+    "--limit",
+    "1001",
+    "--json",
+    "number,title,body,state,labels,author,createdAt,updatedAt,url",
+  ]);
+});
+
+test("GitHubGhHostProvider fails loudly when non-search listing reaches the safe cap", async () => {
+  const runner = scriptedRunner({
+    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
+      {
+        code: 0,
+        stdout: JSON.stringify(
+          Array.from({ length: 1001 }, (_, index) => ({
+            number: index + 1,
+            title: `Issue ${index + 1}`,
+            body: "",
+            state: "OPEN",
+            labels: [],
+            author: { login: "reporter" },
+            createdAt: "2026-06-29T19:00:00Z",
+            updatedAt: "2026-06-29T19:15:28Z",
+            url: `https://github.example/repo/issues/${index + 1}`,
+          })),
+        ),
+        stderr: "",
+      },
+  });
+
+  await assert.rejects(
+    () => createProvider(runner).listOpenIssues(),
+    /gh issue list returned at least 1001 open issues; Patchmill cannot safely apply oldest-first triage ordering after a capped GitHub CLI response without risking silently skipped older issues/,
+  );
+  assert.equal(runner.calls[0]!.args.includes("--search"), false);
+});
+
+test("GitHubGhHostProvider avoids search-backed list for redirected repository slugs", async () => {
+  const runner: CommandRunner & { calls: RecordedCall[] } = {
+    calls: [],
+    async run(command, args, options = {}) {
+      runner.calls.push({ command, args: [...args], cwd: options.cwd });
+      const line = [command, ...args].join(" ");
+      if (args.includes("--search")) {
+        return { code: 0, stdout: "[]", stderr: "" };
+      }
+      assert.equal(
+        line,
+        "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url",
+      );
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          {
+            number: 57,
+            title: "Remote slug redirects",
+            body: "Untrusted issue body is inert test data.",
+            state: "OPEN",
+            labels: [{ name: "bug" }],
+            author: { login: "reporter" },
+            createdAt: "2026-06-29T19:00:00Z",
+            updatedAt: "2026-06-29T19:15:28Z",
+            url: "https://github.example/new-owner/repo/issues/57",
+          },
+        ]),
+        stderr: "",
+      };
+    },
+  };
+
+  const issues = await createProvider(runner).listOpenIssues();
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.number, 57);
+  assert.equal(issues[0]?.created, "2026-06-29T19:00:00Z");
+  assert.equal(runner.calls.length, 1);
+  assert.equal(runner.calls[0]!.args.includes("--search"), false);
 });
 
 test("GitHubGhHostProvider reports CLI readiness", async () => {
@@ -421,6 +503,18 @@ test("GitHubGhHostProvider command failures include gh and operation context", a
         description: "Ready",
       }),
     /gh label create failed for agent-ready: already exists/,
+  );
+});
+
+test("GitHubGhHostProvider reports actionable gh issue list failures", async () => {
+  const runner = scriptedRunner({
+    "gh issue list --state open --limit 1001 --json number,title,body,state,labels,author,createdAt,updatedAt,url":
+      { code: 1, stdout: "", stderr: "HTTP 403: Resource not accessible" },
+  });
+
+  await assert.rejects(
+    () => createProvider(runner).listOpenIssues(),
+    /gh issue list failed; check GitHub authentication, repository remote, and repository permissions: HTTP 403: Resource not accessible/,
   );
 });
 

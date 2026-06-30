@@ -17,6 +17,8 @@ import type {
 
 const ISSUE_LIST_JSON_FIELDS =
   "number,title,body,state,labels,author,createdAt,updatedAt,url";
+const ISSUE_LIST_SAFE_SELECTION_LIMIT = 1000;
+const ISSUE_LIST_FETCH_LIMIT = ISSUE_LIST_SAFE_SELECTION_LIMIT + 1;
 const ISSUE_VIEW_JSON_FIELDS = `${ISSUE_LIST_JSON_FIELDS},comments`;
 const REPOSITORY_VIEW_JSON_FIELDS = "name,url,sshUrl";
 
@@ -249,16 +251,23 @@ export class GitHubGhHostProvider
       "list",
       "--state",
       "open",
-      "--search",
-      "sort:created-asc",
       "--limit",
-      "1000",
+      String(ISSUE_LIST_FETCH_LIMIT),
       "--json",
       ISSUE_LIST_JSON_FIELDS,
     ]);
     if (result.code !== 0)
-      throw new Error(`gh issue list failed: ${commandOutput(result)}`);
-    return parseIssueArray(result.stdout, "gh issue list");
+      throw new Error(
+        `gh issue list failed; check GitHub authentication, repository remote, and repository permissions: ${commandOutput(result)}`,
+      );
+
+    const issues = parseIssueArray(result.stdout, "gh issue list");
+    if (issues.length >= ISSUE_LIST_FETCH_LIMIT) {
+      throw new Error(
+        `gh issue list returned at least ${ISSUE_LIST_FETCH_LIMIT} open issues; Patchmill cannot safely apply oldest-first triage ordering after a capped GitHub CLI response without risking silently skipped older issues. Reduce open issues below ${ISSUE_LIST_SAFE_SELECTION_LIMIT + 1}, target a specific issue with --issue, or update the repository triage workflow before rerunning.`,
+      );
+    }
+    return issues;
   }
 
   async hydrateIssueComments(issues: IssueSummary[]): Promise<IssueSummary[]> {
