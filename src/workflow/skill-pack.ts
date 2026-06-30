@@ -10,9 +10,9 @@ export const SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
 
 export type SkillPackSource = {
   type: "github-release";
-  repository: "obra/superpowers";
-  tag: "v6.0.3";
-  tarballUrl: "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz";
+  repository: string;
+  tag: string;
+  tarballUrl: string;
 };
 
 export type SkillPackSkill = {
@@ -22,15 +22,15 @@ export type SkillPackSkill = {
 
 export type SkillPack = {
   name: "patchmill-recommended";
-  version: "2026.05";
+  version: string;
   source: SkillPackSource;
   skills: SkillPackSkill[];
 };
 
 export type SkillPackMetadataFile = {
   pack: {
-    name: SkillPack["name"];
-    version: SkillPack["version"];
+    name: string;
+    version: string;
     source: SkillPackSource;
   };
   installedAt: "<generated-by-init>" | string;
