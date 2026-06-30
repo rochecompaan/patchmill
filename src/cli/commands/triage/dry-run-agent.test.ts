@@ -127,6 +127,22 @@ class RecordingRunner implements CommandRunner {
   }
 }
 
+class TrailingBraceRunner extends RecordingRunner {
+  override async run(
+    command: string,
+    args: string[],
+    options: CommandRunOptions = {},
+  ) {
+    await super.run(command, args, options);
+    return {
+      code: 0,
+      stdout:
+        '{"previews":[{"issueNumber":42,"currentLabels":["needs-triage","enhancement"],"proposedLabels":["ready-for-agent","enhancement"],"canonicalBucket":"agent-ready","blockedBy":[],"rationale":"Clear enough for an agent.","wouldComment":"## Agent Brief\\nImplement CSV export.","wouldClose":false,"questions":[]}]}}',
+      stderr: "",
+    };
+  }
+}
+
 test("buildTriageDryRunPrompt wraps configured skill as read-only preview", () => {
   const prompt = buildTriageDryRunPrompt({
     issues,
@@ -162,6 +178,59 @@ test("parseTriagePreviewJson extracts direct and fenced JSON", () => {
   assert.deepEqual(parseTriagePreviewJson('```json\n{"previews":[]}\n```'), {
     previews: [],
   });
+});
+
+test("parseTriagePreviewJson recovers preview document with trailing extra brace", () => {
+  const stdout =
+    '{"previews":[{"issueNumber":123,"currentLabels":["enhancement"],"proposedLabels":["enhancement","agent-ready"],"canonicalBucket":"agent-ready","blockedBy":[],"rationale":"Ready for implementation.","wouldComment":null,"wouldClose":false,"questions":[]}]}}';
+
+  assert.deepEqual(parseTriagePreviewJson(stdout), {
+    previews: [
+      {
+        issueNumber: 123,
+        currentLabels: ["enhancement"],
+        proposedLabels: ["enhancement", "agent-ready"],
+        canonicalBucket: "agent-ready",
+        blockedBy: [],
+        rationale: "Ready for implementation.",
+        wouldComment: null,
+        wouldClose: false,
+        questions: [],
+      },
+    ],
+  });
+});
+
+test("parseTriagePreviewJson rejects leading text before a preview document", () => {
+  const stdout = 'Pi runner log: {"previews":[]}';
+
+  assert.throws(
+    () => parseTriagePreviewJson(stdout),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /^Pi triage dry-run returned invalid JSON:/);
+      assert.match(error.message, /stdout near parse failure:/);
+      assert.match(error.message, /"previews"/);
+      return true;
+    },
+  );
+});
+
+test("parseTriagePreviewJson reports a bounded stdout snippet when recovery fails", () => {
+  const stdout = `${"x".repeat(90)}{"previews":[{"issueNumber":123,]${"y".repeat(90)}`;
+
+  assert.throws(
+    () => parseTriagePreviewJson(stdout),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /^Pi triage dry-run returned invalid JSON:/);
+      assert.match(error.message, /stdout near parse failure:/);
+      assert.match(error.message, /"previews"/);
+      assert.equal(error.message.includes("x".repeat(90)), false);
+      assert.equal(error.message.includes("y".repeat(90)), false);
+      return true;
+    },
+  );
 });
 
 test("validateTriagePreviewDocument accepts one preview per issue", () => {
@@ -423,6 +492,24 @@ test("runTriageDryRunAgent enables session observation for tool-call logging", a
   const sessionDirIndex = call.args.indexOf("--session-dir");
   assert.notEqual(sessionDirIndex, -1);
   assert.match(call.args[sessionDirIndex + 1] ?? "", /patchmill-triage-pi-/);
+});
+
+test("runTriageDryRunAgent parses trailing garbage when session observation is enabled", async () => {
+  const runner = new TrailingBraceRunner();
+
+  const previews = await runTriageDryRunAgent(runner, "/repo", {
+    issues,
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    stateMap,
+    onToolCall() {},
+  });
+
+  assert.equal(previews[0]?.issueNumber, 42);
+  assert.equal(previews[0]?.canonicalBucket, "agent-ready");
+  const call = runner.calls[0]!;
+  const sessionDirIndex = call.args.indexOf("--session-dir");
+  assert.notEqual(sessionDirIndex, -1);
+  assert.equal(call.args.includes("--no-session"), false);
 });
 
 test("runTriageDryRunAgent adds bundled triage skill for default skills", async () => {
