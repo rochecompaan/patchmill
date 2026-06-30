@@ -99,13 +99,21 @@ function isProjectSkillFilePath(path: unknown): path is string {
   );
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
+}
+
 function isSkillPackSource(source: unknown): boolean {
   return (
     isRecord(source) &&
     source.type === "github-release" &&
-    typeof source.repository === "string" &&
-    typeof source.tag === "string" &&
-    typeof source.tarballUrl === "string"
+    isNonEmptyString(source.repository) &&
+    isNonEmptyString(source.tag) &&
+    isNonEmptyString(source.tarballUrl)
   );
 }
 
@@ -117,7 +125,7 @@ function assertPatchmillManagedProjectLocal(
   }
   if (
     metadata.pack.name !== PATCHMILL_RECOMMENDED_SKILL_PACK.name ||
-    typeof metadata.pack.version !== "string" ||
+    !isNonEmptyString(metadata.pack.version) ||
     !isSkillPackSource(metadata.pack.source) ||
     metadata.skillDir !== DEFAULT_PROJECT_SKILL_DIR ||
     metadata.metadataFile !== SKILL_PACK_METADATA_FILE ||
@@ -126,7 +134,7 @@ function assertPatchmillManagedProjectLocal(
       (file) =>
         !isRecord(file) ||
         !isProjectSkillFilePath(file.path) ||
-        typeof file.sha256 !== "string",
+        !isSha256(file.sha256),
     )
   ) {
     throw new Error(MISSING_METADATA_MESSAGE);

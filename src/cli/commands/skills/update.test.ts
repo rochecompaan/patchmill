@@ -341,10 +341,23 @@ test("updateProjectSkills rejects malformed metadata shapes", async () => {
   await writeFileEnsuringParent(
     join(repoRoot, ".patchmill", "skills", SKILL_PACK_METADATA_FILE),
     JSON.stringify({
-      pack: { name: "patchmill-recommended", version: "2026.04" },
+      pack: {
+        name: "patchmill-recommended",
+        version: "",
+        source: {
+          type: "github-release",
+          repository: "",
+          tag: "v5.0.7",
+          tarballUrl:
+            "https://github.com/obra/superpowers/archive/refs/tags/v5.0.7.tar.gz",
+        },
+      },
       skillDir: ".patchmill/skills",
       metadataFile: SKILL_PACK_METADATA_FILE,
-      files: [null, { path: ".patchmill/skills/writing-plans/SKILL.md" }],
+      files: [
+        null,
+        { path: ".patchmill/skills/writing-plans/SKILL.md", sha256: "notsha" },
+      ],
     }),
   );
 
