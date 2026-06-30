@@ -164,6 +164,44 @@ test("parseTriagePreviewJson extracts direct and fenced JSON", () => {
   });
 });
 
+test("parseTriagePreviewJson recovers preview document with trailing extra brace", () => {
+  const stdout =
+    '{"previews":[{"issueNumber":123,"currentLabels":["enhancement"],"proposedLabels":["enhancement","agent-ready"],"canonicalBucket":"agent-ready","blockedBy":[],"rationale":"Ready for implementation.","wouldComment":null,"wouldClose":false,"questions":[]}]}}';
+
+  assert.deepEqual(parseTriagePreviewJson(stdout), {
+    previews: [
+      {
+        issueNumber: 123,
+        currentLabels: ["enhancement"],
+        proposedLabels: ["enhancement", "agent-ready"],
+        canonicalBucket: "agent-ready",
+        blockedBy: [],
+        rationale: "Ready for implementation.",
+        wouldComment: null,
+        wouldClose: false,
+        questions: [],
+      },
+    ],
+  });
+});
+
+test("parseTriagePreviewJson reports a bounded stdout snippet when recovery fails", () => {
+  const stdout = `${"x".repeat(90)}{"previews":[{"issueNumber":123,]${"y".repeat(90)}`;
+
+  assert.throws(
+    () => parseTriagePreviewJson(stdout),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /^Pi triage dry-run returned invalid JSON:/);
+      assert.match(error.message, /stdout near parse failure:/);
+      assert.match(error.message, /"previews"/);
+      assert.equal(error.message.includes("x".repeat(90)), false);
+      assert.equal(error.message.includes("y".repeat(90)), false);
+      return true;
+    },
+  );
+});
+
 test("validateTriagePreviewDocument accepts one preview per issue", () => {
   const previews = validateTriagePreviewDocument(
     {
