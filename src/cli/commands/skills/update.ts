@@ -1,4 +1,3 @@
-import { constants } from "node:fs";
 import {
   access,
   chmod,
@@ -12,19 +11,24 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
   SKILL_PACK_METADATA_FILE,
   buildSkillPackMetadata,
-  hashContent,
   projectSkillPath,
   type SkillPackMetadataFile,
   type SkillPackSkill,
 } from "../../../workflow/skill-pack.ts";
 import {
+  assertSkillFile,
+  collectSourceFiles,
+  comparePaths,
   defaultSkillSourceRoots,
+  hashFile,
+  pathExists,
+  sourceRootFor,
   type SkillInstallerDependencies,
   type SourceRoots,
 } from "../init/skill-installer.ts";
@@ -65,97 +69,24 @@ const MISSING_METADATA_MESSAGE =
   "No Patchmill-managed project-local skill pack found. Run `patchmill init` first,\n" +
   "or reinstall project-local skills.";
 
-function comparePaths(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-}
-
-async function pathExists(
-  path: string,
-  dependencies: SkillInstallerDependencies,
-): Promise<boolean> {
-  try {
-    await dependencies.access(path, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function hashFile(
-  path: string,
-  dependencies: SkillInstallerDependencies,
-): Promise<string> {
-  return hashContent(await dependencies.readFile(path));
-}
-
-function sourceRootFor(skill: SkillPackSkill, roots: SourceRoots): string {
-  return skill.source === "patchmill"
-    ? roots.patchmillSkillsDir
-    : roots.superpowersSkillsDir;
-}
-
-async function collectSourceFiles(
-  skillRoot: string,
-  currentDir: string,
-  targetRelativeDir: string,
-  displayRoot: string,
-  dependencies: SkillInstallerDependencies,
-): Promise<Array<{ path: string; sha256: string }>> {
-  const files: Array<{ path: string; sha256: string }> = [];
-  const entries = await dependencies.readdir(currentDir, {
-    withFileTypes: true,
-  });
-  entries.sort((a, b) => comparePaths(a.name, b.name));
-
-  for (const entry of entries) {
-    const entryPath = join(currentDir, entry.name);
-    const relativePath = relative(skillRoot, entryPath).split(sep).join("/");
-    const metadataPath = `${targetRelativeDir}/${relativePath}`;
-    const displayPath = `${displayRoot}/${relativePath}`;
-
-    if (entry.isDirectory()) {
-      files.push(
-        ...(await collectSourceFiles(
-          skillRoot,
-          entryPath,
-          targetRelativeDir,
-          displayRoot,
-          dependencies,
-        )),
-      );
-      continue;
-    }
-    if (!entry.isFile()) {
-      throw new Error(`Unsupported skill source entry: ${displayPath}`);
-    }
-
-    files.push({
-      path: metadataPath,
-      sha256: await hashFile(entryPath, dependencies),
-    });
-  }
-
-  return files;
-}
-
 async function readInstalledMetadata(
   repoRoot: string,
   dependencies: SkillInstallerDependencies,
-): Promise<SkillPackMetadataFile> {
+): Promise<unknown> {
   const metadataPath = resolve(
     repoRoot,
     DEFAULT_PROJECT_SKILL_DIR,
     SKILL_PACK_METADATA_FILE,
   );
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(await dependencies.readFile(metadataPath, "utf8"));
+    return JSON.parse(await dependencies.readFile(metadataPath, "utf8"));
   } catch {
     throw new Error(MISSING_METADATA_MESSAGE);
   }
-  return parsed as SkillPackMetadataFile;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function isProjectSkillFilePath(path: unknown): path is string {
@@ -167,14 +98,19 @@ function isProjectSkillFilePath(path: unknown): path is string {
 }
 
 function assertPatchmillManagedProjectLocal(
-  metadata: SkillPackMetadataFile,
-): void {
+  metadata: unknown,
+): asserts metadata is SkillPackMetadataFile {
+  if (!isRecord(metadata) || !isRecord(metadata.pack)) {
+    throw new Error(MISSING_METADATA_MESSAGE);
+  }
   if (
-    metadata.pack?.name !== PATCHMILL_RECOMMENDED_SKILL_PACK.name ||
+    metadata.pack.name !== PATCHMILL_RECOMMENDED_SKILL_PACK.name ||
     metadata.skillDir !== DEFAULT_PROJECT_SKILL_DIR ||
     metadata.metadataFile !== SKILL_PACK_METADATA_FILE ||
     !Array.isArray(metadata.files) ||
-    metadata.files.some((file) => !isProjectSkillFilePath(file.path))
+    metadata.files.some(
+      (file) => !isRecord(file) || !isProjectSkillFilePath(file.path),
+    )
   ) {
     throw new Error(MISSING_METADATA_MESSAGE);
   }
@@ -191,13 +127,11 @@ async function collectBundledPackFiles(options: {
       sourceRootFor(skill, options.sourceRoots),
       skill.name,
     );
-    const skillFile = join(sourceDir, "SKILL.md");
-    try {
-      const entry = await options.dependencies.stat(skillFile);
-      if (!entry.isFile()) throw new Error("not a file");
-    } catch {
-      throw new Error(`Missing required skill file: ${skill.name}/SKILL.md`);
-    }
+    await assertSkillFile(
+      join(sourceDir, "SKILL.md"),
+      `${skill.name}/SKILL.md`,
+      options.dependencies,
+    );
     files.push(
       ...(await collectSourceFiles(
         sourceDir,

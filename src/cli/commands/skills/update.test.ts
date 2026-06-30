@@ -333,6 +333,24 @@ test("updateProjectSkills requires Patchmill-managed project-local metadata", as
   );
 });
 
+test("updateProjectSkills rejects malformed metadata shapes", async () => {
+  const repoRoot = await tempRoot("patchmill-skills-malformed-metadata-repo-");
+  await writeFileEnsuringParent(
+    join(repoRoot, ".patchmill", "skills", SKILL_PACK_METADATA_FILE),
+    JSON.stringify({
+      pack: { name: "patchmill-recommended" },
+      skillDir: ".patchmill/skills",
+      metadataFile: SKILL_PACK_METADATA_FILE,
+      files: [null],
+    }),
+  );
+
+  await assert.rejects(
+    updateProjectSkills({ repoRoot, dependencies }),
+    /No Patchmill-managed project-local skill pack found\. Run `patchmill init` first,\nor reinstall project-local skills\./u,
+  );
+});
+
 test("updateProjectSkills rejects metadata paths outside project-local skills", async () => {
   const repoRoot = await tempRoot("patchmill-skills-unsafe-metadata-repo-");
   await writeMetadata(
