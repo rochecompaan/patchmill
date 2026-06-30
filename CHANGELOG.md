@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.15.0](https://github.com/rochecompaan/patchmill/compare/v0.14.0...v0.15.0) (2026-06-30)
+
+
+### Features
+
+* **run-once:** hard-block run-once for unsafe branch bases ([#54](https://github.com/rochecompaan/patchmill/issues/54)) ([9f4da40](https://github.com/rochecompaan/patchmill/commit/9f4da408dbcd0b196564696646bde95e79a03fd2))
+* **run-once:** implement PR handoff cleanup ([#56](https://github.com/rochecompaan/patchmill/issues/56)) ([57bc315](https://github.com/rochecompaan/patchmill/commit/57bc315e79ae65e1425ef0d71cc74b01d94ee63d))
+
+
+### Bug Fixes
+
+* **run-once:** allow dev-env unblocker fixes ([f6f687a](https://github.com/rochecompaan/patchmill/commit/f6f687a154841a27e7818ac6e6b2ed366b7dea80))
+* **run-once:** log run-once selection skip diagnostics ([#55](https://github.com/rochecompaan/patchmill/issues/55)) ([5236882](https://github.com/rochecompaan/patchmill/commit/523688288fab0723d607c9d6672af8ff0af23d2f))
+* **run-once:** preserve blocked state through review gates ([59090e0](https://github.com/rochecompaan/patchmill/commit/59090e09935dd374f4637e57efcd4d50e9016adf))
+* **run-once:** resume clean blocked worktrees ([b1e3df9](https://github.com/rochecompaan/patchmill/commit/b1e3df9ebbf69f8955c44e50bf5f751b59ec7068))
+* **triage:** avoid github search for triage issue listing ([#60](https://github.com/rochecompaan/patchmill/issues/60)) ([c5f12f0](https://github.com/rochecompaan/patchmill/commit/c5f12f02101741b1f81108ca17b2c5fd19197ee7))
+
 ## [0.14.0](https://github.com/rochecompaan/patchmill/compare/v0.13.0...v0.14.0) (2026-06-25)
 
 
