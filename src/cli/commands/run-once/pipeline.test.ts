@@ -6594,6 +6594,20 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
         prompt,
         /Push the branch to `upstream` and open a pull request using the repository's configured host tooling\./,
       );
+      assert.match(
+        prompt,
+        /Include `Closes #16` in the pull request description\/body\./,
+      );
+      assert.match(
+        prompt,
+        /tea pulls create --description "\$\(cat "\$file"\)"/,
+      );
+      assert.match(prompt, /literal `\\n` escape text/);
+      assert.match(prompt, /gh pr create --body-file/);
+      assert.match(
+        prompt,
+        /Summary\n\n- Implemented change summary\.\n\n## Validation\n\n- npm test\n\n## Reviews\n\n- Review completed\.\n\nCloses #16/,
+      );
       assert.equal(
         call.cwd,
         join(
