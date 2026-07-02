@@ -469,7 +469,29 @@ function renderPrCreationInstruction(
   remote: string,
   issueNumber: number,
 ): string {
-  return `Push the branch to \`${remote}\` and open a pull request using the repository's configured host tooling. Include \`Closes #${issueNumber}\` in the pull request description/body.`;
+  return [
+    `Push the branch to \`${remote}\` and open a pull request using the repository's configured host tooling. Include \`Closes #${issueNumber}\` in the pull request description/body.`,
+    "Use a multiline-safe PR body construction path so Markdown line breaks remain real newlines.",
+    'For Forgejo/Gitea through `tea`, write the Markdown PR description to a temp file or here-doc first, then pass actual newline characters with `tea pulls create --description "$(cat "$file")"`.',
+    "Do not pass Markdown containing literal `\\n` escape text as the `tea --description` value.",
+    "For GitHub through `gh`, use a multiline-safe supported path such as `gh pr create --body-file`.",
+    "Example PR body shape:",
+    "```md",
+    "Summary",
+    "",
+    "- Implemented change summary.",
+    "",
+    "## Validation",
+    "",
+    "- npm test",
+    "",
+    "## Reviews",
+    "",
+    "- Review completed.",
+    "",
+    `Closes #${issueNumber}`,
+    "```",
+  ].join("\n");
 }
 
 function renderBlockedContract(): string {
@@ -538,7 +560,9 @@ function renderLandingResultContracts(input: {
 
   if (!allowDirectLand) {
     return `Landing result contracts:
-Direct squash-landing is disabled for this repository. ${prInstruction} Do not land directly on \`${targetBranch}\`.
+Direct squash-landing is disabled for this repository.
+${prInstruction}
+Do not land directly on \`${targetBranch}\`.
 
 If human review is required:
 1. ${prInstruction}
