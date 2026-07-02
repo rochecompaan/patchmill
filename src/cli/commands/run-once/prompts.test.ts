@@ -825,7 +825,8 @@ test("buildImplementationPrompt removes direct-land eligibility instructions whe
     /Direct squash-landing is disabled for this repository\./,
   );
   assertMultilineSafePrGuidance(prompt);
-  assert.match(prompt, /Do not land directly on `main`\./);
+  assert.match(prompt, /```\nDo not land directly on `main`\./);
+  assert.doesNotMatch(prompt, /``` Do not land directly on `main`\./);
   assert.doesNotMatch(prompt, /forgejo pr/);
   assert.doesNotMatch(prompt, /\.;/);
   assert.doesNotMatch(

@@ -560,7 +560,9 @@ function renderLandingResultContracts(input: {
 
   if (!allowDirectLand) {
     return `Landing result contracts:
-Direct squash-landing is disabled for this repository. ${prInstruction} Do not land directly on \`${targetBranch}\`.
+Direct squash-landing is disabled for this repository.
+${prInstruction}
+Do not land directly on \`${targetBranch}\`.
 
 If human review is required:
 1. ${prInstruction}
