@@ -1,0 +1,97 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type {
+  ResolvedIssueArtifactSource,
+  ResolvedIssueArtifactSources,
+} from "./artifact-sources.ts";
+import type { CommandRunner } from "./types.ts";
+
+export type MaterializeIssueArtifactSourcesOptions = {
+  repoRoot: string;
+  runner: CommandRunner;
+  issueNumber: number;
+  sources: ResolvedIssueArtifactSources;
+};
+
+function commandOutput(result: { stdout: string; stderr: string }): string {
+  return (
+    [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
+    "no output"
+  );
+}
+
+function inlineSources(
+  sources: ResolvedIssueArtifactSources,
+): ResolvedIssueArtifactSource[] {
+  return [sources.spec, sources.plan].filter(
+    (source): source is ResolvedIssueArtifactSource =>
+      source?.sourceType === "inline",
+  );
+}
+
+function withTrailingNewline(content: string): string {
+  return content.endsWith("\n") ? content : `${content}\n`;
+}
+
+export async function materializeIssueArtifactSources(
+  options: MaterializeIssueArtifactSourcesOptions,
+): Promise<ResolvedIssueArtifactSources> {
+  const sources = inlineSources(options.sources);
+  if (sources.length === 0) return options.sources;
+
+  for (const source of sources) {
+    await mkdir(dirname(source.absolutePath), { recursive: true });
+    await writeFile(
+      source.absolutePath,
+      withTrailingNewline(source.content ?? ""),
+      "utf8",
+    );
+  }
+
+  const paths = sources.map((source) => source.path);
+  const add = await options.runner.run("git", ["add", ...paths], {
+    cwd: options.repoRoot,
+  });
+  if (add.code !== 0) {
+    throw new Error(
+      `git add failed while materializing issue #${options.issueNumber} artifacts: ${commandOutput(add)}`,
+    );
+  }
+
+  const commit = await options.runner.run(
+    "git",
+    [
+      "commit",
+      "-m",
+      `docs(workflow): materialize issue ${options.issueNumber} artifacts`,
+      "--",
+      ...paths,
+    ],
+    { cwd: options.repoRoot },
+  );
+  if (commit.code !== 0) {
+    throw new Error(
+      `git commit failed while materializing issue #${options.issueNumber} artifacts: ${commandOutput(commit)}`,
+    );
+  }
+
+  const rev = await options.runner.run("git", ["rev-parse", "HEAD"], {
+    cwd: options.repoRoot,
+  });
+  if (rev.code !== 0) {
+    throw new Error(
+      `git rev-parse failed after materializing issue #${options.issueNumber} artifacts: ${commandOutput(rev)}`,
+    );
+  }
+  const commitSha = rev.stdout.trim();
+
+  return {
+    ...options.sources,
+    ...(options.sources.spec?.sourceType === "inline"
+      ? { spec: { ...options.sources.spec, commit: commitSha } }
+      : {}),
+    ...(options.sources.plan?.sourceType === "inline"
+      ? { plan: { ...options.sources.plan, commit: commitSha } }
+      : {}),
+  };
+}
