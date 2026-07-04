@@ -153,18 +153,118 @@ ${issuePayload(input.issues)}
 `;
 }
 
+const STDOUT_SNIPPET_RADIUS = 80;
+
+function triagePreviewJsonBody(stdout: string): string {
+  const trimmed = stdout.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  return fenced ? fenced[1] : trimmed;
+}
+
+function hasTopLevelPreviews(
+  value: unknown,
+): value is RawTriagePreviewDocument {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Array.isArray((value as Record<string, unknown>).previews)
+  );
+}
+
+function parseErrorPosition(error: unknown): number | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const match = error.message.match(/position (\d+)/);
+  if (!match) return undefined;
+  return Number.parseInt(match[1]!, 10);
+}
+
+function printableSnippet(value: string): string {
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "�");
+}
+
+function stdoutSnippet(stdout: string, position?: number): string {
+  const firstObjectStart = stdout.indexOf("{");
+  const center =
+    position === undefined || !Number.isFinite(position)
+      ? firstObjectStart >= 0
+        ? firstObjectStart
+        : Math.min(stdout.length, STDOUT_SNIPPET_RADIUS)
+      : Math.max(0, Math.min(stdout.length, position));
+  const start = Math.max(0, center - STDOUT_SNIPPET_RADIUS);
+  const end = Math.min(stdout.length, center + STDOUT_SNIPPET_RADIUS);
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < stdout.length ? "…" : "";
+  return `${prefix}${printableSnippet(stdout.slice(start, end))}${suffix}`;
+}
+
+function recoverPreviewJsonDocument(
+  body: string,
+): RawTriagePreviewDocument | undefined {
+  if (body[0] !== "{") return undefined;
+
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index]!;
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char !== "}") continue;
+    if (depth === 0) return undefined;
+
+    depth -= 1;
+    if (depth !== 0) continue;
+
+    try {
+      const parsed = JSON.parse(body.slice(0, index + 1)) as unknown;
+      return hasTopLevelPreviews(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
 export function parseTriagePreviewJson(
   stdout: string,
 ): RawTriagePreviewDocument {
-  const trimmed = stdout.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  const json = fenced ? fenced[1] : trimmed;
+  const json = triagePreviewJsonBody(stdout);
 
   try {
     return JSON.parse(json) as RawTriagePreviewDocument;
   } catch (error) {
+    const recovered = recoverPreviewJsonDocument(json);
+    if (recovered) return recovered;
+
+    const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Pi triage dry-run returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      `Pi triage dry-run returned invalid JSON: ${message}; stdout near parse failure: ${stdoutSnippet(
+        json,
+        parseErrorPosition(error),
+      )}`,
       { cause: error },
     );
   }
