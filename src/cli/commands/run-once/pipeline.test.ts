@@ -2353,6 +2353,41 @@ test("runOneIssue materializes inline extracted artifacts after claim", async ()
     "started-comment",
     "git-add-artifacts",
   ]);
+  const expectedWorktreeRoot = join(
+    config.repoRoot,
+    ".worktrees",
+    "patchmill-issue-65-resolve-provided-artifacts",
+  );
+  const artifactGitCalls = runner.calls.filter(
+    (call) =>
+      call.command === "git" &&
+      (["add", "diff", "commit"].includes(call.args[0] ?? "") ||
+        (call.args[0] === "rev-parse" && call.args[1] === "HEAD")),
+  );
+  assert.equal(
+    artifactGitCalls.every((call) => call.cwd === expectedWorktreeRoot),
+    true,
+  );
+  await assert.rejects(
+    readFile(
+      join(
+        config.repoRoot,
+        "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
+      ),
+      "utf8",
+    ),
+    /ENOENT/,
+  );
+  assert.equal(
+    await readFile(
+      join(
+        expectedWorktreeRoot,
+        "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
+      ),
+      "utf8",
+    ),
+    "# Inline Spec\nUse issue content.\n",
+  );
   assert.equal(
     result.specPath,
     "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",

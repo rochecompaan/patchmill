@@ -20,6 +20,7 @@ import {
   cleanStatusIgnoredPaths as buildCleanStatusIgnoredPaths,
   cleanupIssueWorkspace,
   ensureIssueWorktree,
+  type IssueWorktreeResult,
 } from "./git.ts";
 import {
   assertIssueTodosComplete,
@@ -1066,6 +1067,82 @@ export async function runOneIssue(
   let planCommit: string | undefined;
   let branch: string | undefined;
   let worktreePath: string | undefined;
+  let ensuredWorktree: IssueWorktreeResult | undefined;
+  const worktreeStrategy = configuredWorktreeStrategy(config);
+  const expectedWorkspace = expectedIssueWorkspace(
+    issue.number,
+    issue.title,
+    worktreeStrategy,
+  );
+  const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
+    if (ensuredWorktree) return ensuredWorktree;
+    if (
+      resumableState &&
+      existingState?.branch &&
+      existingState.branch !== expectedWorkspace.branch
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved branch ${existingState.branch} does not match expected branch ${expectedWorkspace.branch}`,
+      );
+    }
+    if (
+      resumableState &&
+      existingState?.worktreePath &&
+      existingState.worktreePath !== expectedWorkspace.worktreePath
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved worktree ${existingState.worktreePath} does not match expected worktree path ${expectedWorkspace.worktreePath}`,
+      );
+    }
+
+    const worktree = await ensureIssueWorktree(
+      runner,
+      config.repoRoot,
+      issue.number,
+      issue.title,
+      worktreeStrategy,
+      undefined,
+      ignoredPaths,
+    );
+    await emitSimpleStep(
+      options,
+      issue.number,
+      worktree.created ? "create worktree" : "reuse worktree",
+    );
+    if (
+      resumableState &&
+      existingState?.branch &&
+      existingState.branch !== worktree.branch
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved branch ${existingState.branch} does not match ensured worktree branch ${worktree.branch}`,
+      );
+    }
+    if (
+      resumableState &&
+      existingState?.worktreePath &&
+      existingState.worktreePath !== worktree.worktreePath
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved worktree ${existingState.worktreePath} does not match ensured worktree path ${worktree.worktreePath}`,
+      );
+    }
+    branch = resumableState
+      ? (existingState?.branch ?? worktree.branch)
+      : worktree.branch;
+    worktreePath = resumableState
+      ? (existingState?.worktreePath ?? worktree.worktreePath)
+      : worktree.worktreePath;
+    await progress(
+      options,
+      "info",
+      "worktree",
+      `${worktree.created ? "creating" : "reusing"} worktree ${worktreePath}`,
+      { issueNumber: issue.number },
+    );
+    ensuredWorktree = worktree;
+    return worktree;
+  };
 
   try {
     if (!checkpoints.startedCommentPosted) {
@@ -1083,11 +1160,19 @@ export async function runOneIssue(
       checkpoints.startedCommentPosted = true;
     }
 
+    const artifactWorktree =
+      resolvedArtifacts.spec?.sourceType === "inline" ||
+      resolvedArtifacts.plan?.sourceType === "inline"
+        ? await ensureIssueWorkspace()
+        : undefined;
+    const artifactRepoRoot = artifactWorktree
+      ? join(config.repoRoot, artifactWorktree.worktreePath)
+      : config.repoRoot;
     const materializedArtifacts = await runStep(
       "materialize issue artifact sources",
       async () =>
         materializeIssueArtifactSources({
-          repoRoot: config.repoRoot,
+          repoRoot: artifactRepoRoot,
           runner,
           issueNumber: issueForRun.number,
           sources: resolvedArtifacts,
@@ -1194,75 +1279,7 @@ export async function runOneIssue(
       );
     }
 
-    const worktreeStrategy = configuredWorktreeStrategy(config);
-    const expectedWorkspace = expectedIssueWorkspace(
-      issue.number,
-      issue.title,
-      worktreeStrategy,
-    );
-    if (
-      resumableState &&
-      existingState?.branch &&
-      existingState.branch !== expectedWorkspace.branch
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved branch ${existingState.branch} does not match expected branch ${expectedWorkspace.branch}`,
-      );
-    }
-    if (
-      resumableState &&
-      existingState?.worktreePath &&
-      existingState.worktreePath !== expectedWorkspace.worktreePath
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved worktree ${existingState.worktreePath} does not match expected worktree path ${expectedWorkspace.worktreePath}`,
-      );
-    }
-    const worktree = await ensureIssueWorktree(
-      runner,
-      config.repoRoot,
-      issue.number,
-      issue.title,
-      worktreeStrategy,
-      undefined,
-      ignoredPaths,
-    );
-    await emitSimpleStep(
-      options,
-      issue.number,
-      worktree.created ? "create worktree" : "reuse worktree",
-    );
-    if (
-      resumableState &&
-      existingState?.branch &&
-      existingState.branch !== worktree.branch
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved branch ${existingState.branch} does not match ensured worktree branch ${worktree.branch}`,
-      );
-    }
-    if (
-      resumableState &&
-      existingState?.worktreePath &&
-      existingState.worktreePath !== worktree.worktreePath
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved worktree ${existingState.worktreePath} does not match ensured worktree path ${worktree.worktreePath}`,
-      );
-    }
-    branch = resumableState
-      ? (existingState?.branch ?? worktree.branch)
-      : worktree.branch;
-    worktreePath = resumableState
-      ? (existingState?.worktreePath ?? worktree.worktreePath)
-      : worktree.worktreePath;
-    await progress(
-      options,
-      "info",
-      "worktree",
-      `${worktree.created ? "creating" : "reusing"} worktree ${worktreePath}`,
-      { issueNumber: issue.number },
-    );
+    const worktree = await ensureIssueWorkspace();
     await writeRunState(
       config.runStateDir,
       {

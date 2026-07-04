@@ -258,9 +258,9 @@ structured JSON output before any labels, comments, or run state are mutated.
 artifact extraction.
 
 Inline source-provided artifacts are materialized under the configured docs
-directories and committed after the issue is claimed, but they are treated as
-source-provided artifacts rather than newly generated Pi artifacts for
-approval-gate freshness.
+directories in the issue worktree and committed on the issue branch after the
+issue is claimed, but they are treated as source-provided artifacts rather than
+newly generated Pi artifacts for approval-gate freshness.
 
 ### Plan-creation Pi prompt
 

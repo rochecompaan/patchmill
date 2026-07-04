@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type {
   ResolvedIssueArtifactSources,
   ResolvedIssueInlineArtifactSource,
@@ -54,7 +54,8 @@ export async function materializeIssueArtifactSources(
   }> = [];
   for (const source of sources) {
     const content = withTrailingNewline(source.content);
-    const existing = await existingContent(source.absolutePath);
+    const absolutePath = resolve(options.repoRoot, source.path);
+    const existing = await existingContent(absolutePath);
     if (existing !== undefined) {
       if (existing !== content) {
         throw new Error(
@@ -63,7 +64,7 @@ export async function materializeIssueArtifactSources(
       }
       continue;
     }
-    writes.push({ source, content });
+    writes.push({ source: { ...source, absolutePath }, content });
   }
 
   for (const { source, content } of writes) {
