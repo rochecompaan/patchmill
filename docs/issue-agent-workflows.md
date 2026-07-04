@@ -310,6 +310,17 @@ finished, and exits with `plan-created` or `plan-found`. Once the configured
 plan-approved label is present, a later `run-once` reuses the plan and proceeds
 to implementation.
 
+When the configured approved label is already present, `run-once` also scans the
+issue body and comments as untrusted artifact source data before creating a new
+spec or plan. References such as `Approved spec: docs/specs/custom.md`,
+`Spec approved: docs/specs/custom.md`,
+`Approved plan artifact: [plan](docs/plans/custom.md)`, and Patchmill's
+`Existing plan ready: docs/plans/custom.md` are eligible only when the
+referenced file exists inside the repository. URLs, shell snippets, directories,
+missing files, absolute paths outside the repository, and parent-directory
+escapes are ignored; if no valid approved artifact is resolved, the existing
+generated-path fallback and Pi creation behavior remains unchanged.
+
 ### Optional development-environment Pi prompt
 
 If `skills.developmentEnvironment` is configured, `run-once` runs a separate Pi
