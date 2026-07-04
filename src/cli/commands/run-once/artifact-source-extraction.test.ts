@@ -99,6 +99,51 @@ test("parseArtifactExtractionResult rejects malformed output", () => {
   );
 });
 
+test("parseArtifactExtractionResult rejects invalid resolved artifact sources", () => {
+  assert.throws(
+    () =>
+      parseArtifactExtractionResult(
+        JSON.stringify({
+          status: "resolved",
+          spec: { type: "path", evidence: "missing value" },
+        }),
+      ),
+    /Artifact extraction returned invalid spec source/,
+  );
+
+  assert.throws(
+    () =>
+      parseArtifactExtractionResult(
+        JSON.stringify({
+          status: "resolved",
+          plan: { type: "inline", evidence: "missing content" },
+        }),
+      ),
+    /Artifact extraction returned invalid plan source/,
+  );
+
+  assert.throws(
+    () =>
+      parseArtifactExtractionResult(
+        JSON.stringify({
+          status: "resolved",
+          spec: [
+            { type: "path", value: "docs/specs/one.md", evidence: "one" },
+            { type: "path", value: "docs/specs/two.md", evidence: "two" },
+          ],
+        }),
+      ),
+    /Artifact extraction returned invalid spec source/,
+  );
+});
+
+test("parseArtifactExtractionResult rejects resolved results without sources", () => {
+  assert.throws(
+    () => parseArtifactExtractionResult(JSON.stringify({ status: "resolved" })),
+    /Artifact extraction resolved without any artifact sources/,
+  );
+});
+
 test("extractIssueArtifactsWithPi passes bundled skill path to pi", async () => {
   const calls: { command: string; args: string[] }[] = [];
   const runner: CommandRunner = {

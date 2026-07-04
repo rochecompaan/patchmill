@@ -122,6 +122,42 @@ test("materializeIssueArtifactSources reuses HEAD when inline artifacts are alre
   );
 });
 
+test("materializeIssueArtifactSources rejects mismatched existing inline artifacts without overwriting", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-materialize-mismatch-"),
+  );
+  const path = "docs/plans/2026-07-04-issue-65.md";
+  const absolutePath = join(repoRoot, path);
+  await mkdir(join(repoRoot, "docs", "plans"), { recursive: true });
+  await writeFile(absolutePath, "# Approved Plan\nDo not replace.\n", "utf8");
+  const calls: Call[] = [];
+
+  await assert.rejects(
+    materializeIssueArtifactSources({
+      repoRoot,
+      runner: runner(calls),
+      issueNumber: 65,
+      sources: {
+        plan: {
+          artifactKind: "plan",
+          sourceType: "inline",
+          path,
+          absolutePath,
+          content: "# New Plan\nDifferent issue content.",
+          evidence: "plan block",
+        },
+      },
+    }),
+    /would overwrite existing plan artifact at docs\/plans\/2026-07-04-issue-65\.md/,
+  );
+
+  assert.equal(
+    await readFile(absolutePath, "utf8"),
+    "# Approved Plan\nDo not replace.\n",
+  );
+  assert.equal(calls.length, 0);
+});
+
 test("materializeIssueArtifactSources leaves path sources unchanged", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-materialize-path-"));
   const sources: ResolvedIssueArtifactSources = {

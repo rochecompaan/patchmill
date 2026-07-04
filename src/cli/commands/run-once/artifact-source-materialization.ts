@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type {
   ResolvedIssueArtifactSource,
@@ -33,6 +33,15 @@ function withTrailingNewline(content: string): string {
   return content.endsWith("\n") ? content : `${content}\n`;
 }
 
+async function existingContent(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 export async function materializeIssueArtifactSources(
   options: MaterializeIssueArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSources> {
@@ -40,12 +49,18 @@ export async function materializeIssueArtifactSources(
   if (sources.length === 0) return options.sources;
 
   for (const source of sources) {
+    const content = withTrailingNewline(source.content ?? "");
+    const existing = await existingContent(source.absolutePath);
+    if (existing !== undefined) {
+      if (existing !== content) {
+        throw new Error(
+          `Issue #${options.issueNumber} inline artifact would overwrite existing ${source.artifactKind} artifact at ${source.path}`,
+        );
+      }
+      continue;
+    }
     await mkdir(dirname(source.absolutePath), { recursive: true });
-    await writeFile(
-      source.absolutePath,
-      withTrailingNewline(source.content ?? ""),
-      "utf8",
-    );
+    await writeFile(source.absolutePath, content, "utf8");
   }
 
   const paths = sources.map((source) => source.path);

@@ -130,33 +130,44 @@ function finalJsonCandidates(stdout: string): Record<string, unknown>[] {
   return candidates;
 }
 
-function source(
-  kind: ArtifactKind,
-  raw: unknown,
-): ArtifactExtractionSource | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const record = raw as Record<string, unknown>;
-  const evidence = typeof record.evidence === "string" ? record.evidence : "";
-  if (record.type === "path" && typeof record.value === "string") {
-    return { kind, type: "path", value: record.value, evidence };
-  }
-  if (record.type === "inline" && typeof record.content === "string") {
-    return { kind, type: "inline", content: record.content, evidence };
-  }
-  return undefined;
+function isRecord(raw: unknown): raw is Record<string, unknown> {
+  return !!raw && typeof raw === "object" && !Array.isArray(raw);
 }
 
-function candidate(raw: unknown): ArtifactExtractionSource | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const record = raw as Record<string, unknown>;
-  if (record.kind !== "spec" && record.kind !== "plan") return undefined;
-  if (record.type !== "path" && record.type !== "inline") return undefined;
-  const evidence = typeof record.evidence === "string" ? record.evidence : "";
+function invalidSourceError(kind: ArtifactKind): Error {
+  return new Error(`Artifact extraction returned invalid ${kind} source`);
+}
+
+function source(kind: ArtifactKind, raw: unknown): ArtifactExtractionSource {
+  if (!isRecord(raw)) throw invalidSourceError(kind);
+  const evidence = typeof raw.evidence === "string" ? raw.evidence : "";
+  if (raw.type === "path") {
+    if (typeof raw.value !== "string") throw invalidSourceError(kind);
+    return { kind, type: "path", value: raw.value, evidence };
+  }
+  if (raw.type === "inline") {
+    if (typeof raw.content !== "string") throw invalidSourceError(kind);
+    return { kind, type: "inline", content: raw.content, evidence };
+  }
+  throw invalidSourceError(kind);
+}
+
+function candidate(raw: unknown): ArtifactExtractionSource {
+  if (!isRecord(raw)) {
+    throw new Error("Artifact extraction returned invalid ambiguous candidate");
+  }
+  if (raw.kind !== "spec" && raw.kind !== "plan") {
+    throw new Error("Artifact extraction returned invalid ambiguous candidate");
+  }
+  if (raw.type !== "path" && raw.type !== "inline") {
+    throw new Error("Artifact extraction returned invalid ambiguous candidate");
+  }
+  const evidence = typeof raw.evidence === "string" ? raw.evidence : "";
   return {
-    kind: record.kind,
-    type: record.type,
-    ...(typeof record.value === "string" ? { value: record.value } : {}),
-    ...(typeof record.content === "string" ? { content: record.content } : {}),
+    kind: raw.kind,
+    type: raw.type,
+    ...(typeof raw.value === "string" ? { value: raw.value } : {}),
+    ...(typeof raw.content === "string" ? { content: raw.content } : {}),
     evidence,
   };
 }
@@ -167,11 +178,13 @@ export function parseArtifactExtractionResult(
   for (const parsed of finalJsonCandidates(stdout)) {
     if (parsed.status === "none") return { status: "none" };
     if (parsed.status === "ambiguous") {
+      if ("candidates" in parsed && !Array.isArray(parsed.candidates)) {
+        throw new Error(
+          "Artifact extraction returned invalid ambiguous candidates",
+        );
+      }
       const candidates = Array.isArray(parsed.candidates)
-        ? parsed.candidates.flatMap((entry) => {
-            const parsedCandidate = candidate(entry);
-            return parsedCandidate ? [parsedCandidate] : [];
-          })
+        ? parsed.candidates.map((entry) => candidate(entry))
         : undefined;
       return {
         status: "ambiguous",
@@ -183,8 +196,13 @@ export function parseArtifactExtractionResult(
       };
     }
     if (parsed.status === "resolved") {
-      const spec = source("spec", parsed.spec);
-      const plan = source("plan", parsed.plan);
+      const spec = "spec" in parsed ? source("spec", parsed.spec) : undefined;
+      const plan = "plan" in parsed ? source("plan", parsed.plan) : undefined;
+      if (!spec && !plan) {
+        throw new Error(
+          "Artifact extraction resolved without any artifact sources",
+        );
+      }
       return {
         status: "resolved",
         ...(spec ? { spec } : {}),
