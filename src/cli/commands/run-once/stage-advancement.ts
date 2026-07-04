@@ -4,6 +4,10 @@ import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { pathExists } from "./paths.ts";
+import {
+  resolveIssueContentArtifact,
+  type WorkflowArtifactKind,
+} from "./artifacts.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
 import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
 import { buildPlanCreationPrompt, buildSpecCreationPrompt } from "./prompts.ts";
@@ -66,6 +70,7 @@ type WorkflowArtifactResolution = {
   fromState: boolean;
   created: boolean;
   generated: boolean;
+  source?: "state" | "directory" | "issue-content" | "generated";
 };
 
 export type PlanningStageAdvanceResult =
@@ -162,10 +167,13 @@ function reviewStopStatus(
     : "finished";
 }
 
-async function resolveWorkflowArtifact(options: {
+export async function resolveWorkflowArtifact(options: {
   repoRoot: string;
   issue: IssueSummary;
+  artifactKind: WorkflowArtifactKind;
   artifactDir: string;
+  approvedLabel: string;
+  labels: readonly string[];
   savedPath?: string;
   savedCommit?: string;
   savedCreated?: boolean;
@@ -191,6 +199,7 @@ async function resolveWorkflowArtifact(options: {
         fromState: true,
         created: options.savedCreated === true,
         generated: false,
+        source: "state",
       };
     }
   }
@@ -206,7 +215,27 @@ async function resolveWorkflowArtifact(options: {
       fromState: false,
       created: false,
       generated: false,
+      source: "directory",
     };
+  }
+
+  if (options.labels.includes(options.approvedLabel)) {
+    const issueContentArtifact = await resolveIssueContentArtifact({
+      repoRoot: options.repoRoot,
+      kind: options.artifactKind,
+      body: options.issue.body,
+      comments: options.issue.comments,
+    });
+    if (issueContentArtifact) {
+      return {
+        path: issueContentArtifact.path,
+        exists: true,
+        fromState: false,
+        created: false,
+        generated: false,
+        source: "issue-content",
+      };
+    }
   }
 
   if (!options.buildArtifact) {
@@ -232,6 +261,7 @@ async function resolveWorkflowArtifact(options: {
     fromState: false,
     created: false,
     generated: true,
+    source: "generated",
   };
 }
 
@@ -270,7 +300,10 @@ export async function advancePlanningStages({
   const preexistingPlan = await resolveWorkflowArtifact({
     repoRoot: config.repoRoot,
     issue,
+    artifactKind: "plan",
     artifactDir: config.plansDir,
+    approvedLabel: config.approvalPolicy.planApproval.approvedLabel,
+    labels,
     savedPath: existingState?.planPath,
     savedCommit: existingState?.planCommit,
     savedCreated: existingState?.checkpoints?.planCreated,
@@ -284,7 +317,10 @@ export async function advancePlanningStages({
   const spec = await resolveWorkflowArtifact({
     repoRoot: config.repoRoot,
     issue,
+    artifactKind: "spec",
     artifactDir: config.specsDir,
+    approvedLabel: config.approvalPolicy.specApproval.approvedLabel,
+    labels,
     savedPath: existingState?.specPath,
     savedCommit: existingState?.specCommit,
     savedCreated: existingState?.checkpoints?.specCreated,
@@ -461,7 +497,10 @@ export async function advancePlanningStages({
     : await resolveWorkflowArtifact({
         repoRoot: config.repoRoot,
         issue,
+        artifactKind: "plan",
         artifactDir: config.plansDir,
+        approvedLabel: config.approvalPolicy.planApproval.approvedLabel,
+        labels,
         savedPath: existingState?.planPath,
         savedCommit: existingState?.planCommit,
         savedCreated: existingState?.checkpoints?.planCreated,
