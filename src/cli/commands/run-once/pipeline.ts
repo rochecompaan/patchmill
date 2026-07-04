@@ -10,6 +10,12 @@ import { createIssueHostProvider } from "../../../host/factory.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "../triage/labels.ts";
+import { extractIssueArtifactsWithPi } from "./artifact-source-extraction.ts";
+import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
+import {
+  validateExtractedArtifactSources,
+  type ResolvedIssueArtifactSources,
+} from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
   assertCleanWorktree,
@@ -885,6 +891,8 @@ export async function runOneIssue(
 
   const timestamp = (options.now ?? new Date()).toISOString();
   const tokenUsageState = { total: 0 };
+  let issueForRun = issue;
+  let resolvedArtifacts: ResolvedIssueArtifactSources = {};
   const runStartedAtMs = (options.now ?? new Date()).getTime();
   const stepAccounting: {
     current?: {
@@ -985,6 +993,50 @@ export async function runOneIssue(
     step: { type: "run-start", issueNumber: issue.number, title: issue.title },
   });
   await emitSimpleStep(options, issue.number, "select issue");
+  await progress(
+    options,
+    "info",
+    "artifact-extraction",
+    "hydrating issue artifact content",
+    {
+      issueNumber: issue.number,
+    },
+  );
+  if (issue.comments === undefined) {
+    const hydrated = await host.hydrateIssueComments([issue]);
+    issueForRun = hydrated[0] ?? issue;
+  }
+
+  await progress(
+    options,
+    "info",
+    "artifact-extraction",
+    "extracting issue artifact sources",
+    {
+      issueNumber: issue.number,
+    },
+  );
+  const extraction = await extractIssueArtifactsWithPi({
+    runner,
+    repoRoot: config.repoRoot,
+    issue: issueForRun,
+    specsDir: config.specsDir,
+    plansDir: config.plansDir,
+    artifactExtractionSkill: config.skills.artifactExtraction,
+    heartbeatMs: options.heartbeatMs,
+    streamOutput: options.streamPiOutput,
+    verbosePiOutput: options.verbosePiOutput,
+    tokenUsageState,
+  });
+  resolvedArtifacts = await validateExtractedArtifactSources({
+    issue: issueForRun,
+    repoRoot: config.repoRoot,
+    specsDir: config.specsDir,
+    plansDir: config.plansDir,
+    now: options.now ?? new Date(),
+    extraction,
+  });
+
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
@@ -1038,12 +1090,12 @@ export async function runOneIssue(
 
   try {
     if (!checkpoints.startedCommentPosted) {
-      await host.commentIssue(issue.number, startedComment(issue));
+      await host.commentIssue(issueForRun.number, startedComment(issueForRun));
       await writeRunState(
         config.runStateDir,
         {
-          issueNumber: issue.number,
-          title: issue.title,
+          issueNumber: issueForRun.number,
+          title: issueForRun.title,
           status: "claimed",
           checkpoints: { startedCommentPosted: true },
         },
@@ -1052,16 +1104,45 @@ export async function runOneIssue(
       checkpoints.startedCommentPosted = true;
     }
 
+    const materializedArtifacts = await runStep(
+      "materialize issue artifact sources",
+      async () =>
+        materializeIssueArtifactSources({
+          repoRoot: config.repoRoot,
+          runner,
+          issueNumber: issueForRun.number,
+          sources: resolvedArtifacts,
+        }),
+    );
+    resolvedArtifacts = materializedArtifacts;
+
+    if (resolvedArtifacts.spec || resolvedArtifacts.plan) {
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issueForRun.number,
+          title: issueForRun.title,
+          status: "planning",
+          specPath: resolvedArtifacts.spec?.path,
+          specCommit: resolvedArtifacts.spec?.commit,
+          planPath: resolvedArtifacts.plan?.path,
+          planCommit: resolvedArtifacts.plan?.commit,
+        },
+        timestamp,
+      );
+    }
+
     const planningStages = await advancePlanningStages({
       runner,
       host,
       config,
-      issue,
+      issue: issueForRun,
       labels,
       ready,
       inProgress,
       needsInfo,
       existingState,
+      resolvedArtifacts,
       checkpoints,
       timestamp,
       now: options.now ?? new Date(),
@@ -1078,7 +1159,7 @@ export async function runOneIssue(
         blockIssue(
           host,
           config,
-          issue,
+          issueForRun,
           labels,
           result,
           details,
