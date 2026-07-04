@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type {
-  ResolvedIssueArtifactSource,
   ResolvedIssueArtifactSources,
+  ResolvedIssueInlineArtifactSource,
 } from "./artifact-sources.ts";
 import type { CommandRunner } from "./types.ts";
 
@@ -22,9 +22,9 @@ function commandOutput(result: { stdout: string; stderr: string }): string {
 
 function inlineSources(
   sources: ResolvedIssueArtifactSources,
-): ResolvedIssueArtifactSource[] {
+): ResolvedIssueInlineArtifactSource[] {
   return [sources.spec, sources.plan].filter(
-    (source): source is ResolvedIssueArtifactSource =>
+    (source): source is ResolvedIssueInlineArtifactSource =>
       source?.sourceType === "inline",
   );
 }
@@ -48,8 +48,12 @@ export async function materializeIssueArtifactSources(
   const sources = inlineSources(options.sources);
   if (sources.length === 0) return options.sources;
 
+  const writes: Array<{
+    source: ResolvedIssueInlineArtifactSource;
+    content: string;
+  }> = [];
   for (const source of sources) {
-    const content = withTrailingNewline(source.content ?? "");
+    const content = withTrailingNewline(source.content);
     const existing = await existingContent(source.absolutePath);
     if (existing !== undefined) {
       if (existing !== content) {
@@ -59,6 +63,10 @@ export async function materializeIssueArtifactSources(
       }
       continue;
     }
+    writes.push({ source, content });
+  }
+
+  for (const { source, content } of writes) {
     await mkdir(dirname(source.absolutePath), { recursive: true });
     await writeFile(source.absolutePath, content, "utf8");
   }

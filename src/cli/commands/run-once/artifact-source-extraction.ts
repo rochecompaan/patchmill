@@ -1,23 +1,39 @@
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
+import { finalJsonCandidates } from "./final-json.ts";
 import { runPiPrompt } from "./pi.ts";
-import type { CommandRunner, IssueSummary } from "./types.ts";
+import type { PiSessionObservation } from "./pi-session-stream.ts";
+import type { CommandRunner, IssueSummary, ProgressReporter } from "./types.ts";
 
 export type ArtifactKind = "spec" | "plan";
 export type ArtifactExtractionSourceType = "path" | "inline";
 
-export type ArtifactExtractionSource = {
-  kind: ArtifactKind;
-  type: ArtifactExtractionSourceType;
-  value?: string;
-  content?: string;
+export type ArtifactExtractionPathSource<
+  Kind extends ArtifactKind = ArtifactKind,
+> = {
+  kind: Kind;
+  type: "path";
+  value: string;
   evidence: string;
 };
+
+export type ArtifactExtractionInlineSource<
+  Kind extends ArtifactKind = ArtifactKind,
+> = {
+  kind: Kind;
+  type: "inline";
+  content: string;
+  evidence: string;
+};
+
+export type ArtifactExtractionSource<Kind extends ArtifactKind = ArtifactKind> =
+  | ArtifactExtractionPathSource<Kind>
+  | ArtifactExtractionInlineSource<Kind>;
 
 export type ArtifactExtractionResult =
   | {
       status: "resolved";
-      spec?: ArtifactExtractionSource;
-      plan?: ArtifactExtractionSource;
+      spec?: ArtifactExtractionSource<"spec">;
+      plan?: ArtifactExtractionSource<"plan">;
     }
   | { status: "none" }
   | {
@@ -41,6 +57,10 @@ export type ExtractIssueArtifactsWithPiOptions =
     streamOutput?: (chunk: string) => void;
     verbosePiOutput?: boolean;
     tokenUsageState?: { total: number };
+    progress?: ProgressReporter;
+    observeSession?: boolean;
+    onObservation?: (observation: PiSessionObservation) => void | Promise<void>;
+    piAgentDir?: string;
   };
 
 function commentAuthor(
@@ -99,35 +119,12 @@ If multiple candidates compete or role is unclear:
 {
   "status": "ambiguous",
   "reason": "short reason",
-  "candidates": [{ "kind": "plan", "type": "inline", "evidence": "quoted evidence" }]
+  "candidates": [{ "kind": "plan", "type": "inline", "content": "# Plan\n...", "evidence": "quoted evidence" }]
 }
 
 Issue content:
 ${formatIssueContent(input.issue)}
 `;
-}
-
-function finalJsonCandidates(stdout: string): Record<string, unknown>[] {
-  const trimmed = stdout.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```\s*$/u);
-  const body = fenced ? fenced[1] : trimmed;
-  const end = body.lastIndexOf("}");
-  if (end < 0) return [];
-  const candidates: Record<string, unknown>[] = [];
-  for (
-    let start = body.lastIndexOf("{", end);
-    start >= 0;
-    start = start === 0 ? -1 : body.lastIndexOf("{", start - 1)
-  ) {
-    try {
-      candidates.push(
-        JSON.parse(body.slice(start, end + 1)) as Record<string, unknown>,
-      );
-    } catch {
-      continue;
-    }
-  }
-  return candidates;
 }
 
 function isRecord(raw: unknown): raw is Record<string, unknown> {
@@ -138,7 +135,10 @@ function invalidSourceError(kind: ArtifactKind): Error {
   return new Error(`Artifact extraction returned invalid ${kind} source`);
 }
 
-function source(kind: ArtifactKind, raw: unknown): ArtifactExtractionSource {
+function source<Kind extends ArtifactKind>(
+  kind: Kind,
+  raw: unknown,
+): ArtifactExtractionSource<Kind> {
   if (!isRecord(raw)) throw invalidSourceError(kind);
   const evidence = typeof raw.evidence === "string" ? raw.evidence : "";
   if (raw.type === "path") {
@@ -159,17 +159,7 @@ function candidate(raw: unknown): ArtifactExtractionSource {
   if (raw.kind !== "spec" && raw.kind !== "plan") {
     throw new Error("Artifact extraction returned invalid ambiguous candidate");
   }
-  if (raw.type !== "path" && raw.type !== "inline") {
-    throw new Error("Artifact extraction returned invalid ambiguous candidate");
-  }
-  const evidence = typeof raw.evidence === "string" ? raw.evidence : "";
-  return {
-    kind: raw.kind,
-    type: raw.type,
-    ...(typeof raw.value === "string" ? { value: raw.value } : {}),
-    ...(typeof raw.content === "string" ? { content: raw.content } : {}),
-    evidence,
-  };
+  return source(raw.kind, raw);
 }
 
 export function parseArtifactExtractionResult(
@@ -233,6 +223,10 @@ export async function extractIssueArtifactsWithPi(
       repoRoot: options.repoRoot,
       tokenUsageState: options.tokenUsageState,
       verbosePiOutput: options.verbosePiOutput,
+      progress: options.progress,
+      observeSession: options.observeSession,
+      onObservation: options.onObservation,
+      piAgentDir: options.piAgentDir,
     },
   );
 }

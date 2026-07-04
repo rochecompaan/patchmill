@@ -122,6 +122,57 @@ test("materializeIssueArtifactSources reuses HEAD when inline artifacts are alre
   );
 });
 
+test("materializeIssueArtifactSources preflights all inline artifacts before writing", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-materialize-atomic-"),
+  );
+  const specPath = "docs/specs/2026-07-04-issue-65-design.md";
+  const specAbsolutePath = join(repoRoot, specPath);
+  const planPath = "docs/plans/2026-07-04-issue-65.md";
+  const planAbsolutePath = join(repoRoot, planPath);
+  await mkdir(join(repoRoot, "docs", "plans"), { recursive: true });
+  await writeFile(
+    planAbsolutePath,
+    "# Approved Plan\nDo not replace.\n",
+    "utf8",
+  );
+  const calls: Call[] = [];
+
+  await assert.rejects(
+    materializeIssueArtifactSources({
+      repoRoot,
+      runner: runner(calls),
+      issueNumber: 65,
+      sources: {
+        spec: {
+          artifactKind: "spec",
+          sourceType: "inline",
+          path: specPath,
+          absolutePath: specAbsolutePath,
+          content: "# New Spec\nDo not write if plan conflicts.",
+          evidence: "spec block",
+        },
+        plan: {
+          artifactKind: "plan",
+          sourceType: "inline",
+          path: planPath,
+          absolutePath: planAbsolutePath,
+          content: "# New Plan\nDifferent issue content.",
+          evidence: "plan block",
+        },
+      },
+    }),
+    /would overwrite existing plan artifact at docs\/plans\/2026-07-04-issue-65\.md/,
+  );
+
+  await assert.rejects(readFile(specAbsolutePath, "utf8"), /ENOENT/);
+  assert.equal(
+    await readFile(planAbsolutePath, "utf8"),
+    "# Approved Plan\nDo not replace.\n",
+  );
+  assert.equal(calls.length, 0);
+});
+
 test("materializeIssueArtifactSources rejects mismatched existing inline artifacts without overwriting", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-materialize-mismatch-"),

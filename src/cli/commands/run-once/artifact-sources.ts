@@ -8,15 +8,27 @@ import { buildPlanPath } from "./plans.ts";
 import { buildSpecPath } from "./specs.ts";
 import type { IssueSummary } from "./types.ts";
 
-export type ResolvedIssueArtifactSource = {
+export type ResolvedIssuePathArtifactSource = {
   artifactKind: "spec" | "plan";
-  sourceType: "path" | "inline";
+  sourceType: "path";
   path: string;
   absolutePath: string;
-  content?: string;
+  evidence: string;
+};
+
+export type ResolvedIssueInlineArtifactSource = {
+  artifactKind: "spec" | "plan";
+  sourceType: "inline";
+  path: string;
+  absolutePath: string;
+  content: string;
   evidence: string;
   commit?: string;
 };
+
+export type ResolvedIssueArtifactSource =
+  | ResolvedIssuePathArtifactSource
+  | ResolvedIssueInlineArtifactSource;
 
 export type ResolvedIssueArtifactSources = {
   spec?: ResolvedIssueArtifactSource;
@@ -104,7 +116,7 @@ async function validateSource(
   options: ValidateExtractedArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSource> {
   if (source.type === "inline") {
-    const content = (source.content ?? "").trim();
+    const content = source.content.trim();
     if (content.length < 8) {
       throw new ArtifactSourcePreflightError(
         `Issue #${options.issue.number} has an inline ${source.kind} artifact with empty content`,
@@ -122,12 +134,6 @@ async function validateSource(
     };
   }
 
-  if (!source.value) {
-    throw new ArtifactSourcePreflightError(
-      `Issue #${options.issue.number} has a ${source.kind} path source without a path value`,
-      { issueNumber: options.issue.number, artifactKind: source.kind },
-    );
-  }
   const path = normalizeRepoPath(source.value);
   const absolutePath = resolve(options.repoRoot, path);
   const expectedDir =

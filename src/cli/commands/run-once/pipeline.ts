@@ -10,12 +10,9 @@ import { createIssueHostProvider } from "../../../host/factory.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "../triage/labels.ts";
-import { extractIssueArtifactsWithPi } from "./artifact-source-extraction.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
-import {
-  validateExtractedArtifactSources,
-  type ResolvedIssueArtifactSources,
-} from "./artifact-sources.ts";
+import { runArtifactExtractionStage } from "./artifact-source-stage.ts";
+import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
   assertCleanWorktree,
@@ -966,7 +963,13 @@ export async function runOneIssue(
     }
   };
   const observePi =
-    (stage: "pi-plan" | "pi-development-environment" | "pi-implementation") =>
+    (
+      stage:
+        | "pi-artifact-extraction"
+        | "pi-plan"
+        | "pi-development-environment"
+        | "pi-implementation",
+    ) =>
     async (
       observation: AgentIssueProgressEvent["observation"],
     ): Promise<void> => {
@@ -993,49 +996,25 @@ export async function runOneIssue(
     step: { type: "run-start", issueNumber: issue.number, title: issue.title },
   });
   await emitSimpleStep(options, issue.number, "select issue");
-  await progress(
-    options,
-    "info",
-    "artifact-extraction",
-    "hydrating issue artifact content",
-    {
-      issueNumber: issue.number,
-    },
-  );
-  if (issue.comments === undefined) {
-    const hydrated = await host.hydrateIssueComments([issue]);
-    issueForRun = hydrated[0] ?? issue;
-  }
-
-  await progress(
-    options,
-    "info",
-    "artifact-extraction",
-    "extracting issue artifact sources",
-    {
-      issueNumber: issue.number,
-    },
-  );
-  const extraction = await extractIssueArtifactsWithPi({
+  const artifactExtraction = await runArtifactExtractionStage({
     runner,
-    repoRoot: config.repoRoot,
-    issue: issueForRun,
-    specsDir: config.specsDir,
-    plansDir: config.plansDir,
-    artifactExtractionSkill: config.skills.artifactExtraction,
-    heartbeatMs: options.heartbeatMs,
-    streamOutput: options.streamPiOutput,
-    verbosePiOutput: options.verbosePiOutput,
-    tokenUsageState,
-  });
-  resolvedArtifacts = await validateExtractedArtifactSources({
-    issue: issueForRun,
-    repoRoot: config.repoRoot,
-    specsDir: config.specsDir,
-    plansDir: config.plansDir,
+    host,
+    config,
+    issue,
     now: options.now ?? new Date(),
-    extraction,
+    heartbeatMs: options.heartbeatMs,
+    streamPiOutput: options.streamPiOutput,
+    verbosePiOutput: options.verbosePiOutput,
+    piAgentDir,
+    tokenUsageState,
+    progressReporter: options.progress,
+    progress: (level, stage, message, extras) =>
+      progress(options, level, stage, message, extras),
+    runStep,
+    observePi,
   });
+  issueForRun = artifactExtraction.issue;
+  resolvedArtifacts = artifactExtraction.resolvedArtifacts;
 
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,

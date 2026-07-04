@@ -38,6 +38,7 @@ type Call = {
   env?: Record<string, string | undefined>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  artifactExtraction?: boolean;
 };
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
@@ -204,6 +205,12 @@ async function isArtifactExtractionPiCall(call: Call): Promise<boolean> {
   return /Extract spec and plan artifact sources/.test(prompt);
 }
 
+function workflowPiCalls(calls: Call[]): Call[] {
+  return calls.filter(
+    (call) => call.command === "pi" && !call.artifactExtraction,
+  );
+}
+
 function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
   runnerOptions: { handleArtifactExtraction?: boolean } = {},
@@ -221,7 +228,8 @@ function createMockRunner(
         onStderr: options.onStderr,
       });
       const artifactExtractionPiCall = await isArtifactExtractionPiCall(call);
-      if (!artifactExtractionPiCall) calls.push(call);
+      if (artifactExtractionPiCall) call.artifactExtraction = true;
+      calls.push(call);
       if (call.command === "pi") {
         if (
           artifactExtractionPiCall &&
@@ -797,10 +805,7 @@ test("runOneIssue execute blocks unsafe issue base before claim, comments, run s
     ),
     false,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "tea" && call.args.includes("comment"),
@@ -2157,11 +2162,31 @@ test("runOneIssue uses extracted spec and plan paths before filename discovery",
     { handleArtifactExtraction: true },
   );
 
-  const result = await runOneIssue(runner, config, { now: NOW });
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "pr-created");
   assert.equal(result.specPath, specPath);
   assert.equal(result.planPath, planPath);
+  const artifactPiCalls = runner.calls.filter(
+    (call) => call.artifactExtraction,
+  );
+  assert.equal(artifactPiCalls.length, 1);
+  assert.equal(artifactPiCalls[0]?.args.includes("--session-dir"), true);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.step?.type === "step-start" &&
+        event.step.label === "extract issue artifact sources",
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.step?.type === "step-complete" &&
+        event.step.label === "extract issue artifact sources",
+    ),
+  );
 });
 
 test("runOneIssue fails before claim when extractor returns missing path", async () => {
@@ -3020,10 +3045,7 @@ test("runOneIssue stops after finding an existing plan when plan approval is req
 
   assert.equal(result.status, "plan-found");
   assert.equal(result.planPath, planPath);
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -3102,7 +3124,7 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
 
   assert.equal(result.status, "plan-created");
   assert.equal(result.planPath, expectedPlanPath);
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 2);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -3174,7 +3196,7 @@ test("runOneIssue ignores stale plan approval when a new plan is created", async
 
   assert.equal(result.status, "plan-created");
   assert.equal(result.planPath, expectedPlanPath);
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 2);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -4023,10 +4045,7 @@ test("runOneIssue reports dirty blocked recovery before mutations", async () => 
     () => runOneIssue(runner, config, { now: NOW }),
     /Commit, stash, or clean local modifications/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] !== "issues",
@@ -4053,10 +4072,7 @@ test("runOneIssue reports already merged blocked recovery before mutations", asy
     () => runOneIssue(runner, config, { now: NOW }),
     /Confirm the work is landed/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue resumes clean behind blocked recovery", async () => {
@@ -4092,10 +4108,7 @@ test("runOneIssue reports missing worktree with existing branch blocked recovery
     () => runOneIssue(runner, config, { now: NOW }),
     /git worktree add \.worktrees\/patchmill-issue-45-recover-blocked-run agent\/issue-45-recover-blocked-run/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue reports missing branch and worktree blocked recovery before mutations", async () => {
@@ -4116,10 +4129,7 @@ test("runOneIssue reports missing branch and worktree blocked recovery before mu
     () => runOneIssue(runner, config, { now: NOW }),
     /Archive or remove stale run state/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue reuses existing implementation result on resume without rerunning pi", async () => {
@@ -4225,10 +4235,7 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
     result.landingDecision,
     "PR required: needs manual verification",
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue finishes saved pr-created handoff without requiring an agent team", async () => {
@@ -4324,10 +4331,7 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.ok(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] === "comment",
@@ -4465,10 +4469,7 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   const doneLabelCreate = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -4882,10 +4883,7 @@ test("runOneIssue finishes saved merged handoff when direct landing is enabled a
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "merged");
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.ok(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] === "comment",
@@ -4989,10 +4987,7 @@ test("runOneIssue rejects saved merged handoff when skills.landing is not config
     () => runOneIssue(runner, config, { now: NOW }),
     /Saved implementation state returned merged but direct landing requires git\.allowDirectLand=true and configured skills\.landing/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue rejects saved merged handoff when direct landing is disabled", async () => {
@@ -5083,10 +5078,7 @@ test("runOneIssue rejects saved merged handoff when direct landing is disabled",
     () => runOneIssue(runner, config, { now: NOW }),
     /Saved implementation state returned merged while git\.allowDirectLand is false/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue rejects stale finished implementationCompleted state before relabel without an agent team", async () => {
@@ -5164,10 +5156,7 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
     () => runOneIssue(runner, config, { now: NOW }),
     /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -5305,10 +5294,7 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
     ".worktrees/patchmill-issue-45-stale-finished-same-title",
   );
 
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -5611,10 +5597,7 @@ test("runOneIssue rejects resumable saved branch/worktree mismatch before worktr
     ),
     false,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] === "comment",
@@ -5722,10 +5705,7 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
     ),
     false,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   ) as Record<string, unknown> & {
@@ -5854,7 +5834,7 @@ test("runOneIssue skips development environment when no development environment 
     });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
   assert.doesNotMatch(
     piPrompts[0] ?? "",
     /Development environment handoff data/,
@@ -5962,7 +5942,7 @@ test("runOneIssue returns development-environment-not-ready without starting imp
     "Run devenv shell -- just tilt-up",
     "Re-run patchmill run-once",
   ]);
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
   assert.equal(
     runner.calls.some(
       (call) =>
@@ -7979,7 +7959,7 @@ test("runOneIssue uses an existing plan without legacy team lookup", async () =>
     result.planPath,
     "docs/plans/2026-05-01-issue-21-fix-isolated-issue-runner.md",
   );
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
 });
 
 test("runOneIssue blocks completed handoff when issue task todos remain open", async () => {

@@ -81,13 +81,27 @@ test("parseArtifactExtractionResult parses none and ambiguous results", () => {
       JSON.stringify({
         status: "ambiguous",
         reason: "Two plan sections",
-        candidates: [{ kind: "plan", type: "inline", evidence: "first plan" }],
+        candidates: [
+          {
+            kind: "plan",
+            type: "inline",
+            content: "# Plan\n- [ ] First",
+            evidence: "first plan",
+          },
+        ],
       }),
     ),
     {
       status: "ambiguous",
       reason: "Two plan sections",
-      candidates: [{ kind: "plan", type: "inline", evidence: "first plan" }],
+      candidates: [
+        {
+          kind: "plan",
+          type: "inline",
+          content: "# Plan\n- [ ] First",
+          evidence: "first plan",
+        },
+      ],
     },
   );
 });
