@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveIssueContentArtifact } from "./artifacts.ts";
@@ -108,6 +108,43 @@ test("resolveIssueContentArtifact keeps spec and plan signals independent", asyn
     }),
     undefined,
   );
+});
+
+test("resolveIssueContentArtifact rejects symlinks that escape the repository", async () => {
+  const repoRoot = await repo();
+  const outsideRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-artifacts-outside-"),
+  );
+  await writeFile(join(outsideRoot, "outside.md"), "# Outside\n", "utf8");
+  await symlink(
+    join(outsideRoot, "outside.md"),
+    join(repoRoot, "docs/plans/link.md"),
+  );
+
+  assert.equal(
+    await resolveIssueContentArtifact({
+      repoRoot,
+      kind: "plan",
+      body: "Approved plan: docs/plans/link.md",
+      comments: [],
+    }),
+    undefined,
+  );
+});
+
+test("resolveIssueContentArtifact accepts symlinks that resolve inside the repository", async () => {
+  const repoRoot = await repo();
+  await writeFile(join(repoRoot, "docs/plans/real.md"), "# Plan\n", "utf8");
+  await symlink("real.md", join(repoRoot, "docs/plans/link.md"));
+
+  const result = await resolveIssueContentArtifact({
+    repoRoot,
+    kind: "plan",
+    body: "Approved plan: docs/plans/link.md",
+    comments: [],
+  });
+
+  assert.equal(result?.path, "docs/plans/link.md");
 });
 
 test("resolveIssueContentArtifact rejects unsafe, missing, directory, URL, and ambiguous references", async () => {

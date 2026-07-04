@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { lstat, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type WorkflowArtifactOptions = {
@@ -109,14 +109,18 @@ async function validateIssueArtifactPath(
     : resolve(normalizedRepoRoot, candidate);
   if (!insideRepo(normalizedRepoRoot, absolutePath)) return undefined;
 
-  let info;
+  let fileInfo;
   try {
-    info = await stat(absolutePath);
+    await lstat(absolutePath);
+    const realRepoRoot = await realpath(normalizedRepoRoot);
+    const realArtifactPath = await realpath(absolutePath);
+    if (!insideRepo(realRepoRoot, realArtifactPath)) return undefined;
+    fileInfo = await stat(realArtifactPath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
-  if (!info.isFile()) return undefined;
+  if (!fileInfo.isFile()) return undefined;
 
   return relative(normalizedRepoRoot, absolutePath).split(sep).join("/");
 }
