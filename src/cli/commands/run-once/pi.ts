@@ -312,6 +312,7 @@ export type PiTaskProgress = {
 };
 
 export type RunPiPromptStage =
+  | "pi-artifact-extraction"
   | "pi-plan"
   | "pi-development-environment"
   | "pi-implementation";
@@ -341,6 +342,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
 };
 
 function stageStatus(stage: RunPiPromptStage): string {
+  if (stage === "pi-artifact-extraction") return "extracting artifact sources";
   if (stage === "pi-plan") return "planning";
   if (stage === "pi-development-environment") return "development environment";
   return "implementing";
