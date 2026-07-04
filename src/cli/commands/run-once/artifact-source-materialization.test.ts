@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
@@ -13,6 +13,9 @@ function runner(calls: Call[]): CommandRunner {
   return {
     async run(command, args, options) {
       calls.push({ command, args, cwd: options?.cwd });
+      if (command === "git" && args[0] === "diff") {
+        return { code: 1, stdout: "", stderr: "" };
+      }
       if (command === "git" && args[0] === "rev-parse") {
         return { code: 0, stdout: "abc123\n", stderr: "" };
       }
@@ -67,7 +70,55 @@ test("materializeIssueArtifactSources writes and commits inline artifacts", asyn
   assert.equal(materialized.plan?.commit, "abc123");
   assert.deepEqual(
     calls.filter((call) => call.command === "git").map((call) => call.args[0]),
-    ["add", "commit", "rev-parse"],
+    ["add", "diff", "commit", "rev-parse"],
+  );
+});
+
+test("materializeIssueArtifactSources reuses HEAD when inline artifacts are already materialized", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-materialize-existing-"),
+  );
+  const path = "docs/specs/2026-07-04-issue-65-design.md";
+  const absolutePath = join(repoRoot, path);
+  await mkdir(join(repoRoot, "docs", "specs"), { recursive: true });
+  await writeFile(absolutePath, "# Spec\nAlready there.\n", "utf8");
+  const sources: ResolvedIssueArtifactSources = {
+    spec: {
+      artifactKind: "spec",
+      sourceType: "inline",
+      path,
+      absolutePath,
+      content: "# Spec\nAlready there.",
+      evidence: "## Spec",
+    },
+  };
+  const calls: Call[] = [];
+  const materialized = await materializeIssueArtifactSources({
+    repoRoot,
+    runner: {
+      async run(command, args, options) {
+        calls.push({ command, args, cwd: options?.cwd });
+        if (command === "git" && args[0] === "commit") {
+          return { code: 1, stdout: "", stderr: "nothing to commit" };
+        }
+        if (command === "git" && args[0] === "rev-parse") {
+          return { code: 0, stdout: "existing123\n", stderr: "" };
+        }
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    },
+    issueNumber: 65,
+    sources,
+  });
+
+  assert.equal(
+    await readFile(absolutePath, "utf8"),
+    "# Spec\nAlready there.\n",
+  );
+  assert.equal(materialized.spec?.commit, "existing123");
+  assert.deepEqual(
+    calls.filter((call) => call.command === "git").map((call) => call.args[0]),
+    ["add", "diff", "rev-parse"],
   );
 });
 

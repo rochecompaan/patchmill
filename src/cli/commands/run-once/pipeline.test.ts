@@ -2289,6 +2289,8 @@ test("runOneIssue materializes inline extracted artifacts after claim", async ()
         events.push("git-add-artifacts");
         return { code: 0, stdout: "", stderr: "" };
       }
+      if (call.command === "git" && call.args[0] === "diff")
+        return { code: 1, stdout: "", stderr: "" };
       if (call.command === "git" && call.args[0] === "commit")
         return { code: 0, stdout: "", stderr: "" };
       if (call.command === "git" && call.args[0] === "rev-parse")

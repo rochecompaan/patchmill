@@ -58,21 +58,34 @@ export async function materializeIssueArtifactSources(
     );
   }
 
-  const commit = await options.runner.run(
+  const diff = await options.runner.run(
     "git",
-    [
-      "commit",
-      "-m",
-      `docs(workflow): materialize issue ${options.issueNumber} artifacts`,
-      "--",
-      ...paths,
-    ],
+    ["diff", "--cached", "--quiet", "--", ...paths],
     { cwd: options.repoRoot },
   );
-  if (commit.code !== 0) {
+  if (diff.code !== 0 && diff.code !== 1) {
     throw new Error(
-      `git commit failed while materializing issue #${options.issueNumber} artifacts: ${commandOutput(commit)}`,
+      `git diff failed while materializing issue #${options.issueNumber} artifacts: ${commandOutput(diff)}`,
     );
+  }
+
+  if (diff.code === 1) {
+    const commit = await options.runner.run(
+      "git",
+      [
+        "commit",
+        "-m",
+        `docs(workflow): materialize issue ${options.issueNumber} artifacts`,
+        "--",
+        ...paths,
+      ],
+      { cwd: options.repoRoot },
+    );
+    if (commit.code !== 0) {
+      throw new Error(
+        `git commit failed while materializing issue #${options.issueNumber} artifacts: ${commandOutput(commit)}`,
+      );
+    }
   }
 
   const rev = await options.runner.run("git", ["rev-parse", "HEAD"], {
