@@ -18,19 +18,21 @@ export type SkillInvocationResolution = {
 };
 
 export const BUNDLED_TRIAGE_SKILL_REFERENCE = "patchmill:bundled-issue-triage";
+export const BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE =
+  "patchmill:bundled-artifact-extraction";
 
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
 const SKILL_NAMESPACE_PATTERN = /^[a-z0-9-]+:.+$/iu;
 const SKILL_FILE_NAME = "SKILL.md";
 
-export function bundledTriageSkillPath(): string {
+function bundledSkillPath(skillDirName: string): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const sourceTreePath = join(
     here,
     "..",
     "..",
     "skills",
-    "patchmill-issue-triage",
+    skillDirName,
     "SKILL.md",
   );
   const builtPackagePath = join(
@@ -39,11 +41,19 @@ export function bundledTriageSkillPath(): string {
     "..",
     "..",
     "skills",
-    "patchmill-issue-triage",
+    skillDirName,
     "SKILL.md",
   );
 
   return existsSync(sourceTreePath) ? sourceTreePath : builtPackagePath;
+}
+
+export function bundledTriageSkillPath(): string {
+  return bundledSkillPath("patchmill-issue-triage");
+}
+
+export function bundledArtifactExtractionSkillPath(): string {
+  return bundledSkillPath("patchmill-artifact-extraction");
 }
 
 export function isNamespaceStyleSkill(skill: string): boolean {
@@ -121,6 +131,9 @@ export function resolveConfiguredSkillInvocation(
     if (!skill) return [];
     if (skill === BUNDLED_TRIAGE_SKILL_REFERENCE) {
       return [bundledTriageSkillPath()];
+    }
+    if (skill === BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE) {
+      return [bundledArtifactExtractionSkillPath()];
     }
     if (!isPathLikeSkill(skill)) return [];
     return [resolvePathLikeSkillPath(skill, repoRoot)];
