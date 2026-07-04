@@ -149,6 +149,12 @@ Source files:
 - Pipeline: `src/cli/commands/run-once/pipeline.ts`
 - Prompt builders: `src/cli/commands/run-once/prompts.ts`
 - Pi runner/result parser: `src/cli/commands/run-once/pi.ts`
+- Artifact source extraction and validation:
+  `src/cli/commands/run-once/artifact-source-extraction.ts`,
+  `src/cli/commands/run-once/artifact-sources.ts`, and
+  `src/cli/commands/run-once/artifact-source-materialization.ts`
+- Bundled artifact extraction skill:
+  `skills/patchmill-artifact-extraction/SKILL.md`
 - Subagent support: bundled runtime support and implementation prompt guidance
 - Issue selection: `src/cli/commands/run-once/selection.ts`
 - Progress/logging: `src/cli/commands/run-once/progress.ts`,
@@ -241,6 +247,20 @@ After the branch-base check passes in execute mode, `run-once` checks the
 repository worktree is clean, ignoring configured local state paths such as the
 run-state directory and issue todo root. It records checkpoints so retries can
 skip already-completed side effects safely.
+
+Before claiming an issue in execute mode, `run-once` hydrates the selected
+issue's body and comments and invokes the configured `skills.artifactExtraction`
+skill. The bundled default skill asks Pi to classify unambiguous spec or plan
+sources from full issue content, such as role-clear repo paths, Markdown links,
+inline sections, and `<details>` blocks. Patchmill validates the skill's
+structured JSON output before any labels, comments, or run state are mutated.
+`--dry-run` keeps the existing cheap transition preview and does not run
+artifact extraction.
+
+Inline source-provided artifacts are materialized under the configured docs
+directories and committed after the issue is claimed, but they are treated as
+source-provided artifacts rather than newly generated Pi artifacts for
+approval-gate freshness.
 
 ### Plan-creation Pi prompt
 
