@@ -5512,6 +5512,187 @@ test("runOneIssue starts implementation without an agent team", async () => {
   );
 });
 
+test("runOneIssue proceeds to implementation with approved artifacts referenced in issue content", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const specPath = "docs/specs/custom-approved-spec.md";
+  const planPath = "docs/plans/custom-approved-plan.md";
+  await writeFile(join(config.repoRoot, specPath), "# Spec\n", "utf8");
+  await writeFile(join(config.repoRoot, planPath), "# Plan\n", "utf8");
+
+  const selected = issue(
+    65,
+    ["spec-approved", "plan-approved", "enhancement"],
+    "Custom artifact names",
+  );
+  selected.body = `Approved spec: \`${specPath}\``;
+  selected.comments = [
+    {
+      author: { login: "ana" },
+      body: `Approved plan artifact: [plan](${planPath})`,
+    },
+  ];
+
+  const piPrompts: string[] = [];
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "checkout") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      piPrompts.push(prompt);
+      assert.doesNotMatch(prompt, /Create a design spec/);
+      assert.doesNotMatch(prompt, /Create an implementation plan/);
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/65",
+          branch: "agent/issue-65-implementation",
+          commits: ["123abc"],
+          validation: ["npm test"],
+          reviewSummary: "reviewed",
+          landingDecision: "PR fallback.",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(result.specPath, specPath);
+  assert.equal(result.planPath, planPath);
+  assert.equal(piPrompts.length, 1);
+});
+
+test("runOneIssue creates a plan when approved issue-content plan references are invalid", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const specPath = "docs/specs/custom-approved-spec.md";
+  await writeFile(join(config.repoRoot, specPath), "# Spec\n", "utf8");
+
+  const selected = issue(
+    66,
+    ["spec-approved", "plan-approved", "enhancement"],
+    "Invalid plan artifact reference",
+  );
+  selected.body = `Approved spec: \`${specPath}\`\n\nApproved plan: https://example.test/plan.md`;
+  selected.comments = [];
+
+  const piPrompts: string[] = [];
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      piPrompts.push(prompt);
+      assert.match(prompt, /Create an implementation plan/);
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "plan-created",
+          planPath: promptJsonPath(prompt, "planPath"),
+          commit: "abc123",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(piPrompts.length, 1);
+});
+
 test("runOneIssue skips development environment when no development environment skill is configured", async () => {
   const { result, runner, piPrompts } =
     await runPlanApprovedImplementationScenario({
