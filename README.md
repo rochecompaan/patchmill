@@ -151,6 +151,17 @@ change the default host login, installs Patchmill's recommended skills into
 machines and CI, consider committing `patchmill.config.json` and
 `.patchmill/skills/` explicitly.
 
+To update a repository after Patchmill publishes a newer bundled skill pack,
+run:
+
+```sh
+npx patchmill@latest skills update
+```
+
+The update command only changes Patchmill-managed project-local skills. It stops
+if managed skill files were edited locally. After a successful update, run
+`git diff` and commit the skill changes with the repository.
+
 Alternative initialization modes:
 
 ```sh
