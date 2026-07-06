@@ -58,8 +58,9 @@ jobs:
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
         uses: actions/setup-node@v6
         with:
-          node-version: 24
-          cache: npm
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false # never use caching in release builds
 
       - name: Install release PR dependencies
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
