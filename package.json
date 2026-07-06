@@ -55,7 +55,10 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='bin/**/*.ts' --test-coverage-include='src/**/*.ts' --test-coverage-include='test-support/**/*.ts' --test-coverage-exclude='**/*.test.ts' \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
     "test:cli": "node --test bin/*.test.ts src/cli/main.test.ts",
     "test:triage": "node --test src/cli/commands/triage/*.test.ts",
-    "test:run-once": "node --test src/cli/commands/run-once/*.test.ts"
+    "test:run-once": "node --test src/cli/commands/run-once/*.test.ts",
+    "site:dev": "npm --prefix site run dev",
+    "site:build": "npm --prefix site run build",
+    "site:preview": "npm --prefix site run preview"
   },
   "lint-staged": {
     "*.{ts,js,json,md}": "prettier --write",

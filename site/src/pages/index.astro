@@ -1,0 +1,117 @@
+---
+import logoLight from "../assets/logo-light.svg?url";
+import "../styles/landing.css";
+
+const workflow = [
+  {
+    title: "Intake",
+    body: "Connect issue work, repository policy, skills, and runtime configuration.",
+  },
+  {
+    title: "Plan",
+    body: "Turn ready product work into explicit specs and implementation plans.",
+  },
+  {
+    title: "Build",
+    body: "Run implementation in isolated worktrees with visible checkpoints.",
+  },
+  {
+    title: "Review",
+    body: "Collect review feedback, evidence, and handoff notes before landing.",
+  },
+];
+
+const features = [
+  {
+    title: "Visible production line",
+    body: "Patchmill keeps every station between idea and production explicit instead of hiding agent work in a black box.",
+  },
+  {
+    title: "Configurable workflow",
+    body: "Providers, skills, worktrees, approval gates, and runtime behavior are configured per repository.",
+  },
+  {
+    title: "Craft-aware automation",
+    body: "The workflow preserves planning, review, verification, and engineering judgment while making iterative work scalable.",
+  },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Patchmill — agent-driven software factory</title>
+    <meta
+      name="description"
+      content="Patchmill turns product work into reviewed, landed changes with a visible agent-driven production line."
+    />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header" aria-label="Site header">
+        <a class="brand" href="/" aria-label="Patchmill home">
+          <img src={logoLight} alt="Patchmill" />
+        </a>
+        <nav class="header-links" aria-label="Primary navigation">
+          <a href="/getting-started/quickstart/">Docs</a>
+          <a href="https://github.com/rochecompaan/patchmill">GitHub</a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div>
+            <span class="eyebrow">Agent-driven software factory</span>
+            <h1>Visible automation from issue to landed change.</h1>
+            <p class="lede">
+              Patchmill turns product work into reviewed diffs without hiding the
+              engineering judgment between idea and production. It gives agentic
+              development a factory floor: intake, planning, isolated work,
+              review, evidence, landing, and records.
+            </p>
+            <div class="cta-row" aria-label="Primary calls to action">
+              <a class="button primary" href="/getting-started/quickstart/">Get started</a>
+              <a class="button secondary" href="/getting-started/what-is-patchmill/">Read the docs</a>
+              <a class="button secondary" href="https://github.com/rochecompaan/patchmill">View on GitHub</a>
+            </div>
+          </div>
+
+          <aside class="factory-card" aria-label="Patchmill workflow">
+            <h2>Factory stations</h2>
+            {
+              workflow.map((step, index) => (
+                <div class="factory-step">
+                  <div class="step-index">{index + 1}</div>
+                  <div>
+                    <strong>{step.title}</strong>
+                    <span>{step.body}</span>
+                  </div>
+                </div>
+              ))
+            }
+          </aside>
+        </section>
+
+        <section class="section" aria-labelledby="why-patchmill">
+          <h2 id="why-patchmill">Built for visible, reviewable agent work.</h2>
+          <div class="feature-grid">
+            {
+              features.map((feature) => (
+                <article class="feature-card">
+                  <h3>{feature.title}</h3>
+                  <p>{feature.body}</p>
+                </article>
+              ))
+            }
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <span>Patchmill is open-source software licensed under Apache-2.0.</span>
+      </footer>
+    </div>
+  </body>
+</html>

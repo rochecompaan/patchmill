@@ -18,3 +18,6 @@ coverage/
 .devenv*
 devenv.local.nix
 devenv.local.yaml
+
+site/.astro/
+site/dist/
