@@ -28,6 +28,17 @@ The goal is not a black box that writes code. The goal is a factory floor where
 every station is visible, configurable, and designed to preserve software
 craftsmanship while making iterative engineering scalable.
 
+## What Patchmill controls
+
+Patchmill coordinates local repository automation:
+
+- Host provider access for issue and pull-request workflows.
+- Repository-local configuration in `patchmill.config.json`.
+- Project-local skills under `.patchmill/skills/`.
+- Git worktrees for isolated implementation work.
+- Approval gates for specs, plans, and implementation evidence.
+- Pi runtime instructions for triage, planning, implementation, and review.
+
 ## Where Superpowers fits
 
 Patchmill relies on the Superpowers skill pack for much of the workflow

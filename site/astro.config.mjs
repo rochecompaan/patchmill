@@ -34,6 +34,38 @@ export default defineConfig({
               label: "What Patchmill is",
               slug: "getting-started/what-is-patchmill",
             },
+            { label: "Quickstart", slug: "getting-started/quickstart" },
+            {
+              label: "Configuration",
+              slug: "getting-started/configuration",
+            },
+          ],
+        },
+        {
+          label: "Guides",
+          items: [
+            {
+              label: "Issue-agent workflows",
+              slug: "guides/issue-agent-workflows",
+            },
+            {
+              label: "Skills configuration",
+              slug: "guides/skills-configuration",
+            },
+            { label: "Providers", slug: "guides/providers" },
+          ],
+        },
+        {
+          label: "Reference",
+          items: [
+            {
+              label: "Task contracts",
+              slug: "reference/task-contracts",
+            },
+            {
+              label: "Environment and configuration",
+              slug: "reference/environment-and-config",
+            },
           ],
         },
       ],
