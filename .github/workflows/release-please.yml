@@ -32,7 +32,9 @@ jobs:
 
       - name: Resolve release PR branch
         id: release-pr
-        if: ${{ steps.release.outputs.prs_created == 'true' && steps.release.outputs.pr != '' }}
+        if:
+          ${{ steps.release.outputs.prs_created == 'true' &&
+          steps.release.outputs.pr != '' }}
         env:
           RELEASE_PR: ${{ steps.release.outputs.pr }}
         run: |
@@ -58,8 +60,8 @@ jobs:
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false # never use caching in release builds
 
       - name: Install release PR dependencies
@@ -68,7 +70,9 @@ jobs:
 
       - name: Format generated release files
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
-        run: npx prettier --write npm-shrinkwrap.json package-lock.json package.json .release-please-manifest.json
+        run:
+          npx prettier --write npm-shrinkwrap.json package-lock.json
+          package.json .release-please-manifest.json
 
       - name: Install Nix
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
