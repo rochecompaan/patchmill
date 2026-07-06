@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.1](https://github.com/rochecompaan/patchmill/compare/v0.15.0...v0.15.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* **ci:** release-please.yml formatting ([0ce04b6](https://github.com/rochecompaan/patchmill/commit/0ce04b6a42712a0e04f220716fa7be60e655a3ca))
+* **ci:** remove NODE_AUTH_TOKEN check ([3340ef7](https://github.com/rochecompaan/patchmill/commit/3340ef74b1d1ce10a9b1a45902c6c40a579420b9))
+
 ## [0.15.0](https://github.com/rochecompaan/patchmill/compare/v0.14.0...v0.15.0) (2026-07-06)
 
 
