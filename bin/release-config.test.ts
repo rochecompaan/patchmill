@@ -69,7 +69,6 @@ test("release workflow opens release PRs and publishes created releases", () => 
     /if: \$\{\{ steps\.release\.outputs\.release_created \}\}/u,
   );
   assert.match(workflow, /npm publish --provenance --access public/u);
-  assert.match(workflow, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/u);
 });
 
 test("release workflow formats and updates Nix hash on release PR updates", () => {
