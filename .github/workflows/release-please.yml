@@ -32,9 +32,7 @@ jobs:
 
       - name: Resolve release PR branch
         id: release-pr
-        if:
-          ${{ steps.release.outputs.prs_created == 'true' &&
-          steps.release.outputs.pr != '' }}
+        if: ${{ steps.release.outputs.prs_created == 'true' && steps.release.outputs.pr != '' }}
         env:
           RELEASE_PR: ${{ steps.release.outputs.pr }}
         run: |
@@ -51,14 +49,14 @@ jobs:
 
       - name: Check out release PR branch
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ steps.release-pr.outputs.head_ref }}
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up Node.js for release PR
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -69,9 +67,7 @@ jobs:
 
       - name: Format generated release files
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
-        run:
-          npx prettier --write npm-shrinkwrap.json package-lock.json
-          package.json .release-please-manifest.json
+        run: npx prettier --write npm-shrinkwrap.json package-lock.json package.json .release-please-manifest.json
 
       - name: Install Nix
         if: ${{ steps.release-pr.outputs.head_ref != '' }}
@@ -116,7 +112,7 @@ jobs:
 
       - name: Set up Node.js
         if: ${{ steps.release.outputs.release_created }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -136,5 +132,3 @@ jobs:
       - name: Publish to npm
         if: ${{ steps.release.outputs.release_created }}
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
