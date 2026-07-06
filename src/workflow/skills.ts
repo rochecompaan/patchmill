@@ -1,9 +1,13 @@
-import { BUNDLED_TRIAGE_SKILL_REFERENCE } from "./skill-resolution.ts";
+import {
+  BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
+  BUNDLED_TRIAGE_SKILL_REFERENCE,
+} from "./skill-resolution.ts";
 
 export type PatchmillSkillsConfig = {
   triage: string;
   planning: string;
   implementation: string;
+  artifactExtraction: string;
   developmentEnvironment?: string;
   toolchain?: string;
   review?: string;
@@ -15,6 +19,7 @@ export const PATCHMILL_SKILL_KEYS = [
   "triage",
   "planning",
   "implementation",
+  "artifactExtraction",
   "developmentEnvironment",
   "toolchain",
   "review",
@@ -26,18 +31,23 @@ export type PatchmillSkillKey = (typeof PATCHMILL_SKILL_KEYS)[number];
 
 export type PartialPatchmillSkillsConfig = Partial<PatchmillSkillsConfig>;
 
-export { BUNDLED_TRIAGE_SKILL_REFERENCE };
+export {
+  BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
+  BUNDLED_TRIAGE_SKILL_REFERENCE,
+};
 
 export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   triage: BUNDLED_TRIAGE_SKILL_REFERENCE,
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
+  artifactExtraction: BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
 };
 
 export const GLOBAL_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   triage: "patchmill-issue-triage",
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
+  artifactExtraction: "patchmill-artifact-extraction",
 };
 
 export function cloneSkillsConfig(
@@ -72,6 +82,7 @@ export function renderConfiguredSkillLine(
 }
 
 export {
+  bundledArtifactExtractionSkillPath,
   bundledTriageSkillPath,
   isNamespaceStyleSkill,
   isPathLikeSkill,

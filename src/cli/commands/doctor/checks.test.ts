@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
 import { installProjectSkills } from "../init/skill-installer.ts";
 import type { CommandRunner } from "../triage/types.ts";
+import { bundledArtifactExtractionSkillPath } from "../../../workflow/skills.ts";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
@@ -654,6 +655,7 @@ test("runDoctorChecks passes for fresh configured project-local skills", async (
     projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
     projectLocalSkillPath(repoRoot, "writing-plans"),
     projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+    bundledArtifactExtractionSkillPath(),
   ];
 
   const calls: string[] = [];
@@ -811,7 +813,10 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
     "{ malformed json",
   );
 
-  const smokePaths = [projectLocalSkillPath(repoRoot, "writing-plans")];
+  const smokePaths = [
+    projectLocalSkillPath(repoRoot, "writing-plans"),
+    bundledArtifactExtractionSkillPath(),
+  ];
   const calls: string[] = [];
   const runner: CommandRunner = {
     async run(command, args) {
@@ -890,6 +895,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
       projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
       projectLocalSkillPath(repoRoot, "writing-plans"),
       projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+      bundledArtifactExtractionSkillPath(),
     ];
     const calls: string[] = [];
     const runner: CommandRunner = {
@@ -972,6 +978,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
     projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
     projectLocalSkillPath(repoRoot, "writing-plans"),
     projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+    bundledArtifactExtractionSkillPath(),
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
@@ -1037,6 +1044,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
             projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
             projectLocalSkillPath(repoRoot, "writing-plans"),
             projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+            bundledArtifactExtractionSkillPath(),
           ])]: {
             code: 0,
             stdout: "PATCHMILL_SKILLS_OK\n",
@@ -1108,6 +1116,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
     projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
     projectLocalSkillPath(repoRoot, "writing-plans"),
     projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+    bundledArtifactExtractionSkillPath(),
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
@@ -1155,6 +1164,7 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
     projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
     projectLocalSkillPath(repoRoot, "writing-plans"),
     projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+    bundledArtifactExtractionSkillPath(),
   ];
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {

@@ -10,6 +10,9 @@ import { createIssueHostProvider } from "../../../host/factory.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "../triage/labels.ts";
+import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
+import { runArtifactExtractionStage } from "./artifact-source-stage.ts";
+import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
   assertCleanWorktree,
@@ -17,6 +20,7 @@ import {
   cleanStatusIgnoredPaths as buildCleanStatusIgnoredPaths,
   cleanupIssueWorkspace,
   ensureIssueWorktree,
+  type IssueWorktreeResult,
 } from "./git.ts";
 import {
   assertIssueTodosComplete,
@@ -885,6 +889,8 @@ export async function runOneIssue(
 
   const timestamp = (options.now ?? new Date()).toISOString();
   const tokenUsageState = { total: 0 };
+  let issueForRun = issue;
+  let resolvedArtifacts: ResolvedIssueArtifactSources = {};
   const runStartedAtMs = (options.now ?? new Date()).getTime();
   const stepAccounting: {
     current?: {
@@ -958,7 +964,13 @@ export async function runOneIssue(
     }
   };
   const observePi =
-    (stage: "pi-plan" | "pi-development-environment" | "pi-implementation") =>
+    (
+      stage:
+        | "pi-artifact-extraction"
+        | "pi-plan"
+        | "pi-development-environment"
+        | "pi-implementation",
+    ) =>
     async (
       observation: AgentIssueProgressEvent["observation"],
     ): Promise<void> => {
@@ -985,6 +997,26 @@ export async function runOneIssue(
     step: { type: "run-start", issueNumber: issue.number, title: issue.title },
   });
   await emitSimpleStep(options, issue.number, "select issue");
+  const artifactExtraction = await runArtifactExtractionStage({
+    runner,
+    host,
+    config,
+    issue,
+    now: options.now ?? new Date(),
+    heartbeatMs: options.heartbeatMs,
+    streamPiOutput: options.streamPiOutput,
+    verbosePiOutput: options.verbosePiOutput,
+    piAgentDir,
+    tokenUsageState,
+    progressReporter: options.progress,
+    progress: (level, stage, message, extras) =>
+      progress(options, level, stage, message, extras),
+    runStep,
+    observePi,
+  });
+  issueForRun = artifactExtraction.issue;
+  resolvedArtifacts = artifactExtraction.resolvedArtifacts;
+
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
@@ -1035,15 +1067,91 @@ export async function runOneIssue(
   let planCommit: string | undefined;
   let branch: string | undefined;
   let worktreePath: string | undefined;
+  let ensuredWorktree: IssueWorktreeResult | undefined;
+  const worktreeStrategy = configuredWorktreeStrategy(config);
+  const expectedWorkspace = expectedIssueWorkspace(
+    issue.number,
+    issue.title,
+    worktreeStrategy,
+  );
+  const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
+    if (ensuredWorktree) return ensuredWorktree;
+    if (
+      resumableState &&
+      existingState?.branch &&
+      existingState.branch !== expectedWorkspace.branch
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved branch ${existingState.branch} does not match expected branch ${expectedWorkspace.branch}`,
+      );
+    }
+    if (
+      resumableState &&
+      existingState?.worktreePath &&
+      existingState.worktreePath !== expectedWorkspace.worktreePath
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved worktree ${existingState.worktreePath} does not match expected worktree path ${expectedWorkspace.worktreePath}`,
+      );
+    }
+
+    const worktree = await ensureIssueWorktree(
+      runner,
+      config.repoRoot,
+      issue.number,
+      issue.title,
+      worktreeStrategy,
+      undefined,
+      ignoredPaths,
+    );
+    await emitSimpleStep(
+      options,
+      issue.number,
+      worktree.created ? "create worktree" : "reuse worktree",
+    );
+    if (
+      resumableState &&
+      existingState?.branch &&
+      existingState.branch !== worktree.branch
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved branch ${existingState.branch} does not match ensured worktree branch ${worktree.branch}`,
+      );
+    }
+    if (
+      resumableState &&
+      existingState?.worktreePath &&
+      existingState.worktreePath !== worktree.worktreePath
+    ) {
+      throw new AgentIssueSafetyError(
+        `Saved worktree ${existingState.worktreePath} does not match ensured worktree path ${worktree.worktreePath}`,
+      );
+    }
+    branch = resumableState
+      ? (existingState?.branch ?? worktree.branch)
+      : worktree.branch;
+    worktreePath = resumableState
+      ? (existingState?.worktreePath ?? worktree.worktreePath)
+      : worktree.worktreePath;
+    await progress(
+      options,
+      "info",
+      "worktree",
+      `${worktree.created ? "creating" : "reusing"} worktree ${worktreePath}`,
+      { issueNumber: issue.number },
+    );
+    ensuredWorktree = worktree;
+    return worktree;
+  };
 
   try {
     if (!checkpoints.startedCommentPosted) {
-      await host.commentIssue(issue.number, startedComment(issue));
+      await host.commentIssue(issueForRun.number, startedComment(issueForRun));
       await writeRunState(
         config.runStateDir,
         {
-          issueNumber: issue.number,
-          title: issue.title,
+          issueNumber: issueForRun.number,
+          title: issueForRun.title,
           status: "claimed",
           checkpoints: { startedCommentPosted: true },
         },
@@ -1052,16 +1160,53 @@ export async function runOneIssue(
       checkpoints.startedCommentPosted = true;
     }
 
+    const artifactWorktree =
+      resolvedArtifacts.spec?.sourceType === "inline" ||
+      resolvedArtifacts.plan?.sourceType === "inline"
+        ? await ensureIssueWorkspace()
+        : undefined;
+    const artifactRepoRoot = artifactWorktree
+      ? join(config.repoRoot, artifactWorktree.worktreePath)
+      : config.repoRoot;
+    const materializedArtifacts = await runStep(
+      "materialize issue artifact sources",
+      async () =>
+        materializeIssueArtifactSources({
+          repoRoot: artifactRepoRoot,
+          runner,
+          issueNumber: issueForRun.number,
+          sources: resolvedArtifacts,
+        }),
+    );
+    resolvedArtifacts = materializedArtifacts;
+
+    if (resolvedArtifacts.spec || resolvedArtifacts.plan) {
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issueForRun.number,
+          title: issueForRun.title,
+          status: "planning",
+          specPath: resolvedArtifacts.spec?.path,
+          specCommit: resolvedArtifacts.spec?.commit,
+          planPath: resolvedArtifacts.plan?.path,
+          planCommit: resolvedArtifacts.plan?.commit,
+        },
+        timestamp,
+      );
+    }
+
     const planningStages = await advancePlanningStages({
       runner,
       host,
       config,
-      issue,
+      issue: issueForRun,
       labels,
       ready,
       inProgress,
       needsInfo,
       existingState,
+      resolvedArtifacts,
       checkpoints,
       timestamp,
       now: options.now ?? new Date(),
@@ -1078,7 +1223,7 @@ export async function runOneIssue(
         blockIssue(
           host,
           config,
-          issue,
+          issueForRun,
           labels,
           result,
           details,
@@ -1134,75 +1279,7 @@ export async function runOneIssue(
       );
     }
 
-    const worktreeStrategy = configuredWorktreeStrategy(config);
-    const expectedWorkspace = expectedIssueWorkspace(
-      issue.number,
-      issue.title,
-      worktreeStrategy,
-    );
-    if (
-      resumableState &&
-      existingState?.branch &&
-      existingState.branch !== expectedWorkspace.branch
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved branch ${existingState.branch} does not match expected branch ${expectedWorkspace.branch}`,
-      );
-    }
-    if (
-      resumableState &&
-      existingState?.worktreePath &&
-      existingState.worktreePath !== expectedWorkspace.worktreePath
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved worktree ${existingState.worktreePath} does not match expected worktree path ${expectedWorkspace.worktreePath}`,
-      );
-    }
-    const worktree = await ensureIssueWorktree(
-      runner,
-      config.repoRoot,
-      issue.number,
-      issue.title,
-      worktreeStrategy,
-      undefined,
-      ignoredPaths,
-    );
-    await emitSimpleStep(
-      options,
-      issue.number,
-      worktree.created ? "create worktree" : "reuse worktree",
-    );
-    if (
-      resumableState &&
-      existingState?.branch &&
-      existingState.branch !== worktree.branch
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved branch ${existingState.branch} does not match ensured worktree branch ${worktree.branch}`,
-      );
-    }
-    if (
-      resumableState &&
-      existingState?.worktreePath &&
-      existingState.worktreePath !== worktree.worktreePath
-    ) {
-      throw new AgentIssueSafetyError(
-        `Saved worktree ${existingState.worktreePath} does not match ensured worktree path ${worktree.worktreePath}`,
-      );
-    }
-    branch = resumableState
-      ? (existingState?.branch ?? worktree.branch)
-      : worktree.branch;
-    worktreePath = resumableState
-      ? (existingState?.worktreePath ?? worktree.worktreePath)
-      : worktree.worktreePath;
-    await progress(
-      options,
-      "info",
-      "worktree",
-      `${worktree.created ? "creating" : "reusing"} worktree ${worktreePath}`,
-      { issueNumber: issue.number },
-    );
+    const worktree = await ensureIssueWorkspace();
     await writeRunState(
       config.runStateDir,
       {

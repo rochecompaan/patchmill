@@ -2,6 +2,7 @@ import { isAbsolute, join, relative } from "node:path";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { planLabelChange } from "../triage/labels.ts";
+import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { pathExists } from "./paths.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
@@ -89,6 +90,7 @@ export type AdvancePlanningStagesOptions = {
   inProgress: string;
   needsInfo: string;
   existingState?: ExistingPlanningState;
+  resolvedArtifacts?: ResolvedIssueArtifactSources;
   checkpoints: AgentIssueRunCheckpoints;
   timestamp: string;
   now: Date;
@@ -169,6 +171,9 @@ async function resolveWorkflowArtifact(options: {
   savedPath?: string;
   savedCommit?: string;
   savedCreated?: boolean;
+  explicit?:
+    | ResolvedIssueArtifactSources["spec"]
+    | ResolvedIssueArtifactSources["plan"];
   findArtifact: (
     artifactDir: string,
     issueNumber: number,
@@ -181,6 +186,17 @@ async function resolveWorkflowArtifact(options: {
   ) => string;
   now: Date;
 }): Promise<WorkflowArtifactResolution> {
+  if (options.explicit) {
+    return {
+      path: options.explicit.path,
+      commit: options.explicit.commit,
+      exists: true,
+      fromState: false,
+      created: false,
+      generated: false,
+    };
+  }
+
   if (options.savedPath) {
     const savedPath = repoPath(options.repoRoot, options.savedPath);
     if (await pathExists(savedPath.absolute)) {
@@ -245,6 +261,7 @@ export async function advancePlanningStages({
   inProgress,
   needsInfo,
   existingState,
+  resolvedArtifacts,
   checkpoints,
   timestamp,
   now,
@@ -274,6 +291,7 @@ export async function advancePlanningStages({
     savedPath: existingState?.planPath,
     savedCommit: existingState?.planCommit,
     savedCreated: existingState?.checkpoints?.planCreated,
+    explicit: resolvedArtifacts?.plan,
     findArtifact: findIssuePlan,
     now,
   });
@@ -288,6 +306,7 @@ export async function advancePlanningStages({
     savedPath: existingState?.specPath,
     savedCommit: existingState?.specCommit,
     savedCreated: existingState?.checkpoints?.specCreated,
+    explicit: resolvedArtifacts?.spec,
     findArtifact: findIssueSpec,
     buildArtifact: preexistingPlan.exists ? undefined : buildSpecPath,
     now,
@@ -465,6 +484,7 @@ export async function advancePlanningStages({
         savedPath: existingState?.planPath,
         savedCommit: existingState?.planCommit,
         savedCreated: existingState?.checkpoints?.planCreated,
+        explicit: resolvedArtifacts?.plan,
         findArtifact: findIssuePlan,
         buildArtifact: buildPlanPath,
         now,

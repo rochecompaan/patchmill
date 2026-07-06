@@ -14,6 +14,7 @@ import {
   resolveBundledPiCommand,
   type PiCommandSpec,
 } from "../../pi-cli.ts";
+import { finalJsonCandidates } from "./final-json.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   createPiSessionMessageStreamer,
@@ -155,33 +156,6 @@ function optionalStringRecord(
   return Object.fromEntries(entries);
 }
 
-function finalJsonCandidates(stdout: string): Record<string, unknown>[] {
-  const trimmed = stdout.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```\s*$/);
-  const body = fenced ? fenced[1] : trimmed;
-  const end = body.lastIndexOf("}");
-  if (end < 0) throw new Error("Pi output did not include a final JSON object");
-
-  const candidates: Record<string, unknown>[] = [];
-  for (
-    let start = body.lastIndexOf("{", end);
-    start >= 0;
-    start = start === 0 ? -1 : body.lastIndexOf("{", start - 1)
-  ) {
-    try {
-      const parsed = JSON.parse(body.slice(start, end + 1)) as Record<
-        string,
-        unknown
-      >;
-      candidates.push(parsed);
-    } catch {
-      continue;
-    }
-  }
-
-  return candidates;
-}
-
 export function parsePiResult(stdout: string): AgentIssuePiResult {
   for (const parsed of finalJsonCandidates(stdout)) {
     if (parsed.status === "blocked") {
@@ -312,6 +286,7 @@ export type PiTaskProgress = {
 };
 
 export type RunPiPromptStage =
+  | "pi-artifact-extraction"
   | "pi-plan"
   | "pi-development-environment"
   | "pi-implementation";
@@ -341,6 +316,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
 };
 
 function stageStatus(stage: RunPiPromptStage): string {
+  if (stage === "pi-artifact-extraction") return "extracting artifact sources";
   if (stage === "pi-plan") return "planning";
   if (stage === "pi-development-environment") return "development environment";
   return "implementing";

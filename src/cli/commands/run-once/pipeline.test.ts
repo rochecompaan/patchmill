@@ -38,6 +38,7 @@ type Call = {
   env?: Record<string, string | undefined>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  artifactExtraction?: boolean;
 };
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
@@ -198,8 +199,21 @@ function gitBaseContainmentFailure(call: Call): CommandResult | undefined {
   return undefined;
 }
 
+async function isArtifactExtractionPiCall(call: Call): Promise<boolean> {
+  if (call.command !== "pi") return false;
+  const prompt = await readFile(promptPath(call.args), "utf8");
+  return /Extract spec and plan artifact sources/.test(prompt);
+}
+
+function workflowPiCalls(calls: Call[]): Call[] {
+  return calls.filter(
+    (call) => call.command === "pi" && !call.artifactExtraction,
+  );
+}
+
 function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
+  runnerOptions: { handleArtifactExtraction?: boolean } = {},
 ): MockRunner {
   const calls: Call[] = [];
   return {
@@ -213,8 +227,18 @@ function createMockRunner(
         onStdout: options.onStdout,
         onStderr: options.onStderr,
       });
+      const artifactExtractionPiCall = await isArtifactExtractionPiCall(call);
+      if (artifactExtractionPiCall) call.artifactExtraction = true;
       calls.push(call);
       if (call.command === "pi") {
+        if (
+          artifactExtractionPiCall &&
+          !runnerOptions.handleArtifactExtraction
+        ) {
+          const fallback = await fallbackPiResultForError(call);
+          assert.ok(fallback, "expected artifact extraction fallback result");
+          return fallback;
+        }
         try {
           return await normalizePiResult(call, await handler(call));
         } catch (error) {
@@ -261,6 +285,14 @@ function promptJsonPath(prompt: string, key: "specPath" | "planPath"): string {
 function defaultWorkflowPromptResult(
   prompt: string,
 ): CommandResult | undefined {
+  if (/Extract spec and plan artifact sources/.test(prompt)) {
+    return {
+      code: 0,
+      stdout: JSON.stringify({ status: "none" }),
+      stderr: "",
+    };
+  }
+
   if (/Create a design spec/.test(prompt)) {
     return {
       code: 0,
@@ -300,6 +332,11 @@ async function normalizePiResult(
 
   const status = jsonStatus(result.stdout);
   if (status === "blocked") return result;
+  if (/Extract spec and plan artifact sources/.test(prompt)) {
+    return status === "resolved" || status === "none" || status === "ambiguous"
+      ? result
+      : fallback;
+  }
   if (/Create a design spec/.test(prompt)) {
     return status === "spec-created" ? result : fallback;
   }
@@ -768,10 +805,7 @@ test("runOneIssue execute blocks unsafe issue base before claim, comments, run s
     ),
     false,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "tea" && call.args.includes("comment"),
@@ -2042,6 +2076,366 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
   assert.doesNotMatch(commentBody(comments[0]), /Existing plan ready/);
 });
 
+test("runOneIssue uses extracted spec and plan paths before filename discovery", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const specPath = "docs/specs/human-provided-design.md";
+  const planPath = "docs/plans/human-provided-plan.md";
+  await writeFile(join(config.repoRoot, specPath), "# Human Spec\n", "utf8");
+  await writeFile(join(config.repoRoot, planPath), "# Human Plan\n", "utf8");
+  await writeFile(
+    join(
+      config.repoRoot,
+      "docs",
+      "plans",
+      "2026-05-09-issue-65-resolve-provided-artifacts.md",
+    ),
+    "# Discovered Plan\n",
+    "utf8",
+  );
+
+  const selected = {
+    ...issue(
+      65,
+      ["plan-approved", "enhancement"],
+      "Resolve provided artifacts",
+    ),
+    body: "Spec and plan supplied in issue content.",
+  };
+  const runner = createMockRunner(
+    async (call) => {
+      if (
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "list"
+      ) {
+        const page = call.args[call.args.indexOf("--page") + 1];
+        return {
+          code: 0,
+          stdout: page === "1" ? issueListPayload([selected]) : "[]",
+          stderr: "",
+        };
+      }
+      if (call.command === "git" && call.args[0] === "status")
+        return { code: 0, stdout: "", stderr: "" };
+      if (call.command === "git" && call.args[0] === "show-ref")
+        return { code: 1, stdout: "", stderr: "" };
+      if (call.command === "git" && call.args[0] === "worktree")
+        return { code: 0, stdout: "", stderr: "" };
+      if (call.command === "tea" && call.args[0] === "labels")
+        return { code: 0, stdout: labelListPayload(), stderr: "" };
+      if (
+        call.command === "tea" &&
+        (call.args[0] === "issues" || call.args[0] === "comment")
+      )
+        return { code: 0, stdout: "", stderr: "" };
+      if (call.command === "pi") {
+        const prompt = await readFile(promptPath(call.args), "utf8");
+        if (/Extract spec and plan artifact sources/.test(prompt)) {
+          return {
+            code: 0,
+            stdout: JSON.stringify({
+              status: "resolved",
+              spec: { type: "path", value: specPath, evidence: "human spec" },
+              plan: { type: "path", value: planPath, evidence: "human plan" },
+            }),
+            stderr: "",
+          };
+        }
+        assert.match(prompt, new RegExp(`Plan path: ${planPath}`));
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            status: "pr-created",
+            prUrl: "https://forgejo.example/pr/65",
+            branch: "agent/issue-65-resolve-provided-artifacts",
+            commits: ["abc123"],
+            validation: ["npm test"],
+            reviewSummary: "reviewed",
+          }),
+          stderr: "",
+        };
+      }
+      throw new Error(
+        `unexpected command: ${call.command} ${call.args.join(" ")}`,
+      );
+    },
+    { handleArtifactExtraction: true },
+  );
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(result.specPath, specPath);
+  assert.equal(result.planPath, planPath);
+  const artifactPiCalls = runner.calls.filter(
+    (call) => call.artifactExtraction,
+  );
+  assert.equal(artifactPiCalls.length, 1);
+  assert.equal(artifactPiCalls[0]?.args.includes("--session-dir"), true);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.step?.type === "step-start" &&
+        event.step.label === "extract issue artifact sources",
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.step?.type === "step-complete" &&
+        event.step.label === "extract issue artifact sources",
+    ),
+  );
+});
+
+test("runOneIssue fails before claim when extractor returns missing path", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const selected = issue(
+    65,
+    ["agent-ready", "enhancement"],
+    "Resolve provided artifacts",
+  );
+  const runner = createMockRunner(
+    async (call) => {
+      if (
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "list"
+      ) {
+        const page = call.args[call.args.indexOf("--page") + 1];
+        return {
+          code: 0,
+          stdout: page === "1" ? issueListPayload([selected]) : "[]",
+          stderr: "",
+        };
+      }
+      if (call.command === "pi") {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            status: "resolved",
+            spec: {
+              type: "path",
+              value: "docs/specs/missing.md",
+              evidence: "missing spec",
+            },
+          }),
+          stderr: "",
+        };
+      }
+      throw new Error(
+        `unexpected command before preflight failure: ${call.command} ${call.args.join(" ")}`,
+      );
+    },
+    { handleArtifactExtraction: true },
+  );
+
+  await assert.rejects(
+    runOneIssue(runner, config, { now: NOW }),
+    /references spec path docs\/specs\/missing\.md, but the file does not exist/,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+    false,
+  );
+});
+
+test("runOneIssue materializes inline extracted artifacts after claim", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const selected = issue(
+    65,
+    ["plan-approved", "enhancement"],
+    "Resolve provided artifacts",
+  );
+  const events: string[] = [];
+  const runner = createMockRunner(
+    async (call) => {
+      if (
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "list"
+      ) {
+        const page = call.args[call.args.indexOf("--page") + 1];
+        return {
+          code: 0,
+          stdout: page === "1" ? issueListPayload([selected]) : "[]",
+          stderr: "",
+        };
+      }
+      if (call.command === "pi") {
+        const prompt = await readFile(promptPath(call.args), "utf8");
+        if (/Extract spec and plan artifact sources/.test(prompt)) {
+          return {
+            code: 0,
+            stdout: JSON.stringify({
+              status: "resolved",
+              spec: {
+                type: "inline",
+                content: "# Inline Spec\nUse issue content.",
+                evidence: "spec block",
+              },
+              plan: {
+                type: "inline",
+                content: "# Inline Plan\n- [ ] Build",
+                evidence: "plan block",
+              },
+            }),
+            stderr: "",
+          };
+        }
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            status: "pr-created",
+            prUrl: "https://forgejo.example/pr/65",
+            branch: "agent/issue-65-resolve-provided-artifacts",
+            commits: ["abc123"],
+            validation: ["npm test"],
+            reviewSummary: "reviewed",
+          }),
+          stderr: "",
+        };
+      }
+      if (call.command === "git" && call.args[0] === "status")
+        return { code: 0, stdout: "", stderr: "" };
+      if (call.command === "git" && call.args[0] === "add") {
+        events.push("git-add-artifacts");
+        return { code: 0, stdout: "", stderr: "" };
+      }
+      if (call.command === "git" && call.args[0] === "diff")
+        return { code: 1, stdout: "", stderr: "" };
+      if (call.command === "git" && call.args[0] === "commit")
+        return { code: 0, stdout: "", stderr: "" };
+      if (call.command === "git" && call.args[0] === "rev-parse")
+        return { code: 0, stdout: "artifact123\n", stderr: "" };
+      if (call.command === "git" && call.args[0] === "show-ref")
+        return { code: 1, stdout: "", stderr: "" };
+      if (call.command === "git" && call.args[0] === "worktree")
+        return { code: 0, stdout: "", stderr: "" };
+      if (call.command === "tea" && call.args[0] === "labels")
+        return { code: 0, stdout: labelListPayload(), stderr: "" };
+      if (
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit"
+      ) {
+        events.push("claim");
+        return { code: 0, stdout: "", stderr: "" };
+      }
+      if (call.command === "tea" && call.args[0] === "comment") {
+        events.push("started-comment");
+        return { code: 0, stdout: "", stderr: "" };
+      }
+      throw new Error(
+        `unexpected command: ${call.command} ${call.args.join(" ")}`,
+      );
+    },
+    { handleArtifactExtraction: true },
+  );
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.deepEqual(events.slice(0, 3), [
+    "claim",
+    "started-comment",
+    "git-add-artifacts",
+  ]);
+  const expectedWorktreeRoot = join(
+    config.repoRoot,
+    ".worktrees",
+    "patchmill-issue-65-resolve-provided-artifacts",
+  );
+  const artifactGitCalls = runner.calls.filter(
+    (call) =>
+      call.command === "git" &&
+      (["add", "diff", "commit"].includes(call.args[0] ?? "") ||
+        (call.args[0] === "rev-parse" && call.args[1] === "HEAD")),
+  );
+  assert.equal(
+    artifactGitCalls.every((call) => call.cwd === expectedWorktreeRoot),
+    true,
+  );
+  await assert.rejects(
+    readFile(
+      join(
+        config.repoRoot,
+        "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
+      ),
+      "utf8",
+    ),
+    /ENOENT/,
+  );
+  assert.equal(
+    await readFile(
+      join(
+        expectedWorktreeRoot,
+        "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
+      ),
+      "utf8",
+    ),
+    "# Inline Spec\nUse issue content.\n",
+  );
+  assert.equal(
+    result.specPath,
+    "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
+  );
+  assert.equal(
+    result.planPath,
+    "docs/plans/2026-05-09-issue-65-resolve-provided-artifacts.md",
+  );
+});
+
+test("runOneIssue dry-run does not run artifact extraction", async () => {
+  const config = await makeConfig({ dryRun: true, execute: false });
+  const selected = issue(
+    65,
+    ["agent-ready", "enhancement"],
+    "Resolve provided artifacts",
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "rev-parse")
+      return { code: 0, stdout: "abc123\n", stderr: "" };
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected dry-run command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+});
+
 test("runOneIssue writes spec and stops at spec-review when spec approval is required", async () => {
   const config = await makeConfig({
     execute: true,
@@ -2686,10 +3080,7 @@ test("runOneIssue stops after finding an existing plan when plan approval is req
 
   assert.equal(result.status, "plan-found");
   assert.equal(result.planPath, planPath);
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -2768,7 +3159,7 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
 
   assert.equal(result.status, "plan-created");
   assert.equal(result.planPath, expectedPlanPath);
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 2);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -2840,7 +3231,7 @@ test("runOneIssue ignores stale plan approval when a new plan is created", async
 
   assert.equal(result.status, "plan-created");
   assert.equal(result.planPath, expectedPlanPath);
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 2);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -3689,10 +4080,7 @@ test("runOneIssue reports dirty blocked recovery before mutations", async () => 
     () => runOneIssue(runner, config, { now: NOW }),
     /Commit, stash, or clean local modifications/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] !== "issues",
@@ -3719,10 +4107,7 @@ test("runOneIssue reports already merged blocked recovery before mutations", asy
     () => runOneIssue(runner, config, { now: NOW }),
     /Confirm the work is landed/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue resumes clean behind blocked recovery", async () => {
@@ -3758,10 +4143,7 @@ test("runOneIssue reports missing worktree with existing branch blocked recovery
     () => runOneIssue(runner, config, { now: NOW }),
     /git worktree add \.worktrees\/patchmill-issue-45-recover-blocked-run agent\/issue-45-recover-blocked-run/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue reports missing branch and worktree blocked recovery before mutations", async () => {
@@ -3782,10 +4164,7 @@ test("runOneIssue reports missing branch and worktree blocked recovery before mu
     () => runOneIssue(runner, config, { now: NOW }),
     /Archive or remove stale run state/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue reuses existing implementation result on resume without rerunning pi", async () => {
@@ -3891,10 +4270,7 @@ test("runOneIssue reuses existing implementation result on resume without rerunn
     result.landingDecision,
     "PR required: needs manual verification",
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue finishes saved pr-created handoff without requiring an agent team", async () => {
@@ -3990,10 +4366,7 @@ test("runOneIssue finishes saved pr-created handoff without requiring an agent t
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.ok(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] === "comment",
@@ -4131,10 +4504,7 @@ test("runOneIssue resumes and completes saved handoff with configured lifecycle 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   const doneLabelCreate = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -4548,10 +4918,7 @@ test("runOneIssue finishes saved merged handoff when direct landing is enabled a
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "merged");
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.ok(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] === "comment",
@@ -4655,10 +5022,7 @@ test("runOneIssue rejects saved merged handoff when skills.landing is not config
     () => runOneIssue(runner, config, { now: NOW }),
     /Saved implementation state returned merged but direct landing requires git\.allowDirectLand=true and configured skills\.landing/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue rejects saved merged handoff when direct landing is disabled", async () => {
@@ -4749,10 +5113,7 @@ test("runOneIssue rejects saved merged handoff when direct landing is disabled",
     () => runOneIssue(runner, config, { now: NOW }),
     /Saved implementation state returned merged while git\.allowDirectLand is false/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
 test("runOneIssue rejects stale finished implementationCompleted state before relabel without an agent team", async () => {
@@ -4830,10 +5191,7 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
     () => runOneIssue(runner, config, { now: NOW }),
     /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -4971,10 +5329,7 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
     ".worktrees/patchmill-issue-45-stale-finished-same-title",
   );
 
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
@@ -5277,10 +5632,7 @@ test("runOneIssue rejects resumable saved branch/worktree mismatch before worktr
     ),
     false,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] === "comment",
@@ -5388,10 +5740,7 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
     ),
     false,
   );
-  assert.equal(
-    runner.calls.some((call) => call.command === "pi"),
-    false,
-  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   ) as Record<string, unknown> & {
@@ -5520,7 +5869,7 @@ test("runOneIssue skips development environment when no development environment 
     });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
   assert.doesNotMatch(
     piPrompts[0] ?? "",
     /Development environment handoff data/,
@@ -5628,7 +5977,7 @@ test("runOneIssue returns development-environment-not-ready without starting imp
     "Run devenv shell -- just tilt-up",
     "Re-run patchmill run-once",
   ]);
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
   assert.equal(
     runner.calls.some(
       (call) =>
@@ -6094,6 +6443,8 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       "listing open issues",
       "selected #15 Ship automation pipeline",
       "checking issue branch base containment",
+      "hydrating issue artifact content",
+      "extracting issue artifact sources",
       "checking repository status",
       "ensuring in-progress label exists",
       "claimed #15: agent-ready -> in-progress",
@@ -7643,7 +7994,7 @@ test("runOneIssue uses an existing plan without legacy team lookup", async () =>
     result.planPath,
     "docs/plans/2026-05-01-issue-21-fix-isolated-issue-runner.md",
   );
-  assert.equal(runner.calls.filter((call) => call.command === "pi").length, 1);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
 });
 
 test("runOneIssue blocks completed handoff when issue task todos remain open", async () => {

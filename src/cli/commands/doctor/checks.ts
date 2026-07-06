@@ -21,6 +21,7 @@ import type { PatchmillConfig } from "../../../config/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   PATCHMILL_SKILL_KEYS,
+  bundledArtifactExtractionSkillPath,
   bundledTriageSkillPath,
   isPathLikeSkill,
   resolveConfiguredSkillInvocation,
@@ -346,6 +347,22 @@ async function smokeTestProjectLocalSkills(
   };
 }
 
+async function verifyBundledSkill(
+  key: string,
+  skill: string,
+  bundledPath: string,
+): Promise<SkillCheckEntry> {
+  return (await checkReadableSkillTarget(bundledPath))
+    ? {
+        status: "pass" as const,
+        summary: `${key}: \`${skill}\` (bundled skill verified)`,
+      }
+    : {
+        status: "fail" as const,
+        summary: `${key}: \`${skill}\` (bundled skill unreadable at ${bundledPath})`,
+      };
+}
+
 async function checkSkills(
   runner: CommandRunner,
   config: PatchmillConfig,
@@ -368,16 +385,18 @@ async function checkSkills(
   const entries: SkillCheckEntry[] = await Promise.all(
     configuredSkills.map(async ({ key, skill }) => {
       if (key === "triage" && skill === DEFAULT_PATCHMILL_SKILLS.triage) {
-        const bundledPath = bundledTriageSkillPath();
-        return (await checkReadableSkillTarget(bundledPath))
-          ? {
-              status: "pass" as const,
-              summary: `${key}: \`${skill}\` (bundled skill verified)`,
-            }
-          : {
-              status: "fail" as const,
-              summary: `${key}: \`${skill}\` (bundled skill unreadable at ${bundledPath})`,
-            };
+        return await verifyBundledSkill(key, skill, bundledTriageSkillPath());
+      }
+
+      if (
+        key === "artifactExtraction" &&
+        skill === DEFAULT_PATCHMILL_SKILLS.artifactExtraction
+      ) {
+        return await verifyBundledSkill(
+          key,
+          skill,
+          bundledArtifactExtractionSkillPath(),
+        );
       }
 
       if (!isPathLikeSkill(skill)) {
