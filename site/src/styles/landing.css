@@ -47,8 +47,16 @@ a {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
   gap: clamp(1.5rem, 5vw, 4rem);
-  align-items: center;
+  align-items: stretch;
   width: min(980px, 100%);
+}
+
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0;
 }
 
 h1 {
@@ -61,7 +69,7 @@ h1 {
 
 .brand {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   text-decoration: none;
 }
@@ -77,7 +85,7 @@ h1 {
 .top-nav {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.8rem;
 }
 
@@ -371,6 +379,16 @@ h1 {
   .hero-lockup {
     justify-items: center;
     text-align: center;
+  }
+
+  .hero-copy {
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0;
+  }
+
+  .top-nav {
+    justify-content: center;
   }
 
   h1 {

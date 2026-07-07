@@ -51,13 +51,14 @@ const labelClass = (label: string) =>
           <a class="brand" href="/" aria-label="Patchmill home">
             <img src={logoDark} alt="Patchmill" />
           </a>
-          <h1 id="hero-heading">An AI Software Factory With You In The Loop</h1>
+          <div class="hero-copy">
+            <h1 id="hero-heading">An AI Software Factory With You In The Loop</h1>
+            <nav class="top-nav" aria-label="Primary navigation">
+              <a href="/getting-started/quickstart/">Docs</a>
+              <a href="https://github.com/rochecompaan/patchmill">GitHub</a>
+            </nav>
+          </div>
         </div>
-
-        <nav class="top-nav" aria-label="Primary navigation">
-          <a href="/getting-started/quickstart/">Docs</a>
-          <a href="https://github.com/rochecompaan/patchmill">GitHub</a>
-        </nav>
       </section>
 
       <section class="proof-section" aria-label="Patchmill workflow proof">
