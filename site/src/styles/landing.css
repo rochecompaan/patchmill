@@ -62,7 +62,7 @@ a {
 h1 {
   margin: 0;
   color: var(--ink);
-  font-size: clamp(2.55rem, 6vw, 5rem);
+  font-size: clamp(2.55rem, 6vw, 4rem);
   line-height: 0.95;
   letter-spacing: -0.065em;
 }
