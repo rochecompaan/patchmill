@@ -41,7 +41,22 @@ a {
   justify-items: center;
   gap: clamp(1.5rem, 4vw, 2.4rem);
   padding: clamp(3rem, 8vw, 6rem) 0 0;
-  text-align: center;
+}
+
+.hero-lockup {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
+  gap: clamp(1.5rem, 5vw, 4rem);
+  align-items: center;
+  width: min(980px, 100%);
+}
+
+h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(2.55rem, 6vw, 5.1rem);
+  line-height: 0.95;
+  letter-spacing: -0.065em;
 }
 
 .brand {
@@ -53,7 +68,7 @@ a {
 
 .brand img {
   display: block;
-  width: min(520px, 82vw);
+  width: min(520px, 100%);
   height: auto;
   max-height: 400px;
   filter: drop-shadow(0 1.4rem 3.5rem rgba(0, 0, 0, 0.42));
@@ -348,8 +363,18 @@ a {
 }
 
 @media (max-width: 900px) {
+  .hero-lockup,
   .proof-section {
     grid-template-columns: 1fr;
+  }
+
+  .hero-lockup {
+    justify-items: center;
+    text-align: center;
+  }
+
+  h1 {
+    max-width: 720px;
   }
 }
 
