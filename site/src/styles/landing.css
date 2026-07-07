@@ -85,11 +85,15 @@ h1 {
 .top-nav {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 0.8rem;
 }
 
 .top-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.58rem 1rem;
@@ -97,6 +101,13 @@ h1 {
   color: var(--muted);
   font-weight: 800;
   text-decoration: none;
+}
+
+.top-nav svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+  flex: none;
 }
 
 .top-nav a:hover {
