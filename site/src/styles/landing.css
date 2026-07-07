@@ -55,7 +55,7 @@ a {
   display: block;
   width: min(520px, 82vw);
   height: auto;
-  max-height: 280px;
+  max-height: 400px;
   filter: drop-shadow(0 1.4rem 3.5rem rgba(0, 0, 0, 0.42));
 }
 
