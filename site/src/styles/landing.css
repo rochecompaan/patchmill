@@ -86,7 +86,7 @@ a {
   grid-template-columns: minmax(0, 0.85fr) minmax(420px, 1.15fr);
   gap: clamp(2rem, 6vw, 4.5rem);
   align-items: start;
-  padding: 2em 0 clamp(3rem, 8vw, 6rem);
+  padding: 4em 0 clamp(3rem, 8vw, 6rem);
 }
 
 .feature-list {
