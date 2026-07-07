@@ -9,8 +9,8 @@ export default defineConfig({
       description:
         "Patchmill is an agent-driven software factory for turning product work into reviewed, landed changes.",
       logo: {
-        light: "./src/assets/logo-light.svg",
-        dark: "./src/assets/logo-dark.svg",
+        light: "./src/assets/logo-horizontal-light.svg",
+        dark: "./src/assets/logo-horizontal-dark.svg",
         alt: "Patchmill",
         replacesTitle: true,
       },

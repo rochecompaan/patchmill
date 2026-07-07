@@ -1,40 +1,48 @@
 ---
-import logoLight from "../assets/logo-light.svg?url";
+import logoDark from "../assets/logo-dark.svg?url";
 import "../styles/landing.css";
 
-const workflow = [
+const issues = [
   {
-    title: "Intake",
-    body: "Connect issue work, repository policy, skills, and runtime configuration.",
+    title: "Add visual proof for the onboarding dashboard",
+    number: 42,
+    labels: ["implementation-ready", "plan-approved", "visual-evidence-required"],
+    meta: "opened by patchmill-demo · ready for run-once",
   },
   {
-    title: "Plan",
-    body: "Turn ready product work into explicit specs and implementation plans.",
+    title: "Document repo-local Pi auth repair flow",
+    number: 39,
+    labels: ["spec-approved", "plan-approved", "needs-review"],
+    meta: "opened by docs-lead · waiting for review",
   },
   {
-    title: "Build",
-    body: "Run implementation in isolated worktrees with visible checkpoints.",
+    title: "Triage flaky setup-test-repo bootstrap",
+    number: 37,
+    labels: ["triage-ready", "blocked"],
+    meta: "opened by qa-bot · blocked on provider access",
   },
   {
-    title: "Review",
-    body: "Collect review feedback, evidence, and handoff notes before landing.",
+    title: "Shape provider onboarding around team policy",
+    number: 34,
+    labels: ["spec-needed", "triage-ready"],
+    meta: "opened by platform-team · needs product decision",
   },
 ];
 
-const features = [
-  {
-    title: "Visible production line",
-    body: "Patchmill keeps every station between idea and production explicit instead of hiding agent work in a black box.",
-  },
-  {
-    title: "Configurable workflow",
-    body: "Providers, skills, worktrees, approval gates, and runtime behavior are configured per repository.",
-  },
-  {
-    title: "Craft-aware automation",
-    body: "The workflow preserves planning, review, verification, and engineering judgment while making iterative work scalable.",
-  },
+const skills = [
+  "brainstorming",
+  "writing-plans",
+  "test-driven-development",
+  "systematic-debugging",
+  "requesting-code-review",
+  "receiving-code-review",
+  "verification-before-completion",
+  "using-git-worktrees",
+  "patchmill-issue-triage",
+  "patchmill-artifact-extraction",
 ];
+
+const labelClass = (label: string) => `label label-${label.replaceAll("-", "_")}`;
 ---
 
 <!doctype html>
@@ -45,14 +53,14 @@ const features = [
     <title>Patchmill — agent-driven software factory</title>
     <meta
       name="description"
-      content="Patchmill turns product work into reviewed, landed changes with a visible agent-driven production line."
+      content="Patchmill is an agent-driven software factory for your engineering process."
     />
   </head>
   <body>
     <div class="page-shell">
       <header class="site-header" aria-label="Site header">
         <a class="brand" href="/" aria-label="Patchmill home">
-          <img src={logoLight} alt="Patchmill" />
+          <img src={logoDark} alt="Patchmill" />
         </a>
         <nav class="header-links" aria-label="Primary navigation">
           <a href="/getting-started/quickstart/">Docs</a>
@@ -62,50 +70,104 @@ const features = [
 
       <main>
         <section class="hero">
-          <div>
+          <div class="hero-copy">
             <span class="eyebrow">Agent-driven software factory</span>
-            <h1>Visible automation from issue to landed change.</h1>
+            <h1>Agent-driven software factory for your engineering process.</h1>
             <p class="lede">
-              Patchmill turns product work into reviewed diffs without hiding the
-              engineering judgment between idea and production. It gives agentic
-              development a factory floor: intake, planning, isolated work,
-              review, evidence, landing, and records.
+              Define your workflow once — skills, labels, gates, providers,
+              worktrees, reviews, and evidence — then let Patchmill run it
+              consistently across issues. Humans and agents share the same
+              process, with every step observable and controllable.
             </p>
             <div class="cta-row" aria-label="Primary calls to action">
               <a class="button primary" href="/getting-started/quickstart/">Get started</a>
-              <a class="button secondary" href="/getting-started/what-is-patchmill/">Read the docs</a>
+              <a class="button secondary" href="/guides/skills-configuration/">Shape your workflow</a>
               <a class="button secondary" href="https://github.com/rochecompaan/patchmill">View on GitHub</a>
             </div>
           </div>
 
-          <aside class="factory-card" aria-label="Patchmill workflow">
-            <h2>Factory stations</h2>
-            {
-              workflow.map((step, index) => (
-                <div class="factory-step">
-                  <div class="step-index">{index + 1}</div>
-                  <div>
-                    <strong>{step.title}</strong>
-                    <span>{step.body}</span>
-                  </div>
-                </div>
-              ))
-            }
+          <aside class="issues-card" aria-label="GitHub issues mockup showing Patchmill workflow labels">
+            <div class="github-window-bar">
+              <div>
+                <span class="repo-owner">patchmill-demo</span><span class="repo-separator">/</span><strong>team-lunch-poll</strong>
+              </div>
+              <span class="repo-visibility">Public</span>
+            </div>
+            <div class="github-tabs" aria-hidden="true">
+              <span>Code</span>
+              <strong>Issues <em>7</em></strong>
+              <span>Pull requests</span>
+              <span>Actions</span>
+            </div>
+            <div class="issues-toolbar">
+              <strong>7 Open</strong>
+              <span>2 Closed</span>
+              <button type="button">New issue</button>
+            </div>
+            <div class="issue-list">
+              {
+                issues.map((issue) => (
+                  <article class="issue-row">
+                    <div class="issue-icon" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" width="16" height="16">
+                        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" />
+                        <circle cx="8" cy="8" r="2" fill="currentColor" />
+                      </svg>
+                    </div>
+                    <div class="issue-body">
+                      <h2>
+                        {issue.title}
+                        <span>#{issue.number}</span>
+                      </h2>
+                      <div class="labels" aria-label="Issue labels">
+                        {issue.labels.map((label) => <span class={labelClass(label)}>{label}</span>)}
+                      </div>
+                      <p>{issue.meta}</p>
+                    </div>
+                  </article>
+                ))
+              }
+            </div>
           </aside>
         </section>
 
-        <section class="section" aria-labelledby="why-patchmill">
-          <h2 id="why-patchmill">Built for visible, reviewable agent work.</h2>
-          <div class="feature-grid">
-            {
-              features.map((feature) => (
-                <article class="feature-card">
-                  <h3>{feature.title}</h3>
-                  <p>{feature.body}</p>
-                </article>
-              ))
-            }
+        <section class="skills-section" aria-labelledby="skills-heading">
+          <div class="section-copy">
+            <span class="eyebrow">Reusable judgment</span>
+            <h2 id="skills-heading">Your engineering process lives in skills, not repeated prompts.</h2>
+            <p>
+              Patchmill uses skills to make team judgment explicit and reusable.
+              Swap or customize skills to fit how your team plans, debugs,
+              tests, reviews, verifies, and hands work back to humans.
+            </p>
           </div>
+          <div class="skill-cloud" aria-label="Example Patchmill workflow skills">
+            {skills.map((skill) => <span>{skill}</span>)}
+          </div>
+        </section>
+
+        <section class="control-section" aria-label="Patchmill value summary">
+          <article>
+            <h2>Observable by default</h2>
+            <p>
+              Issue labels, approval gates, plans, reviews, evidence, and run
+              records make agent work inspectable instead of ephemeral.
+            </p>
+          </article>
+          <article>
+            <h2>Controllable by design</h2>
+            <p>
+              Configure what can advance, when humans approve, which skills run,
+              and how repository work is isolated.
+            </p>
+          </article>
+          <article>
+            <h2>Flexible where teams differ</h2>
+            <p>
+              Patchmill gives you a production line without hardcoding one
+              team's process as the only correct way to build software.
+            </p>
+          </article>
         </section>
       </main>
 
