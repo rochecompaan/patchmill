@@ -40,7 +40,7 @@ a {
   display: grid;
   justify-items: center;
   gap: clamp(1.5rem, 4vw, 2.4rem);
-  padding: clamp(3rem, 8vw, 6rem) 0 clamp(2.8rem, 7vw, 5rem);
+  padding: clamp(3rem, 8vw, 6rem) 0 0;
   text-align: center;
 }
 
@@ -86,7 +86,7 @@ a {
   grid-template-columns: minmax(0, 0.85fr) minmax(420px, 1.15fr);
   gap: clamp(2rem, 6vw, 4.5rem);
   align-items: start;
-  padding: clamp(2rem, 6vw, 4.5rem) 0 clamp(3rem, 8vw, 6rem);
+  padding: 2em 0 clamp(3rem, 8vw, 6rem);
 }
 
 .feature-list {
