@@ -6,30 +6,31 @@ const issues = [
   {
     title: "Add visual proof for the onboarding dashboard",
     number: 42,
-    labels: ["implementation-ready", "plan-approved", "visual-evidence-required"],
+    labels: ["feature", "agent-ready", "plan-approved", "priority:high"],
     meta: "opened by patchmill-demo · ready for run-once",
   },
   {
     title: "Document repo-local Pi auth repair flow",
     number: 39,
-    labels: ["spec-approved", "plan-approved", "needs-review"],
-    meta: "opened by docs-lead · waiting for review",
+    labels: ["docs", "spec-approved", "plan-review"],
+    meta: "opened by docs-lead · waiting for plan review",
   },
   {
     title: "Triage flaky setup-test-repo bootstrap",
     number: 37,
-    labels: ["triage-ready", "blocked"],
+    labels: ["bug", "in-progress", "blocked"],
     meta: "opened by qa-bot · blocked on provider access",
   },
   {
     title: "Shape provider onboarding around team policy",
     number: 34,
-    labels: ["spec-needed", "triage-ready"],
-    meta: "opened by platform-team · needs product decision",
+    labels: ["enhancement", "needs-info", "spec-review", "priority:medium"],
+    meta: "opened by platform-team · needs human decision",
   },
 ];
 
-const labelClass = (label: string) => `label label-${label.replaceAll("-", "_")}`;
+const labelClass = (label: string) =>
+  `label label-${label.replace(/[^a-z0-9]+/gi, "_")}`;
 ---
 
 <!doctype html>

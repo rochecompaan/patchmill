@@ -264,30 +264,81 @@ a {
   line-height: 1.35;
 }
 
-.label-implementation_ready {
-  background: #c2e0c6;
+.label-agent_ready {
+  background: #2ea043;
+  color: #0f172a;
 }
 
+.label-agent_done,
 .label-plan_approved,
-.label-spec_approved {
-  background: #bfdadc;
+.label-spec_approved,
+.label-feature {
+  background: #0e8a16;
+  color: #ffffff;
 }
 
-.label-visual_evidence_required,
-.label-spec_needed {
-  background: #fef2c0;
+.label-agent_unsuitable,
+.label-priority_low {
+  background: #8b949e;
+  color: #0f172a;
 }
 
-.label-needs_review {
-  background: #d4c5f9;
-}
-
-.label-triage_ready {
-  background: #bfe5ff;
+.label-in_progress {
+  background: #fbca04;
+  color: #0f172a;
 }
 
 .label-blocked {
-  background: #f9d0c4;
+  background: #d876e3;
+  color: #0f172a;
+}
+
+.label-needs_info {
+  background: #8957e5;
+  color: #ffffff;
+}
+
+.label-bug,
+.label-priority_critical {
+  background: #cf222e;
+  color: #ffffff;
+}
+
+.label-enhancement,
+.label-polish {
+  background: #a2eeef;
+  color: #0f172a;
+}
+
+.label-docs {
+  background: #0075ca;
+  color: #ffffff;
+}
+
+.label-chore {
+  background: #cfd3d7;
+  color: #0f172a;
+}
+
+.label-test {
+  background: #bfdadc;
+  color: #0f172a;
+}
+
+.label-priority_high {
+  background: #db6d28;
+  color: #0f172a;
+}
+
+.label-priority_medium {
+  background: #d29922;
+  color: #0f172a;
+}
+
+.label-spec_review,
+.label-plan_review {
+  background: #5319e7;
+  color: #ffffff;
 }
 
 .issue-body p {
