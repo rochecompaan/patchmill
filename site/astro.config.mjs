@@ -22,8 +22,7 @@ export default defineConfig({
         },
       ],
       editLink: {
-        baseUrl:
-          "https://github.com/rochecompaan/patchmill/edit/main/site/src/content/docs/",
+        baseUrl: "https://github.com/rochecompaan/patchmill/edit/main/site/",
       },
       customCss: ["./src/styles/starlight.css"],
       sidebar: [

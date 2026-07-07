@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Patchmill">
+  <rect width="64" height="64" rx="14" fill="#020617" />
+  <path d="M14 42V22h16c7.4 0 12 4 12 10s-4.6 10-12 10h-8v8h-8v-8Zm8-7h8c2.8 0 4.4-1.1 4.4-3S32.8 29 30 29h-8v6Z" fill="#f8fafc" />
+  <path d="M44 18h6v28h-6z" fill="#39c96b" />
+  <path d="M48 24 56 18v28l-8-6V24Z" fill="#ff4c4c" />
+</svg>
