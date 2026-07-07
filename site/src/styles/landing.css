@@ -81,31 +81,42 @@ a {
   color: #ffffff;
 }
 
-h1 {
-  max-width: 880px;
-  margin: 0;
-  color: var(--ink);
-  font-size: clamp(2.4rem, 6vw, 5rem);
-  line-height: 1;
-  letter-spacing: -0.065em;
-}
-
 .proof-section {
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(420px, 1.15fr);
   gap: clamp(2rem, 6vw, 4.5rem);
   align-items: start;
   padding: clamp(2rem, 6vw, 4.5rem) 0 clamp(3rem, 8vw, 6rem);
-  border-top: 1px solid var(--line);
 }
 
-.message-block p {
+.feature-list {
+  display: grid;
+  gap: 1rem;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature-list li {
+  position: relative;
+  padding-left: 1.6rem;
   color: var(--ink);
-  font-size: clamp(1.55rem, 3vw, 2.55rem);
-  font-weight: 760;
-  line-height: 1.14;
-  letter-spacing: -0.045em;
+  font-size: clamp(1.2rem, 2.2vw, 1.85rem);
+  font-weight: 720;
+  line-height: 1.24;
+  letter-spacing: -0.035em;
+}
+
+.feature-list li::before {
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #39c96b;
+  content: "";
+  box-shadow: 0 0 0 0.28rem rgba(57, 201, 107, 0.14);
 }
 
 .issues-card {

@@ -45,7 +45,7 @@ const labelClass = (label: string) => `label label-${label.replaceAll("-", "_")}
   </head>
   <body>
     <main class="page-shell">
-      <section class="intro" aria-labelledby="hero-heading">
+      <section class="intro" aria-label="Patchmill">
         <a class="brand" href="/" aria-label="Patchmill home">
           <img src={logoDark} alt="Patchmill" />
         </a>
@@ -55,16 +55,16 @@ const labelClass = (label: string) => `label label-${label.replaceAll("-", "_")}
           <a href="https://github.com/rochecompaan/patchmill">GitHub</a>
         </nav>
 
-        <h1 id="hero-heading">An AI software factory that keeps you in the loop</h1>
       </section>
 
       <section class="proof-section" aria-label="Patchmill workflow proof">
         <div class="message-block">
-          <p>
-            Patchmill uses skills to make team judgment explicit and reusable.
-            Swap or customize skills to fit how your team plans, debugs, tests,
-            reviews, verifies, and hands work back to humans.
-          </p>
+          <ul class="feature-list">
+            <li>Declare skills, labels, gates, providers, reviews, and evidence once.</li>
+            <li>Run the same engineering process across issues without re-explaining it.</li>
+            <li>Keep humans in control with observable labels, approvals, plans, and handoffs.</li>
+            <li>Customize skills as your team changes how it plans, debugs, tests, and reviews.</li>
+          </ul>
         </div>
 
         <aside class="issues-card" aria-label="GitHub issues mockup showing Patchmill workflow labels">
