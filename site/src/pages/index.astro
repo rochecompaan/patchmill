@@ -29,19 +29,6 @@ const issues = [
   },
 ];
 
-const skills = [
-  "brainstorming",
-  "writing-plans",
-  "test-driven-development",
-  "systematic-debugging",
-  "requesting-code-review",
-  "receiving-code-review",
-  "verification-before-completion",
-  "using-git-worktrees",
-  "patchmill-issue-triage",
-  "patchmill-artifact-extraction",
-];
-
 const labelClass = (label: string) => `label label-${label.replaceAll("-", "_")}`;
 ---
 
@@ -57,123 +44,75 @@ const labelClass = (label: string) => `label label-${label.replaceAll("-", "_")}
     />
   </head>
   <body>
-    <div class="page-shell">
-      <header class="site-header" aria-label="Site header">
+    <main class="page-shell">
+      <section class="intro" aria-labelledby="hero-heading">
         <a class="brand" href="/" aria-label="Patchmill home">
           <img src={logoDark} alt="Patchmill" />
         </a>
-        <nav class="header-links" aria-label="Primary navigation">
+
+        <nav class="top-nav" aria-label="Primary navigation">
           <a href="/getting-started/quickstart/">Docs</a>
           <a href="https://github.com/rochecompaan/patchmill">GitHub</a>
         </nav>
-      </header>
 
-      <main>
-        <section class="hero">
-          <div class="hero-copy">
-            <span class="eyebrow">Agent-driven software factory</span>
-            <h1>Agent-driven software factory for your engineering process.</h1>
-            <p class="lede">
-              Define your workflow once — skills, labels, gates, providers,
-              worktrees, reviews, and evidence — then let Patchmill run it
-              consistently across issues. Humans and agents share the same
-              process, with every step observable and controllable.
-            </p>
-            <div class="cta-row" aria-label="Primary calls to action">
-              <a class="button primary" href="/getting-started/quickstart/">Get started</a>
-              <a class="button secondary" href="/guides/skills-configuration/">Shape your workflow</a>
-              <a class="button secondary" href="https://github.com/rochecompaan/patchmill">View on GitHub</a>
+        <h1 id="hero-heading">
+          Declare your workflow and let Patchmill run it consistently across issues
+        </h1>
+      </section>
+
+      <section class="proof-section" aria-label="Patchmill workflow proof">
+        <div class="message-block">
+          <p>
+            Patchmill uses skills to make team judgment explicit and reusable.
+            Swap or customize skills to fit how your team plans, debugs, tests,
+            reviews, verifies, and hands work back to humans.
+          </p>
+        </div>
+
+        <aside class="issues-card" aria-label="GitHub issues mockup showing Patchmill workflow labels">
+          <div class="github-window-bar">
+            <div>
+              <span class="repo-owner">patchmill-demo</span><span class="repo-separator">/</span><strong>team-lunch-poll</strong>
             </div>
+            <span class="repo-visibility">Public</span>
           </div>
-
-          <aside class="issues-card" aria-label="GitHub issues mockup showing Patchmill workflow labels">
-            <div class="github-window-bar">
-              <div>
-                <span class="repo-owner">patchmill-demo</span><span class="repo-separator">/</span><strong>team-lunch-poll</strong>
-              </div>
-              <span class="repo-visibility">Public</span>
-            </div>
-            <div class="github-tabs" aria-hidden="true">
-              <span>Code</span>
-              <strong>Issues <em>7</em></strong>
-              <span>Pull requests</span>
-              <span>Actions</span>
-            </div>
-            <div class="issues-toolbar">
-              <strong>7 Open</strong>
-              <span>2 Closed</span>
-              <button type="button">New issue</button>
-            </div>
-            <div class="issue-list">
-              {
-                issues.map((issue) => (
-                  <article class="issue-row">
-                    <div class="issue-icon" aria-hidden="true">
-                      <svg viewBox="0 0 16 16" width="16" height="16">
-                        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" />
-                        <circle cx="8" cy="8" r="2" fill="currentColor" />
-                      </svg>
+          <div class="github-tabs" aria-hidden="true">
+            <span>Code</span>
+            <strong>Issues <em>7</em></strong>
+            <span>Pull requests</span>
+            <span>Actions</span>
+          </div>
+          <div class="issues-toolbar">
+            <strong>7 Open</strong>
+            <span>2 Closed</span>
+            <button type="button">New issue</button>
+          </div>
+          <div class="issue-list">
+            {
+              issues.map((issue) => (
+                <article class="issue-row">
+                  <div class="issue-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="16" height="16">
+                      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" />
+                      <circle cx="8" cy="8" r="2" fill="currentColor" />
+                    </svg>
+                  </div>
+                  <div class="issue-body">
+                    <h2>
+                      {issue.title}
+                      <span>#{issue.number}</span>
+                    </h2>
+                    <div class="labels" aria-label="Issue labels">
+                      {issue.labels.map((label) => <span class={labelClass(label)}>{label}</span>)}
                     </div>
-                    <div class="issue-body">
-                      <h2>
-                        {issue.title}
-                        <span>#{issue.number}</span>
-                      </h2>
-                      <div class="labels" aria-label="Issue labels">
-                        {issue.labels.map((label) => <span class={labelClass(label)}>{label}</span>)}
-                      </div>
-                      <p>{issue.meta}</p>
-                    </div>
-                  </article>
-                ))
-              }
-            </div>
-          </aside>
-        </section>
-
-        <section class="skills-section" aria-labelledby="skills-heading">
-          <div class="section-copy">
-            <span class="eyebrow">Reusable judgment</span>
-            <h2 id="skills-heading">Your engineering process lives in skills, not repeated prompts.</h2>
-            <p>
-              Patchmill uses skills to make team judgment explicit and reusable.
-              Swap or customize skills to fit how your team plans, debugs,
-              tests, reviews, verifies, and hands work back to humans.
-            </p>
+                    <p>{issue.meta}</p>
+                  </div>
+                </article>
+              ))
+            }
           </div>
-          <div class="skill-cloud" aria-label="Example Patchmill workflow skills">
-            {skills.map((skill) => <span>{skill}</span>)}
-          </div>
-        </section>
-
-        <section class="control-section" aria-label="Patchmill value summary">
-          <article>
-            <h2>Observable by default</h2>
-            <p>
-              Issue labels, approval gates, plans, reviews, evidence, and run
-              records make agent work inspectable instead of ephemeral.
-            </p>
-          </article>
-          <article>
-            <h2>Controllable by design</h2>
-            <p>
-              Configure what can advance, when humans approve, which skills run,
-              and how repository work is isolated.
-            </p>
-          </article>
-          <article>
-            <h2>Flexible where teams differ</h2>
-            <p>
-              Patchmill gives you a production line without hardcoding one
-              team's process as the only correct way to build software.
-            </p>
-          </article>
-        </section>
-      </main>
-
-      <footer class="site-footer">
-        <span>Patchmill is open-source software licensed under Apache-2.0.</span>
-      </footer>
-    </div>
+        </aside>
+      </section>
+    </main>
   </body>
 </html>
