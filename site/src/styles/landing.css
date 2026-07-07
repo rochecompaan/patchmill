@@ -136,7 +136,7 @@ h1 {
   padding-left: 1.6rem;
   color: var(--ink);
   font-size: clamp(1.2rem, 2.2vw, 1.85rem);
-  font-weight: 720;
+  font-weight: 400;
   line-height: 1.24;
   letter-spacing: -0.035em;
 }
