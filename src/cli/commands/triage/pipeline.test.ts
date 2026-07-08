@@ -21,7 +21,7 @@ const issueJson = JSON.stringify([
   },
 ]);
 
-const noCommentsOutput = { code: 0, stdout: "", stderr: "" };
+const noCommentsOutput = { code: 0, stdout: JSON.stringify([]), stderr: "" };
 
 function previewJson(previews: unknown[]): string {
   return JSON.stringify({ previews });
@@ -629,8 +629,13 @@ test("runTriage executes configured skill by default and reports observed change
     { code: 0, stdout: afterIssueJson, stderr: "" },
     {
       code: 0,
-      stdout:
-        "## Comments\n**@bot** wrote on 2026-05-25 12:00:\n## Agent Brief\nImplement the fix.\n--------\n",
+      stdout: JSON.stringify([
+        {
+          body: "## Agent Brief\nImplement the fix.",
+          user: { login: "bot" },
+          created_at: "2026-05-25T12:00:00Z",
+        },
+      ]),
       stderr: "",
     },
   ]);
@@ -1010,11 +1015,7 @@ test("runTriage execute snapshots Forgejo issues without repeated all-issue scan
         };
       }
 
-      if (
-        command === "tea" &&
-        args[0] === "issues" &&
-        args.includes("--comments")
-      ) {
+      if (command === "tea" && args[0] === "api") {
         return noCommentsOutput;
       }
 
@@ -1136,7 +1137,7 @@ test("runTriage passes configured custom skills through to the triage agent", as
         };
       }
 
-      if (command === "tea" && args.includes("--comments")) {
+      if (command === "tea" && args[0] === "api") {
         return noCommentsOutput;
       }
 
@@ -1219,7 +1220,7 @@ test("runTriage execute passes configured state map to the Pi prompt", async () 
         };
       }
 
-      if (command === "tea" && args.includes("--comments")) {
+      if (command === "tea" && args[0] === "api") {
         return noCommentsOutput;
       }
 
