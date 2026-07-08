@@ -922,6 +922,10 @@ type LoadedConfigFile = {
   hasConfigFile: boolean;
 };
 
+export type PatchmillConfigExplicitConfig = {
+  gitBaseBranch: boolean;
+};
+
 async function readConfigFile(repoRoot: string): Promise<LoadedConfigFile> {
   let text: string;
   try {
@@ -973,8 +977,15 @@ export async function loadPatchmillConfigState(
   repoRoot: string,
   env: Env = process.env,
   args: string[] = [],
-): Promise<{ config: PatchmillConfig; hasConfigFile: boolean }> {
+): Promise<{
+  config: PatchmillConfig;
+  hasConfigFile: boolean;
+  explicitConfig: PatchmillConfigExplicitConfig;
+}> {
   const { config: fromFile, hasConfigFile } = await readConfigFile(repoRoot);
+  const explicitConfig: PatchmillConfigExplicitConfig = {
+    gitBaseBranch: fromFile.git?.baseBranch !== undefined,
+  };
   const merged = mergeConfig(
     mergeConfig(
       mergeConfig(DEFAULT_PATCHMILL_CONFIG, fromFile),
@@ -985,6 +996,7 @@ export async function loadPatchmillConfigState(
   return {
     config: absolutizePaths(repoRoot, merged),
     hasConfigFile,
+    explicitConfig,
   };
 }
 
