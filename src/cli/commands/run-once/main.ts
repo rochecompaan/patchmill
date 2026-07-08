@@ -13,9 +13,11 @@ import {
   runLogPath,
 } from "./progress.ts";
 import { createCommandRunner } from "../triage/command.ts";
+import { detectDefaultBaseBranch } from "./git.ts";
 import type {
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,
+  CommandRunner,
 } from "./types.ts";
 
 export const HELP_TEXT = `Usage:
@@ -254,21 +256,47 @@ export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
   }
 }
 
+async function resolveRunOnceConfigBaseBranch(
+  patchmillConfig: Awaited<
+    ReturnType<typeof loadPatchmillConfigState>
+  >["config"],
+  explicitGitBaseBranch: boolean,
+  runner: CommandRunner,
+  repoRoot: string,
+): Promise<typeof patchmillConfig> {
+  if (explicitGitBaseBranch) return patchmillConfig;
+
+  const detection = await detectDefaultBaseBranch(
+    runner,
+    repoRoot,
+    patchmillConfig.git.remote,
+    patchmillConfig.git.baseBranch,
+  );
+  return {
+    ...patchmillConfig,
+    git: { ...patchmillConfig.git, baseBranch: detection.branch },
+  };
+}
+
 export async function loadCliConfig(
   args: string[],
   repoRoot = cwd(),
   env: Env = process.env,
+  runner: CommandRunner = createCommandRunner(),
 ) {
   if (isHelpOnlyInvocation(args)) {
     return parseArgs(args, repoRoot, env);
   }
 
-  const { config: patchmillConfig } = await loadPatchmillConfigState(
+  const { config: patchmillConfig, explicitConfig } =
+    await loadPatchmillConfigState(repoRoot, env, args);
+  const runOnceConfig = await resolveRunOnceConfigBaseBranch(
+    patchmillConfig,
+    explicitConfig.gitBaseBranch,
+    runner,
     repoRoot,
-    env,
-    args,
   );
-  return parseArgs(args, repoRoot, env, patchmillConfig);
+  return parseArgs(args, repoRoot, env, runOnceConfig);
 }
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
