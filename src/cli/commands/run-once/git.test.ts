@@ -11,6 +11,7 @@ import {
   buildIssueBranchName,
   buildIssueWorktreePath,
   createIssueWorktree,
+  detectDefaultBaseBranch,
   ensureIssueWorktree,
   pushBranch,
 } from "./git.ts";
@@ -48,6 +49,94 @@ test("issue branch and worktree slugs truncate deterministically", () => {
     buildIssueWorktreePath(42, title),
     ".worktrees/patchmill-issue-42-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstu",
   );
+});
+
+test("detectDefaultBaseBranch uses the configured remote HEAD", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "origin/master\n", stderr: "" },
+  ]);
+
+  const result = await detectDefaultBaseBranch(
+    runner,
+    "/repo",
+    "origin",
+    "main",
+  );
+
+  assert.deepEqual(result, {
+    status: "detected",
+    branch: "master",
+    source: "remote-head",
+  });
+  assert.deepEqual(runner.calls, [
+    {
+      command: "git",
+      args: ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+      cwd: "/repo",
+    },
+  ]);
+});
+
+test("detectDefaultBaseBranch falls back to the current upstream on the same remote", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 1, stdout: "", stderr: "fatal: ref not found" },
+    { code: 0, stdout: "upstream/release/1.2\n", stderr: "" },
+  ]);
+
+  const result = await detectDefaultBaseBranch(
+    runner,
+    "/repo",
+    "upstream",
+    "main",
+  );
+
+  assert.deepEqual(result, {
+    status: "detected",
+    branch: "release/1.2",
+    source: "upstream",
+  });
+  assert.deepEqual(runner.calls, [
+    {
+      command: "git",
+      args: [
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "refs/remotes/upstream/HEAD",
+      ],
+      cwd: "/repo",
+    },
+    {
+      command: "git",
+      args: [
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{upstream}",
+      ],
+      cwd: "/repo",
+    },
+  ]);
+});
+
+test("detectDefaultBaseBranch ignores upstreams from other remotes before fallback", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 1, stdout: "", stderr: "fatal: ref not found" },
+    { code: 0, stdout: "fork/main\n", stderr: "" },
+  ]);
+
+  const result = await detectDefaultBaseBranch(
+    runner,
+    "/repo",
+    "origin",
+    "main",
+  );
+
+  assert.deepEqual(result, {
+    status: "fallback",
+    branch: "main",
+    reason: "remote-head-and-upstream-unavailable",
+  });
 });
 
 test("assertIssueBaseContainedInPrBase accepts a base contained in the target remote ref", async () => {

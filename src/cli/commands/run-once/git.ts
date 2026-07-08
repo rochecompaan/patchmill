@@ -11,6 +11,10 @@ import type { CommandResult, CommandRunner } from "./types.ts";
 
 export { buildIssueBranchSlug };
 
+export type BaseBranchDetectionResult =
+  | { status: "detected"; branch: string; source: "remote-head" | "upstream" }
+  | { status: "fallback"; branch: string; reason: string };
+
 function resolveStrategy(
   strategyOrBaseRef:
     | GitWorktreeStrategyConfig
@@ -84,6 +88,80 @@ function formatCommandFailure(message: string, result: CommandResult): string {
     [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n") ||
     "(no output)";
   return `${message} with exit code ${result.code}: ${output}`;
+}
+
+function branchFromRemoteRef(
+  remote: string,
+  value: string,
+): string | undefined {
+  const ref = value.trim();
+  const shortPrefix = `${remote}/`;
+  const fullPrefix = `refs/remotes/${remote}/`;
+  const branch = ref.startsWith(shortPrefix)
+    ? ref.slice(shortPrefix.length)
+    : ref.startsWith(fullPrefix)
+      ? ref.slice(fullPrefix.length)
+      : undefined;
+  return branch && branch.trim().length > 0 ? branch : undefined;
+}
+
+async function detectRemoteHeadBranch(
+  runner: CommandRunner,
+  repoRoot: string,
+  remote: string,
+): Promise<string | undefined> {
+  const result = await runner.run(
+    "git",
+    ["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`],
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0) return undefined;
+  return branchFromRemoteRef(remote, result.stdout);
+}
+
+async function detectUpstreamBranch(
+  runner: CommandRunner,
+  repoRoot: string,
+  remote: string,
+): Promise<string | undefined> {
+  const result = await runner.run(
+    "git",
+    ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0) return undefined;
+  return branchFromRemoteRef(remote, result.stdout);
+}
+
+export async function detectDefaultBaseBranch(
+  runner: CommandRunner,
+  repoRoot: string,
+  remote: string,
+  fallbackBranch = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.baseBranch,
+): Promise<BaseBranchDetectionResult> {
+  const remoteHeadBranch = await detectRemoteHeadBranch(
+    runner,
+    repoRoot,
+    remote,
+  );
+  if (remoteHeadBranch) {
+    return {
+      status: "detected",
+      branch: remoteHeadBranch,
+      source: "remote-head",
+    };
+  }
+
+  const upstreamBranch = await detectUpstreamBranch(runner, repoRoot, remote);
+  if (upstreamBranch) {
+    return { status: "detected", branch: upstreamBranch, source: "upstream" };
+  }
+
+  return {
+    status: "fallback",
+    branch: fallbackBranch,
+    reason: "remote-head-and-upstream-unavailable",
+  };
 }
 
 function issueBaseTargetRef(remote: string, baseBranch: string): string {
