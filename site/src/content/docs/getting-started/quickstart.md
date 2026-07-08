@@ -3,48 +3,39 @@ title: Quickstart
 description: Install Patchmill and run the first repository checks.
 ---
 
-Install the Patchmill CLI globally, then start with the onboarding flow:
+Install Patchmill with npm:
 
 ```sh
 npm install -g patchmill
+```
 
+In the repository you want Patchmill to manage, initialize the local
+configuration:
+
+```sh
 patchmill init
-patchmill auth
-patchmill doctor
-patchmill triage --dry-run
 ```
 
-If you prefer not to install Patchmill globally, use `npx`:
+Patchmill writes repository-local configuration, installs recommended skills,
+and sets up local state.
+
+Triage open issues with your configured workflow:
 
 ```sh
-npx patchmill init
-npx patchmill auth
-npx patchmill doctor
-npx patchmill triage --dry-run
+patchmill triage
 ```
 
-## Command sequence
+Patchmill inspects open issues and applies the configured triage labels and
+comments.
 
-1. `patchmill init` writes the local Patchmill configuration, installs
-   recommended skills, and sets up repository-local state.
-2. `patchmill auth` configures or repairs repo-local Pi provider authentication
-   under `.patchmill/pi-agent`.
-3. `patchmill doctor` runs read-only checks for git, host access, labels,
-   skills, runtime access, and local paths.
-4. `patchmill triage --dry-run` previews issue triage without mutating issues.
-
-## Migrating from `@rochecompaan/patchmill`
-
-The scoped npm package `@rochecompaan/patchmill` is deprecated. Install the
-unscoped package instead:
+Advance one ready issue through the production line:
 
 ```sh
-npm uninstall -g @rochecompaan/patchmill
-npm install -g patchmill
+patchmill run-once
 ```
 
-For one-off usage, replace `npx @rochecompaan/patchmill ...` with
-`npx patchmill ...`.
+Patchmill can reuse approved artifacts from an issue or create new artifacts
+when your approval policy requires them.
 
 ## Try Patchmill on a disposable demo repository
 

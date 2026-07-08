@@ -30,3 +30,22 @@
 .site-title img {
   max-height: 2rem;
 }
+
+.expressive-code .frame.is-terminal {
+  --ec-codePadBlk: 0.75rem;
+}
+
+.expressive-code .frame.is-terminal .header {
+  display: none !important;
+}
+
+.expressive-code .frame.is-terminal pre,
+.expressive-code .frame.is-terminal code {
+  border: 0;
+  border-radius: var(--ec-brdRad);
+}
+
+.expressive-code .frame.is-terminal .copy {
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+}
