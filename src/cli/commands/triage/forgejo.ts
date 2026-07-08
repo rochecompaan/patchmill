@@ -8,6 +8,7 @@ import type {
 } from "./types.ts";
 
 const ISSUE_PAGE_SIZE = 1000;
+const COMMENT_PAGE_SIZE = 1000;
 const ISSUE_FIELDS =
   "index,title,body,state,labels,author,created,updated,comments,url";
 
@@ -79,11 +80,16 @@ function parseIssueComment(comment: unknown): IssueCommentSummary | undefined {
   if (typeof entry.body !== "string") return undefined;
 
   const parsed: IssueCommentSummary = { body: entry.body };
-  const authorLogin = authorName(entry.author ?? entry.authorLogin);
+  const authorLogin = authorName(
+    entry.author ?? entry.authorLogin ?? entry.user,
+  );
   if (authorLogin !== undefined) parsed.authorLogin = authorLogin;
-  if (typeof entry.created === "string") parsed.created = entry.created;
-  if (typeof entry.createdAt === "string" && !parsed.created) {
-    parsed.created = entry.createdAt;
+  for (const field of ["created", "createdAt", "created_at"]) {
+    const value = entry[field];
+    if (typeof value === "string") {
+      parsed.created = value;
+      break;
+    }
   }
   return parsed;
 }
@@ -125,66 +131,42 @@ function parseIssuePayload(entry: unknown): IssueSummary {
   return parsedIssue;
 }
 
-function stripAnsi(value: string): string {
-  return value.replace(/\u001b\[[0-9;]*m/gu, "");
-}
+type IssueCommentPage = {
+  comments: IssueCommentSummary[];
+  rawCount: number;
+};
 
-function normalizeTeaLine(line: string): string {
-  return stripAnsi(line)
-    .replace(/\s+$/u, "")
-    .replace(/^ {0,2}/u, "");
-}
-
-function trimBlankEdges(lines: string[]): string[] {
-  const trimmed = [...lines];
-  while (trimmed.length > 0 && trimmed[0].trim().length === 0) trimmed.shift();
-  while (trimmed.length > 0 && trimmed[trimmed.length - 1].trim().length === 0)
-    trimmed.pop();
-  return trimmed;
-}
-
-function parseIssueComments(stdout: string): IssueCommentSummary[] {
-  const lines = stdout.split(/\r?\n/u).map(normalizeTeaLine);
-  const commentsStart = lines.findIndex(
-    (line) => line.trim() === "## Comments",
+async function fetchIssueCommentPage(
+  runner: CommandRunner,
+  repoRoot: string,
+  issueNumber: number,
+  page: number,
+  teaLogin?: string,
+): Promise<IssueCommentPage> {
+  const endpoint = `/repos/{owner}/{repo}/issues/${issueNumber}/comments?page=${page}&limit=${COMMENT_PAGE_SIZE}`;
+  const result = await runner.run(
+    "tea",
+    withTeaContext(["api", endpoint], repoRoot, teaLogin),
+    { cwd: repoRoot },
   );
-  if (commentsStart < 0) return [];
-
-  const comments: IssueCommentSummary[] = [];
-  let current:
-    | { author: string; created: string; bodyLines: string[] }
-    | undefined;
-
-  const flush = () => {
-    if (!current) return;
-    comments.push({
-      authorLogin: current.author,
-      created: current.created,
-      body: trimBlankEdges(current.bodyLines).join("\n"),
-    });
-    current = undefined;
-  };
-
-  for (const line of lines.slice(commentsStart + 1)) {
-    const header = /^\*\*@([^*]+)\*\* wrote on ([^:]+:\d{2}):$/u.exec(
-      line.trim(),
+  if (result.code !== 0) {
+    throw new Error(
+      `tea issue comments API failed for #${issueNumber}: ${result.stderr || result.stdout}`,
     );
-    if (header) {
-      flush();
-      current = { author: header[1], created: header[2], bodyLines: [] };
-      continue;
-    }
-
-    if (line.trim() === "--------") {
-      flush();
-      continue;
-    }
-
-    current?.bodyLines.push(line);
   }
 
-  flush();
-  return comments;
+  const parsed = parseJson(result.stdout, "tea issue comments API");
+  if (!Array.isArray(parsed)) {
+    throw new Error("tea issue comments API returned a non-array payload");
+  }
+
+  return {
+    rawCount: parsed.length,
+    comments: parsed.flatMap((entry) => {
+      const comment = parseIssueComment(entry);
+      return comment ? [comment] : [];
+    }),
+  };
 }
 
 async function fetchIssueComments(
@@ -193,20 +175,21 @@ async function fetchIssueComments(
   issueNumber: number,
   teaLogin?: string,
 ): Promise<IssueCommentSummary[]> {
-  const result = await runner.run(
-    "tea",
-    withTeaContext(
-      ["issues", String(issueNumber), "--comments"],
+  const comments: IssueCommentSummary[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const pageResult = await fetchIssueCommentPage(
+      runner,
       repoRoot,
+      issueNumber,
+      page,
       teaLogin,
-    ),
-    { cwd: repoRoot },
-  );
-  if (result.code !== 0)
-    throw new Error(
-      `tea issue comments failed for #${issueNumber}: ${result.stderr || result.stdout}`,
     );
-  return parseIssueComments(result.stdout);
+    comments.push(...pageResult.comments);
+    if (pageResult.rawCount < COMMENT_PAGE_SIZE) break;
+  }
+
+  return comments;
 }
 
 export async function hydrateIssueComments(

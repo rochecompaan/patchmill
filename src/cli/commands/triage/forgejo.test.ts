@@ -224,14 +224,25 @@ test("hydrateIssueComments fetches and parses full comments for every selected i
   const runner = createStaticCommandRunner([
     {
       code: 0,
-      stdout:
-        "## Comments\n\n**@ana** wrote on 2026-05-08 10:30:\n\nClarification for issue 1.\n\n--------\n",
+      stdout: JSON.stringify([
+        {
+          body: "Clarification for issue 1.",
+          user: { login: "ana" },
+          created_at: "2026-05-08T10:30:00Z",
+          updated_at: "2026-05-08T10:45:00Z",
+        },
+      ]),
       stderr: "",
     },
     {
       code: 0,
-      stdout:
-        "## Comments\n\n**@sam** wrote on 2026-05-08 11:45:\n\nClarification for issue 2 line one.\nClarification line two.\n\n--------\n",
+      stdout: JSON.stringify([
+        {
+          body: "Clarification for issue 2 line one.\nClarification line two.",
+          user: { login: "sam" },
+          created_at: "2026-05-08T11:45:00Z",
+        },
+      ]),
       stderr: "",
     },
   ]);
@@ -241,25 +252,31 @@ test("hydrateIssueComments fetches and parses full comments for every selected i
   assert.deepEqual(issues[0].comments, [
     {
       authorLogin: "ana",
-      created: "2026-05-08 10:30",
+      created: "2026-05-08T10:30:00Z",
       body: "Clarification for issue 1.",
     },
   ]);
   assert.deepEqual(issues[1].comments, [
     {
       authorLogin: "sam",
-      created: "2026-05-08 11:45",
+      created: "2026-05-08T11:45:00Z",
       body: "Clarification for issue 2 line one.\nClarification line two.",
     },
   ]);
   assert.ok(
     runner.calls.some(
-      (call) => call.args.includes("1") && call.args.includes("--comments"),
+      (call) =>
+        call.args[0] === "api" &&
+        call.args[1] ===
+          "/repos/{owner}/{repo}/issues/1/comments?page=1&limit=1000",
     ),
   );
   assert.ok(
     runner.calls.some(
-      (call) => call.args.includes("2") && call.args.includes("--comments"),
+      (call) =>
+        call.args[0] === "api" &&
+        call.args[1] ===
+          "/repos/{owner}/{repo}/issues/2/comments?page=1&limit=1000",
     ),
   );
 });
