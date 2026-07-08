@@ -15,6 +15,7 @@ import {
   LEGACY_TRIAGE_LOGIN_ENV,
   literalPattern,
 } from "../../../../test-support/legacy-seed.ts";
+import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
 import { parseArgs } from "./args.ts";
 
 test("parseArgs executes by default when no args are provided", () => {
@@ -329,6 +330,40 @@ test("parseArgs prefers PATCHMILL_HOST_LOGIN over legacy env values", () => {
   });
 
   assert.equal(config.teaLogin, "patchmill-bot");
+});
+
+test("loadCliConfig detects git.baseBranch when it is not configured", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "origin/master\n", stderr: "" },
+  ]);
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {}, runner);
+
+  assert.equal(config.baseBranch, "master");
+  assert.deepEqual(runner.calls, [
+    {
+      command: "git",
+      args: ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+      cwd: repoRoot,
+    },
+  ]);
+});
+
+test("loadCliConfig does not detect git.baseBranch when it is explicit", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-run-once-config-"));
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({ git: { baseBranch: "main" } }),
+  );
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "origin/master\n", stderr: "" },
+  ]);
+
+  const config = await loadCliConfig(["--dry-run"], repoRoot, {}, runner);
+
+  assert.equal(config.baseBranch, "main");
+  assert.deepEqual(runner.calls, []);
 });
 
 test("loadCliConfig uses normalized Patchmill defaults when no config file exists", async () => {

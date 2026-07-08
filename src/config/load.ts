@@ -10,7 +10,6 @@ import {
   cloneSkillsConfig,
   mergeSkillsConfig,
   PATCHMILL_SKILL_KEYS,
-  type PartialPatchmillSkillsConfig,
   type PatchmillSkillKey,
 } from "../workflow/skills.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
@@ -26,50 +25,15 @@ import {
   readOptionalString,
   readOptionalStringArray,
 } from "./parse-helpers.ts";
+import type { PartialConfig } from "./partial.ts";
 import type { PatchmillConfig } from "./types.ts";
 import {
   cloneWorkflowConfig,
   mergeWorkflowConfig,
   readWorkflowConfig,
-  type PartialWorkflowConfig,
 } from "./workflow.ts";
 
 type Env = Record<string, string | undefined>;
-
-type PartialPiTaskContract = Partial<
-  PatchmillConfig["projectPolicy"]["pi"]["taskContract"]
->;
-
-type PartialPiWorkflowPolicy = Partial<
-  Omit<PatchmillConfig["projectPolicy"]["pi"], "taskContract">
-> & {
-  taskContract?: PartialPiTaskContract;
-};
-
-type PartialProjectPolicy = Partial<
-  Omit<
-    PatchmillConfig["projectPolicy"],
-    "validation" | "directLand" | "visualEvidence" | "pi"
-  >
-> & {
-  validation?: Partial<PatchmillConfig["projectPolicy"]["validation"]>;
-  directLand?: Partial<PatchmillConfig["projectPolicy"]["directLand"]>;
-  visualEvidence?: Partial<PatchmillConfig["projectPolicy"]["visualEvidence"]>;
-  pi?: PartialPiWorkflowPolicy;
-};
-
-type PartialConfig = Partial<{
-  host: Partial<PatchmillConfig["host"]>;
-  pi: Partial<PatchmillConfig["pi"]>;
-  paths: Partial<PatchmillConfig["paths"]>;
-  labels: Partial<PatchmillConfig["labels"]>;
-  triage: Partial<PatchmillConfig["triage"]>;
-  workflow: PartialWorkflowConfig;
-  skills: PartialPatchmillSkillsConfig;
-  git: Partial<PatchmillConfig["git"]>;
-  cleanupHook: string;
-  projectPolicy: PartialProjectPolicy;
-}>;
 
 function cloneStringArray(values: string[]): string[] {
   return [...values];
@@ -973,8 +937,15 @@ export async function loadPatchmillConfigState(
   repoRoot: string,
   env: Env = process.env,
   args: string[] = [],
-): Promise<{ config: PatchmillConfig; hasConfigFile: boolean }> {
+): Promise<{
+  config: PatchmillConfig;
+  hasConfigFile: boolean;
+  explicitConfig: { gitBaseBranch: boolean };
+}> {
   const { config: fromFile, hasConfigFile } = await readConfigFile(repoRoot);
+  const explicitConfig = {
+    gitBaseBranch: fromFile.git?.baseBranch !== undefined,
+  };
   const merged = mergeConfig(
     mergeConfig(
       mergeConfig(DEFAULT_PATCHMILL_CONFIG, fromFile),
@@ -985,6 +956,7 @@ export async function loadPatchmillConfigState(
   return {
     config: absolutizePaths(repoRoot, merged),
     hasConfigFile,
+    explicitConfig,
   };
 }
 

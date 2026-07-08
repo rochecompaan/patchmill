@@ -30,6 +30,30 @@ test("loadPatchmillConfigState accepts github-gh host provider", async () => {
   assert.equal(result.config.host.login, "");
 });
 
+test("loadPatchmillConfigState reports whether git.baseBranch was explicit", async () => {
+  const defaultRepo = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  const implicitRepo = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  const explicitRepo = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+
+  await writeFile(
+    join(implicitRepo, "patchmill.config.json"),
+    JSON.stringify({ git: { baseRef: "HEAD" } }),
+  );
+  await writeFile(
+    join(explicitRepo, "patchmill.config.json"),
+    JSON.stringify({ git: { baseBranch: "master" } }),
+  );
+
+  const defaultState = await loadPatchmillConfigState(defaultRepo, {}, []);
+  const implicitState = await loadPatchmillConfigState(implicitRepo, {}, []);
+  const explicitState = await loadPatchmillConfigState(explicitRepo, {}, []);
+
+  assert.equal(defaultState.explicitConfig.gitBaseBranch, false);
+  assert.equal(implicitState.explicitConfig.gitBaseBranch, false);
+  assert.equal(explicitState.explicitConfig.gitBaseBranch, true);
+  assert.equal(explicitState.config.git.baseBranch, "master");
+});
+
 test("loadPatchmillConfig rejects invalid host provider", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(

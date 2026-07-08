@@ -180,7 +180,15 @@ PR target base. The target base is derived from:
 refs/remotes/<git.remote>/<git.baseBranch>
 ```
 
-With the defaults, that is `refs/remotes/origin/main`.
+When `git.baseBranch` is omitted, `run-once` first tries to detect the target
+branch from local git metadata: `refs/remotes/<git.remote>/HEAD`, then the
+current branch upstream if it tracks `<git.remote>`. If neither source is
+available, Patchmill falls back to `main`, so the default target base remains
+`refs/remotes/origin/main`.
+
+Set `git.baseBranch` when the repository's PR target branch should be explicit
+or when local git metadata cannot identify the remote default branch. Explicit
+`git.baseBranch` values are authoritative and are not overwritten by detection.
 
 If `git.baseRef` has commits that are not in the target base, `run-once` exits
 non-zero and lists the commits that would leak into the issue PR. There is no
@@ -189,8 +197,10 @@ of the following:
 
 - push or merge the local setup commits into `<git.remote>/<git.baseBranch>`;
 - run `git fetch <git.remote>` if the remote-tracking ref is stale;
+- set `git.baseBranch` to the repository's PR target branch if detection chose
+  the wrong branch;
 - set `git.baseRef` to an upstream ref that is already contained in the target
-  base, such as `refs/remotes/origin/main`.
+  base, such as `refs/remotes/origin/main` or `refs/remotes/origin/master`.
 
 `--dry-run` performs the same check because it previews whether a real
 `run-once` can safely start.
