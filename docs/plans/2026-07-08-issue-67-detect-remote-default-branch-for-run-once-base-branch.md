@@ -659,7 +659,7 @@ git commit -m "feat(run-once): apply detected base branch"
 
 - Consumes: `detectDefaultBaseBranch()` from Task 2.
 - Produces: target-ref resolution failures include a detected-branch hint when
-local metadata points at a different branch.
+  local metadata points at a different branch.
 
 - [ ] **Step 1: Write failing error hint test**
 

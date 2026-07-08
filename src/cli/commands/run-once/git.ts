@@ -90,6 +90,29 @@ function formatCommandFailure(message: string, result: CommandResult): string {
   return `${message} with exit code ${result.code}: ${output}`;
 }
 
+function prTargetBaseFailureMessage(
+  targetRef: string,
+  remote: string,
+  baseBranch: string,
+  detection?: BaseBranchDetectionResult,
+): string {
+  const lines = [
+    `Configured PR target base ${targetRef} could not be resolved to a commit. Run git fetch ${remote}, or fix git.remote/git.baseBranch`,
+  ];
+
+  if (detection?.status === "detected" && detection.branch !== baseBranch) {
+    lines.push(
+      `Detected ${remote}'s default branch as ${detection.branch}; if that is the intended PR target, set git.baseBranch to "${detection.branch}" or remove the incorrect explicit git.baseBranch setting.`,
+    );
+  } else if (detection?.status === "fallback") {
+    lines.push(
+      `Patchmill could not detect ${remote}'s default branch from local git metadata and used fallback git.baseBranch "${baseBranch}". Configure git.baseBranch if the repository uses a different PR target branch.`,
+    );
+  }
+
+  return lines.join(" ");
+}
+
 function branchFromRemoteRef(
   remote: string,
   value: string,
@@ -273,12 +296,25 @@ export async function assertIssueBaseContainedInPrBase(
     baseRef,
     `Configured git.baseRef ${baseRef} could not be resolved to a commit`,
   );
-  await verifyCommitRef(
-    runner,
-    repoRoot,
-    targetRef,
-    `Configured PR target base ${targetRef} could not be resolved to a commit. Run git fetch ${remote}, or fix git.remote/git.baseBranch`,
+  const targetResult = await runner.run(
+    "git",
+    ["rev-parse", "--verify", `${targetRef}^{commit}`],
+    { cwd: repoRoot },
   );
+  if (targetResult.code !== 0) {
+    const detection = await detectDefaultBaseBranch(
+      runner,
+      repoRoot,
+      remote,
+      baseBranch,
+    );
+    throw new Error(
+      formatCommandFailure(
+        prTargetBaseFailureMessage(targetRef, remote, baseBranch, detection),
+        targetResult,
+      ),
+    );
+  }
 
   const result = await runner.run(
     "git",

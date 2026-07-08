@@ -270,6 +270,35 @@ test("assertIssueBaseContainedInPrBase reports a missing target remote ref with 
   );
 });
 
+test("assertIssueBaseContainedInPrBase suggests detected remote default branch when target ref is missing", async () => {
+  const runner = createStaticCommandRunner([
+    { code: 0, stdout: "base-sha\n", stderr: "" },
+    {
+      code: 128,
+      stdout: "",
+      stderr: "fatal: Needed a single revision",
+    },
+    { code: 0, stdout: "origin/master\n", stderr: "" },
+  ]);
+
+  await assert.rejects(
+    () =>
+      assertIssueBaseContainedInPrBase(
+        runner,
+        "/repo",
+        "HEAD",
+        "origin",
+        "main",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Detected origin's default branch as master/);
+      assert.match(error.message, /set git\.baseBranch to "master"/);
+      return true;
+    },
+  );
+});
+
 test("assertIssueBaseContainedInPrBase uses configured remote and base branch", async () => {
   const runner = createStaticCommandRunner([
     { code: 0, stdout: "base-sha\n", stderr: "" },
