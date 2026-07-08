@@ -9,9 +9,9 @@ attached in edited comments.
 ## Background
 
 Issue #71 reports that Forgejo/tea comment hydration can miss edited comments.
-The current Forgejo helper fetches comments with `tea issues <number>
---comments` and parses the human-readable output. Unedited comment headers look
-like this:
+The current Forgejo helper fetches comments with
+`tea issues <number> --comments` and parses the human-readable output. Unedited
+comment headers look like this:
 
 ```text
 **@user** wrote on 2026-01-02 03:04:
@@ -79,9 +79,9 @@ payload, or a non-zero `tea api` exit should fail hydration with a clear error,
 matching the current fail-fast behavior for `tea issues --comments` failures.
 Comments without string `body` values should be ignored, as today.
 
-Use a high page size (`1000`) and page through results until a page returns fewer
-than `1000` comments. Most issues will complete in one request, while very long
-threads still hydrate completely.
+Use a high page size (`1000`) and page through results until a page returns
+fewer than `1000` comments. Most issues will complete in one request, while very
+long threads still hydrate completely.
 
 ## Affected components
 

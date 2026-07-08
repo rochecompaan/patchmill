@@ -38,8 +38,8 @@ extend the JSON comment mapper for Forgejo API field names.
 ## File Structure
 
 - Modify `src/host/forgejo-tea.test.ts`
-  - Replace the existing comment hydration fixture that expects `tea issues
-    <number> --comments` with a JSON `tea api` fixture.
+  - Replace the existing comment hydration fixture that expects
+    `tea issues <number> --comments` with a JSON `tea api` fixture.
   - Add edited-comment regression data via an API payload that includes
     `updated_at`.
   - Assert `user.login` and `created_at` map into `IssueCommentSummary`.
