@@ -219,33 +219,42 @@ test("ForgejoTeaHostProvider delegates open issue listing to tea", async () => {
   assert.equal(flagValue(runner.calls[1]!.args, "--page"), "2");
 });
 
-test("ForgejoTeaHostProvider hydrates issue comments through tea and returns the hydrated array", async () => {
+test("ForgejoTeaHostProvider hydrates issue comments through Forgejo API JSON and returns the hydrated array", async () => {
   const issues: IssueSummary[] = [
     { number: 7, title: "First", body: "", state: "open", labels: [] },
     { number: 8, title: "Second", body: "", state: "open", labels: [] },
   ];
   const runner = createFakeRunner((_command, args) => {
     if (
-      args[0] === "issues" &&
-      args[1] === "7" &&
-      args.includes("--comments")
+      args[0] === "api" &&
+      args[1] === "/repos/{owner}/{repo}/issues/7/comments?page=1&limit=1000"
     ) {
       return {
         code: 0,
-        stdout:
-          "## Comments\n\n**@ana** wrote on 2026-05-08 10:30:\n\nFirst comment.\n\n--------\n",
+        stdout: JSON.stringify([
+          {
+            body: "Spec attached.\n\nPlan path: docs/plans/example.md",
+            user: { login: "ana" },
+            created_at: "2026-05-08T10:30:00Z",
+            updated_at: "2026-05-08T10:45:00Z",
+          },
+        ]),
         stderr: "",
       };
     }
     if (
-      args[0] === "issues" &&
-      args[1] === "8" &&
-      args.includes("--comments")
+      args[0] === "api" &&
+      args[1] === "/repos/{owner}/{repo}/issues/8/comments?page=1&limit=1000"
     ) {
       return {
         code: 0,
-        stdout:
-          "## Comments\n\n**@sam** wrote on 2026-05-08 11:45:\n\nSecond comment.\n\n--------\n",
+        stdout: JSON.stringify([
+          {
+            body: "Second comment.",
+            user: { login: "sam" },
+            created_at: "2026-05-08T11:45:00Z",
+          },
+        ]),
         stderr: "",
       };
     }
@@ -256,21 +265,27 @@ test("ForgejoTeaHostProvider hydrates issue comments through tea and returns the
 
   assert.strictEqual(hydrated, issues);
   assert.deepEqual(hydrated[0]?.comments, [
-    { authorLogin: "ana", created: "2026-05-08 10:30", body: "First comment." },
+    {
+      authorLogin: "ana",
+      created: "2026-05-08T10:30:00Z",
+      body: "Spec attached.\n\nPlan path: docs/plans/example.md",
+    },
   ]);
   assert.deepEqual(hydrated[1]?.comments, [
     {
       authorLogin: "sam",
-      created: "2026-05-08 11:45",
+      created: "2026-05-08T11:45:00Z",
       body: "Second comment.",
     },
   ]);
   assert.equal(runner.calls.length, 2);
   for (const [index, issueNumber] of ["7", "8"].entries()) {
     assertTeaContext(runner.calls[index]!);
-    assert.equal(runner.calls[index]!.args[0], "issues");
-    assert.equal(runner.calls[index]!.args[1], issueNumber);
-    assert.ok(runner.calls[index]!.args.includes("--comments"));
+    assert.equal(runner.calls[index]!.args[0], "api");
+    assert.equal(
+      runner.calls[index]!.args[1],
+      `/repos/{owner}/{repo}/issues/${issueNumber}/comments?page=1&limit=1000`,
+    );
   }
 });
 
