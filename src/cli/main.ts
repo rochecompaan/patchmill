@@ -3,6 +3,10 @@ import { main as doctorMain } from "./commands/doctor/main.ts";
 import { main as initMain } from "./commands/init/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
+import {
+  planMain as setPlanMain,
+  specMain as setSpecMain,
+} from "./commands/set-artifact/main.ts";
 import { main as skillsMain } from "./commands/skills/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
@@ -17,6 +21,8 @@ Commands:
   triage      Classify repository issues for agent readiness.
   run-once    Claim and process one agent-ready issue.
   skills      Manage Patchmill project-local skills.
+  set-spec    Set the authoritative spec for an issue.
+  set-plan    Set the authoritative implementation plan for an issue.
   version     Print the Patchmill CLI version.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;
@@ -101,6 +107,8 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["triage", triageMain],
   ["run-once", runOnceMain],
   ["skills", skillsMain],
+  ["set-spec", setSpecMain],
+  ["set-plan", setPlanMain],
   ["version", versionMain],
   ["setup-test-repo", setupTestRepoMain],
 ]);

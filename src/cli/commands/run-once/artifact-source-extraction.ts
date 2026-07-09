@@ -23,6 +23,7 @@ export type ArtifactExtractionInlineSource<
   type: "inline";
   content: string;
   evidence: string;
+  path?: string;
 };
 
 export type ArtifactExtractionSource<Kind extends ArtifactKind = ArtifactKind> =
@@ -147,7 +148,13 @@ function source<Kind extends ArtifactKind>(
   }
   if (raw.type === "inline") {
     if (typeof raw.content !== "string") throw invalidSourceError(kind);
-    return { kind, type: "inline", content: raw.content, evidence };
+    return {
+      kind,
+      type: "inline",
+      content: raw.content,
+      evidence,
+      ...(typeof raw.path === "string" ? { path: raw.path } : {}),
+    };
   }
   throw invalidSourceError(kind);
 }

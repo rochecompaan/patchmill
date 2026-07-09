@@ -45,6 +45,9 @@ Functional:
 - `patchmill run-once` is the one-issue production run. It advances one
   actionable issue through spec writing, plan writing, implementation, and any
   configured human approval stops.
+- `patchmill set-spec --issue N docs/specs/name.md` and
+  `patchmill set-plan --issue N docs/plans/name.md` publish developer-authored
+  workflow artifacts to the issue in Patchmill's deterministic artifact format.
 
 In progress:
 

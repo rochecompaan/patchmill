@@ -110,9 +110,13 @@ test("validateExtractedArtifactSources rejects path escapes", async () => {
 
 test("validateExtractedArtifactSources assigns deterministic paths to inline sources", async () => {
   const fixture = await repoFixture();
+  const issueWithInlinePlan = {
+    ...issue,
+    comments: [{ body: "# Plan\n- [ ] Build" }],
+  };
 
   const resolved = await validateExtractedArtifactSources({
-    issue,
+    issue: issueWithInlinePlan,
     now: new Date("2026-07-04T12:00:00Z"),
     extraction: {
       status: "resolved",
@@ -131,6 +135,81 @@ test("validateExtractedArtifactSources assigns deterministic paths to inline sou
     "docs/plans/2026-07-04-issue-65-resolve-provided-artifacts.md",
   );
   assert.match(resolved.plan?.content ?? "", /Build/);
+});
+
+test("validateExtractedArtifactSources preserves inline source paths inside artifact directories", async () => {
+  const fixture = await repoFixture();
+  const issueWithInlineSpec = {
+    ...issue,
+    comments: [{ body: "# Spec\n\nUse the provided path." }],
+  };
+
+  const resolved = await validateExtractedArtifactSources({
+    issue: issueWithInlineSpec,
+    now: new Date("2026-07-04T12:00:00Z"),
+    extraction: {
+      status: "resolved",
+      spec: {
+        kind: "spec",
+        type: "inline",
+        path: "docs/specs/custom.md",
+        content: "# Spec\n\nUse the provided path.",
+        evidence: "Published spec block",
+      },
+    },
+    ...fixture,
+  });
+
+  assert.equal(resolved.spec?.path, "docs/specs/custom.md");
+});
+
+test("validateExtractedArtifactSources rejects inline summaries that are not verbatim issue content", async () => {
+  const fixture = await repoFixture();
+
+  await assert.rejects(
+    validateExtractedArtifactSources({
+      issue,
+      now: new Date("2026-07-04T12:00:00Z"),
+      extraction: {
+        status: "resolved",
+        spec: {
+          kind: "spec",
+          type: "inline",
+          content: "# Summary\n\nThis was paraphrased by a model.",
+          evidence: "Spec-ish block",
+        },
+      },
+      ...fixture,
+    }),
+    /not copied verbatim/,
+  );
+});
+
+test("validateExtractedArtifactSources rejects inline source paths outside artifact directories", async () => {
+  const fixture = await repoFixture();
+  const issueWithInlineSpec = {
+    ...issue,
+    comments: [{ body: "# Spec\n\nUse the provided path." }],
+  };
+
+  await assert.rejects(
+    validateExtractedArtifactSources({
+      issue: issueWithInlineSpec,
+      now: new Date("2026-07-04T12:00:00Z"),
+      extraction: {
+        status: "resolved",
+        spec: {
+          kind: "spec",
+          type: "inline",
+          path: "docs/specs/../../outside.md",
+          content: "# Spec\n\nUse the provided path.",
+          evidence: "Bad path",
+        },
+      },
+      ...fixture,
+    }),
+    /outside configured specsDir/,
+  );
 });
 
 test("validateExtractedArtifactSources rejects ambiguous extraction", async () => {

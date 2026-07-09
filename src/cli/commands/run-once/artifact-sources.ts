@@ -94,6 +94,11 @@ function targetForInline(
   source: ArtifactExtractionSource,
   options: ValidateExtractedArtifactSourcesOptions,
 ): { absolutePath: string; path: string } {
+  if (source.type === "inline" && source.path) {
+    const path = normalizeRepoPath(source.path);
+    return { absolutePath: resolve(options.repoRoot, path), path };
+  }
+
   const absolutePath =
     source.kind === "spec"
       ? buildSpecPath(
@@ -111,19 +116,49 @@ function targetForInline(
   return { absolutePath, path: repoRelative(options.repoRoot, absolutePath) };
 }
 
+function normalizeInlineContent(value: string): string {
+  return value.replace(/\r\n?/gu, "\n").trim();
+}
+
+function issueTextBlocks(issue: IssueSummary): string[] {
+  return [issue.body, ...(issue.comments ?? []).map((comment) => comment.body)];
+}
+
+function isVerbatimIssueContent(content: string, issue: IssueSummary): boolean {
+  const normalizedContent = normalizeInlineContent(content);
+  return issueTextBlocks(issue).some((block) =>
+    normalizeInlineContent(block).includes(normalizedContent),
+  );
+}
+
 async function validateSource(
   source: ArtifactExtractionSource,
   options: ValidateExtractedArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSource> {
   if (source.type === "inline") {
-    const content = source.content.trim();
+    const content = normalizeInlineContent(source.content);
     if (content.length < 8) {
       throw new ArtifactSourcePreflightError(
         `Issue #${options.issue.number} has an inline ${source.kind} artifact with empty content`,
         { issueNumber: options.issue.number, artifactKind: source.kind },
       );
     }
+    if (!isVerbatimIssueContent(content, options.issue)) {
+      throw new ArtifactSourcePreflightError(
+        `Issue #${options.issue.number} has an inline ${source.kind} artifact that was not copied verbatim from the issue content`,
+        { issueNumber: options.issue.number, artifactKind: source.kind },
+      );
+    }
     const target = targetForInline(source, options);
+    const expectedDir =
+      source.kind === "spec" ? options.specsDir : options.plansDir;
+    const dirName = source.kind === "spec" ? "specsDir" : "plansDir";
+    if (!pathInside(target.absolutePath, expectedDir)) {
+      throw new ArtifactSourcePreflightError(
+        `Issue #${options.issue.number} references inline ${source.kind} path ${target.path} outside configured ${dirName}`,
+        { issueNumber: options.issue.number, artifactKind: source.kind },
+      );
+    }
     return {
       artifactKind: source.kind,
       sourceType: "inline",
