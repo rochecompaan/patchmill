@@ -7,7 +7,7 @@ import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createCommandRunner } from "../triage/command.ts";
 import { formatPublishedArtifactComment } from "./published-artifacts.ts";
-import type { ArtifactKind } from "../run-once/artifact-source-extraction.ts";
+import type { ArtifactKind } from "../run-once/artifact-source-types.ts";
 
 export type SetArtifactOutput = {
   stdout: (line: string) => void;

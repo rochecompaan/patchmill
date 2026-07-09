@@ -21,7 +21,6 @@ import type { PatchmillConfig } from "../../../config/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   PATCHMILL_SKILL_KEYS,
-  bundledArtifactExtractionSkillPath,
   bundledTriageSkillPath,
   bundledVisualEvidenceSkillPath,
   isPathLikeSkill,
@@ -443,17 +442,6 @@ async function checkSkills(
       }
 
       if (
-        key === "artifactExtraction" &&
-        skill === DEFAULT_PATCHMILL_SKILLS.artifactExtraction
-      ) {
-        return await verifyBundledSkill(
-          key,
-          skill,
-          bundledArtifactExtractionSkillPath(),
-        );
-      }
-
-      if (
         key === "visualEvidence" &&
         skill === DEFAULT_PATCHMILL_SKILLS.visualEvidence
       ) {
@@ -464,6 +452,7 @@ async function checkSkills(
           requiredSkillFiles("patchmill-visual-evidence"),
         );
       }
+
 
       if (!isPathLikeSkill(skill)) {
         return {

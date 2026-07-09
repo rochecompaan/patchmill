@@ -989,25 +989,17 @@ export async function runOneIssue(
     step: { type: "run-start", issueNumber: issue.number, title: issue.title },
   });
   await emitSimpleStep(options, issue.number, "select issue");
-  const artifactExtraction = await runArtifactExtractionStage({
-    runner,
+  const artifactSources = await runArtifactExtractionStage({
     host,
     config,
     issue,
     now: options.now ?? new Date(),
-    heartbeatMs: options.heartbeatMs,
-    streamPiOutput: options.streamPiOutput,
-    verbosePiOutput: options.verbosePiOutput,
-    piAgentDir,
-    tokenUsageState,
-    progressReporter: options.progress,
     progress: (level, stage, message, extras) =>
       progress(options, level, stage, message, extras),
     runStep,
-    observePi,
   });
-  issueForRun = artifactExtraction.issue;
-  resolvedArtifacts = artifactExtraction.resolvedArtifacts;
+  issueForRun = artifactSources.issue;
+  resolvedArtifacts = artifactSources.resolvedArtifacts;
 
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,

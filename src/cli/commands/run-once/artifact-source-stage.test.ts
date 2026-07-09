@@ -1,74 +1,118 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { mergeArtifactExtractionResults } from "./artifact-source-stage.ts";
-import type { ArtifactExtractionResult } from "./artifact-source-extraction.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { runArtifactExtractionStage } from "./artifact-source-stage.ts";
+import type { IssueHostProvider } from "../../../host/types.ts";
+import type { AgentIssueConfig, IssueSummary } from "./types.ts";
 
-test("mergeArtifactExtractionResults keeps deterministic artifacts and fills missing kinds from Pi", () => {
-  const published: ArtifactExtractionResult = {
-    status: "resolved",
-    spec: {
-      kind: "spec",
-      type: "inline",
-      path: "docs/specs/published.md",
-      content: "# Published Spec",
-      evidence: "published spec",
+async function makeConfig(): Promise<AgentIssueConfig> {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-artifact-stage-"));
+  return {
+    repoRoot,
+    dryRun: false,
+    execute: true,
+    planOnly: false,
+    host: DEFAULT_PATCHMILL_CONFIG.host,
+    specsDir: join(repoRoot, "docs", "specs"),
+    plansDir: join(repoRoot, "docs", "plans"),
+    runStateDir: join(repoRoot, ".patchmill", "runs"),
+    worktreeDir: join(repoRoot, ".worktrees"),
+    projectPolicy: DEFAULT_PATCHMILL_CONFIG.projectPolicy,
+    skills: DEFAULT_PATCHMILL_CONFIG.skills,
+    triagePolicy: undefined,
+    readyLabel: DEFAULT_PATCHMILL_CONFIG.labels.ready,
+    issueLimit: 1,
+    labelCatalog: {
+      labelDefinitions: [],
+      priorities: [],
+      types: [],
     },
+    approvalPolicy: {
+      spec: {
+        required: false,
+        reviewLabel: "spec-review",
+        approvedLabel: "spec-approved",
+      },
+      plan: {
+        required: false,
+        reviewLabel: "plan-review",
+        approvedLabel: "plan-approved",
+      },
+    },
+    baseBranch: DEFAULT_PATCHMILL_CONFIG.git.baseBranch,
+    baseRef: DEFAULT_PATCHMILL_CONFIG.git.baseRef,
+    remote: DEFAULT_PATCHMILL_CONFIG.git.remote,
+    branchPrefix: DEFAULT_PATCHMILL_CONFIG.git.branchPrefix,
+    worktreePrefix: DEFAULT_PATCHMILL_CONFIG.git.worktreePrefix,
+    slugLength: DEFAULT_PATCHMILL_CONFIG.git.slugLength,
+    allowDirectLand: DEFAULT_PATCHMILL_CONFIG.git.allowDirectLand,
   };
-  const pi: ArtifactExtractionResult = {
-    status: "resolved",
-    spec: {
-      kind: "spec",
-      type: "inline",
-      content: "# Model Spec",
-      evidence: "model spec",
-    },
-    plan: {
-      kind: "plan",
-      type: "path",
-      value: "docs/plans/existing.md",
-      evidence: "existing plan path",
-    },
-  };
+}
 
-  assert.deepEqual(mergeArtifactExtractionResults(published, pi), {
-    status: "resolved",
-    spec: {
-      kind: "spec",
-      type: "inline",
-      path: "docs/specs/published.md",
-      content: "# Published Spec",
-      evidence: "published spec",
+const host: IssueHostProvider = {
+  id: "forgejo-tea",
+  displayName: "Forgejo via tea",
+  async checkCli() {
+    return { ok: true, message: "ok" };
+  },
+  missingLabelRemediation() {
+    return "";
+  },
+  async listOpenIssues() {
+    return [];
+  },
+  async viewIssue() {
+    throw new Error("unused");
+  },
+  async hydrateIssueComments(issues) {
+    return issues;
+  },
+  async trustedTriageCommentAuthors() {
+    return [];
+  },
+  async listLabels() {
+    return [];
+  },
+  async createLabel() {},
+  async applyLabels() {},
+  async commentIssue() {},
+};
+
+const issue: IssueSummary = {
+  number: 99,
+  title: "Needs deterministic artifacts",
+  body: "Plain issue body without published artifacts",
+  labels: ["agent-ready"],
+  state: "open",
+  comments: [],
+};
+
+test("runArtifactExtractionStage only reads deterministic artifacts and does not call Pi", async () => {
+  const config = await makeConfig();
+  const steps: string[] = [];
+  const progressMessages: string[] = [];
+
+  const result = await runArtifactExtractionStage({
+    host,
+    config,
+    issue,
+    now: new Date("2026-07-09T00:00:00Z"),
+    progress: async (_level, _stage, message) => {
+      progressMessages.push(message);
     },
-    plan: {
-      kind: "plan",
-      type: "path",
-      value: "docs/plans/existing.md",
-      evidence: "existing plan path",
+    runStep: async (label, fn) => {
+      steps.push(label);
+      return await fn();
     },
   });
-});
 
-test("mergeArtifactExtractionResults preserves a complete deterministic result when Pi finds none", () => {
-  const published: ArtifactExtractionResult = {
-    status: "resolved",
-    spec: {
-      kind: "spec",
-      type: "inline",
-      path: "docs/specs/published.md",
-      content: "# Published Spec",
-      evidence: "published spec",
-    },
-    plan: {
-      kind: "plan",
-      type: "inline",
-      path: "docs/plans/published.md",
-      content: "# Published Plan",
-      evidence: "published plan",
-    },
-  };
-
-  assert.equal(
-    mergeArtifactExtractionResults(published, { status: "none" }),
-    published,
-  );
+  assert.deepEqual(result.resolvedArtifacts, {});
+  assert.deepEqual(steps, ["extract issue artifact sources"]);
+  assert.deepEqual(progressMessages, [
+    "hydrating issue artifact content",
+    "reading deterministic issue artifact sources",
+  ]);
 });

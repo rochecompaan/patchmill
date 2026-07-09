@@ -40,6 +40,22 @@ test("formatPublishedArtifactComment creates a deterministic spec envelope that 
   );
 });
 
+test("extractPublishedArtifactResult ignores artifact markers in the issue body", () => {
+  const body = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/body.md",
+    content: "# Body Spec",
+  });
+
+  assert.deepEqual(
+    extractPublishedArtifactResult({
+      ...issueWithComments([]),
+      body,
+    }),
+    { status: "none" },
+  );
+});
+
 test("extractPublishedArtifactResult uses the latest artifact of each kind", () => {
   const oldSpec = formatPublishedArtifactComment({
     kind: "spec",

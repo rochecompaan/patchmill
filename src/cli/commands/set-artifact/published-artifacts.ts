@@ -3,7 +3,7 @@ import type {
   ArtifactExtractionInlineSource,
   ArtifactExtractionResult,
   ArtifactKind,
-} from "../run-once/artifact-source-extraction.ts";
+} from "../run-once/artifact-source-types.ts";
 import type { IssueSummary } from "../run-once/types.ts";
 
 const OPEN_MARKER = "<!-- patchmill-artifact:v1";
@@ -59,13 +59,10 @@ function metadataJson(metadata: PublishedArtifactMetadata): string {
 function sourceBlocks(
   issue: IssueSummary,
 ): Array<{ body: string; label: string }> {
-  return [
-    { body: issue.body, label: "issue body" },
-    ...(issue.comments ?? []).map((comment, index) => ({
-      body: comment.body,
-      label: `comment ${index + 1}`,
-    })),
-  ];
+  return (issue.comments ?? []).map((comment, index) => ({
+    body: comment.body,
+    label: `comment ${index + 1}`,
+  }));
 }
 
 function parseMetadata(raw: string, label: string): PublishedArtifactMetadata {

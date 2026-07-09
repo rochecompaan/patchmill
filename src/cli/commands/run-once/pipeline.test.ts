@@ -40,7 +40,6 @@ type Call = {
   env?: Record<string, string | undefined>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
-  artifactExtraction?: boolean;
 };
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
@@ -201,21 +200,12 @@ function gitBaseContainmentFailure(call: Call): CommandResult | undefined {
   return undefined;
 }
 
-async function isArtifactExtractionPiCall(call: Call): Promise<boolean> {
-  if (call.command !== "pi") return false;
-  const prompt = await readFile(promptPath(call.args), "utf8");
-  return /Extract spec and plan artifact sources/.test(prompt);
-}
-
 function workflowPiCalls(calls: Call[]): Call[] {
-  return calls.filter(
-    (call) => call.command === "pi" && !call.artifactExtraction,
-  );
+  return calls.filter((call) => call.command === "pi");
 }
 
 function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
-  runnerOptions: { handleArtifactExtraction?: boolean } = {},
 ): MockRunner {
   const calls: Call[] = [];
   return {
@@ -229,18 +219,8 @@ function createMockRunner(
         onStdout: options.onStdout,
         onStderr: options.onStderr,
       });
-      const artifactExtractionPiCall = await isArtifactExtractionPiCall(call);
-      if (artifactExtractionPiCall) call.artifactExtraction = true;
       calls.push(call);
       if (call.command === "pi") {
-        if (
-          artifactExtractionPiCall &&
-          !runnerOptions.handleArtifactExtraction
-        ) {
-          const fallback = await fallbackPiResultForError(call);
-          assert.ok(fallback, "expected artifact extraction fallback result");
-          return fallback;
-        }
         try {
           return await normalizePiResult(call, await handler(call));
         } catch (error) {
@@ -287,14 +267,6 @@ function promptJsonPath(prompt: string, key: "specPath" | "planPath"): string {
 function defaultWorkflowPromptResult(
   prompt: string,
 ): CommandResult | undefined {
-  if (/Extract spec and plan artifact sources/.test(prompt)) {
-    return {
-      code: 0,
-      stdout: JSON.stringify({ status: "none" }),
-      stderr: "",
-    };
-  }
-
   if (/Create a design spec/.test(prompt)) {
     return {
       code: 0,
@@ -334,11 +306,6 @@ async function normalizePiResult(
 
   const status = jsonStatus(result.stdout);
   if (status === "blocked") return result;
-  if (/Extract spec and plan artifact sources/.test(prompt)) {
-    return status === "resolved" || status === "none" || status === "ambiguous"
-      ? result
-      : fallback;
-  }
   if (/Create a design spec/.test(prompt)) {
     return status === "spec-created" ? result : fallback;
   }
@@ -2078,12 +2045,10 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
   assert.doesNotMatch(commentBody(comments[0]), /Existing plan ready/);
 });
 
-test("runOneIssue uses extracted spec and plan paths before filename discovery", async () => {
+test("runOneIssue uses deterministic published artifacts before filename discovery", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const specPath = "docs/specs/human-provided-design.md";
   const planPath = "docs/plans/human-provided-plan.md";
-  await writeFile(join(config.repoRoot, specPath), "# Human Spec\n", "utf8");
-  await writeFile(join(config.repoRoot, planPath), "# Human Plan\n", "utf8");
   await writeFile(
     join(
       config.repoRoot,
@@ -2101,68 +2066,78 @@ test("runOneIssue uses extracted spec and plan paths before filename discovery",
       ["plan-approved", "enhancement"],
       "Resolve provided artifacts",
     ),
-    body: "Spec and plan supplied in issue content.",
+    comments: [
+      {
+        body: formatPublishedArtifactComment({
+          kind: "spec",
+          path: specPath,
+          content: "# Human Spec\n\nUse the published design.",
+        }),
+      },
+      {
+        body: formatPublishedArtifactComment({
+          kind: "plan",
+          path: planPath,
+          content: "# Human Plan\n\n- [ ] Build from the published plan",
+        }),
+      },
+    ],
   };
-  const runner = createMockRunner(
-    async (call) => {
-      if (
-        call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "list"
-      ) {
-        const page = call.args[call.args.indexOf("--page") + 1];
-        return {
-          code: 0,
-          stdout: page === "1" ? issueListPayload([selected]) : "[]",
-          stderr: "",
-        };
-      }
-      if (call.command === "git" && call.args[0] === "status")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "show-ref")
-        return { code: 1, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "worktree")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "tea" && call.args[0] === "labels")
-        return { code: 0, stdout: labelListPayload(), stderr: "" };
-      if (
-        call.command === "tea" &&
-        (call.args[0] === "issues" || call.args[0] === "comment")
-      )
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "pi") {
-        const prompt = await readFile(promptPath(call.args), "utf8");
-        if (/Extract spec and plan artifact sources/.test(prompt)) {
-          return {
-            code: 0,
-            stdout: JSON.stringify({
-              status: "resolved",
-              spec: { type: "path", value: specPath, evidence: "human spec" },
-              plan: { type: "path", value: planPath, evidence: "human plan" },
-            }),
-            stderr: "",
-          };
-        }
-        assert.match(prompt, new RegExp(`Plan path: ${planPath}`));
-        return {
-          code: 0,
-          stdout: JSON.stringify({
-            status: "pr-created",
-            prUrl: "https://forgejo.example/pr/65",
-            branch: "agent/issue-65-resolve-provided-artifacts",
-            commits: ["abc123"],
-            validation: ["npm test"],
-            reviewSummary: "reviewed",
-          }),
-          stderr: "",
-        };
-      }
-      throw new Error(
-        `unexpected command: ${call.command} ${call.args.join(" ")}`,
-      );
-    },
-    { handleArtifactExtraction: true },
-  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "add")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "diff")
+      return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "commit")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "rev-parse")
+      return { code: 0, stdout: "artifact123\n", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "labels")
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.doesNotMatch(prompt, /Extract spec and plan artifact sources/);
+      assert.match(prompt, new RegExp(`Plan path: ${planPath}`));
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/65",
+          branch: "agent/issue-65-resolve-provided-artifacts",
+          commits: ["abc123"],
+          validation: ["npm test"],
+          reviewSummary: "reviewed",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
 
   const { events, progress } = collectProgressEvents();
   const result = await runOneIssue(runner, config, { now: NOW, progress });
@@ -2170,11 +2145,6 @@ test("runOneIssue uses extracted spec and plan paths before filename discovery",
   assert.equal(result.status, "pr-created");
   assert.equal(result.specPath, specPath);
   assert.equal(result.planPath, planPath);
-  const artifactPiCalls = runner.calls.filter(
-    (call) => call.artifactExtraction,
-  );
-  assert.equal(artifactPiCalls.length, 1);
-  assert.equal(artifactPiCalls[0]?.args.includes("--session-dir"), true);
   assert.ok(
     events.some(
       (event) =>
@@ -2189,53 +2159,53 @@ test("runOneIssue uses extracted spec and plan paths before filename discovery",
         event.step.label === "extract issue artifact sources",
     ),
   );
+  const expectedWorktreeRoot = join(
+    config.repoRoot,
+    ".worktrees",
+    "patchmill-issue-65-resolve-provided-artifacts",
+  );
+  assert.equal(
+    await readFile(join(expectedWorktreeRoot, specPath), "utf8"),
+    "# Human Spec\n\nUse the published design.\n",
+  );
+  assert.equal(
+    await readFile(join(expectedWorktreeRoot, planPath), "utf8"),
+    "# Human Plan\n\n- [ ] Build from the published plan\n",
+  );
 });
 
-test("runOneIssue fails before claim when extractor returns missing path", async () => {
+test("runOneIssue fails before claim when deterministic artifact checksum mismatches", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
-  const selected = issue(
-    65,
-    ["agent-ready", "enhancement"],
-    "Resolve provided artifacts",
-  );
-  const runner = createMockRunner(
-    async (call) => {
-      if (
-        call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "list"
-      ) {
-        const page = call.args[call.args.indexOf("--page") + 1];
-        return {
-          code: 0,
-          stdout: page === "1" ? issueListPayload([selected]) : "[]",
-          stderr: "",
-        };
-      }
-      if (call.command === "pi") {
-        return {
-          code: 0,
-          stdout: JSON.stringify({
-            status: "resolved",
-            spec: {
-              type: "path",
-              value: "docs/specs/missing.md",
-              evidence: "missing spec",
-            },
-          }),
-          stderr: "",
-        };
-      }
-      throw new Error(
-        `unexpected command before preflight failure: ${call.command} ${call.args.join(" ")}`,
-      );
-    },
-    { handleArtifactExtraction: true },
-  );
+  const brokenComment = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/broken.md",
+    content: "# Original Spec\n\nUse this content.",
+  }).replace("Use this content.", "Use edited content.");
+  const selected = {
+    ...issue(65, ["agent-ready", "enhancement"], "Broken published artifact"),
+    comments: [{ body: brokenComment }],
+  };
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command before deterministic artifact failure: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
 
   await assert.rejects(
     runOneIssue(runner, config, { now: NOW }),
-    /references spec path docs\/specs\/missing\.md, but the file does not exist/,
+    /checksum mismatch/,
   );
   assert.equal(
     runner.calls.some(
@@ -2254,267 +2224,7 @@ test("runOneIssue fails before claim when extractor returns missing path", async
   );
 });
 
-test("runOneIssue materializes inline extracted artifacts after claim", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true });
-  const selected = {
-    ...issue(
-      65,
-      ["plan-approved", "enhancement"],
-      "Resolve provided artifacts",
-    ),
-    comments: [
-      { body: "# Inline Spec\nUse issue content." },
-      { body: "# Inline Plan\n- [ ] Build" },
-    ],
-  };
-  const events: string[] = [];
-  const runner = createMockRunner(
-    async (call) => {
-      if (
-        call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "list"
-      ) {
-        const page = call.args[call.args.indexOf("--page") + 1];
-        return {
-          code: 0,
-          stdout: page === "1" ? issueListPayload([selected]) : "[]",
-          stderr: "",
-        };
-      }
-      if (call.command === "pi") {
-        const prompt = await readFile(promptPath(call.args), "utf8");
-        if (/Extract spec and plan artifact sources/.test(prompt)) {
-          return {
-            code: 0,
-            stdout: JSON.stringify({
-              status: "resolved",
-              spec: {
-                type: "inline",
-                content: "# Inline Spec\nUse issue content.",
-                evidence: "spec block",
-              },
-              plan: {
-                type: "inline",
-                content: "# Inline Plan\n- [ ] Build",
-                evidence: "plan block",
-              },
-            }),
-            stderr: "",
-          };
-        }
-        return {
-          code: 0,
-          stdout: JSON.stringify({
-            status: "pr-created",
-            prUrl: "https://forgejo.example/pr/65",
-            branch: "agent/issue-65-resolve-provided-artifacts",
-            commits: ["abc123"],
-            validation: ["npm test"],
-            reviewSummary: "reviewed",
-          }),
-          stderr: "",
-        };
-      }
-      if (call.command === "git" && call.args[0] === "status")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "add") {
-        events.push("git-add-artifacts");
-        return { code: 0, stdout: "", stderr: "" };
-      }
-      if (call.command === "git" && call.args[0] === "diff")
-        return { code: 1, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "commit")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "rev-parse")
-        return { code: 0, stdout: "artifact123\n", stderr: "" };
-      if (call.command === "git" && call.args[0] === "show-ref")
-        return { code: 1, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "worktree")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "tea" && call.args[0] === "labels")
-        return { code: 0, stdout: labelListPayload(), stderr: "" };
-      if (
-        call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "edit"
-      ) {
-        events.push("claim");
-        return { code: 0, stdout: "", stderr: "" };
-      }
-      if (call.command === "tea" && call.args[0] === "comment") {
-        events.push("started-comment");
-        return { code: 0, stdout: "", stderr: "" };
-      }
-      throw new Error(
-        `unexpected command: ${call.command} ${call.args.join(" ")}`,
-      );
-    },
-    { handleArtifactExtraction: true },
-  );
-
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "pr-created");
-  assert.deepEqual(events.slice(0, 3), [
-    "claim",
-    "started-comment",
-    "git-add-artifacts",
-  ]);
-  const expectedWorktreeRoot = join(
-    config.repoRoot,
-    ".worktrees",
-    "patchmill-issue-65-resolve-provided-artifacts",
-  );
-  const artifactGitCalls = runner.calls.filter(
-    (call) =>
-      call.command === "git" &&
-      (["add", "diff", "commit"].includes(call.args[0] ?? "") ||
-        (call.args[0] === "rev-parse" && call.args[1] === "HEAD")),
-  );
-  assert.equal(
-    artifactGitCalls.every((call) => call.cwd === expectedWorktreeRoot),
-    true,
-  );
-  await assert.rejects(
-    readFile(
-      join(
-        config.repoRoot,
-        "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
-      ),
-      "utf8",
-    ),
-    /ENOENT/,
-  );
-  assert.equal(
-    await readFile(
-      join(
-        expectedWorktreeRoot,
-        "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
-      ),
-      "utf8",
-    ),
-    "# Inline Spec\nUse issue content.\n",
-  );
-  assert.equal(
-    result.specPath,
-    "docs/specs/2026-05-09-issue-65-resolve-provided-artifacts-design.md",
-  );
-  assert.equal(
-    result.planPath,
-    "docs/plans/2026-05-09-issue-65-resolve-provided-artifacts.md",
-  );
-});
-
-test("runOneIssue uses deterministic published artifacts without Pi extraction", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true });
-  const specComment = formatPublishedArtifactComment({
-    kind: "spec",
-    path: "docs/specs/published.md",
-    content: "# Published Spec\n\nUse deterministic content.",
-  });
-  const planComment = formatPublishedArtifactComment({
-    kind: "plan",
-    path: "docs/plans/published.md",
-    content: "# Published Plan\n\n- [ ] Build deterministically",
-  });
-  const selected = {
-    ...issue(66, ["plan-approved", "enhancement"], "Use published artifacts"),
-    comments: [{ body: specComment }, { body: planComment }],
-  };
-  let artifactExtractionPiCalls = 0;
-  const runner = createMockRunner(
-    async (call) => {
-      if (
-        call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "list"
-      ) {
-        const page = call.args[call.args.indexOf("--page") + 1];
-        return {
-          code: 0,
-          stdout: page === "1" ? issueListPayload([selected]) : "[]",
-          stderr: "",
-        };
-      }
-      if (call.command === "pi") {
-        const prompt = await readFile(promptPath(call.args), "utf8");
-        if (/Extract spec and plan artifact sources/.test(prompt)) {
-          artifactExtractionPiCalls += 1;
-          throw new Error("artifact extraction Pi should not run");
-        }
-        return {
-          code: 0,
-          stdout: JSON.stringify({
-            status: "pr-created",
-            prUrl: "https://forgejo.example/pr/66",
-            branch: "agent/issue-66-use-published-artifacts",
-            commits: ["abc123"],
-            validation: ["npm test"],
-            reviewSummary: "reviewed",
-          }),
-          stderr: "",
-        };
-      }
-      if (call.command === "git" && call.args[0] === "status")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "add")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "diff")
-        return { code: 1, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "commit")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "rev-parse")
-        return { code: 0, stdout: "artifact123\n", stderr: "" };
-      if (call.command === "git" && call.args[0] === "show-ref")
-        return { code: 1, stdout: "", stderr: "" };
-      if (call.command === "git" && call.args[0] === "worktree")
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "tea" && call.args[0] === "labels")
-        return { code: 0, stdout: labelListPayload(), stderr: "" };
-      if (
-        call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "edit"
-      )
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "tea" && call.args[0] === "comment")
-        return { code: 0, stdout: "", stderr: "" };
-      throw new Error(
-        `unexpected command: ${call.command} ${call.args.join(" ")}`,
-      );
-    },
-    { handleArtifactExtraction: true },
-  );
-
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "pr-created");
-  assert.equal(artifactExtractionPiCalls, 0);
-  assert.equal(result.specPath, "docs/specs/published.md");
-  assert.equal(result.planPath, "docs/plans/published.md");
-  const expectedWorktreeRoot = join(
-    config.repoRoot,
-    ".worktrees",
-    "patchmill-issue-66-use-published-artifacts",
-  );
-  assert.equal(
-    await readFile(
-      join(expectedWorktreeRoot, "docs/specs/published.md"),
-      "utf8",
-    ),
-    "# Published Spec\n\nUse deterministic content.\n",
-  );
-  assert.equal(
-    await readFile(
-      join(expectedWorktreeRoot, "docs/plans/published.md"),
-      "utf8",
-    ),
-    "# Published Plan\n\n- [ ] Build deterministically\n",
-  );
-});
-
-test("runOneIssue dry-run does not run artifact extraction", async () => {
+test("runOneIssue dry-run does not read deterministic artifact sources", async () => {
   const config = await makeConfig({ dryRun: true, execute: false });
   const selected = issue(
     65,
@@ -6560,7 +6270,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       "selected #15 Ship automation pipeline",
       "checking issue branch base containment",
       "hydrating issue artifact content",
-      "extracting issue artifact sources",
+      "reading deterministic issue artifact sources",
       "checking repository status",
       "ensuring in-progress label exists",
       "claimed #15: agent-ready -> in-progress",

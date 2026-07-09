@@ -1,20 +1,11 @@
-import { stat } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type {
   ArtifactExtractionResult,
   ArtifactExtractionSource,
-} from "./artifact-source-extraction.ts";
+} from "./artifact-source-types.ts";
 import { buildPlanPath } from "./plans.ts";
 import { buildSpecPath } from "./specs.ts";
 import type { IssueSummary } from "./types.ts";
-
-export type ResolvedIssuePathArtifactSource = {
-  artifactKind: "spec" | "plan";
-  sourceType: "path";
-  path: string;
-  absolutePath: string;
-  evidence: string;
-};
 
 export type ResolvedIssueInlineArtifactSource = {
   artifactKind: "spec" | "plan";
@@ -26,9 +17,7 @@ export type ResolvedIssueInlineArtifactSource = {
   commit?: string;
 };
 
-export type ResolvedIssueArtifactSource =
-  | ResolvedIssuePathArtifactSource
-  | ResolvedIssueInlineArtifactSource;
+export type ResolvedIssueArtifactSource = ResolvedIssueInlineArtifactSource;
 
 export type ResolvedIssueArtifactSources = {
   spec?: ResolvedIssueArtifactSource;
@@ -80,21 +69,11 @@ function pathInside(path: string, dir: string): boolean {
   );
 }
 
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    const info = await stat(path);
-    return info.isFile();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-}
-
 function targetForInline(
   source: ArtifactExtractionSource,
   options: ValidateExtractedArtifactSourcesOptions,
 ): { absolutePath: string; path: string } {
-  if (source.type === "inline" && source.path) {
+  if (source.path) {
     const path = normalizeRepoPath(source.path);
     return { absolutePath: resolve(options.repoRoot, path), path };
   }
@@ -135,62 +114,35 @@ async function validateSource(
   source: ArtifactExtractionSource,
   options: ValidateExtractedArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSource> {
-  if (source.type === "inline") {
-    const content = normalizeInlineContent(source.content);
-    if (content.length < 8) {
-      throw new ArtifactSourcePreflightError(
-        `Issue #${options.issue.number} has an inline ${source.kind} artifact with empty content`,
-        { issueNumber: options.issue.number, artifactKind: source.kind },
-      );
-    }
-    if (!isVerbatimIssueContent(content, options.issue)) {
-      throw new ArtifactSourcePreflightError(
-        `Issue #${options.issue.number} has an inline ${source.kind} artifact that was not copied verbatim from the issue content`,
-        { issueNumber: options.issue.number, artifactKind: source.kind },
-      );
-    }
-    const target = targetForInline(source, options);
-    const expectedDir =
-      source.kind === "spec" ? options.specsDir : options.plansDir;
-    const dirName = source.kind === "spec" ? "specsDir" : "plansDir";
-    if (!pathInside(target.absolutePath, expectedDir)) {
-      throw new ArtifactSourcePreflightError(
-        `Issue #${options.issue.number} references inline ${source.kind} path ${target.path} outside configured ${dirName}`,
-        { issueNumber: options.issue.number, artifactKind: source.kind },
-      );
-    }
-    return {
-      artifactKind: source.kind,
-      sourceType: "inline",
-      path: target.path,
-      absolutePath: target.absolutePath,
-      content,
-      evidence: source.evidence,
-    };
-  }
-
-  const path = normalizeRepoPath(source.value);
-  const absolutePath = resolve(options.repoRoot, path);
-  const expectedDir =
-    source.kind === "spec" ? options.specsDir : options.plansDir;
-  const dirName = source.kind === "spec" ? "specsDir" : "plansDir";
-  if (!pathInside(absolutePath, expectedDir)) {
+  const content = normalizeInlineContent(source.content);
+  if (content.length < 8) {
     throw new ArtifactSourcePreflightError(
-      `Issue #${options.issue.number} references ${source.kind} path ${source.value} outside configured ${dirName}`,
+      `Issue #${options.issue.number} has an inline ${source.kind} artifact with empty content`,
       { issueNumber: options.issue.number, artifactKind: source.kind },
     );
   }
-  if (!(await fileExists(absolutePath))) {
+  if (!isVerbatimIssueContent(content, options.issue)) {
     throw new ArtifactSourcePreflightError(
-      `Issue #${options.issue.number} references ${source.kind} path ${path}, but the file does not exist`,
+      `Issue #${options.issue.number} has an inline ${source.kind} artifact that was not copied verbatim from the issue content`,
+      { issueNumber: options.issue.number, artifactKind: source.kind },
+    );
+  }
+  const target = targetForInline(source, options);
+  const expectedDir =
+    source.kind === "spec" ? options.specsDir : options.plansDir;
+  const dirName = source.kind === "spec" ? "specsDir" : "plansDir";
+  if (!pathInside(target.absolutePath, expectedDir)) {
+    throw new ArtifactSourcePreflightError(
+      `Issue #${options.issue.number} references inline ${source.kind} path ${target.path} outside configured ${dirName}`,
       { issueNumber: options.issue.number, artifactKind: source.kind },
     );
   }
   return {
     artifactKind: source.kind,
-    sourceType: "path",
-    path,
-    absolutePath,
+    sourceType: "inline",
+    path: target.path,
+    absolutePath: target.absolutePath,
+    content,
     evidence: source.evidence,
   };
 }

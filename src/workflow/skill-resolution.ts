@@ -18,8 +18,6 @@ export type SkillInvocationResolution = {
 };
 
 export const BUNDLED_TRIAGE_SKILL_REFERENCE = "patchmill:bundled-issue-triage";
-export const BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE =
-  "patchmill:bundled-artifact-extraction";
 export const BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE =
   "patchmill:bundled-visual-evidence";
 
@@ -52,10 +50,6 @@ function bundledSkillPath(skillDirName: string): string {
 
 export function bundledTriageSkillPath(): string {
   return bundledSkillPath("patchmill-issue-triage");
-}
-
-export function bundledArtifactExtractionSkillPath(): string {
-  return bundledSkillPath("patchmill-artifact-extraction");
 }
 
 export function bundledVisualEvidenceSkillPath(): string {
@@ -137,9 +131,6 @@ export function resolveConfiguredSkillInvocation(
     if (!skill) return [];
     if (skill === BUNDLED_TRIAGE_SKILL_REFERENCE) {
       return [bundledTriageSkillPath()];
-    }
-    if (skill === BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE) {
-      return [bundledArtifactExtractionSkillPath()];
     }
     if (skill === BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE) {
       return [bundledVisualEvidenceSkillPath()];

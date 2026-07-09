@@ -361,30 +361,9 @@ test("loadPatchmillConfig parses top-level skills config", async () => {
     triage: "project-triage",
     planning: "project-planning",
     implementation: "project-implementation",
-    artifactExtraction: "patchmill:bundled-artifact-extraction",
     toolchain: "bootstrapping-tilt-worktrees",
     visualEvidence: "capturing-proof-screenshots",
   });
-});
-
-test("loadPatchmillConfig accepts custom artifact extraction skill", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
-  await writeFile(
-    join(dir, "patchmill.config.json"),
-    JSON.stringify({
-      skills: {
-        artifactExtraction: ".patchmill/skills/artifact-extraction",
-      },
-    }),
-    "utf8",
-  );
-
-  const loaded = await loadPatchmillConfig(dir, {}, []);
-
-  assert.equal(
-    loaded.skills.artifactExtraction,
-    ".patchmill/skills/artifact-extraction",
-  );
 });
 
 test("loadPatchmillConfig rejects unknown skills keys", async () => {
@@ -724,7 +703,6 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
     triage: "project-triage",
     planning: "project-planning",
     implementation: "project-implementation",
-    artifactExtraction: "patchmill:bundled-artifact-extraction",
     toolchain: "bootstrapping-tilt-worktrees",
     visualEvidence: "capturing-proof-screenshots",
   });

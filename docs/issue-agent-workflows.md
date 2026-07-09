@@ -149,12 +149,13 @@ Source files:
 - Pipeline: `src/cli/commands/run-once/pipeline.ts`
 - Prompt builders: `src/cli/commands/run-once/prompts.ts`
 - Pi runner/result parser: `src/cli/commands/run-once/pi.ts`
-- Artifact source extraction and validation:
-  `src/cli/commands/run-once/artifact-source-extraction.ts`,
+- Deterministic workflow artifact reading and validation:
+  `src/cli/commands/run-once/artifact-source-stage.ts`,
+  `src/cli/commands/run-once/artifact-source-types.ts`,
   `src/cli/commands/run-once/artifact-sources.ts`, and
   `src/cli/commands/run-once/artifact-source-materialization.ts`
-- Bundled artifact extraction skill:
-  `skills/patchmill-artifact-extraction/SKILL.md`
+- Artifact publishing commands: `src/cli/commands/set-artifact/main.ts` and
+  `src/cli/commands/set-artifact/published-artifacts.ts`
 - Subagent support: bundled runtime support and implementation prompt guidance
 - Issue selection: `src/cli/commands/run-once/selection.ts`
 - Progress/logging: `src/cli/commands/run-once/progress.ts`,
@@ -180,7 +181,8 @@ flowchart TD
   G1 -->|no| H
   H --> I{Dry run?}
   I -->|yes| Y[Return selected issue]
-  I -->|no| J[Assert clean worktree]
+  I -->|no| I1[Read deterministic spec/plan artifact comments]
+  I1 --> J[Assert clean worktree]
   J --> K[Claim issue: ready -> in-progress]
   K --> L[Post automation-started comment]
   L --> M[Find existing plan or compute plan path]
@@ -249,18 +251,17 @@ run-state directory and issue todo root. It records checkpoints so retries can
 skip already-completed side effects safely.
 
 Before claiming an issue in execute mode, `run-once` hydrates the selected
-issue's body and comments and invokes the configured `skills.artifactExtraction`
-skill. The bundled default skill asks Pi to classify unambiguous spec or plan
-sources from full issue content, such as role-clear repo paths, Markdown links,
-inline sections, and `<details>` blocks. Patchmill validates the skill's
-structured JSON output before any labels, comments, or run state are mutated.
-`--dry-run` keeps the existing cheap transition preview and does not run
-artifact extraction.
+issue's body and comments and reads Patchmill-owned deterministic artifact
+comments created by `patchmill set-spec` and `patchmill set-plan`. Patchmill
+validates each artifact checksum before any labels, comments, or run state are
+mutated. `--dry-run` keeps the existing cheap transition preview and does not
+read workflow artifacts.
 
-Inline source-provided artifacts are materialized under the configured docs
-directories in the issue worktree and committed on the issue branch after the
-issue is claimed, but they are treated as source-provided artifacts rather than
-newly generated Pi artifacts for approval-gate freshness.
+Published artifacts are materialized under their recorded docs paths in the
+issue worktree and committed on the issue branch after the issue is claimed, but
+they are treated as source-provided artifacts rather than newly generated Pi
+artifacts for approval-gate freshness. Free-form issue comments, Markdown
+headings, and hand-pasted `<details>` blocks are not workflow artifact sources.
 
 ### Plan-creation Pi prompt
 
