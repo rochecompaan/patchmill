@@ -1,6 +1,7 @@
 import {
   BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
   BUNDLED_TRIAGE_SKILL_REFERENCE,
+  BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
 } from "./skill-resolution.ts";
 
 export type PatchmillSkillsConfig = {
@@ -34,6 +35,7 @@ export type PartialPatchmillSkillsConfig = Partial<PatchmillSkillsConfig>;
 export {
   BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
   BUNDLED_TRIAGE_SKILL_REFERENCE,
+  BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
 };
 
 export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
@@ -41,6 +43,7 @@ export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
   artifactExtraction: BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
+  visualEvidence: BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
 };
 
 export const GLOBAL_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
@@ -48,6 +51,7 @@ export const GLOBAL_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
   artifactExtraction: "patchmill-artifact-extraction",
+  visualEvidence: "patchmill-visual-evidence",
 };
 
 export function cloneSkillsConfig(
@@ -84,6 +88,7 @@ export function renderConfiguredSkillLine(
 export {
   bundledArtifactExtractionSkillPath,
   bundledTriageSkillPath,
+  bundledVisualEvidenceSkillPath,
   isNamespaceStyleSkill,
   isPathLikeSkill,
   resolveConfiguredSkillInvocation,

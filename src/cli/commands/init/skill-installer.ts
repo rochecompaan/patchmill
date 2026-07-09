@@ -38,7 +38,7 @@ export type ProjectSkillInstallResult = {
   skillDir: string;
   skillConfig: Pick<
     PatchmillSkillsConfig,
-    "triage" | "planning" | "implementation"
+    "triage" | "planning" | "implementation" | "visualEvidence"
   >;
   installedSkills: string[];
   metadataPath: string;
@@ -328,13 +328,17 @@ export async function validateExistingSkillDirectory(
   repoRoot: string,
   skillDir: string,
 ): Promise<
-  Pick<PatchmillSkillsConfig, "triage" | "planning" | "implementation">
+  Pick<
+    PatchmillSkillsConfig,
+    "triage" | "planning" | "implementation" | "visualEvidence"
+  >
 > {
   const skillConfig = buildRecommendedProjectSkillConfig(skillDir);
   for (const skillPath of [
     skillConfig.triage,
     skillConfig.planning,
     skillConfig.implementation,
+    skillConfig.visualEvidence,
   ]) {
     const displayPath = `${skillPath}/SKILL.md`;
     await assertSkillFile(resolve(repoRoot, displayPath), displayPath);

@@ -182,6 +182,7 @@ test("interactive init add-to-git with path skills commits the provided skill ro
   await writeSkill(repoRoot, "custom-skills", "patchmill-issue-triage");
   await writeSkill(repoRoot, "custom-skills", "writing-plans");
   await writeSkill(repoRoot, "custom-skills", "subagent-driven-development");
+  await writeSkill(repoRoot, "custom-skills", "patchmill-visual-evidence");
 
   const { output } = await runInitForGitPolicy(repoRoot, {
     args: ["--skills", "path:custom-skills"],

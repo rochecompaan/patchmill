@@ -7,6 +7,7 @@ export const SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
   "subagent-dev-with-codex-and-thermo-reviews";
 export const SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
   "single-subagent-dev-with-codex-and-thermo-reviews";
+export const PATCHMILL_VISUAL_EVIDENCE_SKILL = "patchmill-visual-evidence";
 
 export type SkillPackSource = {
   type: "github-release";
@@ -41,7 +42,7 @@ export type SkillPackMetadataFile = {
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
-  version: "2026.05",
+  version: "2026.07",
   source: {
     type: "github-release",
     repository: "obra/superpowers",
@@ -60,6 +61,7 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
       source: "patchmill",
     },
     { name: "module-size", source: "patchmill" },
+    { name: PATCHMILL_VISUAL_EVIDENCE_SKILL, source: "patchmill" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
@@ -90,11 +92,15 @@ export function projectSkillPath(
 
 export function buildRecommendedProjectSkillConfig(
   skillDir = DEFAULT_PROJECT_SKILL_DIR,
-): Pick<PatchmillSkillsConfig, "triage" | "planning" | "implementation"> {
+): Pick<
+  PatchmillSkillsConfig,
+  "triage" | "planning" | "implementation" | "visualEvidence"
+> {
   return {
     triage: projectSkillPath("patchmill-issue-triage", skillDir),
     planning: projectSkillPath("writing-plans", skillDir),
     implementation: projectSkillPath("subagent-driven-development", skillDir),
+    visualEvidence: projectSkillPath(PATCHMILL_VISUAL_EVIDENCE_SKILL, skillDir),
   };
 }
 

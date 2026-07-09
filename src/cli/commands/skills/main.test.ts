@@ -5,7 +5,7 @@ import { HELP_TEXT, runSkills } from "./main.ts";
 const updatedResult = {
   status: "updated" as const,
   fromVersion: "2026.04",
-  toVersion: "2026.05",
+  toVersion: "2026.07",
   updatedFiles: 14,
   removedFiles: 2,
 };
@@ -51,7 +51,7 @@ test("runSkills updates project-local skills", async () => {
 
   assert.deepEqual(calls, ["/repo"]);
   assert.deepEqual(stdout, [
-    "Updated Patchmill skill pack 2026.04 -> 2026.05.",
+    "Updated Patchmill skill pack 2026.04 -> 2026.07.",
     "Updated 14 files, removed 2 obsolete files.",
     "Run git diff to review changes.",
   ]);
@@ -70,7 +70,7 @@ test("runSkills reports already current packs", async () => {
       },
       updateProjectSkills: async () => ({
         status: "up-to-date",
-        version: "2026.05",
+        version: "2026.07",
       }),
     }),
     0,

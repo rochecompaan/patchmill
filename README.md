@@ -196,7 +196,8 @@ workflow looks like this:
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
-    "implementation": ".patchmill/skills/subagent-driven-development"
+    "implementation": ".patchmill/skills/subagent-driven-development",
+    "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   },
   "paths": {
     "plansDir": "docs/plans",
@@ -218,6 +219,11 @@ The default skills keep the workflow small and explicit:
   changes.
 - `.patchmill/skills/subagent-driven-development` executes approved plans with
   Superpowers-style worker/reviewer handoffs.
+- `.patchmill/skills/patchmill-visual-evidence` captures Playwright screenshot
+  evidence for visible UI changes and teaches the implementation agent to return
+  Patchmill's `visualEvidence` final JSON entries. Patchmill does not bundle
+  Playwright; the target project must provide `@playwright/test` or approved
+  screenshot tooling.
 - `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` is also
   installed as an opt-in implementation skill for repositories that want the
   same task-by-task subagent workflow plus final full-worktree Codex and
@@ -229,8 +235,9 @@ The default skills keep the workflow small and explicit:
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
 `tea` and `github-gh` for GitHub through `gh`.
 
-Customize `skills` when your repository needs different procedures. Optional
-skill hooks include `toolchain`, `review`, `visualEvidence`, and `landing`; see
+Customize `skills` when your repository needs different procedures. Patchmill
+configures `visualEvidence` by default for visible UI changes; optional hooks
+include `toolchain`, `review`, and `landing`. See
 [skills configuration](docs/skills.md) for details and
 [configuration examples](docs/configuration.md) for a fuller
 `patchmill.config.json`.

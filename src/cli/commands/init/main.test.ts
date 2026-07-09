@@ -9,12 +9,14 @@ const PROJECT_LOCAL_SKILLS = {
   triage: ".patchmill/skills/patchmill-issue-triage",
   planning: ".patchmill/skills/writing-plans",
   implementation: ".patchmill/skills/subagent-driven-development",
+  visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
 };
 
 const GLOBAL_SKILLS = {
   triage: "patchmill-issue-triage",
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
+  visualEvidence: "patchmill-visual-evidence",
 };
 
 async function tempRepo(): Promise<string> {
@@ -114,6 +116,25 @@ test("runInit installs project-local skills by default", async () => {
       "skills",
       "subagent-driven-development",
       "SKILL.md",
+    ),
+  );
+  await access(
+    join(
+      repoRoot,
+      ".patchmill",
+      "skills",
+      "patchmill-visual-evidence",
+      "SKILL.md",
+    ),
+  );
+  await access(
+    join(
+      repoRoot,
+      ".patchmill",
+      "skills",
+      "patchmill-visual-evidence",
+      "scripts",
+      "capture-visual-evidence.cjs",
     ),
   );
   await access(
@@ -266,6 +287,7 @@ test("runInit --skills path validates existing local skill directory", async () 
     triage: "vendor/skills/patchmill-issue-triage",
     planning: "vendor/skills/writing-plans",
     implementation: "vendor/skills/subagent-driven-development",
+    visualEvidence: "vendor/skills/patchmill-visual-evidence",
   };
 
   assert.equal(

@@ -18,6 +18,7 @@ import {
   buildSkillPackMetadata,
   hashText,
 } from "../../../workflow/skill-pack.ts";
+import { bundledVisualEvidenceSkillPath } from "../../../workflow/skills.ts";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { JsonlProgressReporter } from "./progress.ts";
@@ -6670,6 +6671,7 @@ test("runOneIssue resolves implementation skills from the config repo root witho
           "subagent-driven-development",
           "SKILL.md",
         ),
+        bundledVisualEvidenceSkillPath(),
       ]);
       return {
         code: 0,

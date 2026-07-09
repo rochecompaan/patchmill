@@ -20,6 +20,8 @@ export type SkillInvocationResolution = {
 export const BUNDLED_TRIAGE_SKILL_REFERENCE = "patchmill:bundled-issue-triage";
 export const BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE =
   "patchmill:bundled-artifact-extraction";
+export const BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE =
+  "patchmill:bundled-visual-evidence";
 
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
 const SKILL_NAMESPACE_PATTERN = /^[a-z0-9-]+:.+$/iu;
@@ -54,6 +56,10 @@ export function bundledTriageSkillPath(): string {
 
 export function bundledArtifactExtractionSkillPath(): string {
   return bundledSkillPath("patchmill-artifact-extraction");
+}
+
+export function bundledVisualEvidenceSkillPath(): string {
+  return bundledSkillPath("patchmill-visual-evidence");
 }
 
 export function isNamespaceStyleSkill(skill: string): boolean {
@@ -134,6 +140,9 @@ export function resolveConfiguredSkillInvocation(
     }
     if (skill === BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE) {
       return [bundledArtifactExtractionSkillPath()];
+    }
+    if (skill === BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE) {
+      return [bundledVisualEvidenceSkillPath()];
     }
     if (!isPathLikeSkill(skill)) return [];
     return [resolvePathLikeSkillPath(skill, repoRoot)];

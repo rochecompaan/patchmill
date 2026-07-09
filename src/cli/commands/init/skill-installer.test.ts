@@ -346,6 +346,52 @@ test("installProjectSkills installs module-size from the recommended pack", asyn
   );
 });
 
+test("installProjectSkills installs the default Patchmill visual evidence skill", async () => {
+  const repoRoot = await tempRoot("patchmill-install-repo-");
+
+  const result = await installProjectSkills({
+    repoRoot,
+    installedAt: "2026-06-13T00:00:00.000Z",
+  });
+
+  assert.equal(
+    result.installedSkills.includes(
+      ".patchmill/skills/patchmill-visual-evidence",
+    ),
+    true,
+  );
+  const skill = await readFile(
+    join(
+      repoRoot,
+      ".patchmill",
+      "skills",
+      "patchmill-visual-evidence",
+      "SKILL.md",
+    ),
+    "utf8",
+  );
+  assert.match(skill, /^---\nname: patchmill-visual-evidence\n/mu);
+  assert.match(skill, /final `pr-created` JSON/u);
+  assert.match(skill, /"visualEvidence"/u);
+  assert.doesNotMatch(skill, /Forgejo|Gitea|tea|Nix|nix/u);
+  const script = await readFile(
+    join(
+      repoRoot,
+      ".patchmill",
+      "skills",
+      "patchmill-visual-evidence",
+      "scripts",
+      "capture-visual-evidence.cjs",
+    ),
+    "utf8",
+  );
+  assert.match(script, /@playwright\/test/u);
+  assert.doesNotMatch(
+    script,
+    /NODE_PATH|command -v playwright|PLAYWRIGHT_BROWSERS_PATH|Nix|nix/u,
+  );
+});
+
 test("installProjectSkills makes copied skill pack owner-writable", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
   const patchmillSource = await tempRoot("patchmill-install-patchmill-");
@@ -653,6 +699,16 @@ test("validateExistingSkillDirectory returns local config for path mode", async 
     "project-skills/subagent-driven-development",
     implementationSkill,
   );
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-visual-evidence",
+    `---
+name: patchmill-visual-evidence
+description: Capture visual evidence.
+---
+# Visual Evidence
+`,
+  );
 
   assert.deepEqual(
     await validateExistingSkillDirectory(repoRoot, "project-skills"),
@@ -683,6 +739,16 @@ test("validateExistingSkillDirectory fails when SKILL.md is a directory", async 
     repoRoot,
     "project-skills/subagent-driven-development",
     implementationSkill,
+  );
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-visual-evidence",
+    `---
+name: patchmill-visual-evidence
+description: Capture visual evidence.
+---
+# Visual Evidence
+`,
   );
 
   await assert.rejects(

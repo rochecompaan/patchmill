@@ -31,7 +31,7 @@ Use the top-level `skills` key with a supported reference form (examples):
     "planning": ".patchmill/skills/writing-plans",
     "developmentEnvironment": ".patchmill/skills/development-environment",
     "implementation": ".patchmill/skills/subagent-driven-development",
-    "visualEvidence": "capturing-proof-screenshots"
+    "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   }
 }
 ```
@@ -69,10 +69,45 @@ Supported keys:
   issue `needs-info` questions.
 - `toolchain`: optional skill used before setup or validation commands.
 - `review`: optional skill used for explicit review passes.
-- `visualEvidence`: optional skill used when visible UI changes.
+- `visualEvidence`: default-configured skill used when visible UI changes. It
+  must capture screenshot files and make the implementation agent include
+  `visualEvidence` entries in the final `pr-created` JSON.
 - `landing`: optional skill used for direct-land versus PR decisions. It is
   required for direct squash-land eligibility; without it, Patchmill uses PR
   fallback even when direct land is enabled.
+
+## Visual evidence
+
+Patchmill's visual evidence skill is part of the implementation prompt, not a
+separate workflow stage. It does not return a standalone result. When an issue
+changes visible UI, the implementation agent must save screenshots in the issue
+worktree and include their metadata in the final `pr-created` JSON:
+
+```json
+"visualEvidence": [
+  {
+    "screenshotPath": ".tmp/issue-42-after.png",
+    "caption": "Visible UI state after the change",
+    "referencePaths": ["docs/screenshots/baseline.png"]
+  }
+]
+```
+
+`visualEvidence[].screenshotPath` is required and must point to a real `.png`,
+`.jpg`, `.jpeg`, `.gif`, or `.webp` file inside the worktree. `caption` should
+describe the proved UI state. `referencePaths` should list committed baseline
+screenshots used for comparison when available. If no visible UI changed, omit
+`visualEvidence`.
+
+The bundled `.patchmill/skills/patchmill-visual-evidence` skill uses a helper
+script that loads `@playwright/test` from the target project. Patchmill does not
+bundle Playwright or install browser dependencies. If the project does not
+already provide Playwright, the implementation agent should use approved project
+screenshot tooling or ask for a setup decision before adding a dependency.
+
+For `pr-created` results, Patchmill uploads/comments visual evidence after the
+implementation result when the host uploader is configured. The skill should not
+ask the implementation agent to upload or comment manually.
 
 ## Development environment
 
@@ -98,9 +133,10 @@ infrastructure, credential, or operator problems.
 `--skills` mode, the default pack is not installed.
 
 The project-local implementation skill configured by default is
-`.patchmill/skills/subagent-driven-development`. The recommended skill pack also
-installs two opt-in alternatives that add final full-worktree review loops using
-Pi `reviewer` subagents:
+`.patchmill/skills/subagent-driven-development`, and the visual evidence skill
+configured by default is `.patchmill/skills/patchmill-visual-evidence`. The
+recommended skill pack also installs two opt-in alternatives that add final
+full-worktree review loops using Pi `reviewer` subagents:
 
 - `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` composes the
   Superpowers subagent-driven-development workflow, including fresh worker and

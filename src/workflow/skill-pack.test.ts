@@ -31,12 +31,13 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
     triage: ".patchmill/skills/patchmill-issue-triage",
     planning: ".patchmill/skills/writing-plans",
     implementation: ".patchmill/skills/subagent-driven-development",
+    visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
   });
 });
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.05");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07");
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.source, {
     type: "github-release",
     repository: "obra/superpowers",
@@ -55,6 +56,7 @@ test("default pack records pinned external source", () => {
       source: "patchmill",
     },
     { name: "module-size", source: "patchmill" },
+    { name: "patchmill-visual-evidence", source: "patchmill" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
@@ -107,7 +109,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.05",
+      version: "2026.07",
       source: {
         type: "github-release",
         repository: "obra/superpowers",

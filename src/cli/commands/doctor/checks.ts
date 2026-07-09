@@ -23,6 +23,7 @@ import {
   PATCHMILL_SKILL_KEYS,
   bundledArtifactExtractionSkillPath,
   bundledTriageSkillPath,
+  bundledVisualEvidenceSkillPath,
   isPathLikeSkill,
   resolveConfiguredSkillInvocation,
   resolvePathLikeSkillPath,
@@ -396,6 +397,17 @@ async function checkSkills(
           key,
           skill,
           bundledArtifactExtractionSkillPath(),
+        );
+      }
+
+      if (
+        key === "visualEvidence" &&
+        skill === DEFAULT_PATCHMILL_SKILLS.visualEvidence
+      ) {
+        return await verifyBundledSkill(
+          key,
+          skill,
+          bundledVisualEvidenceSkillPath(),
         );
       }
 
