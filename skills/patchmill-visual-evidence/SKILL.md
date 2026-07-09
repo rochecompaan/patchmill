@@ -11,7 +11,8 @@ description:
 
 Visual evidence is a Patchmill handoff artifact. Capture screenshots from the
 approved running app, save them in the issue worktree, and return structured
-metadata so Patchmill can upload and comment on the PR.
+metadata so Patchmill can attach the evidence when the configured provider
+supports visual-evidence uploads.
 
 ## Patchmill Contract
 
@@ -38,8 +39,9 @@ Rules:
 - `referencePaths` should list committed baseline/reference screenshots used for
   comparison when available.
 - Omit `visualEvidence` when the issue does not change visible UI.
-- Do not upload or comment on PR evidence manually; Patchmill handles that after
-  the final result.
+- Do not upload or comment on PR evidence manually unless project/user
+  instructions explicitly require it; return `visualEvidence` so supported
+  Patchmill provider uploaders can attach it after the final result.
 
 ## Required Pattern
 
@@ -74,31 +76,35 @@ Options:
 | ------------------- | -------------------------------------------------------------------- |
 | Readiness check     | `--ready-command 'just tilt-ready'`                                  |
 | Viewport            | `--viewport 1366x900`                                                |
+| Page load state     | `--load-state domcontentloaded` (`load` or `networkidle` if needed)  |
 | Visible text        | `--wait-text 'Changed label'` repeated as needed                     |
 | Selector            | `--wait-selector '[data-testid="changed-panel"]'` repeated as needed |
-| Login redirect      | `--login-username USER --login-password PASS`                        |
+| Auth storage state  | `--storage-state playwright/.auth/user.json`                         |
+| Login redirect      | `--login-username-env USER_VAR --login-password-env PASSWORD_VAR`    |
 | Viewport screenshot | `--no-full-page`                                                     |
 
 The helper intentionally does not install or bundle Playwright. If
 `@playwright/test` is unavailable, use the project's approved screenshot tooling
-or ask for a project setup decision before adding dependencies.
+or ask for a project setup decision before adding dependencies. Do not pass
+passwords as command-line arguments; use storage state or environment-variable
+options so secrets do not appear in process listings or command logs.
 
 ## Common Mistakes
 
-| Mistake                               | Fix                                                           |
-| ------------------------------------- | ------------------------------------------------------------- |
-| Screenshot from manual browser/window | Use Playwright and wait for proof text/selectors              |
-| Wrong/stale server instance           | Run the approved readiness command immediately before capture |
-| Screenshot saved outside the worktree | Save under `.tmp/` inside the issue worktree                  |
-| Manual PR upload/comment              | Return `visualEvidence`; Patchmill uploads/comments           |
-| Missing final JSON evidence           | Add `visualEvidence` to the final `pr-created` result         |
-| Treating screenshot as validation     | Still run required validation commands separately             |
+| Mistake                               | Fix                                                             |
+| ------------------------------------- | --------------------------------------------------------------- |
+| Screenshot from manual browser/window | Use Playwright and wait for proof text/selectors                |
+| Wrong/stale server instance           | Run the approved readiness command immediately before capture   |
+| Screenshot saved outside the worktree | Save under `.tmp/` inside the issue worktree                    |
+| Manual PR upload/comment              | Return `visualEvidence`; supported provider uploaders attach it |
+| Missing final JSON evidence           | Add `visualEvidence` to the final `pr-created` result           |
+| Treating screenshot as validation     | Still run required validation commands separately               |
 
 ## Red Flags
 
 Stop if you are about to write:
 
 - “I’ll just take a quick screenshot manually.”
-- “I’ll upload the screenshot to the PR myself.”
+- “I’ll upload the screenshot to the PR myself without explicit instruction.”
 - “The screenshot exists, so Patchmill will find it automatically.”
 - “The UI changed, but I’ll omit `visualEvidence`.”

@@ -4,18 +4,22 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { createRequire } = require("node:module");
 
+const LOAD_STATES = new Set(["domcontentloaded", "load", "networkidle"]);
+
 function usage() {
   console.error(`Usage: capture-visual-evidence.cjs --url URL --output FILE [options]
 
 Options:
   --ready-command CMD        Command that must pass before capture
   --viewport WIDTHxHEIGHT    Browser viewport (default: 1366x900)
+  --load-state STATE         Navigation wait state: domcontentloaded, load, or networkidle (default: domcontentloaded)
   --wait-text TEXT           Wait for visible text; may be repeated
   --wait-selector SELECTOR   Wait for selector; may be repeated
-  --login-username USER      Username for login redirects
-  --login-password PASS      Password for login redirects
+  --storage-state FILE       Playwright storage state for authenticated sessions
+  --login-username-env VAR   Environment variable containing login username
+  --login-password-env VAR   Environment variable containing login password
   --username-label LABEL     Username textbox accessible name (default: Username)
-  --password-label LABEL     Password textbox accessible name (default: Password)
+  --password-label LABEL     Password field accessible label (default: Password)
   --submit-name NAME         Login button accessible name (default: Sign In)
   --login-url-contains TEXT  Login URL marker (default: /login)
   --no-full-page             Capture viewport only
@@ -28,6 +32,7 @@ The script uses @playwright/test from the project. It does not install or bundle
 function parseArgs(argv) {
   const opts = {
     viewport: "1366x900",
+    loadState: "domcontentloaded",
     waitText: [],
     waitSelector: [],
     usernameLabel: "Username",
@@ -59,18 +64,32 @@ function parseArgs(argv) {
       case "--viewport":
         opts.viewport = next();
         break;
+      case "--load-state":
+        opts.loadState = next();
+        break;
       case "--wait-text":
         opts.waitText.push(next());
         break;
       case "--wait-selector":
         opts.waitSelector.push(next());
         break;
+      case "--storage-state":
+        opts.storageState = next();
+        break;
+      case "--login-username-env":
+        opts.loginUsernameEnv = next();
+        break;
+      case "--login-password-env":
+        opts.loginPasswordEnv = next();
+        break;
       case "--login-username":
-        opts.loginUsername = next();
-        break;
+        throw new Error(
+          "unknown argument: --login-username; use --login-username-env VAR or --storage-state FILE",
+        );
       case "--login-password":
-        opts.loginPassword = next();
-        break;
+        throw new Error(
+          "unknown argument: --login-password; use --login-password-env VAR or --storage-state FILE",
+        );
       case "--username-label":
         opts.usernameLabel = next();
         break;
@@ -91,6 +110,15 @@ function parseArgs(argv) {
     }
   }
   return opts;
+}
+
+function readRequiredEnv(name) {
+  if (!name) return undefined;
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`environment variable ${name} is not set`);
+  }
+  return value;
 }
 
 function loadPlaywright() {
@@ -122,6 +150,11 @@ async function main() {
     usage();
     process.exit(2);
   }
+  if (!LOAD_STATES.has(opts.loadState)) {
+    throw new Error(
+      `invalid --load-state: ${opts.loadState}; expected domcontentloaded, load, or networkidle`,
+    );
+  }
 
   if (opts.readyCommand) {
     execFileSync("bash", ["-lc", opts.readyCommand], { stdio: "inherit" });
@@ -137,22 +170,26 @@ async function main() {
   fs.mkdirSync(path.dirname(opts.output), { recursive: true });
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage({ viewport: { width, height } });
-    await page.goto(opts.url, { waitUntil: "networkidle" });
+    const page = await browser.newPage({
+      viewport: { width, height },
+      ...(opts.storageState ? { storageState: opts.storageState } : {}),
+    });
+    await page.goto(opts.url, { waitUntil: opts.loadState });
 
     if (page.url().includes(opts.loginUrlContains)) {
-      if (!opts.loginUsername || !opts.loginPassword) {
+      if (!opts.loginUsernameEnv || !opts.loginPasswordEnv) {
         throw new Error(
-          `page is at login URL (${page.url()}); pass --login-username and --login-password`,
+          `page is at login URL (${page.url()}); pass --storage-state FILE or --login-username-env and --login-password-env`,
         );
       }
+      const loginUsername = readRequiredEnv(opts.loginUsernameEnv);
+      const loginPassword = readRequiredEnv(opts.loginPasswordEnv);
       await page
         .getByRole("textbox", { name: opts.usernameLabel })
-        .fill(opts.loginUsername);
-      await page.getByLabel(opts.passwordLabel).fill(opts.loginPassword);
+        .fill(loginUsername);
+      await page.getByLabel(opts.passwordLabel).fill(loginPassword);
       await page.getByRole("button", { name: opts.submitName }).click();
-      await page.waitForLoadState("networkidle").catch(() => {});
-      await page.goto(opts.url, { waitUntil: "networkidle" });
+      await page.goto(opts.url, { waitUntil: opts.loadState });
       if (page.url().includes(opts.loginUrlContains)) {
         throw new Error(
           `login did not complete; still at login URL (${page.url()}) after submitting credentials`,

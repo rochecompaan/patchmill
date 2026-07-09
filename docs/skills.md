@@ -105,9 +105,10 @@ bundle Playwright or install browser dependencies. If the project does not
 already provide Playwright, the implementation agent should use approved project
 screenshot tooling or ask for a setup decision before adding a dependency.
 
-For `pr-created` results, Patchmill uploads/comments visual evidence after the
-implementation result when the host uploader is configured. The skill should not
-ask the implementation agent to upload or comment manually.
+For `pr-created` results, Patchmill attaches visual evidence after the
+implementation result when the configured host provider supports a visual
+evidence uploader. The skill should not ask the implementation agent to upload
+or comment manually unless project/user instructions explicitly require it.
 
 ## Development environment
 
