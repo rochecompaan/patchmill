@@ -149,12 +149,15 @@ async function main() {
       await page
         .getByRole("textbox", { name: opts.usernameLabel })
         .fill(opts.loginUsername);
-      await page
-        .getByRole("textbox", { name: opts.passwordLabel })
-        .fill(opts.loginPassword);
+      await page.getByLabel(opts.passwordLabel).fill(opts.loginPassword);
       await page.getByRole("button", { name: opts.submitName }).click();
       await page.waitForLoadState("networkidle").catch(() => {});
       await page.goto(opts.url, { waitUntil: "networkidle" });
+      if (page.url().includes(opts.loginUrlContains)) {
+        throw new Error(
+          `login did not complete; still at login URL (${page.url()}) after submitting credentials`,
+        );
+      }
     }
 
     for (const selector of opts.waitSelector) {
