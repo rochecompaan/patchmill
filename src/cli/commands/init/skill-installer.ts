@@ -22,6 +22,7 @@ import {
   buildRecommendedProjectSkillConfig,
   buildSkillPackMetadata,
   projectSkillPath,
+  requiredSkillFiles,
   type SkillPackSkill,
 } from "../../../workflow/skill-pack.ts";
 import { bundledTriageSkillPath } from "../../../workflow/skills.ts";
@@ -123,6 +124,22 @@ export function comparePaths(a: string, b: string): number {
   return 0;
 }
 
+async function assertRequiredSkillFiles(
+  skillName: string,
+  skillDir: string,
+  displayRoot: string,
+  dependencies: SkillInstallerDependencies = defaultDependencies,
+): Promise<void> {
+  for (const relativeFile of requiredSkillFiles(skillName)) {
+    const displayPath = `${displayRoot}/${relativeFile}`;
+    await assertSkillFile(
+      join(skillDir, relativeFile),
+      displayPath,
+      dependencies,
+    );
+  }
+}
+
 export async function hashFile(
   path: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
@@ -217,9 +234,10 @@ export async function installProjectSkills(options: {
 
   for (const skill of packSkills) {
     const sourceDir = join(sourceRootFor(skill, sourceRoots), skill.name);
-    await assertSkillFile(
-      join(sourceDir, "SKILL.md"),
-      `${skill.name}/SKILL.md`,
+    await assertRequiredSkillFiles(
+      skill.name,
+      sourceDir,
+      skill.name,
       dependencies,
     );
 
@@ -334,14 +352,23 @@ export async function validateExistingSkillDirectory(
   >
 > {
   const skillConfig = buildRecommendedProjectSkillConfig(skillDir);
-  for (const skillPath of [
-    skillConfig.triage,
-    skillConfig.planning,
-    skillConfig.implementation,
-    skillConfig.visualEvidence,
+  for (const { name, skillPath } of [
+    { name: "patchmill-issue-triage", skillPath: skillConfig.triage },
+    { name: "writing-plans", skillPath: skillConfig.planning },
+    {
+      name: "subagent-driven-development",
+      skillPath: skillConfig.implementation,
+    },
+    {
+      name: "patchmill-visual-evidence",
+      skillPath: skillConfig.visualEvidence,
+    },
   ]) {
-    const displayPath = `${skillPath}/SKILL.md`;
-    await assertSkillFile(resolve(repoRoot, displayPath), displayPath);
+    await assertRequiredSkillFiles(
+      name,
+      resolve(repoRoot, skillPath),
+      skillPath,
+    );
   }
 
   return skillConfig;

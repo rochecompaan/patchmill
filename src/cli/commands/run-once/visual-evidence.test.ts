@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR,
-  validateVisualEvidenceReferences,
-} from "./visual-evidence.ts";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
 import type { AgentIssueVisualEvidence, CommandRunner } from "./types.ts";
+
+const DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR =
+  DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence
+    .referenceScreenshotPaths[0];
 
 const MINIMAL_PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,

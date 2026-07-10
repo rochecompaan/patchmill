@@ -40,6 +40,17 @@ export type SkillPackMetadataFile = {
   files: Array<{ path: string; sha256: string }>;
 };
 
+const REQUIRED_SKILL_FILES: Record<string, string[]> = {
+  [PATCHMILL_VISUAL_EVIDENCE_SKILL]: [
+    "SKILL.md",
+    "scripts/capture-visual-evidence.cjs",
+  ],
+};
+
+export function requiredSkillFiles(skillName: string): string[] {
+  return REQUIRED_SKILL_FILES[skillName] ?? ["SKILL.md"];
+}
+
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
   version: "2026.07",

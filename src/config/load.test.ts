@@ -317,6 +317,28 @@ test("loadPatchmillConfig clones configured visual evidence fields for each load
   });
 });
 
+test("loadPatchmillConfig normalizes empty visual evidence reference paths", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({
+      projectPolicy: {
+        visualEvidence: {
+          referenceScreenshotPaths: ["", "  "],
+        },
+      },
+    }),
+  );
+
+  const config = await loadPatchmillConfig(dir, {}, []);
+
+  assert.deepEqual(
+    config.projectPolicy.visualEvidence.referenceScreenshotPaths,
+    DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence
+      .referenceScreenshotPaths,
+  );
+});
+
 test("loadPatchmillConfig parses top-level skills config", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-skills-config-"));
   await writeFile(

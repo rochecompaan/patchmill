@@ -2,13 +2,11 @@ import { readFile, realpath } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import type { AgentIssueVisualEvidence, CommandRunner } from "./types.ts";
 
-export const DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR = "docs/screenshots";
-
 export type ValidateVisualEvidenceReferencesInput = {
   repoRoot: string;
   evidence: AgentIssueVisualEvidence[] | undefined;
   runner: CommandRunner;
-  referenceScreenshotPaths?: string[];
+  referenceScreenshotPaths: string[];
   onProgress?: (message: string) => void | Promise<void>;
 };
 
@@ -32,11 +30,8 @@ function normalizeGitPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/^\.\//u, "").replace(/\/+$/u, "");
 }
 
-function configuredReferencePaths(paths: string[] | undefined): string[] {
-  const configured = paths?.filter((path) => path.trim().length > 0) ?? [];
-  return configured.length > 0
-    ? configured.map(normalizeGitPath)
-    : [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR];
+function configuredReferencePaths(paths: string[]): string[] {
+  return paths.map(normalizeGitPath);
 }
 
 function isWithinRoot(rootPath: string, candidatePath: string): boolean {

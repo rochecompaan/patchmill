@@ -111,6 +111,13 @@ function projectLocalMetadataSkillPath(skillName: string): string {
   return `${DEFAULT_PROJECT_SKILL_DIR}/${skillName}/SKILL.md`;
 }
 
+function projectLocalMetadataSkillFilePath(
+  skillName: string,
+  relativeFile: string,
+): string {
+  return `${DEFAULT_PROJECT_SKILL_DIR}/${skillName}/${relativeFile}`;
+}
+
 const visualEvidenceSkill = skillDocument(
   "patchmill-visual-evidence",
   "Capture visual evidence.",
@@ -119,21 +126,50 @@ const visualEvidenceSkill = skillDocument(
 async function writeProjectLocalVisualEvidenceSkill(
   repoRoot: string,
 ): Promise<string> {
-  return writeProjectLocalSkill(
+  const skillPath = await writeProjectLocalSkill(
     repoRoot,
     "patchmill-visual-evidence",
     visualEvidenceSkill,
   );
+  await mkdir(
+    join(
+      repoRoot,
+      DEFAULT_PROJECT_SKILL_DIR,
+      "patchmill-visual-evidence",
+      "scripts",
+    ),
+    { recursive: true },
+  );
+  await writeFile(
+    join(
+      repoRoot,
+      DEFAULT_PROJECT_SKILL_DIR,
+      "patchmill-visual-evidence",
+      "scripts",
+      "capture-visual-evidence.cjs",
+    ),
+    "#!/usr/bin/env node\n",
+  );
+  return skillPath;
 }
 
-function projectLocalVisualEvidenceMetadata(): {
+function projectLocalVisualEvidenceMetadata(): Array<{
   path: string;
   sha256: string;
-} {
-  return {
-    path: projectLocalMetadataSkillPath("patchmill-visual-evidence"),
-    sha256: hashText(visualEvidenceSkill),
-  };
+}> {
+  return [
+    {
+      path: projectLocalMetadataSkillPath("patchmill-visual-evidence"),
+      sha256: hashText(visualEvidenceSkill),
+    },
+    {
+      path: projectLocalMetadataSkillFilePath(
+        "patchmill-visual-evidence",
+        "scripts/capture-visual-evidence.cjs",
+      ),
+      sha256: hashText("#!/usr/bin/env node\n"),
+    },
+  ];
 }
 
 function recommendedProjectLocalSmokePaths(repoRoot: string): string[] {
@@ -762,6 +798,128 @@ test("runDoctorChecks fails when a local skill frontmatter is malformed", async 
   assert.match(skills?.message ?? "", /missing description/);
 });
 
+test("runDoctorChecks fails when project-local visual evidence helper is missing", async () => {
+  const repoRoot = await tempRepo();
+  const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
+  const planningSkill = skillDocument("writing-plans", "Write plans.");
+  const implementationSkill = skillDocument(
+    "subagent-driven-development",
+    "Execute plans.",
+  );
+
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(repoRoot, "patchmill-issue-triage", triageSkill);
+  await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    implementationSkill,
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "patchmill-visual-evidence",
+    visualEvidenceSkill,
+  );
+
+  const results = await runDoctorChecks(
+    runnerFrom(successMocks(REQUIRED_LABELS)),
+    {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    },
+  );
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*patchmill-visual-evidence.*scripts.*capture-visual-evidence\.cjs/,
+  );
+});
+
+test("runDoctorChecks fails when a renamed visual evidence skill lacks the helper", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      visualEvidence: "custom-skills/screenshots",
+    },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeSkillFile(
+    join(repoRoot, "custom-skills"),
+    "screenshots",
+    visualEvidenceSkill,
+  );
+
+  const results = await runDoctorChecks(
+    runnerFrom(successMocks(REQUIRED_LABELS)),
+    {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    },
+  );
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*custom-skills.*screenshots.*scripts.*capture-visual-evidence\.cjs/,
+  );
+});
+
+test("runDoctorChecks fails when project-local visual evidence helper is a directory", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(
+    repoRoot,
+    "patchmill-issue-triage",
+    skillDocument("patchmill-issue-triage", "Triage issues."),
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "writing-plans",
+    skillDocument("writing-plans", "Write plans."),
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    skillDocument("subagent-driven-development", "Execute plans."),
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "patchmill-visual-evidence",
+    visualEvidenceSkill,
+  );
+  await mkdir(
+    join(
+      repoRoot,
+      DEFAULT_PROJECT_SKILL_DIR,
+      "patchmill-visual-evidence",
+      "scripts",
+      "capture-visual-evidence.cjs",
+    ),
+    { recursive: true },
+  );
+
+  const results = await runDoctorChecks(
+    runnerFrom(successMocks(REQUIRED_LABELS)),
+    {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    },
+  );
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*patchmill-visual-evidence.*scripts.*capture-visual-evidence\.cjs/,
+  );
+});
+
 test("runDoctorChecks ignores unused .patchmill skills when config uses global/named skills", async () => {
   const repoRoot = await tempRepo();
   await writeConfig(repoRoot, {
@@ -1004,7 +1162,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
       path: projectLocalMetadataSkillPath("subagent-driven-development"),
       sha256: hashText(implementationSkill),
     },
-    projectLocalVisualEvidenceMetadata(),
+    ...projectLocalVisualEvidenceMetadata(),
   ]);
 
   const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);
@@ -1060,7 +1218,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
       path: projectLocalMetadataSkillPath("subagent-driven-development"),
       sha256: hashText(implementationSkill),
     },
-    projectLocalVisualEvidenceMetadata(),
+    ...projectLocalVisualEvidenceMetadata(),
   ]);
 
   const calls: string[] = [];
@@ -1138,7 +1296,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
       path: projectLocalMetadataSkillPath("subagent-driven-development"),
       sha256: hashText(implementationSkill),
     },
-    projectLocalVisualEvidenceMetadata(),
+    ...projectLocalVisualEvidenceMetadata(),
   ]);
 
   const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);

@@ -15,8 +15,8 @@ export type PatchmillDirectLandPolicy = {
 };
 
 export type PatchmillVisualEvidencePolicy = {
-  referenceScreenshotPaths?: string[];
-  prEvidenceExample?: {
+  referenceScreenshotPaths: string[];
+  prEvidenceExample: {
     screenshotPath: string;
     caption?: string;
     referencePaths?: string[];

@@ -708,11 +708,42 @@ description: Capture visual evidence.
 ---
 # Visual Evidence
 `,
+    { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
   );
 
   assert.deepEqual(
     await validateExistingSkillDirectory(repoRoot, "project-skills"),
     buildRecommendedProjectSkillConfig("project-skills"),
+  );
+});
+
+test("validateExistingSkillDirectory fails when visual evidence helper script is missing", async () => {
+  const repoRoot = await tempRoot("patchmill-install-repo-");
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-issue-triage",
+    triageSkill,
+  );
+  await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
+  await writeSkill(
+    repoRoot,
+    "project-skills/subagent-driven-development",
+    implementationSkill,
+  );
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-visual-evidence",
+    `---
+name: patchmill-visual-evidence
+description: Capture visual evidence.
+---
+# Visual Evidence
+`,
+  );
+
+  await assert.rejects(
+    validateExistingSkillDirectory(repoRoot, "project-skills"),
+    /Missing required skill file: project-skills\/patchmill-visual-evidence\/scripts\/capture-visual-evidence\.cjs/,
   );
 });
 
@@ -749,6 +780,7 @@ description: Capture visual evidence.
 ---
 # Visual Evidence
 `,
+    { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
   );
 
   await assert.rejects(

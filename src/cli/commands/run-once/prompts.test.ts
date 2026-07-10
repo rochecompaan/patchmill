@@ -539,7 +539,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   );
   assert.match(
     prompt,
-    /Return structured `visualEvidence` entries for committed reference screenshots like this example/,
+    /When visible UI changed, add a `visualEvidence` field to the final `pr-created` JSON with committed reference screenshots like this example/,
   );
   assert.match(
     prompt,
@@ -571,6 +571,10 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /"status": "pr-created"/);
   assert.match(prompt, /"prUrl": "<pull request URL>"/);
   assert.match(prompt, /"visualEvidence": \[/);
+  assert.doesNotMatch(
+    prompt,
+    /Successful final response for human-review PR fallback:[\s\S]*"visualEvidence": \[/,
+  );
   assert.match(prompt, /"reviewSummary": "short reviewer\/fix summary"/);
   assert.doesNotMatch(prompt, /If eligible for direct squash-land:/);
   assert.doesNotMatch(
@@ -802,7 +806,11 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
   );
   assert.match(
     prompt,
-    /Successful final response for human-review PR fallback:[\s\S]*"visualEvidence": \[[\s\S]*"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/,
+    /When visible UI changed, add a `visualEvidence` field[\s\S]*"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/,
+  );
+  assert.doesNotMatch(
+    prompt,
+    /Successful final response for human-review PR fallback:[\s\S]*"visualEvidence": \[/,
   );
   assert.doesNotMatch(
     prompt,
