@@ -1,10 +1,10 @@
 import type { IssueHostProvider } from "../../../host/types.ts";
 import {
-  extractPublishedArtifactResult,
+  extractPublishedArtifactsFromIssue,
   issueHasPublishedArtifactMarker,
-} from "../set-artifact/published-artifacts.ts";
+} from "../../../workflow/artifacts/published-artifacts.ts";
 import {
-  validateExtractedArtifactSources,
+  validateIssueArtifactSources,
   type ResolvedIssueArtifactSources,
 } from "./artifact-sources.ts";
 import type {
@@ -13,12 +13,12 @@ import type {
   IssueSummary,
 } from "./types.ts";
 
-export type ArtifactExtractionStageResult = {
+export type ArtifactSourceStageResult = {
   issue: IssueSummary;
   resolvedArtifacts: ResolvedIssueArtifactSources;
 };
 
-type ArtifactExtractionStageOptions = {
+type ArtifactSourceStageOptions = {
   host: IssueHostProvider;
   config: AgentIssueConfig;
   issue: IssueSummary;
@@ -34,8 +34,8 @@ type ArtifactExtractionStageOptions = {
   runStep: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
 };
 
-async function hydrateIssueForArtifactExtraction(
-  options: ArtifactExtractionStageOptions,
+async function hydrateIssueForArtifactSources(
+  options: ArtifactSourceStageOptions,
 ): Promise<IssueSummary> {
   await options.progress(
     "info",
@@ -48,11 +48,11 @@ async function hydrateIssueForArtifactExtraction(
   return hydrated[0] ?? options.issue;
 }
 
-export async function runArtifactExtractionStage(
-  options: ArtifactExtractionStageOptions,
-): Promise<ArtifactExtractionStageResult> {
-  const issue = await hydrateIssueForArtifactExtraction(options);
-  const extraction = await options.runStep(
+export async function runArtifactSourceStage(
+  options: ArtifactSourceStageOptions,
+): Promise<ArtifactSourceStageResult> {
+  const issue = await hydrateIssueForArtifactSources(options);
+  const artifacts = await options.runStep(
     "extract issue artifact sources",
     async () => {
       await options.progress(
@@ -64,19 +64,18 @@ export async function runArtifactExtractionStage(
       const trustedAuthors = issueHasPublishedArtifactMarker(issue)
         ? await options.host.trustedTriageCommentAuthors()
         : [];
-      return extractPublishedArtifactResult(issue, { trustedAuthors });
+      return extractPublishedArtifactsFromIssue(issue, { trustedAuthors });
     },
   );
 
   return {
     issue,
-    resolvedArtifacts: await validateExtractedArtifactSources({
+    resolvedArtifacts: await validateIssueArtifactSources({
       issue,
       repoRoot: options.config.repoRoot,
       specsDir: options.config.specsDir,
       plansDir: options.config.plansDir,
-      now: options.now,
-      extraction,
+      artifacts,
     }),
   };
 }

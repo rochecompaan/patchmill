@@ -23,7 +23,7 @@ import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { JsonlProgressReporter } from "./progress.ts";
 import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
-import { formatPublishedArtifactComment } from "../set-artifact/published-artifacts.ts";
+import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,

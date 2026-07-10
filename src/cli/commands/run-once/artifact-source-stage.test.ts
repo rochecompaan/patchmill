@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { formatPublishedArtifactComment } from "../set-artifact/published-artifacts.ts";
-import { runArtifactExtractionStage } from "./artifact-source-stage.ts";
+import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
+import { runArtifactSourceStage } from "./artifact-source-stage.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import type { AgentIssueConfig, IssueSummary } from "./types.ts";
 
@@ -91,12 +91,12 @@ const issue: IssueSummary = {
   comments: [],
 };
 
-test("runArtifactExtractionStage only reads deterministic artifacts and does not call Pi", async () => {
+test("runArtifactSourceStage only reads deterministic artifacts and does not call Pi", async () => {
   const config = await makeConfig();
   const steps: string[] = [];
   const progressMessages: string[] = [];
 
-  const result = await runArtifactExtractionStage({
+  const result = await runArtifactSourceStage({
     host,
     config,
     issue,
@@ -118,7 +118,7 @@ test("runArtifactExtractionStage only reads deterministic artifacts and does not
   ]);
 });
 
-test("runArtifactExtractionStage trusts only host-resolved artifact publishers", async () => {
+test("runArtifactSourceStage trusts only host-resolved artifact publishers", async () => {
   const config = await makeConfig();
   let trustedAuthorsResolved = false;
   const artifactHost: IssueHostProvider = {
@@ -139,7 +139,7 @@ test("runArtifactExtractionStage trusts only host-resolved artifact publishers",
     content: "# Trusted Spec",
   });
 
-  const result = await runArtifactExtractionStage({
+  const result = await runArtifactSourceStage({
     host: artifactHost,
     config,
     issue: {

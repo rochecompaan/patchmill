@@ -11,7 +11,7 @@ import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "../triage/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
-import { runArtifactExtractionStage } from "./artifact-source-stage.ts";
+import { runArtifactSourceStage } from "./artifact-source-stage.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
@@ -989,7 +989,7 @@ export async function runOneIssue(
     step: { type: "run-start", issueNumber: issue.number, title: issue.title },
   });
   await emitSimpleStep(options, issue.number, "select issue");
-  const artifactSources = await runArtifactExtractionStage({
+  const artifactSources = await runArtifactSourceStage({
     host,
     config,
     issue,
@@ -1145,8 +1145,7 @@ export async function runOneIssue(
     }
 
     const artifactWorktree =
-      resolvedArtifacts.spec?.sourceType === "inline" ||
-      resolvedArtifacts.plan?.sourceType === "inline"
+      resolvedArtifacts.spec || resolvedArtifacts.plan
         ? await ensureIssueWorkspace()
         : undefined;
     const artifactRepoRoot = artifactWorktree

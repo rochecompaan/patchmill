@@ -5,9 +5,11 @@ import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
+import {
+  formatPublishedArtifactComment,
+  type WorkflowArtifactKind,
+} from "../../../workflow/artifacts/published-artifacts.ts";
 import { createCommandRunner } from "../triage/command.ts";
-import { formatPublishedArtifactComment } from "./published-artifacts.ts";
-import type { ArtifactKind } from "../run-once/artifact-source-types.ts";
 
 export type SetArtifactOutput = {
   stdout: (line: string) => void;
@@ -37,15 +39,15 @@ const DEFAULT_OUTPUT: SetArtifactOutput = {
   stderr: (line) => console.error(line),
 };
 
-function artifactName(kind: ArtifactKind): string {
+function artifactName(kind: WorkflowArtifactKind): string {
   return kind === "spec" ? "spec" : "plan";
 }
 
-function artifactDescription(kind: ArtifactKind): string {
+function artifactDescription(kind: WorkflowArtifactKind): string {
   return kind === "spec" ? "spec" : "implementation plan";
 }
 
-export function helpText(kind: ArtifactKind): string {
+export function helpText(kind: WorkflowArtifactKind): string {
   const command = kind === "spec" ? "set-spec" : "set-plan";
   return `Usage:
   patchmill ${command} --issue <number> <path>
@@ -148,7 +150,7 @@ async function loadConfigForValidation(
 }
 
 export async function runSetArtifactCommand(
-  kind: ArtifactKind,
+  kind: WorkflowArtifactKind,
   args: string[],
   options: SetArtifactCommandOptions = {},
 ): Promise<number> {
@@ -199,7 +201,7 @@ export async function runSetArtifactCommand(
 }
 
 export function createMain(
-  kind: ArtifactKind,
+  kind: WorkflowArtifactKind,
 ): (args?: string[]) => Promise<number> {
   return async (args = process.argv.slice(2)): Promise<number> => {
     try {

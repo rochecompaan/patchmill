@@ -4,7 +4,7 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IssueSummary } from "./types.ts";
-import { validateExtractedArtifactSources } from "./artifact-sources.ts";
+import { validateIssueArtifactSources } from "./artifact-sources.ts";
 
 const issue: IssueSummary = {
   number: 65,
@@ -23,62 +23,28 @@ async function repoFixture() {
   return { repoRoot, specsDir, plansDir };
 }
 
-test("validateExtractedArtifactSources returns empty sources for none", async () => {
+test("validateIssueArtifactSources returns empty sources for no artifacts", async () => {
   const fixture = await repoFixture();
-  const resolved = await validateExtractedArtifactSources({
+  const resolved = await validateIssueArtifactSources({
     issue,
-    now: new Date("2026-07-04T12:00:00Z"),
-    extraction: { status: "none" },
+    artifacts: {},
     ...fixture,
   });
 
   assert.deepEqual(resolved, {});
 });
 
-test("validateExtractedArtifactSources assigns deterministic paths to inline sources", async () => {
+test("validateIssueArtifactSources preserves artifact paths inside artifact directories", async () => {
   const fixture = await repoFixture();
-  const issueWithInlinePlan = {
-    ...issue,
-    comments: [{ body: "# Plan\n- [ ] Build" }],
-  };
-
-  const resolved = await validateExtractedArtifactSources({
-    issue: issueWithInlinePlan,
-    now: new Date("2026-07-04T12:00:00Z"),
-    extraction: {
-      status: "resolved",
-      plan: {
-        kind: "plan",
-        type: "inline",
-        content: "# Plan\n- [ ] Build",
-        evidence: "Plan block",
-      },
-    },
-    ...fixture,
-  });
-
-  assert.equal(
-    resolved.plan?.path,
-    "docs/plans/2026-07-04-issue-65-resolve-provided-artifacts.md",
-  );
-  assert.match(resolved.plan?.content ?? "", /Build/);
-});
-
-test("validateExtractedArtifactSources preserves inline source paths inside artifact directories", async () => {
-  const fixture = await repoFixture();
-  const issueWithInlineSpec = {
+  const issueWithSpec = {
     ...issue,
     comments: [{ body: "# Spec\n\nUse the provided path." }],
   };
 
-  const resolved = await validateExtractedArtifactSources({
-    issue: issueWithInlineSpec,
-    now: new Date("2026-07-04T12:00:00Z"),
-    extraction: {
-      status: "resolved",
+  const resolved = await validateIssueArtifactSources({
+    issue: issueWithSpec,
+    artifacts: {
       spec: {
-        kind: "spec",
-        type: "inline",
         path: "docs/specs/custom.md",
         content: "# Spec\n\nUse the provided path.",
         evidence: "Published spec block",
@@ -88,20 +54,18 @@ test("validateExtractedArtifactSources preserves inline source paths inside arti
   });
 
   assert.equal(resolved.spec?.path, "docs/specs/custom.md");
+  assert.equal(resolved.spec?.content, "# Spec\n\nUse the provided path.");
 });
 
-test("validateExtractedArtifactSources rejects inline summaries that are not verbatim issue content", async () => {
+test("validateIssueArtifactSources rejects artifact summaries that are not verbatim issue content", async () => {
   const fixture = await repoFixture();
 
   await assert.rejects(
-    validateExtractedArtifactSources({
+    validateIssueArtifactSources({
       issue,
-      now: new Date("2026-07-04T12:00:00Z"),
-      extraction: {
-        status: "resolved",
+      artifacts: {
         spec: {
-          kind: "spec",
-          type: "inline",
+          path: "docs/specs/summary.md",
           content: "# Summary\n\nThis was paraphrased by a model.",
           evidence: "Spec-ish block",
         },
@@ -112,22 +76,18 @@ test("validateExtractedArtifactSources rejects inline summaries that are not ver
   );
 });
 
-test("validateExtractedArtifactSources rejects inline source paths outside artifact directories", async () => {
+test("validateIssueArtifactSources rejects artifact paths outside artifact directories", async () => {
   const fixture = await repoFixture();
-  const issueWithInlineSpec = {
+  const issueWithSpec = {
     ...issue,
     comments: [{ body: "# Spec\n\nUse the provided path." }],
   };
 
   await assert.rejects(
-    validateExtractedArtifactSources({
-      issue: issueWithInlineSpec,
-      now: new Date("2026-07-04T12:00:00Z"),
-      extraction: {
-        status: "resolved",
+    validateIssueArtifactSources({
+      issue: issueWithSpec,
+      artifacts: {
         spec: {
-          kind: "spec",
-          type: "inline",
           path: "docs/specs/../../outside.md",
           content: "# Spec\n\nUse the provided path.",
           evidence: "Bad path",
@@ -136,19 +96,5 @@ test("validateExtractedArtifactSources rejects inline source paths outside artif
       ...fixture,
     }),
     /outside configured specsDir/,
-  );
-});
-
-test("validateExtractedArtifactSources rejects ambiguous extraction", async () => {
-  const fixture = await repoFixture();
-
-  await assert.rejects(
-    validateExtractedArtifactSources({
-      issue,
-      now: new Date("2026-07-04T12:00:00Z"),
-      extraction: { status: "ambiguous", reason: "Two plan sections" },
-      ...fixture,
-    }),
-    /ambiguous artifact sources: Two plan sections/,
   );
 });

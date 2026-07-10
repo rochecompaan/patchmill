@@ -1,22 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { IssueSummary } from "../run-once/types.ts";
 import {
-  extractPublishedArtifactResult,
+  extractPublishedArtifactsFromIssue,
   formatPublishedArtifactComment,
+  type PublishedArtifactIssue,
 } from "./published-artifacts.ts";
 
 const TRUSTED_AUTHOR = "patchmill-bot";
 
 function issueWithComments(
   comments: Array<string | { body: string; authorLogin?: string }>,
-): IssueSummary {
+): PublishedArtifactIssue {
   return {
-    number: 99,
-    title: "Log entries UI",
-    body: "Issue body",
-    labels: ["agent-ready"],
-    state: "open",
     comments: comments.map((comment) =>
       typeof comment === "string"
         ? { authorLogin: TRUSTED_AUTHOR, body: comment }
@@ -25,8 +20,8 @@ function issueWithComments(
   };
 }
 
-function extractTrusted(issue: IssueSummary) {
-  return extractPublishedArtifactResult(issue, {
+function extractTrusted(issue: PublishedArtifactIssue) {
+  return extractPublishedArtifactsFromIssue(issue, {
     trustedAuthors: [TRUSTED_AUTHOR],
   });
 }
@@ -45,8 +40,6 @@ test("formatPublishedArtifactComment creates a deterministic spec envelope that 
 
   const result = extractTrusted(issueWithComments([comment]));
 
-  assert.equal(result.status, "resolved");
-  assert.equal(result.spec?.type, "inline");
   assert.equal(result.spec?.path, "docs/specs/log-entries-ui.md");
   assert.equal(
     result.spec?.content,
@@ -54,7 +47,7 @@ test("formatPublishedArtifactComment creates a deterministic spec envelope that 
   );
 });
 
-test("extractPublishedArtifactResult ignores artifact markers in the issue body", () => {
+test("extractPublishedArtifactsFromIssue ignores artifact markers in the issue body", () => {
   const body = formatPublishedArtifactComment({
     kind: "spec",
     path: "docs/specs/body.md",
@@ -66,11 +59,11 @@ test("extractPublishedArtifactResult ignores artifact markers in the issue body"
       ...issueWithComments([]),
       body,
     }),
-    { status: "none" },
+    {},
   );
 });
 
-test("extractPublishedArtifactResult uses the latest artifact of each kind", () => {
+test("extractPublishedArtifactsFromIssue uses the latest artifact of each kind", () => {
   const oldSpec = formatPublishedArtifactComment({
     kind: "spec",
     path: "docs/specs/old.md",
@@ -89,15 +82,12 @@ test("extractPublishedArtifactResult uses the latest artifact of each kind", () 
 
   const result = extractTrusted(issueWithComments([oldSpec, plan, newSpec]));
 
-  assert.equal(result.status, "resolved");
-  assert.equal(result.spec?.type, "inline");
   assert.equal(result.spec?.path, "docs/specs/new.md");
   assert.equal(result.spec?.content, "# New Spec");
-  assert.equal(result.plan?.type, "inline");
   assert.equal(result.plan?.path, "docs/plans/work.md");
 });
 
-test("extractPublishedArtifactResult rejects artifact content that fails its checksum", () => {
+test("extractPublishedArtifactsFromIssue rejects artifact content that fails its checksum", () => {
   const comment = formatPublishedArtifactComment({
     kind: "plan",
     path: "docs/plans/work.md",
@@ -110,7 +100,78 @@ test("extractPublishedArtifactResult rejects artifact content that fails its che
   );
 });
 
-test("extractPublishedArtifactResult ignores artifacts from untrusted commenters", () => {
+test("extractPublishedArtifactsFromIssue ignores superseded broken trusted artifacts", () => {
+  const oldBrokenSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/old.md",
+    content: "# Old Spec",
+  }).replace("# Old Spec", "# Edited Old Spec");
+  const newSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/new.md",
+    content: "# New Spec",
+  });
+
+  const result = extractTrusted(issueWithComments([oldBrokenSpec, newSpec]));
+
+  assert.equal(result.spec?.path, "docs/specs/new.md");
+  assert.equal(result.spec?.content, "# New Spec");
+});
+
+test("extractPublishedArtifactsFromIssue rejects the newest broken trusted artifact", () => {
+  const oldSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/old.md",
+    content: "# Old Spec",
+  });
+  const newBrokenSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/new.md",
+    content: "# New Spec",
+  }).replace("# New Spec", "# Edited New Spec");
+
+  assert.throws(
+    () => extractTrusted(issueWithComments([oldSpec, newBrokenSpec])),
+    /checksum mismatch/,
+  );
+});
+
+test("extractPublishedArtifactsFromIssue ignores superseded malformed trusted metadata", () => {
+  const oldMalformed = [
+    "<!-- patchmill-artifact:v1 {not-json} -->",
+    "# Old Broken Spec",
+    "<!-- /patchmill-artifact -->",
+  ].join("\n");
+  const newSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/new.md",
+    content: "# New Spec",
+  });
+
+  const result = extractTrusted(issueWithComments([oldMalformed, newSpec]));
+
+  assert.equal(result.spec?.path, "docs/specs/new.md");
+});
+
+test("extractPublishedArtifactsFromIssue rejects the newest malformed trusted metadata", () => {
+  const oldSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/old.md",
+    content: "# Old Spec",
+  });
+  const newMalformed = [
+    "<!-- patchmill-artifact:v1 {not-json} -->",
+    "# New Broken Spec",
+    "<!-- /patchmill-artifact -->",
+  ].join("\n");
+
+  assert.throws(
+    () => extractTrusted(issueWithComments([oldSpec, newMalformed])),
+    /invalid JSON/,
+  );
+});
+
+test("extractPublishedArtifactsFromIssue ignores artifacts from untrusted commenters", () => {
   const trustedComment = formatPublishedArtifactComment({
     kind: "spec",
     path: "docs/specs/trusted.md",
@@ -129,11 +190,10 @@ test("extractPublishedArtifactResult ignores artifacts from untrusted commenters
     ]),
   );
 
-  assert.equal(result.status, "resolved");
   assert.equal(result.spec?.path, "docs/specs/trusted.md");
 });
 
-test("extractPublishedArtifactResult ignores malformed artifacts from untrusted commenters", () => {
+test("extractPublishedArtifactsFromIssue ignores malformed artifacts from untrusted commenters", () => {
   const untrustedComment = [
     "<!-- patchmill-artifact:v1 {not-json} -->",
     "# Untrusted Spec",
@@ -144,7 +204,7 @@ test("extractPublishedArtifactResult ignores malformed artifacts from untrusted 
     extractTrusted(
       issueWithComments([{ authorLogin: "mallory", body: untrustedComment }]),
     ),
-    { status: "none" },
+    {},
   );
 });
 
@@ -172,9 +232,9 @@ test("formatPublishedArtifactComment rejects whitespace-flexible artifact marker
   );
 });
 
-test("extractPublishedArtifactResult returns none when no deterministic artifact is published", () => {
+test("extractPublishedArtifactsFromIssue returns empty when no deterministic artifact is published", () => {
   assert.deepEqual(
     extractTrusted(issueWithComments(["Looks like a plan maybe"])),
-    { status: "none" },
+    {},
   );
 });

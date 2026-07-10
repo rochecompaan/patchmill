@@ -1,41 +1,31 @@
 import { relative, resolve, sep } from "node:path";
 import type {
-  ArtifactExtractionResult,
-  ArtifactExtractionSource,
-} from "./artifact-source-types.ts";
+  PublishedWorkflowArtifact,
+  PublishedWorkflowArtifacts,
+  WorkflowArtifactKind,
+} from "../../../workflow/artifacts/published-artifacts.ts";
 import {
   artifactContentIsEmpty,
-  normalizeArtifactContent,
-} from "../artifact-content.ts";
-import { buildPlanPath } from "./plans.ts";
-import { buildSpecPath } from "./specs.ts";
+  normalizePublishedArtifactContent,
+} from "../../../workflow/artifacts/published-artifacts.ts";
 import type { IssueSummary } from "./types.ts";
 
-export type ResolvedIssueInlineArtifactSource = {
-  artifactKind: "spec" | "plan";
-  sourceType: "inline";
-  path: string;
+export type ResolvedIssueArtifactSource = PublishedWorkflowArtifact & {
   absolutePath: string;
-  content: string;
-  evidence: string;
-  commit?: string;
 };
 
-export type ResolvedIssueArtifactSource = ResolvedIssueInlineArtifactSource;
-
-export type ResolvedIssueArtifactSources = {
-  spec?: ResolvedIssueArtifactSource;
-  plan?: ResolvedIssueArtifactSource;
-};
+export type ResolvedIssueArtifactSources = Partial<
+  Record<WorkflowArtifactKind, ResolvedIssueArtifactSource>
+>;
 
 export class ArtifactSourcePreflightError extends Error {
   readonly name = "ArtifactSourcePreflightError";
   readonly issueNumber: number;
-  readonly artifactKind?: "spec" | "plan";
+  readonly artifactKind?: WorkflowArtifactKind;
 
   constructor(
     message: string,
-    options: { issueNumber: number; artifactKind?: "spec" | "plan" },
+    options: { issueNumber: number; artifactKind?: WorkflowArtifactKind },
   ) {
     super(message);
     this.issueNumber = options.issueNumber;
@@ -43,18 +33,13 @@ export class ArtifactSourcePreflightError extends Error {
   }
 }
 
-export type ValidateExtractedArtifactSourcesOptions = {
+export type ValidateIssueArtifactSourcesOptions = {
   issue: IssueSummary;
   repoRoot: string;
   specsDir: string;
   plansDir: string;
-  now: Date;
-  extraction: ArtifactExtractionResult;
+  artifacts: PublishedWorkflowArtifacts;
 };
-
-function repoRelative(repoRoot: string, absolutePath: string): string {
-  return relative(repoRoot, absolutePath).replaceAll("\\", "/");
-}
 
 function normalizeRepoPath(value: string): string {
   return value
@@ -73,34 +58,12 @@ function pathInside(path: string, dir: string): boolean {
   );
 }
 
-function targetForInline(
-  source: ArtifactExtractionSource,
-  options: ValidateExtractedArtifactSourcesOptions,
+function targetForArtifact(
+  source: PublishedWorkflowArtifact,
+  options: ValidateIssueArtifactSourcesOptions,
 ): { absolutePath: string; path: string } {
-  if (source.path) {
-    const path = normalizeRepoPath(source.path);
-    return { absolutePath: resolve(options.repoRoot, path), path };
-  }
-
-  const absolutePath =
-    source.kind === "spec"
-      ? buildSpecPath(
-          options.specsDir,
-          options.issue.number,
-          options.issue.title,
-          options.now,
-        )
-      : buildPlanPath(
-          options.plansDir,
-          options.issue.number,
-          options.issue.title,
-          options.now,
-        );
-  return { absolutePath, path: repoRelative(options.repoRoot, absolutePath) };
-}
-
-function normalizeInlineContent(value: string): string {
-  return normalizeArtifactContent(value);
+  const path = normalizeRepoPath(source.path);
+  return { absolutePath: resolve(options.repoRoot, path), path };
 }
 
 function issueTextBlocks(issue: IssueSummary): string[] {
@@ -108,78 +71,64 @@ function issueTextBlocks(issue: IssueSummary): string[] {
 }
 
 function isVerbatimIssueContent(content: string, issue: IssueSummary): boolean {
-  const normalizedContent = normalizeInlineContent(content);
+  const normalizedContent = normalizePublishedArtifactContent(content);
   return issueTextBlocks(issue).some((block) =>
-    normalizeInlineContent(block).includes(normalizedContent),
+    normalizePublishedArtifactContent(block).includes(normalizedContent),
   );
 }
 
-async function validateSource(
-  source: ArtifactExtractionSource,
-  options: ValidateExtractedArtifactSourcesOptions,
+async function validateArtifact(
+  kind: WorkflowArtifactKind,
+  source: PublishedWorkflowArtifact,
+  options: ValidateIssueArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSource> {
-  const content = normalizeInlineContent(source.content);
+  const content = normalizePublishedArtifactContent(source.content);
   if (artifactContentIsEmpty(content)) {
     throw new ArtifactSourcePreflightError(
-      `Issue #${options.issue.number} has an inline ${source.kind} artifact with empty content`,
-      { issueNumber: options.issue.number, artifactKind: source.kind },
+      `Issue #${options.issue.number} has a ${kind} artifact with empty content`,
+      { issueNumber: options.issue.number, artifactKind: kind },
     );
   }
   if (!isVerbatimIssueContent(content, options.issue)) {
     throw new ArtifactSourcePreflightError(
-      `Issue #${options.issue.number} has an inline ${source.kind} artifact that was not copied verbatim from the issue content`,
-      { issueNumber: options.issue.number, artifactKind: source.kind },
+      `Issue #${options.issue.number} has a ${kind} artifact that was not copied verbatim from the issue content`,
+      { issueNumber: options.issue.number, artifactKind: kind },
     );
   }
-  const target = targetForInline(source, options);
-  const expectedDir =
-    source.kind === "spec" ? options.specsDir : options.plansDir;
-  const dirName = source.kind === "spec" ? "specsDir" : "plansDir";
+  const target = targetForArtifact(source, options);
+  const expectedDir = kind === "spec" ? options.specsDir : options.plansDir;
+  const dirName = kind === "spec" ? "specsDir" : "plansDir";
   if (!pathInside(target.absolutePath, expectedDir)) {
     throw new ArtifactSourcePreflightError(
-      `Issue #${options.issue.number} references inline ${source.kind} path ${target.path} outside configured ${dirName}`,
-      { issueNumber: options.issue.number, artifactKind: source.kind },
+      `Issue #${options.issue.number} references ${kind} path ${target.path} outside configured ${dirName}`,
+      { issueNumber: options.issue.number, artifactKind: kind },
     );
   }
   return {
-    artifactKind: source.kind,
-    sourceType: "inline",
+    ...source,
     path: target.path,
     absolutePath: target.absolutePath,
     content,
-    evidence: source.evidence,
   };
 }
 
-export async function validateExtractedArtifactSources(
-  options: ValidateExtractedArtifactSourcesOptions,
+export async function validateIssueArtifactSources(
+  options: ValidateIssueArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSources> {
-  if (options.extraction.status === "none") return {};
-  if (options.extraction.status === "ambiguous") {
-    throw new ArtifactSourcePreflightError(
-      `Issue #${options.issue.number} has ambiguous artifact sources: ${options.extraction.reason}`,
-      { issueNumber: options.issue.number },
+  const resolved: ResolvedIssueArtifactSources = {};
+  if (options.artifacts.spec) {
+    resolved.spec = await validateArtifact(
+      "spec",
+      options.artifacts.spec,
+      options,
     );
   }
-
-  const resolved: ResolvedIssueArtifactSources = {};
-  if (options.extraction.spec) {
-    if (options.extraction.spec.kind !== "spec") {
-      throw new ArtifactSourcePreflightError(
-        `Issue #${options.issue.number} extractor returned a non-spec source in the spec slot`,
-        { issueNumber: options.issue.number, artifactKind: "spec" },
-      );
-    }
-    resolved.spec = await validateSource(options.extraction.spec, options);
-  }
-  if (options.extraction.plan) {
-    if (options.extraction.plan.kind !== "plan") {
-      throw new ArtifactSourcePreflightError(
-        `Issue #${options.issue.number} extractor returned a non-plan source in the plan slot`,
-        { issueNumber: options.issue.number, artifactKind: "plan" },
-      );
-    }
-    resolved.plan = await validateSource(options.extraction.plan, options);
+  if (options.artifacts.plan) {
+    resolved.plan = await validateArtifact(
+      "plan",
+      options.artifacts.plan,
+      options,
+    );
   }
   return resolved;
 }

@@ -24,12 +24,10 @@ function runner(calls: Call[]): CommandRunner {
   };
 }
 
-test("materializeIssueArtifactSources writes and commits inline artifacts", async () => {
+test("materializeIssueArtifactSources writes and commits artifacts", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-materialize-"));
   const sources: ResolvedIssueArtifactSources = {
     spec: {
-      artifactKind: "spec",
-      sourceType: "inline",
       path: "docs/specs/2026-07-04-issue-65-design.md",
       absolutePath: join(
         repoRoot,
@@ -41,8 +39,6 @@ test("materializeIssueArtifactSources writes and commits inline artifacts", asyn
       evidence: "## Spec",
     },
     plan: {
-      artifactKind: "plan",
-      sourceType: "inline",
       path: "docs/plans/2026-07-04-issue-65.md",
       absolutePath: join(repoRoot, "docs", "plans", "2026-07-04-issue-65.md"),
       content: "# Plan\n- [ ] Implement source resolution.",
@@ -74,7 +70,7 @@ test("materializeIssueArtifactSources writes and commits inline artifacts", asyn
   );
 });
 
-test("materializeIssueArtifactSources reuses HEAD when inline artifacts are already materialized", async () => {
+test("materializeIssueArtifactSources reuses HEAD when artifacts are already materialized", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-materialize-existing-"),
   );
@@ -84,8 +80,6 @@ test("materializeIssueArtifactSources reuses HEAD when inline artifacts are alre
   await writeFile(absolutePath, "# Spec\nAlready there.\n", "utf8");
   const sources: ResolvedIssueArtifactSources = {
     spec: {
-      artifactKind: "spec",
-      sourceType: "inline",
       path,
       absolutePath,
       content: "# Spec\nAlready there.",
@@ -122,7 +116,7 @@ test("materializeIssueArtifactSources reuses HEAD when inline artifacts are alre
   );
 });
 
-test("materializeIssueArtifactSources preflights all inline artifacts before writing", async () => {
+test("materializeIssueArtifactSources preflights all artifacts before writing", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-materialize-atomic-"),
   );
@@ -145,16 +139,12 @@ test("materializeIssueArtifactSources preflights all inline artifacts before wri
       issueNumber: 65,
       sources: {
         spec: {
-          artifactKind: "spec",
-          sourceType: "inline",
           path: specPath,
           absolutePath: specAbsolutePath,
           content: "# New Spec\nDo not write if plan conflicts.",
           evidence: "spec block",
         },
         plan: {
-          artifactKind: "plan",
-          sourceType: "inline",
           path: planPath,
           absolutePath: planAbsolutePath,
           content: "# New Plan\nDifferent issue content.",
@@ -173,7 +163,7 @@ test("materializeIssueArtifactSources preflights all inline artifacts before wri
   assert.equal(calls.length, 0);
 });
 
-test("materializeIssueArtifactSources rejects mismatched existing inline artifacts without overwriting", async () => {
+test("materializeIssueArtifactSources rejects mismatched existing artifacts without overwriting", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-materialize-mismatch-"),
   );
@@ -190,8 +180,6 @@ test("materializeIssueArtifactSources rejects mismatched existing inline artifac
       issueNumber: 65,
       sources: {
         plan: {
-          artifactKind: "plan",
-          sourceType: "inline",
           path,
           absolutePath,
           content: "# New Plan\nDifferent issue content.",
@@ -206,30 +194,5 @@ test("materializeIssueArtifactSources rejects mismatched existing inline artifac
     await readFile(absolutePath, "utf8"),
     "# Approved Plan\nDo not replace.\n",
   );
-  assert.equal(calls.length, 0);
-});
-
-test("materializeIssueArtifactSources leaves path sources unchanged", async () => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-materialize-path-"));
-  const sources: ResolvedIssueArtifactSources = {
-    spec: {
-      artifactKind: "spec",
-      sourceType: "path",
-      path: "docs/specs/existing.md",
-      absolutePath: join(repoRoot, "docs", "specs", "existing.md"),
-      evidence: "Spec: docs/specs/existing.md",
-    },
-  };
-  const calls: Call[] = [];
-
-  const materialized = await materializeIssueArtifactSources({
-    repoRoot,
-    runner: runner(calls),
-    issueNumber: 65,
-    sources,
-  });
-
-  assert.equal(materialized.spec?.path, "docs/specs/existing.md");
-  assert.equal(materialized.spec?.commit, undefined);
   assert.equal(calls.length, 0);
 });
