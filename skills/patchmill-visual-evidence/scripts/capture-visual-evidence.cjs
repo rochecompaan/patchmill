@@ -203,7 +203,7 @@ async function main() {
     for (const text of opts.waitText) {
       await expect(page.getByText(text).first()).toBeVisible();
     }
-    await page.evaluate(() => document.fonts?.ready).catch(() => {});
+    await page.evaluate(() => document.fonts?.ready);
     await page.screenshot({ path: opts.output, fullPage: opts.fullPage });
     console.log(`screenshot=${opts.output}`);
   } finally {

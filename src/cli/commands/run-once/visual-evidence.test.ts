@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -95,6 +95,51 @@ test("validateVisualEvidenceReferences rejects temporary screenshot paths", asyn
       referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
     }),
     /Visual evidence must be a committed reference screenshot under docs\/screenshots/u,
+  );
+});
+
+test("validateVisualEvidenceReferences rejects paths that escape the reference directory with dot segments", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, "docs/private.png");
+  const runner = gitRunner([
+    { code: 0, stdout: "docs/private.png\n" },
+    { code: 0 },
+    { code: 0 },
+  ]);
+
+  await assert.rejects(
+    validateVisualEvidenceReferences({
+      repoRoot,
+      evidence: [{ screenshotPath: "docs/screenshots/../private.png" }],
+      runner,
+      referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
+    }),
+    /Visual evidence must be a committed reference screenshot under docs\/screenshots: docs\/private\.png/u,
+  );
+});
+
+test("validateVisualEvidenceReferences rejects symlink screenshot paths", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, "docs/private.png");
+  await mkdir(join(repoRoot, "docs", "screenshots"), { recursive: true });
+  await symlink(
+    "../private.png",
+    join(repoRoot, "docs", "screenshots", "dashboard.png"),
+  );
+  const runner = gitRunner([
+    { code: 0, stdout: "docs/screenshots/dashboard.png\n" },
+    { code: 0 },
+    { code: 0 },
+  ]);
+
+  await assert.rejects(
+    validateVisualEvidenceReferences({
+      repoRoot,
+      evidence: [{ screenshotPath: "docs/screenshots/dashboard.png" }],
+      runner,
+      referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
+    }),
+    /Visual evidence screenshot path must not contain symlink components: docs\/screenshots\/dashboard\.png/u,
   );
 });
 

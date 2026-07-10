@@ -171,6 +171,49 @@ exports.expect = () => ({ async toBeVisible() {} });
   assert.equal(await readFile(outputPath, "utf8"), "domcontentloaded");
 });
 
+test("capture-visual-evidence fails when font readiness evaluation fails", async () => {
+  const projectRoot =
+    await writeFakePlaywrightProject(`const fs = require('node:fs');
+exports.chromium = {
+  async launch() {
+    return {
+      async newPage() {
+        return {
+          async goto() {},
+          url() { return 'http://app.example/dashboard'; },
+          locator() { return { first() { return { async waitFor() {} }; } }; },
+          getByText() { return { first() { return {}; } }; },
+          async evaluate() { throw new Error('font readiness context failed'); },
+          async screenshot(options) { fs.writeFileSync(options.path, 'should not capture'); },
+        };
+      },
+      async close() {},
+    };
+  },
+};
+exports.expect = () => ({ async toBeVisible() {} });
+`);
+
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        captureScriptPath(),
+        "--url",
+        "http://app.example/dashboard",
+        "--output",
+        join(projectRoot, ".tmp", "proof.png"),
+      ],
+      { cwd: projectRoot },
+    ),
+    (error: unknown) => {
+      const stderr = String((error as { stderr?: unknown }).stderr ?? "");
+      assert.match(stderr, /font readiness context failed/u);
+      return true;
+    },
+  );
+});
+
 test("capture-visual-evidence rejects plaintext credential arguments", async () => {
   const projectRoot =
     await writeFakePlaywrightProject(`const fs = require('node:fs');

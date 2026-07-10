@@ -128,6 +128,12 @@ async function resolveEvidencePath(
       `Visual evidence screenshot path must stay within the repo root: ${screenshotPath}`,
     );
   }
+  const canonicalExpectedPath = resolve(canonicalRoot, ...gitPath.split("/"));
+  if (canonicalCandidate !== canonicalExpectedPath) {
+    throw new Error(
+      `Visual evidence screenshot path must not contain symlink components: ${gitPath}`,
+    );
+  }
   return { absolutePath: candidatePath, gitPath };
 }
 
@@ -195,16 +201,15 @@ export async function validateVisualEvidenceReferences(
     input.referenceScreenshotPaths,
   );
   for (const entry of evidence) {
-    if (!isAllowedReferencePath(entry.screenshotPath, referencePaths)) {
-      throw new Error(
-        `Visual evidence must be a committed reference screenshot under ${referencePaths.join(", ")}: ${entry.screenshotPath}`,
-      );
-    }
-
     const { absolutePath, gitPath } = await resolveEvidencePath(
       input.repoRoot,
       entry.screenshotPath,
     );
+    if (!isAllowedReferencePath(gitPath, referencePaths)) {
+      throw new Error(
+        `Visual evidence must be a committed reference screenshot under ${referencePaths.join(", ")}: ${gitPath}`,
+      );
+    }
     assertScreenshotLikeEvidence(
       entry.screenshotPath,
       await readFile(absolutePath),
