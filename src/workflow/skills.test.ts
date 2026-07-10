@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import {
   BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
   BUNDLED_TRIAGE_SKILL_REFERENCE,
+  BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
   DEFAULT_PATCHMILL_SKILLS,
   GLOBAL_PATCHMILL_SKILLS,
   PATCHMILL_SKILL_KEYS,
   bundledArtifactExtractionSkillPath,
+  bundledVisualEvidenceSkillPath,
   cloneSkillsConfig,
   mergeSkillsConfig,
   renderConfiguredSkillLine,
@@ -20,6 +22,7 @@ test("DEFAULT_PATCHMILL_SKILLS uses the bundled fallback triage reference", () =
     planning: "superpowers:writing-plans",
     implementation: "superpowers:subagent-driven-development",
     artifactExtraction: BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
+    visualEvidence: BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
   });
 });
 
@@ -29,19 +32,29 @@ test("GLOBAL_PATCHMILL_SKILLS keeps the global named triage skill", () => {
     planning: "superpowers:writing-plans",
     implementation: "superpowers:subagent-driven-development",
     artifactExtraction: "patchmill-artifact-extraction",
+    visualEvidence: "patchmill-visual-evidence",
   });
 });
 
-test("default skills include artifact extraction", () => {
+test("default skills include artifact extraction and visual evidence", () => {
   assert.equal(
     DEFAULT_PATCHMILL_SKILLS.artifactExtraction,
     BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE,
   );
   assert.equal(
+    DEFAULT_PATCHMILL_SKILLS.visualEvidence,
+    BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
+  );
+  assert.equal(
     GLOBAL_PATCHMILL_SKILLS.artifactExtraction,
     "patchmill-artifact-extraction",
   );
+  assert.equal(
+    GLOBAL_PATCHMILL_SKILLS.visualEvidence,
+    "patchmill-visual-evidence",
+  );
   assert.equal(PATCHMILL_SKILL_KEYS.includes("artifactExtraction"), true);
+  assert.equal(PATCHMILL_SKILL_KEYS.includes("visualEvidence"), true);
 });
 
 test("mergeSkillsConfig accepts artifact extraction overrides", () => {
@@ -62,6 +75,12 @@ test("bundled artifact extraction skill resolves to a SKILL.md path", () => {
   assert.match(path, /skills\/patchmill-artifact-extraction\/SKILL\.md$/);
 });
 
+test("bundled visual evidence skill resolves to a SKILL.md path", () => {
+  const path = bundledVisualEvidenceSkillPath();
+
+  assert.match(path, /skills\/patchmill-visual-evidence\/SKILL\.md$/);
+});
+
 test("resolveConfiguredSkillInvocation resolves bundled artifact extraction", () => {
   const resolved = resolveConfiguredSkillInvocation(
     [BUNDLED_ARTIFACT_EXTRACTION_SKILL_REFERENCE],
@@ -69,6 +88,15 @@ test("resolveConfiguredSkillInvocation resolves bundled artifact extraction", ()
   );
 
   assert.deepEqual(resolved.paths, [bundledArtifactExtractionSkillPath()]);
+});
+
+test("resolveConfiguredSkillInvocation resolves bundled visual evidence", () => {
+  const resolved = resolveConfiguredSkillInvocation(
+    [BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE],
+    "/repo",
+  );
+
+  assert.deepEqual(resolved.paths, [bundledVisualEvidenceSkillPath()]);
 });
 
 test("mergeSkillsConfig replaces only configured stages", () => {

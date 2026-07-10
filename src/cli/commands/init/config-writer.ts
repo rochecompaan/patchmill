@@ -8,7 +8,7 @@ export const CONFIG_FILE_NAME = "patchmill.config.json";
 
 export type InitialConfigSkills = Pick<
   PatchmillConfig["skills"],
-  "triage" | "planning" | "implementation"
+  "triage" | "planning" | "implementation" | "visualEvidence"
 >;
 
 type InitialConfig = {

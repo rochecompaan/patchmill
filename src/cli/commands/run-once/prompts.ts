@@ -422,23 +422,13 @@ function formatCodeList(entries: string[]): string {
     .join(", ")}, and \`${entries[entries.length - 1]}\``;
 }
 
-type PrVisualEvidenceExample = NonNullable<
-  PatchmillProjectPolicy["visualEvidence"]["prEvidenceExample"]
->;
-
-function defaultPrVisualEvidenceExample(): PrVisualEvidenceExample {
-  return {
-    screenshotPath: ".tmp/issue-42-after.png",
-    caption: "Visible UI state after the change",
-  };
-}
+type PrVisualEvidenceExample =
+  PatchmillProjectPolicy["visualEvidence"]["prEvidenceExample"];
 
 function resolvePrVisualEvidenceExample(
   policy: PatchmillProjectPolicy,
 ): PrVisualEvidenceExample {
-  return (
-    policy.visualEvidence.prEvidenceExample ?? defaultPrVisualEvidenceExample()
-  );
+  return policy.visualEvidence.prEvidenceExample;
 }
 
 function renderVisualEvidenceDataSection(
@@ -446,18 +436,21 @@ function renderVisualEvidenceDataSection(
 ): string {
   const lines = ["Visual-change evidence data:"];
 
-  if ((policy.visualEvidence.referenceScreenshotPaths?.length ?? 0) > 0) {
-    lines.push(
-      `- Use existing committed reference screenshots, when available, as the styling baseline for changed or new screens. Look under ${formatCodeList(policy.visualEvidence.referenceScreenshotPaths)}.`,
-    );
-  }
+  const referenceScreenshotPaths =
+    policy.visualEvidence.referenceScreenshotPaths;
+  lines.push(
+    `- Visual evidence must be a committed reference screenshot, not a temporary proof file. Look under ${formatCodeList(referenceScreenshotPaths)} for existing screenshots to update.`,
+  );
+  lines.push(
+    "- For a new page or UI state, add a semantic kebab-case screenshot under the reference screenshot directory, based on the route, page/component name, or visible title. Do not use issue numbers, dates, or hashes in reference screenshot filenames.",
+  );
 
   const visualEvidenceExample = resolvePrVisualEvidenceExample(policy);
   lines.push(
-    "- For PR fallback, return structured `visualEvidence` entries like this example:",
+    "- When visible UI changed, add a `visualEvidence` field to the final `pr-created` JSON with committed reference screenshots like this example:",
   );
   lines.push(
-    ...JSON.stringify([visualEvidenceExample], null, 2)
+    ...`"visualEvidence": ${JSON.stringify([visualEvidenceExample], null, 2)}`
       .split("\n")
       .map((line) => `  ${line}`),
   );
@@ -511,18 +504,8 @@ If human input is required, stop safely, leave committed work as-is, keep the re
 }`;
 }
 
-function renderPrCreatedContract(
-  branch: string,
-  visualEvidenceExample: PrVisualEvidenceExample,
-): string {
+function renderPrCreatedContract(branch: string): string {
   const prUrlLabel = "<pull request URL>";
-  const visualEvidenceLines = JSON.stringify([visualEvidenceExample], null, 4)
-    .split("\n")
-    .map((line, index) =>
-      index === 0 ? `  "visualEvidence": ${line}` : `  ${line}`,
-    )
-    .join("\n")
-    .concat(",");
 
   return `Successful final response for human-review PR fallback:
 Return this exact JSON object after PR handoff succeeds:
@@ -532,7 +515,6 @@ Return this exact JSON object after PR handoff succeeds:
   "branch": "${branch}",
   "commits": ["<sha>"],
   "validation": ["command and result summary"],
-${visualEvidenceLines}
   "reviewSummary": "short reviewer/fix summary",
   "landingDecision": "PR required: <reason>"
 }`;
@@ -545,7 +527,6 @@ function renderLandingResultContracts(input: {
   remote: string;
   issueNumber: number;
   branch: string;
-  visualEvidenceExample: PrVisualEvidenceExample;
 }): string {
   const {
     allowDirectLand,
@@ -554,7 +535,6 @@ function renderLandingResultContracts(input: {
     remote,
     issueNumber,
     branch,
-    visualEvidenceExample,
   } = input;
   const prInstruction = renderPrCreationInstruction(remote, issueNumber);
 
@@ -571,7 +551,7 @@ If human review is required:
 
 ${renderBlockedContract()}
 
-${renderPrCreatedContract(branch, visualEvidenceExample)}`;
+${renderPrCreatedContract(branch)}`;
   }
 
   if (!hasLandingSkill) {
@@ -585,7 +565,7 @@ If human review is required:
 
 ${renderBlockedContract()}
 
-${renderPrCreatedContract(branch, visualEvidenceExample)}`;
+${renderPrCreatedContract(branch)}`;
   }
 
   return `Landing result contracts:
@@ -615,7 +595,7 @@ Return this exact JSON object after \`${targetBranch}\` is pushed successfully:
   "landingDecision": "direct squash-landed: policy-approved change"
 }
 
-${renderPrCreatedContract(branch, visualEvidenceExample)}`;
+${renderPrCreatedContract(branch)}`;
 }
 
 function numberedWorkflow(steps: string[]): string {
@@ -835,7 +815,6 @@ export function buildImplementationPrompt(
     developmentEnvironment,
   } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
-  const visualEvidenceExample = resolvePrVisualEvidenceExample(projectPolicy);
 
   const workflowSteps = [
     renderImplementationContextInstruction(projectPolicy, planPath),
@@ -883,7 +862,6 @@ ${renderLandingResultContracts({
   remote: git.remote,
   issueNumber: issue.number,
   branch,
-  visualEvidenceExample,
 })}
 `;
 }

@@ -11,9 +11,10 @@ export const DEFAULT_PATCHMILL_POLICY: PatchmillProjectPolicy = {
     targetBranch: "main",
   },
   visualEvidence: {
+    referenceScreenshotPaths: ["docs/screenshots"],
     prEvidenceExample: {
-      screenshotPath: ".tmp/issue-42-after.png",
-      caption: "Visible UI state after the change",
+      screenshotPath: "docs/screenshots/example-screen.png",
+      caption: "Reference screenshot for the changed UI state",
     },
   },
   pi: {

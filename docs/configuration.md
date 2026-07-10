@@ -95,7 +95,7 @@ pieces your repository needs.
     "artifactExtraction": "patchmill:bundled-artifact-extraction",
     "toolchain": "project-toolchain",
     "review": "project-review",
-    "visualEvidence": "capturing-proof-screenshots",
+    "visualEvidence": ".patchmill/skills/patchmill-visual-evidence",
     "landing": "project-landing"
   },
   "paths": {
@@ -132,10 +132,10 @@ pieces your repository needs.
       "targetBranch": "main"
     },
     "visualEvidence": {
-      "referenceScreenshotPaths": ["docs/screenshots/baseline.png"],
+      "referenceScreenshotPaths": ["docs/screenshots"],
       "prEvidenceExample": {
-        "screenshotPath": ".tmp/issue-42-after.png",
-        "caption": "Visible UI state after the change"
+        "screenshotPath": "docs/screenshots/example-screen.png",
+        "caption": "Reference screenshot for the changed UI state"
       }
     },
     "pi": {
@@ -227,8 +227,7 @@ For GitHub through `gh`, configure the host like this:
 ```
 
 `PATCHMILL_HOST_LOGIN` only affects providers with named-login support. The
-first `github-gh` version uses the active `gh` authentication context and does
-not support GitHub visual-evidence upload.
+first `github-gh` version uses the active `gh` authentication context.
 
 ## Triage state map
 
@@ -343,14 +342,14 @@ process shutdown.
 
 ## Skills
 
-The workflow skill keys `triage`, `planning`, `implementation`, and
-`artifactExtraction` are configured by default. For new repositories,
-`patchmill init` defaults them to project-local skill paths or bundled Patchmill
-skills. The remaining keys are optional workflow hooks. In an interactive
-terminal, init asks whether to add generated config and skills to git, add
-Patchmill files to `.gitignore`, or add Patchmill files to `.git/info/exclude`.
-Non-interactive and `--yes` runs keep the files local by adding
-`patchmill.config.json` and `.patchmill/` to `.git/info/exclude`.
+The workflow skill keys `triage`, `planning`, `implementation`,
+`artifactExtraction`, and `visualEvidence` are configured by default. For new
+repositories, `patchmill init` defaults them to project-local skill paths or
+bundled Patchmill skills. The remaining keys are optional workflow hooks. In an
+interactive terminal, init asks whether to add generated config and skills to
+git, add Patchmill files to `.gitignore`, or add Patchmill files to
+`.git/info/exclude`. Non-interactive and `--yes` runs keep the files local by
+adding `patchmill.config.json` and `.patchmill/` to `.git/info/exclude`.
 
 `developmentEnvironment` is optional. When configured, `patchmill run-once` runs
 that skill from the issue worktree after the plan is available and before the
@@ -364,7 +363,8 @@ omitted, implementation starts exactly as it did before this feature.
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
     "implementation": ".patchmill/skills/subagent-driven-development",
-    "artifactExtraction": "patchmill:bundled-artifact-extraction"
+    "artifactExtraction": "patchmill:bundled-artifact-extraction",
+    "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   }
 }
 ```
@@ -429,8 +429,16 @@ workflow stages:
   verification before implementation starts.
 - `toolchain`: setup and validation conventions.
 - `review`: explicit review passes.
-- `visualEvidence`: screenshots or other UI proof.
+- `visualEvidence`: screenshot capture instructions for visible UI changes.
+  Patchmill configures `.patchmill/skills/patchmill-visual-evidence` by default,
+  expects final `pr-created` JSON to include `visualEvidence` entries, and
+  validates that referenced screenshots are committed reference files before
+  cleanup.
 - `landing`: direct-land versus PR decision rules.
+
+`projectPolicy.visualEvidence` is not the skill. It supplies allowed reference
+screenshot paths and an example `visualEvidence` entry for prompts. By default,
+reference screenshots live under `docs/screenshots/`.
 
 See [skills configuration](skills.md) for how these are rendered into prompts.
 
@@ -440,6 +448,3 @@ Some settings are intentionally better as environment variables:
 
 - `PATCHMILL_HOST_LOGIN`: local host login for providers with named-login
   support, such as `forgejo-tea`.
-- `PATCHMILL_FORGEJO_URL`, `PATCHMILL_FORGEJO_TOKEN`, `PATCHMILL_FORGEJO_REPO`:
-  Forgejo visual-evidence upload credentials and repository override. GitHub
-  visual-evidence upload is not supported in the first `github-gh` version.

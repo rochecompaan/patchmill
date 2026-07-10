@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { runPiSmokeTest } from "../init/pi-smoke-test.ts";
 import {
@@ -23,10 +23,12 @@ import {
   PATCHMILL_SKILL_KEYS,
   bundledArtifactExtractionSkillPath,
   bundledTriageSkillPath,
+  bundledVisualEvidenceSkillPath,
   isPathLikeSkill,
   resolveConfiguredSkillInvocation,
   resolvePathLikeSkillPath,
 } from "../../../workflow/skills.ts";
+import { requiredSkillFiles } from "../../../workflow/skill-pack.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -197,13 +199,11 @@ async function checkPiProvider(
   );
 }
 
-async function checkReadableSkillTarget(path: string): Promise<boolean> {
+async function checkReadableSkillFile(path: string): Promise<boolean> {
   try {
     const pathStat = await stat(path);
-    await access(
-      path,
-      pathStat.isDirectory() ? constants.R_OK | constants.X_OK : constants.R_OK,
-    );
+    if (!pathStat.isFile()) return false;
+    await access(path, constants.R_OK);
     return true;
   } catch {
     return false;
@@ -277,10 +277,29 @@ function parseSkillFrontmatter(
   };
 }
 
+async function validateRequiredSkillFiles(
+  label: string,
+  configuredPath: string,
+  skillFilePath: string,
+  requiredFiles: string[],
+): Promise<SkillCheckEntry | undefined> {
+  const skillDir = dirname(skillFilePath);
+  for (const relativeFile of requiredFiles) {
+    const requiredPath = join(skillDir, relativeFile);
+    if (await checkReadableSkillFile(requiredPath)) continue;
+    return {
+      status: "fail",
+      summary: `${label}: \`${configuredPath}\` (required skill file unreadable at ${requiredPath})`,
+    };
+  }
+  return undefined;
+}
+
 async function validateResolvedLocalSkill(
   label: string,
   configuredPath: string,
   resolvedPath: string,
+  requiredFiles: string[] = ["SKILL.md"],
 ): Promise<SkillCheckEntry> {
   try {
     const pathStat = await stat(resolvedPath);
@@ -300,6 +319,17 @@ async function validateResolvedLocalSkill(
         summary: `${label}: \`${configuredPath}\` (malformed skill frontmatter: ${frontmatter.error} at ${resolvedPath})`,
       };
     }
+
+    const resolvedRequiredFiles = [
+      ...new Set([...requiredFiles, ...requiredSkillFiles(frontmatter.name)]),
+    ];
+    const missingRequired = await validateRequiredSkillFiles(
+      label,
+      configuredPath,
+      resolvedPath,
+      resolvedRequiredFiles,
+    );
+    if (missingRequired) return missingRequired;
 
     return {
       status: "pass",
@@ -347,20 +377,44 @@ async function smokeTestProjectLocalSkills(
   };
 }
 
+function configuredSkillName(skill: string): string | undefined {
+  const normalized = skill
+    .replaceAll("\\", "/")
+    .replace(/\/SKILL\.md$/u, "")
+    .replace(/\/+$/u, "");
+  return normalized.split("/").filter(Boolean).at(-1);
+}
+
+function requiredFilesForConfiguredSkill(skill: string): string[] {
+  const skillName = configuredSkillName(skill);
+  return skillName ? requiredSkillFiles(skillName) : ["SKILL.md"];
+}
+
 async function verifyBundledSkill(
   key: string,
   skill: string,
   bundledPath: string,
+  requiredFiles: string[] = ["SKILL.md"],
 ): Promise<SkillCheckEntry> {
-  return (await checkReadableSkillTarget(bundledPath))
-    ? {
-        status: "pass" as const,
-        summary: `${key}: \`${skill}\` (bundled skill verified)`,
-      }
-    : {
-        status: "fail" as const,
-        summary: `${key}: \`${skill}\` (bundled skill unreadable at ${bundledPath})`,
-      };
+  if (!(await checkReadableSkillFile(bundledPath))) {
+    return {
+      status: "fail" as const,
+      summary: `${key}: \`${skill}\` (bundled skill unreadable at ${bundledPath})`,
+    };
+  }
+
+  const missingRequired = await validateRequiredSkillFiles(
+    key,
+    skill,
+    bundledPath,
+    requiredFiles,
+  );
+  if (missingRequired) return missingRequired;
+
+  return {
+    status: "pass" as const,
+    summary: `${key}: \`${skill}\` (bundled skill verified)`,
+  };
 }
 
 async function checkSkills(
@@ -399,6 +453,18 @@ async function checkSkills(
         );
       }
 
+      if (
+        key === "visualEvidence" &&
+        skill === DEFAULT_PATCHMILL_SKILLS.visualEvidence
+      ) {
+        return await verifyBundledSkill(
+          key,
+          skill,
+          bundledVisualEvidenceSkillPath(),
+          requiredSkillFiles("patchmill-visual-evidence"),
+        );
+      }
+
       if (!isPathLikeSkill(skill)) {
         return {
           status: "warn" as const,
@@ -407,7 +473,12 @@ async function checkSkills(
       }
 
       const resolvedPath = resolvePathLikeSkillPath(skill, repoRoot);
-      return validateResolvedLocalSkill(key, skill, resolvedPath);
+      return validateResolvedLocalSkill(
+        key,
+        skill,
+        resolvedPath,
+        requiredFilesForConfiguredSkill(skill),
+      );
     }),
   );
 

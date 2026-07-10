@@ -19,6 +19,13 @@ async function writeSkill(repoRoot: string, skillRoot: string, name: string) {
     join(dir, "SKILL.md"),
     `---\nname: ${name}\ndescription: Test skill\n---\n`,
   );
+  if (name === "patchmill-visual-evidence") {
+    await mkdir(join(dir, "scripts"), { recursive: true });
+    await writeFile(
+      join(dir, "scripts", "capture-visual-evidence.cjs"),
+      "#!/usr/bin/env node\n",
+    );
+  }
 }
 
 function missingPiReadiness() {
@@ -182,6 +189,7 @@ test("interactive init add-to-git with path skills commits the provided skill ro
   await writeSkill(repoRoot, "custom-skills", "patchmill-issue-triage");
   await writeSkill(repoRoot, "custom-skills", "writing-plans");
   await writeSkill(repoRoot, "custom-skills", "subagent-driven-development");
+  await writeSkill(repoRoot, "custom-skills", "patchmill-visual-evidence");
 
   const { output } = await runInitForGitPolicy(repoRoot, {
     args: ["--skills", "path:custom-skills"],

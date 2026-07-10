@@ -64,24 +64,24 @@ function cloneVisualEvidenceExample(
   };
 }
 
+function normalizedVisualEvidenceReferencePaths(
+  paths: string[] | undefined,
+  fallback: string[],
+): string[] {
+  const normalized = paths?.map((path) => path.trim()).filter(Boolean) ?? [];
+  return cloneStringArray(normalized.length > 0 ? normalized : fallback);
+}
+
 function cloneVisualEvidencePolicy(
   visualEvidence: PatchmillConfig["projectPolicy"]["visualEvidence"],
 ): PatchmillConfig["projectPolicy"]["visualEvidence"] {
   return {
-    ...(visualEvidence.referenceScreenshotPaths !== undefined
-      ? {
-          referenceScreenshotPaths: cloneStringArray(
-            visualEvidence.referenceScreenshotPaths,
-          ),
-        }
-      : {}),
-    ...(visualEvidence.prEvidenceExample !== undefined
-      ? {
-          prEvidenceExample: cloneVisualEvidenceExample(
-            visualEvidence.prEvidenceExample,
-          ),
-        }
-      : {}),
+    referenceScreenshotPaths: cloneStringArray(
+      visualEvidence.referenceScreenshotPaths,
+    ),
+    prEvidenceExample: cloneVisualEvidenceExample(
+      visualEvidence.prEvidenceExample,
+    ),
   };
 }
 
@@ -90,32 +90,13 @@ function mergeVisualEvidencePolicy(
   update: PartialProjectPolicy["visualEvidence"] | undefined,
 ): PatchmillConfig["projectPolicy"]["visualEvidence"] {
   return {
-    ...(update?.referenceScreenshotPaths !== undefined
-      ? {
-          referenceScreenshotPaths: cloneStringArray(
-            update.referenceScreenshotPaths,
-          ),
-        }
-      : base.referenceScreenshotPaths !== undefined
-        ? {
-            referenceScreenshotPaths: cloneStringArray(
-              base.referenceScreenshotPaths,
-            ),
-          }
-        : {}),
-    ...(update?.prEvidenceExample !== undefined
-      ? {
-          prEvidenceExample: cloneVisualEvidenceExample(
-            update.prEvidenceExample,
-          ),
-        }
-      : base.prEvidenceExample !== undefined
-        ? {
-            prEvidenceExample: cloneVisualEvidenceExample(
-              base.prEvidenceExample,
-            ),
-          }
-        : {}),
+    referenceScreenshotPaths: normalizedVisualEvidenceReferencePaths(
+      update?.referenceScreenshotPaths,
+      base.referenceScreenshotPaths,
+    ),
+    prEvidenceExample: cloneVisualEvidenceExample(
+      update?.prEvidenceExample ?? base.prEvidenceExample,
+    ),
   };
 }
 

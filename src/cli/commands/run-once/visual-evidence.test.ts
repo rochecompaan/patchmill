@@ -1,131 +1,181 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  defaultVisualEvidenceUploader,
-  uploadPrVisualEvidence,
-} from "./visual-evidence.ts";
-import {
-  LEGACY_FORGEJO_TOKEN_ENV,
-  LEGACY_FORGEJO_URL_ENV,
-} from "../../../../test-support/legacy-seed.ts";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
 import type { AgentIssueVisualEvidence, CommandRunner } from "./types.ts";
-import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 
-function fakeRunner(): CommandRunner {
+const DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR =
+  DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence
+    .referenceScreenshotPaths[0];
+
+const MINIMAL_PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
+]);
+
+type GitResponse = { code: number; stdout?: string; stderr?: string };
+
+async function tempRoot(): Promise<string> {
+  return mkdtemp(join(tmpdir(), "patchmill-visual-evidence-"));
+}
+
+async function writeScreenshot(
+  root: string,
+  relativePath: string,
+): Promise<void> {
+  const fullPath = join(root, relativePath);
+  await mkdir(join(fullPath, ".."), { recursive: true });
+  await writeFile(fullPath, MINIMAL_PNG_BYTES);
+}
+
+function gitRunner(
+  responses: GitResponse[],
+): CommandRunner & { calls: string[] } {
+  const calls: string[] = [];
+  let index = 0;
   return {
-    async run() {
-      return { code: 0, stdout: "", stderr: "" };
+    calls,
+    async run(command, args) {
+      calls.push([command, ...args].join(" "));
+      const response = responses[index] ?? { code: 0 };
+      index += 1;
+      return {
+        code: response.code,
+        stdout: response.stdout ?? "",
+        stderr: response.stderr ?? "",
+      };
     },
   };
 }
 
-test("uploadPrVisualEvidence keeps evidence when no uploader is configured", async () => {
+test("validateVisualEvidenceReferences accepts committed reference screenshots", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, "docs/screenshots/dashboard.png");
+  const runner = gitRunner([
+    { code: 0, stdout: "docs/screenshots/dashboard.png\n" },
+    { code: 0 },
+    { code: 0 },
+  ]);
   const events: string[] = [];
   const evidence: AgentIssueVisualEvidence[] = [
     {
-      screenshotPath: ".tmp/dashboard.png",
-      caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
+      screenshotPath: "docs/screenshots/dashboard.png",
+      caption: "Dashboard reference screenshot",
     },
   ];
 
-  const uploaded = await uploadPrVisualEvidence({
-    repoRoot: "/repo",
-    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
+  const validated = await validateVisualEvidenceReferences({
+    repoRoot,
     evidence,
-    onProgress: async (message) => {
-      events.push(message);
-    },
+    runner,
+    referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
+    onProgress: async (message) => events.push(message),
   });
 
-  assert.deepEqual(uploaded, evidence);
+  assert.deepEqual(validated, evidence);
   assert.deepEqual(events, [
-    "visual evidence present but no uploader configured; skipping host asset upload",
+    "validated 1 committed visual evidence reference screenshot",
+  ]);
+  assert.deepEqual(runner.calls, [
+    "git ls-tree -r --name-only HEAD -- docs/screenshots/dashboard.png",
+    "git diff --quiet -- docs/screenshots/dashboard.png",
+    "git diff --cached --quiet -- docs/screenshots/dashboard.png",
   ]);
 });
 
-test("defaultVisualEvidenceUploader returns no uploader when only removed legacy env variables are set", () => {
-  const uploader = defaultVisualEvidenceUploader({
-    runner: fakeRunner(),
-    provider: "forgejo-tea",
-    env: {
-      [LEGACY_FORGEJO_URL_ENV]: "https://forgejo.example",
-      [LEGACY_FORGEJO_TOKEN_ENV]: "compat-token",
-    } as NodeJS.ProcessEnv,
-  });
+test("validateVisualEvidenceReferences rejects temporary screenshot paths", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, ".tmp/dashboard.png");
 
-  assert.equal(uploader, undefined);
-});
-
-test("defaultVisualEvidenceUploader returns no uploader for github-gh", () => {
-  assert.equal(
-    defaultVisualEvidenceUploader({
-      runner: fakeRunner(),
-      provider: "github-gh",
-      env: {
-        PATCHMILL_FORGEJO_URL: "https://forgejo.example",
-        PATCHMILL_FORGEJO_TOKEN: "token",
-      },
+  await assert.rejects(
+    validateVisualEvidenceReferences({
+      repoRoot,
+      evidence: [{ screenshotPath: ".tmp/dashboard.png" }],
+      runner: gitRunner([]),
+      referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
     }),
-    undefined,
+    /Visual evidence must be a committed reference screenshot under docs\/screenshots/u,
   );
 });
 
-test("defaultVisualEvidenceUploader keeps Forgejo uploader for forgejo-tea", () => {
-  const uploader = defaultVisualEvidenceUploader({
-    runner: fakeRunner(),
-    provider: "forgejo-tea",
-    env: {
-      PATCHMILL_FORGEJO_URL: "https://forgejo.example",
-      PATCHMILL_FORGEJO_TOKEN: "token",
-    },
-  });
+test("validateVisualEvidenceReferences rejects paths that escape the reference directory with dot segments", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, "docs/private.png");
+  const runner = gitRunner([
+    { code: 0, stdout: "docs/private.png\n" },
+    { code: 0 },
+    { code: 0 },
+  ]);
 
-  assert.notEqual(uploader, undefined);
+  await assert.rejects(
+    validateVisualEvidenceReferences({
+      repoRoot,
+      evidence: [{ screenshotPath: "docs/screenshots/../private.png" }],
+      runner,
+      referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
+    }),
+    /Visual evidence must be a committed reference screenshot under docs\/screenshots: docs\/private\.png/u,
+  );
 });
 
-test("uploadPrVisualEvidence delegates to the configured uploader", async () => {
-  const evidence: AgentIssueVisualEvidence[] = [
-    {
-      screenshotPath: ".tmp/dashboard.png",
-      caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
-    },
-  ];
-
-  let received:
-    | Parameters<VisualEvidenceUploader["uploadPrEvidence"]>[0]
-    | undefined;
-  const uploader: VisualEvidenceUploader = {
-    async uploadPrEvidence(input) {
-      received = input;
-      return (
-        input.evidence?.map((entry) => ({
-          ...entry,
-          url: `https://forgejo.example/${entry.screenshotPath}`,
-        })) ?? []
-      );
-    },
-  };
-
-  const uploaded = await uploadPrVisualEvidence({
-    repoRoot: "/repo",
-    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
-    evidence,
-    uploader,
-  });
-
-  assert.deepEqual(received, {
-    repoRoot: "/repo",
-    prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
-    evidence,
-  });
-  assert.deepEqual(uploaded, [
-    {
-      screenshotPath: ".tmp/dashboard.png",
-      caption: "Dashboard after selecting last 8 weeks",
-      referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
-      url: "https://forgejo.example/.tmp/dashboard.png",
-    },
+test("validateVisualEvidenceReferences rejects symlink screenshot paths", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, "docs/private.png");
+  await mkdir(join(repoRoot, "docs", "screenshots"), { recursive: true });
+  await symlink(
+    "../private.png",
+    join(repoRoot, "docs", "screenshots", "dashboard.png"),
+  );
+  const runner = gitRunner([
+    { code: 0, stdout: "docs/screenshots/dashboard.png\n" },
+    { code: 0 },
+    { code: 0 },
   ]);
+
+  await assert.rejects(
+    validateVisualEvidenceReferences({
+      repoRoot,
+      evidence: [{ screenshotPath: "docs/screenshots/dashboard.png" }],
+      runner,
+      referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
+    }),
+    /Visual evidence screenshot path must not contain symlink components: docs\/screenshots\/dashboard\.png/u,
+  );
+});
+
+test("validateVisualEvidenceReferences rejects screenshots missing from HEAD", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, "docs/screenshots/dashboard.png");
+  const runner = gitRunner([{ code: 0, stdout: "" }]);
+
+  await assert.rejects(
+    validateVisualEvidenceReferences({
+      repoRoot,
+      evidence: [{ screenshotPath: "docs/screenshots/dashboard.png" }],
+      runner,
+      referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
+    }),
+    /Visual evidence screenshot is not committed in HEAD: docs\/screenshots\/dashboard\.png/u,
+  );
+});
+
+test("validateVisualEvidenceReferences rejects committed screenshots with uncommitted changes", async () => {
+  const repoRoot = await tempRoot();
+  await writeScreenshot(repoRoot, "docs/screenshots/dashboard.png");
+  const runner = gitRunner([
+    { code: 0, stdout: "docs/screenshots/dashboard.png\n" },
+    { code: 1 },
+  ]);
+
+  await assert.rejects(
+    validateVisualEvidenceReferences({
+      repoRoot,
+      evidence: [{ screenshotPath: "docs/screenshots/dashboard.png" }],
+      runner,
+      referenceScreenshotPaths: [DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR],
+    }),
+    /Visual evidence screenshot has uncommitted changes: docs\/screenshots\/dashboard\.png/u,
+  );
 });

@@ -58,7 +58,7 @@ const examplePolicy: PatchmillProjectPolicy = {
       "docs/example-screenshots/mobile/",
     ],
     prEvidenceExample: {
-      screenshotPath: ".tmp/issue-42-dashboard-after.png",
+      screenshotPath: "docs/example-screenshots/web/dashboard.png",
       caption: "Dashboard after selecting last 8 weeks",
       referencePaths: ["docs/example-screenshots/web/01-dashboard.png"],
     },
@@ -531,15 +531,19 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Visual-change evidence data:/);
   assert.match(
     prompt,
-    /Use existing committed reference screenshots, when available, as the styling baseline/,
+    /Visual evidence must be a committed reference screenshot, not a temporary proof file/,
   );
   assert.match(
     prompt,
-    /For PR fallback, return structured `visualEvidence` entries like this example/,
+    /Do not use issue numbers, dates, or hashes in reference screenshot filenames/,
   );
   assert.match(
     prompt,
-    /"screenshotPath": "\.tmp\/issue-42-dashboard-after\.png"/,
+    /When visible UI changed, add a `visualEvidence` field to the final `pr-created` JSON with committed reference screenshots like this example/,
+  );
+  assert.match(
+    prompt,
+    /"screenshotPath": "docs\/example-screenshots\/web\/dashboard\.png"/,
   );
   assert.match(
     prompt,
@@ -567,6 +571,10 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /"status": "pr-created"/);
   assert.match(prompt, /"prUrl": "<pull request URL>"/);
   assert.match(prompt, /"visualEvidence": \[/);
+  assert.doesNotMatch(
+    prompt,
+    /Successful final response for human-review PR fallback:[\s\S]*"visualEvidence": \[/,
+  );
   assert.match(prompt, /"reviewSummary": "short reviewer\/fix summary"/);
   assert.doesNotMatch(prompt, /If eligible for direct squash-land:/);
   assert.doesNotMatch(
@@ -766,7 +774,7 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
           "docs/sentinel/mobile/",
         ],
         prEvidenceExample: {
-          screenshotPath: ".tmp/issue-42-sentinel-after.png",
+          screenshotPath: "docs/sentinel/web/sentinel-after.png",
           caption: "Sentinel after the change",
           referencePaths: ["docs/sentinel/web/hero.png"],
         },
@@ -790,7 +798,7 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
   );
   assert.match(
     prompt,
-    /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/,
+    /"screenshotPath": "docs\/sentinel\/web\/sentinel-after\.png"/,
   );
   assert.match(
     prompt,
@@ -798,7 +806,11 @@ test("buildImplementationPrompt renders structured visual evidence policy fields
   );
   assert.match(
     prompt,
-    /Successful final response for human-review PR fallback:[\s\S]*"visualEvidence": \[[\s\S]*"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/,
+    /When visible UI changed, add a `visualEvidence` field[\s\S]*"referencePaths": \[[\s\S]*"docs\/sentinel\/web\/hero\.png"/,
+  );
+  assert.doesNotMatch(
+    prompt,
+    /Successful final response for human-review PR fallback:[\s\S]*"visualEvidence": \[/,
   );
   assert.doesNotMatch(
     prompt,

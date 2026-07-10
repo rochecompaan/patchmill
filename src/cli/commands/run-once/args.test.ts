@@ -8,9 +8,6 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { HELP_TEXT, loadCliConfig, summarizeResult } from "./main.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
-  LEGACY_FORGEJO_REPO_ENV,
-  LEGACY_FORGEJO_TOKEN_ENV,
-  LEGACY_FORGEJO_URL_ENV,
   LEGACY_RUN_ONCE_LOGIN_ENV,
   LEGACY_TRIAGE_LOGIN_ENV,
   literalPattern,
@@ -152,22 +149,10 @@ test("help text documents verbose Pi output", () => {
   assert.match(HELP_TEXT, /--verbose-pi-output/);
 });
 
-test("help text documents Forgejo-only visual evidence upload environment", () => {
-  assert.match(
-    HELP_TEXT,
-    /PATCHMILL_FORGEJO_URL\s+Forgejo-only base URL for PR visual evidence uploads/,
-  );
-  assert.match(
-    HELP_TEXT,
-    /PATCHMILL_FORGEJO_TOKEN\s+Forgejo-only API token for PR visual evidence uploads/,
-  );
-  assert.match(
-    HELP_TEXT,
-    /PATCHMILL_FORGEJO_REPO\s+Forgejo-only optional owner\/repo override/,
-  );
-  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_URL_ENV));
-  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_TOKEN_ENV));
-  assert.doesNotMatch(HELP_TEXT, literalPattern(LEGACY_FORGEJO_REPO_ENV));
+test("help text omits removed Forgejo visual evidence upload environment", () => {
+  assert.doesNotMatch(HELP_TEXT, /PATCHMILL_FORGEJO_URL/);
+  assert.doesNotMatch(HELP_TEXT, /PATCHMILL_FORGEJO_TOKEN/);
+  assert.doesNotMatch(HELP_TEXT, /PATCHMILL_FORGEJO_REPO/);
   assert.doesNotMatch(HELP_TEXT, /Compatibility fallback/);
 });
 
@@ -501,7 +486,7 @@ test("loadCliConfig passes configured skills and project policy through to run-o
         visualEvidence: {
           referenceScreenshotPaths: ["docs/sentinel/web/"],
           prEvidenceExample: {
-            screenshotPath: ".tmp/issue-42-sentinel-after.png",
+            screenshotPath: "docs/sentinel/web/sentinel-after.png",
             caption: "Sentinel after the change",
           },
         },
@@ -522,7 +507,7 @@ test("loadCliConfig passes configured skills and project policy through to run-o
   );
   assert.equal(
     config.projectPolicy.visualEvidence.prEvidenceExample?.screenshotPath,
-    ".tmp/issue-42-sentinel-after.png",
+    "docs/sentinel/web/sentinel-after.png",
   );
 });
 

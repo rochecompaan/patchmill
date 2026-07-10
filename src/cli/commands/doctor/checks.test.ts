@@ -6,7 +6,10 @@ import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
 import { installProjectSkills } from "../init/skill-installer.ts";
 import type { CommandRunner } from "../triage/types.ts";
-import { bundledArtifactExtractionSkillPath } from "../../../workflow/skills.ts";
+import {
+  bundledArtifactExtractionSkillPath,
+  bundledVisualEvidenceSkillPath,
+} from "../../../workflow/skills.ts";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
@@ -68,6 +71,7 @@ function recommendedProjectLocalConfig() {
       triage: `${DEFAULT_PROJECT_SKILL_DIR}/patchmill-issue-triage`,
       planning: `${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`,
       implementation: `${DEFAULT_PROJECT_SKILL_DIR}/subagent-driven-development`,
+      visualEvidence: `${DEFAULT_PROJECT_SKILL_DIR}/patchmill-visual-evidence`,
     },
   };
 }
@@ -105,6 +109,77 @@ function projectLocalSkillPath(repoRoot: string, skillName: string): string {
 
 function projectLocalMetadataSkillPath(skillName: string): string {
   return `${DEFAULT_PROJECT_SKILL_DIR}/${skillName}/SKILL.md`;
+}
+
+function projectLocalMetadataSkillFilePath(
+  skillName: string,
+  relativeFile: string,
+): string {
+  return `${DEFAULT_PROJECT_SKILL_DIR}/${skillName}/${relativeFile}`;
+}
+
+const visualEvidenceSkill = skillDocument(
+  "patchmill-visual-evidence",
+  "Capture visual evidence.",
+);
+
+async function writeProjectLocalVisualEvidenceSkill(
+  repoRoot: string,
+): Promise<string> {
+  const skillPath = await writeProjectLocalSkill(
+    repoRoot,
+    "patchmill-visual-evidence",
+    visualEvidenceSkill,
+  );
+  await mkdir(
+    join(
+      repoRoot,
+      DEFAULT_PROJECT_SKILL_DIR,
+      "patchmill-visual-evidence",
+      "scripts",
+    ),
+    { recursive: true },
+  );
+  await writeFile(
+    join(
+      repoRoot,
+      DEFAULT_PROJECT_SKILL_DIR,
+      "patchmill-visual-evidence",
+      "scripts",
+      "capture-visual-evidence.cjs",
+    ),
+    "#!/usr/bin/env node\n",
+  );
+  return skillPath;
+}
+
+function projectLocalVisualEvidenceMetadata(): Array<{
+  path: string;
+  sha256: string;
+}> {
+  return [
+    {
+      path: projectLocalMetadataSkillPath("patchmill-visual-evidence"),
+      sha256: hashText(visualEvidenceSkill),
+    },
+    {
+      path: projectLocalMetadataSkillFilePath(
+        "patchmill-visual-evidence",
+        "scripts/capture-visual-evidence.cjs",
+      ),
+      sha256: hashText("#!/usr/bin/env node\n"),
+    },
+  ];
+}
+
+function recommendedProjectLocalSmokePaths(repoRoot: string): string[] {
+  return [
+    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
+    projectLocalSkillPath(repoRoot, "writing-plans"),
+    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
+    bundledArtifactExtractionSkillPath(),
+    projectLocalSkillPath(repoRoot, "patchmill-visual-evidence"),
+  ];
 }
 
 function projectLocalPiSmokeCommand(paths: string[]): string {
@@ -651,12 +726,7 @@ test("runDoctorChecks passes for fresh configured project-local skills", async (
     /description:\s*\n\s+Triage repository issues/u,
   );
 
-  const smokePaths = [
-    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
-    projectLocalSkillPath(repoRoot, "writing-plans"),
-    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-    bundledArtifactExtractionSkillPath(),
-  ];
+  const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);
 
   const calls: string[] = [];
   const runner: CommandRunner = {
@@ -726,6 +796,128 @@ test("runDoctorChecks fails when a local skill frontmatter is malformed", async 
   assert.equal(skills?.status, "fail");
   assert.match(skills?.message ?? "", /malformed skill frontmatter/);
   assert.match(skills?.message ?? "", /missing description/);
+});
+
+test("runDoctorChecks fails when project-local visual evidence helper is missing", async () => {
+  const repoRoot = await tempRepo();
+  const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
+  const planningSkill = skillDocument("writing-plans", "Write plans.");
+  const implementationSkill = skillDocument(
+    "subagent-driven-development",
+    "Execute plans.",
+  );
+
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(repoRoot, "patchmill-issue-triage", triageSkill);
+  await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    implementationSkill,
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "patchmill-visual-evidence",
+    visualEvidenceSkill,
+  );
+
+  const results = await runDoctorChecks(
+    runnerFrom(successMocks(REQUIRED_LABELS)),
+    {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    },
+  );
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*patchmill-visual-evidence.*scripts.*capture-visual-evidence\.cjs/,
+  );
+});
+
+test("runDoctorChecks fails when a renamed visual evidence skill lacks the helper", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      visualEvidence: "custom-skills/screenshots",
+    },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeSkillFile(
+    join(repoRoot, "custom-skills"),
+    "screenshots",
+    visualEvidenceSkill,
+  );
+
+  const results = await runDoctorChecks(
+    runnerFrom(successMocks(REQUIRED_LABELS)),
+    {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    },
+  );
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*custom-skills.*screenshots.*scripts.*capture-visual-evidence\.cjs/,
+  );
+});
+
+test("runDoctorChecks fails when project-local visual evidence helper is a directory", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await writeProjectLocalSkill(
+    repoRoot,
+    "patchmill-issue-triage",
+    skillDocument("patchmill-issue-triage", "Triage issues."),
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "writing-plans",
+    skillDocument("writing-plans", "Write plans."),
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "subagent-driven-development",
+    skillDocument("subagent-driven-development", "Execute plans."),
+  );
+  await writeProjectLocalSkill(
+    repoRoot,
+    "patchmill-visual-evidence",
+    visualEvidenceSkill,
+  );
+  await mkdir(
+    join(
+      repoRoot,
+      DEFAULT_PROJECT_SKILL_DIR,
+      "patchmill-visual-evidence",
+      "scripts",
+      "capture-visual-evidence.cjs",
+    ),
+    { recursive: true },
+  );
+
+  const results = await runDoctorChecks(
+    runnerFrom(successMocks(REQUIRED_LABELS)),
+    {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    },
+  );
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*patchmill-visual-evidence.*scripts.*capture-visual-evidence\.cjs/,
+  );
 });
 
 test("runDoctorChecks ignores unused .patchmill skills when config uses global/named skills", async () => {
@@ -816,6 +1008,7 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
   const smokePaths = [
     projectLocalSkillPath(repoRoot, "writing-plans"),
     bundledArtifactExtractionSkillPath(),
+    bundledVisualEvidenceSkillPath(),
   ];
   const calls: string[] = [];
   const runner: CommandRunner = {
@@ -883,6 +1076,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
       "subagent-driven-development",
       implementationSkill,
     );
+    await writeProjectLocalVisualEvidenceSkill(repoRoot);
     await writeProjectLocalMetadata(repoRoot, [
       {
         path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
@@ -891,12 +1085,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
       { path: invalidPath, sha256: hashText("outside") },
     ]);
 
-    const smokePaths = [
-      projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
-      projectLocalSkillPath(repoRoot, "writing-plans"),
-      projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-      bundledArtifactExtractionSkillPath(),
-    ];
+    const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);
     const calls: string[] = [];
     const runner: CommandRunner = {
       async run(command, args) {
@@ -959,6 +1148,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
     "subagent-driven-development",
     implementationSkill,
   );
+  await writeProjectLocalVisualEvidenceSkill(repoRoot);
   await writeProjectLocalMetadata(repoRoot, [
     {
       path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
@@ -972,14 +1162,10 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
       path: projectLocalMetadataSkillPath("subagent-driven-development"),
       sha256: hashText(implementationSkill),
     },
+    ...projectLocalVisualEvidenceMetadata(),
   ]);
 
-  const smokePaths = [
-    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
-    projectLocalSkillPath(repoRoot, "writing-plans"),
-    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-    bundledArtifactExtractionSkillPath(),
-  ];
+  const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
       [projectLocalPiSmokeCommand(smokePaths)]: {
@@ -1018,6 +1204,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
     "subagent-driven-development",
     implementationSkill,
   );
+  await writeProjectLocalVisualEvidenceSkill(repoRoot);
   await writeProjectLocalMetadata(repoRoot, [
     {
       path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
@@ -1031,6 +1218,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
       path: projectLocalMetadataSkillPath("subagent-driven-development"),
       sha256: hashText(implementationSkill),
     },
+    ...projectLocalVisualEvidenceMetadata(),
   ]);
 
   const calls: string[] = [];
@@ -1040,12 +1228,9 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
       calls.push(key);
       return (
         successMocks(REQUIRED_LABELS, {
-          [projectLocalPiSmokeCommand([
-            projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
-            projectLocalSkillPath(repoRoot, "writing-plans"),
-            projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-            bundledArtifactExtractionSkillPath(),
-          ])]: {
+          [projectLocalPiSmokeCommand(
+            recommendedProjectLocalSmokePaths(repoRoot),
+          )]: {
             code: 0,
             stdout: "PATCHMILL_SKILLS_OK\n",
           },
@@ -1097,6 +1282,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
     "subagent-driven-development",
     implementationSkill,
   );
+  await writeProjectLocalVisualEvidenceSkill(repoRoot);
   await writeProjectLocalMetadata(repoRoot, [
     {
       path: projectLocalMetadataSkillPath("patchmill-issue-triage"),
@@ -1110,14 +1296,10 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
       path: projectLocalMetadataSkillPath("subagent-driven-development"),
       sha256: hashText(implementationSkill),
     },
+    ...projectLocalVisualEvidenceMetadata(),
   ]);
 
-  const smokePaths = [
-    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
-    projectLocalSkillPath(repoRoot, "writing-plans"),
-    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-    bundledArtifactExtractionSkillPath(),
-  ];
+  const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
       [projectLocalPiSmokeCommand(smokePaths)]: {
@@ -1159,13 +1341,9 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
     "subagent-driven-development",
     implementationSkill,
   );
+  await writeProjectLocalVisualEvidenceSkill(repoRoot);
 
-  const smokePaths = [
-    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
-    projectLocalSkillPath(repoRoot, "writing-plans"),
-    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-    bundledArtifactExtractionSkillPath(),
-  ];
+  const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);
   const runner = runnerFrom(
     successMocks(REQUIRED_LABELS, {
       [projectLocalPiSmokeCommand(smokePaths)]: {

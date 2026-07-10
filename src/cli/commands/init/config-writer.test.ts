@@ -15,6 +15,7 @@ const PROJECT_LOCAL_SKILLS = {
   triage: ".patchmill/skills/patchmill-issue-triage",
   planning: ".patchmill/skills/writing-plans",
   implementation: ".patchmill/skills/subagent-driven-development",
+  visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
 };
 
 async function tempRepo(): Promise<string> {

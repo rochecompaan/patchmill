@@ -87,6 +87,7 @@ const DEFAULT_GLOBAL_SKILLS: InitialConfigSkills = {
   triage: GLOBAL_PATCHMILL_SKILLS.triage,
   planning: GLOBAL_PATCHMILL_SKILLS.planning,
   implementation: GLOBAL_PATCHMILL_SKILLS.implementation,
+  visualEvidence: GLOBAL_PATCHMILL_SKILLS.visualEvidence!,
 };
 
 function stageableSkillRoots(

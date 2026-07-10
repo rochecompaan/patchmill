@@ -15,7 +15,10 @@ import type {
   CommandRunner,
   IssueSummary,
 } from "../cli/commands/triage/types.ts";
-import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
+import {
+  DEFAULT_PATCHMILL_SKILLS,
+  bundledVisualEvidenceSkillPath,
+} from "../workflow/skills.ts";
 import { buildSkillPackMetadata, hashText } from "../workflow/skill-pack.ts";
 import type { ImplementationPiInput } from "./types.ts";
 
@@ -443,6 +446,7 @@ test("PiRunner implementation resolves local skills from the config repo root wi
         "subagent-driven-development",
         "SKILL.md",
       ),
+      bundledVisualEvidenceSkillPath(),
     ]);
     assert.equal(call.cwd, worktreeRoot);
     return {

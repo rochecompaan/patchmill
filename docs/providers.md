@@ -39,8 +39,8 @@ set the host provider explicitly:
 }
 ```
 
-The first `github-gh` version uses the active `gh` authentication context. It
-does not support named logins or GitHub visual-evidence upload.
+The first `github-gh` version uses the active `gh` authentication context and
+does not support named logins.
 
 ## Runtime Pi authentication
 
@@ -77,10 +77,6 @@ shared repository policy:
 - `PATCHMILL_HOST_LOGIN`: host account/login override for providers with
   named-login support, such as `forgejo-tea`. Providers without named-login
   support, such as `github-gh`, ignore it.
-- `PATCHMILL_FORGEJO_URL`: Forgejo base URL used for visual-evidence uploads.
-- `PATCHMILL_FORGEJO_TOKEN`: Forgejo API token used for visual-evidence uploads.
-- `PATCHMILL_FORGEJO_REPO`: optional `owner/repo` override when git remote
-  parsing is insufficient for Forgejo visual-evidence uploads.
 
 ## Local state
 
