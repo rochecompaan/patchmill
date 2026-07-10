@@ -45,7 +45,7 @@ test("parsePiResult extracts a merged implementation result", () => {
 
 test("parsePiResult extracts visual evidence from a pr-created result", () => {
   const result = parsePiResult(
-    'done\n{"status":"pr-created","prUrl":"https://forgejo.example/pulls/42","branch":"agent/issue-42-dashboard","commits":["def456"],"validation":["just playwright-test ok"],"visualEvidence":[{"screenshotPath":".tmp/issue-42-dashboard.png","caption":"Dashboard after selecting last 8 weeks","referencePaths":["docs/visual-baselines/web/01-dashboard.png"]}]}',
+    'done\n{"status":"pr-created","prUrl":"https://forgejo.example/pulls/42","branch":"agent/issue-42-dashboard","commits":["def456"],"validation":["just playwright-test ok"],"visualEvidence":[{"screenshotPath":"docs/screenshots/dashboard.png","caption":"Dashboard after selecting last 8 weeks","referencePaths":["docs/visual-baselines/web/01-dashboard.png"]}]}',
   );
 
   assert.deepEqual(result, {
@@ -58,7 +58,7 @@ test("parsePiResult extracts visual evidence from a pr-created result", () => {
     landingDecision: undefined,
     visualEvidence: [
       {
-        screenshotPath: ".tmp/issue-42-dashboard.png",
+        screenshotPath: "docs/screenshots/dashboard.png",
         caption: "Dashboard after selecting last 8 weeks",
         referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
       },

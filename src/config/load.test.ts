@@ -270,7 +270,7 @@ test("loadPatchmillConfig clones configured visual evidence fields for each load
             "docs/reference/mobile/",
           ],
           prEvidenceExample: {
-            screenshotPath: ".tmp/factory-after.png",
+            screenshotPath: "docs/screenshots/factory-after.png",
             caption: "Factory dashboard after the change",
             referencePaths: ["docs/reference/web/dashboard.png"],
           },
@@ -311,7 +311,7 @@ test("loadPatchmillConfig clones configured visual evidence fields for each load
     ["docs/reference/web/", "docs/reference/mobile/"],
   );
   assert.deepEqual(second.projectPolicy.visualEvidence.prEvidenceExample, {
-    screenshotPath: ".tmp/factory-after.png",
+    screenshotPath: "docs/screenshots/factory-after.png",
     caption: "Factory dashboard after the change",
     referencePaths: ["docs/reference/web/dashboard.png"],
   });
@@ -666,7 +666,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
             "docs/reference/mobile/",
           ],
           prEvidenceExample: {
-            screenshotPath: ".tmp/factory-after.png",
+            screenshotPath: "docs/screenshots/factory-after.png",
             caption: "Factory dashboard after the change",
             referencePaths: ["docs/reference/web/dashboard.png"],
           },
@@ -735,7 +735,7 @@ test("loadPatchmillConfig applies patchmill.config.json", async () => {
     ["docs/reference/web/", "docs/reference/mobile/"],
   );
   assert.deepEqual(config.projectPolicy.visualEvidence.prEvidenceExample, {
-    screenshotPath: ".tmp/factory-after.png",
+    screenshotPath: "docs/screenshots/factory-after.png",
     caption: "Factory dashboard after the change",
     referencePaths: ["docs/reference/web/dashboard.png"],
   });

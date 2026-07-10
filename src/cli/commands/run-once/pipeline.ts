@@ -38,8 +38,6 @@ import {
   resolveWorkflowState,
   type RunOnceWorkflowState,
 } from "./workflow-state.ts";
-import type { ForgejoVisualEvidenceEnv } from "../../../host/forgejo-visual-evidence.ts";
-import type { VisualEvidenceUploader } from "../../../host/visual-evidence.ts";
 import {
   isResumableRunState,
   readRunState,
@@ -52,10 +50,7 @@ import {
   inspectBlockedRunRecovery,
 } from "./recovery.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
-import {
-  defaultVisualEvidenceUploader,
-  uploadPrVisualEvidence,
-} from "./visual-evidence.ts";
+import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type {
   AgentIssueBlockedResult,
@@ -78,9 +73,6 @@ export type RunOneIssueOptions = {
   streamPiOutput?: (chunk: string) => void;
   verbosePiOutput?: boolean;
   heartbeatMs?: number;
-  fetchImpl?: typeof fetch;
-  visualEvidenceEnv?: ForgejoVisualEvidenceEnv;
-  visualEvidenceUploader?: VisualEvidenceUploader;
 };
 
 async function progress(
@@ -255,7 +247,7 @@ const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
   "planReadyCommentPosted",
   "worktreeReady",
   "implementationCompleted",
-  "visualEvidenceUploaded",
+  "visualEvidenceValidated",
   "handoffCommentPosted",
   "doneLabelEnsured",
   "doneLabelApplied",
@@ -1601,28 +1593,21 @@ export async function runOneIssue(
     if (
       implemented.status === "pr-created" &&
       (implemented.visualEvidence?.length ?? 0) > 0 &&
-      !checkpoints.visualEvidenceUploaded
+      !checkpoints.visualEvidenceValidated
     ) {
-      const visualEvidenceUploader =
-        options.visualEvidenceUploader ??
-        defaultVisualEvidenceUploader({
-          runner,
-          provider: config.host.provider,
-          env: options.visualEvidenceEnv,
-          fetchImpl: options.fetchImpl,
-        });
-      const uploadedEvidence = await uploadPrVisualEvidence({
+      const validatedEvidence = await validateVisualEvidenceReferences({
         repoRoot: join(config.repoRoot, worktreePath),
-        prUrl: implemented.prUrl,
         evidence: implemented.visualEvidence,
-        uploader: visualEvidenceUploader,
+        runner,
+        referenceScreenshotPaths:
+          config.projectPolicy.visualEvidence.referenceScreenshotPaths,
         onProgress: async (message) => {
           await progress(options, "info", "visual-evidence", message, {
             issueNumber: issue.number,
           });
         },
       });
-      implemented = { ...implemented, visualEvidence: uploadedEvidence };
+      implemented = { ...implemented, visualEvidence: validatedEvidence };
       await writeRunState(
         config.runStateDir,
         {
@@ -1640,12 +1625,12 @@ export async function runOneIssue(
           validation: implemented.validation,
           reviewSummary: implemented.reviewSummary,
           landingDecision: implemented.landingDecision,
-          visualEvidence: uploadedEvidence,
-          checkpoints: { visualEvidenceUploaded: true },
+          visualEvidence: validatedEvidence,
+          checkpoints: { visualEvidenceValidated: true },
         },
         timestamp,
       );
-      checkpoints.visualEvidenceUploaded = true;
+      checkpoints.visualEvidenceValidated = true;
     }
 
     if (!checkpoints.handoffCommentPosted) {

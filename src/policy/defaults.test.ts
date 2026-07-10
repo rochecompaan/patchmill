@@ -12,9 +12,12 @@ test("DEFAULT_PATCHMILL_POLICY stays generic", () => {
     [],
   );
   assert.equal(DEFAULT_PATCHMILL_POLICY.directLand.targetBranch, "main");
-  assert.deepEqual(DEFAULT_PATCHMILL_POLICY.visualEvidence.prEvidenceExample, {
-    screenshotPath: ".tmp/issue-42-after.png",
-    caption: "Visible UI state after the change",
+  assert.deepEqual(DEFAULT_PATCHMILL_POLICY.visualEvidence, {
+    referenceScreenshotPaths: ["docs/screenshots"],
+    prEvidenceExample: {
+      screenshotPath: "docs/screenshots/example-screen.png",
+      caption: "Reference screenshot for the changed UI state",
+    },
   });
   assert.deepEqual(DEFAULT_PATCHMILL_POLICY.pi.taskContract, {
     todoRoot: ".pi/todos",

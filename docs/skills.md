@@ -80,24 +80,29 @@ Supported keys:
 
 Patchmill's visual evidence skill is part of the implementation prompt, not a
 separate workflow stage. It does not return a standalone result. When an issue
-changes visible UI, the implementation agent must save screenshots in the issue
-worktree and include their metadata in the final `pr-created` JSON:
+changes visible UI, the implementation agent must add or update committed
+reference screenshots in the issue worktree and include their metadata in the
+final `pr-created` JSON:
 
 ```json
 "visualEvidence": [
   {
-    "screenshotPath": ".tmp/issue-42-after.png",
-    "caption": "Visible UI state after the change",
-    "referencePaths": ["docs/screenshots/baseline.png"]
+    "screenshotPath": "docs/screenshots/admin-log-entries-page.png",
+    "caption": "Reference screenshot for the server-driven log entries page"
   }
 ]
 ```
 
 `visualEvidence[].screenshotPath` is required and must point to a real `.png`,
-`.jpg`, `.jpeg`, `.gif`, or `.webp` file inside the worktree. `caption` should
-describe the proved UI state. `referencePaths` should list committed baseline
-screenshots used for comparison when available. If no visible UI changed, omit
-`visualEvidence`.
+`.jpg`, `.jpeg`, `.gif`, or `.webp` file inside the worktree. The file must be a
+committed reference screenshot, under `docs/screenshots/` by default or under a
+configured `projectPolicy.visualEvidence.referenceScreenshotPaths` location. For
+an existing screen, update the existing reference screenshot. For a new screen,
+create a stable kebab-case filename based on the route, page/component name, or
+visible title; do not use issue numbers, dates, random hashes, or temporary
+proof names. `caption` should describe the represented UI state.
+`referencePaths` should list additional committed baseline screenshots used for
+comparison when available. If no visible UI changed, omit `visualEvidence`.
 
 The bundled `.patchmill/skills/patchmill-visual-evidence` skill uses a helper
 script that loads `@playwright/test` from the target project. Patchmill does not
@@ -105,10 +110,10 @@ bundle Playwright or install browser dependencies. If the project does not
 already provide Playwright, the implementation agent should use approved project
 screenshot tooling or ask for a setup decision before adding a dependency.
 
-For `pr-created` results, Patchmill attaches visual evidence after the
-implementation result when the configured host provider supports a visual
-evidence uploader. The skill should not ask the implementation agent to upload
-or comment manually unless project/user instructions explicitly require it.
+For `pr-created` results with visual evidence, Patchmill validates that each
+screenshot exists, is image-like, is under an allowed reference screenshot path,
+and is committed in `HEAD` without uncommitted changes before cleaning up the
+issue worktree.
 
 ## Development environment
 

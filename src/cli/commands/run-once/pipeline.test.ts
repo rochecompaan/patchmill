@@ -6719,7 +6719,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
           "docs/sentinel/mobile/",
         ],
         prEvidenceExample: {
-          screenshotPath: ".tmp/issue-42-sentinel-after.png",
+          screenshotPath: "docs/sentinel/web/sentinel-after.png",
           caption: "Sentinel after the change",
           referencePaths: ["docs/sentinel/web/hero.png"],
         },
@@ -6821,7 +6821,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
       );
       assert.match(
         prompt,
-        /"screenshotPath": "\.tmp\/issue-42-sentinel-after\.png"/,
+        /"screenshotPath": "docs\/sentinel\/web\/sentinel-after\.png"/,
       );
       assert.match(
         prompt,
@@ -7552,7 +7552,7 @@ test("runOneIssue moves streamed tool calls under the active implementation task
   );
 });
 
-test("runOneIssue uploads visual evidence to the PR before posting the issue handoff", async () => {
+test("runOneIssue validates committed visual evidence before cleanup", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -7565,12 +7565,8 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
   const worktreePath =
     ".worktrees/patchmill-issue-31-dashboard-visual-evidence";
   const worktreeRoot = join(config.repoRoot, worktreePath);
+  const screenshotPath = "docs/screenshots/dashboard.png";
   const commentBodies: string[] = [];
-  const uploadCalls: Array<{
-    repoRoot: string;
-    prUrl: string;
-    evidence: unknown;
-  }> = [];
 
   const runner = createMockRunner(async (call) => {
     if (
@@ -7622,6 +7618,21 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
       call.args[1] === "add"
     )
       return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args.join(" ") === `ls-tree -r --name-only HEAD -- ${screenshotPath}`
+    )
+      return { code: 0, stdout: `${screenshotPath}\n`, stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args.join(" ") === `diff --quiet -- ${screenshotPath}`
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args.join(" ") === `diff --cached --quiet -- ${screenshotPath}`
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
       await writeTodo(
         worktreeRoot,
@@ -7629,11 +7640,10 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
         "issue-31-task-01-dashboard-visual-evidence",
         "closed",
       );
-      await mkdir(join(worktreeRoot, ".tmp"), { recursive: true });
-      await writeFile(
-        join(worktreeRoot, ".tmp", "dashboard.png"),
-        MINIMAL_PNG_BYTES,
-      );
+      await mkdir(join(worktreeRoot, "docs", "screenshots"), {
+        recursive: true,
+      });
+      await writeFile(join(worktreeRoot, screenshotPath), MINIMAL_PNG_BYTES);
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -7645,9 +7655,8 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
           reviewSummary: "Fresh reviewer screenshot review: passed",
           visualEvidence: [
             {
-              screenshotPath: ".tmp/dashboard.png",
+              screenshotPath,
               caption: "Dashboard after selecting last 8 weeks",
-              referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
             },
           ],
         }),
@@ -7659,45 +7668,13 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
     );
   });
 
-  const visualEvidenceUploader = {
-    async uploadPrEvidence(input: {
-      repoRoot: string;
-      prUrl: string;
-      evidence:
-        | Array<{
-            screenshotPath: string;
-            caption?: string;
-            referencePaths?: string[];
-          }>
-        | undefined;
-    }) {
-      uploadCalls.push(input);
-      return (
-        input.evidence?.map((entry) => ({
-          ...entry,
-          url: "https://forgejo.example/attachments/dashboard.png",
-        })) ?? []
-      );
-    },
-  };
-
-  const result = await runOneIssue(runner, config, {
-    now: NOW,
-    visualEvidenceUploader,
-  });
+  const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "pr-created", JSON.stringify(result));
-  assert.deepEqual(uploadCalls, [
+  assert.deepEqual(result.visualEvidence, [
     {
-      repoRoot: worktreeRoot,
-      prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
-      evidence: [
-        {
-          screenshotPath: ".tmp/dashboard.png",
-          caption: "Dashboard after selecting last 8 weeks",
-          referencePaths: ["docs/visual-baselines/web/01-dashboard.png"],
-        },
-      ],
+      screenshotPath,
+      caption: "Dashboard after selecting last 8 weeks",
     },
   ]);
   assert.match(
@@ -7705,10 +7682,119 @@ test("runOneIssue uploads visual evidence to the PR before posting the issue han
       "",
     /PR: https:\/\/forgejo\.example\/owner\/patchmill\/pulls\/77/,
   );
+});
+
+test("runOneIssue blocks temporary visual evidence before cleanup", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+  });
+  const planPath = join(
+    config.plansDir,
+    "2026-05-22-issue-32-temporary-visual-evidence.md",
+  );
+  await writeFile(planPath, "# plan\n", "utf8");
+  const worktreePath =
+    ".worktrees/patchmill-issue-32-temporary-visual-evidence";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(32, ["agent-ready"], "Temporary visual evidence"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      await writeTodo(
+        worktreeRoot,
+        "task-1",
+        "issue-32-task-01-temporary-visual-evidence",
+        "closed",
+      );
+      await mkdir(join(worktreeRoot, ".tmp"), { recursive: true });
+      await writeFile(
+        join(worktreeRoot, ".tmp", "dashboard.png"),
+        MINIMAL_PNG_BYTES,
+      );
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/owner/patchmill/pulls/78",
+          branch: "agent/issue-32-temporary-visual-evidence",
+          commits: ["def456"],
+          validation: ["just playwright-test ok"],
+          reviewSummary: "Fresh reviewer screenshot review: passed",
+          visualEvidence: [
+            {
+              screenshotPath: ".tmp/dashboard.png",
+              caption: "Temporary screenshot that would vanish on cleanup",
+            },
+          ],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked", JSON.stringify(result));
+  assert.match(
+    result.reason,
+    /Visual evidence must be a committed reference screenshot under docs\/screenshots/u,
+  );
   assert.equal(
-    commentBodies.some(
-      (body) =>
-        body.includes(".tmp/dashboard.png") && body.includes("Visual evidence"),
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "remove",
     ),
     false,
   );

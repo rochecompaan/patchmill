@@ -132,10 +132,10 @@ pieces your repository needs.
       "targetBranch": "main"
     },
     "visualEvidence": {
-      "referenceScreenshotPaths": ["docs/screenshots/baseline.png"],
+      "referenceScreenshotPaths": ["docs/screenshots"],
       "prEvidenceExample": {
-        "screenshotPath": ".tmp/issue-42-after.png",
-        "caption": "Visible UI state after the change"
+        "screenshotPath": "docs/screenshots/example-screen.png",
+        "caption": "Reference screenshot for the changed UI state"
       }
     },
     "pi": {
@@ -227,8 +227,7 @@ For GitHub through `gh`, configure the host like this:
 ```
 
 `PATCHMILL_HOST_LOGIN` only affects providers with named-login support. The
-first `github-gh` version uses the active `gh` authentication context and does
-not support GitHub visual-evidence upload.
+first `github-gh` version uses the active `gh` authentication context.
 
 ## Triage state map
 
@@ -433,13 +432,13 @@ workflow stages:
 - `visualEvidence`: screenshot capture instructions for visible UI changes.
   Patchmill configures `.patchmill/skills/patchmill-visual-evidence` by default,
   expects final `pr-created` JSON to include `visualEvidence` entries, and
-  handles host upload/commenting after the implementation result.
+  validates that referenced screenshots are committed reference files before
+  cleanup.
 - `landing`: direct-land versus PR decision rules.
 
-`projectPolicy.visualEvidence` is not the skill. It only supplies baseline
-screenshot paths and an example `visualEvidence` entry for prompts.
-`PATCHMILL_FORGEJO_*` environment variables configure Forgejo upload
-credentials; they do not affect which skill runs.
+`projectPolicy.visualEvidence` is not the skill. It supplies allowed reference
+screenshot paths and an example `visualEvidence` entry for prompts. By default,
+reference screenshots live under `docs/screenshots/`.
 
 See [skills configuration](skills.md) for how these are rendered into prompts.
 
@@ -449,6 +448,3 @@ Some settings are intentionally better as environment variables:
 
 - `PATCHMILL_HOST_LOGIN`: local host login for providers with named-login
   support, such as `forgejo-tea`.
-- `PATCHMILL_FORGEJO_URL`, `PATCHMILL_FORGEJO_TOKEN`, `PATCHMILL_FORGEJO_REPO`:
-  Forgejo visual-evidence upload credentials and repository override. GitHub
-  visual-evidence upload is not supported in the first `github-gh` version.

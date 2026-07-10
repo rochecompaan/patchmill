@@ -42,9 +42,6 @@ Options:
 
 Environment:
   PATCHMILL_HOST_LOGIN               Override the default host login name when supported.
-  PATCHMILL_FORGEJO_URL              Forgejo-only base URL for PR visual evidence uploads.
-  PATCHMILL_FORGEJO_TOKEN            Forgejo-only API token for PR visual evidence uploads.
-  PATCHMILL_FORGEJO_REPO             Forgejo-only optional owner/repo override when git remote parsing is insufficient.
 `;
 
 type Env = Record<string, string | undefined>;

@@ -104,7 +104,7 @@ export type AgentIssueRunCheckpoint =
   | "readyLabelRestored"
   | "worktreeReady"
   | "implementationCompleted"
-  | "visualEvidenceUploaded"
+  | "visualEvidenceValidated"
   | "handoffCommentPosted"
   | "doneLabelEnsured"
   | "doneLabelApplied";

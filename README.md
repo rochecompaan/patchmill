@@ -64,9 +64,8 @@ closures, canonical bucket, and rationale the skill would produce without
 mutating the issue host.
 
 Supported issue hosts are Forgejo/Gitea through `tea` (`forgejo-tea`) and GitHub
-through `gh` (`github-gh`). GitHub visual-evidence upload is not supported in
-the first `github-gh` version; Forgejo visual-evidence upload uses the
-`PATCHMILL_FORGEJO_*` environment variables.
+through `gh` (`github-gh`). Visual evidence is provider-independent: visible UI
+changes should add or update committed reference screenshots in the PR branch.
 
 ## Quickstart
 
@@ -219,11 +218,13 @@ The default skills keep the workflow small and explicit:
   changes.
 - `.patchmill/skills/subagent-driven-development` executes approved plans with
   Superpowers-style worker/reviewer handoffs.
-- `.patchmill/skills/patchmill-visual-evidence` captures Playwright screenshot
-  evidence for visible UI changes and teaches the implementation agent to return
-  Patchmill's `visualEvidence` final JSON entries. Patchmill does not bundle
-  Playwright; the target project must provide `@playwright/test` or approved
-  screenshot tooling.
+- `.patchmill/skills/patchmill-visual-evidence` captures Playwright reference
+  screenshots for visible UI changes and teaches the implementation agent to
+  return Patchmill's `visualEvidence` final JSON entries. Patchmill validates
+  that referenced screenshots are committed under the configured reference
+  screenshot path before cleaning up the issue worktree. Patchmill does not
+  bundle Playwright; the target project must provide `@playwright/test` or
+  approved screenshot tooling.
 - `.patchmill/skills/subagent-dev-with-codex-and-thermo-reviews` is also
   installed as an opt-in implementation skill for repositories that want the
   same task-by-task subagent workflow plus final full-worktree Codex and
@@ -244,20 +245,13 @@ include `toolchain`, `review`, and `landing`. See
 
 ## Environment variables
 
-Environment variables are best for machine-local identity, CI secrets, and host
-upload credentials that should not live in `patchmill.config.json`.
+Environment variables are best for machine-local identity and CI secrets that
+should not live in `patchmill.config.json`.
 
 - `PATCHMILL_HOST_LOGIN`: host account/login override for providers that support
   named logins, such as `forgejo-tea`; ignored by providers without named-login
-  support, such as `github-gh`.
-- `PATCHMILL_FORGEJO_URL`: Forgejo base URL used when uploading visual evidence
-  to PRs.
-- `PATCHMILL_FORGEJO_TOKEN`: Forgejo API token for visual-evidence uploads.
-- `PATCHMILL_FORGEJO_REPO`: optional `owner/repo` override when Patchmill cannot
-  infer the Forgejo repository from git remotes.
-
-CLI flags override environment variables, and environment variables override
-`patchmill.config.json`.
+  support, such as `github-gh`. CLI flags override environment variables, and
+  environment variables override `patchmill.config.json`.
 
 ## Runtime and subagent customization
 

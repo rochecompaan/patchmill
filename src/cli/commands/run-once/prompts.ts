@@ -428,8 +428,8 @@ type PrVisualEvidenceExample = NonNullable<
 
 function defaultPrVisualEvidenceExample(): PrVisualEvidenceExample {
   return {
-    screenshotPath: ".tmp/issue-42-after.png",
-    caption: "Visible UI state after the change",
+    screenshotPath: "docs/screenshots/example-screen.png",
+    caption: "Reference screenshot for the changed UI state",
   };
 }
 
@@ -446,15 +446,18 @@ function renderVisualEvidenceDataSection(
 ): string {
   const lines = ["Visual-change evidence data:"];
 
-  if ((policy.visualEvidence.referenceScreenshotPaths?.length ?? 0) > 0) {
-    lines.push(
-      `- Use existing committed reference screenshots, when available, as the styling baseline for changed or new screens. Look under ${formatCodeList(policy.visualEvidence.referenceScreenshotPaths)}.`,
-    );
-  }
+  const referenceScreenshotPaths = policy.visualEvidence
+    .referenceScreenshotPaths ?? ["docs/screenshots"];
+  lines.push(
+    `- Visual evidence must be a committed reference screenshot, not a temporary proof file. Look under ${formatCodeList(referenceScreenshotPaths)} for existing screenshots to update.`,
+  );
+  lines.push(
+    "- For a new page or UI state, add a semantic kebab-case screenshot under the reference screenshot directory, based on the route, page/component name, or visible title. Do not use issue numbers, dates, or hashes in reference screenshot filenames.",
+  );
 
   const visualEvidenceExample = resolvePrVisualEvidenceExample(policy);
   lines.push(
-    "- For PR fallback, return structured `visualEvidence` entries like this example:",
+    "- Return structured `visualEvidence` entries for committed reference screenshots like this example:",
   );
   lines.push(
     ...JSON.stringify([visualEvidenceExample], null, 2)
