@@ -5,9 +5,18 @@ import type {
   ArtifactKind,
 } from "../run-once/artifact-source-types.ts";
 import type { IssueSummary } from "../run-once/types.ts";
+import {
+  artifactContentEmptyMessage,
+  artifactContentIsEmpty,
+  normalizeArtifactContent,
+} from "../artifact-content.ts";
 
 const OPEN_MARKER = "<!-- patchmill-artifact:v1";
 const CLOSE_MARKER = "<!-- /patchmill-artifact -->";
+const ARTIFACT_MARKER_PATTERN =
+  /<!--\s*patchmill-artifact:v1\s+(\{[^\n]*\})\s*-->\n?([\s\S]*?)\n?<!--\s*\/patchmill-artifact\s*-->/gu;
+const OPEN_MARKER_DETECTION_PATTERN = /<!--\s*patchmill-artifact:v1\b/iu;
+const CLOSE_MARKER_DETECTION_PATTERN = /<!--\s*\/patchmill-artifact\s*-->/iu;
 
 export type PublishedArtifactKind = ArtifactKind;
 
@@ -28,6 +37,16 @@ type PublishedArtifact = PublishedArtifactMetadata & {
   evidence: string;
 };
 
+export type PublishedArtifactExtractionOptions = {
+  trustedAuthors: readonly string[];
+};
+
+type PublishedArtifactSourceBlock = {
+  body: string;
+  label: string;
+  authorLogin?: string;
+};
+
 function titleForKind(kind: PublishedArtifactKind): string {
   return kind === "spec"
     ? "Spec attached to this issue"
@@ -39,7 +58,7 @@ function summaryForKind(kind: PublishedArtifactKind): string {
 }
 
 export function normalizePublishedArtifactContent(content: string): string {
-  return content.replace(/\r\n?/gu, "\n").trim();
+  return normalizeArtifactContent(content);
 }
 
 function sha256(content: string): string {
@@ -47,7 +66,10 @@ function sha256(content: string): string {
 }
 
 function assertContentCanBePublished(content: string): void {
-  if (content.includes(OPEN_MARKER) || content.includes(CLOSE_MARKER)) {
+  if (
+    OPEN_MARKER_DETECTION_PATTERN.test(content) ||
+    CLOSE_MARKER_DETECTION_PATTERN.test(content)
+  ) {
     throw new Error("artifact content contains Patchmill artifact markers");
   }
 }
@@ -56,13 +78,28 @@ function metadataJson(metadata: PublishedArtifactMetadata): string {
   return JSON.stringify(metadata);
 }
 
-function sourceBlocks(
-  issue: IssueSummary,
-): Array<{ body: string; label: string }> {
+function sourceBlocks(issue: IssueSummary): PublishedArtifactSourceBlock[] {
   return (issue.comments ?? []).map((comment, index) => ({
     body: comment.body,
-    label: `comment ${index + 1}`,
+    label: comment.authorLogin
+      ? `comment ${index + 1} by ${comment.authorLogin}`
+      : `comment ${index + 1}`,
+    ...(comment.authorLogin ? { authorLogin: comment.authorLogin } : {}),
   }));
+}
+
+function trustedAuthorSet(trustedAuthors: readonly string[]): Set<string> {
+  return new Set(
+    trustedAuthors.map((author) => author.trim()).filter((author) => author),
+  );
+}
+
+function sourceIsTrusted(
+  source: PublishedArtifactSourceBlock,
+  trustedAuthors: Set<string>,
+): boolean {
+  const authorLogin = source.authorLogin?.trim();
+  return Boolean(authorLogin && trustedAuthors.has(authorLogin));
 }
 
 function parseMetadata(raw: string, label: string): PublishedArtifactMetadata {
@@ -102,13 +139,23 @@ function parseMetadata(raw: string, label: string): PublishedArtifactMetadata {
   };
 }
 
-function findPublishedArtifacts(issue: IssueSummary): PublishedArtifact[] {
+export function issueHasPublishedArtifactMarker(issue: IssueSummary): boolean {
+  return (issue.comments ?? []).some((comment) =>
+    OPEN_MARKER_DETECTION_PATTERN.test(comment.body),
+  );
+}
+
+function findPublishedArtifacts(
+  issue: IssueSummary,
+  options: PublishedArtifactExtractionOptions,
+): PublishedArtifact[] {
   const artifacts: PublishedArtifact[] = [];
-  const markerPattern =
-    /<!--\s*patchmill-artifact:v1\s+(\{[^\n]*\})\s*-->\n?([\s\S]*?)\n?<!--\s*\/patchmill-artifact\s*-->/gu;
+  const trustedAuthors = trustedAuthorSet(options.trustedAuthors);
+  if (trustedAuthors.size === 0) return artifacts;
 
   for (const source of sourceBlocks(issue)) {
-    for (const match of source.body.matchAll(markerPattern)) {
+    if (!sourceIsTrusted(source, trustedAuthors)) continue;
+    for (const match of source.body.matchAll(ARTIFACT_MARKER_PATTERN)) {
       const rawMetadata = match[1] ?? "";
       const rawContent = match[2] ?? "";
       const metadata = parseMetadata(rawMetadata, source.label);
@@ -146,8 +193,8 @@ export function formatPublishedArtifactComment(
   input: PublishedArtifactInput,
 ): string {
   const content = normalizePublishedArtifactContent(input.content);
-  if (content.length === 0) {
-    throw new Error(`${input.kind} artifact content is empty`);
+  if (artifactContentIsEmpty(content)) {
+    throw new Error(artifactContentEmptyMessage(input.kind));
   }
   assertContentCanBePublished(content);
   const metadata = metadataJson({
@@ -173,8 +220,9 @@ export function formatPublishedArtifactComment(
 
 export function extractPublishedArtifactResult(
   issue: IssueSummary,
+  options: PublishedArtifactExtractionOptions,
 ): ArtifactExtractionResult {
-  const artifacts = findPublishedArtifacts(issue);
+  const artifacts = findPublishedArtifacts(issue, options);
   const latest: Partial<Record<PublishedArtifactKind, PublishedArtifact>> = {};
   for (const artifact of artifacts) latest[artifact.kind] = artifact;
 

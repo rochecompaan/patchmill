@@ -1,5 +1,8 @@
 import type { IssueHostProvider } from "../../../host/types.ts";
-import { extractPublishedArtifactResult } from "../set-artifact/published-artifacts.ts";
+import {
+  extractPublishedArtifactResult,
+  issueHasPublishedArtifactMarker,
+} from "../set-artifact/published-artifacts.ts";
 import {
   validateExtractedArtifactSources,
   type ResolvedIssueArtifactSources,
@@ -58,7 +61,10 @@ export async function runArtifactExtractionStage(
         "reading deterministic issue artifact sources",
         { issueNumber: issue.number },
       );
-      return extractPublishedArtifactResult(issue);
+      const trustedAuthors = issueHasPublishedArtifactMarker(issue)
+        ? await options.host.trustedTriageCommentAuthors()
+        : [];
+      return extractPublishedArtifactResult(issue, { trustedAuthors });
     },
   );
 

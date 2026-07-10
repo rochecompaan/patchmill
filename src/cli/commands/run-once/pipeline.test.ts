@@ -2068,6 +2068,7 @@ test("runOneIssue uses deterministic published artifacts before filename discove
     ),
     comments: [
       {
+        authorLogin: "patchmill-bot",
         body: formatPublishedArtifactComment({
           kind: "spec",
           path: specPath,
@@ -2075,6 +2076,7 @@ test("runOneIssue uses deterministic published artifacts before filename discove
         }),
       },
       {
+        authorLogin: "patchmill-bot",
         body: formatPublishedArtifactComment({
           kind: "plan",
           path: planPath,
@@ -2110,6 +2112,14 @@ test("runOneIssue uses deterministic published artifacts before filename discove
       return { code: 1, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "worktree")
       return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "logins")
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
     if (call.command === "tea" && call.args[0] === "labels")
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     if (
@@ -2183,7 +2193,7 @@ test("runOneIssue fails before claim when deterministic artifact checksum mismat
   }).replace("Use this content.", "Use edited content.");
   const selected = {
     ...issue(65, ["agent-ready", "enhancement"], "Broken published artifact"),
-    comments: [{ body: brokenComment }],
+    comments: [{ authorLogin: "patchmill-bot", body: brokenComment }],
   };
   const runner = createMockRunner(async (call) => {
     if (
@@ -2198,6 +2208,14 @@ test("runOneIssue fails before claim when deterministic artifact checksum mismat
         stderr: "",
       };
     }
+    if (call.command === "tea" && call.args[0] === "logins")
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
     throw new Error(
       `unexpected command before deterministic artifact failure: ${call.command} ${call.args.join(" ")}`,
     );

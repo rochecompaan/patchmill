@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { formatPublishedArtifactComment } from "../set-artifact/published-artifacts.ts";
 import { runArtifactExtractionStage } from "./artifact-source-stage.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import type { AgentIssueConfig, IssueSummary } from "./types.ts";
@@ -115,4 +116,45 @@ test("runArtifactExtractionStage only reads deterministic artifacts and does not
     "hydrating issue artifact content",
     "reading deterministic issue artifact sources",
   ]);
+});
+
+test("runArtifactExtractionStage trusts only host-resolved artifact publishers", async () => {
+  const config = await makeConfig();
+  let trustedAuthorsResolved = false;
+  const artifactHost: IssueHostProvider = {
+    ...host,
+    async trustedTriageCommentAuthors() {
+      trustedAuthorsResolved = true;
+      return ["patchmill-bot"];
+    },
+  };
+  const untrustedComment = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/untrusted.md",
+    content: "# Untrusted Spec",
+  });
+  const trustedComment = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/trusted.md",
+    content: "# Trusted Spec",
+  });
+
+  const result = await runArtifactExtractionStage({
+    host: artifactHost,
+    config,
+    issue: {
+      ...issue,
+      comments: [
+        { authorLogin: "mallory", body: untrustedComment },
+        { authorLogin: "patchmill-bot", body: trustedComment },
+      ],
+    },
+    now: new Date("2026-07-09T00:00:00Z"),
+    progress: async () => {},
+    runStep: async (_label, fn) => await fn(),
+  });
+
+  assert.equal(trustedAuthorsResolved, true);
+  assert.equal(result.resolvedArtifacts.spec?.path, "docs/specs/trusted.md");
+  assert.equal(result.resolvedArtifacts.spec?.content, "# Trusted Spec");
 });

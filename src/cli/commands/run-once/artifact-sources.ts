@@ -3,6 +3,10 @@ import type {
   ArtifactExtractionResult,
   ArtifactExtractionSource,
 } from "./artifact-source-types.ts";
+import {
+  artifactContentIsEmpty,
+  normalizeArtifactContent,
+} from "../artifact-content.ts";
 import { buildPlanPath } from "./plans.ts";
 import { buildSpecPath } from "./specs.ts";
 import type { IssueSummary } from "./types.ts";
@@ -96,7 +100,7 @@ function targetForInline(
 }
 
 function normalizeInlineContent(value: string): string {
-  return value.replace(/\r\n?/gu, "\n").trim();
+  return normalizeArtifactContent(value);
 }
 
 function issueTextBlocks(issue: IssueSummary): string[] {
@@ -115,7 +119,7 @@ async function validateSource(
   options: ValidateExtractedArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSource> {
   const content = normalizeInlineContent(source.content);
-  if (content.length < 8) {
+  if (artifactContentIsEmpty(content)) {
     throw new ArtifactSourcePreflightError(
       `Issue #${options.issue.number} has an inline ${source.kind} artifact with empty content`,
       { issueNumber: options.issue.number, artifactKind: source.kind },
