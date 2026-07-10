@@ -27,9 +27,17 @@ export const PATCHMILL_SKILL_KEYS = [
 
 export type PatchmillSkillKey = (typeof PATCHMILL_SKILL_KEYS)[number];
 
+export const DEPRECATED_PATCHMILL_SKILL_KEYS = ["artifactExtraction"] as const;
+
+export type DeprecatedPatchmillSkillKey =
+  (typeof DEPRECATED_PATCHMILL_SKILL_KEYS)[number];
+
 export type PartialPatchmillSkillsConfig = Partial<PatchmillSkillsConfig>;
 
-export { BUNDLED_TRIAGE_SKILL_REFERENCE, BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE };
+export {
+  BUNDLED_TRIAGE_SKILL_REFERENCE,
+  BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
+};
 
 export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   triage: BUNDLED_TRIAGE_SKILL_REFERENCE,

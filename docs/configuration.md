@@ -343,12 +343,12 @@ process shutdown.
 
 The workflow skill keys `triage`, `planning`, `implementation`, and
 `visualEvidence` are configured by default. For new repositories,
-`patchmill init` defaults them to project-local skill paths or bundled
-Patchmill skills. The remaining keys are optional workflow hooks. In an
-interactive terminal, init asks whether to add generated config and skills to
-git, add Patchmill files to `.gitignore`, or add Patchmill files to
-`.git/info/exclude`. Non-interactive and `--yes` runs keep the files local by
-adding `patchmill.config.json` and `.patchmill/` to `.git/info/exclude`.
+`patchmill init` defaults them to project-local skill paths or bundled Patchmill
+skills. The remaining keys are optional workflow hooks. In an interactive
+terminal, init asks whether to add generated config and skills to git, add
+Patchmill files to `.gitignore`, or add Patchmill files to `.git/info/exclude`.
+Non-interactive and `--yes` runs keep the files local by adding
+`patchmill.config.json` and `.patchmill/` to `.git/info/exclude`.
 
 `developmentEnvironment` is optional. When configured, `patchmill run-once` runs
 that skill from the issue worktree after the plan is available and before the

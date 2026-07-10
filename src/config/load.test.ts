@@ -387,6 +387,31 @@ test("loadPatchmillConfig rejects unknown skills keys", async () => {
   );
 });
 
+test("loadPatchmillConfig accepts deprecated artifactExtraction skills config", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-deprecated-artifact-extraction-skill-"),
+  );
+  await writeFile(
+    join(repoRoot, "patchmill.config.json"),
+    JSON.stringify({
+      skills: {
+        planning: "project-planning",
+        artifactExtraction: ".patchmill/skills/artifact-extraction",
+      },
+    }),
+    "utf8",
+  );
+
+  const config = await loadPatchmillConfig(repoRoot, {}, []);
+
+  assert.equal(config.skills.planning, "project-planning");
+  assert.equal(
+    "artifactExtraction" in config.skills,
+    false,
+    "deprecated artifactExtraction config should be ignored",
+  );
+});
+
 test("loadPatchmillConfig rejects blank skills", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-blank-skills-config-"),

@@ -453,7 +453,6 @@ async function checkSkills(
         );
       }
 
-
       if (!isPathLikeSkill(skill)) {
         return {
           status: "warn" as const,

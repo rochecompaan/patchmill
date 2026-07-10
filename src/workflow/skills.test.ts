@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   BUNDLED_TRIAGE_SKILL_REFERENCE,
   BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
+  DEPRECATED_PATCHMILL_SKILL_KEYS,
   DEFAULT_PATCHMILL_SKILLS,
   GLOBAL_PATCHMILL_SKILLS,
   PATCHMILL_SKILL_KEYS,
@@ -43,6 +44,12 @@ test("default skill keys cover the configurable workflow stages", () => {
     "visualEvidence",
     "landing",
   ]);
+});
+
+test("deprecated skill keys are excluded from active configurable workflow stages", () => {
+  assert.deepEqual(DEPRECATED_PATCHMILL_SKILL_KEYS, ["artifactExtraction"]);
+  const activeSkillKeys: readonly string[] = PATCHMILL_SKILL_KEYS;
+  assert.equal(activeSkillKeys.includes("artifactExtraction"), false);
 });
 
 test("bundled visual evidence skill resolves to a SKILL.md path", () => {
