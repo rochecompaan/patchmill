@@ -11,7 +11,7 @@ import type { IssueHostProvider } from "../../../host/types.ts";
 import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "../triage/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
-import { runArtifactExtractionStage } from "./artifact-source-stage.ts";
+import { runArtifactSourceStage } from "./artifact-source-stage.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
@@ -989,25 +989,17 @@ export async function runOneIssue(
     step: { type: "run-start", issueNumber: issue.number, title: issue.title },
   });
   await emitSimpleStep(options, issue.number, "select issue");
-  const artifactExtraction = await runArtifactExtractionStage({
-    runner,
+  const artifactSources = await runArtifactSourceStage({
     host,
     config,
     issue,
     now: options.now ?? new Date(),
-    heartbeatMs: options.heartbeatMs,
-    streamPiOutput: options.streamPiOutput,
-    verbosePiOutput: options.verbosePiOutput,
-    piAgentDir,
-    tokenUsageState,
-    progressReporter: options.progress,
     progress: (level, stage, message, extras) =>
       progress(options, level, stage, message, extras),
     runStep,
-    observePi,
   });
-  issueForRun = artifactExtraction.issue;
-  resolvedArtifacts = artifactExtraction.resolvedArtifacts;
+  issueForRun = artifactSources.issue;
+  resolvedArtifacts = artifactSources.resolvedArtifacts;
 
   await progress(options, "info", "git", "checking repository status", {
     issueNumber: issue.number,
@@ -1153,8 +1145,7 @@ export async function runOneIssue(
     }
 
     const artifactWorktree =
-      resolvedArtifacts.spec?.sourceType === "inline" ||
-      resolvedArtifacts.plan?.sourceType === "inline"
+      resolvedArtifacts.spec || resolvedArtifacts.plan
         ? await ensureIssueWorkspace()
         : undefined;
     const artifactRepoRoot = artifactWorktree

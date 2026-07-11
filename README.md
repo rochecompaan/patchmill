@@ -45,6 +45,11 @@ Functional:
 - `patchmill run-once` is the one-issue production run. It advances one
   actionable issue through spec writing, plan writing, implementation, and any
   configured human approval stops.
+- `patchmill set-spec --issue N docs/specs/name.md` and
+  `patchmill set-plan --issue N docs/plans/name.md` publish developer-authored
+  workflow artifacts to the issue in Patchmill's deterministic artifact format.
+  These commands are the only supported way to guarantee deterministic spec and
+  plan extraction from an issue.
 
 In progress:
 
@@ -62,6 +67,14 @@ their own process.
 what changed. Use `patchmill triage --dry-run` to preview the labels, comments,
 closures, canonical bucket, and rationale the skill would produce without
 mutating the issue host.
+
+When a developer has already written the spec or implementation plan, publish
+those files with `patchmill set-spec` and `patchmill set-plan` before running
+`patchmill run-once`. Plain issue comments, Markdown headings, hand-pasted
+`<details>` blocks, and custom templates are discussion context only; Patchmill
+will not extract them as authoritative workflow artifacts. See
+[workflow artifacts](docs/workflow-artifacts.md) for the exact workflow and
+guarantees.
 
 Supported issue hosts are Forgejo/Gitea through `tea` (`forgejo-tea`) and GitHub
 through `gh` (`github-gh`). Visual evidence is provider-independent: visible UI

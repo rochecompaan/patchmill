@@ -6,10 +6,7 @@ import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
 import { installProjectSkills } from "../init/skill-installer.ts";
 import type { CommandRunner } from "../triage/types.ts";
-import {
-  bundledArtifactExtractionSkillPath,
-  bundledVisualEvidenceSkillPath,
-} from "../../../workflow/skills.ts";
+import { bundledVisualEvidenceSkillPath } from "../../../workflow/skills.ts";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
@@ -177,7 +174,6 @@ function recommendedProjectLocalSmokePaths(repoRoot: string): string[] {
     projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
     projectLocalSkillPath(repoRoot, "writing-plans"),
     projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-    bundledArtifactExtractionSkillPath(),
     projectLocalSkillPath(repoRoot, "patchmill-visual-evidence"),
   ];
 }
@@ -1007,7 +1003,6 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
 
   const smokePaths = [
     projectLocalSkillPath(repoRoot, "writing-plans"),
-    bundledArtifactExtractionSkillPath(),
     bundledVisualEvidenceSkillPath(),
   ];
   const calls: string[] = [];

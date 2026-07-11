@@ -26,6 +26,29 @@ test("resolveCommand maps run-once to the public command name", () => {
   });
 });
 
+test("resolveCommand maps set-spec and set-plan to their public command names", () => {
+  assert.deepEqual(
+    resolveCommand(
+      ["set-spec", "--issue", "7", "docs/specs/a.md"],
+      ["set-spec"],
+    ),
+    {
+      command: "set-spec",
+      args: ["--issue", "7", "docs/specs/a.md"],
+    },
+  );
+  assert.deepEqual(
+    resolveCommand(
+      ["set-plan", "--issue", "7", "docs/plans/a.md"],
+      ["set-plan"],
+    ),
+    {
+      command: "set-plan",
+      args: ["--issue", "7", "docs/plans/a.md"],
+    },
+  );
+});
+
 test("resolveCommand maps setup-test-repo to the public command name", () => {
   assert.deepEqual(
     resolveCommand(
@@ -122,6 +145,14 @@ test("createCliMain prints top-level help", async () => {
   );
   assert.match(HELP_TEXT, /doctor\s+Run read-only readiness checks\./);
   assert.match(HELP_TEXT, /skills\s+Manage Patchmill project-local skills\./);
+  assert.match(
+    HELP_TEXT,
+    /set-spec\s+Set the authoritative spec for an issue\./,
+  );
+  assert.match(
+    HELP_TEXT,
+    /set-plan\s+Set the authoritative implementation plan for an issue\./,
+  );
   assert.match(HELP_TEXT, /version\s+Print the Patchmill CLI version\./);
   assert.match(
     HELP_TEXT,
@@ -212,6 +243,35 @@ test("createCliMain dispatches skills command", async () => {
 
   assert.equal(await main(["skills", "update"]), 0);
   assert.deepEqual(calls, [["update"]]);
+});
+
+test("createCliMain dispatches set-spec and set-plan commands", async () => {
+  const calls: Array<{ command: string; args: string[] }> = [];
+  const main = createCliMain(
+    new Map([
+      [
+        "set-spec",
+        async (args) => {
+          calls.push({ command: "set-spec", args });
+          return 0;
+        },
+      ],
+      [
+        "set-plan",
+        async (args) => {
+          calls.push({ command: "set-plan", args });
+          return 0;
+        },
+      ],
+    ]),
+  );
+
+  assert.equal(await main(["set-spec", "--issue", "7", "docs/specs/a.md"]), 0);
+  assert.equal(await main(["set-plan", "--issue", "7", "docs/plans/a.md"]), 0);
+  assert.deepEqual(calls, [
+    { command: "set-spec", args: ["--issue", "7", "docs/specs/a.md"] },
+    { command: "set-plan", args: ["--issue", "7", "docs/plans/a.md"] },
+  ]);
 });
 
 test("createCliMain dispatches init and doctor commands", async () => {

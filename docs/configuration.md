@@ -31,10 +31,10 @@ patchmill doctor
 ```
 
 By default, init writes host fields and project-local skill mappings for the
-main workflow stages (`triage`, `planning`, `implementation`, and artifact
-extraction); Patchmill fills omitted labels, paths, and git policy from
-defaults. The command output reminds you that you can later change the login in
-`patchmill.config.json` (`host.login`) or with `PATCHMILL_HOST_LOGIN`.
+main workflow stages (`triage`, `planning`, and `implementation`); Patchmill
+fills omitted labels, paths, and git policy from defaults. The command output
+reminds you that you can later change the login in `patchmill.config.json`
+(`host.login`) or with `PATCHMILL_HOST_LOGIN`.
 
 Accepted `host.provider` values are `forgejo-tea` for Forgejo/Gitea through
 `tea` and `github-gh` for GitHub through `gh`.
@@ -92,7 +92,6 @@ pieces your repository needs.
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
     "implementation": ".patchmill/skills/subagent-driven-development",
-    "artifactExtraction": "patchmill:bundled-artifact-extraction",
     "toolchain": "project-toolchain",
     "review": "project-review",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence",
@@ -342,14 +341,14 @@ process shutdown.
 
 ## Skills
 
-The workflow skill keys `triage`, `planning`, `implementation`,
-`artifactExtraction`, and `visualEvidence` are configured by default. For new
-repositories, `patchmill init` defaults them to project-local skill paths or
-bundled Patchmill skills. The remaining keys are optional workflow hooks. In an
-interactive terminal, init asks whether to add generated config and skills to
-git, add Patchmill files to `.gitignore`, or add Patchmill files to
-`.git/info/exclude`. Non-interactive and `--yes` runs keep the files local by
-adding `patchmill.config.json` and `.patchmill/` to `.git/info/exclude`.
+The workflow skill keys `triage`, `planning`, `implementation`, and
+`visualEvidence` are configured by default. For new repositories,
+`patchmill init` defaults them to project-local skill paths or bundled Patchmill
+skills. The remaining keys are optional workflow hooks. In an interactive
+terminal, init asks whether to add generated config and skills to git, add
+Patchmill files to `.gitignore`, or add Patchmill files to `.git/info/exclude`.
+Non-interactive and `--yes` runs keep the files local by adding
+`patchmill.config.json` and `.patchmill/` to `.git/info/exclude`.
 
 `developmentEnvironment` is optional. When configured, `patchmill run-once` runs
 that skill from the issue worktree after the plan is available and before the
@@ -363,26 +362,16 @@ omitted, implementation starts exactly as it did before this feature.
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
     "implementation": ".patchmill/skills/subagent-driven-development",
-    "artifactExtraction": "patchmill:bundled-artifact-extraction",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   }
 }
 ```
 
-`artifactExtraction` controls the skill used by `patchmill run-once` to classify
-spec and plan artifact sources from issue body/comments before creating new
-workflow artifacts. The default bundled skill is
-`patchmill:bundled-artifact-extraction`. Repositories can override it with a
-project-local skill path when they need repository-specific issue templates or
-artifact conventions.
-
-```json
-{
-  "skills": {
-    "artifactExtraction": ".patchmill/skills/artifact-extraction"
-  }
-}
-```
+Spec and plan discovery is not a configurable skill stage. To make `run-once`
+use developer-authored workflow artifacts from an issue, publish the local files
+with `patchmill set-spec` and `patchmill set-plan`. Those commands create
+Patchmill-owned issue comments with machine-readable metadata and checksums; see
+[workflow artifacts](workflow-artifacts.md) for details.
 
 A repository can opt into development-environment setup without changing the
 main workflow skill keys:
@@ -423,8 +412,6 @@ rather than `patchmill.config.json`:
 Workflow and optional skill keys let a repository add procedure at specific
 workflow stages:
 
-- `artifactExtraction`: configured workflow skill that runs before claim in
-  execute-mode `run-once` to classify source-provided spec and plan artifacts.
 - `developmentEnvironment`: local runtime setup and development-environment
   verification before implementation starts.
 - `toolchain`: setup and validation conventions.

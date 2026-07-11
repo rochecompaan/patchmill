@@ -8,8 +8,10 @@ import {
 } from "../policy/triage-state.ts";
 import {
   cloneSkillsConfig,
+  DEPRECATED_PATCHMILL_SKILL_KEYS,
   mergeSkillsConfig,
   PATCHMILL_SKILL_KEYS,
+  type DeprecatedPatchmillSkillKey,
   type PatchmillSkillKey,
 } from "../workflow/skills.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "./defaults.ts";
@@ -320,8 +322,20 @@ function readSkillsConfig(
     }
   }
 
+  for (const key of DEPRECATED_PATCHMILL_SKILL_KEYS) {
+    const skill = readOptionalString(value, key, `skills.${key}`);
+    if (skill !== undefined && skill.trim().length === 0) {
+      throw configError(`skills.${key}`, "a non-empty string", skill);
+    }
+  }
+
   for (const key of Object.keys(value)) {
-    if (!PATCHMILL_SKILL_KEYS.includes(key as PatchmillSkillKey)) {
+    if (
+      !PATCHMILL_SKILL_KEYS.includes(key as PatchmillSkillKey) &&
+      !DEPRECATED_PATCHMILL_SKILL_KEYS.includes(
+        key as DeprecatedPatchmillSkillKey,
+      )
+    ) {
       throw configError(`skills.${key}`, "a supported skill stage", value[key]);
     }
   }

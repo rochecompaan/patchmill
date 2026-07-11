@@ -21,7 +21,6 @@ import type { PatchmillConfig } from "../../../config/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   PATCHMILL_SKILL_KEYS,
-  bundledArtifactExtractionSkillPath,
   bundledTriageSkillPath,
   bundledVisualEvidenceSkillPath,
   isPathLikeSkill,
@@ -440,17 +439,6 @@ async function checkSkills(
     configuredSkills.map(async ({ key, skill }) => {
       if (key === "triage" && skill === DEFAULT_PATCHMILL_SKILLS.triage) {
         return await verifyBundledSkill(key, skill, bundledTriageSkillPath());
-      }
-
-      if (
-        key === "artifactExtraction" &&
-        skill === DEFAULT_PATCHMILL_SKILLS.artifactExtraction
-      ) {
-        return await verifyBundledSkill(
-          key,
-          skill,
-          bundledArtifactExtractionSkillPath(),
-        );
       }
 
       if (

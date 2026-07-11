@@ -1,10 +1,15 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type {
+  ResolvedIssueArtifactSource,
   ResolvedIssueArtifactSources,
-  ResolvedIssueInlineArtifactSource,
 } from "./artifact-sources.ts";
 import type { CommandRunner } from "./types.ts";
+
+type ArtifactEntry = {
+  kind: "spec" | "plan";
+  source: ResolvedIssueArtifactSource;
+};
 
 export type MaterializeIssueArtifactSourcesOptions = {
   repoRoot: string;
@@ -20,13 +25,13 @@ function commandOutput(result: { stdout: string; stderr: string }): string {
   );
 }
 
-function inlineSources(
+function artifactEntries(
   sources: ResolvedIssueArtifactSources,
-): ResolvedIssueInlineArtifactSource[] {
-  return [sources.spec, sources.plan].filter(
-    (source): source is ResolvedIssueInlineArtifactSource =>
-      source?.sourceType === "inline",
-  );
+): ArtifactEntry[] {
+  return [
+    ...(sources.spec ? [{ kind: "spec" as const, source: sources.spec }] : []),
+    ...(sources.plan ? [{ kind: "plan" as const, source: sources.plan }] : []),
+  ];
 }
 
 function withTrailingNewline(content: string): string {
@@ -45,34 +50,40 @@ async function existingContent(path: string): Promise<string | undefined> {
 export async function materializeIssueArtifactSources(
   options: MaterializeIssueArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSources> {
-  const sources = inlineSources(options.sources);
-  if (sources.length === 0) return options.sources;
+  const entries = artifactEntries(options.sources);
+  if (entries.length === 0) return options.sources;
 
   const writes: Array<{
-    source: ResolvedIssueInlineArtifactSource;
+    entry: ArtifactEntry;
     content: string;
   }> = [];
-  for (const source of sources) {
-    const content = withTrailingNewline(source.content);
-    const absolutePath = resolve(options.repoRoot, source.path);
+  for (const entry of entries) {
+    const content = withTrailingNewline(entry.source.content);
+    const absolutePath = resolve(options.repoRoot, entry.source.path);
     const existing = await existingContent(absolutePath);
     if (existing !== undefined) {
       if (existing !== content) {
         throw new Error(
-          `Issue #${options.issueNumber} inline artifact would overwrite existing ${source.artifactKind} artifact at ${source.path}`,
+          `Issue #${options.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
         );
       }
       continue;
     }
-    writes.push({ source: { ...source, absolutePath }, content });
+    writes.push({
+      entry: {
+        kind: entry.kind,
+        source: { ...entry.source, absolutePath },
+      },
+      content,
+    });
   }
 
-  for (const { source, content } of writes) {
-    await mkdir(dirname(source.absolutePath), { recursive: true });
-    await writeFile(source.absolutePath, content, "utf8");
+  for (const { entry, content } of writes) {
+    await mkdir(dirname(entry.source.absolutePath), { recursive: true });
+    await writeFile(entry.source.absolutePath, content, "utf8");
   }
 
-  const paths = sources.map((source) => source.path);
+  const paths = entries.map((entry) => entry.source.path);
   const add = await options.runner.run("git", ["add", ...paths], {
     cwd: options.repoRoot,
   });
@@ -124,10 +135,10 @@ export async function materializeIssueArtifactSources(
 
   return {
     ...options.sources,
-    ...(options.sources.spec?.sourceType === "inline"
+    ...(options.sources.spec
       ? { spec: { ...options.sources.spec, commit: commitSha } }
       : {}),
-    ...(options.sources.plan?.sourceType === "inline"
+    ...(options.sources.plan
       ? { plan: { ...options.sources.plan, commit: commitSha } }
       : {}),
   };
