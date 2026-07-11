@@ -116,7 +116,7 @@ test("ForgejoTeaHostProvider reports CLI readiness", async () => {
   assert.deepEqual(calls, ["tea --help"]);
 });
 
-test("ForgejoTeaHostProvider resolves tea login profile to trusted triage comment author", async () => {
+test("ForgejoTeaHostProvider trusts configured and default tea login authors", async () => {
   const runner = createFakeRunner((_command, args) => {
     if (args.join(" ") === "logins list --output json") {
       return {
@@ -133,7 +133,7 @@ test("ForgejoTeaHostProvider resolves tea login profile to trusted triage commen
 
   const authors = await createProvider(runner).trustedTriageCommentAuthors();
 
-  assert.deepEqual(authors, ["triage-agent"]);
+  assert.deepEqual(authors, ["triage-agent", "roche"]);
   assert.deepEqual(runner.calls[0]?.args, [
     "logins",
     "list",

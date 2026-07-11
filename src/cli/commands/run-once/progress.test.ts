@@ -83,6 +83,26 @@ test("jsonl reporter preserves step completion accounting fields", async () => {
   assert.equal(parsed.elapsedSeconds, 72);
 });
 
+test("jsonl reporter omits console-only messages", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-issue-progress-"));
+  const path = join(dir, "run.jsonl");
+  const reporter = new JsonlProgressReporter(path);
+
+  await reporter.event({
+    time: "2026-05-10T03:12:40.000Z",
+    level: "info",
+    stage: "artifact-extraction",
+    message: "untrusted artifact author",
+    consoleMessage:
+      "⚠ found spec artifact from roche, but roche is not a trusted artifact author",
+  });
+
+  const [line] = (await readFile(path, "utf8")).trim().split("\n");
+  const parsed = JSON.parse(line);
+  assert.equal(parsed.consoleMessage, undefined);
+  assert.equal(JSON.stringify(parsed).includes("roche"), false);
+});
+
 test("composite reporter sends events to all reporters", async () => {
   const seen: string[] = [];
   const reporter = compositeProgressReporter([

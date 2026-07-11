@@ -19,6 +19,7 @@ export type AgentIssueProgressEvent = {
   level: "info" | "heartbeat" | "error" | "debug";
   stage: string;
   message: string;
+  consoleMessage?: string;
   issueNumber?: number;
   elapsedSeconds?: number;
   step?: AgentIssueStepEvent;
@@ -59,7 +60,7 @@ export class ConsoleProgressReporter implements ProgressReporter {
 
   event(event: AgentIssueProgressEvent): void {
     if (event.level === "debug") return;
-    this.writeLine(event.message);
+    this.writeLine(event.consoleMessage ?? event.message);
   }
 }
 
@@ -71,8 +72,9 @@ export class JsonlProgressReporter implements ProgressReporter {
   }
 
   async event(event: AgentIssueProgressEvent): Promise<void> {
+    const { consoleMessage: _consoleMessage, ...logEvent } = event;
     await mkdir(dirname(this.path), { recursive: true });
-    await appendFile(this.path, `${JSON.stringify(event)}\n`, "utf8");
+    await appendFile(this.path, `${JSON.stringify(logEvent)}\n`, "utf8");
   }
 }
 

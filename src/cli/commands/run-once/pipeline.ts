@@ -81,7 +81,10 @@ async function progress(
   stage: string,
   message: string,
   extras: Partial<
-    Pick<AgentIssueProgressEvent, "issueNumber" | "elapsedSeconds" | "data">
+    Pick<
+      AgentIssueProgressEvent,
+      "issueNumber" | "elapsedSeconds" | "data" | "consoleMessage"
+    >
   > = {},
 ): Promise<void> {
   await options.progress?.event({

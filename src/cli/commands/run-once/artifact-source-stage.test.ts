@@ -158,3 +158,38 @@ test("runArtifactSourceStage trusts only host-resolved artifact publishers", asy
   assert.equal(result.resolvedArtifacts.spec?.path, "docs/specs/trusted.md");
   assert.equal(result.resolvedArtifacts.spec?.content, "# Trusted Spec");
 });
+
+test("runArtifactSourceStage emits console-only diagnostics for untrusted artifact authors", async () => {
+  const config = await makeConfig();
+  const consoleMessages: string[] = [];
+  const artifactHost: IssueHostProvider = {
+    ...host,
+    async trustedTriageCommentAuthors() {
+      return ["patchmill-bot"];
+    },
+  };
+  const untrustedSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/untrusted.md",
+    content: "# Untrusted Spec",
+  });
+
+  const result = await runArtifactSourceStage({
+    host: artifactHost,
+    config,
+    issue: {
+      ...issue,
+      comments: [{ authorLogin: "roche", body: untrustedSpec }],
+    },
+    now: new Date("2026-07-09T00:00:00Z"),
+    progress: async (_level, _stage, _message, extras) => {
+      if (extras?.consoleMessage) consoleMessages.push(extras.consoleMessage);
+    },
+    runStep: async (_label, fn) => await fn(),
+  });
+
+  assert.deepEqual(result.resolvedArtifacts, {});
+  assert.deepEqual(consoleMessages, [
+    "⚠ found spec artifact from roche, but roche is not a trusted artifact author",
+  ]);
+});
