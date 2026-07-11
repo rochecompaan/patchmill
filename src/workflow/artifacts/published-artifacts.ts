@@ -21,6 +21,11 @@ export type PublishedWorkflowArtifacts = Partial<
   Record<WorkflowArtifactKind, PublishedWorkflowArtifact>
 >;
 
+export type UntrustedPublishedArtifactDiagnostic = {
+  kind: WorkflowArtifactKind;
+  authorLogin: string;
+};
+
 export type PublishedArtifactTrustOptions = {
   trustedAuthors: readonly string[];
 };
@@ -304,6 +309,32 @@ export function extractPublishedArtifactsFromIssue(
   }
 
   return artifacts;
+}
+
+export function findUntrustedPublishedArtifactDiagnostics(
+  issue: PublishedArtifactIssue,
+  options: PublishedArtifactTrustOptions,
+): UntrustedPublishedArtifactDiagnostic[] {
+  const trustedAuthors = trustedAuthorSet(options.trustedAuthors);
+  const diagnostics: UntrustedPublishedArtifactDiagnostic[] = [];
+  const seen = new Set<string>();
+
+  for (const source of sourceBlocks(issue).reverse()) {
+    const authorLogin = source.authorLogin?.trim();
+    if (!authorLogin || trustedAuthors.has(authorLogin)) continue;
+
+    for (const match of publishedArtifactMatches(source).reverse()) {
+      const parsed = parseMetadata(match[1] ?? "", source.label);
+      if (parsed.status !== "valid") continue;
+
+      const key = `${parsed.metadata.kind}\0${authorLogin}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      diagnostics.push({ kind: parsed.metadata.kind, authorLogin });
+    }
+  }
+
+  return diagnostics;
 }
 
 export function formatPublishedArtifactComment(

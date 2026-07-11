@@ -1,6 +1,7 @@
 import type { IssueHostProvider } from "../../../host/types.ts";
 import {
   extractPublishedArtifactsFromIssue,
+  findUntrustedPublishedArtifactDiagnostics,
   issueHasPublishedArtifactMarker,
 } from "../../../workflow/artifacts/published-artifacts.ts";
 import {
@@ -28,7 +29,10 @@ type ArtifactSourceStageOptions = {
     stage: string,
     message: string,
     extras?: Partial<
-      Pick<AgentIssueProgressEvent, "issueNumber" | "elapsedSeconds" | "data">
+      Pick<
+        AgentIssueProgressEvent,
+        "issueNumber" | "elapsedSeconds" | "data" | "consoleMessage"
+      >
     >,
   ) => Promise<void>;
   runStep: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
@@ -64,6 +68,20 @@ export async function runArtifactSourceStage(
       const trustedAuthors = issueHasPublishedArtifactMarker(issue)
         ? await options.host.trustedTriageCommentAuthors()
         : [];
+      for (const diagnostic of findUntrustedPublishedArtifactDiagnostics(
+        issue,
+        { trustedAuthors },
+      )) {
+        await options.progress(
+          "info",
+          "artifact-extraction",
+          "untrusted deterministic issue artifact source",
+          {
+            issueNumber: issue.number,
+            consoleMessage: `⚠ found ${diagnostic.kind} artifact from ${diagnostic.authorLogin}, but ${diagnostic.authorLogin} is not a trusted artifact author`,
+          },
+        );
+      }
       return extractPublishedArtifactsFromIssue(issue, { trustedAuthors });
     },
   );

@@ -310,6 +310,43 @@ test("console reporter suppresses heartbeat and raw text observations", () => {
   ]);
 });
 
+test("console reporter renders console-only messages inside the current step", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+
+  reporter.event(
+    event({
+      message: "extract issue artifact sources",
+      step: { type: "step-start", label: "extract issue artifact sources" },
+    }),
+  );
+  reporter.event(
+    event({
+      level: "info",
+      stage: "artifact-extraction",
+      message: "untrusted artifact author",
+      consoleMessage:
+        "⚠ found spec artifact from roche, but roche is not a trusted artifact author",
+    }),
+  );
+  reporter.event(
+    event({
+      time: "2026-05-22T10:00:04.000Z",
+      message: "extract issue artifact sources",
+      step: { type: "step-complete", label: "extract issue artifact sources" },
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "01 extract issue artifact sources",
+    "   ⚠ found spec artifact from roche, but roche is not a trusted artifact author",
+    "   tokens: task 0.0k total 0.0k   time elapsed: 4s",
+  ]);
+});
+
 test("console reporter renders mandatory implementation task labels", () => {
   const lines: string[] = [];
   const reporter = new AgentIssueConsoleProgressReporter({

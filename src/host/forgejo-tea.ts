@@ -357,8 +357,11 @@ export class ForgejoTeaHostProvider
     const selected = this.options.login
       ? entries.find((entry) => entry.name === this.options.login)
       : entries.find(isDefaultTeaLogin);
-    const user = selected?.user?.trim();
-    return user ? [user] : [];
+    const defaultLogin = entries.find(isDefaultTeaLogin);
+    return [selected?.user, defaultLogin?.user]
+      .map((user) => user?.trim() ?? "")
+      .filter((user) => user.length > 0)
+      .filter((user, index, users) => users.indexOf(user) === index);
   }
 
   listLabels(): Promise<string[]>;

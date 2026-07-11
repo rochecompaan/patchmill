@@ -97,6 +97,13 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
   event(event: AgentIssueProgressEvent): void {
     if (event.level === "heartbeat") return;
 
+    if (event.consoleMessage) {
+      this.writeLine(
+        this.currentStep ? `   ${event.consoleMessage}` : event.consoleMessage,
+      );
+      return;
+    }
+
     if (event.step?.type === "run-start") {
       this.writeLine(`issue #${event.step.issueNumber} · ${event.step.title}`);
       return;
