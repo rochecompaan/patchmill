@@ -27,25 +27,27 @@
   --sl-color-black: #ffffff;
 }
 
+:root {
+  --patchmill-code-border: #94a3b8;
+}
+
+:root[data-theme="light"] {
+  --patchmill-code-border: #64748b;
+}
+
 .site-title img {
   max-height: 2rem;
 }
 
-.expressive-code .frame.is-terminal {
-  --ec-codePadBlk: 0.75rem;
+[data-nova-code-container][data-nova-code-container] {
+  border: 1px solid var(--patchmill-code-border) !important;
+  box-shadow: inset 0 0 0 1px var(--patchmill-code-border);
 }
 
-.expressive-code .frame.is-terminal .header {
-  display: none !important;
+[data-nova-code-container][data-nova-code-container] pre.astro-code {
+  border: 0 !important;
 }
 
-.expressive-code .frame.is-terminal pre,
-.expressive-code .frame.is-terminal code {
-  border: 0;
-  border-radius: var(--ec-brdRad);
-}
-
-.expressive-code .frame.is-terminal .copy {
-  inset-block-start: 50%;
-  transform: translateY(-50%);
+[data-nova-code-container][data-nova-code-container] nova-code-copy-button {
+  border: 1px solid var(--patchmill-code-border) !important;
 }

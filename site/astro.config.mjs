@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightThemeNova from "starlight-theme-nova";
 
 export default defineConfig({
   site: "https://patchmill.dev",
@@ -24,6 +25,7 @@ export default defineConfig({
       editLink: {
         baseUrl: "https://github.com/rochecompaan/patchmill/edit/main/site/",
       },
+      plugins: [starlightThemeNova()],
       customCss: ["./src/styles/starlight.css"],
       sidebar: [
         {

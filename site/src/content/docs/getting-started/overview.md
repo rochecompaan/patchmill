@@ -1,58 +1,101 @@
 ---
 title: Overview
-description: Understand Patchmill's role as an agent-driven software factory.
+description: Understand what Patchmill does and where skills fit.
 ---
 
-Patchmill is an agent-driven software factory for turning product work into
-reviewed, landed changes without hiding the engineering judgment between idea
-and production.
+Patchmill is a CLI for running issue-tracker-driven agent workflows in a
+repository.
 
-It connects an issue host, repository policy, git worktrees, configurable
-workflow skills, and Pi runtime instructions so a repository can move from open
-product work to reviewed diffs with clear handoffs.
+It uses the issue tracker as the visible state record: issues, labels, comments,
+pull requests, and approval labels show where work is in the workflow. Patchmill
+uses local git state and worktrees for repository changes, then writes status
+back to the issue tracker.
 
-## The production-line model
+Patchmill is configured through skills. A skill is a versioned instruction set
+for one phase of the workflow, such as triage, specification and plan writing,
+implementation, visual evidence, review, or landing decisions.
 
-Patchmill makes the stations in automated development explicit:
+The important boundary is the contract around the black box:
 
-1. Intake product work from an issue host.
-2. Sort what is ready to advance.
-3. Write or reuse a plan.
-4. Implement in an isolated worktree.
-5. Review the result.
-6. Collect evidence when the workflow asks for it.
-7. Land the change.
-8. Record what happened.
+- Patchmill code owns the workflow state machine, host-provider side effects,
+  git safety checks, worktree creation, artifact validation, approval gates, and
+  final result validation.
+- Skills own the instructions given to agents for judgment-heavy work inside a
+  phase.
+- The issue tracker records what happened so humans can inspect, approve, retry,
+  or stop work without relying on hidden agent state.
 
-The goal is not a black box that writes code. The goal is a factory floor where
-every station is visible, configurable, and designed to preserve software
-craftsmanship while making iterative engineering scalable.
+## Workflow at a glance
 
-## What Patchmill controls
+This diagram separates code-controlled steps from skill-configured steps.
 
-Patchmill coordinates local repository automation:
-
-- Host provider access for issue and pull-request workflows.
-- Repository-local configuration in `patchmill.config.json`.
-- Project-local skills under `.patchmill/skills/`.
-- Git worktrees for isolated implementation work.
-- Approval gates for specs, plans, and implementation evidence.
-- Pi runtime instructions for triage, planning, implementation, and review.
-
-## Where Superpowers fits
-
-Patchmill relies on the Superpowers skill pack for much of the workflow
-discipline around planning, implementation, debugging, review, and verification.
-
-In the factory metaphor, Patchmill provides the factory floor and Superpowers
-provides much of the expertise that moves work through the factory.
+```text
+Issue tracker
+issues, labels, comments, pull requests
+        │
+        ▼
+[code] Load repository config and provider state
+        │
+        ▼
+[code] Read issues and current labels/comments
+        │
+        ├─ patchmill triage
+        │      │
+        │      ▼
+        │   [skill: triage] Classify issues and propose labels/comments
+        │      │
+        │      ▼
+        │   [code] Apply allowed labels/comments to the issue tracker
+        │
+        └─ patchmill run-once
+               │
+               ▼
+            [code] Select an eligible issue and check git safety
+               │
+               ▼
+            [code] Read deterministic spec/plan artifacts and checksums
+               │
+               ├─ missing spec or plan
+               │      │
+               │      ▼
+               │   [skill: planning] Write the required spec or plan
+               │      │
+               │      ▼
+               │   [code] Record artifact state and stop for approval if required
+               │
+               ▼
+            [code] Claim the issue, create a worktree, materialize artifacts
+               │
+               ├─ optional local setup
+               │      ▼
+               │   [skill: developmentEnvironment] Prepare local services/tools
+               │
+               ▼
+            [skill: implementation] Apply the approved plan in the worktree
+               │
+               ├─ visible UI changed
+               │      ▼
+               │   [skill: visualEvidence] Capture committed reference screenshots
+               │
+               ▼
+            [skill: review] Review the implementation when configured
+               │
+               ▼
+            [skill: landing] Decide direct land versus pull request when configured
+               │
+               ▼
+            [code] Validate final JSON, evidence, git state, labels, and PR state
+               │
+               ▼
+            Issue tracker updated with status, comments, and pull request links
+```
 
 ## What to read next
 
 - Start with the [quickstart](/getting-started/quickstart/).
 - Learn how repository behavior is configured in
   [configuration](/getting-started/configuration/).
-- Review [issue-agent workflows](/guides/issue-agent-workflows/) when you are
-  ready to understand the full production line.
+- Review [issue-agent workflows](/guides/issue-agent-workflows/) when you want
+  the detailed command behavior.
 - Read [workflow artifacts](/guides/workflow-artifacts/) when you want Patchmill
   to reuse developer-authored specs or plans.
