@@ -42,6 +42,15 @@ Patchmill relies on git state to keep automated work reviewable. Configuration
 can define branch-base policy, worktree strategy, and clean-worktree
 expectations before commands mutate repository state.
 
+When `git.baseBranch` is omitted, `run-once` detects the pull-request target
+branch from local git metadata. It checks the remote HEAD for `git.remote`, then
+the current branch upstream when it tracks that same remote, and finally falls
+back to `main`.
+
+Set `git.baseBranch` explicitly when the repository PR target should be fixed or
+when local metadata cannot identify it. Explicit `git.baseBranch` values are
+authoritative and are not overwritten by detection.
+
 Use `patchmill doctor` after configuration changes to validate host access,
 labels, skills, runtime access, and local paths.
 

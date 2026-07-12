@@ -54,3 +54,5 @@ provides much of the expertise that moves work through the factory.
   [configuration](/getting-started/configuration/).
 - Review [issue-agent workflows](/guides/issue-agent-workflows/) when you are
   ready to understand the full production line.
+- Read [workflow artifacts](/guides/workflow-artifacts/) when you want Patchmill
+  to reuse developer-authored specs or plans.

@@ -24,7 +24,8 @@ gh auth status
 ```
 
 Then configure Patchmill with the provider and repository details used by your
-project.
+project. The `github-gh` provider uses your active `gh` authentication context
+and does not support named logins.
 
 ## Forgejo and Gitea setup
 
@@ -36,13 +37,19 @@ tea login list
 ```
 
 Use the configured login name when creating disposable demo repositories or
-configuring host access.
+configuring host access. Named-login overrides, including
+`PATCHMILL_HOST_LOGIN`, only apply to providers with named-login support such as
+`forgejo-tea`; `github-gh` ignores them.
 
 ## Runtime Pi authentication
 
 `patchmill auth` configures or repairs repo-local Pi provider authentication
 under `.patchmill/pi-agent`. Run it after provider credentials, model
 selections, or local runtime settings change.
+
+Issue-host authentication remains separate: use `gh auth login` for GitHub and
+`tea` login configuration for Forgejo/Gitea access. `patchmill auth` only
+manages Patchmill's repo-local Pi provider state.
 
 ## Validate provider access
 

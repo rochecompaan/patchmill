@@ -37,6 +37,21 @@ configured CLIs. Use `patchmill auth` for Patchmill-owned Pi runtime setup and
 provider-specific CLI commands such as `gh auth status` or `tea login list` for
 host access checks.
 
+| Variable               | Purpose                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `PATCHMILL_HOST_LOGIN` | Host account/login override for providers with named-login support, such as `forgejo-tea`; ignored by `github-gh`. |
+
+## Git configuration notes
+
+`git.baseBranch` controls the pull-request target branch used by `run-once`. If
+it is omitted, Patchmill checks `refs/remotes/<git.remote>/HEAD`, then the
+current branch upstream when it tracks the same remote, and finally falls back
+to `main`.
+
+Set `git.baseBranch` explicitly when local git metadata cannot identify the PR
+target or when repository policy requires a fixed branch. Explicit values are
+authoritative.
+
 ## Verification command
 
 Run this after changing configuration, credentials, skills, or local paths:

@@ -34,8 +34,8 @@ Advance one ready issue through the production line:
 patchmill run-once
 ```
 
-Patchmill can reuse approved artifacts from an issue or create new artifacts
-when your approval policy requires them.
+Patchmill can use published issue artifacts when your workflow requires them, or
+create missing artifacts under your approval policy.
 
 ## Try Patchmill on a disposable demo repository
 

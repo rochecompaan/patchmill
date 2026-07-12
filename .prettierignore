@@ -4,6 +4,7 @@ coverage/
 .direnv/
 .patchmill/
 .pi/
+.pi-subagents/
 .tmp/
 .worktrees/
 package-lock.json

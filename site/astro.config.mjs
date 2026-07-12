@@ -48,6 +48,10 @@ export default defineConfig({
               slug: "guides/issue-agent-workflows",
             },
             {
+              label: "Workflow artifacts",
+              slug: "guides/workflow-artifacts",
+            },
+            {
               label: "Skills configuration",
               slug: "guides/skills-configuration",
             },
