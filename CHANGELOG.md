@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.0](https://github.com/rochecompaan/patchmill/compare/v0.15.1...v0.16.0) (2026-07-11)
+
+
+### Features
+
+* **cli:** add set-spec and set-plan artifact commands ([#78](https://github.com/rochecompaan/patchmill/issues/78)) ([745f0fa](https://github.com/rochecompaan/patchmill/commit/745f0fa2816c71903c8dfb1d90cf53de87a125b8))
+* **skills:** add default visual evidence skill ([1eef7c6](https://github.com/rochecompaan/patchmill/commit/1eef7c6bc04556142eb545215b6d4695944475d0))
+
+
+### Bug Fixes
+
+* **run-once:** detect remote default branch for run-once base branch ([#72](https://github.com/rochecompaan/patchmill/issues/72)) ([fdd7304](https://github.com/rochecompaan/patchmill/commit/fdd7304908c7fc337d2a7501bd96b350546e90c0))
+* **run-once:** trust configured and default tea users in artifact comments ([#80](https://github.com/rochecompaan/patchmill/issues/80)) ([c72afbd](https://github.com/rochecompaan/patchmill/commit/c72afbd6c927966ab5ad2c4b434ef24852c81050))
+* **triage:** fix forgejo edited comment hydration ([#74](https://github.com/rochecompaan/patchmill/issues/74)) ([a7844c5](https://github.com/rochecompaan/patchmill/commit/a7844c5ada5e0cd384adb0b96ac5e06c18cf0a39))
+
 ## [0.15.1](https://github.com/rochecompaan/patchmill/compare/v0.15.0...v0.15.1) (2026-07-06)
 
 
