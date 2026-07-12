@@ -117,15 +117,16 @@ h1 {
 
 .proof-section {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(420px, 1.15fr);
-  gap: clamp(2rem, 6vw, 4.5rem);
+  grid-template-columns: 1fr;
+  gap: clamp(1.5rem, 4vw, 3rem);
   align-items: start;
   padding: 4em 0 clamp(3rem, 8vw, 6rem);
 }
 
 .feature-list {
   display: grid;
-  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem clamp(1rem, 4vw, 2rem);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -135,7 +136,7 @@ h1 {
   position: relative;
   padding-left: 1.6rem;
   color: var(--ink);
-  font-size: clamp(1.2rem, 2.2vw, 1.85rem);
+  font-size: 1rem;
   font-weight: 400;
   line-height: 1.24;
   letter-spacing: -0.035em;
@@ -400,6 +401,10 @@ h1 {
 
   .top-nav {
     justify-content: center;
+  }
+
+  .feature-list {
+    grid-template-columns: 1fr;
   }
 
   h1 {

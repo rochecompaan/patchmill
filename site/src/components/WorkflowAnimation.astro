@@ -1,0 +1,387 @@
+---
+import "../styles/workflow-animation.css";
+import { animationEvents, demoIssues, staticTranscript } from "./workflowAnimationData";
+
+const animationData = JSON.stringify({ animationEvents, demoIssues, staticTranscript }).replaceAll(
+  "<",
+  "\\u003c",
+);
+
+const labelClass = (label: string) =>
+  `label label-${label.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}`;
+
+const renderTerminalLine = (kind: string, text: string) => ({ kind, text });
+---
+
+<aside class="workflow-demo" data-workflow-demo aria-label="Interactive Patchmill workflow demo">
+  <div class="workflow-stage">
+    <section class="terminal-card workflow-terminal" aria-label="Patchmill terminal session">
+      <div class="terminal-header" aria-hidden="true">
+        <span class="terminal-dot terminal-dot-red"></span>
+        <span class="terminal-dot terminal-dot-yellow"></span>
+        <span class="terminal-dot terminal-dot-green"></span>
+        <span>patchmill-demo terminal</span>
+      </div>
+      <div class="terminal-body" data-terminal-log>
+        {
+          staticTranscript.map((line) => {
+            const terminalLine = renderTerminalLine(line.kind, line.text);
+            return (
+              <div class:list={["terminal-line", `terminal-line-${terminalLine.kind}`]}>
+                {terminalLine.kind === "command" && <span class="terminal-prompt">$</span>}
+                <code>{terminalLine.text}</code>
+              </div>
+            );
+          })
+        }
+      </div>
+    </section>
+
+    <section
+      class="issues-card workflow-issues"
+      data-issues-panel
+      aria-label="GitHub issues mockup showing Patchmill workflow state"
+    >
+      <div class="github-window-bar">
+        <div>
+          <span class="repo-owner">patchmill-demo</span><span class="repo-separator">/</span><strong>team-lunch-poll</strong>
+        </div>
+        <span class="repo-visibility">Public</span>
+      </div>
+      <div class="github-tabs" aria-hidden="true">
+        <span>Code</span>
+        <strong>Issues <em>7</em></strong>
+        <span>Pull requests</span>
+        <span>Actions</span>
+      </div>
+      <div class="issues-toolbar">
+        <strong>7 Open</strong>
+        <span class="workflow-status-pill" data-issue-status>Final state</span>
+        <span class="github-new-issue">New issue</span>
+      </div>
+      <div class="issue-list" data-issue-list>
+        {
+          demoIssues.map((issue) => (
+            <article
+              class="issue-row"
+              data-issue-row={String(issue.number)}
+              data-initial-meta={issue.initialMeta}
+              data-final-meta={issue.finalMeta}
+            >
+              <div class="issue-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="16" height="16">
+                  <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" />
+                  <circle cx="8" cy="8" r="2" fill="currentColor" />
+                </svg>
+              </div>
+              <div class="issue-body">
+                <h3>
+                  {issue.title}
+                  <span>#{issue.number}</span>
+                </h3>
+                <div class="labels" aria-label="Issue labels">
+                  <span class="workflow-no-labels" data-no-labels hidden>No labels yet</span>
+                  {issue.labelPool.map((label) => (
+                    <span class={labelClass(label)} data-label={label} hidden={!issue.finalLabels.includes(label)}>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <p data-issue-meta>{issue.finalMeta}</p>
+              </div>
+            </article>
+          ))
+        }
+      </div>
+    </section>
+  </div>
+
+  <div class="workflow-controls" aria-label="Patchmill workflow animation controls">
+    <button type="button" class="workflow-control" data-workflow-replay>Replay</button>
+    <button type="button" class="workflow-control" data-workflow-pause aria-pressed="false">Pause</button>
+    <button type="button" class="workflow-control" data-workflow-skip>Skip animation</button>
+  </div>
+
+  <p class="workflow-live" data-workflow-live aria-live="polite">
+    Static fallback shown: Patchmill initializes, creates demo issues, triages labels, and marks #42 agent-done.
+  </p>
+
+  <script type="application/json" data-workflow-script set:html={animationData} />
+</aside>
+
+<script>
+  const sleep = (duration) => new Promise((resolve) => window.setTimeout(resolve, duration));
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const replayDelayMultiplier = 2.2;
+  const typedCharacterDelay = 52;
+  const typedSpaceDelay = 34;
+  const promptReadDelay = 760;
+  const promptSelectDelay = 520;
+  const labelRevealDelay = 260;
+  const issuePulseDelay = 1400;
+  const terminalClearPause = 2000;
+
+  document.querySelectorAll("[data-workflow-demo]").forEach((demo) => {
+    const dataScript = demo.querySelector("[data-workflow-script]");
+    const terminal = demo.querySelector("[data-terminal-log]");
+    const liveRegion = demo.querySelector("[data-workflow-live]");
+    const status = demo.querySelector("[data-issue-status]");
+    const replay = demo.querySelector("[data-workflow-replay]");
+    const pause = demo.querySelector("[data-workflow-pause]");
+    const skip = demo.querySelector("[data-workflow-skip]");
+
+    if (!(dataScript instanceof HTMLScriptElement) || !(terminal instanceof HTMLElement)) return;
+
+    const { animationEvents, demoIssues, staticTranscript } = JSON.parse(dataScript.textContent || "{}");
+    const issueRows = new Map(
+      Array.from(demo.querySelectorAll("[data-issue-row]")).map((row) => [
+        Number(row.getAttribute("data-issue-row")),
+        row,
+      ]),
+    );
+
+    let runToken = 0;
+    let paused = false;
+
+    const setLive = (message) => {
+      if (liveRegion) liveRegion.textContent = message;
+    };
+
+    const guardedSleep = async (duration, token) => {
+      const end = Date.now() + duration;
+
+      while (Date.now() < end) {
+        if (token !== runToken) throw new Error("workflow-cancelled");
+        while (paused) {
+          if (token !== runToken) throw new Error("workflow-cancelled");
+          await sleep(80);
+        }
+        await sleep(Math.min(60, Math.max(0, end - Date.now())));
+      }
+    };
+
+    const createTerminalLine = (kind, text) => {
+      const line = document.createElement("div");
+      line.className = `terminal-line terminal-line-${kind}`;
+
+      if (kind === "command") {
+        const prompt = document.createElement("span");
+        prompt.className = "terminal-prompt";
+        prompt.textContent = "$";
+        line.append(prompt);
+      }
+
+      const code = document.createElement("code");
+      code.textContent = text;
+      line.append(code);
+      terminal.append(line);
+      terminal.scrollTop = terminal.scrollHeight;
+      return code;
+    };
+
+    const typeTerminalLine = async (kind, text, token) => {
+      const target = createTerminalLine(kind, "");
+
+      for (const char of text) {
+        if (token !== runToken) throw new Error("workflow-cancelled");
+        target.textContent += char;
+        terminal.scrollTop = terminal.scrollHeight;
+        await guardedSleep(char === " " ? typedSpaceDelay : typedCharacterDelay, token);
+      }
+    };
+
+    const renderPrompt = async (event, token) => {
+      const block = document.createElement("div");
+      block.className = "terminal-prompt-block";
+      block.innerHTML = `<p>? ${event.question}</p>`;
+
+      const list = document.createElement("div");
+      list.className = "terminal-choice-list";
+
+      event.options.forEach((option) => {
+        const item = document.createElement("span");
+        item.className = "terminal-choice";
+        item.textContent = `  ${option}`;
+        if (option === event.selected) item.dataset.selectedChoice = "true";
+        list.append(item);
+      });
+
+      block.append(list);
+      terminal.append(block);
+      terminal.scrollTop = terminal.scrollHeight;
+      await guardedSleep(promptReadDelay, token);
+
+      list.querySelectorAll("[data-selected-choice]").forEach((item) => {
+        item.classList.add("is-selected");
+        item.textContent = `❯ ${event.selected}`;
+      });
+      await guardedSleep(promptSelectDelay, token);
+    };
+
+    const resetIssues = () => {
+      issueRows.forEach((row) => {
+        row.hidden = true;
+        row.classList.remove("is-active", "is-changing", "is-muted");
+        row.querySelectorAll("[data-label]").forEach((label) => {
+          label.hidden = true;
+        });
+        const noLabels = row.querySelector("[data-no-labels]");
+        if (noLabels) noLabels.hidden = false;
+        const meta = row.querySelector("[data-issue-meta]");
+        if (meta) meta.textContent = row.getAttribute("data-initial-meta") || "awaiting triage";
+      });
+      if (status) status.textContent = "Waiting for issues";
+    };
+
+    const revealIssue = (number) => {
+      const row = issueRows.get(number);
+      if (!row) return;
+      row.hidden = false;
+      row.classList.add("is-changing");
+      setLive(`GitHub issue #${number} appeared.`);
+      window.setTimeout(() => row.classList.remove("is-changing"), issuePulseDelay);
+    };
+
+    const highlightIssue = (number) => {
+      issueRows.forEach((row, rowNumber) => {
+        row.classList.toggle("is-active", Boolean(number) && rowNumber === number);
+        row.classList.toggle("is-muted", Boolean(number) && rowNumber !== number && !row.hidden);
+      });
+    };
+
+    const setIssueLabels = async (number, labels, meta, token) => {
+      const row = issueRows.get(number);
+      if (!row) return;
+
+      row.hidden = false;
+      row.classList.add("is-changing");
+      row.querySelectorAll("[data-label]").forEach((label) => {
+        label.hidden = true;
+      });
+
+      const noLabels = row.querySelector("[data-no-labels]");
+      if (noLabels) noLabels.hidden = labels.length > 0;
+
+      for (const labelName of labels) {
+        const label = Array.from(row.querySelectorAll("[data-label]")).find(
+          (candidate) => candidate.getAttribute("data-label") === labelName,
+        );
+        if (label) {
+          label.hidden = false;
+          await guardedSleep(labelRevealDelay, token);
+        }
+      }
+
+      const metaNode = row.querySelector("[data-issue-meta]");
+      if (metaNode && meta) metaNode.textContent = meta;
+      if (status) status.textContent = `Issue #${number} updated`;
+      setLive(`Issue #${number} labels updated: ${labels.join(", ")}.`);
+      window.setTimeout(() => row.classList.remove("is-changing"), issuePulseDelay);
+    };
+
+    const renderFinal = () => {
+      runToken += 1;
+      demo.classList.add("is-enhanced", "is-split", "is-complete");
+      terminal.innerHTML = "";
+      staticTranscript.forEach((line) => createTerminalLine(line.kind, line.text));
+      demoIssues.forEach((issue) => {
+        const row = issueRows.get(issue.number);
+        if (!row) return;
+        row.hidden = false;
+        row.classList.remove("is-active", "is-changing", "is-muted");
+        const noLabels = row.querySelector("[data-no-labels]");
+        if (noLabels) noLabels.hidden = true;
+        row.querySelectorAll("[data-label]").forEach((label) => {
+          label.hidden = !issue.finalLabels.includes(label.getAttribute("data-label"));
+        });
+        const metaNode = row.querySelector("[data-issue-meta]");
+        if (metaNode) metaNode.textContent = issue.finalMeta;
+      });
+      if (status) status.textContent = "Final state";
+      setLive("Animation skipped. Final Patchmill workflow state is shown.");
+      if (pause instanceof HTMLButtonElement) {
+        pause.disabled = reduceMotion.matches;
+        pause.textContent = reduceMotion.matches ? "Motion reduced" : "Pause";
+        pause.setAttribute("aria-pressed", "false");
+      }
+    };
+
+    const runAnimation = async () => {
+      runToken += 1;
+      const token = runToken;
+      paused = false;
+      demo.classList.add("is-enhanced");
+      demo.classList.remove("is-split", "is-complete");
+      terminal.innerHTML = "";
+      resetIssues();
+      setLive("Patchmill workflow animation started.");
+
+      if (pause instanceof HTMLButtonElement) {
+        pause.disabled = false;
+        pause.textContent = "Pause";
+        pause.setAttribute("aria-pressed", "false");
+      }
+
+      try {
+        for (const event of animationEvents) {
+          if (token !== runToken) throw new Error("workflow-cancelled");
+
+          if (event.type === "terminal-line") {
+            if (event.typed) {
+              await typeTerminalLine(event.kind, event.text, token);
+            } else {
+              createTerminalLine(event.kind, event.text);
+            }
+          }
+
+          if (event.type === "prompt") await renderPrompt(event, token);
+          if (event.type === "terminal-clear") {
+            await guardedSleep(terminalClearPause, token);
+            terminal.innerHTML = "";
+            setLive("Terminal cleared for the next Patchmill command.");
+          }
+          if (event.type === "split") {
+            demo.classList.add("is-split");
+            setLive("The GitHub issues panel opened next to the terminal.");
+          }
+          if (event.type === "issue-add") revealIssue(event.number);
+          if (event.type === "issue-highlight") highlightIssue(event.number);
+          if (event.type === "issue-labels") {
+            await setIssueLabels(event.number, event.labels, event.meta, token);
+          }
+          if (event.type === "issue-meta") {
+            const row = issueRows.get(event.number);
+            const metaNode = row?.querySelector("[data-issue-meta]");
+            if (metaNode) metaNode.textContent = event.meta;
+          }
+
+          await guardedSleep((event.delayAfter || 0) * replayDelayMultiplier, token);
+        }
+
+        highlightIssue();
+        demo.classList.add("is-complete");
+        setLive("Patchmill workflow animation complete. Issue #42 is agent-done.");
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "workflow-cancelled") throw error;
+      }
+    };
+
+    if (replay instanceof HTMLButtonElement) replay.addEventListener("click", runAnimation);
+    if (skip instanceof HTMLButtonElement) skip.addEventListener("click", renderFinal);
+    if (pause instanceof HTMLButtonElement) {
+      pause.addEventListener("click", () => {
+        paused = !paused;
+        pause.textContent = paused ? "Resume" : "Pause";
+        pause.setAttribute("aria-pressed", paused ? "true" : "false");
+      });
+    }
+
+    reduceMotion.addEventListener("change", () => {
+      if (reduceMotion.matches) renderFinal();
+      else runAnimation();
+    });
+
+    if (reduceMotion.matches) renderFinal();
+    else runAnimation();
+  });
+</script>

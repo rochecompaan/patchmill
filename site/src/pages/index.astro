@@ -1,36 +1,7 @@
 ---
 import logoDark from "../assets/logo-dark.svg?url";
+import WorkflowAnimation from "../components/WorkflowAnimation.astro";
 import "../styles/landing.css";
-
-const issues = [
-  {
-    title: "Add visual proof for the onboarding dashboard",
-    number: 42,
-    labels: ["feature", "agent-ready", "plan-approved", "priority:high"],
-    meta: "opened by patchmill-demo · ready for run-once",
-  },
-  {
-    title: "Document repo-local Pi auth repair flow",
-    number: 39,
-    labels: ["docs", "spec-approved", "plan-review"],
-    meta: "opened by docs-lead · waiting for plan review",
-  },
-  {
-    title: "Triage flaky setup-test-repo bootstrap",
-    number: 37,
-    labels: ["bug", "in-progress", "blocked"],
-    meta: "opened by qa-bot · blocked on provider access",
-  },
-  {
-    title: "Shape provider onboarding around team policy",
-    number: 34,
-    labels: ["enhancement", "needs-info", "spec-review", "priority:medium"],
-    meta: "opened by platform-team · needs human decision",
-  },
-];
-
-const labelClass = (label: string) =>
-  `label label-${label.replace(/[^a-z0-9]+/gi, "_")}`;
 ---
 
 <!doctype html>
@@ -82,49 +53,7 @@ const labelClass = (label: string) =>
           </ul>
         </div>
 
-        <aside class="issues-card" aria-label="GitHub issues mockup showing Patchmill workflow labels">
-          <div class="github-window-bar">
-            <div>
-              <span class="repo-owner">patchmill-demo</span><span class="repo-separator">/</span><strong>team-lunch-poll</strong>
-            </div>
-            <span class="repo-visibility">Public</span>
-          </div>
-          <div class="github-tabs" aria-hidden="true">
-            <span>Code</span>
-            <strong>Issues <em>7</em></strong>
-            <span>Pull requests</span>
-            <span>Actions</span>
-          </div>
-          <div class="issues-toolbar">
-            <strong>7 Open</strong>
-            <span>2 Closed</span>
-            <button type="button">New issue</button>
-          </div>
-          <div class="issue-list">
-            {
-              issues.map((issue) => (
-                <article class="issue-row">
-                  <div class="issue-icon" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" width="16" height="16">
-                      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" />
-                      <circle cx="8" cy="8" r="2" fill="currentColor" />
-                    </svg>
-                  </div>
-                  <div class="issue-body">
-                    <h2>
-                      {issue.title}
-                      <span>#{issue.number}</span>
-                    </h2>
-                    <div class="labels" aria-label="Issue labels">
-                      {issue.labels.map((label) => <span class={labelClass(label)}>{label}</span>)}
-                    </div>
-                    <p>{issue.meta}</p>
-                  </div>
-                </article>
-              ))
-            }
-          </div>
-        </aside>
+        <WorkflowAnimation />
       </section>
     </main>
   </body>
