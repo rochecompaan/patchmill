@@ -1,5 +1,5 @@
 ---
-title: What Patchmill is
+title: Overview
 description: Understand Patchmill's role as an agent-driven software factory.
 ---
 

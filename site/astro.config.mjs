@@ -30,8 +30,8 @@ export default defineConfig({
           label: "Getting started",
           items: [
             {
-              label: "What Patchmill is",
-              slug: "getting-started/what-is-patchmill",
+              label: "Overview",
+              slug: "getting-started/overview",
             },
             { label: "Quickstart", slug: "getting-started/quickstart" },
             {
