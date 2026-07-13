@@ -43,16 +43,19 @@ export default defineConfig({
           ],
         },
         {
-          label: "Guides",
+          label: "Using Patchmill",
           items: [
-            {
-              label: "Issue-agent workflows",
-              slug: "guides/issue-agent-workflows",
-            },
+            { label: "Triage", slug: "using-patchmill/triage" },
+            { label: "Run-once", slug: "using-patchmill/run-once" },
             {
               label: "Workflow artifacts",
-              slug: "guides/workflow-artifacts",
+              slug: "using-patchmill/workflow-artifacts",
             },
+          ],
+        },
+        {
+          label: "Guides",
+          items: [
             {
               label: "Skills configuration",
               slug: "guides/skills-configuration",

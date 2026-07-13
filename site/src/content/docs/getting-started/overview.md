@@ -37,7 +37,8 @@ skills for judgment-heavy agent work so each issue gets the best end result.
 - Start with the [quickstart](/getting-started/quickstart/).
 - Learn how repository behavior is configured in
   [configuration](/getting-started/configuration/).
-- Review [issue-agent workflows](/guides/issue-agent-workflows/) when you want
-  the detailed command behavior.
-- Read [workflow artifacts](/guides/workflow-artifacts/) when you want Patchmill
-  to reuse developer-authored specs or plans.
+- Use [Triage](/using-patchmill/triage/) and
+  [Run-once](/using-patchmill/run-once/) when you want the detailed command
+  behavior.
+- Read [workflow artifacts](/using-patchmill/workflow-artifacts/) when you want
+  Patchmill to reuse developer-authored specs or plans.
