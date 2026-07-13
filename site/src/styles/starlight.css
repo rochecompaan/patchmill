@@ -29,10 +29,12 @@
 
 :root {
   --patchmill-code-border: #94a3b8;
+  --patchmill-workflow-border: #94a3b8;
 }
 
 :root[data-theme="light"] {
   --patchmill-code-border: #64748b;
+  --patchmill-workflow-border: #cbd5e1;
 }
 
 .site-title img {

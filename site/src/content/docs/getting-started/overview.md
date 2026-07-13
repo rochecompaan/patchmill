@@ -25,70 +25,12 @@ The important boundary is the contract around the black box:
 - The issue tracker records what happened so humans can inspect, approve, retry,
   or stop work without relying on hidden agent state.
 
-## Workflow at a glance
+## Workflow
 
-This diagram separates code-controlled steps from skill-configured steps.
+Patchmill combines deterministic code for state, safety, and validation with
+skills for judgment-heavy agent work so each issue gets the best end result.
 
-```text
-Issue tracker
-issues, labels, comments, pull requests
-        │
-        ▼
-[code] Load repository config and provider state
-        │
-        ▼
-[code] Read issues and current labels/comments
-        │
-        ├─ patchmill triage
-        │      │
-        │      ▼
-        │   [skill: triage] Classify issues and propose labels/comments
-        │      │
-        │      ▼
-        │   [code] Apply allowed labels/comments to the issue tracker
-        │
-        └─ patchmill run-once
-               │
-               ▼
-            [code] Select an eligible issue and check git safety
-               │
-               ▼
-            [code] Read deterministic spec/plan artifacts and checksums
-               │
-               ├─ missing spec or plan
-               │      │
-               │      ▼
-               │   [skill: planning] Write the required spec or plan
-               │      │
-               │      ▼
-               │   [code] Record artifact state and stop for approval if required
-               │
-               ▼
-            [code] Claim the issue, create a worktree, materialize artifacts
-               │
-               ├─ optional local setup
-               │      ▼
-               │   [skill: developmentEnvironment] Prepare local services/tools
-               │
-               ▼
-            [skill: implementation] Apply the approved plan in the worktree
-               │
-               ├─ visible UI changed
-               │      ▼
-               │   [skill: visualEvidence] Capture committed reference screenshots
-               │
-               ▼
-            [skill: review] Review the implementation when configured
-               │
-               ▼
-            [skill: landing] Decide direct land versus pull request when configured
-               │
-               ▼
-            [code] Validate final JSON, evidence, git state, labels, and PR state
-               │
-               ▼
-            Issue tracker updated with status, comments, and pull request links
-```
+![Patchmill workflow diagram showing the triage and run-once phases, code-controlled steps, skill-configured steps, and issue-tracker updates.](../../../assets/patchmill-workflow.svg)
 
 ## What to read next
 
