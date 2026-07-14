@@ -19,10 +19,11 @@ import { missingLabelDefinitions } from "../triage/labels.ts";
 import type { CommandRunner } from "../triage/types.ts";
 import type { PatchmillConfig } from "../../../config/types.ts";
 import {
-  DEFAULT_PATCHMILL_SKILLS,
+  bundledSkillByConfigReference,
+  bundledSkillPath,
+} from "../../../workflow/bundled-skills.ts";
+import {
   PATCHMILL_SKILL_KEYS,
-  bundledTriageSkillPath,
-  bundledVisualEvidenceSkillPath,
   isPathLikeSkill,
   resolveConfiguredSkillInvocation,
   resolvePathLikeSkillPath,
@@ -437,19 +438,13 @@ async function checkSkills(
 
   const entries: SkillCheckEntry[] = await Promise.all(
     configuredSkills.map(async ({ key, skill }) => {
-      if (key === "triage" && skill === DEFAULT_PATCHMILL_SKILLS.triage) {
-        return await verifyBundledSkill(key, skill, bundledTriageSkillPath());
-      }
-
-      if (
-        key === "visualEvidence" &&
-        skill === DEFAULT_PATCHMILL_SKILLS.visualEvidence
-      ) {
+      const bundledSkill = bundledSkillByConfigReference(skill);
+      if (bundledSkill) {
         return await verifyBundledSkill(
           key,
           skill,
-          bundledVisualEvidenceSkillPath(),
-          requiredSkillFiles("patchmill-visual-evidence"),
+          bundledSkillPath(bundledSkill),
+          bundledSkill.requiredFiles,
         );
       }
 
