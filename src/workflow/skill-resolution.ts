@@ -1,6 +1,10 @@
-import { existsSync, statSync } from "node:fs";
-import { dirname, join, resolve, win32 } from "node:path";
-import { fileURLToPath } from "node:url";
+import { statSync } from "node:fs";
+import { resolve, win32 } from "node:path";
+import {
+  bundledSkillByKey,
+  bundledSkillPath,
+  bundledSkillPathForReference,
+} from "./bundled-skills.ts";
 import { DEFAULT_PROJECT_SKILL_DIR } from "./skill-pack.ts";
 
 export type SkillResolutionStatus = "pass" | "warn" | "fail";
@@ -17,43 +21,30 @@ export type SkillInvocationResolution = {
   usedProjectLocalPack: boolean;
 };
 
-export const BUNDLED_TRIAGE_SKILL_REFERENCE = "patchmill:bundled-issue-triage";
+const bundledTriageSkill = bundledSkillByKey("triage");
+const bundledVisualEvidenceSkill = bundledSkillByKey("visualEvidence");
+
+if (!bundledTriageSkill || !bundledVisualEvidenceSkill) {
+  throw new Error(
+    "Bundled Patchmill skill registry is missing required skills",
+  );
+}
+
+export const BUNDLED_TRIAGE_SKILL_REFERENCE =
+  bundledTriageSkill.configReference;
 export const BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE =
-  "patchmill:bundled-visual-evidence";
+  bundledVisualEvidenceSkill.configReference;
 
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
 const SKILL_NAMESPACE_PATTERN = /^[a-z0-9-]+:.+$/iu;
 const SKILL_FILE_NAME = "SKILL.md";
 
-function bundledSkillPath(skillDirName: string): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const sourceTreePath = join(
-    here,
-    "..",
-    "..",
-    "skills",
-    skillDirName,
-    "SKILL.md",
-  );
-  const builtPackagePath = join(
-    here,
-    "..",
-    "..",
-    "..",
-    "skills",
-    skillDirName,
-    "SKILL.md",
-  );
-
-  return existsSync(sourceTreePath) ? sourceTreePath : builtPackagePath;
-}
-
 export function bundledTriageSkillPath(): string {
-  return bundledSkillPath("patchmill-issue-triage");
+  return bundledSkillPath(bundledTriageSkill);
 }
 
 export function bundledVisualEvidenceSkillPath(): string {
-  return bundledSkillPath("patchmill-visual-evidence");
+  return bundledSkillPath(bundledVisualEvidenceSkill);
 }
 
 export function isNamespaceStyleSkill(skill: string): boolean {
@@ -145,12 +136,8 @@ export function resolveConfiguredSkillInvocation(
   const diagnostics: SkillResolutionDiagnostic[] = [];
   const configuredPaths = skills.flatMap((skill) => {
     if (!skill) return [];
-    if (skill === BUNDLED_TRIAGE_SKILL_REFERENCE) {
-      return [bundledTriageSkillPath()];
-    }
-    if (skill === BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE) {
-      return [bundledVisualEvidenceSkillPath()];
-    }
+    const bundledPath = bundledSkillPathForReference(skill);
+    if (bundledPath) return [bundledPath];
     if (!isPathLikeSkill(skill)) return [];
     return [resolvePathLikeSkillPath(skill, repoRoot)];
   });
