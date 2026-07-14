@@ -67,9 +67,14 @@ export default defineConfig({
           label: "Reference",
           items: [
             {
-              label: "Task contracts",
-              slug: "reference/task-contracts",
+              label: "Configuration example",
+              slug: "reference/configuration-example",
             },
+            {
+              label: "Workflow labels",
+              slug: "reference/workflow-labels",
+            },
+            { label: "Git safety", slug: "reference/git-safety" },
             {
               label: "Environment and configuration",
               slug: "reference/environment-and-config",
