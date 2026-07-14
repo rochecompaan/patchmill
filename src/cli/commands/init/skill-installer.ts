@@ -16,6 +16,11 @@ import {
 import { createRequire } from "node:module";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import {
+  BUNDLED_PATCHMILL_SKILLS,
+  bundledSkillByKey,
+  bundledSkillDir,
+} from "../../../workflow/bundled-skills.ts";
+import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
   SKILL_PACK_METADATA_FILE,
@@ -25,7 +30,6 @@ import {
   requiredSkillFiles,
   type SkillPackSkill,
 } from "../../../workflow/skill-pack.ts";
-import { bundledTriageSkillPath } from "../../../workflow/skills.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
 const require = createRequire(import.meta.url);
@@ -75,8 +79,12 @@ const defaultDependencies: SkillInstallerDependencies = {
 
 export function defaultSkillSourceRoots(): SourceRoots {
   const superpowersRoot = dirname(require.resolve("superpowers/package.json"));
+  const bundledTriageSkill = bundledSkillByKey("triage");
+  if (!bundledTriageSkill) {
+    throw new Error("Bundled Patchmill skill registry is missing triage skill");
+  }
   return {
-    patchmillSkillsDir: resolve(dirname(bundledTriageSkillPath()), ".."),
+    patchmillSkillsDir: resolve(bundledSkillDir(bundledTriageSkill), ".."),
     superpowersSkillsDir: join(superpowersRoot, "skills"),
   };
 }
@@ -352,16 +360,23 @@ export async function validateExistingSkillDirectory(
   >
 > {
   const skillConfig = buildRecommendedProjectSkillConfig(skillDir);
+  const bundledRecommendedSkills = BUNDLED_PATCHMILL_SKILLS.flatMap((skill) =>
+    skill.recommendedProjectLocal && skill.projectSkillConfigKey
+      ? [
+          {
+            name: skill.globalName,
+            skillPath: skillConfig[skill.projectSkillConfigKey],
+          },
+        ]
+      : [],
+  );
+
   for (const { name, skillPath } of [
-    { name: "patchmill-issue-triage", skillPath: skillConfig.triage },
+    ...bundledRecommendedSkills,
     { name: "writing-plans", skillPath: skillConfig.planning },
     {
       name: "subagent-driven-development",
       skillPath: skillConfig.implementation,
-    },
-    {
-      name: "patchmill-visual-evidence",
-      skillPath: skillConfig.visualEvidence,
     },
   ]) {
     await assertRequiredSkillFiles(
