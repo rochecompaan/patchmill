@@ -44,25 +44,28 @@ patchmill init --skills none
 patchmill init --skills path:project-skills
 ```
 
-## Configured skills are loaded explicitly
+## Entry points and supporting skills
 
-The `skills` keys in `patchmill.config.json` are the Patchmill-controlled skill
-entry points for each workflow stage. Patchmill does not put the entire
-`.patchmill/skills/` directory on Pi's skill path. Instead, it resolves the
-configured skill references for the current stage and passes those paths to Pi
-as explicit `--skill <path>` arguments.
+The `skills` keys in `patchmill.config.json` are workflow entry points, not the
+complete list of skills an agent may use. Patchmill uses those configured values
+to start a workflow stage: planning receives the planning skill, implementation
+receives implementation-related skills, and optional review, visual-evidence,
+landing, toolchain, and development-environment skills are added when
+configured.
 
-Planning receives only the configured planning skill. Implementation receives
-the configured implementation-related skills: `toolchain`, `implementation`,
-`review`, `visualEvidence`, and `landing` when those keys are configured.
-Optional stages such as `developmentEnvironment` are loaded only when their
-corresponding config key is present.
+The project-local skills directory is the broader skill path for development.
+For initialized repositories this is usually `.patchmill/skills/`; custom skill
+install modes can point at another project-local skills directory. During a
+Patchmill run, the agent can use any relevant skill from that directory, and
+subagents can use relevant skills during delegated task execution too.
 
-The recommended skill pack may install more skills than a repository actively
-uses. Those extra project-local skills are available to opt into, customize, or
-reference from configured workflow skills, but they are not loaded just because
-they exist under `.patchmill/skills/`. To make one part of a Patchmill run,
-configure it under the appropriate `skills` key.
+That means the recommended skill pack matters even beyond the entries listed in
+`patchmill.config.json`. Supporting skills such as brainstorming, systematic
+debugging, test-driven development, code review, and verification before
+completion shape how agents and subagents do the work. Do not prune a
+project-local skill pack down to only the configured entry-point skills unless
+you also update the workflow skills that reference or expect those supporting
+capabilities.
 
 ## Configuration surface
 
@@ -140,9 +143,10 @@ Direct-land only when all of these are true:
   involved.
 
 If direct-land is eligible and Patchmill's prompt says direct landing is
-allowed, squash-merge the implementation branch into the target branch and
-return `merged` final JSON. Include a `landingDecision` that explains why direct
-landing was safe:
+allowed, squash-merge the implementation branch into the target branch, push the
+target branch, close the source issue on the issue host, and return `merged`
+final JSON. Include a `landingDecision` that explains why direct landing was
+safe and confirms the issue was closed:
 
 ```json
 {
@@ -151,8 +155,8 @@ landing was safe:
   "mergeCommit": "<squash commit sha on target branch>",
   "commits": ["<implementation commit sha>"],
   "validation": ["npm test passed"],
-  "reviewSummary": "reviewed simple localized bug fix",
-  "landingDecision": "direct squash-landed: reproduced simple bug and validation passed"
+  "reviewSummary": "reviewed simple localized bug fix; closed issue #123",
+  "landingDecision": "direct squash-landed and closed issue: reproduced simple bug and validation passed"
 }
 ```
 
