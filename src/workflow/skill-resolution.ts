@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, join, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_PROJECT_SKILL_DIR } from "./skill-pack.ts";
@@ -113,6 +113,22 @@ function pathStartsWith(path: string, prefix: string): boolean {
   );
 }
 
+function readableDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function projectLocalSkillRoot(repoRoot: string): string {
+  return resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR);
+}
+
+function isProjectLocalSkillPath(path: string, repoRoot: string): boolean {
+  return pathStartsWith(resolve(path), projectLocalSkillRoot(repoRoot));
+}
+
 function unique(paths: string[]): string[] {
   const seen = new Set<string>();
   return paths.filter((path) => {
@@ -139,25 +155,24 @@ export function resolveConfiguredSkillInvocation(
     return [resolvePathLikeSkillPath(skill, repoRoot)];
   });
 
-  const projectLocalRoot = resolve(repoRoot, DEFAULT_PROJECT_SKILL_DIR);
+  const projectLocalRoot = projectLocalSkillRoot(repoRoot);
+  const projectLocalRootAvailable = readableDirectory(projectLocalRoot);
   const configuredProjectLocalPaths = configuredPaths.filter((path) =>
-    pathStartsWith(resolve(path), projectLocalRoot),
+    isProjectLocalSkillPath(path, repoRoot),
+  );
+  const configuredOutsideProjectLocalPaths = configuredPaths.filter(
+    (path) =>
+      !projectLocalRootAvailable || !isProjectLocalSkillPath(path, repoRoot),
   );
 
-  if (configuredProjectLocalPaths.length === 0) {
-    return {
-      paths: unique(configuredPaths),
-      diagnostics,
-      configuredProjectLocalPaths,
-      usedProjectLocalPack: false,
-    };
-  }
-
   return {
-    paths: unique(configuredPaths),
+    paths: unique([
+      ...(projectLocalRootAvailable ? [projectLocalRoot] : []),
+      ...configuredOutsideProjectLocalPaths,
+    ]),
     diagnostics,
     configuredProjectLocalPaths: unique(configuredProjectLocalPaths),
-    usedProjectLocalPack: true,
+    usedProjectLocalPack: projectLocalRootAvailable,
   };
 }
 

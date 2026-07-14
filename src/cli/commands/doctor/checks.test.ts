@@ -170,12 +170,7 @@ function projectLocalVisualEvidenceMetadata(): Array<{
 }
 
 function recommendedProjectLocalSmokePaths(repoRoot: string): string[] {
-  return [
-    projectLocalSkillPath(repoRoot, "patchmill-issue-triage"),
-    projectLocalSkillPath(repoRoot, "writing-plans"),
-    projectLocalSkillPath(repoRoot, "subagent-driven-development"),
-    projectLocalSkillPath(repoRoot, "patchmill-visual-evidence"),
-  ];
+  return [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR)];
 }
 
 function projectLocalPiSmokeCommand(paths: string[]): string {
@@ -186,7 +181,7 @@ function projectLocalPiSmokeCommand(paths: string[]): string {
     "--no-prompt-templates",
     ...paths.flatMap((path) => ["--skill", path]),
     "-p",
-    "Reply with PATCHMILL_SKILLS_OK and nothing else.",
+    "Confirm Patchmill project-local skills are discoverable. If the available skills include Patchmill project-local skills from the loaded skill directory, print PATCHMILL_SKILLS_OK and nothing else.",
   ].join(" ");
 }
 
@@ -753,7 +748,10 @@ test("runDoctorChecks passes for fresh configured project-local skills", async (
   const skills = results.find((result) => result.name === "skills");
 
   assert.equal(skills?.status, "pass");
-  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
+  assert.match(
+    skills?.message ?? "",
+    /Pi loaded the project-local skill directory/,
+  );
   assert.doesNotMatch(skills?.message ?? "", /metadata/);
   assert.ok(calls.includes(expectedSmokeCommand));
   assert.equal(
@@ -916,7 +914,7 @@ test("runDoctorChecks fails when project-local visual evidence helper is a direc
   );
 });
 
-test("runDoctorChecks ignores unused .patchmill skills when config uses global/named skills", async () => {
+test("runDoctorChecks smoke-tests project-local skills when directory exists with named config", async () => {
   const repoRoot = await tempRepo();
   await writeConfig(repoRoot, {
     host: { provider: "forgejo-tea", login: "triage-agent" },
@@ -929,17 +927,26 @@ test("runDoctorChecks ignores unused .patchmill skills when config uses global/n
   await mkdir(join(repoRoot, "docs"), { recursive: true });
   await writeProjectLocalSkill(
     repoRoot,
-    "stale-unused-skill",
-    "not a valid skill document\n",
+    "module-size",
+    skillDocument("module-size", "Keep modules focused."),
   );
 
+  const smokePaths = [
+    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR),
+    bundledVisualEvidenceSkillPath(),
+  ];
   const calls: string[] = [];
   const runner: CommandRunner = {
     async run(command, args) {
       const key = normalizePiCommandKey(command, args);
       calls.push(key);
       return (
-        successMocks(REQUIRED_LABELS)[key] ?? {
+        successMocks(REQUIRED_LABELS, {
+          [projectLocalPiSmokeCommand(smokePaths)]: {
+            code: 0,
+            stdout: "PATCHMILL_SKILLS_OK\n",
+          },
+        })[key] ?? {
           code: 127,
           stdout: "",
           stderr: `missing mock for ${key}`,
@@ -959,21 +966,11 @@ test("runDoctorChecks ignores unused .patchmill skills when config uses global/n
     skills?.message ?? "",
     /triage: `patchmill-issue-triage` \(named skill configured; doctor did not verify it\)/,
   );
-  assert.doesNotMatch(skills?.message ?? "", /stale-unused-skill/);
-  assert.doesNotMatch(
+  assert.match(
     skills?.message ?? "",
-    /project-local skill pack metadata/,
+    /Pi loaded the project-local skill directory/,
   );
-  assert.equal(
-    calls.some((call) =>
-      call.includes("git check-ignore --no-index -q .patchmill/skills"),
-    ),
-    false,
-  );
-  assert.equal(
-    calls.some((call) => call.includes("PATCHMILL_SKILLS_OK")),
-    false,
-  );
+  assert.ok(calls.includes(projectLocalPiSmokeCommand(smokePaths)));
 });
 
 test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata is malformed", async () => {
@@ -1002,7 +999,7 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
   );
 
   const smokePaths = [
-    projectLocalSkillPath(repoRoot, "writing-plans"),
+    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR),
     bundledVisualEvidenceSkillPath(),
   ];
   const calls: string[] = [];
@@ -1033,7 +1030,10 @@ test("runDoctorChecks smoke-tests the exact shared resolver paths when metadata 
 
   assert.equal(skills?.status, "warn");
   assert.doesNotMatch(skills?.message ?? "", /metadata malformed/);
-  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
+  assert.match(
+    skills?.message ?? "",
+    /Pi loaded the project-local skill directory/,
+  );
   assert.ok(calls.includes(projectLocalPiSmokeCommand(smokePaths)));
   assert.equal(
     calls.some((call) => call.includes("stale-unused-skill")),
@@ -1178,7 +1178,10 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
 
   assert.equal(skills?.status, "pass");
   assert.doesNotMatch(skills?.message ?? "", /customized from installed pack/);
-  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
+  assert.match(
+    skills?.message ?? "",
+    /Pi loaded the project-local skill directory/,
+  );
 });
 
 test("runDoctorChecks allows project-local skills to be ignored by git", async () => {
@@ -1259,6 +1262,48 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
   );
 });
 
+test("runDoctorChecks fails when Pi cannot discover project-local skill directory", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await installProjectSkills({
+    repoRoot,
+    installedAt: "2026-05-29T00:00:00.000Z",
+  });
+
+  const smokePaths = recommendedProjectLocalSmokePaths(repoRoot);
+  const runner: CommandRunner = {
+    async run(command, args) {
+      const key = normalizePiCommandKey(command, args);
+      return (
+        successMocks(REQUIRED_LABELS, {
+          [projectLocalPiSmokeCommand(smokePaths)]: {
+            code: 1,
+            stdout: "",
+            stderr: "skill path does not exist",
+          },
+        })[key] ?? {
+          code: 127,
+          stdout: "",
+          stderr: `missing mock for ${key}`,
+        }
+      );
+    },
+  };
+
+  const results = await runDoctorChecks(runner, {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /Pi could not load the project-local skill directory/,
+  );
+});
+
 test("runDoctorChecks fails when Pi cannot load project-local skills", async () => {
   const repoRoot = await tempRepo();
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
@@ -1313,7 +1358,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   assert.equal(skills?.status, "fail");
   assert.match(
     skills?.message ?? "",
-    /Pi could not load the configured local skills/,
+    /Pi could not load the project-local skill directory/,
   );
   assert.match(skills?.message ?? "", /pi failed to load one or more skills/);
 });
@@ -1356,7 +1401,10 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
 
   assert.equal(skills?.status, "pass");
   assert.doesNotMatch(skills?.message ?? "", /metadata missing/);
-  assert.match(skills?.message ?? "", /Pi loaded configured local skills/);
+  assert.match(
+    skills?.message ?? "",
+    /Pi loaded the project-local skill directory/,
+  );
 });
 
 test("doctor does not parse project-local skill-pack metadata directly", async () => {

@@ -87,18 +87,20 @@ class RecordingRunner implements CommandRunner {
     args: string[];
     cwd?: string;
     env?: Record<string, string | undefined>;
+    prompt?: string;
   }> = [];
 
   async run(command: string, args: string[], options: CommandRunOptions = {}) {
+    const promptPath = args[args.indexOf("-p") + 1]?.slice(1);
+    assert.ok(promptPath);
+    const prompt = await readFile(promptPath, "utf8");
     this.calls.push({
       command,
       args: [...args],
       cwd: options.cwd,
       env: options.env,
+      prompt,
     });
-    const promptPath = args[args.indexOf("-p") + 1]?.slice(1);
-    assert.ok(promptPath);
-    const prompt = await readFile(promptPath, "utf8");
     assert.match(prompt, /Use the configured triage skill: `[^`]+`/);
     assert.match(prompt, /Run the configured triage skill normally/);
     assert.match(prompt, /Configured triage state map:/);
@@ -283,7 +285,7 @@ test("runTriageExecuteAgent resolves configured local triage skill paths", async
 
 test("runTriageExecuteAgent uses only configured project-local triage skills", async () => {
   const runner = new RecordingRunner();
-  const { repoRoot, triageSkillPath } = await createProjectLocalTriageRepo();
+  const { repoRoot } = await createProjectLocalTriageRepo();
 
   await runTriageExecuteAgent(runner, repoRoot, {
     issues,
@@ -300,5 +302,9 @@ test("runTriageExecuteAgent uses only configured project-local triage skills", a
   const skillPaths = call.args.flatMap((arg, index) =>
     arg === "--skill" ? [call.args[index + 1] ?? ""] : [],
   );
-  assert.deepEqual(skillPaths, [triageSkillPath]);
+  assert.deepEqual(skillPaths, [join(repoRoot, ".patchmill", "skills")]);
+  assert.match(
+    call.prompt ?? "",
+    /Use the configured triage skill: `\.patchmill\/skills\/patchmill-issue-triage`\./u,
+  );
 });

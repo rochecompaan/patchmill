@@ -438,14 +438,8 @@ test("PiRunner implementation resolves local skills from the config repo root wi
       arg === "--skill" ? [args[index + 1] ?? ""] : [],
     );
     assert.deepEqual(skillPaths, [
+      join(repoRoot, ".patchmill", "skills"),
       join(repoRoot, "skills", "toolchain", "SKILL.md"),
-      join(
-        repoRoot,
-        ".patchmill",
-        "skills",
-        "subagent-driven-development",
-        "SKILL.md",
-      ),
       bundledVisualEvidenceSkillPath(),
     ]);
     assert.equal(call.cwd, worktreeRoot);

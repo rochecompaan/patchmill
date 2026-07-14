@@ -50,7 +50,7 @@ type SkillCheckEntry = {
 };
 
 const PROJECT_LOCAL_SKILLS_PROMPT =
-  "Reply with PATCHMILL_SKILLS_OK and nothing else.";
+  "Confirm Patchmill project-local skills are discoverable. If the available skills include Patchmill project-local skills from the loaded skill directory, print PATCHMILL_SKILLS_OK and nothing else.";
 
 function pass(name: string, message: string): DoctorCheckResult {
   return { name, status: "pass", message };
@@ -366,13 +366,13 @@ async function smokeTestProjectLocalSkills(
   if (result.code === 0 && result.stdout.includes("PATCHMILL_SKILLS_OK")) {
     return {
       status: "pass",
-      summary: "Pi loaded configured local skills",
+      summary: "Pi loaded the project-local skill directory",
     };
   }
 
   return {
     status: "fail",
-    summary: `Pi could not load the configured local skills: ${commandOutput(result)}`,
+    summary: `Pi could not load the project-local skill directory: ${commandOutput(result)}`,
   };
 }
 

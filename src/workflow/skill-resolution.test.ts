@@ -169,7 +169,57 @@ test("skillInvocationPaths keeps only invokable skill paths in order", () => {
   );
 });
 
-test("resolveConfiguredSkillInvocation uses only skill paths configured in patchmill config", async () => {
+test("skillInvocationPaths loads project-local skill directory once", async () => {
+  const repoRoot = await tempRepo();
+  await writeProjectLocalSkill(repoRoot, "writing-plans");
+  await writeProjectLocalSkill(repoRoot, "subagent-driven-development");
+
+  assert.deepEqual(
+    skillInvocationPaths(
+      [
+        `${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`,
+        `${DEFAULT_PROJECT_SKILL_DIR}/subagent-driven-development/SKILL.md`,
+      ],
+      repoRoot,
+    ),
+    [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR)],
+  );
+});
+
+test("skillInvocationPaths keeps explicit skills outside project-local directory", async () => {
+  const repoRoot = await tempRepo();
+  await writeProjectLocalSkill(repoRoot, "writing-plans");
+  await mkdir(join(repoRoot, "custom-skills", "review"), { recursive: true });
+  await writeFile(
+    join(repoRoot, "custom-skills", "review", "SKILL.md"),
+    skillDocument("review"),
+  );
+
+  assert.deepEqual(
+    skillInvocationPaths(
+      [`${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`, "custom-skills/review"],
+      repoRoot,
+    ),
+    [
+      join(repoRoot, DEFAULT_PROJECT_SKILL_DIR),
+      join(repoRoot, "custom-skills", "review", "SKILL.md"),
+    ],
+  );
+});
+
+test("skillInvocationPaths preserves configured paths when project-local directory is absent", async () => {
+  const repoRoot = await tempRepo();
+
+  assert.deepEqual(
+    skillInvocationPaths(
+      [`${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`],
+      repoRoot,
+    ),
+    [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, "writing-plans", "SKILL.md")],
+  );
+});
+
+test("resolveConfiguredSkillInvocation loads project-local directory and tracks configured in-pack paths", async () => {
   const repoRoot = await tempRepo();
   const triage = await writeProjectLocalSkill(
     repoRoot,
@@ -203,15 +253,7 @@ test("resolveConfiguredSkillInvocation uses only skill paths configured in patch
     repoRoot,
   );
 
-  assert.deepEqual(result.paths, [
-    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, "writing-plans", "SKILL.md"),
-    join(
-      repoRoot,
-      DEFAULT_PROJECT_SKILL_DIR,
-      "subagent-driven-development",
-      "SKILL.md",
-    ),
-  ]);
+  assert.deepEqual(result.paths, [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR)]);
   assert.equal(result.usedProjectLocalPack, true);
   assert.deepEqual(result.configuredProjectLocalPaths, [
     join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, "writing-plans", "SKILL.md"),
@@ -225,7 +267,7 @@ test("resolveConfiguredSkillInvocation uses only skill paths configured in patch
   assert.deepEqual(result.diagnostics, []);
 });
 
-test("resolveConfiguredSkillInvocation uses configured paths only when metadata is missing", async () => {
+test("resolveConfiguredSkillInvocation loads project-local directory when metadata is missing", async () => {
   const repoRoot = await tempRepo();
   await writeProjectLocalSkill(repoRoot, "writing-plans");
   await writeProjectLocalSkill(repoRoot, "subagent-driven-development");
@@ -238,19 +280,11 @@ test("resolveConfiguredSkillInvocation uses configured paths only when metadata 
     repoRoot,
   );
 
-  assert.deepEqual(result.paths, [
-    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, "writing-plans", "SKILL.md"),
-    join(
-      repoRoot,
-      DEFAULT_PROJECT_SKILL_DIR,
-      "subagent-driven-development",
-      "SKILL.md",
-    ),
-  ]);
+  assert.deepEqual(result.paths, [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR)]);
   assert.deepEqual(result.diagnostics, []);
 });
 
-test("resolveConfiguredSkillInvocation preserves mixed configured ordering when metadata is missing", async () => {
+test("resolveConfiguredSkillInvocation loads project-local directory before external paths when metadata is missing", async () => {
   const repoRoot = await tempRepo();
   await writeProjectLocalSkill(repoRoot, "subagent-driven-development");
 
@@ -263,19 +297,14 @@ test("resolveConfiguredSkillInvocation preserves mixed configured ordering when 
   );
 
   assert.deepEqual(result.paths, [
+    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR),
     join(repoRoot, "skills", "toolchain", "SKILL.md"),
-    join(
-      repoRoot,
-      DEFAULT_PROJECT_SKILL_DIR,
-      "subagent-driven-development",
-      "SKILL.md",
-    ),
   ]);
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.usedProjectLocalPack, true);
 });
 
-test("resolveConfiguredSkillInvocation treats unsafe metadata paths as malformed", async () => {
+test("resolveConfiguredSkillInvocation ignores unsafe metadata paths while loading project-local directory", async () => {
   const repoRoot = await tempRepo();
   await writeProjectLocalSkill(repoRoot, "subagent-driven-development");
   await writeProjectLocalSkill(repoRoot, "requesting-code-review");
@@ -291,18 +320,11 @@ test("resolveConfiguredSkillInvocation treats unsafe metadata paths as malformed
     repoRoot,
   );
 
-  assert.deepEqual(result.paths, [
-    join(
-      repoRoot,
-      DEFAULT_PROJECT_SKILL_DIR,
-      "subagent-driven-development",
-      "SKILL.md",
-    ),
-  ]);
+  assert.deepEqual(result.paths, [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR)]);
   assert.deepEqual(result.diagnostics, []);
 });
 
-test("resolveConfiguredSkillInvocation uses configured paths only when metadata is malformed", async () => {
+test("resolveConfiguredSkillInvocation loads project-local directory when metadata is malformed", async () => {
   const repoRoot = await tempRepo();
   await writeProjectLocalSkill(repoRoot, "writing-plans");
   await mkdir(join(repoRoot, DEFAULT_PROJECT_SKILL_DIR), { recursive: true });
@@ -316,13 +338,11 @@ test("resolveConfiguredSkillInvocation uses configured paths only when metadata 
     repoRoot,
   );
 
-  assert.deepEqual(result.paths, [
-    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR, "writing-plans", "SKILL.md"),
-  ]);
+  assert.deepEqual(result.paths, [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR)]);
   assert.deepEqual(result.diagnostics, []);
 });
 
-test("resolveConfiguredSkillInvocation preserves mixed configured ordering when metadata is malformed", async () => {
+test("resolveConfiguredSkillInvocation loads project-local directory before external paths when metadata is malformed", async () => {
   const repoRoot = await tempRepo();
   await writeProjectLocalSkill(repoRoot, "subagent-driven-development");
   await mkdir(join(repoRoot, DEFAULT_PROJECT_SKILL_DIR), { recursive: true });
@@ -340,13 +360,8 @@ test("resolveConfiguredSkillInvocation preserves mixed configured ordering when 
   );
 
   assert.deepEqual(result.paths, [
+    join(repoRoot, DEFAULT_PROJECT_SKILL_DIR),
     join(repoRoot, "skills", "toolchain", "SKILL.md"),
-    join(
-      repoRoot,
-      DEFAULT_PROJECT_SKILL_DIR,
-      "subagent-driven-development",
-      "SKILL.md",
-    ),
   ]);
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.usedProjectLocalPack, true);
@@ -374,7 +389,7 @@ test("resolveConfiguredSkillInvocation reports customized project-local pack fil
   assert.deepEqual(result.diagnostics, []);
 });
 
-test("resolveConfiguredSkillInvocation ignores unused project-local directories and metadata", async () => {
+test("resolveConfiguredSkillInvocation loads project-local directory with named skills", async () => {
   const repoRoot = await tempRepo();
   await writeProjectLocalSkill(repoRoot, "stale-unused-skill");
   await mkdir(join(repoRoot, DEFAULT_PROJECT_SKILL_DIR), { recursive: true });
@@ -388,9 +403,9 @@ test("resolveConfiguredSkillInvocation ignores unused project-local directories 
     repoRoot,
   );
 
-  assert.deepEqual(result.paths, []);
+  assert.deepEqual(result.paths, [join(repoRoot, DEFAULT_PROJECT_SKILL_DIR)]);
   assert.deepEqual(result.diagnostics, []);
-  assert.equal(result.usedProjectLocalPack, false);
+  assert.equal(result.usedProjectLocalPack, true);
   assert.deepEqual(result.configuredProjectLocalPaths, []);
 });
 
