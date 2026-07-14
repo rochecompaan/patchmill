@@ -44,29 +44,25 @@ patchmill init --skills none
 patchmill init --skills path:project-skills
 ```
 
-## Entry points and supporting skills
+## Configured skills are loaded explicitly
 
-The `skills` keys in `patchmill.config.json` are workflow entry points, not the
-complete list of skills an agent may use. Patchmill uses those configured values
-to start a workflow stage: planning receives the planning skill, implementation
-receives implementation-related skills, and optional review, visual-evidence,
-landing, toolchain, and development-environment skills are added when
-configured.
+The `skills` keys in `patchmill.config.json` are the Patchmill-controlled skill
+entry points for each workflow stage. Patchmill does not put the entire
+`.patchmill/skills/` directory on Pi's skill path. Instead, it resolves the
+configured skill references for the current stage and passes those paths to Pi
+as explicit `--skill <path>` arguments.
 
-Once Pi is running, the agent can also use relevant skills available on its
-skill path. Those skills may come from project-local skill directories, global
-skill directories, packages, Pi settings, or the explicit skill paths Patchmill
-passes for the current stage. Subagents are agents too, so implementation
-workflows that delegate work rely on the relevant skills available to those
-subagents during their task execution.
+Planning receives only the configured planning skill. Implementation receives
+the configured implementation-related skills: `toolchain`, `implementation`,
+`review`, `visualEvidence`, and `landing` when those keys are configured.
+Optional stages such as `developmentEnvironment` are loaded only when their
+corresponding config key is present.
 
-That means the recommended skill pack matters even beyond the entries listed in
-`patchmill.config.json`. Supporting skills such as brainstorming, systematic
-debugging, test-driven development, code review, and verification before
-completion shape how agents and subagents do the work. Do not prune a
-project-local skill pack down to only the configured entry-point skills unless
-you also update the workflow skills that reference or expect those supporting
-capabilities.
+The recommended skill pack may install more skills than a repository actively
+uses. Those extra project-local skills are available to opt into, customize, or
+reference from configured workflow skills, but they are not loaded just because
+they exist under `.patchmill/skills/`. To make one part of a Patchmill run,
+configure it under the appropriate `skills` key.
 
 ## Configuration surface
 
@@ -90,6 +86,94 @@ Initialized repositories that use project-local skills default to paths under
 `.patchmill/skills/`, including `.patchmill/skills/subagent-driven-development`
 for implementation and `.patchmill/skills/patchmill-visual-evidence` for visual
 evidence.
+
+## Landing skill
+
+The `landing` skill guides the final direct-land versus pull-request decision.
+Patchmill does not configure a default landing skill; create a project-specific
+skill when a repository wants direct landing. The skill does not return a
+separate standalone result. Instead, Patchmill adds the configured landing skill
+to the implementation prompt, and the implementation agent returns the normal
+final JSON for either `merged` or `pr-created`.
+
+Patchmill accepts a `merged` result only when both conditions are true:
+
+- `git.allowDirectLand` is `true`.
+- `skills.landing` is configured.
+
+Otherwise direct landing is rejected as a safety error and the agent must create
+a pull request.
+
+```json
+{
+  "skills": {
+    "landing": ".patchmill/skills/project-landing"
+  },
+  "git": {
+    "allowDirectLand": true
+  }
+}
+```
+
+A small project-local landing skill can encode the repository's default policy
+and final-response requirements:
+
+````markdown
+---
+name: project-landing
+description: Decide when Patchmill may direct-land and when it must open a PR.
+---
+
+# Project Landing
+
+Use this skill for the final direct-land versus pull-request decision.
+
+Direct-land only when all of these are true:
+
+- The issue is a trivial docs, copy, or config change; or a simple bug that was
+  reproduced, fixed, and covered by validation.
+- The change is small, localized, and easy to inspect from the diff.
+- Required validation commands passed.
+- No visible UI state requires human inspection.
+- No migration, schema change, dependency change, security-sensitive behavior,
+  public API change, large refactor, or ambiguous product/UX decision is
+  involved.
+
+If direct-land is eligible and Patchmill's prompt says direct landing is
+allowed, squash-merge the implementation branch into the target branch and
+return `merged` final JSON. Include a `landingDecision` that explains why direct
+landing was safe:
+
+```json
+{
+  "status": "merged",
+  "branch": "agent/issue-123-fix-empty-state",
+  "mergeCommit": "<squash commit sha on target branch>",
+  "commits": ["<implementation commit sha>"],
+  "validation": ["npm test passed"],
+  "reviewSummary": "reviewed simple localized bug fix",
+  "landingDecision": "direct squash-landed: reproduced simple bug and validation passed"
+}
+```
+
+For everything else, create or update a pull request and return `pr-created`
+final JSON. Prefer PR fallback for visual UI changes, migrations, large
+refactors, dependency updates, security-sensitive changes, and anything that
+needs human product, UX, or architecture review. Include a `landingDecision`
+that explains why human review is required:
+
+```json
+{
+  "status": "pr-created",
+  "prUrl": "<pull request URL>",
+  "branch": "agent/issue-124-redesign-dashboard",
+  "commits": ["<implementation commit sha>"],
+  "validation": ["npm test passed", "npm run build passed"],
+  "reviewSummary": "reviewed implementation and visual evidence",
+  "landingDecision": "PR required: visible UI change needs human inspection"
+}
+```
+````
 
 ## Visual evidence
 
