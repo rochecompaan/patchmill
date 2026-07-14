@@ -33,7 +33,7 @@ patchmill run-once --plan-only --issue 123
 ```
 
 - `--issue <number>` processes one specific open actionable issue.
-- `--plan-only` creates or finds the issue plan, then stops before
+- `--plan-only` runs the spec and plan stages as needed, then stops before
   implementation.
 - `--quiet` suppresses terminal progress while still writing the JSONL run log.
 

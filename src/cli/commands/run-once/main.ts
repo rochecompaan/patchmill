@@ -33,7 +33,7 @@ Run logs are written under the configured run state directory (default: .patchmi
 Options:
   --help, -h          Show this help and exit.
   --dry-run, --dryrun Preview the next actionable issue without mutations.
-  --plan-only         Create or find the issue plan, then stop before implementation.
+  --plan-only         Run spec and plan stages as needed, then stop before implementation.
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
   --issue <number>    Process one specific open actionable issue.
