@@ -3,9 +3,15 @@ title: Configuration
 description: Configure the Patchmill workflow your agents should follow.
 ---
 
-Patchmill reads repository behavior from `patchmill.config.json`. Start with
-`patchmill init`, then customize only the parts that change how your team wants
-agents to work.
+Patchmill reads repository behavior from `patchmill.config.json`.
+
+Before running `patchmill init`, make sure the repository's issue-host CLI is
+installed and authenticated. Patchmill uses GitHub's `gh` CLI or Forgejo/Gitea's
+`tea` CLI for issue and pull-request operations; see
+[Providers](/guides/providers/) for setup details.
+
+Then initialize the repository and customize only the parts that change how your
+team wants agents to work.
 
 ```sh
 patchmill init

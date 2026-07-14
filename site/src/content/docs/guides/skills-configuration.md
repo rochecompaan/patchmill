@@ -9,6 +9,26 @@ Patchmill uses skills to keep agent behavior explicit. Skills provide reusable
 instructions for triage, planning, implementation, debugging, review, visual
 evidence, and repository-specific workflow rules.
 
+## Recommended skill pack
+
+Patchmill's recommended workflow is built on the
+[Superpowers](https://github.com/obra/superpowers) skill pack plus
+Patchmill-specific skills. These skills encode the planning, implementation,
+debugging, review, visual-evidence, and branch-finishing discipline that
+Patchmill expects when it advances an issue.
+
+`patchmill init` installs the recommended skill pack by default when you choose
+project-local skills. The installed
+`.patchmill/skills/patchmill-skill-pack.json` metadata records the pack name,
+version, source, and managed file checksums so `patchmill skills update` can
+update Patchmill-managed files safely.
+
+You can replace skills with repository-specific versions, but preserve the same
+workflow contracts: planning skills must produce usable plans, implementation
+skills must return the expected final JSON, review and landing skills must leave
+auditable evidence, and visual-evidence skills must reference committed proof
+files.
+
 ## Project-local skills
 
 `patchmill init` can install Patchmill-managed skills under
@@ -23,6 +43,30 @@ patchmill init --skills global
 patchmill init --skills none
 patchmill init --skills path:project-skills
 ```
+
+## Entry points and supporting skills
+
+The `skills` keys in `patchmill.config.json` are workflow entry points, not the
+complete list of skills an agent may use. Patchmill uses those configured values
+to start a workflow stage: planning receives the planning skill, implementation
+receives implementation-related skills, and optional review, visual-evidence,
+landing, toolchain, and development-environment skills are added when
+configured.
+
+Once Pi is running, the agent can also use relevant skills available on its
+skill path. Those skills may come from project-local skill directories, global
+skill directories, packages, Pi settings, or the explicit skill paths Patchmill
+passes for the current stage. Subagents are agents too, so implementation
+workflows that delegate work rely on the relevant skills available to those
+subagents during their task execution.
+
+That means the recommended skill pack matters even beyond the entries listed in
+`patchmill.config.json`. Supporting skills such as brainstorming, systematic
+debugging, test-driven development, code review, and verification before
+completion shape how agents and subagents do the work. Do not prune a
+project-local skill pack down to only the configured entry-point skills unless
+you also update the workflow skills that reference or expect those supporting
+capabilities.
 
 ## Configuration surface
 

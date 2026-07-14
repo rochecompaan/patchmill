@@ -53,3 +53,8 @@
 [data-nova-code-container][data-nova-code-container] nova-code-copy-button {
   border: 1px solid var(--patchmill-code-border) !important;
 }
+
+.sl-markdown-content img[src*="patchmill-workflow"] {
+  display: block;
+  margin-inline: auto;
+}

@@ -15,6 +15,13 @@ Patchmill is configured through skills. A skill is a versioned instruction set
 for one phase of the workflow, such as triage, specification and plan writing,
 implementation, visual evidence, review, or landing decisions.
 
+The default workflow relies heavily on the
+[Superpowers](https://github.com/obra/superpowers) skill pack. Patchmill
+provides the factory floor: orchestration, state, safety checks, and host
+updates. Superpowers provides much of the expertise that moves work through that
+floor: planning discipline, implementation habits, debugging, review, and branch
+finishing.
+
 The important boundary is the contract around the black box:
 
 - Patchmill code owns the workflow state machine, host-provider side effects,

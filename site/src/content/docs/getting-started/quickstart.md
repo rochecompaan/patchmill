@@ -9,6 +9,10 @@ Install Patchmill with npm:
 npm install -g patchmill
 ```
 
+Patchmill needs a working issue-host CLI before it can inspect issues or create
+pull requests. Set up either GitHub's `gh` CLI or Forgejo/Gitea's `tea` CLI
+first; see [Providers](/guides/providers/) for details.
+
 In the repository you want Patchmill to manage, initialize the local
 configuration:
 
