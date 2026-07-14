@@ -21,9 +21,9 @@ preserve software craftsmanship while making iterative engineering scalable.
 
 > A key ingredient is the **[Superpowers](https://github.com/obra/superpowers)**
 > skills pack. Patchmill relies heavily on Superpowers for planning,
-> implementation, debugging, review, and workflow discipline. In the metaphor I
-> keep coming back to, Patchmill provides the factory floor, while Superpowers
-> provides much of the expertise that moves work through the factory.
+> implementation, debugging, review, and workflow discipline. Patchmill provides
+> the factory floor, while Superpowers provides much of the expertise that moves
+> work through the factory.
 
 ## What Patchmill does
 
