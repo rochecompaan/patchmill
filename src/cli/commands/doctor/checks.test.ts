@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
 import { installProjectSkills } from "../init/skill-installer.ts";
@@ -354,33 +354,34 @@ test("runDoctorChecks fails when bundled visual evidence sidecar is missing", as
   await mkdir(join(repoRoot, "docs"), { recursive: true });
   await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
 
-  const sidecarPath = join(
-    dirname(bundledVisualEvidenceSkillPath()),
-    "scripts",
-    "capture-visual-evidence.cjs",
+  const bundledFixtureRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-doctor-bundled-skill-"),
   );
-  const temporarySidecarPath = `${sidecarPath}.doctor-test-backup`;
+  const bundledFixtureSkillPath = await writeSkillFile(
+    bundledFixtureRoot,
+    "patchmill-visual-evidence",
+    skillDocument(
+      "patchmill-visual-evidence",
+      "Capture browser screenshots as visual evidence",
+    ),
+  );
 
-  await rename(sidecarPath, temporarySidecarPath);
-  try {
-    const results = await runDoctorChecks(runnerFrom(successMocks()), {
-      repoRoot,
-      teaRepoRootForTests: "/repo",
-    });
-    const skills = results.find((result) => result.name === "skills");
+  const results = await runDoctorChecks(runnerFrom(successMocks()), {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+    bundledSkillPathForTests: () => bundledFixtureSkillPath,
+  });
+  const skills = results.find((result) => result.name === "skills");
 
-    assert.equal(skills?.status, "fail");
-    assert.match(
-      skills?.message ?? "",
-      /visualEvidence: `patchmill:bundled-visual-evidence`/,
-    );
-    assert.match(
-      skills?.message ?? "",
-      /required skill file unreadable at .*patchmill-visual-evidence.*scripts.*capture-visual-evidence\.cjs/,
-    );
-  } finally {
-    await rename(temporarySidecarPath, sidecarPath);
-  }
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /visualEvidence: `patchmill:bundled-visual-evidence`/,
+  );
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*patchmill-visual-evidence.*scripts.*capture-visual-evidence\.cjs/,
+  );
 });
 
 test("runDoctorChecks points Pi provider failures to guided setup", async () => {

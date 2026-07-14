@@ -43,6 +43,7 @@ type DoctorOptions = {
   repoRoot: string;
   env?: Record<string, string | undefined>;
   teaRepoRootForTests?: string;
+  bundledSkillPathForTests?: typeof bundledSkillPath;
 };
 
 type SkillCheckEntry = {
@@ -422,6 +423,7 @@ async function checkSkills(
   config: PatchmillConfig,
   repoRoot: string,
   piAgentDir: string,
+  bundledSkillPathResolver: typeof bundledSkillPath = bundledSkillPath,
 ): Promise<DoctorCheckResult> {
   const configuredSkills = PATCHMILL_SKILL_KEYS.flatMap((key) => {
     const skill = config.skills[key];
@@ -443,7 +445,7 @@ async function checkSkills(
         return await verifyBundledSkill(
           key,
           skill,
-          bundledSkillPath(bundledSkill),
+          bundledSkillPathResolver(bundledSkill),
           bundledSkill.requiredFiles,
         );
       }
@@ -592,7 +594,13 @@ export async function runDoctorChecks(
     }
 
     results.push(
-      await checkSkills(runner, config, options.repoRoot, piAgentDir),
+      await checkSkills(
+        runner,
+        config,
+        options.repoRoot,
+        piAgentDir,
+        options.bundledSkillPathForTests,
+      ),
     );
 
     const paths = [
