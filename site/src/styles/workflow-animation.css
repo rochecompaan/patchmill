@@ -1,0 +1,432 @@
+/* Landing page Patchmill workflow animation. */
+
+.workflow-demo {
+  position: relative;
+  isolation: isolate;
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 1rem;
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 1.35rem;
+  padding: clamp(0.85rem, 1.8vw, 1.2rem);
+  background:
+    radial-gradient(
+      circle at 18% 0%,
+      rgba(57, 201, 107, 0.22),
+      transparent 32%
+    ),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.92));
+  box-shadow: 0 2rem 4.5rem rgba(2, 6, 23, 0.48);
+}
+
+.workflow-demo::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 38px 38px;
+  content: "";
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent 78%);
+}
+
+.workflow-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.workflow-demo.is-enhanced:not(.is-split) .workflow-stage {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workflow-demo.is-enhanced:not(.is-split) .workflow-issues {
+  display: none;
+}
+
+.workflow-demo.is-enhanced.is-split .workflow-issues {
+  animation: workflow-panel-in 650ms ease both;
+}
+
+.terminal-card {
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 1rem;
+  background: #020617;
+  color: #e2e8f0;
+  box-shadow: 0 1.2rem 2.8rem rgba(2, 6, 23, 0.38);
+}
+
+.workflow-terminal {
+  min-width: 0;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.72rem 0.85rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.88);
+  color: #94a3b8;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.terminal-dot {
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 999px;
+  background: #64748b;
+}
+
+.terminal-dot-red {
+  background: #fb7185;
+}
+
+.terminal-dot-yellow {
+  background: #facc15;
+}
+
+.terminal-dot-green {
+  margin-right: 0.35rem;
+  background: #39c96b;
+}
+
+.terminal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.46rem;
+  min-height: clamp(27rem, 52vw, 38rem);
+  max-height: clamp(27rem, 52vw, 38rem);
+  overflow: auto;
+  padding: clamp(0.9rem, 1.8vw, 1.25rem);
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", ui-monospace, monospace;
+  font-size: clamp(0.72rem, 1vw, 0.92rem);
+  line-height: 1.45;
+  scrollbar-color: rgba(57, 201, 107, 0.5) rgba(15, 23, 42, 0.7);
+}
+
+.workflow-demo.is-enhanced:not(.is-split) .terminal-body {
+  min-height: clamp(31rem, 54vw, 42rem);
+  max-height: clamp(31rem, 54vw, 42rem);
+}
+
+.terminal-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  min-width: 0;
+  animation: terminal-line-in 260ms ease both;
+}
+
+.terminal-prompt {
+  flex: 0 0 auto;
+  color: #39c96b;
+  font-weight: 900;
+}
+
+.terminal-line code,
+.terminal-prompt-block {
+  min-width: 0;
+  color: #f8fafc;
+  font: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-line-output code {
+  color: #cbd5e1;
+}
+
+.terminal-line-question code,
+.terminal-line-choice code {
+  color: #bfdbfe;
+}
+
+.terminal-prompt-block {
+  display: grid;
+  gap: 0.38rem;
+  padding: 0.15rem 0 0.25rem;
+  animation: terminal-line-in 260ms ease both;
+}
+
+.terminal-prompt-block p {
+  margin: 0;
+  color: #bfdbfe;
+}
+
+.terminal-choice-list {
+  display: grid;
+  gap: 0.2rem;
+  color: #94a3b8;
+}
+
+.terminal-choice {
+  display: block;
+  border-radius: 0.38rem;
+  padding: 0.08rem 0.35rem;
+}
+
+.terminal-choice.is-selected {
+  background: rgba(57, 201, 107, 0.14);
+  color: #bbf7d0;
+  font-weight: 800;
+}
+
+.workflow-issues {
+  min-width: 0;
+  box-shadow: 0 1.2rem 2.8rem rgba(2, 6, 23, 0.34);
+}
+
+.workflow-status-pill {
+  border-radius: 999px;
+  padding: 0.16rem 0.5rem;
+  background: #ddf4ff;
+  color: #0969da;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.workflow-demo .github-new-issue {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  border: 1px solid rgba(31, 136, 61, 0.3);
+  border-radius: 0.45rem;
+  padding: 0.42rem 0.7rem;
+  background: #1f883d;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.workflow-demo .issue-list {
+  min-height: 21rem;
+}
+
+.workflow-demo .issue-row {
+  padding: 0.82rem 0.9rem;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.workflow-demo .issue-row[hidden] {
+  display: none;
+}
+
+.workflow-demo .issue-row.is-active {
+  background: #f0fff4;
+  box-shadow: inset 3px 0 0 #2ea043;
+}
+
+.workflow-demo .issue-row.is-muted {
+  opacity: 0.5;
+}
+
+.workflow-demo .issue-row.is-changing {
+  background: #fff8c5;
+  box-shadow: inset 3px 0 0 #fbca04;
+  animation: issue-state-pulse 1400ms ease-in-out both;
+}
+
+.workflow-demo .issue-body h3 {
+  margin: 0;
+  color: #24292f;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.workflow-demo .issue-body h3 span {
+  margin-left: 0.35rem;
+  color: #57606a;
+  font-weight: 500;
+}
+
+.workflow-no-labels {
+  display: inline-flex;
+  border: 1px dashed #8c959f;
+  border-radius: 999px;
+  padding: 0.13rem 0.48rem;
+  color: #57606a;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.workflow-no-labels[hidden],
+.workflow-demo .label[hidden] {
+  display: none;
+}
+
+.workflow-demo .label:not([hidden]) {
+  animation: label-pop 360ms ease both;
+}
+
+.workflow-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  z-index: 1;
+}
+
+.workflow-control {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 999px;
+  padding: 0.54rem 0.78rem;
+  background: rgba(15, 23, 42, 0.78);
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.workflow-control:hover {
+  border-color: rgba(57, 201, 107, 0.72);
+  transform: translateY(-1px);
+}
+
+.workflow-control:focus-visible {
+  outline: 3px solid rgba(57, 201, 107, 0.55);
+  outline-offset: 3px;
+}
+
+.workflow-control:disabled {
+  cursor: default;
+  opacity: 0.68;
+}
+
+.workflow-live {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+@keyframes workflow-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes terminal-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.18rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes label-pop {
+  from {
+    opacity: 0;
+    transform: translateY(0.18rem) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes issue-state-pulse {
+  0%,
+  100% {
+    box-shadow: inset 3px 0 0 #fbca04;
+  }
+
+  45% {
+    box-shadow:
+      inset 3px 0 0 #fbca04,
+      0 0 0 0.35rem rgba(251, 202, 4, 0.18);
+  }
+}
+
+@media (max-width: 900px) {
+  .workflow-stage,
+  .workflow-demo.is-enhanced:not(.is-split) .workflow-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-demo.is-enhanced:not(.is-split) .workflow-issues {
+    display: none;
+  }
+
+  .workflow-demo.is-enhanced.is-split .workflow-issues {
+    display: block;
+  }
+
+  .workflow-demo .issue-list {
+    min-height: 0;
+  }
+
+  .workflow-demo .github-tabs,
+  .workflow-demo .github-window-bar {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .workflow-demo {
+    border-radius: 1rem;
+    padding: 0.65rem;
+  }
+
+  .terminal-body,
+  .workflow-demo.is-enhanced:not(.is-split) .terminal-body {
+    min-height: 28rem;
+    max-height: 28rem;
+  }
+
+  .workflow-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workflow-control {
+    width: 100%;
+  }
+
+  .workflow-demo .github-new-issue {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-demo,
+  .workflow-demo *,
+  .workflow-demo *::before,
+  .workflow-demo *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

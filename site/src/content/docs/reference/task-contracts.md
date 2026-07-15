@@ -1,19 +1,25 @@
-# Patchmill Task Contracts
+---
+title: Task contracts
+description: Configure how Patchmill and Pi coordinate issue task todos.
+---
 
 Patchmill uses one task-contract policy for prompt rendering, plan parsing, and
-todo progress checks.
+todo progress checks. The contract keeps task naming and completion rules stable
+while skills describe how agents should do the work.
 
 ## Relationship to skills
 
-The task contract controls how Patchmill and Pi coordinate issue task todos. The
-top-level `skills` config chooses the skill Pi should use while triaging,
-planning, implementing, reviewing, collecting evidence, and landing. Keep task
-naming/status behavior in the task contract and agent procedure inside skills.
+The top-level `skills` config chooses the procedures Pi should use while
+triaging, planning, implementing, reviewing, collecting evidence, and landing.
+The task contract controls how Patchmill and Pi coordinate issue task todos.
 
-## Where it is configured
+Keep task naming, tags, statuses, and plan-heading parsing in the task contract.
+Keep agent procedure inside skills.
+
+## Configuration location
 
 Set task-contract fields in `patchmill.config.json` under
-`projectPolicy.pi.taskContract`.
+`projectPolicy.pi.taskContract`:
 
 ```json
 {
@@ -44,6 +50,10 @@ Set task-contract fields in `patchmill.config.json` under
 }
 ```
 
+Most repositories can use the defaults installed by `patchmill init` and only
+customize this block when their implementation plans or todo workflow use a
+different structure.
+
 ## Field reference
 
 - `todoRoot`: directory where Patchmill reads and writes task todo files.
@@ -61,41 +71,50 @@ Set task-contract fields in `patchmill.config.json` under
 - `openTaskTodosBlockFinalHandoff`: when `true`, Patchmill blocks final handoff
   while any matching issue task todo remains open.
 
-## Supported placeholders and matching rules
+## Placeholder rules
 
 ### `todoTitlePattern`
+
+Supported placeholders:
 
 - `<number>`: the issue number.
 - `<issue-number>`: the issue number.
 - `<two-digit-number>`: the zero-padded task number captured from the plan task
   sequence.
 - `<slug>`: the task slug captured from the task title.
-- Capture placeholders may appear in any order.
+
+Capture placeholders may appear in any order.
 
 ### `todoTags`
 
+Supported placeholders:
+
 - `<number>`: the issue number.
 - `<issue-number>`: the issue number.
-- When `todoTitlePattern` omits the issue number placeholders, Patchmill uses
-  the rendered tags to match task todos to the issue.
+
+When `todoTitlePattern` omits the issue number placeholders, Patchmill uses the
+rendered tags to match task todos to the issue.
 
 ### `planTaskHeadingPattern`
 
-- Leading `##`, `###`, and deeper headings set the minimum heading depth that
-  matches.
+Supported placeholders:
+
 - `<number>`: the task number parsed from the plan heading.
 - `<label>`: the task label parsed from the plan heading.
-- `<number>` and `<label>` may appear in any order within the heading template.
 
-## How Patchmill uses it
+Leading `##`, `###`, and deeper headings set the minimum heading depth that
+matches. `<number>` and `<label>` may appear in any order within the heading
+template.
+
+## How Patchmill uses the contract
 
 - `patchmill triage` reads repository policy but does not create issue-task
   todos.
 - `patchmill run-once` uses the task contract when it creates prompts, reads
   plan tasks, and checks issue-task completion before final handoff.
 - Patchmill loads its bundled file-backed Pi `todo` extension for run-once Pi
-  sessions and passes `todoRoot` as `PI_TODO_PATH`, so the agent-created todo
-  files and Patchmill's progress checks use the same directory.
+  sessions and passes `todoRoot` as `PI_TODO_PATH`, so agent-created todo files
+  and Patchmill progress checks use the same directory.
 
 ## Related settings
 
@@ -106,15 +125,7 @@ Other workflow settings live in the same `patchmill.config.json` file:
 - `paths.triageLogDir`
 - `paths.worktreeDir`
 
-Environment-variable overrides use the `PATCHMILL_*` namespace for machine-local
-settings such as `PATCHMILL_HOST_LOGIN` (host account).
-
-Implementation subagent behavior is controlled by bundled `pi-subagents` and the
-user's pi-subagents agent/settings configuration.
-
-## Local state
-
-Patchmill records run state under `.patchmill/`:
-
-- `.patchmill/runs/`
-- `.patchmill/triage-runs/`
+Machine-local overrides use the `PATCHMILL_*` namespace, such as
+`PATCHMILL_HOST_LOGIN` for the host account. Implementation subagent behavior is
+controlled by bundled `pi-subagents` and the user's pi-subagents agent/settings
+configuration.

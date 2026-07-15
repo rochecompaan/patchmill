@@ -4,6 +4,7 @@ coverage/
 .direnv/
 .patchmill/
 .pi/
+.pi-subagents/
 .tmp/
 .worktrees/
 package-lock.json
@@ -12,3 +13,8 @@ CHANGELOG.md
 extensions/todos.ts
 
 skills/module-size/SKILL.md
+
+site/.astro/
+site/dist/
+site/package-lock.json
+site/**/*.astro

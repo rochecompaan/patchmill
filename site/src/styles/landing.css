@@ -1,0 +1,436 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  background: #020617;
+  color: #e2e8f0;
+  --ink: #f8fafc;
+  --muted: #cbd5e1;
+  --line: rgba(148, 163, 184, 0.32);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top, rgba(37, 99, 235, 0.24), transparent 32rem),
+    #020617;
+}
+
+a {
+  color: inherit;
+}
+
+.page-shell {
+  width: min(1100px, calc(100% - 2rem));
+  margin: 0 auto;
+}
+
+.intro {
+  display: grid;
+  justify-items: center;
+  gap: clamp(1.5rem, 4vw, 2.4rem);
+  padding: clamp(3rem, 8vw, 6rem) 0 0;
+}
+
+.hero-lockup {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
+  gap: clamp(1.5rem, 5vw, 4rem);
+  align-items: stretch;
+  width: min(980px, 100%);
+}
+
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0;
+}
+
+h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(2.55rem, 6vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.065em;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.brand img {
+  display: block;
+  width: min(520px, 100%);
+  height: auto;
+  max-height: 400px;
+  filter: drop-shadow(0 1.4rem 3.5rem rgba(0, 0, 0, 0.42));
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+}
+
+.top-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.58rem 1rem;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--muted);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.top-nav svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+  flex: none;
+}
+
+.top-nav a:hover {
+  border-color: rgba(147, 197, 253, 0.65);
+  color: #ffffff;
+}
+
+.proof-section {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: start;
+  padding: 4em 0 clamp(3rem, 8vw, 6rem);
+}
+
+.feature-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem clamp(1rem, 4vw, 2rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature-list li {
+  position: relative;
+  padding-left: 1.6rem;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.24;
+  letter-spacing: -0.035em;
+}
+
+.feature-list li::before {
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #39c96b;
+  content: "";
+  box-shadow: 0 0 0 0.28rem rgba(57, 201, 107, 0.14);
+}
+
+.issues-card {
+  overflow: hidden;
+  border: 1px solid #d0d7de;
+  border-radius: 1rem;
+  background: #ffffff;
+  color: #24292f;
+  box-shadow: 0 2rem 4rem rgba(2, 6, 23, 0.42);
+}
+
+.github-window-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid #d8dee4;
+  background: #f6f8fa;
+  font-size: 0.95rem;
+}
+
+.repo-owner,
+.repo-separator {
+  color: #57606a;
+}
+
+.repo-separator {
+  padding: 0 0.2rem;
+}
+
+.repo-visibility {
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  color: #57606a;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.github-tabs {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 0.65rem 1rem 0;
+  border-bottom: 1px solid #d8dee4;
+  background: #f6f8fa;
+  color: #57606a;
+  font-size: 0.86rem;
+}
+
+.github-tabs span,
+.github-tabs strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.65rem 0 0.75rem;
+  white-space: nowrap;
+}
+
+.github-tabs strong {
+  border-bottom: 2px solid #fd8c73;
+  color: #24292f;
+}
+
+.github-tabs em {
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  background: #eaeef2;
+  font-style: normal;
+  font-size: 0.75rem;
+}
+
+.issues-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #d8dee4;
+  color: #57606a;
+  font-size: 0.9rem;
+}
+
+.issues-toolbar strong {
+  color: #24292f;
+}
+
+.issues-toolbar button {
+  margin-left: auto;
+  border: 1px solid rgba(31, 136, 61, 0.3);
+  border-radius: 0.45rem;
+  padding: 0.42rem 0.7rem;
+  background: #1f883d;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.issue-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid #d8dee4;
+}
+
+.issue-row:last-child {
+  border-bottom: 0;
+}
+
+.issue-icon {
+  color: #1a7f37;
+  padding-top: 0.15rem;
+}
+
+.issue-body h2 {
+  margin: 0;
+  color: #24292f;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.issue-body h2 span {
+  margin-left: 0.35rem;
+  color: #57606a;
+  font-weight: 500;
+}
+
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.45rem 0 0.35rem;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.13rem 0.48rem;
+  color: #0f172a;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.label-agent_ready {
+  background: #2ea043;
+  color: #0f172a;
+}
+
+.label-agent_done,
+.label-plan_approved,
+.label-spec_approved,
+.label-feature {
+  background: #0e8a16;
+  color: #ffffff;
+}
+
+.label-agent_unsuitable,
+.label-priority_low {
+  background: #8b949e;
+  color: #0f172a;
+}
+
+.label-in_progress {
+  background: #fbca04;
+  color: #0f172a;
+}
+
+.label-blocked {
+  background: #d876e3;
+  color: #0f172a;
+}
+
+.label-needs_info {
+  background: #8957e5;
+  color: #ffffff;
+}
+
+.label-bug,
+.label-priority_critical {
+  background: #cf222e;
+  color: #ffffff;
+}
+
+.label-enhancement,
+.label-polish {
+  background: #a2eeef;
+  color: #0f172a;
+}
+
+.label-docs {
+  background: #0075ca;
+  color: #ffffff;
+}
+
+.label-chore {
+  background: #cfd3d7;
+  color: #0f172a;
+}
+
+.label-test {
+  background: #bfdadc;
+  color: #0f172a;
+}
+
+.label-priority_high {
+  background: #db6d28;
+  color: #0f172a;
+}
+
+.label-priority_medium {
+  background: #d29922;
+  color: #0f172a;
+}
+
+.label-spec_review,
+.label-plan_review {
+  background: #5319e7;
+  color: #ffffff;
+}
+
+.issue-body p {
+  margin: 0;
+  color: #57606a;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 900px) {
+  .hero-lockup,
+  .proof-section {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-lockup {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .hero-copy {
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0;
+  }
+
+  .top-nav {
+    justify-content: center;
+  }
+
+  .feature-list {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    max-width: 720px;
+  }
+}
+
+@media (max-width: 560px) {
+  .page-shell {
+    width: min(100% - 1rem, 1100px);
+  }
+
+  .intro {
+    padding-top: 2rem;
+  }
+
+  .top-nav a {
+    padding: 0.52rem 0.85rem;
+  }
+
+  .github-window-bar,
+  .github-tabs {
+    overflow-x: auto;
+  }
+
+  .issues-toolbar button {
+    display: none;
+  }
+}

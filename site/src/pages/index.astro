@@ -1,0 +1,63 @@
+---
+import logoDark from "../assets/logo-dark.svg?url";
+import WorkflowAnimation from "../components/WorkflowAnimation.astro";
+import "../styles/landing.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Patchmill — agent-driven software factory</title>
+    <meta
+      name="description"
+      content="Patchmill is an agent-driven software factory for your engineering process."
+    />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="intro" aria-labelledby="hero-heading">
+        <div class="hero-lockup">
+          <a class="brand" href="/" aria-label="Patchmill home">
+            <img src={logoDark} alt="Patchmill" />
+          </a>
+          <div class="hero-copy">
+            <h1 id="hero-heading">The AI software factory with you in the loop</h1>
+            <nav class="top-nav" aria-label="Primary navigation">
+              <a href="/getting-started/overview/">
+                <span>Get started</span>
+                <svg aria-hidden="true" viewBox="0 0 16 16">
+                  <path d="M8.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.19 8.75H3a.75.75 0 0 1 0-1.5h8.19L8.22 4.28a.75.75 0 0 1 0-1.06Z" />
+                </svg>
+              </a>
+              <a href="https://github.com/rochecompaan/patchmill">
+                <span>View on GitHub</span>
+                <svg aria-hidden="true" viewBox="0 0 16 16">
+                  <path d="M4.75 3A1.75 1.75 0 0 0 3 4.75v6.5C3 12.216 3.784 13 4.75 13h6.5A1.75 1.75 0 0 0 13 11.25v-2a.75.75 0 0 0-1.5 0v2a.25.25 0 0 1-.25.25h-6.5a.25.25 0 0 1-.25-.25v-6.5a.25.25 0 0 1 .25-.25h2a.75.75 0 0 0 0-1.5h-2Z" />
+                  <path d="M8.25 3a.75.75 0 0 0 0 1.5h2.19L7.72 7.22a.75.75 0 0 0 1.06 1.06l2.72-2.72v2.19a.75.75 0 0 0 1.5 0v-4A.75.75 0 0 0 12.25 3h-4Z" />
+                </svg>
+              </a>
+            </nav>
+          </div>
+        </div>
+      </section>
+
+      <section class="proof-section" aria-label="Patchmill workflow proof">
+        <div class="message-block">
+          <ul class="feature-list">
+            <li>Flexible workflow customization with skills for triage, planning, implementation, visual evidence, review, and more.</li>
+            <li>Runs on Pi, with support for 15+ providers and hundreds of models.</li>
+            <li>Supports GitHub, Gitea, Forgejo, and Codeberg. Linear coming soon.</li>
+            <li>Enable approval gates that match your workflow across spec, plan, and review phases.</li>
+          </ul>
+        </div>
+
+        <WorkflowAnimation />
+      </section>
+    </main>
+  </body>
+</html>

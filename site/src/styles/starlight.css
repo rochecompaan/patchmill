@@ -1,0 +1,60 @@
+:root {
+  --sl-color-accent-low: #172554;
+  --sl-color-accent: #2563eb;
+  --sl-color-accent-high: #dbeafe;
+  --sl-color-white: #f8fafc;
+  --sl-color-gray-1: #e2e8f0;
+  --sl-color-gray-2: #cbd5e1;
+  --sl-color-gray-3: #94a3b8;
+  --sl-color-gray-4: #64748b;
+  --sl-color-gray-5: #334155;
+  --sl-color-gray-6: #1e293b;
+  --sl-color-black: #020617;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #dbeafe;
+  --sl-color-accent: #1d4ed8;
+  --sl-color-accent-high: #172554;
+  --sl-color-white: #020617;
+  --sl-color-gray-1: #0f172a;
+  --sl-color-gray-2: #1e293b;
+  --sl-color-gray-3: #475569;
+  --sl-color-gray-4: #94a3b8;
+  --sl-color-gray-5: #cbd5e1;
+  --sl-color-gray-6: #e2e8f0;
+  --sl-color-gray-7: #f8fafc;
+  --sl-color-black: #ffffff;
+}
+
+:root {
+  --patchmill-code-border: #94a3b8;
+  --patchmill-workflow-border: #94a3b8;
+}
+
+:root[data-theme="light"] {
+  --patchmill-code-border: #64748b;
+  --patchmill-workflow-border: #cbd5e1;
+}
+
+.site-title img {
+  max-height: 2rem;
+}
+
+[data-nova-code-container][data-nova-code-container] {
+  border: 1px solid var(--patchmill-code-border) !important;
+  box-shadow: inset 0 0 0 1px var(--patchmill-code-border);
+}
+
+[data-nova-code-container][data-nova-code-container] pre.astro-code {
+  border: 0 !important;
+}
+
+[data-nova-code-container][data-nova-code-container] nova-code-copy-button {
+  border: 1px solid var(--patchmill-code-border) !important;
+}
+
+.sl-markdown-content img[src*="patchmill-workflow"] {
+  display: block;
+  margin-inline: auto;
+}
