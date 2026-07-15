@@ -66,6 +66,13 @@ function mergeUniqueKeys(
   return merged.size > 0 ? [...merged] : undefined;
 }
 
+function blockerQuestionsUpdate(
+  existing: AgentIssueRunState["blockerQuestions"],
+  update: AgentIssueRunStateUpdate["blockerQuestions"],
+): AgentIssueRunState["blockerQuestions"] {
+  return update ?? existing;
+}
+
 function mergeRunState(
   existing: AgentIssueRunState | undefined,
   update: AgentIssueRunStateUpdate,
@@ -135,6 +142,10 @@ function mergeRunState(
     update.resetCheckpoints ? undefined : existing?.failureCommentKeys,
     update.failureCommentKeys,
   );
+  const blockerQuestions = blockerQuestionsUpdate(
+    update.resetCheckpoints ? undefined : existing?.blockerQuestions,
+    update.blockerQuestions,
+  );
 
   if (handoffCommentPosted) {
     checkpoints = {
@@ -168,6 +179,7 @@ function mergeRunState(
     visualEvidence,
     handoffCommentPosted: handoffCommentPosted ? true : undefined,
     failureCommentKeys,
+    blockerQuestions,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     lastError: update.clearLastError
@@ -219,6 +231,9 @@ function mergeRunState(
   }
   if (failureCommentKeys === undefined) {
     delete next.failureCommentKeys;
+  }
+  if (blockerQuestions === undefined) {
+    delete next.blockerQuestions;
   }
   if (next.lastError === undefined) {
     delete next.lastError;

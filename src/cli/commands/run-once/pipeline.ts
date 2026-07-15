@@ -1,4 +1,4 @@
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { runCleanupHookScript } from "../../../pi/hooks.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import {
@@ -31,6 +31,11 @@ import { runPiPrompt } from "./pi.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
 import { buildImplementationPrompt } from "./prompts.ts";
 import { runDevelopmentEnvironmentStage } from "./development-environment-stage.ts";
+import {
+  PlanningArtifactSafetyError,
+  resolvePlanningArtifacts,
+  type PlanningArtifactPolicy,
+} from "./planning-artifacts.ts";
 import { advancePlanningStages } from "./stage-advancement.ts";
 import {
   ApprovalRequiredError,
@@ -146,6 +151,61 @@ function configuredWorktreeDir(
   config: Pick<AgentIssueConfig, "repoRoot" | "worktreeDir">,
 ): string {
   return relative(config.repoRoot, config.worktreeDir) || ".";
+}
+
+function configuredPathRelativeToRepo(repoRoot: string, path: string): string {
+  return isAbsolute(path) ? relative(repoRoot, path) : path;
+}
+
+function mirrorConfiguredPathInWorktree(
+  repoRoot: string,
+  worktreeRoot: string,
+  path: string,
+): string {
+  return join(worktreeRoot, configuredPathRelativeToRepo(repoRoot, path));
+}
+
+function resumePlanningArtifactPolicy(input: {
+  config: Pick<AgentIssueConfig, "repoRoot" | "specsDir" | "plansDir">;
+  worktreePath: string;
+  existingState: NonNullable<Awaited<ReturnType<typeof readRunState>>>;
+  resolvedArtifacts: ResolvedIssueArtifactSources;
+}): PlanningArtifactPolicy {
+  const worktreeRoot = join(input.config.repoRoot, input.worktreePath);
+  return {
+    kind: "implementation-resume",
+    primary: {
+      repoRoot: worktreeRoot,
+      specsDir: mirrorConfiguredPathInWorktree(
+        input.config.repoRoot,
+        worktreeRoot,
+        input.config.specsDir,
+      ),
+      plansDir: mirrorConfiguredPathInWorktree(
+        input.config.repoRoot,
+        worktreeRoot,
+        input.config.plansDir,
+      ),
+      source: "resume-worktree",
+    },
+    fallbacks: [
+      {
+        repoRoot: input.config.repoRoot,
+        specsDir: input.config.specsDir,
+        plansDir: input.config.plansDir,
+        source: "primary-repo",
+      },
+    ],
+    saved: {
+      specPath: input.existingState.specPath,
+      specCommit: input.existingState.specCommit,
+      planPath: input.existingState.planPath,
+      planCommit: input.existingState.planCommit,
+      specCreated: input.existingState.checkpoints?.specCreated,
+      planCreated: input.existingState.checkpoints?.planCreated,
+    },
+    explicit: input.resolvedArtifacts,
+  };
 }
 
 function configuredWorktreeStrategy(
@@ -743,6 +803,9 @@ async function blockIssue(
       branch: details.branch,
       worktreePath: details.worktreePath,
       lastError: result.reason,
+      commits: result.commits,
+      validation: result.validation,
+      blockerQuestions: result.questions,
     },
     timestamp,
   );
@@ -1055,6 +1118,7 @@ export async function runOneIssue(
   let branch: string | undefined;
   let worktreePath: string | undefined;
   let ensuredWorktree: IssueWorktreeResult | undefined;
+  let artifactPolicy: PlanningArtifactPolicy | undefined;
   const worktreeStrategy = configuredWorktreeStrategy(config);
   const expectedWorkspace = expectedIssueWorkspace(
     issue.number,
@@ -1147,26 +1211,57 @@ export async function runOneIssue(
       checkpoints.startedCommentPosted = true;
     }
 
-    const artifactWorktree =
-      resolvedArtifacts.spec || resolvedArtifacts.plan
-        ? await ensureIssueWorkspace()
-        : undefined;
-    const artifactRepoRoot = artifactWorktree
-      ? join(config.repoRoot, artifactWorktree.worktreePath)
-      : config.repoRoot;
-    const materializedArtifacts = await runStep(
-      "materialize issue artifact sources",
-      async () =>
-        materializeIssueArtifactSources({
-          repoRoot: artifactRepoRoot,
-          runner,
-          issueNumber: issueForRun.number,
-          sources: resolvedArtifacts,
-        }),
-    );
-    resolvedArtifacts = materializedArtifacts;
+    if (
+      resumableState &&
+      existingState &&
+      (existingState.branch || existingState.worktreePath)
+    ) {
+      const resumeWorktree = await ensureIssueWorkspace();
+      const savedWorktreePath =
+        existingState.worktreePath ?? resumeWorktree.worktreePath;
+      artifactPolicy = resumePlanningArtifactPolicy({
+        config,
+        worktreePath: savedWorktreePath,
+        existingState,
+        resolvedArtifacts,
+      });
+      await progress(
+        options,
+        "info",
+        "resume",
+        `reusing saved worktree for artifact lookup: ${savedWorktreePath}`,
+        { issueNumber: issue.number },
+      );
+    }
 
-    if (resolvedArtifacts.spec || resolvedArtifacts.plan) {
+    if (artifactPolicy?.kind === "implementation-resume") {
+      await resolvePlanningArtifacts({
+        policy: artifactPolicy,
+        issue: issueForRun,
+        now: options.now ?? new Date(),
+      });
+    } else {
+      const artifactWorktree =
+        resolvedArtifacts.spec || resolvedArtifacts.plan
+          ? await ensureIssueWorkspace()
+          : undefined;
+      const artifactRepoRoot = artifactWorktree
+        ? join(config.repoRoot, artifactWorktree.worktreePath)
+        : config.repoRoot;
+      const materializedArtifacts = await runStep(
+        "materialize issue artifact sources",
+        async () =>
+          materializeIssueArtifactSources({
+            repoRoot: artifactRepoRoot,
+            runner,
+            issueNumber: issueForRun.number,
+            sources: resolvedArtifacts,
+          }),
+      );
+      resolvedArtifacts = materializedArtifacts;
+    }
+
+    if (!artifactPolicy && (resolvedArtifacts.spec || resolvedArtifacts.plan)) {
       await writeRunState(
         config.runStateDir,
         {
@@ -1193,6 +1288,7 @@ export async function runOneIssue(
       needsInfo,
       existingState,
       resolvedArtifacts,
+      artifactPolicy,
       checkpoints,
       timestamp,
       now: options.now ?? new Date(),
@@ -1473,6 +1569,9 @@ export async function runOneIssue(
               resumed: resumableState,
               worktreeCreated: worktree.created,
               existingCommits: worktree.existingCommits,
+              priorBlockerReason: existingState?.lastError,
+              priorBlockerQuestions: existingState?.blockerQuestions,
+              priorValidation: existingState?.validation,
             },
             developmentEnvironment,
           }),
@@ -1779,6 +1878,9 @@ export async function runOneIssue(
   } catch (error) {
     if (error instanceof AgentIssueSafetyError) {
       throw error;
+    }
+    if (error instanceof PlanningArtifactSafetyError) {
+      throw new AgentIssueSafetyError(error.message);
     }
     return unexpectedFailure(
       host,

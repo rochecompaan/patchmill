@@ -4,12 +4,13 @@ import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
-import { pathExists } from "./paths.ts";
-import { buildPlanPath, findIssuePlan } from "./plans.ts";
 import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
 import { buildPlanCreationPrompt, buildSpecCreationPrompt } from "./prompts.ts";
 import { writeRunState } from "./run-state.ts";
-import { buildSpecPath, findIssueSpec } from "./specs.ts";
+import {
+  resolvePlanningArtifacts,
+  type PlanningArtifactPolicy,
+} from "./planning-artifacts.ts";
 import type { AgentIssueProgressEvent } from "./progress.ts";
 import type {
   AgentIssueBlockedResult,
@@ -60,15 +61,6 @@ type ExistingPlanningState = {
   checkpoints?: AgentIssueRunCheckpoints;
 };
 
-type WorkflowArtifactResolution = {
-  path?: string;
-  commit?: string;
-  exists: boolean;
-  fromState: boolean;
-  created: boolean;
-  generated: boolean;
-};
-
 export type PlanningStageAdvanceResult =
   | {
       kind: "continue";
@@ -91,6 +83,7 @@ export type AdvancePlanningStagesOptions = {
   needsInfo: string;
   existingState?: ExistingPlanningState;
   resolvedArtifacts?: ResolvedIssueArtifactSources;
+  artifactPolicy?: PlanningArtifactPolicy;
   checkpoints: AgentIssueRunCheckpoints;
   timestamp: string;
   now: Date;
@@ -120,13 +113,6 @@ function repoPath(
   }
 
   return { absolute: join(repoRoot, path), relative: path };
-}
-
-function promptBodyPath(
-  repoRoot: string,
-  absoluteArtifactPath: string,
-): string {
-  return relative(repoRoot, absoluteArtifactPath);
 }
 
 function nextLabels(
@@ -164,93 +150,6 @@ function reviewStopStatus(
     : "finished";
 }
 
-async function resolveWorkflowArtifact(options: {
-  repoRoot: string;
-  issue: IssueSummary;
-  artifactDir: string;
-  savedPath?: string;
-  savedCommit?: string;
-  savedCreated?: boolean;
-  explicit?:
-    | ResolvedIssueArtifactSources["spec"]
-    | ResolvedIssueArtifactSources["plan"];
-  findArtifact: (
-    artifactDir: string,
-    issueNumber: number,
-  ) => Promise<string | undefined>;
-  buildArtifact?: (
-    artifactDir: string,
-    issueNumber: number,
-    title: string,
-    date: Date,
-  ) => string;
-  now: Date;
-}): Promise<WorkflowArtifactResolution> {
-  if (options.explicit) {
-    return {
-      path: options.explicit.path,
-      commit: options.explicit.commit,
-      exists: true,
-      fromState: false,
-      created: false,
-      generated: false,
-    };
-  }
-
-  if (options.savedPath) {
-    const savedPath = repoPath(options.repoRoot, options.savedPath);
-    if (await pathExists(savedPath.absolute)) {
-      return {
-        path: savedPath.relative,
-        commit: options.savedCommit,
-        exists: true,
-        fromState: true,
-        created: options.savedCreated === true,
-        generated: false,
-      };
-    }
-  }
-
-  const foundArtifact = await options.findArtifact(
-    options.artifactDir,
-    options.issue.number,
-  );
-  if (foundArtifact) {
-    return {
-      path: repoPath(options.repoRoot, foundArtifact).relative,
-      exists: true,
-      fromState: false,
-      created: false,
-      generated: false,
-    };
-  }
-
-  if (!options.buildArtifact) {
-    return {
-      exists: false,
-      fromState: false,
-      created: false,
-      generated: false,
-    };
-  }
-
-  return {
-    path: promptBodyPath(
-      options.repoRoot,
-      options.buildArtifact(
-        options.artifactDir,
-        options.issue.number,
-        options.issue.title,
-        options.now,
-      ),
-    ),
-    exists: false,
-    fromState: false,
-    created: false,
-    generated: true,
-  };
-}
-
 export async function advancePlanningStages({
   runner,
   host,
@@ -262,6 +161,7 @@ export async function advancePlanningStages({
   needsInfo,
   existingState,
   resolvedArtifacts,
+  artifactPolicy,
   checkpoints,
   timestamp,
   now,
@@ -284,38 +184,50 @@ export async function advancePlanningStages({
   let planCreated: boolean;
   let planCreatedThisRun = false;
 
-  const preexistingPlan = await resolveWorkflowArtifact({
-    repoRoot: config.repoRoot,
+  const artifactPolicyForRun = artifactPolicy ?? {
+    kind: "fresh" as const,
+    primary: {
+      repoRoot: config.repoRoot,
+      specsDir: config.specsDir,
+      plansDir: config.plansDir,
+      source: "primary-repo" as const,
+    },
+    explicit: resolvedArtifacts,
+    saved: {
+      specPath: existingState?.specPath,
+      specCommit: existingState?.specCommit,
+      planPath: existingState?.planPath,
+      planCommit: existingState?.planCommit,
+      specCreated: existingState?.checkpoints?.specCreated,
+      planCreated: existingState?.checkpoints?.planCreated,
+    },
+    allowGeneratedSpec: true,
+    allowGeneratedPlan: true,
+  };
+  const planningArtifacts = await resolvePlanningArtifacts({
+    policy: artifactPolicyForRun,
     issue,
-    artifactDir: config.plansDir,
-    savedPath: existingState?.planPath,
-    savedCommit: existingState?.planCommit,
-    savedCreated: existingState?.checkpoints?.planCreated,
-    explicit: resolvedArtifacts?.plan,
-    findArtifact: findIssuePlan,
     now,
   });
+  const preexistingPlan = planningArtifacts.plan;
 
   await progress("info", "spec", "finding spec", {
     issueNumber: issue.number,
   });
-  const spec = await resolveWorkflowArtifact({
-    repoRoot: config.repoRoot,
-    issue,
-    artifactDir: config.specsDir,
-    savedPath: existingState?.specPath,
-    savedCommit: existingState?.specCommit,
-    savedCreated: existingState?.checkpoints?.specCreated,
-    explicit: resolvedArtifacts?.spec,
-    findArtifact: findIssueSpec,
-    buildArtifact: preexistingPlan.exists ? undefined : buildSpecPath,
-    now,
-  });
+  const spec =
+    preexistingPlan.exists && planningArtifacts.spec.generated
+      ? {
+          exists: false,
+          fromState: false,
+          created: false,
+          generated: false,
+        }
+      : planningArtifacts.spec;
   specPath = spec.path;
   specCommit = spec.commit;
   specCreated = spec.created;
 
-  if (specPath) {
+  if (specPath && !spec.generated) {
     await writeRunState(
       config.runStateDir,
       {
@@ -375,7 +287,10 @@ export async function advancePlanningStages({
     if (specResult.status === "blocked") {
       return {
         kind: "finished",
-        result: await blockIssue(specResult, { specPath, specCommit }),
+        result: await blockIssue(specResult, {
+          specPath: spec.generated && !specCreated ? undefined : specPath,
+          specCommit,
+        }),
       };
     }
     if (specResult.status !== "spec-created") {
@@ -395,10 +310,11 @@ export async function advancePlanningStages({
         status: "planning",
         specPath,
         specCommit,
-        checkpoints: { specCreated: true },
+        checkpoints: { specPathResolved: true, specCreated: true },
       },
       timestamp,
     );
+    checkpoints.specPathResolved = true;
     checkpoints.specCreated = true;
     if (specCommit) await emitSimpleStep(issue.number, "commit spec");
   } else if (specPath) {
@@ -475,42 +391,31 @@ export async function advancePlanningStages({
   await progress("info", "plan", "finding plan", {
     issueNumber: issue.number,
   });
-  const plan = preexistingPlan.path
-    ? preexistingPlan
-    : await resolveWorkflowArtifact({
-        repoRoot: config.repoRoot,
-        issue,
-        artifactDir: config.plansDir,
-        savedPath: existingState?.planPath,
-        savedCommit: existingState?.planCommit,
-        savedCreated: existingState?.checkpoints?.planCreated,
-        explicit: resolvedArtifacts?.plan,
-        findArtifact: findIssuePlan,
-        buildArtifact: buildPlanPath,
-        now,
-      });
+  const plan = preexistingPlan.path ? preexistingPlan : planningArtifacts.plan;
   planPath = plan.path;
   planCommit = plan.commit;
   planCreated = plan.created;
 
   if (!planPath) throw new Error("Plan path was not resolved");
-  await writeRunState(
-    config.runStateDir,
-    {
-      issueNumber: issue.number,
-      status: "planning",
-      specPath,
-      specCommit,
-      planPath,
-      checkpoints: {
-        planPathResolved: true,
-        ...(planCreated ? { planCreated: true } : {}),
+  if (!plan.generated) {
+    await writeRunState(
+      config.runStateDir,
+      {
+        issueNumber: issue.number,
+        status: "planning",
+        specPath,
+        specCommit,
+        planPath,
+        checkpoints: {
+          planPathResolved: true,
+          ...(planCreated ? { planCreated: true } : {}),
+        },
       },
-    },
-    timestamp,
-  );
-  checkpoints.planPathResolved = true;
-  if (planCreated) checkpoints.planCreated = true;
+      timestamp,
+    );
+    checkpoints.planPathResolved = true;
+    if (planCreated) checkpoints.planCreated = true;
+  }
 
   if (!plan.exists) {
     const planned = await runStep("create plan", async () => {
@@ -552,7 +457,11 @@ export async function advancePlanningStages({
     if (planned.status === "blocked") {
       return {
         kind: "finished",
-        result: await blockIssue(planned, { specPath, specCommit, planPath }),
+        result: await blockIssue(planned, {
+          specPath: spec.generated && !specCreated ? undefined : specPath,
+          specCommit,
+          planPath: plan.generated && !planCreated ? undefined : planPath,
+        }),
       };
     }
     if (planned.status !== "plan-created") {
@@ -574,10 +483,11 @@ export async function advancePlanningStages({
         specCommit,
         planPath,
         planCommit,
-        checkpoints: { planCreated: true },
+        checkpoints: { planPathResolved: true, planCreated: true },
       },
       timestamp,
     );
+    checkpoints.planPathResolved = true;
     checkpoints.planCreated = true;
     if (planCommit) await emitSimpleStep(issue.number, "commit plan");
   } else {
