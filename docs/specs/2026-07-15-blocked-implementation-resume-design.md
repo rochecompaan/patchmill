@@ -8,8 +8,8 @@ visible UI fix, passed non-visual validation, and returned a deterministic
 available environment.
 
 After the operator made the required visual-evidence capture tooling available
-and ran `patchmill run-once --issue N`, Patchmill correctly selected the issue as
-a resume candidate, but then restarted at `create spec` instead of continuing
+and ran `patchmill run-once --issue N`, Patchmill correctly selected the issue
+as a resume candidate, but then restarted at `create spec` instead of continuing
 the saved implementation branch. The restart also overwrote the saved run state
 with a new generated spec path that did not exist.
 
@@ -22,8 +22,8 @@ The important log facts are:
 - The rerun then entered `finding spec` and `create spec`.
 - The original spec and plan existed in the saved issue worktree, not in the
   main checkout.
-- The run-state file was clobbered from blocked implementation recovery state
-  to planning state with a newly generated dated spec path.
+- The run-state file was clobbered from blocked implementation recovery state to
+  planning state with a newly generated dated spec path.
 
 Patchmill already has a blocked-run recovery model for saved branch/worktree
 state. The missing behavior is that planning artifact resolution still reads
@@ -74,8 +74,8 @@ corrupt run state with a nonexistent dated path.
   errors remain the correct safety behavior.
 - Do not infer state from free-form run logs. Run state and Git workspace state
   remain the durable recovery sources.
-- Do not require implementation agents to replay every completed task. The
-  saved branch state is authoritative.
+- Do not require implementation agents to replay every completed task. The saved
+  branch state is authoritative.
 
 ## Current failure mode
 
@@ -122,8 +122,14 @@ Conceptually:
 const planningArtifactRoot = savedWorktreeResume
   ? {
       repoRoot: join(config.repoRoot, savedWorktreePath),
-      specsDir: join(savedWorktreeRoot, relative(config.repoRoot, config.specsDir)),
-      plansDir: join(savedWorktreeRoot, relative(config.repoRoot, config.plansDir)),
+      specsDir: join(
+        savedWorktreeRoot,
+        relative(config.repoRoot, config.specsDir),
+      ),
+      plansDir: join(
+        savedWorktreeRoot,
+        relative(config.repoRoot, config.plansDir),
+      ),
       source: "resume-worktree",
     }
   : {
@@ -233,10 +239,11 @@ the required evidence with the now-available capture workflow.
 This keeps blocker details available across reruns without parsing issue
 comments or JSONL logs.
 
-`writeRunState()` should continue merging implementation result fields carefully,
-but blocked updates should not discard existing branch/worktree/artifact fields.
-A blocked update from implementation should leave the state resumable through
-blocked recovery and should not reset checkpoints.
+`writeRunState()` should continue merging implementation result fields
+carefully, but blocked updates should not discard existing
+branch/worktree/artifact fields. A blocked update from implementation should
+leave the state resumable through blocked recovery and should not reset
+checkpoints.
 
 ## Label behavior
 
@@ -291,8 +298,8 @@ Set up run state with:
 - checkpoints through `worktreeReady`.
 
 Create the saved spec and plan only under the saved worktree path, not under the
-main repo root. Mock recovery checks as clean. Run
-`runOneIssue()` with `issueNumber` set.
+main repo root. Mock recovery checks as clean. Run `runOneIssue()` with
+`issueNumber` set.
 
 Assert:
 
@@ -330,12 +337,9 @@ artifacts normally.
 
 ## Verification plan
 
-- Run targeted run-once tests:
-  `npm run test:run-once`.
-- Run the full TypeScript test suite:
-  `npm test`.
-- Run linting for changed TypeScript and Markdown:
-  `npm run lint`.
+- Run targeted run-once tests: `npm run test:run-once`.
+- Run the full TypeScript test suite: `npm test`.
+- Run linting for changed TypeScript and Markdown: `npm run lint`.
 - Because production behavior changes are in resume and run-state logic, rely on
   automated regression tests rather than manual log inspection alone.
 

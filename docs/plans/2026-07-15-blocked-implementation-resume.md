@@ -1,22 +1,35 @@
 # Blocked Implementation Resume Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `patchmill run-once --issue N` continue a clean blocked implementation workspace instead of restarting at spec or plan creation.
+**Goal:** Make `patchmill run-once --issue N` continue a clean blocked
+implementation workspace instead of restarting at spec or plan creation.
 
-**Architecture:** Treat a saved clean implementation worktree as the artifact lookup root during resume, while keeping the primary checkout as a compatibility fallback. Persist deterministic blocker context in run state so resumed implementation prompts can focus on the prior blocker. Prevent generated planning target paths from replacing saved artifact state before a creation prompt succeeds.
+**Architecture:** Treat a saved clean implementation worktree as the artifact
+lookup root during resume, while keeping the primary checkout as a compatibility
+fallback. Persist deterministic blocker context in run state so resumed
+implementation prompts can focus on the prior blocker. Prevent generated
+planning target paths from replacing saved artifact state before a creation
+prompt succeeds.
 
-**Tech Stack:** TypeScript, Node.js built-in test runner, existing Patchmill run-once pipeline modules, JSON run state files, Git worktree recovery helpers.
+**Tech Stack:** TypeScript, Node.js built-in test runner, existing Patchmill
+run-once pipeline modules, JSON run state files, Git worktree recovery helpers.
 
 ## Global Constraints
 
 - Keep `patchmill run-once --issue N` as the resume entry point.
 - Do not continue from dirty saved worktrees.
-- Do not weaken existing blocked-run recovery checks for dirty, missing, diverged, or already-merged workspaces.
-- Do not bypass visual evidence, validation, landing, or PR handoff requirements.
+- Do not weaken existing blocked-run recovery checks for dirty, missing,
+  diverged, or already-merged workspaces.
+- Do not bypass visual evidence, validation, landing, or PR handoff
+  requirements.
 - Do not infer durable recovery state from JSONL logs.
 - Prefer automated run-once regression tests for behavior changes.
-- Keep generated artifact target paths out of durable run-state fields until the artifact creation prompt succeeds.
+- Keep generated artifact target paths out of durable run-state fields until the
+  artifact creation prompt succeeds.
 
 ---
 
@@ -24,28 +37,38 @@
 
 - `src/cli/commands/run-once/planning-artifacts.ts`
   - New focused resolver for planning artifact policy.
-  - Own root ordering, explicit artifact consistency checks, required saved-plan rules, and durable-vs-generated path semantics.
+  - Own root ordering, explicit artifact consistency checks, required saved-plan
+    rules, and durable-vs-generated path semantics.
 - `src/cli/commands/run-once/planning-artifacts.test.ts`
-  - Unit-test saved implementation resume artifact authority and fresh-run artifact precedence.
+  - Unit-test saved implementation resume artifact authority and fresh-run
+    artifact precedence.
 - `src/cli/commands/run-once/stage-advancement.ts`
-  - Owns spec and plan creation decisions after artifact policy has resolved candidate paths.
+  - Owns spec and plan creation decisions after artifact policy has resolved
+    candidate paths.
   - Delegate artifact lookup and safety policy to `planning-artifacts.ts`.
-  - Delay run-state writes for generated artifact target paths until Pi reports success.
+  - Delay run-state writes for generated artifact target paths until Pi reports
+    success.
 - `src/cli/commands/run-once/pipeline.ts`
-  - Owns resume classification, saved worktree recovery, and implementation prompt assembly.
-  - Build the resume artifact lookup options after saved worktree recovery succeeds.
+  - Owns resume classification, saved worktree recovery, and implementation
+    prompt assembly.
+  - Build the resume artifact lookup options after saved worktree recovery
+    succeeds.
   - Pass prior blocker context into the implementation prompt.
-  - Persist blocker commits, validation, and questions when Pi returns `blocked`.
+  - Persist blocker commits, validation, and questions when Pi returns
+    `blocked`.
 - `src/cli/commands/run-once/prompts.ts`
   - Owns implementation prompt text.
-  - Extend resume context rendering with prior blocker reason, questions, and validation.
+  - Extend resume context rendering with prior blocker reason, questions, and
+    validation.
 - `src/cli/commands/run-once/run-state.ts`
   - Owns durable run-state merge behavior.
   - Add `blockerQuestions` merge and cleanup behavior.
 - `src/cli/commands/run-once/types.ts`
   - Add run-state and resume-context fields used by pipeline and prompts.
 - `src/cli/commands/run-once/pipeline.test.ts`
-  - Add integration regressions for saved-worktree artifact resolution, missing saved plan safety, blocker context persistence, and generated-path clobber prevention.
+  - Add integration regressions for saved-worktree artifact resolution, missing
+    saved plan safety, blocker context persistence, and generated-path clobber
+    prevention.
 
 ---
 
@@ -61,12 +84,21 @@
 
 **Interfaces:**
 
-- Consumes: existing `writeBlockedRecoveryRunState()`, `blockedRecoveryRunner()`, `advancePlanningStages()`, `ResolvedIssueArtifactSources`, `findIssueSpec()`, `findIssuePlan()`, `buildSpecPath()`, and `buildPlanPath()`.
-- Produces: `PlanningArtifactPolicy`, `ResolvedPlanningArtifacts`, and `resolvePlanningArtifacts()` in `planning-artifacts.ts`. `stage-advancement.ts` consumes the resolved artifacts and no longer owns resume-specific artifact policy.
+- Consumes: existing `writeBlockedRecoveryRunState()`,
+  `blockedRecoveryRunner()`, `advancePlanningStages()`,
+  `ResolvedIssueArtifactSources`, `findIssueSpec()`, `findIssuePlan()`,
+  `buildSpecPath()`, and `buildPlanPath()`.
+- Produces: `PlanningArtifactPolicy`, `ResolvedPlanningArtifacts`, and
+  `resolvePlanningArtifacts()` in `planning-artifacts.ts`.
+  `stage-advancement.ts` consumes the resolved artifacts and no longer owns
+  resume-specific artifact policy.
 
-- [ ] **Step 1: Extend blocked recovery test setup to place artifacts in the saved worktree**
+- [ ] **Step 1: Extend blocked recovery test setup to place artifacts in the
+      saved worktree**
 
-In `src/cli/commands/run-once/pipeline.test.ts`, replace the `writeBlockedRecoveryRunState()` options type and initial artifact writes with this code:
+In `src/cli/commands/run-once/pipeline.test.ts`, replace the
+`writeBlockedRecoveryRunState()` options type and initial artifact writes with
+this code:
 
 ```ts
 async function writeBlockedRecoveryRunState(
@@ -145,7 +177,9 @@ async function writeBlockedRecoveryRunState(
 
 - [ ] **Step 2: Add the failing saved-worktree integration test**
 
-Add this test after the existing `runOneIssue resumes clean blocked implementation workspace after external prerequisite is fixed` test:
+Add this test after the existing
+`runOneIssue resumes clean blocked implementation workspace after external prerequisite is fixed`
+test:
 
 ```ts
 test("runOneIssue resolves blocked resume artifacts from saved worktree", async () => {
@@ -170,7 +204,8 @@ test("runOneIssue resolves blocked resume artifacts from saved worktree", async 
   const runner = blockedRecoveryRunner(config, {
     onPi(prompt) {
       if (/Create a design spec/.test(prompt)) piPromptKinds.push("spec");
-      if (/Create an implementation plan/.test(prompt)) piPromptKinds.push("plan");
+      if (/Create an implementation plan/.test(prompt))
+        piPromptKinds.push("plan");
       if (/Implement issue/.test(prompt)) piPromptKinds.push("implementation");
       implementationPrompt = prompt;
       return {
@@ -195,7 +230,10 @@ test("runOneIssue resolves blocked resume artifacts from saved worktree", async 
   const piCall = workflowPiCalls(runner.calls).at(-1);
   assert.equal(piCall?.cwd, worktreeRoot);
   assert.match(implementationPrompt, /Resume context:/);
-  assert.match(implementationPrompt, /Existing commit: def456 add verification/);
+  assert.match(
+    implementationPrompt,
+    /Existing commit: def456 add verification/,
+  );
   const state = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
@@ -341,11 +379,13 @@ Run:
 node --test src/cli/commands/run-once/planning-artifacts.test.ts src/cli/commands/run-once/pipeline.test.ts --test-name-pattern "saved artifacts|saved worktree"
 ```
 
-Expected: FAIL because `planning-artifacts.ts` does not exist and the pipeline still resolves artifacts in the main checkout.
+Expected: FAIL because `planning-artifacts.ts` does not exist and the pipeline
+still resolves artifacts in the main checkout.
 
 - [ ] **Step 5: Create the dedicated planning artifact resolver module**
 
-Create `src/cli/commands/run-once/planning-artifacts.ts`. Include these exported interfaces:
+Create `src/cli/commands/run-once/planning-artifacts.ts`. Include these exported
+interfaces:
 
 ```ts
 import { isAbsolute, join, relative } from "node:path";
@@ -416,7 +456,10 @@ function repoPath(
   return { absolute: join(repoRoot, path), relative: path };
 }
 
-function promptBodyPath(repoRoot: string, absoluteArtifactPath: string): string {
+function promptBodyPath(
+  repoRoot: string,
+  absoluteArtifactPath: string,
+): string {
   return relative(repoRoot, absoluteArtifactPath);
 }
 
@@ -459,7 +502,12 @@ async function findSaved(input: {
   savedCreated?: boolean;
 }): Promise<ResolvedPlanningArtifact> {
   if (!input.savedPath) {
-    return { exists: false, fromState: false, created: false, generated: false };
+    return {
+      exists: false,
+      fromState: false,
+      created: false,
+      generated: false,
+    };
   }
 
   for (const root of input.roots) {
@@ -524,15 +572,32 @@ function generated(input: {
       ? input.policy.allowGeneratedSpec
       : input.policy.allowGeneratedPlan;
   if (!allowed) {
-    return { exists: false, fromState: false, created: false, generated: false };
+    return {
+      exists: false,
+      fromState: false,
+      created: false,
+      generated: false,
+    };
   }
 
   const artifactDir =
-    input.kind === "spec" ? input.policy.primary.specsDir : input.policy.primary.plansDir;
+    input.kind === "spec"
+      ? input.policy.primary.specsDir
+      : input.policy.primary.plansDir;
   const path =
     input.kind === "spec"
-      ? buildSpecPath(artifactDir, input.issue.number, input.issue.title, input.now)
-      : buildPlanPath(artifactDir, input.issue.number, input.issue.title, input.now);
+      ? buildSpecPath(
+          artifactDir,
+          input.issue.number,
+          input.issue.title,
+          input.now,
+        )
+      : buildPlanPath(
+          artifactDir,
+          input.issue.number,
+          input.issue.title,
+          input.now,
+        );
   return {
     path: promptBodyPath(input.policy.primary.repoRoot, path),
     exists: false,
@@ -568,14 +633,18 @@ export async function resolvePlanningArtifacts(input: {
       savedCommit: input.policy.saved.planCommit,
     });
 
-    const spec =
-      (await findSaved({
-        roots: policyRoots,
-        kind: "spec",
-        savedPath: input.policy.saved.specPath,
-        savedCommit: input.policy.saved.specCommit,
-        savedCreated: input.policy.saved.specCreated,
-      })) ?? { exists: false, fromState: false, created: false, generated: false };
+    const spec = (await findSaved({
+      roots: policyRoots,
+      kind: "spec",
+      savedPath: input.policy.saved.specPath,
+      savedCommit: input.policy.saved.specCommit,
+      savedCreated: input.policy.saved.specCreated,
+    })) ?? {
+      exists: false,
+      fromState: false,
+      created: false,
+      generated: false,
+    };
     const plan = await findSaved({
       roots: policyRoots,
       kind: "plan",
@@ -623,7 +692,11 @@ export async function resolvePlanningArtifacts(input: {
         created: false,
         generated: false,
       }
-    : await findDiscovered({ roots: policyRoots, issue: input.issue, kind: "plan" });
+    : await findDiscovered({
+        roots: policyRoots,
+        issue: input.issue,
+        kind: "plan",
+      });
   const discoveredSpec = explicitSpec
     ? {
         path: explicitSpec.path,
@@ -633,22 +706,38 @@ export async function resolvePlanningArtifacts(input: {
         created: false,
         generated: false,
       }
-    : await findDiscovered({ roots: policyRoots, issue: input.issue, kind: "spec" });
+    : await findDiscovered({
+        roots: policyRoots,
+        issue: input.issue,
+        kind: "spec",
+      });
 
   return {
     spec: discoveredSpec.exists
       ? discoveredSpec
-      : generated({ policy: input.policy, issue: input.issue, kind: "spec", now: input.now }),
+      : generated({
+          policy: input.policy,
+          issue: input.issue,
+          kind: "spec",
+          now: input.now,
+        }),
     plan: discoveredPlan.exists
       ? discoveredPlan
-      : generated({ policy: input.policy, issue: input.issue, kind: "plan", now: input.now }),
+      : generated({
+          policy: input.policy,
+          issue: input.issue,
+          kind: "plan",
+          now: input.now,
+        }),
   };
 }
 ```
 
 - [ ] **Step 6: Refactor `stage-advancement.ts` to consume the resolver**
 
-In `src/cli/commands/run-once/stage-advancement.ts`, remove the local `WorkflowArtifactResolution`, `repoPath()`, `promptBodyPath()`, and `resolveWorkflowArtifact()` definitions. Import the new resolver types:
+In `src/cli/commands/run-once/stage-advancement.ts`, remove the local
+`WorkflowArtifactResolution`, `repoPath()`, `promptBodyPath()`, and
+`resolveWorkflowArtifact()` definitions. Import the new resolver types:
 
 ```ts
 import {
@@ -663,42 +752,44 @@ Add this option to `AdvancePlanningStagesOptions`:
   artifactPolicy?: PlanningArtifactPolicy;
 ```
 
-At the start of `advancePlanningStages()`, build the policy and resolve artifacts:
+At the start of `advancePlanningStages()`, build the policy and resolve
+artifacts:
 
 ```ts
-  const artifactPolicyForRun = artifactPolicy ?? {
-    kind: "fresh" as const,
-    primary: {
-      repoRoot: config.repoRoot,
-      specsDir: config.specsDir,
-      plansDir: config.plansDir,
-      source: "primary-repo" as const,
-    },
-    explicit: resolvedArtifacts,
-    allowGeneratedSpec: true,
-    allowGeneratedPlan: true,
-  };
-  const planningArtifacts = await resolvePlanningArtifacts({
-    policy: artifactPolicyForRun,
-    issue,
-    now,
-  });
-  const preexistingPlan = planningArtifacts.plan;
+const artifactPolicyForRun = artifactPolicy ?? {
+  kind: "fresh" as const,
+  primary: {
+    repoRoot: config.repoRoot,
+    specsDir: config.specsDir,
+    plansDir: config.plansDir,
+    source: "primary-repo" as const,
+  },
+  explicit: resolvedArtifacts,
+  allowGeneratedSpec: true,
+  allowGeneratedPlan: true,
+};
+const planningArtifacts = await resolvePlanningArtifacts({
+  policy: artifactPolicyForRun,
+  issue,
+  now,
+});
+const preexistingPlan = planningArtifacts.plan;
 ```
 
 Replace the old spec resolution call with:
 
 ```ts
-  const spec = planningArtifacts.spec;
+const spec = planningArtifacts.spec;
 ```
 
 Replace the later plan resolution call with:
 
 ```ts
-  const plan = preexistingPlan.path ? preexistingPlan : planningArtifacts.plan;
+const plan = preexistingPlan.path ? preexistingPlan : planningArtifacts.plan;
 ```
 
-Keep the existing spec/plan creation branches, but they now consume `spec` and `plan` from the dedicated resolver.
+Keep the existing spec/plan creation branches, but they now consume `spec` and
+`plan` from the dedicated resolver.
 
 - [ ] **Step 7: Build the implementation-resume policy in the pipeline**
 
@@ -773,32 +864,34 @@ function resumePlanningArtifactPolicy(input: {
 }
 ```
 
-Inside `runOneIssue()`, after `ensureIssueWorkspace` is declared and before the `try` block, add:
+Inside `runOneIssue()`, after `ensureIssueWorkspace` is declared and before the
+`try` block, add:
 
 ```ts
-  let artifactPolicy: PlanningArtifactPolicy | undefined;
+let artifactPolicy: PlanningArtifactPolicy | undefined;
 ```
 
 Inside the `try` block, before calling `advancePlanningStages()`, add:
 
 ```ts
-    if (resumableState && (existingState?.branch || existingState?.worktreePath)) {
-      const resumeWorktree = await ensureIssueWorkspace();
-      const savedWorktreePath = existingState?.worktreePath ?? resumeWorktree.worktreePath;
-      artifactPolicy = resumePlanningArtifactPolicy({
-        config,
-        worktreePath: savedWorktreePath,
-        existingState,
-        resolvedArtifacts,
-      });
-      await progress(
-        options,
-        "info",
-        "resume",
-        `reusing saved worktree for artifact lookup: ${savedWorktreePath}`,
-        { issueNumber: issue.number },
-      );
-    }
+if (resumableState && (existingState?.branch || existingState?.worktreePath)) {
+  const resumeWorktree = await ensureIssueWorkspace();
+  const savedWorktreePath =
+    existingState?.worktreePath ?? resumeWorktree.worktreePath;
+  artifactPolicy = resumePlanningArtifactPolicy({
+    config,
+    worktreePath: savedWorktreePath,
+    existingState,
+    resolvedArtifacts,
+  });
+  await progress(
+    options,
+    "info",
+    "resume",
+    `reusing saved worktree for artifact lookup: ${savedWorktreePath}`,
+    { issueNumber: issue.number },
+  );
+}
 ```
 
 Pass the policy into `advancePlanningStages()`:
@@ -815,7 +908,8 @@ Run:
 node --test src/cli/commands/run-once/planning-artifacts.test.ts src/cli/commands/run-once/pipeline.test.ts --test-name-pattern "saved artifacts|saved worktree"
 ```
 
-Expected: PASS. The saved-worktree integration test should make only one Pi call: the implementation prompt.
+Expected: PASS. The saved-worktree integration test should make only one Pi
+call: the implementation prompt.
 
 - [ ] **Step 9: Run existing blocked recovery tests**
 
@@ -825,7 +919,8 @@ Run:
 node --test src/cli/commands/run-once/pipeline.test.ts --test-name-pattern "blocked recovery"
 ```
 
-Expected: PASS. Existing dirty, missing, already-merged, and clean blocked recovery behavior remains intact.
+Expected: PASS. Existing dirty, missing, already-merged, and clean blocked
+recovery behavior remains intact.
 
 - [ ] **Step 10: Commit Task 1**
 
@@ -846,8 +941,10 @@ git commit -m "fix(run-once): resolve blocked resume artifacts by policy"
 
 **Interfaces:**
 
-- Consumes: `PlanningArtifactPolicy` and `resolvePlanningArtifacts()` from Task 1.
-- Produces: explicit tests proving fresh runs still prefer validated artifact comments, while implementation resumes reject missing saved plans before Pi.
+- Consumes: `PlanningArtifactPolicy` and `resolvePlanningArtifacts()` from
+  Task 1.
+- Produces: explicit tests proving fresh runs still prefer validated artifact
+  comments, while implementation resumes reject missing saved plans before Pi.
 
 - [ ] **Step 1: Add a fresh-run explicit artifact unit test**
 
@@ -885,7 +982,8 @@ test("fresh policy accepts explicit artifact comments before discovery", async (
 
 - [ ] **Step 2: Add the missing saved plan integration test**
 
-Add this test near the blocked recovery tests in `src/cli/commands/run-once/pipeline.test.ts`:
+Add this test near the blocked recovery tests in
+`src/cli/commands/run-once/pipeline.test.ts`:
 
 ```ts
 test("runOneIssue reports missing saved plan before blocked resume mutations", async () => {
@@ -930,7 +1028,8 @@ Run:
 node --test src/cli/commands/run-once/planning-artifacts.test.ts src/cli/commands/run-once/pipeline.test.ts --test-name-pattern "explicit artifact|missing saved plan"
 ```
 
-Expected: PASS. Fresh policy accepts explicit artifact comments; implementation resume rejects missing saved plans before Pi.
+Expected: PASS. Fresh policy accepts explicit artifact comments; implementation
+resume rejects missing saved plans before Pi.
 
 - [ ] **Step 4: Run the existing deterministic artifact integration test**
 
@@ -940,7 +1039,8 @@ Run:
 node --test src/cli/commands/run-once/pipeline.test.ts --test-name-pattern "deterministic published artifacts"
 ```
 
-Expected: PASS. Fresh and approval-stage workflows still use validated published artifact comments before filename discovery.
+Expected: PASS. Fresh and approval-stage workflows still use validated published
+artifact comments before filename discovery.
 
 - [ ] **Step 5: Commit Task 2**
 
@@ -963,23 +1063,27 @@ git commit -m "test(run-once): cover planning artifact policy boundaries"
 
 **Interfaces:**
 
-- Consumes: `AgentIssueBlockedResult.reason`, `questions`, `commits`, and `validation`.
-- Produces: `AgentIssueRunState.blockerQuestions` and extended `AgentIssueImplementationResumeContext` fields.
+- Consumes: `AgentIssueBlockedResult.reason`, `questions`, `commits`, and
+  `validation`.
+- Produces: `AgentIssueRunState.blockerQuestions` and extended
+  `AgentIssueImplementationResumeContext` fields.
 
 - [ ] **Step 1: Add a failing persistence assertion for deterministic blockers**
 
-In the existing test `runOneIssue marks deterministic blockers as needs-info without restoring agent-ready`, extend the final run-state assertions with:
+In the existing test
+`runOneIssue marks deterministic blockers as needs-info without restoring agent-ready`,
+extend the final run-state assertions with:
 
 ```ts
-  assert.deepEqual(runState.commits, ["789fed"]);
-  assert.deepEqual(runState.validation, ["tests not run"]);
-  assert.deepEqual(runState.blockerQuestions, [
-    {
-      question: "Which API should own the runner output?",
-      recommendedAnswer:
-        "Keep ownership in the existing triage package to avoid duplicating adapters.",
-    },
-  ]);
+assert.deepEqual(runState.commits, ["789fed"]);
+assert.deepEqual(runState.validation, ["tests not run"]);
+assert.deepEqual(runState.blockerQuestions, [
+  {
+    question: "Which API should own the runner output?",
+    recommendedAnswer:
+      "Keep ownership in the existing triage package to avoid duplicating adapters.",
+  },
+]);
 ```
 
 - [ ] **Step 2: Add prompt assertions to the saved-worktree resume test**
@@ -987,15 +1091,15 @@ In the existing test `runOneIssue marks deterministic blockers as needs-info wit
 In the test added in Task 1, after the `Resume context` assertion, add:
 
 ```ts
-  assert.match(
-    implementationPrompt,
-    /Prior blocker reason: Required verification environment is unavailable\./,
-  );
-  assert.match(implementationPrompt, /Prior validation: formatting passed/);
-  assert.match(
-    implementationPrompt,
-    /Prior validation: verification environment unavailable/,
-  );
+assert.match(
+  implementationPrompt,
+  /Prior blocker reason: Required verification environment is unavailable\./,
+);
+assert.match(implementationPrompt, /Prior validation: formatting passed/);
+assert.match(
+  implementationPrompt,
+  /Prior validation: verification environment unavailable/,
+);
 ```
 
 - [ ] **Step 3: Run the context tests to verify they fail**
@@ -1006,11 +1110,13 @@ Run:
 node --test src/cli/commands/run-once/pipeline.test.ts --test-name-pattern "deterministic blockers|saved worktree"
 ```
 
-Expected: FAIL because blocker questions are not stored and resume prompts do not include prior blocker details.
+Expected: FAIL because blocker questions are not stored and resume prompts do
+not include prior blocker details.
 
 - [ ] **Step 4: Extend run-state and resume-context types**
 
-In `src/cli/commands/run-once/types.ts`, add `blockerQuestions` to `AgentIssueRunState`:
+In `src/cli/commands/run-once/types.ts`, add `blockerQuestions` to
+`AgentIssueRunState`:
 
 ```ts
   blockerQuestions?: AgentIssueBlockerQuestion[];
@@ -1037,7 +1143,8 @@ export type AgentIssueImplementationResumeContext = {
 
 - [ ] **Step 5: Merge blocker questions in run state**
 
-In `src/cli/commands/run-once/run-state.ts`, add this helper near `mergeUniqueKeys()`:
+In `src/cli/commands/run-once/run-state.ts`, add this helper near
+`mergeUniqueKeys()`:
 
 ```ts
 function blockerQuestionsUpdate(
@@ -1051,10 +1158,10 @@ function blockerQuestionsUpdate(
 Inside `mergeRunState()`, after `failureCommentKeys` is computed, add:
 
 ```ts
-  const blockerQuestions = blockerQuestionsUpdate(
-    update.resetCheckpoints ? undefined : existing?.blockerQuestions,
-    update.blockerQuestions,
-  );
+const blockerQuestions = blockerQuestionsUpdate(
+  update.resetCheckpoints ? undefined : existing?.blockerQuestions,
+  update.blockerQuestions,
+);
 ```
 
 Add `blockerQuestions` to the `next` object:
@@ -1066,14 +1173,15 @@ Add `blockerQuestions` to the `next` object:
 Add cleanup after the existing `failureCommentKeys` cleanup block:
 
 ```ts
-  if (blockerQuestions === undefined) {
-    delete next.blockerQuestions;
-  }
+if (blockerQuestions === undefined) {
+  delete next.blockerQuestions;
+}
 ```
 
 - [ ] **Step 6: Persist blocker context from `blockIssue()`**
 
-In `src/cli/commands/run-once/pipeline.ts`, update the `writeRunState()` call inside `blockIssue()` to include:
+In `src/cli/commands/run-once/pipeline.ts`, update the `writeRunState()` call
+inside `blockIssue()` to include:
 
 ```ts
       commits: result.commits,
@@ -1085,7 +1193,8 @@ Keep the existing `lastError: result.reason` line.
 
 - [ ] **Step 7: Pass prior blocker details into the implementation prompt**
 
-In `src/cli/commands/run-once/pipeline.ts`, update the `resume` object passed to `buildImplementationPrompt()`:
+In `src/cli/commands/run-once/pipeline.ts`, update the `resume` object passed to
+`buildImplementationPrompt()`:
 
 ```ts
             resume: {
@@ -1100,7 +1209,8 @@ In `src/cli/commands/run-once/pipeline.ts`, update the `resume` object passed to
 
 - [ ] **Step 8: Render blocker context in the resume prompt**
 
-In `src/cli/commands/run-once/prompts.ts`, add this helper near `formatResumeContext()`:
+In `src/cli/commands/run-once/prompts.ts`, add this helper near
+`formatResumeContext()`:
 
 ```ts
 function formatResumeQuestion(question: AgentIssueBlockerQuestion): string {
@@ -1110,32 +1220,34 @@ function formatResumeQuestion(question: AgentIssueBlockerQuestion): string {
 }
 ```
 
-Update the `formatResumeContext()` return body so it includes prior blocker lines:
+Update the `formatResumeContext()` return body so it includes prior blocker
+lines:
 
 ```ts
-  const priorBlocker = resume.priorBlockerReason
-    ? [`- Prior blocker reason: ${resume.priorBlockerReason}`]
-    : [];
-  const priorQuestions = (resume.priorBlockerQuestions ?? []).map(
-    (question) => `- Prior blocker question: ${formatResumeQuestion(question)}`,
-  );
-  const priorValidation = (resume.priorValidation ?? []).map(
-    (entry) => `- Prior validation: ${entry}`,
-  );
+const priorBlocker = resume.priorBlockerReason
+  ? [`- Prior blocker reason: ${resume.priorBlockerReason}`]
+  : [];
+const priorQuestions = (resume.priorBlockerQuestions ?? []).map(
+  (question) => `- Prior blocker question: ${formatResumeQuestion(question)}`,
+);
+const priorValidation = (resume.priorValidation ?? []).map(
+  (entry) => `- Prior validation: ${entry}`,
+);
 
-  return [
-    "Resume context:",
-    "- Continue from current branch state.",
-    `- Worktree ${resume.worktreeCreated ? "was created/recreated during this run" : "was reused from the prior run"}.`,
-    existingCommits,
-    ...priorBlocker,
-    ...priorQuestions,
-    ...priorValidation,
-    "",
-  ].join("\n");
+return [
+  "Resume context:",
+  "- Continue from current branch state.",
+  `- Worktree ${resume.worktreeCreated ? "was created/recreated during this run" : "was reused from the prior run"}.`,
+  existingCommits,
+  ...priorBlocker,
+  ...priorQuestions,
+  ...priorValidation,
+  "",
+].join("\n");
 ```
 
-Also add `AgentIssueBlockerQuestion` to the type imports at the top of `prompts.ts`.
+Also add `AgentIssueBlockerQuestion` to the type imports at the top of
+`prompts.ts`.
 
 - [ ] **Step 9: Run blocker context tests**
 
@@ -1167,11 +1279,13 @@ git commit -m "fix(run-once): carry blocker context into resumes"
 **Interfaces:**
 
 - Consumes: `WorkflowArtifactResolution.generated` from existing stage code.
-- Produces: run-state writes that persist existing or successfully created artifact paths, not pre-success generated target paths.
+- Produces: run-state writes that persist existing or successfully created
+  artifact paths, not pre-success generated target paths.
 
 - [ ] **Step 1: Add the generated spec path failure test**
 
-Add this test near the unexpected planning failure tests in `src/cli/commands/run-once/pipeline.test.ts`:
+Add this test near the unexpected planning failure tests in
+`src/cli/commands/run-once/pipeline.test.ts`:
 
 ```ts
 test("runOneIssue does not persist generated spec path when spec creation fails", async () => {
@@ -1236,10 +1350,12 @@ test("runOneIssue does not persist generated spec path when spec creation fails"
 
 - [ ] **Step 2: Update the existing unexpected planning failure expectation**
 
-In the test `runOneIssue records and comments unexpected planning failures without replacing in-progress`, change the plan-path assertion to:
+In the test
+`runOneIssue records and comments unexpected planning failures without replacing in-progress`,
+change the plan-path assertion to:
 
 ```ts
-  assert.equal(runState.planPath, undefined);
+assert.equal(runState.planPath, undefined);
 ```
 
 Keep the existing `status` and `lastError` assertions.
@@ -1252,11 +1368,13 @@ Run:
 node --test src/cli/commands/run-once/pipeline.test.ts --test-name-pattern "planning failure|generated spec path"
 ```
 
-Expected: FAIL because generated target paths are still persisted before prompt success.
+Expected: FAIL because generated target paths are still persisted before prompt
+success.
 
 - [ ] **Step 4: Stop persisting generated spec paths before success**
 
-In `src/cli/commands/run-once/stage-advancement.ts`, change the first spec run-state write guard from:
+In `src/cli/commands/run-once/stage-advancement.ts`, change the first spec
+run-state write guard from:
 
 ```ts
   if (specPath) {
@@ -1268,39 +1386,48 @@ to:
   if (specPath && !spec.generated) {
 ```
 
-Keep the body of the write unchanged. This means existing saved or discovered specs are still persisted immediately, while generated target paths are only persisted after `spec-created` returns.
+Keep the body of the write unchanged. This means existing saved or discovered
+specs are still persisted immediately, while generated target paths are only
+persisted after `spec-created` returns.
 
 - [ ] **Step 5: Stop persisting generated plan paths before success**
 
-In the plan resolution section, replace the unconditional plan-path run-state write with:
+In the plan resolution section, replace the unconditional plan-path run-state
+write with:
 
 ```ts
-  if (!plan.generated) {
-    await writeRunState(
-      config.runStateDir,
-      {
-        issueNumber: issue.number,
-        status: "planning",
-        specPath,
-        specCommit,
-        planPath,
-        checkpoints: {
-          planPathResolved: true,
-          ...(planCreated ? { planCreated: true } : {}),
-        },
+if (!plan.generated) {
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: issue.number,
+      status: "planning",
+      specPath,
+      specCommit,
+      planPath,
+      checkpoints: {
+        planPathResolved: true,
+        ...(planCreated ? { planCreated: true } : {}),
       },
-      timestamp,
-    );
-    checkpoints.planPathResolved = true;
-    if (planCreated) checkpoints.planCreated = true;
-  }
+    },
+    timestamp,
+  );
+  checkpoints.planPathResolved = true;
+  if (planCreated) checkpoints.planCreated = true;
+}
 ```
 
-Leave the later successful `plan-created` write in place. That later write records `planPath`, `planCommit`, and `planCreated` after Pi succeeds.
+Leave the later successful `plan-created` write in place. That later write
+records `planPath`, `planCommit`, and `planCreated` after Pi succeeds.
 
 - [ ] **Step 6: Confirm unexpected failures only see durable paths**
 
-Do not change `pipeline.ts` for this task. The `specPath` and `planPath` locals in `pipeline.ts` are assigned only after `advancePlanningStages()` returns `kind: "continue"`. When generated artifact creation fails inside `advancePlanningStages()`, the pipeline catch block still receives `undefined` for both details. The run-state writes changed in Steps 4 and 5 are therefore the only required implementation changes for generated-path clobber prevention.
+Do not change `pipeline.ts` for this task. The `specPath` and `planPath` locals
+in `pipeline.ts` are assigned only after `advancePlanningStages()` returns
+`kind: "continue"`. When generated artifact creation fails inside
+`advancePlanningStages()`, the pipeline catch block still receives `undefined`
+for both details. The run-state writes changed in Steps 4 and 5 are therefore
+the only required implementation changes for generated-path clobber prevention.
 
 - [ ] **Step 7: Run planning failure tests**
 
@@ -1350,7 +1477,8 @@ Run:
 npm run test:run-once
 ```
 
-Expected: PASS. If a test fails, inspect the failing assertion and fix the smallest affected implementation or expectation before rerunning this command.
+Expected: PASS. If a test fails, inspect the failing assertion and fix the
+smallest affected implementation or expectation before rerunning this command.
 
 - [ ] **Step 2: Run all tests**
 
@@ -1381,7 +1509,8 @@ git diff --stat HEAD~4..HEAD
 git diff HEAD~4..HEAD -- src/cli/commands/run-once
 ```
 
-Expected: The diff only changes run-once resume, run-state, prompt, and tests for the blocked implementation resume behavior.
+Expected: The diff only changes run-once resume, run-state, prompt, and tests
+for the blocked implementation resume behavior.
 
 - [ ] **Step 5: Commit any verification fixes**
 
@@ -1400,12 +1529,15 @@ Record these items for handoff:
 
 ```md
 Summary:
-- Blocked implementation resumes resolve saved artifacts from the saved worktree.
+
+- Blocked implementation resumes resolve saved artifacts from the saved
+  worktree.
 - Missing saved plans stop before Pi instead of triggering fresh planning.
 - Prior blocker context is stored and rendered in resume prompts.
 - Generated artifact target paths are not persisted before creation succeeds.
 
 Verification:
+
 - npm run test:run-once
 - npm test
 - npm run lint
