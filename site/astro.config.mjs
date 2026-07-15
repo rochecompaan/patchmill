@@ -9,6 +9,24 @@ export default defineConfig({
       title: "Patchmill",
       description:
         "Patchmill is an agent-driven software factory for turning product work into reviewed, landed changes.",
+      head: [
+        {
+          tag: "link",
+          attrs: { rel: "icon", href: "/favicon.ico", sizes: "any" },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "icon",
+            href: "/favicon.svg",
+            type: "image/svg+xml",
+          },
+        },
+        {
+          tag: "link",
+          attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+        },
+      ],
       logo: {
         light: "./src/assets/logo-horizontal-light.svg",
         dark: "./src/assets/logo-horizontal-dark.svg",
