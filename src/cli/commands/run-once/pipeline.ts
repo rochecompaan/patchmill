@@ -1,9 +1,7 @@
 import { join } from "node:path";
-import { runCleanupHookScript } from "../../../pi/hooks.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
 import { createIssueHostProvider } from "../../../host/factory.ts";
-import { skillInvocationPaths } from "../../../workflow/skills.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
@@ -12,19 +10,10 @@ import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
   assertCleanWorktree,
   assertIssueBaseContainedInPrBase,
-  cleanupIssueWorkspace,
   ensureIssueWorktree,
   type IssueWorktreeResult,
 } from "./git.ts";
-import {
-  assertIssueTodosComplete,
-  issueTodoProgress,
-  readIssueTodoTasks,
-} from "./issue-todos.ts";
-import { runPiPrompt } from "./pi.ts";
-import { readPlanTaskLabels } from "./plan-tasks.ts";
-import { buildImplementationPrompt } from "./prompts.ts";
-import { runDevelopmentEnvironmentStage } from "./development-environment-stage.ts";
+import {} from "./issue-todos.ts";
 import {
   PlanningArtifactSafetyError,
   resolvePlanningArtifacts,
@@ -51,14 +40,12 @@ import { selectIssueWithDiagnostics } from "./selection.ts";
 import { emitSimpleStep, progress, withLogPath } from "./pipeline-progress.ts";
 import {
   AgentIssueSafetyError,
-  assertDirectLandAllowed,
   effectiveCheckpoints,
   lifecycleLabels,
   nextLabels,
-  successfulImplementationFromState,
   workflowTransition,
 } from "./pipeline-lifecycle.ts";
-import { handoffComment, startedComment } from "./pipeline-comments.ts";
+import { startedComment } from "./pipeline-comments.ts";
 import {
   cleanStatusIgnoredPaths,
   configuredWorktreeStrategy,
@@ -71,12 +58,11 @@ import {
   selectResumableIssue,
 } from "./pipeline-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
-import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
+import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
+import { runPipelineFinishStage } from "./pipeline-finish.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type {
   AgentIssueConfig,
-  AgentIssueDevelopmentEnvironmentHandoff,
-  AgentIssuePiResult,
   AgentIssuePipelineResult,
   CommandRunner,
   IssueSummary,
@@ -611,543 +597,88 @@ export async function runOneIssue(
       labels = implementationLabels;
     }
 
-    let implemented =
-      resumableState && checkpoints.implementationCompleted
-        ? successfulImplementationFromState(
-            existingState as
-              | (typeof existingState & {
-                  prUrl?: string;
-                  mergeCommit?: string;
-                  commits?: unknown;
-                  validation?: unknown;
-                  reviewSummary?: unknown;
-                  landingDecision?: unknown;
-                })
-              | undefined,
-          )
-        : undefined;
-    if (implemented) {
-      assertDirectLandAllowed(
-        implemented,
-        config,
-        "Saved implementation state",
-      );
-    }
-
     const worktree = await ensureIssueWorkspace();
-    await writeRunState(
-      config.runStateDir,
-      {
-        issueNumber: issue.number,
-        status: "implementing",
-        specPath,
-        specCommit,
-        planPath,
-        planCommit,
-        branch,
-        worktreePath,
-        checkpoints: { worktreeReady: true },
-      },
+    const implementationStage = await runPipelineImplementationStage({
+      runner,
+      host,
+      config,
+      issue,
+      labels,
+      readyLabel: ready,
+      inProgressLabel: inProgress,
+      specPath,
+      specCommit,
+      planPath,
+      planCommit,
+      branch,
+      worktreePath,
+      worktree,
+      worktreeStrategy,
+      existingState,
+      resumableState,
+      implementationCompleted: checkpoints.implementationCompleted,
+      checkpoints,
       timestamp,
-    );
-    checkpoints.worktreeReady = true;
-
-    const worktreeRoot = join(config.repoRoot, worktreePath);
-    let developmentEnvironment:
-      | AgentIssueDevelopmentEnvironmentHandoff
-      | undefined;
-    if (!implemented && config.skills.developmentEnvironment) {
-      const developmentEnvironmentStage = await runDevelopmentEnvironmentStage({
-        runner,
-        host,
-        config,
-        issue,
-        labels,
-        readyLabel: ready,
-        inProgressLabel: inProgress,
-        specPath,
-        specCommit,
-        planPath,
-        planCommit,
-        branch,
-        worktreePath,
-        timestamp,
-        logPath: options.logPath,
-        streamPiOutput: options.streamPiOutput,
-        verbosePiOutput: options.verbosePiOutput,
-        heartbeatMs: options.heartbeatMs,
-        piAgentDir,
-        tokenUsageState,
-        progressReporter: options.progress,
-        progress: (level, stage, message, extras) =>
-          progress(options, level, stage, message, extras),
-        runStep,
-        observePi,
-        emitSimpleStep: (issueNumber, label) =>
-          emitSimpleStep(options, issueNumber, label),
-      });
-
-      if (developmentEnvironmentStage.kind === "not-ready") {
-        return developmentEnvironmentStage.result;
-      }
-
-      developmentEnvironment = developmentEnvironmentStage.handoff;
-    }
-
-    if (!implemented) {
-      await progress(
-        options,
-        "info",
-        "pi-implementation",
-        "running implementation with pi",
-        { issueNumber: issue.number },
-      );
-      const taskContract = config.projectPolicy.pi.taskContract;
-      const planTaskLabels = await readPlanTaskLabels(
-        config.repoRoot,
-        planPath,
-        taskContract,
-      );
-      let activeImplementationTask:
-        | { current: number; total: number; label: string }
-        | undefined;
-      let finalImplementationStepActive = false;
-      const finalImplementationStepLabel = "final review and landing";
-
-      const labelForTask = (current: number, runtimeLabel?: string): string => {
-        const planLabel = planTaskLabels.find(
-          (task) => task.number === current,
-        )?.label;
-        return planLabel ?? runtimeLabel ?? `task ${current}`;
-      };
-
-      const normalizeImplementationTaskProgress = (
-        current: number,
-        total: number,
-      ): { current: number; total: number } => {
-        if (planTaskLabels.length === 0) return { current, total };
-        return {
-          current: Math.min(Math.max(current, 1), planTaskLabels.length),
-          total: planTaskLabels.length,
-        };
-      };
-
-      const switchImplementationTask = async (
-        rawCurrent: number,
-        rawTotal: number,
-        runtimeLabel?: string,
-      ): Promise<void> => {
-        const { current, total } = normalizeImplementationTaskProgress(
-          rawCurrent,
-          rawTotal,
-        );
-        const label = labelForTask(current, runtimeLabel);
-        if (
-          activeImplementationTask?.current === current &&
-          activeImplementationTask.total === total &&
-          activeImplementationTask.label === label
-        ) {
-          return;
-        }
-        if (finalImplementationStepActive) return;
-        if (activeImplementationTask) {
-          await stepComplete(
-            `implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`,
-          );
-        }
-        activeImplementationTask = { current, total, label };
-        await stepStart(`implement task ${current}/${total} ${label}`);
-      };
-
-      const startFinalImplementationStep = async (): Promise<void> => {
-        if (finalImplementationStepActive) return;
-        if (activeImplementationTask) {
-          await stepComplete(
-            `implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`,
-          );
-          activeImplementationTask = undefined;
-        }
-        finalImplementationStepActive = true;
-        await stepStart(finalImplementationStepLabel);
-      };
-
-      const issueTasksComplete = async (): Promise<boolean> => {
-        const tasks = await readIssueTodoTasks(
-          worktreeRoot,
-          issue.number,
-          taskContract,
-        );
-        return tasks.length > 0 && tasks.every((task) => task.done);
-      };
-
-      const refreshImplementationTask = async (
-        options: { startFinalWhenComplete?: boolean } = {},
-      ): Promise<void> => {
-        if (options.startFinalWhenComplete && (await issueTasksComplete())) {
-          await startFinalImplementationStep();
-          return;
-        }
-        const runtimeProgress = await issueTodoProgress(
-          worktreeRoot,
-          issue.number,
-          taskContract,
-        );
-        if (runtimeProgress) {
-          await switchImplementationTask(
-            runtimeProgress.current,
-            runtimeProgress.total,
-            runtimeProgress.label,
-          );
-        }
-      };
-
-      const observeImplementation = async (
-        observation: AgentIssueProgressEvent["observation"],
-      ): Promise<void> => {
-        if (observation?.type === "tool-call")
-          await refreshImplementationTask({ startFinalWhenComplete: true });
-        await observePi("pi-implementation")(observation);
-      };
-
-      let piResult: AgentIssuePiResult | undefined;
-      try {
-        if (planTaskLabels.length > 0) {
-          await switchImplementationTask(
-            1,
-            planTaskLabels.length,
-            planTaskLabels[0]?.label,
-          );
-        }
-
-        const projectPolicy = {
-          ...config.projectPolicy,
-          directLand: {
-            ...config.projectPolicy.directLand,
-            targetBranch: worktreeStrategy.baseBranch,
-          },
-        };
-
-        piResult = await runPiPrompt(
-          runner,
-          worktreeRoot,
-          buildImplementationPrompt({
-            issue: { ...issue, labels },
-            planPath,
-            branch,
-            worktreePath,
-            git: worktreeStrategy,
-            projectPolicy,
-            skills: config.skills,
-            resume: {
-              resumed: resumableState,
-              worktreeCreated: worktree.created,
-              existingCommits: worktree.existingCommits,
-              priorBlockerReason: existingState?.lastError,
-              priorBlockerQuestions: existingState?.blockerQuestions,
-              priorValidation: existingState?.validation,
-            },
-            developmentEnvironment,
-          }),
-          {
-            progress: options.progress,
-            stage: "pi-implementation",
-            skillPaths: skillInvocationPaths(
-              [
-                config.skills.toolchain,
-                config.skills.implementation,
-                config.skills.review,
-                config.skills.visualEvidence,
-                config.skills.landing,
-              ],
-              config.repoRoot,
-            ),
-            streamOutput: options.streamPiOutput,
-            issueNumber: issue.number,
-            repoRoot: worktreeRoot,
-            heartbeatMs: options.heartbeatMs,
-            tokenUsageState,
-            observeSession: true,
-            verbosePiOutput: options.verbosePiOutput,
-            onObservation: observeImplementation,
-            taskContract: projectPolicy.pi.taskContract,
-            piAgentDir,
-            onTaskProgress: async (progress) => {
-              await switchImplementationTask(
-                progress.current,
-                progress.total,
-                progress.label,
-              );
-            },
-          },
-        );
-
-        await refreshImplementationTask();
-      } finally {
-        if (activeImplementationTask) {
-          await stepComplete(
-            `implement task ${activeImplementationTask.current}/${activeImplementationTask.total} ${activeImplementationTask.label}`,
-          );
-          activeImplementationTask = undefined;
-        }
-        if (finalImplementationStepActive) {
-          await stepComplete(finalImplementationStepLabel);
-          finalImplementationStepActive = false;
-        }
-      }
-
-      if (!piResult)
-        throw new Error("Pi implementation completed without a result");
-      if (piResult.status === "blocked") {
-        return blockIssue(
+      runOptions: options,
+      piAgentDir,
+      tokenUsageState,
+      progressReporter: options.progress,
+      runStep,
+      stepStart,
+      stepComplete,
+      observePi,
+      emitSimpleStep: (issueNumber, label) =>
+        emitSimpleStep(options, issueNumber, label),
+      blockIssue: (result, details) =>
+        blockIssue(
           host,
           config,
           issue,
           labels,
-          piResult,
-          { specPath, specCommit, planPath, planCommit, branch, worktreePath },
+          result,
+          details,
           timestamp,
           options,
-        );
-      }
-      if (piResult.status !== "pr-created" && piResult.status !== "merged") {
-        throw new Error(
-          `Expected pr-created or merged from Pi but received ${piResult.status}`,
-        );
-      }
+        ),
+    });
 
-      assertDirectLandAllowed(piResult, config, "Pi");
-      implemented = piResult;
+    if (implementationStage.kind === "blocked") {
+      return withLogPath(implementationStage.result, options);
     }
-
-    await assertIssueTodosComplete(
-      join(config.repoRoot, worktreePath),
-      issue.number,
-      config.projectPolicy.pi.taskContract,
-    );
-
-    await writeRunState(
-      config.runStateDir,
-      {
-        issueNumber: issue.number,
-        status: "implementing",
-        specPath,
-        specCommit,
-        planPath,
-        planCommit,
-        branch,
-        worktreePath,
-        implementationStatus: implemented.status,
-        prUrl:
-          implemented.status === "pr-created" ? implemented.prUrl : undefined,
-        mergeCommit:
-          implemented.status === "merged" ? implemented.mergeCommit : undefined,
-        commits: implemented.commits,
-        validation: implemented.validation,
-        reviewSummary: implemented.reviewSummary,
-        landingDecision: implemented.landingDecision,
-        visualEvidence:
-          implemented.status === "pr-created"
-            ? implemented.visualEvidence
-            : undefined,
-        handoffCommentPosted: checkpoints.handoffCommentPosted === true,
-        checkpoints: { implementationCompleted: true },
-      },
-      timestamp,
-    );
-    checkpoints.implementationCompleted = true;
-
-    if (
-      implemented.status === "pr-created" &&
-      (implemented.visualEvidence?.length ?? 0) > 0 &&
-      !checkpoints.visualEvidenceValidated
-    ) {
-      const validatedEvidence = await validateVisualEvidenceReferences({
-        repoRoot: join(config.repoRoot, worktreePath),
-        evidence: implemented.visualEvidence,
-        runner,
-        referenceScreenshotPaths:
-          config.projectPolicy.visualEvidence.referenceScreenshotPaths,
-        onProgress: async (message) => {
-          await progress(options, "info", "visual-evidence", message, {
-            issueNumber: issue.number,
-          });
-        },
-      });
-      implemented = { ...implemented, visualEvidence: validatedEvidence };
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          status: "implementing",
-          specPath,
-          specCommit,
-          planPath,
-          planCommit,
-          branch,
-          worktreePath,
-          implementationStatus: implemented.status,
-          prUrl: implemented.prUrl,
-          commits: implemented.commits,
-          validation: implemented.validation,
-          reviewSummary: implemented.reviewSummary,
-          landingDecision: implemented.landingDecision,
-          visualEvidence: validatedEvidence,
-          checkpoints: { visualEvidenceValidated: true },
-        },
-        timestamp,
-      );
-      checkpoints.visualEvidenceValidated = true;
+    if (implementationStage.kind === "unexpected") {
+      throw implementationStage.error;
     }
+    labels = implementationStage.labels;
+    checkpoints.worktreeReady = true;
 
-    if (!checkpoints.handoffCommentPosted) {
-      await host.commentIssue(
-        issue.number,
-        handoffComment(planPath, implemented, config.baseBranch),
-      );
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          status: "implementing",
-          specPath,
-          specCommit,
-          planPath,
-          planCommit,
-          branch,
-          worktreePath,
-          handoffCommentPosted: true,
-          checkpoints: { handoffCommentPosted: true },
-        },
-        timestamp,
-      );
-      checkpoints.handoffCommentPosted = true;
-    }
-    if (!checkpoints.doneLabelEnsured) {
-      await ensureAutomationLabel(host, config, done);
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          status: "implementing",
-          specPath,
-          specCommit,
-          planPath,
-          planCommit,
-          branch,
-          worktreePath,
-          checkpoints: { doneLabelEnsured: true },
-        },
-        timestamp,
-      );
-      checkpoints.doneLabelEnsured = true;
-    }
-    const doneLabels = nextLabels(
-      cleanupLabelsForImplementation(labels, {
-        readyLabel: ready,
-        policy: config.approvalPolicy,
-      }),
-      [inProgress, needsInfo],
-      [done],
-    );
-    if (!checkpoints.doneLabelApplied) {
-      await host.applyLabels(planLabelChange(issue.number, labels, doneLabels));
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          status: "finished",
-          specPath,
-          specCommit,
-          planPath,
-          planCommit,
-          branch,
-          worktreePath,
-          checkpoints: { doneLabelApplied: true },
-        },
-        timestamp,
-      );
-      checkpoints.doneLabelApplied = true;
-    }
-    labels = doneLabels;
-    await progress(
-      options,
-      "info",
-      implemented.status === "pr-created" ? "pr" : "merge",
-      implemented.status === "pr-created"
-        ? `PR created: ${implemented.prUrl}`
-        : `Merged to ${config.baseBranch}: ${implemented.mergeCommit}`,
-      { issueNumber: issue.number },
-    );
-    await writeRunState(
-      config.runStateDir,
-      {
-        issueNumber: issue.number,
-        status: "finished",
-        specPath,
-        specCommit,
-        planPath,
-        planCommit,
-        branch,
-        worktreePath,
-        clearLastError: true,
-      },
-      timestamp,
-    );
-
-    const cleanupResults = await runCleanupHookScript(
+    const finishStage = await runPipelineFinishStage({
       runner,
-      config.repoRoot,
+      host,
+      config,
+      issue,
+      labels,
+      readyLabel: ready,
+      inProgressLabel: inProgress,
+      doneLabel: done,
+      needsInfoLabel: needsInfo,
+      checkpoints,
+      implemented: implementationStage.result,
+      specPath,
+      specCommit,
+      planPath,
+      planCommit,
+      branch,
       worktreePath,
-      config.cleanupHook,
-    );
-    for (const cleanup of cleanupResults) {
-      await progress(
-        options,
-        cleanup.status === "failed" ? "error" : "info",
-        "cleanup",
-        cleanup.message,
-        {
-          issueNumber: issue.number,
-          data: { hook: cleanup.name, status: cleanup.status },
-        },
-      );
+      timestamp,
+      runOptions: options,
+      runStep,
+    });
+
+    if (finishStage.kind === "unexpected") {
+      throw finishStage.error;
     }
 
-    if (implemented.status === "pr-created") {
-      const workspaceCleanupResults = await cleanupIssueWorkspace(
-        runner,
-        config.repoRoot,
-        { branch, worktreePath },
-      );
-      for (const cleanup of workspaceCleanupResults) {
-        await progress(
-          options,
-          cleanup.status === "failed" ? "error" : "info",
-          "cleanup",
-          cleanup.message,
-          {
-            issueNumber: issue.number,
-            data: {
-              step: cleanup.step,
-              status: cleanup.status,
-              command: cleanup.command,
-              args: cleanup.args,
-              cwd: cleanup.cwd,
-              code: cleanup.code,
-              stdout: cleanup.stdout,
-              stderr: cleanup.stderr,
-            },
-          },
-        );
-      }
-    }
-
-    await runStep(`final result ${implemented.status}`, async () => undefined);
-
-    return withLogPath(
-      { ...implemented, issue, specPath, planPath, worktreePath },
-      options,
-    );
+    return finishStage.result;
   } catch (error) {
     if (error instanceof AgentIssueSafetyError) {
       throw error;

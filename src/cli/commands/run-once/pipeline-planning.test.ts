@@ -1,0 +1,1667 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
+import { createTriagePolicy } from "../../../policy/triage.ts";
+import {
+  buildSkillPackMetadata,
+  hashText,
+} from "../../../workflow/skill-pack.ts";
+import { bundledVisualEvidenceSkillPath } from "../../../workflow/skills.ts";
+import { runStatePath, writeRunState } from "./run-state.ts";
+import { runOneIssue } from "./pipeline.ts";
+import { JsonlProgressReporter } from "./progress.ts";
+import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
+import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
+import {
+  DEFAULT_LABEL_NAMES,
+  issue,
+  issueListPayload,
+  issueViewPayload,
+  labelListPayload,
+} from "../../../../test-support/run-once/issue-fixtures.ts";
+import {
+  appendPiSessionEntry,
+  assistantToolCall,
+  createMockRunner,
+  delay,
+  initializePiSession,
+  promptPath,
+  waitForCondition,
+  workflowPiCalls,
+  writePiSessionMessage,
+  type Call,
+} from "../../../../test-support/run-once/mock-runner.ts";
+import {
+  approvalPolicy,
+  blockedRecoveryRunner,
+  makeConfig,
+  runPlanApprovedImplementationScenario,
+  specAndPlanApprovalPolicy,
+  writeBlockedRecoveryRunState,
+} from "../../../../test-support/run-once/pipeline-fixtures.ts";
+import {
+  collectProgressEvents,
+  commentBody,
+  gitBaseContainmentFailure,
+  gitBaseContainmentResult,
+} from "../../../../test-support/run-once/assertions.ts";
+import type { CommandResult } from "./types.ts";
+
+const NOW = new Date("2026-05-09T12:00:00.000Z");
+const MINIMAL_PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+
+function withRepo(args: string[], repoRoot: string): string[] {
+  const separator = args.indexOf("--");
+  if (separator === -1) return [...args, "--repo", repoRoot];
+  return [
+    ...args.slice(0, separator),
+    "--repo",
+    repoRoot,
+    ...args.slice(separator),
+  ];
+}
+
+const LANDING_SKILLS = {
+  ...DEFAULT_PATCHMILL_CONFIG.skills,
+  landing: "project-landing",
+};
+
+const cleanupHook = "./scripts/cleanup.sh";
+
+async function writeTodo(
+  repoRoot: string,
+  id: string,
+  title: string,
+  status: string,
+): Promise<void> {
+  const dir = join(repoRoot, ".pi", "todos");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, `${id}.md`),
+    `${JSON.stringify({ id, title, status })}\n\nbody\n`,
+    "utf8",
+  );
+}
+
+test("runOneIssue does not duplicate claim or plan-only comments on resume", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  await writeFile(
+    join(config.plansDir, "2026-05-14-issue-45-resume-plan-only.md"),
+    "# plan\n",
+    "utf8",
+  );
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Resume plan only",
+      status: "planning",
+      planPath: "docs/plans/2026-05-14-issue-45-resume-plan-only.md",
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+        readyLabelRestored: true,
+        planReadyCommentPosted: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(45, ["in-progress"], "Resume plan only")])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-found");
+  assert.equal(result.issue.number, 45);
+  assert.equal(
+    runner.calls.filter(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ).length,
+    0,
+  );
+  assert.equal(
+    runner.calls.filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    ).length,
+    0,
+  );
+
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  );
+  assert.equal(runState.status, "finished");
+  assert.deepEqual(runState.checkpoints, {
+    claimed: true,
+    startedCommentPosted: true,
+    planPathResolved: true,
+    readyLabelRestored: true,
+    planReadyCommentPosted: true,
+  });
+});
+
+test("runOneIssue reuses a saved created plan as plan-created in plan-only mode", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const planPath = "docs/plans/2026-05-14-issue-45-saved-created-plan.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Saved created plan",
+      status: "planning",
+      planPath,
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planCreated: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Saved created plan"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  const comments = runner.calls.filter(
+    (call) => call.command === "tea" && call.args[0] === "comment",
+  );
+  assert.equal(comments.length, 1);
+  assert.match(commentBody(comments[0]), /Plan ready/);
+  assert.doesNotMatch(commentBody(comments[0]), /Existing plan ready/);
+});
+
+test("runOneIssue uses deterministic published artifacts before filename discovery", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const specPath = "docs/specs/human-provided-design.md";
+  const planPath = "docs/plans/human-provided-plan.md";
+  await writeFile(
+    join(
+      config.repoRoot,
+      "docs",
+      "plans",
+      "2026-05-09-issue-65-resolve-provided-artifacts.md",
+    ),
+    "# Discovered Plan\n",
+    "utf8",
+  );
+
+  const selected = {
+    ...issue(
+      65,
+      ["plan-approved", "enhancement"],
+      "Resolve provided artifacts",
+    ),
+    comments: [
+      {
+        authorLogin: "patchmill-bot",
+        body: formatPublishedArtifactComment({
+          kind: "spec",
+          path: specPath,
+          content: "# Human Spec\n\nUse the published design.",
+        }),
+      },
+      {
+        authorLogin: "patchmill-bot",
+        body: formatPublishedArtifactComment({
+          kind: "plan",
+          path: planPath,
+          content: "# Human Plan\n\n- [ ] Build from the published plan",
+        }),
+      },
+    ],
+  };
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "add")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "diff")
+      return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "commit")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "rev-parse")
+      return { code: 0, stdout: "artifact123\n", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "logins")
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
+    if (call.command === "tea" && call.args[0] === "labels")
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.doesNotMatch(prompt, /Extract spec and plan artifact sources/);
+      assert.match(prompt, new RegExp(`Plan path: ${planPath}`));
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo.example/pr/65",
+          branch: "agent/issue-65-resolve-provided-artifacts",
+          commits: ["abc123"],
+          validation: ["npm test"],
+          reviewSummary: "reviewed",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(result.specPath, specPath);
+  assert.equal(result.planPath, planPath);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.step?.type === "step-start" &&
+        event.step.label === "extract issue artifact sources",
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.step?.type === "step-complete" &&
+        event.step.label === "extract issue artifact sources",
+    ),
+  );
+  const expectedWorktreeRoot = join(
+    config.repoRoot,
+    ".worktrees",
+    "patchmill-issue-65-resolve-provided-artifacts",
+  );
+  assert.equal(
+    await readFile(join(expectedWorktreeRoot, specPath), "utf8"),
+    "# Human Spec\n\nUse the published design.\n",
+  );
+  assert.equal(
+    await readFile(join(expectedWorktreeRoot, planPath), "utf8"),
+    "# Human Plan\n\n- [ ] Build from the published plan\n",
+  );
+});
+
+test("runOneIssue fails before claim when deterministic artifact checksum mismatches", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const brokenComment = formatPublishedArtifactComment({
+    kind: "spec",
+    path: "docs/specs/broken.md",
+    content: "# Original Spec\n\nUse this content.",
+  }).replace("Use this content.", "Use edited content.");
+  const selected = {
+    ...issue(65, ["agent-ready", "enhancement"], "Broken published artifact"),
+    comments: [{ authorLogin: "patchmill-bot", body: brokenComment }],
+  };
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "tea" && call.args[0] === "logins")
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
+    throw new Error(
+      `unexpected command before deterministic artifact failure: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    runOneIssue(runner, config, { now: NOW }),
+    /checksum mismatch/,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args[0] === "comment",
+    ),
+    false,
+  );
+});
+
+test("runOneIssue dry-run does not read deterministic artifact sources", async () => {
+  const config = await makeConfig({ dryRun: true, execute: false });
+  const selected = issue(
+    65,
+    ["agent-ready", "enhancement"],
+    "Resolve provided artifacts",
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "rev-parse")
+      return { code: 0, stdout: "abc123\n", stderr: "" };
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected dry-run command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+});
+
+test("runOneIssue writes spec and stops at spec-review when spec approval is required", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(31, ["agent-ready", "enhancement"], "Needs spec");
+  const expectedSpecPath =
+    "docs/specs/2026-05-09-issue-31-needs-spec-design.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create a design spec/);
+      return {
+        code: 0,
+        stdout: `spec done\n{"status":"spec-created","specPath":"${expectedSpecPath}","commit":"abc123"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "spec-created");
+  assert.equal(result.specPath, expectedSpecPath);
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  const finalEdit = editCalls.at(-1);
+  assert.ok(finalEdit);
+  assert.equal(
+    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
+    "spec-review",
+  );
+  assert.equal(finalEdit.args.includes("agent-ready"), false);
+});
+
+test("runOneIssue stops at spec-review when agent-ready has an existing spec and spec approval is required", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(34, ["agent-ready", "enhancement"], "Existing spec");
+  const specPath = "docs/specs/2026-05-09-issue-34-existing-spec-design.md";
+  await writeFile(join(config.repoRoot, specPath), "# Spec\n", "utf8");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      throw new Error("Pi should not run when an existing spec needs review");
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "spec-found");
+  assert.equal(result.specPath, specPath);
+  const finalEdit = runner.calls
+    .filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    )
+    .at(-1);
+  assert.ok(finalEdit);
+  assert.equal(
+    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
+    "spec-review",
+  );
+});
+
+test("runOneIssue stops at spec-review for plan-approved issues without spec approval", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(
+    36,
+    ["plan-approved", "enhancement"],
+    "Plan-only approval",
+  );
+  const specPath =
+    "docs/specs/2026-05-09-issue-36-plan-only-approval-design.md";
+  await writeFile(join(config.repoRoot, specPath), "# Spec\n", "utf8");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      throw new Error("Pi should not run when existing spec lacks approval");
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "spec-found");
+  assert.equal(result.specPath, specPath);
+  const finalEdit = runner.calls
+    .filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    )
+    .at(-1);
+  assert.ok(finalEdit);
+  assert.equal(
+    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
+    "spec-review",
+  );
+  assert.equal(finalEdit.args.includes("plan-approved"), false);
+});
+
+test("runOneIssue fails fast when saved spec path access fails unexpectedly", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(37, ["agent-ready", "enhancement"], "Unreadable spec");
+  await writeFile(
+    join(config.repoRoot, "docs", "not-a-dir"),
+    "not a dir",
+    "utf8",
+  );
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 37,
+      title: "Unreadable spec",
+      status: "planning",
+      specPath: "docs/not-a-dir/spec.md",
+      checkpoints: { specPathResolved: true },
+    },
+    NOW.toISOString(),
+  );
+  let piCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                { ...selected, labels: ["in-progress", "enhancement"] },
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCalls += 1;
+      return {
+        code: 0,
+        stdout:
+          '{"status":"spec-created","specPath":"docs/specs/recreated.md","commit":"abc123"}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /ENOTDIR|not a directory/);
+  assert.equal(piCalls, 0);
+});
+
+test("runOneIssue fails fast when saved plan path access fails unexpectedly", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(38, ["agent-ready", "enhancement"], "Unreadable plan");
+  await writeFile(
+    join(config.repoRoot, "docs", "not-a-dir"),
+    "not a dir",
+    "utf8",
+  );
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 38,
+      title: "Unreadable plan",
+      status: "planning",
+      planPath: "docs/not-a-dir/plan.md",
+      checkpoints: { planPathResolved: true },
+    },
+    NOW.toISOString(),
+  );
+  let piCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                { ...selected, labels: ["in-progress", "enhancement"] },
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCalls += 1;
+      return {
+        code: 0,
+        stdout:
+          '{"status":"plan-created","planPath":"docs/plans/recreated.md","commit":"abc123"}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /ENOTDIR|not a directory/);
+  assert.equal(piCalls, 0);
+});
+
+test("runOneIssue treats a newly-created replacement spec as needing fresh approval", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(
+    35,
+    ["spec-approved", "plan-approved", "enhancement"],
+    "Missing approved spec",
+  );
+  const expectedSpecPath =
+    "docs/specs/2026-05-09-issue-35-missing-approved-spec-design.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create a design spec/);
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "spec-created",
+          specPath: expectedSpecPath,
+          commit: "abc123",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "spec-created");
+  assert.equal(result.specPath, expectedSpecPath);
+  const finalEdit = runner.calls
+    .filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    )
+    .at(-1);
+  assert.ok(finalEdit);
+  assert.equal(
+    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
+    "spec-review",
+  );
+  assert.equal(finalEdit.args.includes("spec-approved"), false);
+  assert.equal(finalEdit.args.includes("plan-approved"), false);
+});
+
+test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-review", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(
+    32,
+    ["spec-review", "spec-approved", "enhancement"],
+    "Needs plan",
+  );
+  const specPath = "docs/specs/2026-05-09-issue-32-needs-plan-design.md";
+  await writeFile(join(config.repoRoot, specPath), "# Spec\n", "utf8");
+  const expectedPlanPath = "docs/plans/2026-05-09-issue-32-needs-plan.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create an implementation plan/);
+      assert.match(
+        prompt,
+        new RegExp(specPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      );
+      return {
+        code: 0,
+        stdout: `plan done\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"def456"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, expectedPlanPath);
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  const finalEdit = editCalls.at(-1);
+  assert.ok(finalEdit);
+  assert.equal(
+    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
+    "plan-review",
+  );
+  assert.equal(finalEdit.args.includes("spec-review"), false);
+  assert.equal(finalEdit.args.includes("spec-approved"), false);
+});
+
+test("runOneIssue writes spec then plan and stops at plan-review when only plan approval is required", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: approvalPolicy({ specRequired: false, planRequired: true }),
+  });
+  const selected = issue(
+    33,
+    ["agent-ready", "enhancement"],
+    "Needs spec and plan",
+  );
+  const expectedSpecPath =
+    "docs/specs/2026-05-09-issue-33-needs-spec-and-plan-design.md";
+  const expectedPlanPath =
+    "docs/plans/2026-05-09-issue-33-needs-spec-and-plan.md";
+  let piCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCalls += 1;
+      if (piCalls === 1) {
+        return {
+          code: 0,
+          stdout: `{"status":"spec-created","specPath":"${expectedSpecPath}","commit":"abc123"}`,
+          stderr: "",
+        };
+      }
+      return {
+        code: 0,
+        stdout: `{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"def456"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.specPath, expectedSpecPath);
+  assert.equal(result.planPath, expectedPlanPath);
+  assert.equal(piCalls, 2);
+});
+
+test("runOneIssue stops after finding an existing plan when plan approval is required", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const planPath = "docs/plans/2026-05-14-issue-47-approval-existing-plan.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(47, ["agent-ready", "bug"], "Approval existing plan");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-found");
+  assert.equal(result.planPath, planPath);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  const comments = runner.calls.filter(
+    (call) => call.command === "tea" && call.args[0] === "comment",
+  );
+  assert.equal(comments.length, 2);
+  assert.match(commentBody(comments[1]), /Existing plan ready/);
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  const restoreCall = editCalls.at(-1);
+  assert.ok(restoreCall);
+  assert.equal(
+    restoreCall.args[restoreCall.args.indexOf("--add-labels") + 1],
+    "plan-review",
+  );
+});
+
+test("runOneIssue stops after creating a plan when plan approval is required", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const selected = issue(48, ["agent-ready", "bug"], "Approval created plan");
+  const expectedPlanPath =
+    "docs/plans/2026-05-09-issue-48-approval-created-plan.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create an implementation plan/);
+      return {
+        code: 0,
+        stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, expectedPlanPath);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "show-ref",
+    ),
+    false,
+  );
+});
+
+test("runOneIssue ignores stale plan approval when a new plan is created", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const selected = issue(
+    50,
+    ["agent-ready", "plan-approved", "bug"],
+    "Stale plan approval",
+  );
+  const expectedPlanPath =
+    "docs/plans/2026-05-09-issue-50-stale-plan-approval.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create an implementation plan/);
+      return {
+        code: 0,
+        stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, expectedPlanPath);
+  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" && call.args[0] === "worktree",
+    ),
+    false,
+  );
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  const restoreCall = editCalls.at(-1);
+  assert.ok(restoreCall);
+  assert.equal(
+    restoreCall.args[restoreCall.args.indexOf("--add-labels") + 1],
+    "plan-review",
+  );
+  assert.equal(
+    restoreCall.args[restoreCall.args.indexOf("--remove-labels") + 1],
+    "plan-approved,in-progress",
+  );
+});
+
+test("runOneIssue proceeds when plan approval label is present and clears plan-review", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const planPath = "docs/plans/2026-05-14-issue-49-approved-plan.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(
+    49,
+    [
+      "agent-ready",
+      "spec-review",
+      "spec-approved",
+      "plan-review",
+      "plan-approved",
+      "bug",
+    ],
+    "Approved plan",
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return {
+        code: 0,
+        stdout: labelListPayload([
+          "agent-ready",
+          "in-progress",
+          "agent-done",
+          "spec-review",
+          "spec-approved",
+          "plan-review",
+          "plan-approved",
+        ]),
+        stderr: "",
+      };
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo/pr/49",
+          branch: "agent/issue-49-approved-plan",
+          commits: ["abc123"],
+          validation: [
+            "node --test src/cli/commands/run-once/pipeline.test.ts",
+          ],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  const finalEdit = editCalls.at(-1);
+  assert.ok(finalEdit);
+  assert.equal(finalEdit.args.includes("spec-review"), false);
+  assert.equal(finalEdit.args.includes("spec-approved"), false);
+  assert.equal(finalEdit.args.includes("plan-review"), false);
+  assert.equal(finalEdit.args.includes("plan-approved"), false);
+});
+
+test("runOneIssue claims the issue, comments automation start, writes run state, and exits plan-created for plan-only mode", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const selected = issue(
+    12,
+    ["agent-ready", "bug", "priority:high"],
+    "Add once runner pipeline",
+  );
+  const expectedPlanPath =
+    "docs/plans/2026-05-09-issue-12-add-once-runner-pipeline.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "tea" && call.args[0] === "comment") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "pi") {
+      assert.equal(call.cwd, config.repoRoot);
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create an implementation plan/);
+      assert.match(
+        prompt,
+        new RegExp(expectedPlanPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      );
+      return {
+        code: 0,
+        stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, expectedPlanPath);
+  const editCalls = runner.calls.filter(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit",
+  );
+  assert.equal(editCalls.length, 2);
+  assert.deepEqual(
+    editCalls[0]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "12",
+        "--remove-labels",
+        "agent-ready",
+        "--add-labels",
+        "in-progress",
+      ],
+      config.repoRoot,
+    ),
+  );
+  assert.deepEqual(
+    editCalls[1]?.args,
+    withRepo(
+      [
+        "issues",
+        "edit",
+        "12",
+        "--remove-labels",
+        "in-progress",
+        "--add-labels",
+        "agent-ready",
+      ],
+      config.repoRoot,
+    ),
+  );
+  const addedLabels = editCalls.flatMap((call) => {
+    const index = call.args.indexOf("--add-labels");
+    return index >= 0 ? [call.args[index + 1]] : [];
+  });
+  assert.equal(addedLabels.includes("agent-ready"), true);
+
+  const comments = runner.calls.filter(
+    (call) => call.command === "tea" && call.args[0] === "comment",
+  );
+  assert.equal(comments.length, 2);
+  assert.match(commentBody(comments[0]), /Automation started/);
+  assert.match(commentBody(comments[1]), /Plan ready/);
+
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 12), "utf8"),
+  );
+  assert.equal(runState.status, "finished");
+  assert.equal(runState.planPath, expectedPlanPath);
+  assert.equal(runState.planCommit, "abc123");
+  assert.deepEqual(runState.checkpoints, {
+    claimed: true,
+    startedCommentPosted: true,
+    specPathResolved: true,
+    specCreated: true,
+    planPathResolved: true,
+    planCreated: true,
+    readyLabelRestored: true,
+    planReadyCommentPosted: true,
+  });
+  assert.equal(runState.claimedAt, NOW.toISOString());
+  assert.equal(runState.planningAt, NOW.toISOString());
+  assert.equal(runState.finishedAt, NOW.toISOString());
+});
+
+test("runOneIssue plan-only keeps planning resumable when the plan-ready comment fails", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const selected = issue(
+    13,
+    ["agent-ready", "bug"],
+    "Recover plan-only comment failure",
+  );
+  const expectedPlanPath =
+    "docs/plans/2026-05-09-issue-13-recover-plan-only-comment-failure.md";
+  let commentCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "tea" && call.args[0] === "comment") {
+      commentCalls += 1;
+      return commentCalls === 2
+        ? { code: 1, stdout: "", stderr: "comment exploded" }
+        : { code: 0, stdout: "", stderr: "" };
+    }
+
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /tea comment failed for #13: comment exploded/);
+  const failedCommentIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      /Plan ready/.test(commentBody(call)),
+  );
+  assert.ok(failedCommentIndex >= 0);
+  assert.equal(
+    runner.calls.filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    ).length,
+    1,
+  );
+
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 13), "utf8"),
+  );
+  assert.equal(runState.status, "planning");
+  assert.equal(runState.planCommit, "abc123");
+  assert.equal(runState.checkpoints.readyLabelRestored, undefined);
+  assert.equal(runState.checkpoints.planReadyCommentPosted, undefined);
+});
