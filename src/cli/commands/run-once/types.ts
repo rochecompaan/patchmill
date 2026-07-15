@@ -134,6 +134,7 @@ export type AgentIssueRunState = {
   visualEvidence?: AgentIssueVisualEvidence[];
   handoffCommentPosted?: boolean;
   failureCommentKeys?: string[];
+  blockerQuestions?: AgentIssueBlockerQuestion[];
   createdAt: string;
   updatedAt: string;
   claimedAt?: string;
@@ -166,6 +167,7 @@ export type AgentIssueRunStateUpdate = {
   visualEvidence?: AgentIssueVisualEvidence[];
   handoffCommentPosted?: boolean;
   failureCommentKeys?: string[];
+  blockerQuestions?: AgentIssueBlockerQuestion[];
   lastError?: string;
   clearLastError?: boolean;
 };
@@ -174,6 +176,9 @@ export type AgentIssueImplementationResumeContext = {
   resumed: boolean;
   worktreeCreated: boolean;
   existingCommits: string[];
+  priorBlockerReason?: string;
+  priorBlockerQuestions?: AgentIssueBlockerQuestion[];
+  priorValidation?: string[];
 };
 
 export type AgentIssueBlockerQuestion =
