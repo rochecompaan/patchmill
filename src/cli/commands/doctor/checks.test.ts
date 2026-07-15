@@ -6,7 +6,10 @@ import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
 import { installProjectSkills } from "../init/skill-installer.ts";
 import type { CommandRunner } from "../triage/types.ts";
-import { bundledVisualEvidenceSkillPath } from "../../../workflow/skills.ts";
+import {
+  DEFAULT_PATCHMILL_SKILLS,
+  bundledVisualEvidenceSkillPath,
+} from "../../../workflow/skills.ts";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
@@ -302,6 +305,82 @@ test("runDoctorChecks aggregates successful read-only checks", async () => {
   assert.equal(
     results.some((result) => result.status === "fail"),
     false,
+  );
+});
+
+test("runDoctorChecks verifies registered bundled config references", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      triage: DEFAULT_PATCHMILL_SKILLS.triage,
+      planning: "superpowers:writing-plans",
+      implementation: "superpowers:subagent-driven-development",
+      visualEvidence: DEFAULT_PATCHMILL_SKILLS.visualEvidence,
+    },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+
+  const results = await runDoctorChecks(runnerFrom(successMocks()), {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "warn");
+  assert.match(
+    skills?.message ?? "",
+    /triage: `patchmill:bundled-issue-triage` \(bundled skill verified\)/,
+  );
+  assert.match(
+    skills?.message ?? "",
+    /visualEvidence: `patchmill:bundled-visual-evidence` \(bundled skill verified\)/,
+  );
+  assert.match(
+    skills?.message ?? "",
+    /planning: `superpowers:writing-plans` \(named skill configured; doctor did not verify it\)/,
+  );
+});
+
+test("runDoctorChecks fails when bundled visual evidence sidecar is missing", async () => {
+  const repoRoot = await tempRepo();
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      visualEvidence: DEFAULT_PATCHMILL_SKILLS.visualEvidence,
+    },
+  });
+  await mkdir(join(repoRoot, "docs"), { recursive: true });
+  await mkdir(join(repoRoot, ".patchmill"), { recursive: true });
+
+  const bundledFixtureRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-doctor-bundled-skill-"),
+  );
+  const bundledFixtureSkillPath = await writeSkillFile(
+    bundledFixtureRoot,
+    "patchmill-visual-evidence",
+    skillDocument(
+      "patchmill-visual-evidence",
+      "Capture browser screenshots as visual evidence",
+    ),
+  );
+
+  const results = await runDoctorChecks(runnerFrom(successMocks()), {
+    repoRoot,
+    teaRepoRootForTests: "/repo",
+    bundledSkillPathForTests: () => bundledFixtureSkillPath,
+  });
+  const skills = results.find((result) => result.name === "skills");
+
+  assert.equal(skills?.status, "fail");
+  assert.match(
+    skills?.message ?? "",
+    /visualEvidence: `patchmill:bundled-visual-evidence`/,
+  );
+  assert.match(
+    skills?.message ?? "",
+    /required skill file unreadable at .*patchmill-visual-evidence.*scripts.*capture-visual-evidence\.cjs/,
   );
 });
 

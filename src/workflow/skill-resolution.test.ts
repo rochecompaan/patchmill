@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   BUNDLED_TRIAGE_SKILL_REFERENCE,
+  BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
   GLOBAL_PATCHMILL_SKILLS,
 } from "./skills.ts";
 import {
@@ -16,6 +17,7 @@ import {
 } from "./skill-pack.ts";
 import {
   bundledTriageSkillPath,
+  bundledVisualEvidenceSkillPath,
   isNamespaceStyleSkill,
   isPathLikeSkill,
   resolveConfiguredSkillInvocation,
@@ -65,10 +67,15 @@ async function writeMetadata(
   );
 }
 
-test("bundledTriageSkillPath points at the bundled SKILL.md file", () => {
+test("bundled skill compatibility path helpers point at bundled SKILL.md files", () => {
   assert.ok(
     bundledTriageSkillPath().endsWith(
       join("skills", "patchmill-issue-triage", "SKILL.md"),
+    ),
+  );
+  assert.ok(
+    bundledVisualEvidenceSkillPath().endsWith(
+      join("skills", "patchmill-visual-evidence", "SKILL.md"),
     ),
   );
 });
@@ -96,8 +103,16 @@ test("skillInvocationArgs resolves bundled, local, and named skills", () => {
     [],
   );
   assert.deepEqual(
+    skillInvocationArgs(GLOBAL_PATCHMILL_SKILLS.visualEvidence, "/repo"),
+    [],
+  );
+  assert.deepEqual(
     skillInvocationArgs(BUNDLED_TRIAGE_SKILL_REFERENCE, "/repo"),
     ["--skill", bundledTriageSkillPath()],
+  );
+  assert.deepEqual(
+    skillInvocationArgs(BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE, "/repo"),
+    ["--skill", bundledVisualEvidenceSkillPath()],
   );
   assert.deepEqual(
     skillInvocationArgs(".patchmill/skills/writing-plans", "/repo"),
@@ -157,6 +172,7 @@ test("skillInvocationPaths keeps only invokable skill paths in order", () => {
         "superpowers:writing-plans",
         undefined,
         BUNDLED_TRIAGE_SKILL_REFERENCE,
+        BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
         "skills\\implementation",
       ],
       "/repo",
@@ -164,6 +180,7 @@ test("skillInvocationPaths keeps only invokable skill paths in order", () => {
     [
       "/repo/.patchmill/skills/writing-plans/SKILL.md",
       bundledTriageSkillPath(),
+      bundledVisualEvidenceSkillPath(),
       "/repo/skills/implementation/SKILL.md",
     ],
   );

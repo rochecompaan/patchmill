@@ -19,10 +19,11 @@ import { missingLabelDefinitions } from "../triage/labels.ts";
 import type { CommandRunner } from "../triage/types.ts";
 import type { PatchmillConfig } from "../../../config/types.ts";
 import {
-  DEFAULT_PATCHMILL_SKILLS,
+  bundledSkillByConfigReference,
+  bundledSkillPath,
+} from "../../../workflow/bundled-skills.ts";
+import {
   PATCHMILL_SKILL_KEYS,
-  bundledTriageSkillPath,
-  bundledVisualEvidenceSkillPath,
   isPathLikeSkill,
   resolveConfiguredSkillInvocation,
   resolvePathLikeSkillPath,
@@ -42,6 +43,7 @@ type DoctorOptions = {
   repoRoot: string;
   env?: Record<string, string | undefined>;
   teaRepoRootForTests?: string;
+  bundledSkillPathForTests?: typeof bundledSkillPath;
 };
 
 type SkillCheckEntry = {
@@ -421,6 +423,7 @@ async function checkSkills(
   config: PatchmillConfig,
   repoRoot: string,
   piAgentDir: string,
+  bundledSkillPathResolver: typeof bundledSkillPath = bundledSkillPath,
 ): Promise<DoctorCheckResult> {
   const configuredSkills = PATCHMILL_SKILL_KEYS.flatMap((key) => {
     const skill = config.skills[key];
@@ -437,19 +440,13 @@ async function checkSkills(
 
   const entries: SkillCheckEntry[] = await Promise.all(
     configuredSkills.map(async ({ key, skill }) => {
-      if (key === "triage" && skill === DEFAULT_PATCHMILL_SKILLS.triage) {
-        return await verifyBundledSkill(key, skill, bundledTriageSkillPath());
-      }
-
-      if (
-        key === "visualEvidence" &&
-        skill === DEFAULT_PATCHMILL_SKILLS.visualEvidence
-      ) {
+      const bundledSkill = bundledSkillByConfigReference(skill);
+      if (bundledSkill) {
         return await verifyBundledSkill(
           key,
           skill,
-          bundledVisualEvidenceSkillPath(),
-          requiredSkillFiles("patchmill-visual-evidence"),
+          bundledSkillPathResolver(bundledSkill),
+          bundledSkill.requiredFiles,
         );
       }
 
@@ -597,7 +594,13 @@ export async function runDoctorChecks(
     }
 
     results.push(
-      await checkSkills(runner, config, options.repoRoot, piAgentDir),
+      await checkSkills(
+        runner,
+        config,
+        options.repoRoot,
+        piAgentDir,
+        options.bundledSkillPathForTests,
+      ),
     );
 
     const paths = [

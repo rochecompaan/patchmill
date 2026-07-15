@@ -1,4 +1,9 @@
 import { createHash, type BinaryLike } from "node:crypto";
+import {
+  BUNDLED_PATCHMILL_SKILLS,
+  bundledSkillByKey,
+  requiredFilesForBundledSkillName,
+} from "./bundled-skills.ts";
 import type { PatchmillSkillsConfig } from "./skills.ts";
 
 export const DEFAULT_PROJECT_SKILL_DIR = ".patchmill/skills";
@@ -7,7 +12,17 @@ export const SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
   "subagent-dev-with-codex-and-thermo-reviews";
 export const SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
   "single-subagent-dev-with-codex-and-thermo-reviews";
-export const PATCHMILL_VISUAL_EVIDENCE_SKILL = "patchmill-visual-evidence";
+const bundledTriageSkill = bundledSkillByKey("triage");
+const bundledVisualEvidenceSkill = bundledSkillByKey("visualEvidence");
+
+if (!bundledTriageSkill || !bundledVisualEvidenceSkill) {
+  throw new Error(
+    "Bundled Patchmill skill registry is missing required skills",
+  );
+}
+
+export const PATCHMILL_VISUAL_EVIDENCE_SKILL =
+  bundledVisualEvidenceSkill.globalName;
 
 export type SkillPackSource = {
   type: "github-release";
@@ -40,15 +55,8 @@ export type SkillPackMetadataFile = {
   files: Array<{ path: string; sha256: string }>;
 };
 
-const REQUIRED_SKILL_FILES: Record<string, string[]> = {
-  [PATCHMILL_VISUAL_EVIDENCE_SKILL]: [
-    "SKILL.md",
-    "scripts/capture-visual-evidence.cjs",
-  ],
-};
-
 export function requiredSkillFiles(skillName: string): string[] {
-  return REQUIRED_SKILL_FILES[skillName] ?? ["SKILL.md"];
+  return requiredFilesForBundledSkillName(skillName);
 }
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
@@ -62,7 +70,7 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
       "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
   },
   skills: [
-    { name: "patchmill-issue-triage", source: "patchmill" },
+    { name: bundledTriageSkill.globalName, source: "patchmill" },
     {
       name: SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
       source: "patchmill",
@@ -107,11 +115,24 @@ export function buildRecommendedProjectSkillConfig(
   PatchmillSkillsConfig,
   "triage" | "planning" | "implementation" | "visualEvidence"
 > {
+  const bundledProjectLocalConfig = Object.fromEntries(
+    BUNDLED_PATCHMILL_SKILLS.flatMap((skill) =>
+      skill.recommendedProjectLocal && skill.projectSkillConfigKey
+        ? [
+            [
+              skill.projectSkillConfigKey,
+              projectSkillPath(skill.globalName, skillDir),
+            ],
+          ]
+        : [],
+    ),
+  ) as Pick<PatchmillSkillsConfig, "triage" | "visualEvidence">;
+
   return {
-    triage: projectSkillPath("patchmill-issue-triage", skillDir),
+    triage: bundledProjectLocalConfig.triage,
     planning: projectSkillPath("writing-plans", skillDir),
     implementation: projectSkillPath("subagent-driven-development", skillDir),
-    visualEvidence: projectSkillPath(PATCHMILL_VISUAL_EVIDENCE_SKILL, skillDir),
+    visualEvidence: bundledProjectLocalConfig.visualEvidence,
   };
 }
 

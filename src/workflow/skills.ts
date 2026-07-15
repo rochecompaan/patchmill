@@ -1,3 +1,4 @@
+import { bundledSkillByKey } from "./bundled-skills.ts";
 import {
   BUNDLED_TRIAGE_SKILL_REFERENCE,
   BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
@@ -39,18 +40,27 @@ export {
   BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
 };
 
+const bundledTriageSkill = bundledSkillByKey("triage");
+const bundledVisualEvidenceSkill = bundledSkillByKey("visualEvidence");
+
+if (!bundledTriageSkill || !bundledVisualEvidenceSkill) {
+  throw new Error(
+    "Bundled Patchmill skill registry is missing required skills",
+  );
+}
+
 export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
-  triage: BUNDLED_TRIAGE_SKILL_REFERENCE,
+  triage: bundledTriageSkill.configReference,
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
-  visualEvidence: BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
+  visualEvidence: bundledVisualEvidenceSkill.configReference,
 };
 
 export const GLOBAL_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
-  triage: "patchmill-issue-triage",
+  triage: bundledTriageSkill.globalName,
   planning: "superpowers:writing-plans",
   implementation: "superpowers:subagent-driven-development",
-  visualEvidence: "patchmill-visual-evidence",
+  visualEvidence: bundledVisualEvidenceSkill.globalName,
 };
 
 export function cloneSkillsConfig(

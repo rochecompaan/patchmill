@@ -10,6 +10,7 @@ import {
   hashContent,
   hashText,
   projectSkillPath,
+  requiredSkillFiles,
 } from "./skill-pack.ts";
 
 const unixNewline = "name: sample\n";
@@ -24,6 +25,15 @@ test("recommended project skill paths are repo-relative POSIX paths", () => {
     projectSkillPath("subagent-driven-development", "project/skills/"),
     "project/skills/subagent-driven-development",
   );
+});
+
+test("requiredSkillFiles returns bundled sidecars and SKILL.md fallback", () => {
+  assert.deepEqual(requiredSkillFiles("patchmill-visual-evidence"), [
+    "SKILL.md",
+    "scripts/capture-visual-evidence.cjs",
+  ]);
+  assert.deepEqual(requiredSkillFiles("patchmill-issue-triage"), ["SKILL.md"]);
+  assert.deepEqual(requiredSkillFiles("unknown"), ["SKILL.md"]);
 });
 
 test("buildRecommendedProjectSkillConfig maps required workflow stages locally", () => {
