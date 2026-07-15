@@ -13,7 +13,6 @@ import {
   ensureIssueWorktree,
   type IssueWorktreeResult,
 } from "./git.ts";
-import {} from "./issue-todos.ts";
 import {
   PlanningArtifactSafetyError,
   resolvePlanningArtifacts,
