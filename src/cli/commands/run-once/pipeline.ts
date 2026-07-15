@@ -37,7 +37,12 @@ import {
   inspectBlockedRunRecovery,
 } from "./recovery.ts";
 import { selectIssueWithDiagnostics } from "./selection.ts";
-import { emitSimpleStep, progress, withLogPath } from "./pipeline-progress.ts";
+import {
+  createStepAccounting,
+  emitSimpleStep,
+  progress,
+  withLogPath,
+} from "./pipeline-progress.ts";
 import {
   AgentIssueSafetyError,
   effectiveCheckpoints,
@@ -208,78 +213,14 @@ export async function runOneIssue(
   const tokenUsageState = { total: 0 };
   let issueForRun = issue;
   let resolvedArtifacts: ResolvedIssueArtifactSources = {};
-  const runStartedAtMs = (options.now ?? new Date()).getTime();
-  const stepAccounting: {
-    current?: {
-      label: string;
-      startOutputTokens: number;
-      toolCalls: number;
-      startedAt: number;
-    };
-    totalOutputTokens: number;
-  } = { totalOutputTokens: 0 };
-  const stepStart = async (label: string): Promise<void> => {
-    stepAccounting.current = {
-      label,
-      startOutputTokens: stepAccounting.totalOutputTokens,
-      toolCalls: 0,
-      startedAt: Date.now(),
-    };
-    await options.progress?.event({
-      time: new Date().toISOString(),
-      level: "info",
-      stage: "step",
-      message: label,
-      issueNumber: issue.number,
-      data: { stepLabel: label },
-      step: { type: "step-start", label },
-    });
-  };
-  const stepComplete = async (label: string): Promise<void> => {
-    const current =
-      stepAccounting.current?.label === label
-        ? stepAccounting.current
-        : undefined;
-    const taskOutputTokens = current
-      ? stepAccounting.totalOutputTokens - current.startOutputTokens
-      : 0;
-    const toolCalls = current?.toolCalls ?? 0;
-    const elapsedSeconds = Math.max(
-      0,
-      Math.round((Date.now() - runStartedAtMs) / 1000),
-    );
-    await options.progress?.event({
-      time: new Date().toISOString(),
-      level: "info",
-      stage: "step",
-      message: label,
-      issueNumber: issue.number,
-      elapsedSeconds,
-      taskOutputTokens,
-      totalOutputTokens: stepAccounting.totalOutputTokens,
-      toolCalls,
-      step: {
-        type: "step-complete",
-        label,
-        taskOutputTokens,
-        totalOutputTokens: stepAccounting.totalOutputTokens,
-        toolCalls,
-        elapsedSeconds,
-      },
-    });
-    if (current) stepAccounting.current = undefined;
-  };
-  const runStep = async <T>(
-    label: string,
-    fn: () => Promise<T>,
-  ): Promise<T> => {
-    await stepStart(label);
-    try {
-      return await fn();
-    } finally {
-      await stepComplete(label);
-    }
-  };
+  const stepAccounting = createStepAccounting({
+    progress: options.progress,
+    issueNumber: issue.number,
+    runStartedAtMs: (options.now ?? new Date()).getTime(),
+  });
+  const stepStart = stepAccounting.start;
+  const stepComplete = stepAccounting.complete;
+  const runStep = stepAccounting.run;
   const observePi =
     (
       stage:
@@ -291,19 +232,7 @@ export async function runOneIssue(
     async (
       observation: AgentIssueProgressEvent["observation"],
     ): Promise<void> => {
-      if (!observation) return;
-      if (observation.type === "assistant-usage")
-        stepAccounting.totalOutputTokens += observation.outputTokens;
-      if (observation.type === "tool-call" && stepAccounting.current)
-        stepAccounting.current.toolCalls += 1;
-      await options.progress?.event({
-        time: new Date().toISOString(),
-        level: "debug",
-        stage,
-        message: observation.type,
-        issueNumber: issue.number,
-        observation,
-      });
+      await stepAccounting.observe(stage, observation);
     };
   await options.progress?.event({
     time: timestamp,
