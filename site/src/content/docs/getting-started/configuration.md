@@ -269,4 +269,4 @@ labels or comments.
 
 For a fuller reference, see
 [Environment and configuration reference](/reference/environment-and-config/)
-and the repository `docs/configuration.md` file.
+and the [configuration example](/reference/configuration-example/).

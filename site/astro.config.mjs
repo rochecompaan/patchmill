@@ -74,6 +74,14 @@ export default defineConfig({
               label: "Workflow labels",
               slug: "reference/workflow-labels",
             },
+            {
+              label: "Task contracts",
+              slug: "reference/task-contracts",
+            },
+            {
+              label: "Agent workflow lifecycle",
+              slug: "reference/agent-workflow-lifecycle",
+            },
             { label: "Git safety", slug: "reference/git-safety" },
             {
               label: "Environment and configuration",

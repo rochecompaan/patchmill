@@ -92,11 +92,3 @@ issue:
 
 Patchmill never treats free-form issue comments, hand-edited artifact comments,
 external links, or issue-template sections as authoritative workflow artifacts.
-
-## Troubleshooting
-
-If Patchmill generated a new spec or plan after you pasted one into an issue,
-publish the local file with `set-spec` or `set-plan` and run `run-once` again.
-
-If Patchmill reports a checksum mismatch, do not hand-edit the Patchmill-owned
-artifact comment. Update the local file and publish the artifact again.
