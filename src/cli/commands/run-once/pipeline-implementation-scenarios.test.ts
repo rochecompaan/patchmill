@@ -1,60 +1,34 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
-import { createTriagePolicy } from "../../../policy/triage.ts";
 import {
   buildSkillPackMetadata,
   hashText,
 } from "../../../workflow/skill-pack.ts";
 import { bundledVisualEvidenceSkillPath } from "../../../workflow/skills.ts";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { runStatePath } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
-import { JsonlProgressReporter } from "./progress.ts";
 import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
-import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import {
   DEFAULT_LABEL_NAMES,
   issue,
   issueListPayload,
-  issueViewPayload,
   labelListPayload,
 } from "../../../../test-support/run-once/issue-fixtures.ts";
 import {
-  appendPiSessionEntry,
-  assistantToolCall,
   createMockRunner,
-  delay,
-  initializePiSession,
   promptPath,
-  waitForCondition,
-  workflowPiCalls,
   writePiSessionMessage,
-  type Call,
 } from "../../../../test-support/run-once/mock-runner.ts";
-import {
-  approvalPolicy,
-  blockedRecoveryRunner,
-  makeConfig,
-  runPlanApprovedImplementationScenario,
-  specAndPlanApprovalPolicy,
-  writeBlockedRecoveryRunState,
-} from "../../../../test-support/run-once/pipeline-fixtures.ts";
+import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import {
   collectProgressEvents,
-  commentBody,
-  gitBaseContainmentFailure,
   gitBaseContainmentResult,
 } from "../../../../test-support/run-once/assertions.ts";
-import type { CommandResult } from "./types.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
-const MINIMAL_PNG_BYTES = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-]);
 
 function withRepo(args: string[], repoRoot: string): string[] {
   const separator = args.indexOf("--");
@@ -66,13 +40,6 @@ function withRepo(args: string[], repoRoot: string): string[] {
     ...args.slice(separator),
   ];
 }
-
-const LANDING_SKILLS = {
-  ...DEFAULT_PATCHMILL_CONFIG.skills,
-  landing: "project-landing",
-};
-
-const cleanupHook = "./scripts/cleanup.sh";
 
 async function writeTodo(
   repoRoot: string,
