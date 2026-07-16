@@ -401,7 +401,8 @@ export async function runOneIssue(
     if (
       resumableState &&
       existingState &&
-      (existingState.branch || existingState.worktreePath)
+      (existingState.branch || existingState.worktreePath) &&
+      !!existingState.planPath
     ) {
       const resumeWorktree = await ensureIssueWorkspace();
       const savedWorktreePath =

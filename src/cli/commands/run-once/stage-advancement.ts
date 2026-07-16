@@ -203,16 +203,16 @@ export async function advancePlanningStages({
   let planCreated: boolean;
   let planCreatedThisRun = false;
 
-  const planningArtifactWorkspace = ensurePlanningArtifactWorkspace
-    ? await ensurePlanningArtifactWorkspace()
-    : { repoRoot: config.repoRoot };
-  const planningRepoRoot = planningArtifactWorkspace.repoRoot;
-  const planningPlansDir = artifactDirForRepo(
+  let planningArtifactWorkspace: PlanningArtifactWorkspace = {
+    repoRoot: config.repoRoot,
+  };
+  let planningRepoRoot = planningArtifactWorkspace.repoRoot;
+  let planningPlansDir = artifactDirForRepo(
     config.repoRoot,
     planningRepoRoot,
     config.plansDir,
   );
-  const planningSpecsDir = artifactDirForRepo(
+  let planningSpecsDir = artifactDirForRepo(
     config.repoRoot,
     planningRepoRoot,
     config.specsDir,
@@ -225,8 +225,23 @@ export async function advancePlanningStages({
       ? { worktreePath: planningArtifactWorkspace.worktreePath }
       : {}),
   });
-
-  const artifactPolicyForRun = artifactPolicy ?? {
+  const setPlanningArtifactWorkspace = (
+    workspace: PlanningArtifactWorkspace,
+  ): void => {
+    planningArtifactWorkspace = workspace;
+    planningRepoRoot = planningArtifactWorkspace.repoRoot;
+    planningPlansDir = artifactDirForRepo(
+      config.repoRoot,
+      planningRepoRoot,
+      config.plansDir,
+    );
+    planningSpecsDir = artifactDirForRepo(
+      config.repoRoot,
+      planningRepoRoot,
+      config.specsDir,
+    );
+  };
+  const freshArtifactPolicy = (): PlanningArtifactPolicy => ({
     kind: "fresh" as const,
     primary: {
       repoRoot: planningRepoRoot,
@@ -234,6 +249,17 @@ export async function advancePlanningStages({
       plansDir: planningPlansDir,
       source: "primary-repo" as const,
     },
+    fallbacks:
+      planningRepoRoot === config.repoRoot
+        ? undefined
+        : [
+            {
+              repoRoot: config.repoRoot,
+              specsDir: config.specsDir,
+              plansDir: config.plansDir,
+              source: "primary-repo" as const,
+            },
+          ],
     explicit: resolvedArtifacts,
     saved: {
       specPath: existingState?.specPath,
@@ -245,12 +271,28 @@ export async function advancePlanningStages({
     },
     allowGeneratedSpec: true,
     allowGeneratedPlan: true,
-  };
-  const planningArtifacts = await resolvePlanningArtifacts({
+  });
+
+  let artifactPolicyForRun = artifactPolicy ?? freshArtifactPolicy();
+  let planningArtifacts = await resolvePlanningArtifacts({
     policy: artifactPolicyForRun,
     issue,
     now,
   });
+  if (
+    !artifactPolicy &&
+    ensurePlanningArtifactWorkspace &&
+    (planningArtifacts.plan.generated ||
+      (!planningArtifacts.plan.exists && planningArtifacts.spec.generated))
+  ) {
+    setPlanningArtifactWorkspace(await ensurePlanningArtifactWorkspace());
+    artifactPolicyForRun = freshArtifactPolicy();
+    planningArtifacts = await resolvePlanningArtifacts({
+      policy: artifactPolicyForRun,
+      issue,
+      now,
+    });
+  }
   const preexistingPlan = planningArtifacts.plan;
 
   await progress("info", "spec", "finding spec", {

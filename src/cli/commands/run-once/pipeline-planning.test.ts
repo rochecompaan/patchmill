@@ -1163,13 +1163,13 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
     ),
-    false,
+    true,
   );
   assert.equal(
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "show-ref",
     ),
-    false,
+    true,
   );
 });
 
@@ -1235,7 +1235,7 @@ test("runOneIssue ignores stale plan approval when a new plan is created", async
     runner.calls.some(
       (call) => call.command === "git" && call.args[0] === "worktree",
     ),
-    false,
+    true,
   );
   const editCalls = runner.calls.filter(
     (call) =>

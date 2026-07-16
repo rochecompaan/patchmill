@@ -44,10 +44,7 @@ export async function unexpectedFailure(
 ): Promise<AgentIssuePipelineResult> {
   const reason = errorMessage(error);
   const status =
-    details.branch ||
-    details.worktreePath ||
-    checkpoints.worktreeReady ||
-    checkpoints.implementationCompleted
+    checkpoints.worktreeReady || checkpoints.implementationCompleted
       ? "implementing"
       : details.specPath ||
           details.specCommit ||
