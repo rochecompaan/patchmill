@@ -9,7 +9,7 @@
       "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
     }
   },
-  "installedAt": "2026-07-16T09:46:41.966Z",
+  "installedAt": "2026-07-16T09:50:31.924Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -39,7 +39,7 @@
     },
     {
       "path": ".patchmill/skills/brainstorming/spec-document-reviewer-prompt.md",
-      "sha256": "b03ed703dc6fdbae6b156fc3a8381571ecb53cc2bea88df8c6094f5f3481f34e"
+      "sha256": "e2c650db18700913ba49894ea26b9383b4efc80303fe456f465c5365c014d05a"
     },
     {
       "path": ".patchmill/skills/brainstorming/visual-companion.md",

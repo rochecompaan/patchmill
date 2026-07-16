@@ -22,6 +22,7 @@ import type {
   CommandRunner,
   IssueSummary,
 } from "./types.ts";
+import { mirrorConfiguredPathInWorktree } from "./pipeline-workspace.ts";
 import {
   cleanupLabelsForPlanReview,
   cleanupLabelsForSpecReview,
@@ -125,14 +126,6 @@ function repoPath(
   return { absolute: join(repoRoot, path), relative: path };
 }
 
-function artifactDirForRepo(
-  baseRepoRoot: string,
-  artifactRepoRoot: string,
-  artifactDir: string,
-): string {
-  return join(artifactRepoRoot, repoPath(baseRepoRoot, artifactDir).relative);
-}
-
 function nextLabels(
   labels: string[],
   remove: string[],
@@ -207,12 +200,12 @@ export async function advancePlanningStages({
     repoRoot: config.repoRoot,
   };
   let planningRepoRoot = planningArtifactWorkspace.repoRoot;
-  let planningPlansDir = artifactDirForRepo(
+  let planningPlansDir = mirrorConfiguredPathInWorktree(
     config.repoRoot,
     planningRepoRoot,
     config.plansDir,
   );
-  let planningSpecsDir = artifactDirForRepo(
+  let planningSpecsDir = mirrorConfiguredPathInWorktree(
     config.repoRoot,
     planningRepoRoot,
     config.specsDir,
@@ -230,12 +223,12 @@ export async function advancePlanningStages({
   ): void => {
     planningArtifactWorkspace = workspace;
     planningRepoRoot = planningArtifactWorkspace.repoRoot;
-    planningPlansDir = artifactDirForRepo(
+    planningPlansDir = mirrorConfiguredPathInWorktree(
       config.repoRoot,
       planningRepoRoot,
       config.plansDir,
     );
-    planningSpecsDir = artifactDirForRepo(
+    planningSpecsDir = mirrorConfiguredPathInWorktree(
       config.repoRoot,
       planningRepoRoot,
       config.specsDir,
