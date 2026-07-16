@@ -98,7 +98,13 @@ export function createMockRunner(
         return await handler(call);
       } catch (error) {
         const worktreeFallback = defaultWorktreePreflightResult(call);
-        if (worktreeFallback) return worktreeFallback;
+        if (
+          worktreeFallback &&
+          error instanceof Error &&
+          /^unexpected command:/u.test(error.message)
+        ) {
+          return worktreeFallback;
+        }
         throw error;
       }
     },
