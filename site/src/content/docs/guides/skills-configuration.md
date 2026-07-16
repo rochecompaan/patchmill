@@ -17,6 +17,16 @@ Patchmill-specific skills. These skills encode the planning, implementation,
 debugging, review, visual-evidence, and branch-finishing discipline that
 Patchmill expects when it advances an issue.
 
+A few recommended project-local skills are Patchmill-adapted copies of pinned
+Superpowers skills. Patchmill uses the upstream Superpowers skill as the
+starting point, then layers repository workflow rules on top. The adapted
+`brainstorming` and `writing-plans` skills save artifacts under `docs/specs/`
+and `docs/plans/` in the issue worktree; the adapted `test-driven-development`
+skill keeps test-first behavior for meaningful production behavior while
+applying Patchmill's Testing Value Gate so agents use direct verification for
+static docs, workflow YAML, lockfiles, dependency versions, and similar
+low-value-test changes.
+
 `patchmill init` installs the recommended skill pack by default when you choose
 project-local skills. The installed
 `.patchmill/skills/patchmill-skill-pack.json` metadata records the pack name,

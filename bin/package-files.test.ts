@@ -34,6 +34,15 @@ test("package metadata identifies Patchmill as Apache-2.0", () => {
     thirdPartyNotices,
     /License: Apache License 2\.0 \(`LICENSE`\)/u,
   );
+  assert.match(thirdPartyNotices, /## Superpowers adapted skills/u);
+  assert.match(
+    thirdPartyNotices,
+    /Repository: <https:\/\/github\.com\/obra\/superpowers>/u,
+  );
+  assert.match(thirdPartyNotices, /License: MIT License/u);
+  assert.match(thirdPartyNotices, /skills\/brainstorming/u);
+  assert.match(thirdPartyNotices, /skills\/writing-plans/u);
+  assert.match(thirdPartyNotices, /skills\/test-driven-development/u);
 });
 
 test("npm pack dry-run includes bundled runtime resources and notices", () => {

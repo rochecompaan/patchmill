@@ -1,13 +1,16 @@
+<!-- markdownlint-disable MD022 MD031 MD032 MD033 MD036 MD040 MD060 -->
+
 # Spec Document Reviewer Prompt Template
 
 Use this template when dispatching a spec document reviewer subagent.
 
-**Purpose:** Verify the spec is complete, consistent, and ready for implementation planning.
+**Purpose:** Verify the spec is complete, consistent, and ready for
+implementation planning.
 
 **Dispatch after:** Spec document is written to docs/superpowers/specs/
 
 ```
-Task tool (general-purpose):
+Subagent (general-purpose):
   description: "Review spec document"
   prompt: |
     You are a spec document reviewer. Verify this spec is complete and ready for planning.
