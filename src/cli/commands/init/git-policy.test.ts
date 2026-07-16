@@ -40,15 +40,33 @@ function scriptedRunner(
   };
 }
 
-test("selectInitGitPolicy defaults to git-exclude for non-interactive runs", async () => {
+test("selectInitGitPolicy defaults to add for defaulted runs", async () => {
   assert.equal(
     await selectInitGitPolicy({ isInteractive: false, assumeYes: false }),
-    "exclude",
+    "add",
   );
   assert.equal(
     await selectInitGitPolicy({ isInteractive: true, assumeYes: true }),
-    "exclude",
+    "add",
   );
+
+  let question = "";
+  assert.equal(
+    await selectInitGitPolicy({
+      isInteractive: true,
+      assumeYes: false,
+      prompt: async (value) => {
+        question = value;
+        return "";
+      },
+    }),
+    "add",
+  );
+  assert.match(
+    question,
+    /1\) Add config and skills to git \(recommended for shared config\)/u,
+  );
+  assert.match(question, /Choose 1, 2, or 3 \[1\]:/u);
 });
 
 test("selectInitGitPolicy accepts add, ignore, and exclude prompt answers", async () => {
@@ -72,7 +90,7 @@ test("selectInitGitPolicy accepts add, ignore, and exclude prompt answers", asyn
     await selectInitGitPolicy({
       isInteractive: true,
       assumeYes: false,
-      prompt: async () => "",
+      prompt: async () => "3",
     }),
     "exclude",
   );
@@ -120,6 +138,10 @@ test("applyInitGitPolicy add stages config, skills, and runtime ignore entries",
     result.message,
     /Patchmill config, skills, and local artifact ignore rules were committed/u,
   );
+  assert.deepEqual(result.setupCommit, {
+    status: "committed",
+    paths: ["patchmill.config.json", ".patchmill/skills", ".gitignore"],
+  });
 });
 
 test("applyInitGitPolicy add omits missing skills directory", async () => {
@@ -157,6 +179,10 @@ test("applyInitGitPolicy add omits missing skills directory", async () => {
     result.message,
     /Patchmill config and local artifact ignore rules were committed/u,
   );
+  assert.deepEqual(result.setupCommit, {
+    status: "committed",
+    paths: ["patchmill.config.json", ".gitignore"],
+  });
   assert.doesNotMatch(result.message, /.patchmill\/skills/u);
 });
 
@@ -199,6 +225,10 @@ test("applyInitGitPolicy add stages provided repo-local skill roots", async () =
     result.message,
     /Patchmill config, skills, and local artifact ignore rules were committed/u,
   );
+  assert.deepEqual(result.setupCommit, {
+    status: "committed",
+    paths: ["patchmill.config.json", "custom-skills", ".gitignore"],
+  });
 });
 
 test("applyInitGitPolicy add force-stages skills when .patchmill is ignored", async () => {
@@ -385,6 +415,10 @@ test("applyInitGitPolicy reports git commit failures as non-fatal warnings", asy
   assert.match(result.message, /Warning/u);
   assert.match(result.message, /git commit failed/u);
   assert.match(result.message, /author identity unknown/u);
+  assert.deepEqual(result.setupCommit, {
+    status: "commit-warning",
+    paths: ["patchmill.config.json", ".gitignore"],
+  });
 });
 
 test("applyInitGitPolicy reports missing git metadata without failing init", async () => {
