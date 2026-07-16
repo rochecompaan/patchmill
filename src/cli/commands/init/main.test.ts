@@ -158,11 +158,11 @@ test("runInit installs project-local skills by default", async () => {
   assert.match(stdout.join("\n"), /Installed project-local skills/);
   assert.match(
     stdout.join("\n"),
-    /Added Patchmill files to \.git\/info\/exclude/,
+    /Added local Patchmill runtime directories to \.gitignore/,
   );
   assert.match(
-    await readFile(join(repoRoot, ".git", "info", "exclude"), "utf8"),
-    /patchmill\.config\.json\n\.patchmill\/\n/u,
+    await readFile(join(repoRoot, ".gitignore"), "utf8"),
+    /\.patchmill\/runs\n\.patchmill\/triage-runs/u,
   );
   assert.doesNotMatch(stdout.join("\n"), /local-only by default/u);
   assert.doesNotMatch(stdout.join("\n"), /Commit \.patchmill\/skills\//);
@@ -172,7 +172,7 @@ test("runInit installs project-local skills by default", async () => {
   );
 });
 
-test("runInit preserves existing local exclude entries and does not touch gitignore", async () => {
+test("runInit explicit local exclude preserves existing exclude entries and does not touch gitignore", async () => {
   const repoRoot = await tempRepo();
   await writeFile(join(repoRoot, ".gitignore"), "node_modules\n");
   await writeFile(
@@ -193,8 +193,19 @@ test("runInit preserves existing local exclude entries and does not touch gitign
         homeDir: await tempRepo(),
         detectPiReadiness: missingPiReadiness,
         runPiSmokeTest: failingPiSmokeTest,
-        isInteractive: false,
+        isInteractive: true,
+        prompt: async () => "3",
         checkPiAvailable: async () => false,
+        resolvePiInitSetup: async () => ({
+          status: "incomplete",
+          readiness: missingPiReadiness(),
+          selection: {
+            status: "unavailable",
+            message: "Pi model selection unavailable.",
+            reason: "not-ready",
+          },
+          smoke: await failingPiSmokeTest(),
+        }),
       },
     ),
     0,

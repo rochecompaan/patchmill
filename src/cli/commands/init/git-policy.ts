@@ -19,9 +19,20 @@ export const PATCHMILL_ADD_TO_GIT_IGNORE_ENTRIES = [
   ".pi/todos/",
 ] as const;
 
+export type InitSetupCommitStatus =
+  | "committed"
+  | "nothing"
+  | "missing"
+  | "stage-warning"
+  | "commit-warning";
+
 export type InitGitPolicyResult = {
   policy: InitGitPolicy;
   message: string;
+  setupCommit?: {
+    status: InitSetupCommitStatus;
+    paths: string[];
+  };
 };
 
 export type InitGitPolicyPrompt = (question: string) => Promise<string>;
@@ -177,28 +188,30 @@ export async function selectInitGitPolicy(options: {
   prompt?: InitGitPolicyPrompt;
 }): Promise<InitGitPolicy> {
   if (!options.isInteractive || options.assumeYes || !options.prompt) {
-    return "exclude";
+    return "add";
   }
 
   const answer = (
     await options.prompt(
       [
         "How should Patchmill files be handled by git?",
-        "  1) Add config and skills to git",
+        "  1) Add config and skills to git (recommended for shared config)",
         "  2) Add Patchmill files to .gitignore",
         "  3) Add Patchmill files to .git/info/exclude (local only)",
-        "Choose 1, 2, or 3 [3]: ",
+        "Choose 1, 2, or 3 [1]: ",
       ].join("\n"),
     )
   )
     .trim()
     .toLowerCase();
 
-  if (["1", "a", "add", "git", "add to git"].includes(answer)) return "add";
   if (["2", "i", "ignore", "gitignore", "git ignore"].includes(answer)) {
     return "ignore";
   }
-  return "exclude";
+  if (["3", "e", "exclude", "local", "local only"].includes(answer)) {
+    return "exclude";
+  }
+  return "add";
 }
 
 export async function applyInitGitPolicy(options: {
@@ -239,6 +252,10 @@ export async function applyInitGitPolicy(options: {
     return {
       policy: options.policy,
       message: [addSummary, ignoreMessage].join("\n"),
+      setupCommit: {
+        status: commit.status,
+        paths: commit.paths,
+      },
     };
   }
 

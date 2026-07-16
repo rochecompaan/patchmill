@@ -26,6 +26,7 @@ import {
   type InitialConfigSkills,
 } from "./config-writer.ts";
 import { applyInitGitPolicy, selectInitGitPolicy } from "./git-policy.ts";
+import { maybeOfferInitSetupPush } from "./git-setup-push.ts";
 import {
   localPiAgentDir,
   readLocalPiDefaultModel,
@@ -200,6 +201,7 @@ export async function runInit(
     return 1;
   }
   const isInteractive = options.isInteractive ?? defaultStdin.isTTY;
+  const commandRunner = options.commandRunner ?? createCommandRunner();
   const gitPolicy = await selectInitGitPolicy({
     isInteractive,
     assumeYes: config.yes,
@@ -208,9 +210,24 @@ export async function runInit(
   const gitPolicyResult = await applyInitGitPolicy({
     repoRoot: config.repoRoot,
     policy: gitPolicy,
-    runner: options.commandRunner ?? createCommandRunner(),
+    runner: commandRunner,
     skillRoots: stageableSkillRoots(result.config.skills),
   });
+  const setupPushResult =
+    gitPolicyResult.setupCommit?.status === "committed"
+      ? await maybeOfferInitSetupPush({
+          repoRoot: config.repoRoot,
+          runner: commandRunner,
+          remote: DEFAULT_PATCHMILL_CONFIG.git.remote,
+          baseBranch: DEFAULT_PATCHMILL_CONFIG.git.baseBranch,
+          isInteractive,
+          assumeYes: config.yes,
+          prompt: options.prompt ?? defaultPrompt,
+        })
+      : undefined;
+  const gitPolicyMessage = [gitPolicyResult.message, setupPushResult?.message]
+    .filter((message): message is string => Boolean(message))
+    .join("\n\n");
   const piAgentDir = localPiAgentDir(config.repoRoot);
   let currentDefault: Awaited<ReturnType<typeof readLocalPiDefaultModel>> =
     undefined;
@@ -288,7 +305,7 @@ export async function runInit(
     : "";
 
   output.stdout(
-    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${gitPolicyResult.message}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
+    `Created patchmill.config.json\n\nHost:\n  provider: ${result.config.host.provider}\n  login: ${result.config.host.login}\n\n${HOST_LOGIN_GUIDANCE}\n\n${gitPolicyMessage}\n\n${skillsMessage}\n\n${labelSetupMessage}\n\n${piSettingsMessage}${piMessage}\n\n${nextSteps(piReady)}`,
   );
   return shouldAbortPiSetup(piSetup) ? 1 : 0;
 }

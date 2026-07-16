@@ -68,17 +68,46 @@ function runner(calls: string[][]): CommandRunner {
   };
 }
 
+function scriptedRunner(
+  calls: string[][],
+  results: Array<{ code?: number; stdout?: string; stderr?: string }>,
+): CommandRunner {
+  return {
+    async run(command, args, options) {
+      calls.push([command, ...args, `cwd=${options?.cwd ?? ""}`]);
+      const result = results.shift() ?? { code: 0, stdout: "", stderr: "" };
+      return {
+        code: result.code ?? 0,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+      };
+    },
+  };
+}
+
+const safePushInspection = [
+  { stdout: "main\n" },
+  { stdout: "origin/main\n" },
+  { stdout: "target-sha\n" },
+  { code: 0 },
+  { stdout: "abc123\0chore: initialize Patchmill\n" },
+];
+
 async function runInitForGitPolicy(
   repoRoot: string,
   options: {
     args?: string[];
     isInteractive: boolean;
     promptAnswer?: string;
+    promptAnswers?: string[];
     calls?: string[][];
     commandRunner?: CommandRunner;
   },
 ) {
   const stdout: string[] = [];
+  const promptAnswers = [
+    ...(options.promptAnswers ?? [options.promptAnswer ?? ""]),
+  ];
   const exitCode = await runInit(
     options.args ?? [],
     repoRoot,
@@ -91,7 +120,7 @@ async function runInitForGitPolicy(
       runPiSmokeTest: failingPiSmokeTest,
       resolvePiInitSetup: incompletePiSetup,
       isInteractive: options.isInteractive,
-      prompt: async () => options.promptAnswer ?? "",
+      prompt: async () => promptAnswers.shift() ?? "",
       commandRunner: options.commandRunner ?? runner(options.calls ?? []),
       setupLabels: async () => ({
         status: "skipped",
@@ -133,6 +162,7 @@ test("interactive init add-to-git commits config, skills, and gitignore", async 
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    ["git", "rev-parse", "--abbrev-ref", "HEAD", `cwd=${repoRoot}`],
   ]);
   assert.equal(
     await readFile(join(repoRoot, ".gitignore"), "utf8"),
@@ -142,6 +172,8 @@ test("interactive init add-to-git commits config, skills, and gitignore", async 
     output,
     /Patchmill config, skills, and local artifact ignore rules were committed/u,
   );
+  assert.match(output, /must be pushed or merged into origin\/main/u);
+  assert.match(output, /git push origin HEAD:main/u);
   assert.doesNotMatch(output, /local-only by default/u);
 });
 
@@ -175,11 +207,14 @@ test("interactive init add-to-git with no skills commits config and gitignore on
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    ["git", "rev-parse", "--abbrev-ref", "HEAD", `cwd=${repoRoot}`],
   ]);
   assert.match(
     output,
     /Patchmill config and local artifact ignore rules were committed/u,
   );
+  assert.match(output, /must be pushed or merged into origin\/main/u);
+  assert.match(output, /git push origin HEAD:main/u);
   assert.doesNotMatch(output, /.patchmill\/skills/u);
 });
 
@@ -219,11 +254,14 @@ test("interactive init add-to-git with path skills commits the provided skill ro
       ".gitignore",
       `cwd=${repoRoot}`,
     ],
+    ["git", "rev-parse", "--abbrev-ref", "HEAD", `cwd=${repoRoot}`],
   ]);
   assert.match(
     output,
     /Patchmill config, skills, and local artifact ignore rules were committed/u,
   );
+  assert.match(output, /must be pushed or merged into origin\/main/u);
+  assert.match(output, /git push origin HEAD:main/u);
   assert.doesNotMatch(output, /.patchmill\/skills/u);
 });
 
@@ -275,20 +313,25 @@ test("interactive init git-exclude writes config and .patchmill to local exclude
   assert.match(output, /Added Patchmill files to .git\/info\/exclude/u);
 });
 
-test("non-interactive and --yes init choose git-exclude without prompting", async () => {
+test("non-interactive and --yes init choose add without pushing", async () => {
   const nonInteractiveRoot = await tempRepo();
   const yesRoot = await tempRepo();
+  const nonInteractiveCalls: string[][] = [];
+  const yesCalls: string[][] = [];
   let prompted = false;
 
-  await runInitForGitPolicy(nonInteractiveRoot, {
+  const nonInteractive = await runInitForGitPolicy(nonInteractiveRoot, {
     isInteractive: false,
-    promptAnswer: "1",
+    promptAnswer: "3",
+    calls: nonInteractiveCalls,
   });
-  await runInit(
+  const yes = await runInit(
     ["--yes"],
     yesRoot,
     {
-      stdout: () => undefined,
+      stdout: (line) => {
+        if (!line.includes("Created patchmill.config.json")) return;
+      },
       stderr: () => undefined,
     },
     {
@@ -298,9 +341,9 @@ test("non-interactive and --yes init choose git-exclude without prompting", asyn
       isInteractive: true,
       prompt: async () => {
         prompted = true;
-        return "1";
+        return "3";
       },
-      commandRunner: runner([]),
+      commandRunner: runner(yesCalls),
       setupLabels: async () => ({
         status: "skipped",
         message: "Label setup skipped.",
@@ -309,14 +352,68 @@ test("non-interactive and --yes init choose git-exclude without prompting", asyn
   );
 
   assert.equal(prompted, false);
+  assert.equal(yes, 0);
+  assert.match(
+    await readFile(join(nonInteractiveRoot, ".gitignore"), "utf8"),
+    /\.patchmill\/runs/u,
+  );
+  assert.match(nonInteractive.output, /git push origin HEAD:main/u);
   assert.equal(
-    await readFile(join(nonInteractiveRoot, ".git", "info", "exclude"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
+    nonInteractiveCalls.some((call) => call[1] === "push"),
+    false,
   );
   assert.equal(
-    await readFile(join(yesRoot, ".git", "info", "exclude"), "utf8"),
-    "patchmill.config.json\n.patchmill/\n.worktrees/\n.pi/todos/\n",
+    yesCalls.some((call) => call[1] === "push"),
+    false,
   );
+});
+
+test("interactive init offers and pushes a safe Patchmill setup commit", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+
+  const { output } = await runInitForGitPolicy(repoRoot, {
+    isInteractive: true,
+    promptAnswers: ["", ""],
+    commandRunner: scriptedRunner(calls, [
+      { code: 0 },
+      { code: 0 },
+      ...safePushInspection,
+      { code: 0 },
+    ]),
+  });
+
+  assert.deepEqual(calls.at(-1), [
+    "git",
+    "push",
+    "origin",
+    "HEAD:main",
+    `cwd=${repoRoot}`,
+  ]);
+  assert.match(output, /Pushed Patchmill setup commit to origin\/main/u);
+  assert.doesNotMatch(output, /git.baseRef HEAD is not contained/u);
+});
+
+test("interactive init prints guidance when setup push is declined", async () => {
+  const repoRoot = await tempRepo();
+  const calls: string[][] = [];
+
+  const { output } = await runInitForGitPolicy(repoRoot, {
+    isInteractive: true,
+    promptAnswers: ["", "n"],
+    commandRunner: scriptedRunner(calls, [
+      { code: 0 },
+      { code: 0 },
+      ...safePushInspection,
+    ]),
+  });
+
+  assert.equal(
+    calls.some((call) => call[1] === "push"),
+    false,
+  );
+  assert.match(output, /must be pushed or merged into origin\/main/u);
+  assert.match(output, /git push origin HEAD:main/u);
 });
 
 test("interactive init reports commit failures without aborting label or Pi setup", async () => {
