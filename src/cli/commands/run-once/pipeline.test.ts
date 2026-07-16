@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { runOneIssue } from "./pipeline.ts";
+import { readRunState, writeRunState } from "./run-state.ts";
 import {
   blockedRecoveryRunner,
   makeConfig,
@@ -14,6 +15,7 @@ import { createMockRunner } from "../../../../test-support/run-once/mock-runner.
 import {
   issue,
   issueListPayload,
+  labelListPayload,
 } from "../../../../test-support/run-once/issue-fixtures.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
@@ -78,6 +80,191 @@ test("runOneIssue facade returns plan-created in plan-only mode", async () => {
 
   assert.match(result.status, /^plan-(created|found)$/);
   assert.equal(result.issue.number, 8);
+});
+
+test("runOneIssue creates missing planning artifacts from the issue worktree in plan-only mode", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const selected = issue(12, ["agent-ready"], "Add once runner pipeline");
+  const expectedBranch = "agent/issue-12-add-once-runner-pipeline";
+  const expectedWorktreePath =
+    ".worktrees/patchmill-issue-12-add-once-runner-pipeline";
+  const expectedWorktreeRoot = join(config.repoRoot, expectedWorktreePath);
+  const piCwds: Array<string | undefined> = [];
+
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      assert.deepEqual(call.args, [
+        "worktree",
+        "add",
+        "-b",
+        expectedBranch,
+        expectedWorktreePath,
+        "HEAD",
+      ]);
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "comment") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "issues") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCwds.push(call.cwd);
+      assert.equal(call.cwd, expectedWorktreeRoot);
+      return { code: 0, stdout: "{}", stderr: "" };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.deepEqual(piCwds, [expectedWorktreeRoot, expectedWorktreeRoot]);
+  const runState = await readRunState(config.runStateDir, 12);
+  assert.equal(runState?.branch, expectedBranch);
+  assert.equal(runState?.worktreePath, expectedWorktreePath);
+});
+
+test("runOneIssue resolves saved planning artifacts from the issue worktree on resume", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const planPath = "docs/plans/2026-05-14-issue-45-worktree-only-plan.md";
+  const worktreePath = ".worktrees/patchmill-issue-45-worktree-only-plan";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+  await mkdir(join(worktreeRoot, "docs", "plans"), { recursive: true });
+  await writeFile(
+    join(worktreeRoot, planPath),
+    "# worktree-only plan\n",
+    "utf8",
+  );
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 45,
+      title: "Worktree only plan",
+      status: "planning",
+      branch: "agent/issue-45-worktree-only-plan",
+      worktreePath,
+      planPath,
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planCreated: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(45, ["in-progress", "bug"], "Worktree only plan"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-45-worktree-only-plan\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "issues") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "comment") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      throw new Error("saved worktree plan should not be regenerated");
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, planPath);
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
 });
 
 test("runOneIssue facade returns pr-created after implementation", async () => {

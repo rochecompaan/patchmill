@@ -476,6 +476,14 @@ export async function runOneIssue(
       existingState,
       resolvedArtifacts,
       artifactPolicy,
+      ensurePlanningArtifactWorkspace: async () => {
+        const workspace = await ensureIssueWorkspace();
+        return {
+          repoRoot: join(config.repoRoot, workspace.worktreePath),
+          branch: workspace.branch,
+          worktreePath: workspace.worktreePath,
+        };
+      },
       checkpoints,
       timestamp,
       now: options.now ?? new Date(),

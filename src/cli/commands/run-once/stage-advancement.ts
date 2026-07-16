@@ -5,6 +5,7 @@ import { planLabelChange } from "../triage/labels.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
+import type { IssueWorktreeResult } from "./git.ts";
 import { buildPlanCreationPrompt, buildSpecCreationPrompt } from "./prompts.ts";
 import { writeRunState } from "./run-state.ts";
 import {
@@ -45,8 +46,16 @@ type BlockIssue = (
     specCommit?: string;
     planPath?: string;
     planCommit?: string;
+    branch?: string;
+    worktreePath?: string;
   },
 ) => Promise<AgentIssuePipelineResult>;
+
+type PlanningArtifactWorkspace = Partial<
+  Pick<IssueWorktreeResult, "branch" | "worktreePath">
+> & {
+  repoRoot: string;
+};
 
 type ExistingPlanningState = {
   status?: AgentIssueRunStateStatus;
@@ -84,6 +93,7 @@ export type AdvancePlanningStagesOptions = {
   existingState?: ExistingPlanningState;
   resolvedArtifacts?: ResolvedIssueArtifactSources;
   artifactPolicy?: PlanningArtifactPolicy;
+  ensurePlanningArtifactWorkspace?: () => Promise<PlanningArtifactWorkspace>;
   checkpoints: AgentIssueRunCheckpoints;
   timestamp: string;
   now: Date;
@@ -113,6 +123,14 @@ function repoPath(
   }
 
   return { absolute: join(repoRoot, path), relative: path };
+}
+
+function artifactDirForRepo(
+  baseRepoRoot: string,
+  artifactRepoRoot: string,
+  artifactDir: string,
+): string {
+  return join(artifactRepoRoot, repoPath(baseRepoRoot, artifactDir).relative);
 }
 
 function nextLabels(
@@ -162,6 +180,7 @@ export async function advancePlanningStages({
   existingState,
   resolvedArtifacts,
   artifactPolicy,
+  ensurePlanningArtifactWorkspace,
   checkpoints,
   timestamp,
   now,
@@ -184,12 +203,35 @@ export async function advancePlanningStages({
   let planCreated: boolean;
   let planCreatedThisRun = false;
 
+  const planningArtifactWorkspace = ensurePlanningArtifactWorkspace
+    ? await ensurePlanningArtifactWorkspace()
+    : { repoRoot: config.repoRoot };
+  const planningRepoRoot = planningArtifactWorkspace.repoRoot;
+  const planningPlansDir = artifactDirForRepo(
+    config.repoRoot,
+    planningRepoRoot,
+    config.plansDir,
+  );
+  const planningSpecsDir = artifactDirForRepo(
+    config.repoRoot,
+    planningRepoRoot,
+    config.specsDir,
+  );
+  const planningWorkspaceState = () => ({
+    ...(planningArtifactWorkspace.branch
+      ? { branch: planningArtifactWorkspace.branch }
+      : {}),
+    ...(planningArtifactWorkspace.worktreePath
+      ? { worktreePath: planningArtifactWorkspace.worktreePath }
+      : {}),
+  });
+
   const artifactPolicyForRun = artifactPolicy ?? {
     kind: "fresh" as const,
     primary: {
-      repoRoot: config.repoRoot,
-      specsDir: config.specsDir,
-      plansDir: config.plansDir,
+      repoRoot: planningRepoRoot,
+      specsDir: planningSpecsDir,
+      plansDir: planningPlansDir,
       source: "primary-repo" as const,
     },
     explicit: resolvedArtifacts,
@@ -233,6 +275,7 @@ export async function advancePlanningStages({
       {
         issueNumber: issue.number,
         status: "planning",
+        ...planningWorkspaceState(),
         specPath,
         specCommit,
         checkpoints: {
@@ -255,7 +298,7 @@ export async function advancePlanningStages({
       });
       return await runPiPrompt(
         runner,
-        config.repoRoot,
+        planningRepoRoot,
         buildSpecCreationPrompt({
           issue,
           specPath: createdSpecPath,
@@ -269,11 +312,11 @@ export async function advancePlanningStages({
           stage: "pi-plan",
           skillPaths: skillInvocationPaths(
             [config.skills.planning],
-            config.repoRoot,
+            planningRepoRoot,
           ),
           streamOutput: runOptions.streamPiOutput,
           issueNumber: issue.number,
-          repoRoot: config.repoRoot,
+          repoRoot: planningRepoRoot,
           heartbeatMs: runOptions.heartbeatMs,
           tokenUsageState,
           observeSession: true,
@@ -288,6 +331,7 @@ export async function advancePlanningStages({
       return {
         kind: "finished",
         result: await blockIssue(specResult, {
+          ...planningWorkspaceState(),
           specPath: spec.generated && !specCreated ? undefined : specPath,
           specCommit,
         }),
@@ -299,7 +343,7 @@ export async function advancePlanningStages({
       );
     }
 
-    specPath = repoPath(config.repoRoot, specResult.specPath).relative;
+    specPath = repoPath(planningRepoRoot, specResult.specPath).relative;
     specCommit = specResult.commit;
     specCreated = true;
     specCreatedThisRun = true;
@@ -308,6 +352,7 @@ export async function advancePlanningStages({
       {
         issueNumber: issue.number,
         status: "planning",
+        ...planningWorkspaceState(),
         specPath,
         specCommit,
         checkpoints: { specPathResolved: true, specCreated: true },
@@ -350,6 +395,7 @@ export async function advancePlanningStages({
         {
           issueNumber: issue.number,
           status: "planning",
+          ...planningWorkspaceState(),
           specPath,
           specCommit,
           checkpoints: { specReadyCommentPosted: true },
@@ -369,6 +415,7 @@ export async function advancePlanningStages({
       {
         issueNumber: issue.number,
         status: reviewStopStatus(existingState),
+        ...planningWorkspaceState(),
         specPath,
         specCommit,
         checkpoints: { readyLabelRestored: true },
@@ -403,6 +450,7 @@ export async function advancePlanningStages({
       {
         issueNumber: issue.number,
         status: "planning",
+        ...planningWorkspaceState(),
         specPath,
         specCommit,
         planPath,
@@ -424,7 +472,7 @@ export async function advancePlanningStages({
       });
       return await runPiPrompt(
         runner,
-        config.repoRoot,
+        planningRepoRoot,
         buildPlanCreationPrompt({
           issue,
           specPath,
@@ -439,11 +487,11 @@ export async function advancePlanningStages({
           stage: "pi-plan",
           skillPaths: skillInvocationPaths(
             [config.skills.planning],
-            config.repoRoot,
+            planningRepoRoot,
           ),
           streamOutput: runOptions.streamPiOutput,
           issueNumber: issue.number,
-          repoRoot: config.repoRoot,
+          repoRoot: planningRepoRoot,
           heartbeatMs: runOptions.heartbeatMs,
           tokenUsageState,
           observeSession: true,
@@ -458,6 +506,7 @@ export async function advancePlanningStages({
       return {
         kind: "finished",
         result: await blockIssue(planned, {
+          ...planningWorkspaceState(),
           specPath: spec.generated && !specCreated ? undefined : specPath,
           specCommit,
           planPath: plan.generated && !planCreated ? undefined : planPath,
@@ -470,7 +519,7 @@ export async function advancePlanningStages({
       );
     }
 
-    planPath = repoPath(config.repoRoot, planned.planPath).relative;
+    planPath = repoPath(planningRepoRoot, planned.planPath).relative;
     planCommit = planned.commit;
     planCreated = true;
     planCreatedThisRun = true;
@@ -479,6 +528,7 @@ export async function advancePlanningStages({
       {
         issueNumber: issue.number,
         status: "planning",
+        ...planningWorkspaceState(),
         specPath,
         specCommit,
         planPath,
@@ -524,6 +574,7 @@ export async function advancePlanningStages({
         {
           issueNumber: issue.number,
           status: "planning",
+          ...planningWorkspaceState(),
           specPath,
           specCommit,
           planPath,
@@ -546,6 +597,7 @@ export async function advancePlanningStages({
         {
           issueNumber: issue.number,
           status: reviewStopStatus(existingState),
+          ...planningWorkspaceState(),
           specPath,
           specCommit,
           planPath,
@@ -561,6 +613,7 @@ export async function advancePlanningStages({
       {
         issueNumber: issue.number,
         status: reviewStopStatus(existingState),
+        ...planningWorkspaceState(),
         specPath,
         specCommit,
         planPath,
