@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
@@ -14,6 +17,11 @@ import {
 } from "./skill-pack.ts";
 
 const unixNewline = "name: sample\n";
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+function bundledSkillText(skillName: string): string {
+  return readFileSync(join(repoRoot, "skills", skillName, "SKILL.md"), "utf8");
+}
 
 test("recommended project skill paths are repo-relative POSIX paths", () => {
   assert.equal(DEFAULT_PROJECT_SKILL_DIR, ".patchmill/skills");
@@ -87,6 +95,27 @@ test("default pack records pinned external source", () => {
       .size,
     PATCHMILL_RECOMMENDED_SKILL_PACK.skills.length,
   );
+});
+
+test("Patchmill-adapted skills encode artifact locations, worktree policy, and test value", () => {
+  const brainstorming = bundledSkillText("brainstorming");
+  assert.match(brainstorming, /Patchmill customization/u);
+  assert.match(brainstorming, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
+  assert.match(brainstorming, /issue worktree/u);
+  assert.match(brainstorming, /using-git-worktrees/u);
+
+  const writingPlans = bundledSkillText("writing-plans");
+  assert.match(writingPlans, /Patchmill customization/u);
+  assert.match(writingPlans, /docs\/plans\/YYYY-MM-DD-<feature-name>\.md/u);
+  assert.match(writingPlans, /Testing Value Gate/u);
+  assert.match(writingPlans, /direct verification/u);
+
+  const tdd = bundledSkillText("test-driven-development");
+  assert.match(tdd, /Patchmill customization/u);
+  assert.match(tdd, /Testing Value Gate/u);
+  assert.match(tdd, /Do not write new tests merely to assert/u);
+  assert.match(tdd, /documentation text/u);
+  assert.match(tdd, /package lock contents/u);
 });
 
 test("hashText returns stable sha256 hex", () => {

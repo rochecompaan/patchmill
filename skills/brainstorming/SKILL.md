@@ -21,6 +21,22 @@ design and get user approval.
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
 </HARD-GATE>
 
+## Patchmill customization
+
+This skill starts from the pinned Superpowers `brainstorming` skill and layers
+Patchmill workflow policy on top.
+
+For Patchmill repositories:
+
+- Write validated design specs to `docs/specs/YYYY-MM-DD-<topic>-design.md`.
+- Treat the spec as the first artifact of the feature branch, not a base-branch
+  note.
+- If already running in a Patchmill issue worktree, use that issue worktree and
+  do not create another one.
+- If working ad hoc outside an issue worktree, use `using-git-worktrees` before
+  writing the spec.
+- Return spec paths relative to the repository root.
+
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
 
 Every project goes through this process. A todo list, a single-function utility,
@@ -42,8 +58,8 @@ You MUST create a task for each of these items and complete them in order:
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user
    approval after each section
-6. **Write design doc** — save to
-   `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+6. **Write design doc** — save to `docs/specs/YYYY-MM-DD-<topic>-design.md` in
+   the issue worktree and commit
 7. **Spec self-review** — quick inline check for placeholders, contradictions,
    ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before
@@ -147,9 +163,10 @@ brainstorming is writing-plans.
 
 **Documentation:**
 
-- Write the validated design (spec) to
-  `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+- Write the validated design (spec) to `docs/specs/YYYY-MM-DD-<topic>-design.md`
   - (User preferences for spec location override this default)
+  - In Patchmill runs, this path is relative to the issue worktree repository
+    root.
 - Use elements-of-style:writing-clearly-and-concisely skill if available
 - Commit the design document to git
 

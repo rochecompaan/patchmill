@@ -23,12 +23,15 @@ or problem domain. Assume they don't know good test design very well.
 **Announce at start:** "I'm using the writing-plans skill to create the
 implementation plan."
 
-**Context:** If working in an isolated worktree, it should have been created via
-the `superpowers:using-git-worktrees` skill at execution time.
+**Context:** In Patchmill repositories, plans are feature artifacts. Write them
+in the active Patchmill issue worktree. If no issue worktree exists yet, use
+`using-git-worktrees` before writing the plan.
 
-**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
+**Save plans to:** `docs/plans/YYYY-MM-DD-<feature-name>.md`
 
 - (User preferences for plan location override this default)
+- In Patchmill runs, this path is relative to the issue worktree repository
+  root.
 
 ## Scope Check
 
@@ -56,6 +59,30 @@ in.
 
 This structure informs the task decomposition. Each task should produce
 self-contained changes that make sense independently.
+
+## Patchmill customization: Testing Value Gate
+
+This skill starts from the pinned Superpowers `writing-plans` skill and layers
+Patchmill testing policy on top.
+
+Before planning a new automated test, apply the Testing Value Gate:
+
+- Will this test prove behavior rather than restate implementation or
+  configuration?
+- Could it fail for a meaningful regression?
+- Will future maintainers benefit from rerunning it?
+- Is the behavior reusable or risky enough to justify test maintenance?
+
+Use automated tests by default for production behavior changes, bug fixes,
+reusable logic, parsing/validation, API contracts, error handling,
+security-sensitive behavior, and regressions.
+
+Do not write new tests merely to assert GitHub Actions workflow YAML content,
+dependency or requirements versions, package lock contents, static config
+values, documentation text, or one-off script structure. For those cases, plan
+direct verification instead, such as linting, syntax checks, dry-runs, builds,
+or existing test suites. When skipping a new automated test, state the
+verification used instead.
 
 ## Task Right-Sizing
 
@@ -196,8 +223,8 @@ on. If you find a spec requirement with no task, add the task.
 
 After saving the plan, offer execution choice:
 
-**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Two
-execution options:**
+**"Plan complete and saved to `docs/plans/<filename>.md`. Two execution
+options:**
 
 **1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task,
 review between tasks, fast iteration

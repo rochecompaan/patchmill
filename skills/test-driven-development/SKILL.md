@@ -18,39 +18,64 @@ tests the right thing.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
+## Patchmill customization
+
+This skill starts from the pinned Superpowers `test-driven-development` skill
+and layers Patchmill testing policy on top.
+
+Automated tests are the default for production behavior changes, bug fixes,
+reusable logic, parsing/validation, API contracts, error handling,
+security-sensitive behavior, and regressions. Before writing a new automated
+test, apply the Testing Value Gate below. If the gate fails, use direct
+verification instead and state what verification was used.
+
 ## When to Use
 
-**Always:**
+Use test-first development when changing behavior that should be protected by a
+reusable automated regression check:
 
-- New features
-- Bug fixes
-- Refactoring
-- Behavior changes
+- Production behavior changes
+- Bug fixes and regressions
+- Reusable logic
+- Parsing and validation
+- API contracts
+- Error handling
+- Security-sensitive behavior
 
-**Exceptions (ask your human partner):**
+Before writing a new automated test, apply the Testing Value Gate:
 
-- Throwaway prototypes
-- Generated code
-- Configuration files
+- Will this test prove behavior rather than restate implementation or
+  configuration?
+- Could it fail for a meaningful regression?
+- Will future maintainers benefit from rerunning it?
+- Is the behavior reusable or risky enough to justify test maintenance?
 
-Thinking "skip TDD just this once"? Stop. That's rationalization.
+If the answer is no, do not write a new automated test. Use direct verification
+instead.
+
+Do not write new tests merely to assert:
+
+- GitHub Actions workflow YAML content
+- Dependency or requirements versions
+- package lock contents
+- Static config values
+- documentation text
+- One-off script structure
+
+For those cases, verify with the appropriate command instead, such as linting,
+syntax checks, dry-runs, builds, or existing test suites. When skipping a new
+test, briefly state the verification used instead.
 
 ## The Iron Law
 
+```text
+NO PRODUCTION BEHAVIOR CODE WITHOUT A VALUE-GATED FAILING TEST FIRST
 ```
-NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
-```
 
-Write code before the test? Delete it. Start over.
-
-**No exceptions:**
-
-- Don't keep it as "reference"
-- Don't "adapt" it while writing tests
-- Don't look at it
-- Delete means delete
-
-Implement fresh from tests. Period.
+If the Testing Value Gate says a test is valuable, write the failing test before
+production behavior code. If the gate says a new test would only restate static
+content or configuration, do not force a test; use direct verification and
+document it.
 
 ## Red-Green-Refactor
 
@@ -350,7 +375,10 @@ PASS
 
 Before marking work complete:
 
-- [ ] Every new function/method has a test
+- [ ] Every production behavior change that passed the Testing Value Gate has a
+      test
+- [ ] Direct verification is stated for changes where the Testing Value Gate
+      rejected a new test
 - [ ] Watched each test fail before implementing
 - [ ] Each test failed for expected reason (feature missing, not typo)
 - [ ] Wrote minimal code to pass each test
