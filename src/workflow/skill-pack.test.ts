@@ -20,7 +20,11 @@ const unixNewline = "name: sample\n";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function bundledSkillText(skillName: string): string {
-  return readFileSync(join(repoRoot, "skills", skillName, "SKILL.md"), "utf8");
+  return bundledSkillFileText(skillName, "SKILL.md");
+}
+
+function bundledSkillFileText(skillName: string, filePath: string): string {
+  return readFileSync(join(repoRoot, "skills", skillName, filePath), "utf8");
 }
 
 test("recommended project skill paths are repo-relative POSIX paths", () => {
@@ -99,10 +103,16 @@ test("default pack records pinned external source", () => {
 
 test("Patchmill-adapted skills encode artifact locations, worktree policy, and test value", () => {
   const brainstorming = bundledSkillText("brainstorming");
+  const brainstormingReviewer = bundledSkillFileText(
+    "brainstorming",
+    "spec-document-reviewer-prompt.md",
+  );
   assert.match(brainstorming, /Patchmill customization/u);
   assert.match(brainstorming, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
   assert.match(brainstorming, /issue worktree/u);
   assert.match(brainstorming, /using-git-worktrees/u);
+  assert.match(brainstormingReviewer, /docs\/specs\//u);
+  assert.doesNotMatch(brainstormingReviewer, /docs\/superpowers/u);
 
   const writingPlans = bundledSkillText("writing-plans");
   assert.match(writingPlans, /Patchmill customization/u);
