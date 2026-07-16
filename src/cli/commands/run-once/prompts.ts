@@ -431,6 +431,20 @@ function renderImplementationValidationStep(
   return renderGenericImplementationValidationStep(policy);
 }
 
+function renderTestingValueGateStep(): string {
+  return renderNumberedStepText(
+    [
+      "Apply Patchmill's Testing Value Gate before adding new automated tests:",
+      "- Will this test prove behavior rather than restate implementation or configuration?",
+      "- Could it fail for a meaningful regression?",
+      "- Will future maintainers benefit from rerunning it?",
+      "- Is the behavior reusable or risky enough to justify test maintenance?",
+      "Use automated tests by default for production behavior changes, bug fixes, reusable logic, parsing/validation, API contracts, error handling, security-sensitive behavior, and regressions.",
+      "Do not write new tests merely to assert workflow YAML content, dependency versions, package lock contents, static config values, documentation text, or one-off script structure. Use direct verification instead, such as linting, syntax checks, dry-runs, builds, or existing test suites. When skipping a new automated test, state the verification used instead.",
+    ].join("\n"),
+  );
+}
+
 function formatCodeList(entries: string[]): string {
   if (entries.length === 0) return "";
   if (entries.length === 1) return `\`${entries[0]}\``;
@@ -710,6 +724,7 @@ export function buildPlanCreationPrompt(
       : "Do not stop for an additional manual plan-approval gate. Only use the blocker contract if the issue is unexpectedly not clear enough to plan safely.",
     renderTodoWorkflowStep(projectPolicy, "plan", issue.number),
     renderPlanValidationStep(projectPolicy),
+    renderTestingValueGateStep(),
     "Keep the plan scoped to this issue. Do not implement code.",
     "Commit only the plan document using a Conventional Commit message.",
   ]);
@@ -841,6 +856,7 @@ export function buildImplementationPrompt(
     ...renderImplementationSkillSteps(skills),
     "Keep changes small and commit each completed unit using Conventional Commits.",
     renderImplementationValidationStep(projectPolicy),
+    renderTestingValueGateStep(),
     "Follow the visual-change evidence requirements below whenever the issue changes visible UI.",
     "Apply the landing policy below. Follow its direct-land and PR handoff requirements, or report the exact blocker if PR creation is impossible.",
   ];

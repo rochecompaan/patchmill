@@ -221,6 +221,13 @@ test("buildPlanCreationPrompt includes issue context, workflow rules, and result
   assert.match(prompt, /Do not run host `playwright test` as a substitute\./);
   assert.match(prompt, /Do not use ad-hoc preview servers as a substitute\./);
   assert.match(prompt, /Do not run direct service commands as a substitute\./);
+  assert.match(prompt, /Testing Value Gate/);
+  assert.match(
+    prompt,
+    /Will this test prove behavior rather than restate implementation or configuration\?/,
+  );
+  assert.match(prompt, /Use direct verification instead/);
+  assert.match(prompt, /documentation text/);
   assert.match(
     prompt,
     /Commit only the plan document using a Conventional Commit message/,
@@ -528,6 +535,10 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Do not run host `playwright test` as a substitute\./);
   assert.match(prompt, /Do not use ad-hoc preview servers as a substitute\./);
   assert.match(prompt, /Do not run direct service commands as a substitute\./);
+  assert.match(prompt, /Testing Value Gate/);
+  assert.match(prompt, /production behavior changes/);
+  assert.match(prompt, /static config values/);
+  assert.match(prompt, /When skipping a new automated test/);
   assert.match(prompt, /Visual-change evidence data:/);
   assert.match(
     prompt,
