@@ -47,7 +47,7 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07.1");
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.source, {
     type: "github-release",
     repository: "obra/superpowers",
@@ -67,7 +67,7 @@ test("default pack records pinned external source", () => {
     },
     { name: "module-size", source: "patchmill" },
     { name: "patchmill-visual-evidence", source: "patchmill" },
-    { name: "brainstorming", source: "superpowers" },
+    { name: "brainstorming", source: "patchmill" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
     { name: "finishing-a-development-branch", source: "superpowers" },
@@ -75,11 +75,11 @@ test("default pack records pinned external source", () => {
     { name: "requesting-code-review", source: "superpowers" },
     { name: "subagent-driven-development", source: "superpowers" },
     { name: "systematic-debugging", source: "superpowers" },
-    { name: "test-driven-development", source: "superpowers" },
+    { name: "test-driven-development", source: "patchmill" },
     { name: "using-git-worktrees", source: "superpowers" },
     { name: "using-superpowers", source: "superpowers" },
     { name: "verification-before-completion", source: "superpowers" },
-    { name: "writing-plans", source: "superpowers" },
+    { name: "writing-plans", source: "patchmill" },
     { name: "writing-skills", source: "superpowers" },
   ]);
   assert.equal(
@@ -119,7 +119,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.07",
+      version: "2026.07.1",
       source: {
         type: "github-release",
         repository: "obra/superpowers",

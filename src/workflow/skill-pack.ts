@@ -61,7 +61,7 @@ export function requiredSkillFiles(skillName: string): string[] {
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
-  version: "2026.07",
+  version: "2026.07.1",
   source: {
     type: "github-release",
     repository: "obra/superpowers",
@@ -81,7 +81,7 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
     },
     { name: "module-size", source: "patchmill" },
     { name: PATCHMILL_VISUAL_EVIDENCE_SKILL, source: "patchmill" },
-    { name: "brainstorming", source: "superpowers" },
+    { name: "brainstorming", source: "patchmill" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
     { name: "finishing-a-development-branch", source: "superpowers" },
@@ -89,11 +89,11 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
     { name: "requesting-code-review", source: "superpowers" },
     { name: "subagent-driven-development", source: "superpowers" },
     { name: "systematic-debugging", source: "superpowers" },
-    { name: "test-driven-development", source: "superpowers" },
+    { name: "test-driven-development", source: "patchmill" },
     { name: "using-git-worktrees", source: "superpowers" },
     { name: "using-superpowers", source: "superpowers" },
     { name: "verification-before-completion", source: "superpowers" },
-    { name: "writing-plans", source: "superpowers" },
+    { name: "writing-plans", source: "patchmill" },
     { name: "writing-skills", source: "superpowers" },
   ],
 };

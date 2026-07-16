@@ -78,6 +78,20 @@ description: Write plans.
 # Planning
 `;
 
+const brainstormingSkill = `---
+name: brainstorming
+description: Brainstorm.
+---
+# Brainstorming
+`;
+
+const tddSkill = `---
+name: test-driven-development
+description: TDD.
+---
+# Test-Driven Development
+`;
+
 const implementationSkill = `---
 name: subagent-driven-development
 description: Execute plans.
@@ -122,8 +136,15 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       "prompts/implement-plan.md": "implement the full plan with one worker\n",
     },
   );
-  await writeSkill(superpowersSource, "writing-plans", planningSkill, {
+  await writeSkill(patchmillSource, "brainstorming", brainstormingSkill, {
+    "visual-companion.md": "visual companion instructions\n",
+    "scripts/server.cjs": "console.log('server');\n",
+  });
+  await writeSkill(patchmillSource, "writing-plans", planningSkill, {
     "plan-document-reviewer-prompt.md": "review plans carefully\n",
+  });
+  await writeSkill(patchmillSource, "test-driven-development", tddSkill, {
+    "testing-anti-patterns.md": "avoid mock-only tests\n",
   });
   await writeSkill(
     superpowersSource,
@@ -148,7 +169,9 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         name: "single-subagent-dev-with-codex-and-thermo-reviews",
         source: "patchmill",
       },
-      { name: "writing-plans", source: "superpowers" },
+      { name: "brainstorming", source: "patchmill" },
+      { name: "writing-plans", source: "patchmill" },
+      { name: "test-driven-development", source: "patchmill" },
       { name: "subagent-driven-development", source: "superpowers" },
     ],
   });
@@ -159,7 +182,9 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     ".patchmill/skills/patchmill-issue-triage",
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
+    ".patchmill/skills/brainstorming",
     ".patchmill/skills/writing-plans",
+    ".patchmill/skills/test-driven-development",
     ".patchmill/skills/subagent-driven-development",
   ]);
   assert.equal(
@@ -243,12 +268,38 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         repoRoot,
         ".patchmill",
         "skills",
+        "brainstorming",
+        "visual-companion.md",
+      ),
+      "utf8",
+    ),
+    "visual companion instructions\n",
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
         "writing-plans",
         "plan-document-reviewer-prompt.md",
       ),
       "utf8",
     ),
     "review plans carefully\n",
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "test-driven-development",
+        "testing-anti-patterns.md",
+      ),
+      "utf8",
+    ),
+    "avoid mock-only tests\n",
   );
 
   const metadata = JSON.parse(
@@ -281,12 +332,32 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         sha256: hashText("implement the full plan with one worker\n"),
       },
       {
+        path: ".patchmill/skills/brainstorming/SKILL.md",
+        sha256: hashText(brainstormingSkill),
+      },
+      {
+        path: ".patchmill/skills/brainstorming/scripts/server.cjs",
+        sha256: hashText("console.log('server');\n"),
+      },
+      {
+        path: ".patchmill/skills/brainstorming/visual-companion.md",
+        sha256: hashText("visual companion instructions\n"),
+      },
+      {
         path: ".patchmill/skills/writing-plans/SKILL.md",
         sha256: hashText(planningSkill),
       },
       {
         path: ".patchmill/skills/writing-plans/plan-document-reviewer-prompt.md",
         sha256: hashText("review plans carefully\n"),
+      },
+      {
+        path: ".patchmill/skills/test-driven-development/SKILL.md",
+        sha256: hashText(tddSkill),
+      },
+      {
+        path: ".patchmill/skills/test-driven-development/testing-anti-patterns.md",
+        sha256: hashText("avoid mock-only tests\n"),
       },
       {
         path: ".patchmill/skills/subagent-driven-development/SKILL.md",
