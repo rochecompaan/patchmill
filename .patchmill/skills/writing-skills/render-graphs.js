@@ -1,4 +1,4 @@
-#!/nix/store/785jidgnryzj566s25s3rb262d4g5znb-nodejs-24.14.1/bin/node
+#!/nix/store/zvj0hl7rhh0ccr5vkcg3ijs3xm3sgyac-nodejs-24.16.0/bin/node
 
 /**
  * Render graphviz diagrams from a skill's SKILL.md to SVG files.
