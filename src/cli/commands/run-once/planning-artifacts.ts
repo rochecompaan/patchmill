@@ -175,15 +175,17 @@ async function findDiscovered(input: {
 }
 
 function generated(input: {
-  policy: Extract<PlanningArtifactPolicy, { kind: "fresh" }>;
+  policy: PlanningArtifactPolicy;
   issue: IssueSummary;
   kind: "spec" | "plan";
   now: Date;
 }): ResolvedPlanningArtifact {
   const allowed =
-    input.kind === "spec"
-      ? input.policy.allowGeneratedSpec
-      : input.policy.allowGeneratedPlan;
+    input.policy.kind === "fresh"
+      ? input.kind === "spec"
+        ? input.policy.allowGeneratedSpec
+        : input.policy.allowGeneratedPlan
+      : true;
   if (!allowed) return unresolvedArtifact();
 
   const artifactDir =
@@ -248,13 +250,21 @@ export async function resolvePlanningArtifacts(input: {
       savedCreated: input.policy.saved.planCreated,
     });
 
+    const discoveredPlan = input.policy.saved.planPath
+      ? plan
+      : await findDiscovered({
+          roots: policyRoots,
+          issue: input.issue,
+          kind: "plan",
+        });
     const resolvedPlan = plan.exists
       ? plan
-      : input.policy.saved.planPath
-        ? plan
-        : await findDiscovered({
-            roots: policyRoots,
+      : discoveredPlan.exists
+        ? discoveredPlan
+        : generated({
+            policy: input.policy,
             issue: input.issue,
+            now: input.now,
             kind: "plan",
           });
     const resolvedSpec = spec.exists

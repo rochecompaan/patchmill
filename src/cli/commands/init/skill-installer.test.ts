@@ -78,6 +78,13 @@ description: Write plans.
 # Planning
 `;
 
+const patchmillPlanningSkill = `---
+name: patchmill-planning
+description: Wrap Superpowers planning for Patchmill.
+---
+# Patchmill Planning
+`;
+
 const brainstormingSkill = `---
 name: brainstorming
 description: Brainstorm.
@@ -136,14 +143,19 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       "prompts/implement-plan.md": "implement the full plan with one worker\n",
     },
   );
-  await writeSkill(patchmillSource, "brainstorming", brainstormingSkill, {
+  await writeSkill(
+    patchmillSource,
+    "patchmill-planning",
+    patchmillPlanningSkill,
+  );
+  await writeSkill(superpowersSource, "brainstorming", brainstormingSkill, {
     "visual-companion.md": "visual companion instructions\n",
     "scripts/server.cjs": "console.log('server');\n",
   });
-  await writeSkill(patchmillSource, "writing-plans", planningSkill, {
+  await writeSkill(superpowersSource, "writing-plans", planningSkill, {
     "plan-document-reviewer-prompt.md": "review plans carefully\n",
   });
-  await writeSkill(patchmillSource, "test-driven-development", tddSkill, {
+  await writeSkill(superpowersSource, "test-driven-development", tddSkill, {
     "testing-anti-patterns.md": "avoid mock-only tests\n",
   });
   await writeSkill(
@@ -169,9 +181,10 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         name: "single-subagent-dev-with-codex-and-thermo-reviews",
         source: "patchmill",
       },
-      { name: "brainstorming", source: "patchmill" },
-      { name: "writing-plans", source: "patchmill" },
-      { name: "test-driven-development", source: "patchmill" },
+      { name: "patchmill-planning", source: "patchmill" },
+      { name: "brainstorming", source: "superpowers" },
+      { name: "writing-plans", source: "superpowers" },
+      { name: "test-driven-development", source: "superpowers" },
       { name: "subagent-driven-development", source: "superpowers" },
     ],
   });
@@ -182,6 +195,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     ".patchmill/skills/patchmill-issue-triage",
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
+    ".patchmill/skills/patchmill-planning",
     ".patchmill/skills/brainstorming",
     ".patchmill/skills/writing-plans",
     ".patchmill/skills/test-driven-development",
@@ -240,6 +254,13 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       "utf8",
     ),
     "review the final worktree\n",
+  );
+  assert.equal(
+    await readFile(
+      join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
+      "utf8",
+    ),
+    patchmillPlanningSkill,
   );
   assert.equal(
     await readFile(
@@ -330,6 +351,10 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       {
         path: ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/prompts/implement-plan.md",
         sha256: hashText("implement the full plan with one worker\n"),
+      },
+      {
+        path: ".patchmill/skills/patchmill-planning/SKILL.md",
+        sha256: hashText(patchmillPlanningSkill),
       },
       {
         path: ".patchmill/skills/brainstorming/SKILL.md",
@@ -764,6 +789,16 @@ test("validateExistingSkillDirectory returns local config for path mode", async 
     "project-skills/patchmill-issue-triage",
     triageSkill,
   );
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-planning",
+    patchmillPlanningSkill,
+  );
+  await writeSkill(
+    repoRoot,
+    "project-skills/brainstorming",
+    brainstormingSkill,
+  );
   await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
   await writeSkill(
     repoRoot,
@@ -795,6 +830,16 @@ test("validateExistingSkillDirectory fails when visual evidence helper script is
     "project-skills/patchmill-issue-triage",
     triageSkill,
   );
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-planning",
+    patchmillPlanningSkill,
+  );
+  await writeSkill(
+    repoRoot,
+    "project-skills/brainstorming",
+    brainstormingSkill,
+  );
   await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
   await writeSkill(
     repoRoot,
@@ -820,11 +865,50 @@ description: Capture visual evidence.
 
 test("validateExistingSkillDirectory fails when a required skill is missing", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
-  await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-planning",
+    patchmillPlanningSkill,
+  );
 
   await assert.rejects(
     validateExistingSkillDirectory(repoRoot, "project-skills"),
     /Missing required skill file: project-skills\/patchmill-issue-triage\/SKILL\.md/,
+  );
+});
+
+test("validateExistingSkillDirectory fails when planning wrapper siblings are missing", async () => {
+  const repoRoot = await tempRoot("patchmill-install-repo-");
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-issue-triage",
+    triageSkill,
+  );
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-planning",
+    patchmillPlanningSkill,
+  );
+  await writeSkill(
+    repoRoot,
+    "project-skills/subagent-driven-development",
+    implementationSkill,
+  );
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-visual-evidence",
+    `---
+name: patchmill-visual-evidence
+description: Capture visual evidence.
+---
+# Visual Evidence
+`,
+    { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
+  );
+
+  await assert.rejects(
+    validateExistingSkillDirectory(repoRoot, "project-skills"),
+    /Missing required skill file: project-skills\/brainstorming\/SKILL\.md/,
   );
 });
 
@@ -836,7 +920,11 @@ test("validateExistingSkillDirectory fails when SKILL.md is a directory", async 
       recursive: true,
     },
   );
-  await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-planning",
+    patchmillPlanningSkill,
+  );
   await writeSkill(
     repoRoot,
     "project-skills/subagent-driven-development",

@@ -13,7 +13,7 @@ import {
 
 const PROJECT_LOCAL_SKILLS = {
   triage: ".patchmill/skills/patchmill-issue-triage",
-  planning: ".patchmill/skills/writing-plans",
+  planning: ".patchmill/skills/patchmill-planning",
   implementation: ".patchmill/skills/subagent-driven-development",
   visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
 };

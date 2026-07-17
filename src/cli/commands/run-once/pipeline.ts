@@ -68,6 +68,7 @@ import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
+  AgentIssueRunState,
   CommandRunner,
   IssueSummary,
 } from "./types.ts";
@@ -80,6 +81,17 @@ export type RunOneIssueOptions = {
   verbosePiOutput?: boolean;
   heartbeatMs?: number;
 };
+
+function hasFinishedPlanningWorkspaceState(
+  state: AgentIssueRunState | undefined,
+): boolean {
+  return (
+    state?.status === "finished" &&
+    state.implementationStatus === undefined &&
+    !!(state.specPath || state.planPath) &&
+    !!(state.branch || state.worktreePath)
+  );
+}
 
 export async function runOneIssue(
   runner: CommandRunner,
@@ -187,7 +199,12 @@ export async function runOneIssue(
     : undefined;
   const blockedRecoveryResumable =
     blockedRecoveryReport?.kind === "recoverable-clean";
-  const resumableState = ordinaryResumableState || blockedRecoveryResumable;
+  const planningWorkspaceResumable =
+    hasFinishedPlanningWorkspaceState(existingState);
+  const resumableState =
+    ordinaryResumableState ||
+    blockedRecoveryResumable ||
+    planningWorkspaceResumable;
   const resetStaleCheckpoints = !!existingState && !resumableState;
   const checkpoints = {
     ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
@@ -264,7 +281,10 @@ export async function runOneIssue(
       ? issue.labels
       : nextLabels(issue.labels, [ready], [inProgress])
     : nextLabels(issue.labels, [ready], [inProgress]);
-  if (!checkpoints.claimed) {
+  if (
+    !checkpoints.claimed ||
+    (planningWorkspaceResumable && !issue.labels.includes(inProgress))
+  ) {
     await runStep("claim issue", async () => {
       await progress(
         options,
@@ -402,7 +422,7 @@ export async function runOneIssue(
       resumableState &&
       existingState &&
       (existingState.branch || existingState.worktreePath) &&
-      !!existingState.planPath
+      !!(existingState.specPath || existingState.planPath)
     ) {
       const resumeWorktree = await ensureIssueWorkspace();
       const savedWorktreePath =

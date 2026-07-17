@@ -34,15 +34,13 @@ test("package metadata identifies Patchmill as Apache-2.0", () => {
     thirdPartyNotices,
     /License: Apache License 2\.0 \(`LICENSE`\)/u,
   );
-  assert.match(thirdPartyNotices, /## Superpowers adapted skills/u);
+  assert.match(thirdPartyNotices, /## Superpowers skill wrappers/u);
   assert.match(
     thirdPartyNotices,
     /Repository: <https:\/\/github\.com\/obra\/superpowers>/u,
   );
   assert.match(thirdPartyNotices, /License: MIT License/u);
-  assert.match(thirdPartyNotices, /skills\/brainstorming/u);
-  assert.match(thirdPartyNotices, /skills\/writing-plans/u);
-  assert.match(thirdPartyNotices, /skills\/test-driven-development/u);
+  assert.match(thirdPartyNotices, /skills\/patchmill-planning/u);
 });
 
 test("npm pack dry-run includes bundled runtime resources and notices", () => {
@@ -70,18 +68,10 @@ test("npm pack dry-run includes bundled runtime resources and notices", () => {
   const files = new Set(packEntries[0]?.files?.map((file) => file.path) ?? []);
   assert.equal(files.has("skills/patchmill-issue-triage/SKILL.md"), true);
   assert.equal(files.has("skills/module-size/SKILL.md"), true);
-  assert.equal(files.has("skills/brainstorming/SKILL.md"), true);
-  assert.equal(files.has("skills/brainstorming/visual-companion.md"), true);
-  assert.equal(files.has("skills/writing-plans/SKILL.md"), true);
-  assert.equal(
-    files.has("skills/writing-plans/plan-document-reviewer-prompt.md"),
-    true,
-  );
-  assert.equal(files.has("skills/test-driven-development/SKILL.md"), true);
-  assert.equal(
-    files.has("skills/test-driven-development/testing-anti-patterns.md"),
-    true,
-  );
+  assert.equal(files.has("skills/patchmill-planning/SKILL.md"), true);
+  assert.equal(files.has("skills/brainstorming/SKILL.md"), false);
+  assert.equal(files.has("skills/writing-plans/SKILL.md"), false);
+  assert.equal(files.has("skills/test-driven-development/SKILL.md"), false);
   assert.equal(files.has("extensions/todos.ts"), true);
   assert.equal(files.has("CHANGELOG.md"), true);
   assert.equal(files.has("LICENSES/Apache-2.0.txt"), false);

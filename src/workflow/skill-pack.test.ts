@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
+  PATCHMILL_PLANNING_SKILL,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
@@ -34,6 +35,10 @@ test("recommended project skill paths are repo-relative POSIX paths", () => {
     ".patchmill/skills/writing-plans",
   );
   assert.equal(
+    projectSkillPath(PATCHMILL_PLANNING_SKILL),
+    ".patchmill/skills/patchmill-planning",
+  );
+  assert.equal(
     projectSkillPath("subagent-driven-development", "project/skills/"),
     "project/skills/subagent-driven-development",
   );
@@ -51,7 +56,7 @@ test("requiredSkillFiles returns bundled sidecars and SKILL.md fallback", () => 
 test("buildRecommendedProjectSkillConfig maps required workflow stages locally", () => {
   assert.deepEqual(buildRecommendedProjectSkillConfig(), {
     triage: ".patchmill/skills/patchmill-issue-triage",
-    planning: ".patchmill/skills/writing-plans",
+    planning: ".patchmill/skills/patchmill-planning",
     implementation: ".patchmill/skills/subagent-driven-development",
     visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
   });
@@ -79,7 +84,8 @@ test("default pack records pinned external source", () => {
     },
     { name: "module-size", source: "patchmill" },
     { name: "patchmill-visual-evidence", source: "patchmill" },
-    { name: "brainstorming", source: "patchmill" },
+    { name: "patchmill-planning", source: "patchmill" },
+    { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
     { name: "finishing-a-development-branch", source: "superpowers" },
@@ -87,11 +93,11 @@ test("default pack records pinned external source", () => {
     { name: "requesting-code-review", source: "superpowers" },
     { name: "subagent-driven-development", source: "superpowers" },
     { name: "systematic-debugging", source: "superpowers" },
-    { name: "test-driven-development", source: "patchmill" },
+    { name: "test-driven-development", source: "superpowers" },
     { name: "using-git-worktrees", source: "superpowers" },
     { name: "using-superpowers", source: "superpowers" },
     { name: "verification-before-completion", source: "superpowers" },
-    { name: "writing-plans", source: "patchmill" },
+    { name: "writing-plans", source: "superpowers" },
     { name: "writing-skills", source: "superpowers" },
   ]);
   assert.equal(
@@ -101,31 +107,16 @@ test("default pack records pinned external source", () => {
   );
 });
 
-test("Patchmill-adapted skills encode artifact locations, worktree policy, and test value", () => {
-  const brainstorming = bundledSkillText("brainstorming");
-  const brainstormingReviewer = bundledSkillFileText(
-    "brainstorming",
-    "spec-document-reviewer-prompt.md",
-  );
-  assert.match(brainstorming, /Patchmill customization/u);
-  assert.match(brainstorming, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
-  assert.match(brainstorming, /issue worktree/u);
-  assert.match(brainstorming, /using-git-worktrees/u);
-  assert.match(brainstormingReviewer, /docs\/specs\//u);
-  assert.doesNotMatch(brainstormingReviewer, /docs\/superpowers/u);
-
-  const writingPlans = bundledSkillText("writing-plans");
-  assert.match(writingPlans, /Patchmill customization/u);
-  assert.match(writingPlans, /docs\/plans\/YYYY-MM-DD-<feature-name>\.md/u);
-  assert.match(writingPlans, /Testing Value Gate/u);
-  assert.match(writingPlans, /direct verification/u);
-
-  const tdd = bundledSkillText("test-driven-development");
-  assert.match(tdd, /Patchmill customization/u);
-  assert.match(tdd, /Testing Value Gate/u);
-  assert.match(tdd, /Do not write new tests merely to assert/u);
-  assert.match(tdd, /documentation text/u);
-  assert.match(tdd, /package lock contents/u);
+test("Patchmill planning wrapper annotates sibling Superpowers skills", () => {
+  const planning = bundledSkillText(PATCHMILL_PLANNING_SKILL);
+  assert.match(planning, /name: patchmill-planning/u);
+  assert.match(planning, /\.\.\/brainstorming\/SKILL\.md/u);
+  assert.match(planning, /\.\.\/writing-plans\/SKILL\.md/u);
+  assert.match(planning, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
+  assert.match(planning, /docs\/plans\/YYYY-MM-DD-<feature-name>\.md/u);
+  assert.match(planning, /issue worktree/u);
+  assert.match(planning, /Testing Value Gate/u);
+  assert.match(planning, /direct verification/u);
 });
 
 test("hashText returns stable sha256 hex", () => {

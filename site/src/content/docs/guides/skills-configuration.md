@@ -17,15 +17,16 @@ Patchmill-specific skills. These skills encode the planning, implementation,
 debugging, review, visual-evidence, and branch-finishing discipline that
 Patchmill expects when it advances an issue.
 
-A few recommended project-local skills are Patchmill-adapted copies of pinned
-Superpowers skills. Patchmill uses the upstream Superpowers skill as the
-starting point, then layers repository workflow rules on top. The adapted
-`brainstorming` and `writing-plans` skills save artifacts under `docs/specs/`
-and `docs/plans/` in the issue worktree; the adapted `test-driven-development`
-skill keeps test-first behavior for meaningful production behavior while
-applying Patchmill's Testing Value Gate so agents use direct verification for
-static docs, workflow YAML, lockfiles, dependency versions, and similar
-low-value-test changes.
+A few recommended project-local skills are Patchmill wrappers around pinned
+Superpowers skills. Patchmill installs the upstream Superpowers skills as
+siblings, then uses lightweight wrapper entry points to add repository workflow
+rules. The `patchmill-planning` wrapper tells agents to read the sibling
+`brainstorming` and `writing-plans` skills while saving artifacts under
+`docs/specs/` and `docs/plans/` in the issue worktree. Patchmill prompts and
+wrappers also apply the Testing Value Gate so agents keep automated tests as the
+default for meaningful behavior and use direct verification for static docs,
+workflow YAML, lockfiles, dependency versions, and similar low-value-test
+changes.
 
 `patchmill init` installs the recommended skill pack by default when you choose
 project-local skills. The installed
@@ -96,9 +97,9 @@ Common `skills` keys include:
 - `landing`: guides direct-land versus pull-request decisions.
 
 Initialized repositories that use project-local skills default to paths under
-`.patchmill/skills/`, including `.patchmill/skills/subagent-driven-development`
-for implementation and `.patchmill/skills/patchmill-visual-evidence` for visual
-evidence.
+`.patchmill/skills/`, including `.patchmill/skills/patchmill-planning` for
+planning, `.patchmill/skills/subagent-driven-development` for implementation,
+and `.patchmill/skills/patchmill-visual-evidence` for visual evidence.
 
 ## Landing skill
 

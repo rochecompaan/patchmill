@@ -38,6 +38,20 @@ const dependencies: SkillInstallerDependencies = {
   writeFile,
 };
 
+const oldPatchmillPlanning = `---
+name: patchmill-planning
+description: Old Patchmill planning wrapper.
+---
+# Old Patchmill planning
+`;
+
+const newPatchmillPlanning = `---
+name: patchmill-planning
+description: New Patchmill planning wrapper.
+---
+# New Patchmill planning
+`;
+
 const oldWritingPlans = `---
 name: writing-plans
 description: Old planning skill.
@@ -116,18 +130,15 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
   const superpowersSource = await tempRoot(
     "patchmill-skills-update-superpowers-",
   );
-  await writeSkill(patchmillSource, "writing-plans", {
-    "SKILL.md": newWritingPlans,
-    "plan-document-reviewer-prompt.md": "new reviewer prompt\n",
+  await writeSkill(patchmillSource, "patchmill-planning", {
+    "SKILL.md": newPatchmillPlanning,
+    "policy.md": "new wrapper policy\n",
   });
-  await chmod(
-    join(patchmillSource, "writing-plans", "plan-document-reviewer-prompt.md"),
-    0o400,
-  );
+  await chmod(join(patchmillSource, "patchmill-planning", "policy.md"), 0o400);
 
   await writeFileEnsuringParent(
-    join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
-    oldWritingPlans,
+    join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
+    oldPatchmillPlanning,
   );
   await writeFileEnsuringParent(
     join(repoRoot, ".patchmill", "skills", "obsolete-skill", "SKILL.md"),
@@ -141,8 +152,8 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
         sha256: hashText(oldObsoleteSkill),
       },
       {
-        path: ".patchmill/skills/writing-plans/SKILL.md",
-        sha256: hashText(oldWritingPlans),
+        path: ".patchmill/skills/patchmill-planning/SKILL.md",
+        sha256: hashText(oldPatchmillPlanning),
       },
     ]),
   );
@@ -153,7 +164,7 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
       patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
     },
-    packSkills: [{ name: "writing-plans", source: "patchmill" }],
+    packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
     installedAt: "2026-06-27T00:00:00.000Z",
     dependencies,
   });
@@ -167,21 +178,21 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
   });
   assert.equal(
     await readFile(
-      join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
+      join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
       "utf8",
     ),
-    newWritingPlans,
+    newPatchmillPlanning,
   );
   const updatedReviewerPromptPath = join(
     repoRoot,
     ".patchmill",
     "skills",
-    "writing-plans",
-    "plan-document-reviewer-prompt.md",
+    "patchmill-planning",
+    "policy.md",
   );
   assert.equal(
     await readFile(updatedReviewerPromptPath, "utf8"),
-    "new reviewer prompt\n",
+    "new wrapper policy\n",
   );
   assert.notEqual((await stat(updatedReviewerPromptPath)).mode & 0o200, 0);
   await assert.rejects(
@@ -202,12 +213,12 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
   assert.equal(metadata.installedAt, "2026-06-27T00:00:00.000Z");
   assert.deepEqual(metadata.files, [
     {
-      path: ".patchmill/skills/writing-plans/SKILL.md",
-      sha256: hashText(newWritingPlans),
+      path: ".patchmill/skills/patchmill-planning/SKILL.md",
+      sha256: hashText(newPatchmillPlanning),
     },
     {
-      path: ".patchmill/skills/writing-plans/plan-document-reviewer-prompt.md",
-      sha256: hashText("new reviewer prompt\n"),
+      path: ".patchmill/skills/patchmill-planning/policy.md",
+      sha256: hashText("new wrapper policy\n"),
     },
   ]);
 });

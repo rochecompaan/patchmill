@@ -22,6 +22,7 @@ import {
 } from "../../../workflow/bundled-skills.ts";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
+  PATCHMILL_PLANNING_SKILL,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
@@ -373,7 +374,15 @@ export async function validateExistingSkillDirectory(
 
   for (const { name, skillPath } of [
     ...bundledRecommendedSkills,
-    { name: "writing-plans", skillPath: skillConfig.planning },
+    { name: PATCHMILL_PLANNING_SKILL, skillPath: skillConfig.planning },
+    {
+      name: "brainstorming",
+      skillPath: projectSkillPath("brainstorming", skillDir),
+    },
+    {
+      name: "writing-plans",
+      skillPath: projectSkillPath("writing-plans", skillDir),
+    },
     {
       name: "subagent-driven-development",
       skillPath: skillConfig.implementation,

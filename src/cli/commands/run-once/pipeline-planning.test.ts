@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
@@ -191,7 +191,9 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "plan-created");
+  if (result.status !== "plan-created") {
+    throw new Error(JSON.stringify(result, null, 2));
+  }
   const comments = runner.calls.filter(
     (call) => call.command === "tea" && call.args[0] === "comment",
   );
@@ -960,6 +962,259 @@ test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-
   );
   assert.equal(finalEdit.args.includes("spec-review"), false);
   assert.equal(finalEdit.args.includes("spec-approved"), false);
+});
+
+test("runOneIssue resumes approved spec review with saved planning worktree", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(
+    52,
+    ["spec-review", "spec-approved", "enhancement"],
+    "Approved spec worktree",
+  );
+  const worktreePath = ".worktrees/patchmill-issue-52-approved-spec-worktree";
+  const specPath =
+    "docs/specs/2026-05-09-issue-52-approved-spec-worktree-design.md";
+  const planPath = "docs/plans/2026-05-09-issue-52-approved-spec-worktree.md";
+  await mkdir(join(config.repoRoot, worktreePath, "docs", "specs"), {
+    recursive: true,
+  });
+  await writeFile(join(config.repoRoot, worktreePath, specPath), "# Spec\n");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 52,
+      title: "Approved spec worktree",
+      status: "finished",
+      branch: "agent/issue-52-approved-spec-worktree",
+      worktreePath,
+      specPath,
+      specCommit: "abc123",
+      checkpoints: {
+        specPathResolved: true,
+        specCreated: true,
+        specReadyCommentPosted: true,
+        readyLabelRestored: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, worktreePath)}\n`,
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[1] === worktreePath &&
+      call.args[2] === "branch" &&
+      call.args[3] === "--show-current"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-52-approved-spec-worktree\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Create an implementation plan/);
+      assert.match(
+        prompt,
+        new RegExp(specPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      );
+      return {
+        code: 0,
+        stdout: `plan done\n{"status":"plan-created","planPath":"${planPath}","commit":"def456"}`,
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(result.planPath, planPath);
+  assert.equal(workflowPiCalls(runner.calls).length, 1);
+  assert.equal(
+    workflowPiCalls(runner.calls)[0]?.cwd,
+    join(config.repoRoot, worktreePath),
+  );
+});
+
+test("runOneIssue re-adds in-progress when approved plan resumes from saved planning worktree", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const selected = issue(
+    53,
+    ["plan-review", "plan-approved", "enhancement"],
+    "Approved plan worktree",
+  );
+  const worktreePath = ".worktrees/patchmill-issue-53-approved-plan-worktree";
+  const planPath = "docs/plans/2026-05-09-issue-53-approved-plan-worktree.md";
+  await mkdir(join(config.repoRoot, worktreePath, "docs", "plans"), {
+    recursive: true,
+  });
+  await writeFile(join(config.repoRoot, worktreePath, planPath), "# Plan\n");
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 53,
+      title: "Approved plan worktree",
+      status: "finished",
+      branch: "agent/issue-53-approved-plan-worktree",
+      worktreePath,
+      planPath,
+      planCommit: "def456",
+      checkpoints: {
+        claimed: true,
+        planPathResolved: true,
+        planCreated: true,
+        planReadyCommentPosted: true,
+        readyLabelRestored: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, worktreePath)}\n`,
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[1] === worktreePath &&
+      call.args[2] === "branch" &&
+      call.args[3] === "--show-current"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-53-approved-plan-worktree\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Implement/);
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "blocked",
+          reason: "implementation needs human input",
+          questions: [],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(
+    workflowPiCalls(runner.calls)[0]?.cwd,
+    join(config.repoRoot, worktreePath),
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args[call.args.indexOf("--add-labels") + 1] === "in-progress",
+    ),
+    true,
+  );
 });
 
 test("runOneIssue writes spec then plan and stops at plan-review when only plan approval is required", async () => {
