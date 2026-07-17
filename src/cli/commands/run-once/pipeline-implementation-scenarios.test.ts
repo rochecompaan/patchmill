@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
   buildSkillPackMetadata,
@@ -20,6 +20,7 @@ import {
 import {
   createMockRunner,
   promptPath,
+  workflowPiCalls,
   writePiSessionMessage,
 } from "../../../../test-support/run-once/mock-runner.ts";
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
@@ -29,6 +30,22 @@ import {
 } from "../../../../test-support/run-once/assertions.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
+
+function assertInvocationLeaf(actual: string, expectedStageRoot: string): void {
+  assert.equal(dirname(actual), expectedStageRoot);
+  assert.match(basename(actual), /^invocation-/);
+}
+
+function sessionDirs(calls: ReturnType<typeof workflowPiCalls>): string[] {
+  return calls.map((call) => {
+    const sessionDirIndex = call.args.indexOf("--session-dir");
+    assert.ok(
+      sessionDirIndex >= 0,
+      `expected --session-dir in ${call.args.join(" ")}`,
+    );
+    return call.args[sessionDirIndex + 1] ?? "";
+  });
+}
 
 function withRepo(args: string[], repoRoot: string): string[] {
   const separator = args.indexOf("--");
@@ -180,6 +197,29 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
 
   assert.equal(result.status, "pr-created");
   assert.equal(result.logPath, logPath);
+  const expectedPiSessionPath = join(
+    config.runStateDir,
+    "issue-15",
+    "run-2026-05-09T12-00-00-000Z-pi-sessions",
+  );
+  assert.equal(result.piSessionPath, expectedPiSessionPath);
+  const piSessionDirs = sessionDirs(workflowPiCalls(runner.calls));
+  for (const dir of piSessionDirs.filter(
+    (dir) => dirname(dir) === join(expectedPiSessionPath, "pi-plan"),
+  )) {
+    assertInvocationLeaf(dir, join(expectedPiSessionPath, "pi-plan"));
+  }
+  assert.ok(
+    piSessionDirs.some(
+      (dir) => dirname(dir) === join(expectedPiSessionPath, "pi-plan"),
+    ),
+  );
+  assert.ok(
+    piSessionDirs.some(
+      (dir) =>
+        dirname(dir) === join(expectedPiSessionPath, "pi-implementation"),
+    ),
+  );
   const stepLabels = events.flatMap((event) =>
     event.step?.type === "step-start" ? [event.step.label] : [],
   );
