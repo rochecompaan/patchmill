@@ -176,6 +176,7 @@ test("summarizeResult includes merged issue handoff fields", () => {
       reviewSummary: "reviewed",
       landingDecision: "direct squash-landed: simple localized bug fix",
       logPath: ".patchmill/runs/issue-42/run.jsonl",
+      piSessionPath: ".patchmill/runs/issue-42/run-pi-sessions",
     }),
     {
       status: "merged",
@@ -189,6 +190,7 @@ test("summarizeResult includes merged issue handoff fields", () => {
       reviewSummary: "reviewed",
       landingDecision: "direct squash-landed: simple localized bug fix",
       logPath: ".patchmill/runs/issue-42/run.jsonl",
+      piSessionPath: ".patchmill/runs/issue-42/run-pi-sessions",
     },
   );
 });

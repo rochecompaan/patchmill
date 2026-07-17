@@ -64,7 +64,11 @@ import {
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
-import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
+import {
+  runPiSessionPath,
+  type AgentIssueProgressEvent,
+  type ProgressReporter,
+} from "./progress.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
@@ -170,6 +174,13 @@ export async function runOneIssue(
     config.remote,
     config.baseBranch,
   );
+  const timestamp = (options.now ?? new Date()).toISOString();
+  const piSessionPath = runPiSessionPath(
+    config.runStateDir,
+    timestamp,
+    issue.number,
+  );
+  const runOptions = { ...options, piSessionPath };
   if (config.dryRun) {
     const { ready } = lifecycleLabels(config);
     const state = resolveWorkflowState(issue.labels, {
@@ -182,11 +193,11 @@ export async function runOneIssue(
         issue,
         transition: workflowTransition(state, config),
       },
-      options,
+      runOptions,
     );
   }
 
-  const ignoredPaths = cleanStatusIgnoredPaths(config, options);
+  const ignoredPaths = cleanStatusIgnoredPaths(config, runOptions);
   const blockedRecoveryReport = hasBlockedRunRecoveryState(existingState)
     ? await inspectBlockedRunRecovery({
         runner,
@@ -225,14 +236,13 @@ export async function runOneIssue(
     );
   }
 
-  const timestamp = (options.now ?? new Date()).toISOString();
   const tokenUsageState = { total: 0 };
   let issueForRun = issue;
   let resolvedArtifacts: ResolvedIssueArtifactSources = {};
   const stepAccounting = createStepAccounting({
-    progress: options.progress,
+    progress: runOptions.progress,
     issueNumber: issue.number,
-    runStartedAtMs: (options.now ?? new Date()).getTime(),
+    runStartedAtMs: (runOptions.now ?? new Date()).getTime(),
   });
   const stepStart = stepAccounting.start;
   const stepComplete = stepAccounting.complete;
@@ -250,7 +260,7 @@ export async function runOneIssue(
     ): Promise<void> => {
       await stepAccounting.observe(stage, observation);
     };
-  await options.progress?.event({
+  await runOptions.progress?.event({
     time: timestamp,
     level: "info",
     stage: "run",
@@ -258,20 +268,20 @@ export async function runOneIssue(
     issueNumber: issue.number,
     step: { type: "run-start", issueNumber: issue.number, title: issue.title },
   });
-  await emitSimpleStep(options, issue.number, "select issue");
+  await emitSimpleStep(runOptions, issue.number, "select issue");
   const artifactSources = await runArtifactSourceStage({
     host,
     config,
     issue,
-    now: options.now ?? new Date(),
+    now: runOptions.now ?? new Date(),
     progress: (level, stage, message, extras) =>
-      progress(options, level, stage, message, extras),
+      progress(runOptions, level, stage, message, extras),
     runStep,
   });
   issueForRun = artifactSources.issue;
   resolvedArtifacts = artifactSources.resolvedArtifacts;
 
-  await progress(options, "info", "git", "checking repository status", {
+  await progress(runOptions, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
   await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
@@ -287,7 +297,7 @@ export async function runOneIssue(
   ) {
     await runStep("claim issue", async () => {
       await progress(
-        options,
+        runOptions,
         "info",
         "labels",
         `ensuring ${inProgress} label exists`,
@@ -298,7 +308,7 @@ export async function runOneIssue(
         planLabelChange(issue.number, issue.labels, labels),
       );
       await progress(
-        options,
+        runOptions,
         "info",
         "claim",
         `claimed #${issue.number}: ${ready} -> ${inProgress}`,
@@ -363,7 +373,7 @@ export async function runOneIssue(
       ignoredPaths,
     );
     await emitSimpleStep(
-      options,
+      runOptions,
       issue.number,
       worktree.created ? "create worktree" : "reuse worktree",
     );
@@ -392,7 +402,7 @@ export async function runOneIssue(
       ? (existingState?.worktreePath ?? worktree.worktreePath)
       : worktree.worktreePath;
     await progress(
-      options,
+      runOptions,
       "info",
       "worktree",
       `${worktree.created ? "creating" : "reusing"} worktree ${worktreePath}`,
@@ -434,7 +444,7 @@ export async function runOneIssue(
         resolvedArtifacts,
       });
       await progress(
-        options,
+        runOptions,
         "info",
         "resume",
         `reusing saved worktree for artifact lookup: ${savedWorktreePath}`,
@@ -446,7 +456,7 @@ export async function runOneIssue(
       await resolvePlanningArtifacts({
         policy: artifactPolicy,
         issue: issueForRun,
-        now: options.now ?? new Date(),
+        now: runOptions.now ?? new Date(),
       });
     } else {
       const artifactWorktree =
@@ -507,16 +517,16 @@ export async function runOneIssue(
       },
       checkpoints,
       timestamp,
-      now: options.now ?? new Date(),
-      runOptions: options,
+      now: runOptions.now ?? new Date(),
+      runOptions,
       piAgentDir,
       tokenUsageState,
       progress: (level, stage, message, extras) =>
-        progress(options, level, stage, message, extras),
+        progress(runOptions, level, stage, message, extras),
       runStep,
       observePi,
       emitSimpleStep: (issueNumber, label) =>
-        emitSimpleStep(options, issueNumber, label),
+        emitSimpleStep(runOptions, issueNumber, label),
       blockIssue: (result, details) =>
         blockIssue(
           host,
@@ -526,11 +536,11 @@ export async function runOneIssue(
           result,
           details,
           timestamp,
-          options,
+          runOptions,
         ),
     });
     if (planningStages.kind === "finished") {
-      return withLogPath(planningStages.result, options);
+      return withLogPath(planningStages.result, runOptions);
     }
 
     labels = planningStages.labels;
@@ -576,16 +586,16 @@ export async function runOneIssue(
       implementationCompleted: checkpoints.implementationCompleted,
       checkpoints,
       timestamp,
-      runOptions: options,
+      runOptions,
       piAgentDir,
       tokenUsageState,
-      progressReporter: options.progress,
+      progressReporter: runOptions.progress,
       runStep,
       stepStart,
       stepComplete,
       observePi,
       emitSimpleStep: (issueNumber, label) =>
-        emitSimpleStep(options, issueNumber, label),
+        emitSimpleStep(runOptions, issueNumber, label),
       blockIssue: (result, details) =>
         blockIssue(
           host,
@@ -595,12 +605,12 @@ export async function runOneIssue(
           result,
           details,
           timestamp,
-          options,
+          runOptions,
         ),
     });
 
     if (implementationStage.kind === "blocked") {
-      return withLogPath(implementationStage.result, options);
+      return withLogPath(implementationStage.result, runOptions);
     }
     if (implementationStage.kind === "unexpected") {
       throw implementationStage.error;
@@ -627,7 +637,7 @@ export async function runOneIssue(
       branch,
       worktreePath,
       timestamp,
-      runOptions: options,
+      runOptions,
       runStep,
     });
 
@@ -651,7 +661,7 @@ export async function runOneIssue(
       { specPath, specCommit, planPath, planCommit, branch, worktreePath },
       timestamp,
       error,
-      options,
+      runOptions,
     );
   }
 }

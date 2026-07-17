@@ -40,6 +40,7 @@ type DevelopmentEnvironmentStageOptions = DevelopmentEnvironmentDetails & {
   inProgressLabel: string;
   timestamp: string;
   logPath?: string;
+  piSessionPath?: string;
   streamPiOutput?: (chunk: string) => void;
   verbosePiOutput?: boolean;
   heartbeatMs?: number;
@@ -63,9 +64,16 @@ type DevelopmentEnvironmentStageOptions = DevelopmentEnvironmentDetails & {
 
 function withLogPath<T extends AgentIssuePipelineResult>(
   result: T,
-  logPath?: string,
+  options: Pick<
+    DevelopmentEnvironmentStageOptions,
+    "logPath" | "piSessionPath"
+  >,
 ): T {
-  return logPath ? { ...result, logPath } : result;
+  return {
+    ...result,
+    ...(options.logPath ? { logPath: options.logPath } : {}),
+    ...(options.piSessionPath ? { piSessionPath: options.piSessionPath } : {}),
+  };
 }
 
 async function developmentEnvironmentNotReady(
@@ -129,7 +137,7 @@ async function developmentEnvironmentNotReady(
       evidence: result.evidence,
       remediation: result.remediation,
     },
-    options.logPath,
+    options,
   );
 }
 
@@ -179,6 +187,7 @@ export async function runDevelopmentEnvironmentStage(
           heartbeatMs: options.heartbeatMs,
           tokenUsageState: options.tokenUsageState,
           observeSession: true,
+          sessionRoot: options.piSessionPath,
           verbosePiOutput: options.verbosePiOutput,
           onObservation: options.observePi("pi-development-environment"),
           taskContract: options.config.projectPolicy.pi.taskContract,

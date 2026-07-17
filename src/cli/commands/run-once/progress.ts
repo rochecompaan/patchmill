@@ -49,6 +49,18 @@ export function runLogPath(
     : join(runStateDir, `issue-${issueNumber}`, fileName);
 }
 
+export function runPiSessionPath(
+  runStateDir: string,
+  timestamp: string,
+  issueNumber: number,
+): string {
+  return join(
+    runStateDir,
+    `issue-${issueNumber}`,
+    `run-${safeTimestamp(timestamp)}-pi-sessions`,
+  );
+}
+
 export class ConsoleProgressReporter implements ProgressReporter {
   private readonly writeLine: (line: string) => void;
 

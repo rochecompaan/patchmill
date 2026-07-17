@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { runPiSessionPath } from "./progress.ts";
 import {
   createStepAccounting,
   emitSimpleStep,
@@ -29,10 +30,33 @@ test("emitSimpleStep emits start and complete", async () => {
   );
 });
 
-test("withLogPath enriches results", () => {
+test("runPiSessionPath stores session logs beside issue run logs", () => {
   assert.equal(
-    withLogPath({ status: "no-issue" }, { logPath: "run.jsonl" }).logPath,
-    "run.jsonl",
+    runPiSessionPath(".patchmill/runs", "2026-07-16T09:00:00.000Z", 92),
+    ".patchmill/runs/issue-92/run-2026-07-16T09-00-00-000Z-pi-sessions",
+  );
+});
+
+test("withLogPath attaches log and Pi session paths to selected issue results", () => {
+  assert.deepEqual(
+    withLogPath(
+      {
+        status: "spec-created",
+        issue: { number: 92, title: "Keep Pi session logs", labels: [] },
+        specPath: "docs/specs/issue-92.md",
+      },
+      {
+        logPath: ".patchmill/runs/issue-92/run.jsonl",
+        piSessionPath: ".patchmill/runs/issue-92/run-x-pi-sessions",
+      },
+    ),
+    {
+      status: "spec-created",
+      issue: { number: 92, title: "Keep Pi session logs", labels: [] },
+      specPath: "docs/specs/issue-92.md",
+      logPath: ".patchmill/runs/issue-92/run.jsonl",
+      piSessionPath: ".patchmill/runs/issue-92/run-x-pi-sessions",
+    },
   );
 });
 

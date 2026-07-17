@@ -103,6 +103,7 @@ export type AdvancePlanningStagesOptions = {
     streamPiOutput?: (chunk: string) => void;
     verbosePiOutput?: boolean;
     heartbeatMs?: number;
+    piSessionPath?: string;
   };
   piAgentDir: string;
   tokenUsageState: { total: number };
@@ -368,6 +369,7 @@ export async function advancePlanningStages({
           heartbeatMs: runOptions.heartbeatMs,
           tokenUsageState,
           observeSession: true,
+          sessionRoot: runOptions.piSessionPath,
           verbosePiOutput: runOptions.verbosePiOutput,
           onObservation: observePi("pi-plan"),
           taskContract: config.projectPolicy.pi.taskContract,
@@ -543,6 +545,7 @@ export async function advancePlanningStages({
           heartbeatMs: runOptions.heartbeatMs,
           tokenUsageState,
           observeSession: true,
+          sessionRoot: runOptions.piSessionPath,
           verbosePiOutput: runOptions.verbosePiOutput,
           onObservation: observePi("pi-plan"),
           taskContract: config.projectPolicy.pi.taskContract,

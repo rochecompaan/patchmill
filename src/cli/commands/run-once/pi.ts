@@ -308,6 +308,8 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   tokenUsage?: () => string | undefined;
   tokenUsageState?: { total: number };
   observeSession?: boolean;
+  sessionRoot?: string;
+  sessionDir?: string;
   onObservation?: (observation: PiSessionObservation) => void | Promise<void>;
   verbosePiOutput?: boolean;
   taskContract?: PatchmillPiTaskContract;
@@ -389,6 +391,29 @@ async function emitPiOutput(
   });
 }
 
+async function createSessionDirForPi(
+  options: RunPiPromptOptions,
+  promptTempDir: string,
+): Promise<string | undefined> {
+  const shouldCreateSession = options.observeSession || options.streamOutput;
+  if (!shouldCreateSession) return undefined;
+
+  if (options.sessionDir) {
+    await mkdir(options.sessionDir, { recursive: true });
+    return options.sessionDir;
+  }
+
+  if (options.sessionRoot) {
+    const stageRoot = join(options.sessionRoot, options.stage);
+    await mkdir(stageRoot, { recursive: true });
+    return await mkdtemp(join(stageRoot, "invocation-"));
+  }
+
+  const sessionDir = join(promptTempDir, "sessions");
+  await mkdir(sessionDir, { recursive: true });
+  return sessionDir;
+}
+
 export async function runPiPrompt<Result = AgentIssuePiResult>(
   runner: CommandRunner,
   cwd: string,
@@ -429,9 +454,18 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
       message: "started pi",
     });
     const streamOutput = options?.streamOutput;
-    const shouldCreateSession = options?.observeSession || streamOutput;
-    const sessionDir = shouldCreateSession ? join(dir, "sessions") : undefined;
-    if (sessionDir) await mkdir(sessionDir, { recursive: true });
+    const sessionDir = options
+      ? await createSessionDirForPi(options, dir)
+      : undefined;
+    if (sessionDir) {
+      await options?.progress?.event({
+        time: new Date().toISOString(),
+        level: "debug",
+        stage: options.stage,
+        message: "pi session dir",
+        data: sessionDir,
+      });
+    }
     const pendingObservations: Promise<void>[] = [];
     const sessionStreamer = sessionDir
       ? options?.observeSession
