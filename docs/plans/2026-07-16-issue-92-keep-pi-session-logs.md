@@ -1,37 +1,61 @@
 # Issue 92 Keep Pi Session Logs Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Preserve Pi session JSONL logs for every Patchmill `run-once` Pi invocation without letting durable log directories confuse current-session streaming.
+**Goal:** Preserve Pi session JSONL logs for every Patchmill `run-once` Pi
+invocation without letting durable log directories confuse current-session
+streaming.
 
-**Architecture:** Split prompt temporary storage from session-log storage. `runPiPrompt()` remains the Pi boundary and owns session path derivation: pipeline callers pass one durable `sessionRoot`, and `runPiPrompt()` creates a fresh `<sessionRoot>/<stage>/invocation-*` leaf for each invocation. Exact `sessionDir` remains a low-level override, but run-once orchestration does not construct stage-specific session paths.
+**Architecture:** Split prompt temporary storage from session-log storage.
+`runPiPrompt()` remains the Pi boundary and owns session path derivation:
+pipeline callers pass one durable `sessionRoot`, and `runPiPrompt()` creates a
+fresh `<sessionRoot>/<stage>/invocation-*` leaf for each invocation. Exact
+`sessionDir` remains a low-level override, but run-once orchestration does not
+construct stage-specific session paths.
 
-**Tech Stack:** TypeScript, Node.js `node:test`, Patchmill run-once pipeline, Pi CLI `--session-dir`, JSONL progress logging.
+**Tech Stack:** TypeScript, Node.js `node:test`, Patchmill run-once pipeline, Pi
+CLI `--session-dir`, JSONL progress logging.
 
 ## Global Constraints
 
-- Do not change npm dependencies, `package.json`, `package-lock.json`, or `npm-shrinkwrap.json`; if a dependency change becomes necessary, stop and report before proceeding.
-- Durable Pi session artifact roots must live under `config.runStateDir` and the selected issue directory, not under `/tmp`, `.pi`, or `.patchmill/pi-agent`.
-- Each Pi invocation that uses a durable root must get a fresh per-invocation leaf under `<sessionRoot>/<stage>/invocation-*`.
+- Do not change npm dependencies, `package.json`, `package-lock.json`, or
+  `npm-shrinkwrap.json`; if a dependency change becomes necessary, stop and
+  report before proceeding.
+- Durable Pi session artifact roots must live under `config.runStateDir` and the
+  selected issue directory, not under `/tmp`, `.pi`, or `.patchmill/pi-agent`.
+- Each Pi invocation that uses a durable root must get a fresh per-invocation
+  leaf under `<sessionRoot>/<stage>/invocation-*`.
 - Temporary prompt files may still be removed after each Pi invocation.
-- `runPiPrompt()` must never remove a caller-provided `sessionRoot`, exact `sessionDir`, or generated durable invocation leaf.
-- Direct `runPiPrompt()` callers without a configured durable session root keep the existing temporary fallback behavior.
-- Run-once orchestration should pass a durable session root only; stage and invocation path policy belongs inside the Pi boundary.
-- Pipeline JSON summaries should include `piSessionPath` only for selected-issue results where the issue-specific root exists.
-- Apply the Testing Value Gate: this change is reusable control-flow and filesystem behavior, so write automated regression tests.
+- `runPiPrompt()` must never remove a caller-provided `sessionRoot`, exact
+  `sessionDir`, or generated durable invocation leaf.
+- Direct `runPiPrompt()` callers without a configured durable session root keep
+  the existing temporary fallback behavior.
+- Run-once orchestration should pass a durable session root only; stage and
+  invocation path policy belongs inside the Pi boundary.
+- Pipeline JSON summaries should include `piSessionPath` only for selected-issue
+  results where the issue-specific root exists.
+- Apply the Testing Value Gate: this change is reusable control-flow and
+  filesystem behavior, so write automated regression tests.
 
 ---
 
 ## File Structure
 
 - `src/cli/commands/run-once/pi.ts`
-  - Owns prompt-temp creation, Pi command invocation, durable session-root expansion, and fresh invocation leaf creation.
+  - Owns prompt-temp creation, Pi command invocation, durable session-root
+    expansion, and fresh invocation leaf creation.
   - Add `RunPiPromptOptions.sessionRoot?: string` for pipeline callers.
-  - Keep `RunPiPromptOptions.sessionDir?: string` as an exact low-level override.
+  - Keep `RunPiPromptOptions.sessionDir?: string` as an exact low-level
+    override.
 - `src/cli/commands/run-once/pi.test.ts`
-  - Add focused unit tests for fresh durable invocation leaves, stale JSONL isolation, exact override retention, and debug event emission.
+  - Add focused unit tests for fresh durable invocation leaves, stale JSONL
+    isolation, exact override retention, and debug event emission.
 - `src/cli/commands/run-once/progress.ts`
-  - Add `runPiSessionPath()` next to `runLogPath()` so session artifact roots share timestamp formatting.
+  - Add `runPiSessionPath()` next to `runLogPath()` so session artifact roots
+    share timestamp formatting.
 - `src/cli/commands/run-once/pipeline-progress.ts`
   - Carry `piSessionPath` through pipeline progress options and `withLogPath()`.
 - `src/cli/commands/run-once/types.ts`
@@ -45,19 +69,27 @@
   - Pass `sessionRoot: runOptions.piSessionPath` into spec and plan Pi calls.
   - Do not construct `<root>/<stage>` paths here.
 - `src/cli/commands/run-once/development-environment-stage.ts`
-  - Pass `sessionRoot: options.piSessionPath` into the development-environment Pi call.
+  - Pass `sessionRoot: options.piSessionPath` into the development-environment
+    Pi call.
   - Do not construct `<root>/<stage>` paths here.
 - `src/cli/commands/run-once/pipeline-implementation.ts`
-  - Pass `sessionRoot: runOptions.piSessionPath` into the implementation Pi call.
+  - Pass `sessionRoot: runOptions.piSessionPath` into the implementation Pi
+    call.
   - Do not construct `<root>/<stage>` paths here.
 - `src/cli/commands/run-once/args.test.ts`
-  - Assert JSON summary output includes `piSessionPath` for a selected-issue result.
+  - Assert JSON summary output includes `piSessionPath` for a selected-issue
+    result.
 - `src/cli/commands/run-once/pipeline-progress.test.ts`
-  - Assert `runPiSessionPath()` shape and `withLogPath()` selected-issue metadata.
+  - Assert `runPiSessionPath()` shape and `withLogPath()` selected-issue
+    metadata.
 - `src/cli/commands/run-once/pipeline-implementation-scenarios.test.ts`
-  - Add a pipeline-level test that captures Pi `--session-dir` arguments and verifies fresh invocation leaves under planning and implementation stage roots.
+  - Add a pipeline-level test that captures Pi `--session-dir` arguments and
+    verifies fresh invocation leaves under planning and implementation stage
+    roots.
 - `src/cli/commands/run-once/pipeline-development-environment.test.ts`
-  - Add or extend a test that captures the development-environment `--session-dir` argument and verifies a fresh invocation leaf under the stage root.
+  - Add or extend a test that captures the development-environment
+    `--session-dir` argument and verifies a fresh invocation leaf under the
+    stage root.
 
 ---
 
@@ -70,13 +102,17 @@
 
 **Interfaces:**
 
-- Consumes: existing `RunPiPromptOptions`, `piPromptArgs(promptPath, sessionDir, skillPaths)`, `ProgressReporter`, and Pi session streamers.
+- Consumes: existing `RunPiPromptOptions`,
+  `piPromptArgs(promptPath, sessionDir, skillPaths)`, `ProgressReporter`, and Pi
+  session streamers.
 - Produces:
-  - `RunPiPromptOptions.sessionRoot?: string` for durable run-once session artifacts.
+  - `RunPiPromptOptions.sessionRoot?: string` for durable run-once session
+    artifacts.
   - `RunPiPromptOptions.sessionDir?: string` as an exact low-level override.
   - Fresh durable invocation leaves under `<sessionRoot>/<stage>/invocation-*`.
 
-- [ ] **Step 1: Write failing unit coverage for fresh invocation leaves and stale JSONL isolation**
+- [ ] **Step 1: Write failing unit coverage for fresh invocation leaves and
+      stale JSONL isolation**
 
 Update imports in `src/cli/commands/run-once/pi.test.ts`:
 
@@ -123,7 +159,10 @@ test("runPiPrompt creates a fresh durable invocation leaf and ignores stale JSON
     const args = assertBundledPiCall(call);
     capturedPromptPath = promptPath(args);
     const sessionDirIndex = args.indexOf("--session-dir");
-    assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${args.join(" ")}`);
+    assert.ok(
+      sessionDirIndex >= 0,
+      `expected --session-dir in ${args.join(" ")}`,
+    );
     capturedSessionDir = args[sessionDirIndex + 1] ?? "";
 
     assert.equal(dirname(capturedSessionDir), join(sessionRoot, "pi-plan"));
@@ -161,7 +200,10 @@ test("runPiPrompt creates a fresh durable invocation leaf and ignores stale JSON
     code: "ENOENT",
   });
   assert.equal(
-    await readFile(join(capturedSessionDir, "--repo--", "session.jsonl"), "utf8"),
+    await readFile(
+      join(capturedSessionDir, "--repo--", "session.jsonl"),
+      "utf8",
+    ),
     JSON.stringify({
       type: "message",
       message: {
@@ -173,15 +215,19 @@ test("runPiPrompt creates a fresh durable invocation leaf and ignores stale JSON
 });
 ```
 
-This test proves behavior rather than argument wiring: stale durable JSONL exists before the run, but only current invocation output streams.
+This test proves behavior rather than argument wiring: stale durable JSONL
+exists before the run, but only current invocation output streams.
 
-- [ ] **Step 2: Write failing unit coverage for the exact `sessionDir` override and debug event**
+- [ ] **Step 2: Write failing unit coverage for the exact `sessionDir` override
+      and debug event**
 
 Add this test after the fresh leaf test:
 
 ```ts
 test("runPiPrompt preserves an exact sessionDir override and logs the actual session dir", async (t) => {
-  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-session-override-"));
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-pi-session-override-"),
+  );
   t.after(async () => {
     await rm(repoRoot, { recursive: true, force: true });
   });
@@ -194,7 +240,10 @@ test("runPiPrompt preserves an exact sessionDir override and logs the actual ses
     const args = assertBundledPiCall(call);
     capturedPromptPath = promptPath(args);
     const sessionDirIndex = args.indexOf("--session-dir");
-    assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${args.join(" ")}`);
+    assert.ok(
+      sessionDirIndex >= 0,
+      `expected --session-dir in ${args.join(" ")}`,
+    );
     assert.equal(args[sessionDirIndex + 1], exactSessionDir);
 
     await mkdir(join(exactSessionDir, "--repo--"), { recursive: true });
@@ -245,7 +294,8 @@ Run:
 node --test src/cli/commands/run-once/pi.test.ts
 ```
 
-Expected before implementation: failure because `sessionRoot`, exact `sessionDir`, or the debug event is missing.
+Expected before implementation: failure because `sessionRoot`, exact
+`sessionDir`, or the debug event is missing.
 
 - [ ] **Step 4: Add `sessionRoot` and exact `sessionDir` options**
 
@@ -332,7 +382,9 @@ Keep the existing final cleanup unchanged:
 await rm(dir, { recursive: true, force: true });
 ```
 
-That cleanup removes the prompt temp directory. It does not remove exact session dirs or durable invocation leaves because those paths are no longer nested under `dir` when caller-provided session options are used.
+That cleanup removes the prompt temp directory. It does not remove exact session
+dirs or durable invocation leaves because those paths are no longer nested under
+`dir` when caller-provided session options are used.
 
 - [ ] **Step 6: Run the focused test file to verify Task 1 passes**
 
@@ -369,11 +421,15 @@ git commit -m "fix(run-once): isolate durable pi session streams"
 **Interfaces:**
 
 - Consumes: `runStateDir`, `timestamp`, selected `issueNumber`.
-- Produces: `runPiSessionPath(runStateDir, timestamp, issueNumber): string`, and `piSessionPath?: string` on selected-issue pipeline results and JSON summaries.
+- Produces: `runPiSessionPath(runStateDir, timestamp, issueNumber): string`, and
+  `piSessionPath?: string` on selected-issue pipeline results and JSON
+  summaries.
 
-- [ ] **Step 1: Write failing tests for path and selected-issue result metadata**
+- [ ] **Step 1: Write failing tests for path and selected-issue result
+      metadata**
 
-In `src/cli/commands/run-once/pipeline-progress.test.ts`, extend imports to include `runPiSessionPath` from `progress.ts` if needed. Add this test:
+In `src/cli/commands/run-once/pipeline-progress.test.ts`, extend imports to
+include `runPiSessionPath` from `progress.ts` if needed. Add this test:
 
 ```ts
 test("runPiSessionPath stores session logs beside issue run logs", () => {
@@ -384,7 +440,8 @@ test("runPiSessionPath stores session logs beside issue run logs", () => {
 });
 ```
 
-Replace or extend the existing `withLogPath` test with a selected-issue result shape, not `no-issue`:
+Replace or extend the existing `withLogPath` test with a selected-issue result
+shape, not `no-issue`:
 
 ```ts
 test("withLogPath attaches log and Pi session paths to selected issue results", () => {
@@ -411,7 +468,8 @@ test("withLogPath attaches log and Pi session paths to selected issue results", 
 });
 ```
 
-In `src/cli/commands/run-once/args.test.ts`, add `piSessionPath` to one existing selected-issue summary assertion, for example the merged result test:
+In `src/cli/commands/run-once/args.test.ts`, add `piSessionPath` to one existing
+selected-issue summary assertion, for example the merged result test:
 
 ```ts
 assert.deepEqual(
@@ -444,7 +502,8 @@ assert.deepEqual(
 );
 ```
 
-If `args.test.ts` has an existing issue helper, use that helper instead of the inline issue object.
+If `args.test.ts` has an existing issue helper, use that helper instead of the
+inline issue object.
 
 - [ ] **Step 2: Run focused tests to verify metadata tests fail**
 
@@ -454,11 +513,13 @@ Run:
 node --test src/cli/commands/run-once/pipeline-progress.test.ts src/cli/commands/run-once/args.test.ts
 ```
 
-Expected before implementation: failure because `runPiSessionPath` and `piSessionPath` metadata are not implemented.
+Expected before implementation: failure because `runPiSessionPath` and
+`piSessionPath` metadata are not implemented.
 
 - [ ] **Step 3: Implement `runPiSessionPath()`**
 
-In `src/cli/commands/run-once/progress.ts`, add this function after `runLogPath()`:
+In `src/cli/commands/run-once/progress.ts`, add this function after
+`runLogPath()`:
 
 ```ts
 export function runPiSessionPath(
@@ -476,7 +537,8 @@ export function runPiSessionPath(
 
 - [ ] **Step 4: Carry `piSessionPath` through pipeline result metadata**
 
-In `src/cli/commands/run-once/pipeline-progress.ts`, change `PipelineProgressOptions`:
+In `src/cli/commands/run-once/pipeline-progress.ts`, change
+`PipelineProgressOptions`:
 
 ```ts
 export type PipelineProgressOptions = {
@@ -582,18 +644,20 @@ git commit -m "feat(run-once): report pi session artifact roots"
 
 **Interfaces:**
 
-- Consumes: `runPiSessionPath()` from Task 2 and `RunPiPromptOptions.sessionRoot` from Task 1.
-- Produces: selected-issue pipeline options with `piSessionPath`; all run-once Pi calls pass the durable root as `sessionRoot` and let `runPiPrompt()` derive fresh per-stage invocation leaves.
+- Consumes: `runPiSessionPath()` from Task 2 and
+  `RunPiPromptOptions.sessionRoot` from Task 1.
+- Produces: selected-issue pipeline options with `piSessionPath`; all run-once
+  Pi calls pass the durable root as `sessionRoot` and let `runPiPrompt()` derive
+  fresh per-stage invocation leaves.
 
-- [ ] **Step 1: Write a helper assertion for fresh invocation leaves in test files**
+- [ ] **Step 1: Write a helper assertion for fresh invocation leaves in test
+      files**
 
-In each touched pipeline test file, add this helper near existing local helpers if no shared helper already exists:
+In each touched pipeline test file, add this helper near existing local helpers
+if no shared helper already exists:
 
 ```ts
-function assertInvocationLeaf(
-  actual: string,
-  expectedStageRoot: string,
-): void {
+function assertInvocationLeaf(actual: string, expectedStageRoot: string): void {
   assert.equal(dirname(actual), expectedStageRoot);
   assert.match(basename(actual), /^invocation-/);
 }
@@ -601,14 +665,20 @@ function assertInvocationLeaf(
 
 Add `basename` and `dirname` to the `node:path` import in that file if needed.
 
-- [ ] **Step 2: Write failing pipeline coverage for planning and implementation session roots**
+- [ ] **Step 2: Write failing pipeline coverage for planning and implementation
+      session roots**
 
-In `src/cli/commands/run-once/pipeline-implementation-scenarios.test.ts`, add or extend a scenario that creates a missing plan and then runs implementation. Capture workflow Pi calls after the run:
+In `src/cli/commands/run-once/pipeline-implementation-scenarios.test.ts`, add or
+extend a scenario that creates a missing plan and then runs implementation.
+Capture workflow Pi calls after the run:
 
 ```ts
 const piSessionDirs = workflowPiCalls(runner.calls).map((call) => {
   const sessionDirIndex = call.args.indexOf("--session-dir");
-  assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${call.args.join(" ")}`);
+  assert.ok(
+    sessionDirIndex >= 0,
+    `expected --session-dir in ${call.args.join(" ")}`,
+  );
   return call.args[sessionDirIndex + 1] ?? "";
 });
 
@@ -625,20 +695,30 @@ assert.ok(
   }),
 );
 assert.ok(
-  piSessionDirs.some((dir) => dirname(dir) === join(expectedRoot, "pi-implementation")),
+  piSessionDirs.some(
+    (dir) => dirname(dir) === join(expectedRoot, "pi-implementation"),
+  ),
 );
 ```
 
-If the existing scenario has a different issue number, replace `issue-45` with that scenario's issue number. The important contract is that captured Pi session dirs are fresh leaves under the expected stage roots, not the stage roots themselves.
+If the existing scenario has a different issue number, replace `issue-45` with
+that scenario's issue number. The important contract is that captured Pi session
+dirs are fresh leaves under the expected stage roots, not the stage roots
+themselves.
 
 - [ ] **Step 3: Write failing development-environment session-root coverage**
 
-In `src/cli/commands/run-once/pipeline-development-environment.test.ts`, extend the existing development-environment scenario. After the run, inspect `workflowPiCalls(runner.calls)` and assert:
+In `src/cli/commands/run-once/pipeline-development-environment.test.ts`, extend
+the existing development-environment scenario. After the run, inspect
+`workflowPiCalls(runner.calls)` and assert:
 
 ```ts
 const piSessionDirs = workflowPiCalls(runner.calls).map((call) => {
   const sessionDirIndex = call.args.indexOf("--session-dir");
-  assert.ok(sessionDirIndex >= 0, `expected --session-dir in ${call.args.join(" ")}`);
+  assert.ok(
+    sessionDirIndex >= 0,
+    `expected --session-dir in ${call.args.join(" ")}`,
+  );
   return call.args[sessionDirIndex + 1] ?? "";
 });
 
@@ -649,14 +729,19 @@ const expectedRoot = join(
 );
 assert.equal(result.piSessionPath, expectedRoot);
 assert.ok(
-  piSessionDirs.some((dir) => dirname(dir) === join(expectedRoot, "pi-development-environment")),
+  piSessionDirs.some(
+    (dir) => dirname(dir) === join(expectedRoot, "pi-development-environment"),
+  ),
 );
 assert.ok(
-  piSessionDirs.some((dir) => dirname(dir) === join(expectedRoot, "pi-implementation")),
+  piSessionDirs.some(
+    (dir) => dirname(dir) === join(expectedRoot, "pi-implementation"),
+  ),
 );
 ```
 
-Use that test file's existing issue number and `NOW` constant when constructing the expected root.
+Use that test file's existing issue number and `NOW` constant when constructing
+the expected root.
 
 - [ ] **Step 4: Run the focused pipeline tests to verify they fail**
 
@@ -668,11 +753,13 @@ node --test \
   src/cli/commands/run-once/pipeline-development-environment.test.ts
 ```
 
-Expected before implementation: failure because `result.piSessionPath` is absent or Pi calls still use temp session dirs.
+Expected before implementation: failure because `result.piSessionPath` is absent
+or Pi calls still use temp session dirs.
 
 - [ ] **Step 5: Compute `piSessionPath` in `runOneIssue()`**
 
-In `src/cli/commands/run-once/pipeline.ts`, import `runPiSessionPath` from `progress.ts`:
+In `src/cli/commands/run-once/pipeline.ts`, import `runPiSessionPath` from
+`progress.ts`:
 
 ```ts
 import { runPiSessionPath } from "./progress.ts";
@@ -689,42 +776,54 @@ const piSessionPath = runPiSessionPath(
 const runOptions = { ...options, piSessionPath };
 ```
 
-Then use `runOptions` for selected-issue progress, stage calls, and result metadata after this point. Keep selection diagnostics before issue selection on `options`, because `piSessionPath` does not exist until an issue is selected.
+Then use `runOptions` for selected-issue progress, stage calls, and result
+metadata after this point. Keep selection diagnostics before issue selection on
+`options`, because `piSessionPath` does not exist until an issue is selected.
 
 Examples:
 
 ```ts
-await progress(runOptions, "info", "git", "checking issue branch base containment", {
-  issueNumber: issue.number,
-});
+await progress(
+  runOptions,
+  "info",
+  "git",
+  "checking issue branch base containment",
+  {
+    issueNumber: issue.number,
+  },
+);
 ```
 
 ```ts
 return withLogPath(planningStages.result, runOptions);
 ```
 
-- [ ] **Step 6: Pass `sessionRoot`, not stage-specific paths, to all run-once Pi calls**
+- [ ] **Step 6: Pass `sessionRoot`, not stage-specific paths, to all run-once Pi
+      calls**
 
-In `src/cli/commands/run-once/stage-advancement.ts`, add this property inside both spec and plan creation `runPiPrompt()` options objects:
+In `src/cli/commands/run-once/stage-advancement.ts`, add this property inside
+both spec and plan creation `runPiPrompt()` options objects:
 
 ```ts
 sessionRoot: runOptions.piSessionPath,
 ```
 
-In `src/cli/commands/run-once/development-environment-stage.ts`, add this property inside the development-environment `runPiPrompt()` options object:
+In `src/cli/commands/run-once/development-environment-stage.ts`, add this
+property inside the development-environment `runPiPrompt()` options object:
 
 ```ts
 sessionRoot: options.piSessionPath,
 ```
 
-In `src/cli/commands/run-once/pipeline-implementation.ts`, add this property inside the implementation `runPiPrompt()` options object:
+In `src/cli/commands/run-once/pipeline-implementation.ts`, add this property
+inside the implementation `runPiPrompt()` options object:
 
 ```ts
 sessionRoot: runOptions.piSessionPath,
 ```
 
-Do not construct stage-specific child paths in orchestration files. Those
-stage paths are derived by `runPiPrompt()` from `sessionRoot` and `stage`.
+Do not construct stage-specific child paths in orchestration files. Those stage
+paths are derived by `runPiPrompt()` from `sessionRoot` and `stage`.
 
 - [ ] **Step 7: Run focused pipeline tests**
 
@@ -736,7 +835,8 @@ node --test \
   src/cli/commands/run-once/pipeline-development-environment.test.ts
 ```
 
-Expected after implementation: tests pass and captured Pi calls use fresh durable invocation leaves under the expected stage roots.
+Expected after implementation: tests pass and captured Pi calls use fresh
+durable invocation leaves under the expected stage roots.
 
 - [ ] **Step 8: Commit Task 3**
 
@@ -759,14 +859,16 @@ git commit -m "fix(run-once): store pi sessions as invocation artifacts"
 
 **Files:**
 
-- Modify only if a previous task revealed a focused test or lint fix in touched files.
+- Modify only if a previous task revealed a focused test or lint fix in touched
+  files.
 
 **Interfaces:**
 
 - Consumes: all code and tests from Tasks 1-3.
 - Produces: verified branch ready for review or pull request creation.
 
-- [ ] **Step 1: Inspect the final diff for accidental dependency or generated-file changes**
+- [ ] **Step 1: Inspect the final diff for accidental dependency or
+      generated-file changes**
 
 Run:
 
@@ -776,7 +878,8 @@ git diff --stat
 git diff -- package.json package-lock.json npm-shrinkwrap.json
 ```
 
-Expected: no changes to npm dependency files. If dependency files changed, stop and report; the project requires Nix build verification for dependency changes.
+Expected: no changes to npm dependency files. If dependency files changed, stop
+and report; the project requires Nix build verification for dependency changes.
 
 - [ ] **Step 2: Run the full run-once test suite**
 
@@ -808,15 +911,18 @@ npm run lint
 
 Expected: format, TypeScript lint, and markdown lint pass.
 
-- [ ] **Step 5: Reproduce the issue-92 stale-session regression with a focused command**
+- [ ] **Step 5: Reproduce the issue-92 stale-session regression with a focused
+      command**
 
-Run the specific test that exercises fresh invocation leaves and stale durable JSONL isolation:
+Run the specific test that exercises fresh invocation leaves and stale durable
+JSONL isolation:
 
 ```bash
 node --test src/cli/commands/run-once/pi.test.ts --test-name-pattern "fresh durable invocation leaf"
 ```
 
-Expected: test passes, proving stale JSONL under the durable root does not stream and prompt temp cleanup does not remove the current session JSONL.
+Expected: test passes, proving stale JSONL under the durable root does not
+stream and prompt temp cleanup does not remove the current session JSONL.
 
 - [ ] **Step 6: Inspect final diff for scope**
 
@@ -827,7 +933,8 @@ git diff --check
 git diff --name-only HEAD~3..HEAD
 ```
 
-Expected: no whitespace errors; changed files are limited to run-once code and tests.
+Expected: no whitespace errors; changed files are limited to run-once code and
+tests.
 
 - [ ] **Step 7: Commit any final verification-only adjustments**
 

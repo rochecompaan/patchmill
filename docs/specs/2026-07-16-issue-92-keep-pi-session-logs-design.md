@@ -2,9 +2,9 @@
 
 ## Context
 
-Issue #92 was opened after a `patchmill run-once` execution for issue #88
-ended with no supported final JSON status and no recoverable parent Pi session
-JSONL. The Patchmill run log still existed at
+Issue #92 was opened after a `patchmill run-once` execution for issue #88 ended
+with no supported final JSON status and no recoverable parent Pi session JSONL.
+The Patchmill run log still existed at
 `.patchmill/runs/issue-88/run-2026-07-16T06-56-46-497Z.jsonl`, and the
 pi-subagents async metadata still existed under `/tmp/pi-subagents-uid-1000/`,
 but the parent Pi `--session-dir` was gone.
@@ -22,8 +22,8 @@ The failure sequence was:
   Patchmill's prompt cleanup.
 
 `runPiPrompt()` currently creates one temporary directory for both the prompt
-file and, when observation or streaming is enabled, the Pi `--session-dir`.
-Its `finally` block removes the whole temporary directory. That is safe for the
+file and, when observation or streaming is enabled, the Pi `--session-dir`. Its
+`finally` block removes the whole temporary directory. That is safe for the
 prompt file but unsafe for diagnostic session logs and async subagent children
 that inherit the parent session location.
 
@@ -31,7 +31,8 @@ The existing Pi session streamers also assume the session directory they watch
 is fresh enough that the newest JSONL belongs to the current invocation. A
 durable directory reused across multiple Pi invocations can contain stale JSONL
 files. If Patchmill passes a reusable stage directory directly to Pi, the
-streamer can bind to stale output before the current Pi session writes its JSONL.
+streamer can bind to stale output before the current Pi session writes its
+JSONL.
 
 ## Decision
 
@@ -116,7 +117,7 @@ Patchmill should add a helper next to `runLogPath()` that derives the durable Pi
 session artifact root from the same run timestamp and issue number:
 
 ```ts
-runPiSessionPath(runStateDir, timestamp, issueNumber)
+runPiSessionPath(runStateDir, timestamp, issueNumber);
 ```
 
 The helper should return a path under the issue-specific run directory and use
@@ -242,9 +243,9 @@ session tree remains available for post-run debugging.
 ### Path shape and safety
 
 The durable session artifact root should be under `config.runStateDir` and the
-selected issue directory. It should not be under `.pi`, `.patchmill/pi-agent`, or
-a worktree-specific temporary directory. This makes the run log and session logs
-co-located and keeps them outside agent-managed todo state.
+selected issue directory. It should not be under `.pi`, `.patchmill/pi-agent`,
+or a worktree-specific temporary directory. This makes the run log and session
+logs co-located and keeps them outside agent-managed todo state.
 
 The implementation should use `mkdir(..., { recursive: true })` for durable
 stage roots and `mkdtemp()` for per-invocation leaves. It should not attempt to
