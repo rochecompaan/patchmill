@@ -36,9 +36,9 @@ should confirm the exact pins are present in the root package and lockfile, then
 add regression coverage that fails if Patchmill's runtime dependency no longer
 exports every Pi symbol imported by the init/auth path.
 
-A later feature can migrate init/auth to `readStoredCredential` or other newer Pi
-APIs, but that migration should be planned separately because `AuthStorage` is
-also used for writes, OAuth login, provider selection state, and registry
+A later feature can migrate init/auth to `readStoredCredential` or other newer
+Pi APIs, but that migration should be planned separately because `AuthStorage`
+is also used for writes, OAuth login, provider selection state, and registry
 construction. A dependency-contract fix is the lowest-risk high-priority bug fix
 for the reported install-time crash.
 
@@ -49,8 +49,8 @@ for the reported install-time crash.
   imports it.
 - `package.json` and `package-lock.json` enforce the same compatible
   `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui` versions.
-- Init/auth source continues to import only symbols that exist in the resolved Pi
-  dependency.
+- Init/auth source continues to import only symbols that exist in the resolved
+  Pi dependency.
 - Add a regression test or verification script that would fail if
   `patchmill init` could import a missing Pi export.
 - Preserve current init readiness detection, interactive API-key auth,
@@ -80,11 +80,11 @@ migration.
 
 ### Alternative: migrate to newer Pi credential APIs now
 
-Updating init/auth to newer Pi APIs may be desirable later, but it is riskier for
-this bug. The current code needs auth reads, writes, OAuth login, auth-status
-labels, OAuth provider discovery, and model registry refreshes. The issue only
-requires preventing incompatible install resolution, not changing those
-semantics.
+Updating init/auth to newer Pi APIs may be desirable later, but it is riskier
+for this bug. The current code needs auth reads, writes, OAuth login,
+auth-status labels, OAuth provider discovery, and model registry refreshes. The
+issue only requires preventing incompatible install resolution, not changing
+those semantics.
 
 ### Alternative: loosen the pin but add an upper bound
 
@@ -129,10 +129,10 @@ contract test location. It should fail with the same class of problem as the
 reported crash: Patchmill's source imports a runtime symbol that the resolved Pi
 package does not export.
 
-Optionally, a second lightweight packaging verification can run `npm pack --dry-run`
-or inspect the generated package metadata to confirm the published package would
-carry the exact pins. That should be verification, not a unit test that only
-repeats static JSON values.
+Optionally, a second lightweight packaging verification can run
+`npm pack --dry-run` or inspect the generated package metadata to confirm the
+published package would carry the exact pins. That should be verification, not a
+unit test that only repeats static JSON values.
 
 ## Verification strategy
 

@@ -44,8 +44,8 @@ changes.
   `ModelRegistry` contract.
 - Modify: `src/cli/commands/init/pi-auth-flow.ts` only if the runtime import
   list has drifted from the current `AuthStorage` and `ModelRegistry` contract.
-- Create: `src/cli/commands/init/pi-dependency-contract.test.ts` for the
-  runtime export compatibility regression test.
+- Create: `src/cli/commands/init/pi-dependency-contract.test.ts` for the runtime
+  export compatibility regression test.
 - Modify: `package.json` only if the Pi dependencies are not exact `0.80.3`.
 - Modify: `package-lock.json` only if its root dependencies or installed package
   entries are not exact `0.80.3`.
@@ -328,7 +328,7 @@ changes.
   brittle test for static file lists.
 
 - [ ] **Step 5: Commit no generated build output unless the repository already
-  tracks it for this change**
+      tracks it for this change**
 
   Run:
 
@@ -337,8 +337,8 @@ changes.
   ```
 
   Expected: if `dist/` is untracked or ignored, do not force-add it. If tracked
-  build output changed and project history expects it to be committed, include it
-  in the relevant implementation commit with a conventional message.
+  build output changed and project history expects it to be committed, include
+  it in the relevant implementation commit with a conventional message.
 
 ---
 
