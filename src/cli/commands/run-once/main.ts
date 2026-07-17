@@ -46,7 +46,7 @@ Environment:
 
 type Env = Record<string, string | undefined>;
 
-type JsonResultLog = { logPath?: string };
+type JsonResultLog = { logPath?: string; piSessionPath?: string };
 
 type JsonResult = JsonResultLog &
   (
@@ -158,7 +158,10 @@ async function finalLogPath(
 }
 
 export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
-  const withLogPath = result.logPath ? { logPath: result.logPath } : {};
+  const withLogPath = {
+    ...(result.logPath ? { logPath: result.logPath } : {}),
+    ...(result.piSessionPath ? { piSessionPath: result.piSessionPath } : {}),
+  };
 
   switch (result.status) {
     case "no-issue":

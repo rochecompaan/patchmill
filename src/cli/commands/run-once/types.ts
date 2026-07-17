@@ -270,7 +270,10 @@ export type AgentIssuePiResult =
   | AgentIssuePrCreatedResult
   | AgentIssueMergedResult;
 
-type AgentIssuePipelineResultLog = { logPath?: string };
+type AgentIssuePipelineResultLog = {
+  logPath?: string;
+  piSessionPath?: string;
+};
 
 export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
   (

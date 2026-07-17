@@ -5,6 +5,7 @@ export type PipelineProgressOptions = {
   now?: Date;
   progress?: ProgressReporter;
   logPath?: string;
+  piSessionPath?: string;
 };
 
 export async function progress(
@@ -56,7 +57,11 @@ export function withLogPath<T extends AgentIssuePipelineResult>(
   result: T,
   options: PipelineProgressOptions,
 ): T {
-  return options.logPath ? { ...result, logPath: options.logPath } : result;
+  return {
+    ...result,
+    ...(options.logPath ? { logPath: options.logPath } : {}),
+    ...(options.piSessionPath ? { piSessionPath: options.piSessionPath } : {}),
+  };
 }
 
 export function createStepAccounting(options: {
