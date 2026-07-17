@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import {
@@ -376,6 +376,157 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
     "initial progress\ntok: task=45k total=45k\n",
     'planning output\n{"status":"plan-created","planPath":"docs/plans/p.md"}\ntok: task=45k total=91k\n',
   ]);
+});
+
+test("runPiPrompt creates a fresh durable invocation leaf and ignores stale JSONL", async (t) => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-pi-session-"));
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const sessionRoot = join(
+    repoRoot,
+    ".patchmill",
+    "runs",
+    "issue-92",
+    "run-2026-07-16T09-00-00-000Z-pi-sessions",
+  );
+  const staleLeaf = join(sessionRoot, "pi-plan", "invocation-stale");
+  await mkdir(join(staleLeaf, "--repo--"), { recursive: true });
+  await writeFile(
+    join(staleLeaf, "--repo--", "session.jsonl"),
+    JSON.stringify({
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "stale progress" }],
+      },
+    }) + "\n",
+    "utf8",
+  );
+
+  const streamed: string[] = [];
+  let capturedPromptPath = "";
+  let capturedSessionDir = "";
+
+  const runner = createMockRunner(async (call) => {
+    const args = assertBundledPiCall(call);
+    capturedPromptPath = promptPath(args);
+    const sessionDirIndex = args.indexOf("--session-dir");
+    assert.ok(
+      sessionDirIndex >= 0,
+      `expected --session-dir in ${args.join(" ")}`,
+    );
+    capturedSessionDir = args[sessionDirIndex + 1] ?? "";
+
+    assert.equal(dirname(capturedSessionDir), join(sessionRoot, "pi-plan"));
+    assert.match(basename(capturedSessionDir), /^invocation-/);
+    assert.notEqual(capturedSessionDir, staleLeaf);
+
+    await mkdir(join(capturedSessionDir, "--repo--"), { recursive: true });
+    await writeFile(
+      join(capturedSessionDir, "--repo--", "session.jsonl"),
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "current progress" }],
+        },
+      }) + "\n",
+      "utf8",
+    );
+
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    sessionRoot,
+    streamOutput: (chunk) => streamed.push(chunk),
+  });
+
+  assert.deepEqual(streamed, ["current progress\n"]);
+  await assert.rejects(readFile(capturedPromptPath, "utf8"), {
+    code: "ENOENT",
+  });
+  assert.equal(
+    await readFile(
+      join(capturedSessionDir, "--repo--", "session.jsonl"),
+      "utf8",
+    ),
+    JSON.stringify({
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "current progress" }],
+      },
+    }) + "\n",
+  );
+});
+
+test("runPiPrompt preserves an exact sessionDir override and logs the actual session dir", async (t) => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "patchmill-pi-session-override-"),
+  );
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const events: AgentIssueProgressEvent[] = [];
+  const exactSessionDir = join(repoRoot, "exact-session-dir");
+  let capturedPromptPath = "";
+
+  const runner = createMockRunner(async (call) => {
+    const args = assertBundledPiCall(call);
+    capturedPromptPath = promptPath(args);
+    const sessionDirIndex = args.indexOf("--session-dir");
+    assert.ok(
+      sessionDirIndex >= 0,
+      `expected --session-dir in ${args.join(" ")}`,
+    );
+    assert.equal(args[sessionDirIndex + 1], exactSessionDir);
+
+    await mkdir(join(exactSessionDir, "--repo--"), { recursive: true });
+    await writeFile(
+      join(exactSessionDir, "--repo--", "session.jsonl"),
+      JSON.stringify({ type: "session", id: "session-1", cwd: "/repo" }) + "\n",
+      "utf8",
+    );
+
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    progress: { event: (event) => events.push(event) },
+    stage: "pi-plan",
+    observeSession: true,
+    sessionDir: exactSessionDir,
+  });
+
+  await assert.rejects(readFile(capturedPromptPath, "utf8"), {
+    code: "ENOENT",
+  });
+  assert.equal(
+    await readFile(join(exactSessionDir, "--repo--", "session.jsonl"), "utf8"),
+    JSON.stringify({ type: "session", id: "session-1", cwd: "/repo" }) + "\n",
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.level === "debug" &&
+        event.stage === "pi-plan" &&
+        event.message === "pi session dir" &&
+        event.data === exactSessionDir,
+    ),
+  );
 });
 
 test("runPiPrompt emits structured observations and suppresses raw text unless streamOutput is provided", async () => {
