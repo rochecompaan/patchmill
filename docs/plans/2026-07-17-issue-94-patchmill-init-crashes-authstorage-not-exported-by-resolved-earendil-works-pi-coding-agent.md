@@ -304,8 +304,11 @@ changes.
   ```
 
   Expected: dry-run succeeds after running the `prepack` build. Review the
-  output to confirm the package includes `package.json`, `package-lock.json`,
-  and `npm-shrinkwrap.json` and does not report packaging errors.
+  output to confirm the package includes `package.json` and
+  `npm-shrinkwrap.json` and does not report packaging errors.
+  `package-lock.json` is intentionally verified directly in Task 2 because npm
+  excludes package locks from package tarballs in favor of
+  `npm-shrinkwrap.json`.
 
 - [ ] **Step 4: Inspect publish metadata with `npm pack --json --dry-run`**
 
@@ -318,14 +321,15 @@ changes.
 
   const [pack] = JSON.parse(readFileSync("/tmp/patchmill-issue-94-pack.json", "utf8"));
   const names = new Set(pack.files.map((file) => file.path));
-  for (const file of ["package.json", "package-lock.json", "npm-shrinkwrap.json"]) {
+  for (const file of ["package.json", "npm-shrinkwrap.json"]) {
     if (!names.has(file)) throw new Error(`packed tarball is missing ${file}`);
   }
   NODE
   ```
 
   Expected: command exits 0. This verifies packaging structure without adding a
-  brittle test for static file lists.
+  brittle test for static file lists. `package-lock.json` remains covered by the
+  direct metadata checks in Task 2 rather than package-tarball inspection.
 
 - [ ] **Step 5: Commit no generated build output unless the repository already
       tracks it for this change**
