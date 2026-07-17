@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.0](https://github.com/rochecompaan/patchmill/compare/v0.16.0...v0.17.0) (2026-07-17)
+
+
+### Features
+
+* **init:** default git handling to tracked config ([#91](https://github.com/rochecompaan/patchmill/issues/91)) ([d86c240](https://github.com/rochecompaan/patchmill/commit/d86c240d076d16bee44daa6fcc322326ed926482))
+* **run-once:** keep run-once Pi session logs ([#95](https://github.com/rochecompaan/patchmill/issues/95)) ([24356cf](https://github.com/rochecompaan/patchmill/commit/24356cf5705389ac99de33fb5edd9f745a329983))
+* **skills:** install patchmill wrappers for superpowers skills ([#93](https://github.com/rochecompaan/patchmill/issues/93)) ([a3737d5](https://github.com/rochecompaan/patchmill/commit/a3737d57230803393ad8d990a5e6dcd6ac8f54cf))
+
+
+### Bug Fixes
+
+* protect patchmill init pi dependency contract ([1f01cfe](https://github.com/rochecompaan/patchmill/commit/1f01cfea47fbb0c376f874c4a4281837892e71ef)), closes [#94](https://github.com/rochecompaan/patchmill/issues/94)
+* **run-once:** resume blocked implementation safely ([#87](https://github.com/rochecompaan/patchmill/issues/87)) ([3d4cac8](https://github.com/rochecompaan/patchmill/commit/3d4cac89a89d03d3c6627eb8ea9fd0846a17ffaf))
+* **skills:** load project skill pack in Pi runs ([f3c8bb9](https://github.com/rochecompaan/patchmill/commit/f3c8bb9f893f020d6ea4c9d37208d928861f8bfc)), closes [#82](https://github.com/rochecompaan/patchmill/issues/82)
+
 ## [0.16.0](https://github.com/rochecompaan/patchmill/compare/v0.15.1...v0.16.0) (2026-07-11)
 
 
