@@ -1,16 +1,13 @@
-<!-- markdownlint-disable MD022 MD031 MD032 MD033 MD036 MD040 MD060 -->
-
 # Plan Document Reviewer Prompt Template
 
 Use this template when dispatching a plan document reviewer subagent.
 
-**Purpose:** Verify the plan is complete, matches the spec, and has proper task
-decomposition.
+**Purpose:** Verify the plan is complete, matches the spec, and has proper task decomposition.
 
 **Dispatch after:** The complete plan is written.
 
 ```
-Subagent (general-purpose):
+Task tool (general-purpose):
   description: "Review plan document"
   prompt: |
     You are a plan document reviewer. Verify this plan is complete and ready for implementation.

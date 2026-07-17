@@ -28,10 +28,7 @@ Plan/spec: {PLAN_OR_SPEC_PATHS}
 - Do not perform broad rewrites or product/API/architecture changes that were not approved.
 - Ask for a decision before changing public API, migration strategy, landing policy, or product behavior.
 - Keep changes focused and reviewable.
-- Add or update tests when fixing behavior, validation, parsing, error handling,
-  security-sensitive behavior, or regressions that pass the Patchmill Testing
-  Value Gate. For static workflow/config/docs/lockfile findings where a new test
-  would only restate file content, use direct verification and state it.
+- Add or update tests when fixing behavior, validation, parsing, error handling, or regressions.
 
 ## Validation
 

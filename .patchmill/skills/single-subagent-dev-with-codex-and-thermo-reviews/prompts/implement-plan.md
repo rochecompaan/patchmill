@@ -26,16 +26,9 @@ Base SHA: {BASE_SHA}
 
 ## Development discipline
 
-- Use automated tests by default for production behavior changes, bug fixes,
-  reusable logic, parsing/validation, API contracts, error handling,
-  security-sensitive behavior, and regressions. Before adding a new automated
-  test, apply the Patchmill Testing Value Gate: the test must prove behavior
-  rather than restate implementation/configuration, fail for a meaningful
-  regression, benefit future maintainers, and cover behavior reusable or risky
-  enough to justify maintenance. For workflow YAML, dependency versions, package
-  lock contents, static config values, documentation text, or one-off script
-  structure, use direct verification such as linting, syntax checks, dry-runs,
-  builds, or existing test suites and state that verification.
+- Use TDD for production behavior changes, bug fixes, reusable logic,
+  parsing/validation, API contracts, error handling, security-sensitive behavior,
+  and regressions.
 - Follow existing repository patterns.
 - Keep changes focused and reviewable.
 - Update docs and changelog only when the plan or repository policy requires it.

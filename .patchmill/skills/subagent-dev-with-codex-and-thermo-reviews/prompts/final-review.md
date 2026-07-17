@@ -32,10 +32,6 @@ Review the entire final implementation, not just the last task. Inspect:
 
 - Verify implementation correctness against the plan/spec and Patchmill prompt context.
 - Verify regressions, edge cases, validation quality, and production readiness.
-- Check that automated tests were added for behavior changes that pass the
-  Patchmill Testing Value Gate, and that direct verification is stated for
-  static docs/config/workflow/lockfile changes where a new test would only
-  restate content.
 - For thermo-nuclear review, also aggressively inspect structure, maintainability, abstraction quality, file/module boundaries, and opportunities to simplify without changing behavior.
 - Cite file paths and line numbers for every finding.
 - Report only evidence-backed, actionable findings.
