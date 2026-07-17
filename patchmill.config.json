@@ -5,7 +5,7 @@
   },
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
-    "planning": ".patchmill/skills/writing-plans",
+    "planning": ".patchmill/skills/patchmill-planning",
     "implementation": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
     "developmentEnvironment": ".patchmill/skills/patchmill-development-environment",
     "landing": ".patchmill/skills/landing"

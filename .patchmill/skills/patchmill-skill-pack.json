@@ -1,7 +1,7 @@
 {
   "pack": {
     "name": "patchmill-recommended",
-    "version": "2026.07",
+    "version": "2026.07.1",
     "source": {
       "type": "github-release",
       "repository": "obra/superpowers",
@@ -9,7 +9,7 @@
       "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
     }
   },
-  "installedAt": "2026-07-17T15:39:53.153Z",
+  "installedAt": "2026-07-17T15:49:12.965Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -66,6 +66,10 @@
       "sha256": "477ab6ed5d976695e7829d45388c6b45f7e3befa978e084cd5eb9ab4f0371f84"
     },
     {
+      "path": ".patchmill/skills/patchmill-planning/SKILL.md",
+      "sha256": "f96979dcb298f940a8219844fc392965a56fabeba5b4742f9dd5978d2aa8d7ba"
+    },
+    {
       "path": ".patchmill/skills/patchmill-visual-evidence/SKILL.md",
       "sha256": "6c4fd9d169891dbc57194a28221bd5747d4d6f1efce8facda26d642edc4eb788"
     },
@@ -91,7 +95,7 @@
     },
     {
       "path": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/prompts/implement-plan.md",
-      "sha256": "5a05dcc88f57dbb970a83bab7b0f2657bd05e90e4ce4ad311367cf9f6c76b57a"
+      "sha256": "86d5a737650d9b3bcb929e6aacf14389d1dc2bd003f10559130b2ba8a6f51828"
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
@@ -99,11 +103,11 @@
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md",
-      "sha256": "d0c3169e3f69f845389dd9ee14bee8abf7eb1d4fe971dda9b9debf1f4f49be34"
+      "sha256": "8fc9f11c9a55dba64842e634ffc658c8c0fec00ec9896023987a7b05b3d78fdf"
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-review-findings.md",
-      "sha256": "4aa58f4aa80b91d96b7cf9f4f4db681a07c807fc57439d0148a4e550eea2ac9c"
+      "sha256": "5fc263f3d353360bb59967f3e0b3f84bdc5b6aec819a3c6bd8e2cb786ffa856a"
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md",
