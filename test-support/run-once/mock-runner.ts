@@ -34,6 +34,27 @@ export function workflowPiCalls(calls: Call[]): Call[] {
   return calls.filter((call) => call.command === "pi");
 }
 
+function defaultWorktreePreflightResult(call: Call): CommandResult | undefined {
+  if (
+    call.command === "git" &&
+    call.args[0] === "worktree" &&
+    call.args[1] === "list"
+  ) {
+    return { code: 0, stdout: "", stderr: "" };
+  }
+  if (call.command === "git" && call.args[0] === "show-ref") {
+    return { code: 1, stdout: "", stderr: "" };
+  }
+  if (
+    call.command === "git" &&
+    call.args[0] === "worktree" &&
+    call.args[1] === "add"
+  ) {
+    return { code: 0, stdout: "", stderr: "" };
+  }
+  return undefined;
+}
+
 export function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
 ): MockRunner {
@@ -73,7 +94,19 @@ export function createMockRunner(
         }
         return baseContainment;
       }
-      return await handler(call);
+      try {
+        return await handler(call);
+      } catch (error) {
+        const worktreeFallback = defaultWorktreePreflightResult(call);
+        if (
+          worktreeFallback &&
+          error instanceof Error &&
+          /^unexpected command:/u.test(error.message)
+        ) {
+          return worktreeFallback;
+        }
+        throw error;
+      }
     },
   };
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
@@ -524,8 +524,14 @@ test("runOneIssue does not persist generated spec path when spec creation fails"
   );
   assert.equal(runState.specPath, undefined);
   assert.equal(runState.planPath, undefined);
-  assert.equal(runState.branch, undefined);
-  assert.equal(runState.worktreePath, undefined);
+  assert.equal(
+    runState.branch,
+    "agent/issue-64-fail-before-generated-spec-exists",
+  );
+  assert.equal(
+    runState.worktreePath,
+    ".worktrees/patchmill-issue-64-fail-before-generated-spec-exists",
+  );
 });
 
 test("runOneIssue does not persist generated spec path when spec creation blocks", async () => {
@@ -766,6 +772,21 @@ test("runOneIssue records and comments unexpected planning failures without repl
   assert.equal(runState.status, "planning");
   assert.match(runState.lastError, /pi failed: model unavailable/);
   assert.equal(runState.planPath, undefined);
+  await mkdir(
+    join(
+      config.repoRoot,
+      ".worktrees/patchmill-issue-41-handle-planning-failure-state/docs/specs",
+    ),
+    { recursive: true },
+  );
+  await writeFile(
+    join(
+      config.repoRoot,
+      "./.worktrees/patchmill-issue-41-handle-planning-failure-state/docs/specs/spec.md",
+    ),
+    "# saved spec\n",
+    "utf8",
+  );
 
   const resumeRunner = createMockRunner(async (call) => {
     if (
@@ -793,6 +814,30 @@ test("runOneIssue records and comments unexpected planning failures without repl
     if (call.command === "git" && call.args[0] === "status")
       return { code: 0, stdout: "", stderr: "" };
     if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-41-handle-planning-failure-state")}\n`,
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-41-handle-planning-failure-state\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "log")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
       call.command === "tea" &&
       call.args[0] === "labels" &&
       call.args[1] === "list"
@@ -807,6 +852,15 @@ test("runOneIssue records and comments unexpected planning failures without repl
     if (call.command === "tea" && call.args[0] === "comment")
       return { code: 0, stdout: "", stderr: "" };
     if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      if (/Create a design spec/.test(prompt)) {
+        return {
+          code: 0,
+          stdout:
+            '{"status":"spec-created","specPath":"docs/specs/2026-05-09-issue-41-handle-planning-failure-state-design.md","commit":"spec123"}',
+          stderr: "",
+        };
+      }
       return {
         code: 0,
         stdout:

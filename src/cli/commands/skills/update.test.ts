@@ -38,6 +38,20 @@ const dependencies: SkillInstallerDependencies = {
   writeFile,
 };
 
+const oldPatchmillPlanning = `---
+name: patchmill-planning
+description: Old Patchmill planning wrapper.
+---
+# Old Patchmill planning
+`;
+
+const newPatchmillPlanning = `---
+name: patchmill-planning
+description: New Patchmill planning wrapper.
+---
+# New Patchmill planning
+`;
+
 const oldWritingPlans = `---
 name: writing-plans
 description: Old planning skill.
@@ -112,18 +126,19 @@ function oldMetadata(
 
 test("updateProjectSkills updates clean managed project-local skills", async () => {
   const repoRoot = await tempRoot("patchmill-skills-update-repo-");
+  const patchmillSource = await tempRoot("patchmill-skills-update-patchmill-");
   const superpowersSource = await tempRoot(
     "patchmill-skills-update-superpowers-",
   );
-  await writeSkill(superpowersSource, "writing-plans", {
-    "SKILL.md": newWritingPlans,
-    "notes.md": "new notes\n",
+  await writeSkill(patchmillSource, "patchmill-planning", {
+    "SKILL.md": newPatchmillPlanning,
+    "policy.md": "new wrapper policy\n",
   });
-  await chmod(join(superpowersSource, "writing-plans", "notes.md"), 0o400);
+  await chmod(join(patchmillSource, "patchmill-planning", "policy.md"), 0o400);
 
   await writeFileEnsuringParent(
-    join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
-    oldWritingPlans,
+    join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
+    oldPatchmillPlanning,
   );
   await writeFileEnsuringParent(
     join(repoRoot, ".patchmill", "skills", "obsolete-skill", "SKILL.md"),
@@ -137,8 +152,8 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
         sha256: hashText(oldObsoleteSkill),
       },
       {
-        path: ".patchmill/skills/writing-plans/SKILL.md",
-        sha256: hashText(oldWritingPlans),
+        path: ".patchmill/skills/patchmill-planning/SKILL.md",
+        sha256: hashText(oldPatchmillPlanning),
       },
     ]),
   );
@@ -146,10 +161,10 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
   const result = await updateProjectSkills({
     repoRoot,
     sourceRoots: {
-      patchmillSkillsDir: await tempRoot("patchmill-skills-update-patchmill-"),
+      patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
     },
-    packSkills: [{ name: "writing-plans", source: "superpowers" }],
+    packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
     installedAt: "2026-06-27T00:00:00.000Z",
     dependencies,
   });
@@ -160,23 +175,35 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
     toVersion: PATCHMILL_RECOMMENDED_SKILL_PACK.version,
     updatedFiles: 2,
     removedFiles: 1,
+    notices: [
+      {
+        version: "2026.07.1",
+        message:
+          "Patchmill's recommended planning skill changed to patchmill-planning.\n" +
+          "To opt in, update patchmill.config.json:\n" +
+          '  "planning": ".patchmill/skills/patchmill-planning"',
+      },
+    ],
   });
   assert.equal(
     await readFile(
-      join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
+      join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
       "utf8",
     ),
-    newWritingPlans,
+    newPatchmillPlanning,
   );
-  const updatedNotesPath = join(
+  const updatedReviewerPromptPath = join(
     repoRoot,
     ".patchmill",
     "skills",
-    "writing-plans",
-    "notes.md",
+    "patchmill-planning",
+    "policy.md",
   );
-  assert.equal(await readFile(updatedNotesPath, "utf8"), "new notes\n");
-  assert.notEqual((await stat(updatedNotesPath)).mode & 0o200, 0);
+  assert.equal(
+    await readFile(updatedReviewerPromptPath, "utf8"),
+    "new wrapper policy\n",
+  );
+  assert.notEqual((await stat(updatedReviewerPromptPath)).mode & 0o200, 0);
   await assert.rejects(
     access(
       join(repoRoot, ".patchmill", "skills", "obsolete-skill", "SKILL.md"),
@@ -195,12 +222,12 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
   assert.equal(metadata.installedAt, "2026-06-27T00:00:00.000Z");
   assert.deepEqual(metadata.files, [
     {
-      path: ".patchmill/skills/writing-plans/SKILL.md",
-      sha256: hashText(newWritingPlans),
+      path: ".patchmill/skills/patchmill-planning/SKILL.md",
+      sha256: hashText(newPatchmillPlanning),
     },
     {
-      path: ".patchmill/skills/writing-plans/notes.md",
-      sha256: hashText("new notes\n"),
+      path: ".patchmill/skills/patchmill-planning/policy.md",
+      sha256: hashText("new wrapper policy\n"),
     },
   ]);
 });
@@ -257,10 +284,21 @@ test("updateProjectSkills aborts when managed files changed locally", async () =
   );
   await writeSkill(superpowersSource, "writing-plans", {
     "SKILL.md": newWritingPlans,
+    "plan-document-reviewer-prompt.md": "new reviewer prompt\n",
   });
   await writeFileEnsuringParent(
     join(repoRoot, ".patchmill", "skills", "writing-plans", "SKILL.md"),
     "local edit\n",
+  );
+  await writeFileEnsuringParent(
+    join(
+      repoRoot,
+      ".patchmill",
+      "skills",
+      "writing-plans",
+      "plan-document-reviewer-prompt.md",
+    ),
+    "local reviewer edit\n",
   );
   await writeMetadata(
     repoRoot,
@@ -268,6 +306,10 @@ test("updateProjectSkills aborts when managed files changed locally", async () =
       {
         path: ".patchmill/skills/writing-plans/SKILL.md",
         sha256: hashText(oldWritingPlans),
+      },
+      {
+        path: ".patchmill/skills/writing-plans/plan-document-reviewer-prompt.md",
+        sha256: hashText("old reviewer prompt\n"),
       },
     ]),
   );
@@ -282,7 +324,7 @@ test("updateProjectSkills aborts when managed files changed locally", async () =
       packSkills: [{ name: "writing-plans", source: "superpowers" }],
       dependencies,
     }),
-    /Refusing to update customized project-local skills:\n- \.patchmill\/skills\/writing-plans\/SKILL\.md/u,
+    /Refusing to update customized project-local skills:\n- \.patchmill\/skills\/writing-plans\/SKILL\.md\n- \.patchmill\/skills\/writing-plans\/plan-document-reviewer-prompt\.md/u,
   );
   assert.equal(
     await readFile(

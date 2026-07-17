@@ -8,6 +8,7 @@ const updatedResult = {
   toVersion: "2026.07",
   updatedFiles: 14,
   removedFiles: 2,
+  notices: [],
 };
 
 test("runSkills prints help", async () => {
@@ -53,6 +54,45 @@ test("runSkills updates project-local skills", async () => {
   assert.deepEqual(stdout, [
     "Updated Patchmill skill pack 2026.04 -> 2026.07.",
     "Updated 14 files, removed 2 obsolete files.",
+    "Run git diff to review changes.",
+  ]);
+  assert.deepEqual(stderr, []);
+});
+
+test("runSkills prints versioned update notices", async () => {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+
+  assert.equal(
+    await runSkills(["update"], {
+      output: {
+        stdout: (line) => stdout.push(line),
+        stderr: (line) => stderr.push(line),
+      },
+      updateProjectSkills: async () => ({
+        ...updatedResult,
+        toVersion: "2026.07.1",
+        notices: [
+          {
+            version: "2026.07.1",
+            message:
+              "Patchmill's recommended planning skill changed to patchmill-planning.\n" +
+              "To opt in, update patchmill.config.json:\n" +
+              '  "planning": ".patchmill/skills/patchmill-planning"',
+          },
+        ],
+      }),
+    }),
+    0,
+  );
+
+  assert.deepEqual(stdout, [
+    "Updated Patchmill skill pack 2026.04 -> 2026.07.1.",
+    "Updated 14 files, removed 2 obsolete files.",
+    "Notice for 2026.07.1:",
+    "Patchmill's recommended planning skill changed to patchmill-planning.\n" +
+      "To opt in, update patchmill.config.json:\n" +
+      '  "planning": ".patchmill/skills/patchmill-planning"',
     "Run git diff to review changes.",
   ]);
   assert.deepEqual(stderr, []);

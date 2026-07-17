@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
+  PATCHMILL_PLANNING_SKILL,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
@@ -14,12 +18,25 @@ import {
 } from "./skill-pack.ts";
 
 const unixNewline = "name: sample\n";
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+function bundledSkillText(skillName: string): string {
+  return bundledSkillFileText(skillName, "SKILL.md");
+}
+
+function bundledSkillFileText(skillName: string, filePath: string): string {
+  return readFileSync(join(repoRoot, "skills", skillName, filePath), "utf8");
+}
 
 test("recommended project skill paths are repo-relative POSIX paths", () => {
   assert.equal(DEFAULT_PROJECT_SKILL_DIR, ".patchmill/skills");
   assert.equal(
     projectSkillPath("writing-plans"),
     ".patchmill/skills/writing-plans",
+  );
+  assert.equal(
+    projectSkillPath(PATCHMILL_PLANNING_SKILL),
+    ".patchmill/skills/patchmill-planning",
   );
   assert.equal(
     projectSkillPath("subagent-driven-development", "project/skills/"),
@@ -39,7 +56,7 @@ test("requiredSkillFiles returns bundled sidecars and SKILL.md fallback", () => 
 test("buildRecommendedProjectSkillConfig maps required workflow stages locally", () => {
   assert.deepEqual(buildRecommendedProjectSkillConfig(), {
     triage: ".patchmill/skills/patchmill-issue-triage",
-    planning: ".patchmill/skills/writing-plans",
+    planning: ".patchmill/skills/patchmill-planning",
     implementation: ".patchmill/skills/subagent-driven-development",
     visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
   });
@@ -47,7 +64,7 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07.1");
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.source, {
     type: "github-release",
     repository: "obra/superpowers",
@@ -67,6 +84,7 @@ test("default pack records pinned external source", () => {
     },
     { name: "module-size", source: "patchmill" },
     { name: "patchmill-visual-evidence", source: "patchmill" },
+    { name: "patchmill-planning", source: "patchmill" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
@@ -87,6 +105,18 @@ test("default pack records pinned external source", () => {
       .size,
     PATCHMILL_RECOMMENDED_SKILL_PACK.skills.length,
   );
+});
+
+test("Patchmill planning wrapper annotates sibling Superpowers skills", () => {
+  const planning = bundledSkillText(PATCHMILL_PLANNING_SKILL);
+  assert.match(planning, /name: patchmill-planning/u);
+  assert.match(planning, /\.\.\/brainstorming\/SKILL\.md/u);
+  assert.match(planning, /\.\.\/writing-plans\/SKILL\.md/u);
+  assert.match(planning, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
+  assert.match(planning, /docs\/plans\/YYYY-MM-DD-<feature-name>\.md/u);
+  assert.match(planning, /issue worktree/u);
+  assert.match(planning, /Testing Value Gate/u);
+  assert.match(planning, /direct verification/u);
 });
 
 test("hashText returns stable sha256 hex", () => {
@@ -119,7 +149,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.07",
+      version: "2026.07.1",
       source: {
         type: "github-release",
         repository: "obra/superpowers",
