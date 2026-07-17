@@ -9,8 +9,8 @@
       "version": "0.16.0",
       "license": "Apache-2.0",
       "dependencies": {
-        "@earendil-works/pi-coding-agent": "^0.80.3",
-        "@earendil-works/pi-tui": "^0.80.3",
+        "@earendil-works/pi-coding-agent": "0.80.3",
+        "@earendil-works/pi-tui": "0.80.3",
         "pi-subagents": "^0.25.0",
         "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
       },
@@ -506,6 +506,7 @@
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-agent-core": {
       "version": "0.80.3",
       "resolved": "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-0.80.3.tgz",
+      "integrity": "sha512-3qw0/GeRQBU/nlGjDe5Yb7ePKTmoxefx2YxyKMFAviFUMXpFexBG/hS7mBtwFahFvzrrTPPoRT6sFIDjwoDWPQ==",
       "license": "MIT",
       "dependencies": {
         "@earendil-works/pi-ai": "^0.80.3",
@@ -515,12 +516,12 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      },
-      "integrity": "sha512-3qw0/GeRQBU/nlGjDe5Yb7ePKTmoxefx2YxyKMFAviFUMXpFexBG/hS7mBtwFahFvzrrTPPoRT6sFIDjwoDWPQ=="
+      }
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai": {
       "version": "0.80.3",
       "resolved": "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-0.80.3.tgz",
+      "integrity": "sha512-jPZLMeGL5kkMSEAwAklfXTMHqZvfhsJtCCpKGIr5Duk7mc0n4skjB1dugk7y0z3z8ZHIUCmPAWHdyDqgUz5vdA==",
       "license": "MIT",
       "dependencies": {
         "@anthropic-ai/sdk": "0.91.1",
@@ -540,12 +541,12 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      },
-      "integrity": "sha512-jPZLMeGL5kkMSEAwAklfXTMHqZvfhsJtCCpKGIr5Duk7mc0n4skjB1dugk7y0z3z8ZHIUCmPAWHdyDqgUz5vdA=="
+      }
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui": {
       "version": "0.80.3",
       "resolved": "https://registry.npmjs.org/@earendil-works/pi-tui/-/pi-tui-0.80.3.tgz",
+      "integrity": "sha512-2BJI6qwRQfnM0Q7seL1+SbacU/jRRjBnN7Hu3n9BjAn7/s5FaBNnvdD1qBQYRsFTHfjqMaDsjYqanPyqwXj99w==",
       "license": "MIT",
       "dependencies": {
         "get-east-asian-width": "1.6.0",
@@ -553,8 +554,7 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      },
-      "integrity": "sha512-2BJI6qwRQfnM0Q7seL1+SbacU/jRRjBnN7Hu3n9BjAn7/s5FaBNnvdD1qBQYRsFTHfjqMaDsjYqanPyqwXj99w=="
+      }
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@google/genai": {
       "version": "1.52.0",
@@ -3136,6 +3136,7 @@
       "version": "5.3.2",
       "resolved": "https://registry.npmjs.org/ignore/-/ignore-5.3.2.tgz",
       "integrity": "sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==",
+      "dev": true,
       "license": "MIT",
       "engines": {
         "node": ">= 4"
@@ -4560,6 +4561,7 @@
       "version": "7.8.1",
       "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.1.tgz",
       "integrity": "sha512-rkVq3IXh+4FDGch+KwzX3aV9W3kO54GyEgpvBzSyctDA6Xtd7RJQV1xmXbeQp5v7+VzLOfVqiutSE6GICgPFvg==",
+      "dev": true,
       "license": "ISC",
       "bin": {
         "semver": "bin/semver.js"
@@ -4883,7 +4885,9 @@
       "version": "2.9.0",
       "resolved": "https://registry.npmjs.org/yaml/-/yaml-2.9.0.tgz",
       "integrity": "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==",
+      "dev": true,
       "license": "ISC",
+      "optional": true,
       "bin": {
         "yaml": "bin.mjs"
       },
