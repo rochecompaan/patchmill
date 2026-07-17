@@ -42,7 +42,13 @@ export type SkillPackUpdateResult =
       toVersion: string;
       updatedFiles: number;
       removedFiles: number;
+      notices: SkillPackUpdateNotice[];
     };
+
+export type SkillPackUpdateNotice = {
+  version: string;
+  message: string;
+};
 
 export type SkillPackUpdateOptions = {
   repoRoot: string;
@@ -69,6 +75,16 @@ const defaultDependencies: SkillInstallerDependencies = {
 const MISSING_METADATA_MESSAGE =
   "No Patchmill-managed project-local skill pack found. Run `patchmill init` first,\n" +
   "or reinstall project-local skills.";
+
+const VERSION_NOTICES: SkillPackUpdateNotice[] = [
+  {
+    version: "2026.07.1",
+    message:
+      "Patchmill's recommended planning skill changed to patchmill-planning.\n" +
+      "To opt in, update patchmill.config.json:\n" +
+      '  "planning": ".patchmill/skills/patchmill-planning"',
+  },
+];
 
 async function readInstalledMetadata(
   repoRoot: string,
@@ -227,6 +243,29 @@ function countUpdatedFiles(
     .length;
 }
 
+function compareVersions(left: string, right: string): number {
+  const leftParts = left.split(".").map((part) => Number.parseInt(part, 10));
+  const rightParts = right.split(".").map((part) => Number.parseInt(part, 10));
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = leftParts[index] ?? 0;
+    const rightPart = rightParts[index] ?? 0;
+    if (leftPart !== rightPart) return leftPart - rightPart;
+  }
+  return 0;
+}
+
+function noticesForVersionRange(
+  fromVersion: string,
+  toVersion: string,
+): SkillPackUpdateNotice[] {
+  return VERSION_NOTICES.filter(
+    (notice) =>
+      compareVersions(fromVersion, notice.version) < 0 &&
+      compareVersions(notice.version, toVersion) <= 0,
+  );
+}
+
 async function copyBundledSkills(options: {
   repoRoot: string;
   sourceRoots: SourceRoots;
@@ -350,5 +389,9 @@ export async function updateProjectSkills(
     toVersion: newMetadata.pack.version,
     updatedFiles,
     removedFiles,
+    notices: noticesForVersionRange(
+      metadata.pack.version,
+      newMetadata.pack.version,
+    ),
   };
 }

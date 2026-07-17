@@ -175,6 +175,15 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
     toVersion: PATCHMILL_RECOMMENDED_SKILL_PACK.version,
     updatedFiles: 2,
     removedFiles: 1,
+    notices: [
+      {
+        version: "2026.07.1",
+        message:
+          "Patchmill's recommended planning skill changed to patchmill-planning.\n" +
+          "To opt in, update patchmill.config.json:\n" +
+          '  "planning": ".patchmill/skills/patchmill-planning"',
+      },
+    ],
   });
   assert.equal(
     await readFile(

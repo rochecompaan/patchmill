@@ -59,6 +59,10 @@ function printUpdateResult(
       "obsolete file",
     )}.`,
   );
+  for (const notice of result.notices) {
+    output.stdout(`Notice for ${notice.version}:`);
+    output.stdout(notice.message);
+  }
   output.stdout("Run git diff to review changes.");
 }
 
