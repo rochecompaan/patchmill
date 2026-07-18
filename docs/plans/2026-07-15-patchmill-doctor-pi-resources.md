@@ -1,32 +1,54 @@
 # Patchmill Doctor Pi Resources Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `patchmill doctor` print compact, profile-specific Pi resource summaries without mutating package state, writing trust decisions, or executing extension code.
+**Goal:** Make `patchmill doctor` print compact, profile-specific Pi resource
+summaries without mutating package state, writing trust decisions, or executing
+extension code.
 
-**Architecture:** Extract Patchmill Pi invocation resource profiles into shared code used by both runtime argument builders and doctor. Doctor uses a static, non-mutating Pi resource resolver built from Pi's exported `DefaultPackageManager`, `SettingsManager`, `ProjectTrustStore`, `loadSkills()`, and context-file helpers; it never calls `DefaultResourceLoader.reload()` for resource listing.
+**Architecture:** Extract Patchmill Pi invocation resource profiles into shared
+code used by both runtime argument builders and doctor. Doctor uses a static,
+non-mutating Pi resource resolver built from Pi's exported
+`DefaultPackageManager`, `SettingsManager`, `ProjectTrustStore`, `loadSkills()`,
+and context-file helpers; it never calls `DefaultResourceLoader.reload()` for
+resource listing.
 
-**Tech Stack:** TypeScript, Node.js built-in test runner, Pi SDK exports from `@earendil-works/pi-coding-agent`, existing Patchmill config and skill-resolution helpers.
+**Tech Stack:** TypeScript, Node.js built-in test runner, Pi SDK exports from
+`@earendil-works/pi-coding-agent`, existing Patchmill config and
+skill-resolution helpers.
 
 ## Global Constraints
 
 - Do not call `DefaultResourceLoader.reload()` for doctor resource listing.
-- Do not install missing npm/git Pi package sources during doctor resource discovery; skip and report them.
+- Do not install missing npm/git Pi package sources during doctor resource
+  discovery; skip and report them.
 - Do not execute extension modules merely to list resources.
-- Match non-interactive Pi project-trust behavior without prompting and without writing `trust.json`.
-- Report named profiles instead of one vague resource set: run-once planning, run-once development-environment, run-once implementation, and triage.
-- `patchmill doctor --quiet` suppresses resource-only output when no required readiness check fails.
-- Resource-summary warnings must not make `doctor` fail unless an existing required check also fails.
-- Unit tests must stub doctor resource loading and must not assert the exact contents of a developer's machine-specific Pi configuration.
-- No dependency changes are planned; if dependency files change unexpectedly, rerun the Nix build before completion.
+- Match non-interactive Pi project-trust behavior without prompting and without
+  writing `trust.json`.
+- Report named profiles instead of one vague resource set: run-once planning,
+  run-once development-environment, run-once implementation, and triage.
+- `patchmill doctor --quiet` suppresses resource-only output when no required
+  readiness check fails.
+- Resource-summary warnings must not make `doctor` fail unless an existing
+  required check also fails.
+- Unit tests must stub doctor resource loading and must not assert the exact
+  contents of a developer's machine-specific Pi configuration.
+- No dependency changes are planned; if dependency files change unexpectedly,
+  rerun the Nix build before completion.
 
 ---
 
 ## File Structure
 
-- Create `src/pi/resource-profiles.ts` for shared Patchmill Pi invocation resource profiles and argument helpers.
+- Create `src/pi/resource-profiles.ts` for shared Patchmill Pi invocation
+  resource profiles and argument helpers.
 - Create `src/pi/resource-profiles.test.ts` for deterministic profile tests.
-- Modify runtime Pi invocation files to consume `src/pi/resource-profiles.ts` instead of rebuilding profile-specific skill/context/extension arguments inline:
+- Modify runtime Pi invocation files to consume `src/pi/resource-profiles.ts`
+  instead of rebuilding profile-specific skill/context/extension arguments
+  inline:
   - `src/cli/commands/run-once/pi.ts`
   - `src/pi/runner.ts`
   - `src/cli/commands/run-once/development-environment-stage.ts`
@@ -34,10 +56,16 @@
   - `src/cli/commands/run-once/pipeline.ts`
   - `src/cli/commands/triage/dry-run-agent.ts`
   - `src/cli/commands/triage/execute-agent.ts`
-- Create `src/cli/commands/doctor/pi-resources.ts` for static non-mutating discovery, compact formatting, trust parity, and warning conversion.
-- Create `src/cli/commands/doctor/pi-resources.test.ts` for resource resolver and formatter behavior.
-- Modify `src/cli/commands/doctor/reporting.ts` and `src/cli/commands/doctor/reporting.test.ts` to prepend profile resource blocks while preserving existing report semantics.
-- Modify `src/cli/commands/doctor/main.ts` and `src/cli/commands/doctor/main.test.ts` to collect resources safely, append warning checks, and centralize quiet behavior.
+- Create `src/cli/commands/doctor/pi-resources.ts` for static non-mutating
+  discovery, compact formatting, trust parity, and warning conversion.
+- Create `src/cli/commands/doctor/pi-resources.test.ts` for resource resolver
+  and formatter behavior.
+- Modify `src/cli/commands/doctor/reporting.ts` and
+  `src/cli/commands/doctor/reporting.test.ts` to prepend profile resource blocks
+  while preserving existing report semantics.
+- Modify `src/cli/commands/doctor/main.ts` and
+  `src/cli/commands/doctor/main.test.ts` to collect resources safely, append
+  warning checks, and centralize quiet behavior.
 
 ---
 
@@ -57,7 +85,8 @@
 
 **Interfaces:**
 
-- Consumes: `PatchmillSkillsConfig`, `PATCHMILL_SKILL_KEYS`, and `skillInvocationPaths()` from `src/workflow/skills.ts`.
+- Consumes: `PatchmillSkillsConfig`, `PATCHMILL_SKILL_KEYS`, and
+  `skillInvocationPaths()` from `src/workflow/skills.ts`.
 - Produces:
   - `PatchmillPiResourceProfile`
   - `runOncePlanningPiProfile(skills, repoRoot)`
@@ -118,9 +147,14 @@ test("run-once planning profile includes context and Patchmill run-once extensio
     assert.equal(profile.noContextFiles, false);
     assert.equal(profile.noPromptTemplates, false);
     assert.equal(profile.additionalExtensionPaths.length, 2);
-    assert.equal(basename(profile.additionalExtensionPaths[0] ?? ""), "pi-subagents");
     assert.equal(
-      profile.additionalExtensionPaths[1]?.replaceAll("\\", "/").endsWith("/extensions/todos.ts"),
+      basename(profile.additionalExtensionPaths[0] ?? ""),
+      "pi-subagents",
+    );
+    assert.equal(
+      profile.additionalExtensionPaths[1]
+        ?.replaceAll("\\", "/")
+        .endsWith("/extensions/todos.ts"),
       true,
     );
     assert.deepEqual(profile.additionalSkillPaths, [
@@ -359,12 +393,15 @@ export function profileExtensionArgs(
   return profile.additionalExtensionPaths.flatMap((path) => ["-e", path]);
 }
 
-export function profileSkillArgs(profile: PatchmillPiResourceProfile): string[] {
+export function profileSkillArgs(
+  profile: PatchmillPiResourceProfile,
+): string[] {
   return profile.additionalSkillPaths.flatMap((path) => ["--skill", path]);
 }
 ```
 
-- [ ] **Step 4: Refactor run-once argument generation to use profile extension args**
+- [ ] **Step 4: Refactor run-once argument generation to use profile extension
+      args**
 
 Modify `src/cli/commands/run-once/pi.ts`:
 
@@ -375,7 +412,9 @@ import { join } from "node:path";
 import { profileExtensionArgs } from "../../../pi/resource-profiles.ts";
 ```
 
-Replace the private `createRequire`, `PI_SUBAGENTS_PACKAGE_ROOT`, `PATCHMILL_PACKAGE_ROOT`, and `PATCHMILL_TODOS_EXTENSION` constants with a local lightweight profile argument parameter:
+Replace the private `createRequire`, `PI_SUBAGENTS_PACKAGE_ROOT`,
+`PATCHMILL_PACKAGE_ROOT`, and `PATCHMILL_TODOS_EXTENSION` constants with a local
+lightweight profile argument parameter:
 
 ```typescript
 function piPromptArgs(
@@ -392,7 +431,8 @@ function piPromptArgs(
 }
 ```
 
-Add `extensionArgs?: string[]` to `RunPiPromptOptions`. In the `runner.run()` call, pass:
+Add `extensionArgs?: string[]` to `RunPiPromptOptions`. In the `runner.run()`
+call, pass:
 
 ```typescript
 piPromptArgs(
@@ -403,11 +443,15 @@ piPromptArgs(
 ),
 ```
 
-Do not call `profileExtensionArgs()` here directly. Runtime callers supply the profile-specific extension args so doctor and invocation call sites share the same profile builder.
+Do not call `profileExtensionArgs()` here directly. Runtime callers supply the
+profile-specific extension args so doctor and invocation call sites share the
+same profile builder.
 
 - [ ] **Step 5: Refactor runtime call sites to consume profile builders**
 
-Update each call site so the profile is constructed once and its `additionalSkillPaths` and `profileExtensionArgs(profile)` values are passed to Pi.
+Update each call site so the profile is constructed once and its
+`additionalSkillPaths` and `profileExtensionArgs(profile)` values are passed to
+Pi.
 
 In `src/pi/runner.ts`, import profile builders:
 
@@ -446,14 +490,20 @@ const profile = runOnceImplementationPiProfile(
 
 Use the same `skillPaths` and `extensionArgs` properties.
 
-For `src/cli/commands/run-once/development-environment-stage.ts`, `src/cli/commands/run-once/stage-advancement.ts`, and `src/cli/commands/run-once/pipeline.ts`, replace direct `skillInvocationPaths(...)` calls for run-once Pi prompts with the appropriate `runOnceDevelopmentEnvironmentPiProfile()`, `runOncePlanningPiProfile()`, or `runOnceImplementationPiProfile()` call. Pass both:
+For `src/cli/commands/run-once/development-environment-stage.ts`,
+`src/cli/commands/run-once/stage-advancement.ts`, and
+`src/cli/commands/run-once/pipeline.ts`, replace direct
+`skillInvocationPaths(...)` calls for run-once Pi prompts with the appropriate
+`runOnceDevelopmentEnvironmentPiProfile()`, `runOncePlanningPiProfile()`, or
+`runOnceImplementationPiProfile()` call. Pass both:
 
 ```typescript
 skillPaths: profile.additionalSkillPaths,
 extensionArgs: profileExtensionArgs(profile),
 ```
 
-For `src/cli/commands/triage/dry-run-agent.ts` and `src/cli/commands/triage/execute-agent.ts`, import:
+For `src/cli/commands/triage/dry-run-agent.ts` and
+`src/cli/commands/triage/execute-agent.ts`, import:
 
 ```typescript
 import {
@@ -485,7 +535,8 @@ Run:
 node --test src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.ts src/pi/runner.test.ts src/cli/commands/triage/dry-run-agent.test.ts src/cli/commands/triage/execute-agent.test.ts
 ```
 
-Expected: PASS. Existing argument tests should still observe the same Pi command flags, now sourced from shared profile builders.
+Expected: PASS. Existing argument tests should still observe the same Pi command
+flags, now sourced from shared profile builders.
 
 - [ ] **Step 7: Commit Task 1**
 
@@ -507,7 +558,10 @@ git commit -m "refactor(pi): share resource profiles"
 
 **Interfaces:**
 
-- Consumes: shared profiles from Task 1, `loadPatchmillConfigState()`, `localPiAgentDir()`, Pi `DefaultPackageManager`, `SettingsManager`, `ProjectTrustStore`, `hasTrustRequiringProjectResources()`, `loadSkills()`, and `loadProjectContextFiles()`.
+- Consumes: shared profiles from Task 1, `loadPatchmillConfigState()`,
+  `localPiAgentDir()`, Pi `DefaultPackageManager`, `SettingsManager`,
+  `ProjectTrustStore`, `hasTrustRequiringProjectResources()`, `loadSkills()`,
+  and `loadProjectContextFiles()`.
 - Produces:
   - `DoctorPiResourceBlock`
   - `DoctorPiResourceReport`
@@ -604,16 +658,19 @@ test("piResourceWarningCheck returns undefined without warnings", () => {
 });
 
 test("piResourceWarningCheck reports skipped packages without failing", () => {
-  assert.deepEqual(piResourceWarningCheck(["skipped missing package npm:@acme/pi-tools"]), {
-    name: "pi resources",
-    status: "warn",
-    message: "skipped missing package npm:@acme/pi-tools",
-    remediation: [
-      "Patchmill doctor listed Pi resources without installing missing packages or executing extensions.",
-      "Install or update the listed Pi package sources outside doctor if you want those resources loaded, then rerun:",
-      "  patchmill doctor",
-    ],
-  });
+  assert.deepEqual(
+    piResourceWarningCheck(["skipped missing package npm:@acme/pi-tools"]),
+    {
+      name: "pi resources",
+      status: "warn",
+      message: "skipped missing package npm:@acme/pi-tools",
+      remediation: [
+        "Patchmill doctor listed Pi resources without installing missing packages or executing extensions.",
+        "Install or update the listed Pi package sources outside doctor if you want those resources loaded, then rerun:",
+        "  patchmill doctor",
+      ],
+    },
+  );
 });
 
 test("piResourceDiscoveryFailureCheck creates a non-failing warning", () => {
@@ -648,7 +705,10 @@ test("non-mutating discovery skips missing configured package sources", async ()
     const report = await loadDoctorPiResources(tmp, {});
 
     assert.equal(report.check?.status, "warn");
-    assert.match(report.check?.message ?? "", /skipped missing package npm:@missing\/package@1\.0\.0/);
+    assert.match(
+      report.check?.message ?? "",
+      /skipped missing package npm:@missing\/package@1\.0\.0/,
+    );
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
@@ -778,7 +838,9 @@ export function compactProfileBlock(input: {
 }): DoctorPiResourceBlock {
   const sections: DoctorPiResourceSection[] = [];
 
-  const context = input.contextFiles.map((path) => displayPath(path, input.repoRoot));
+  const context = input.contextFiles.map((path) =>
+    displayPath(path, input.repoRoot),
+  );
   if (context.length > 0) sections.push({ heading: "Context", items: context });
 
   const skills = uniqueSorted(input.skillNames);
@@ -787,7 +849,9 @@ export function compactProfileBlock(input: {
   const prompts = uniqueSorted(input.promptNames.map((name) => `/${name}`));
   if (prompts.length > 0) sections.push({ heading: "Prompts", items: prompts });
 
-  const extensions = uniqueSorted(input.extensionPaths.map(compactExtensionLabel));
+  const extensions = uniqueSorted(
+    input.extensionPaths.map(compactExtensionLabel),
+  );
   if (extensions.length > 0) {
     sections.push({ heading: "Extensions", items: extensions });
   }
@@ -844,7 +908,8 @@ export function piResourceDiscoveryFailureCheck(
 
 - [ ] **Step 4: Implement trust parity and non-mutating static discovery**
 
-Append these helpers and `loadDoctorPiResources()` to `src/cli/commands/doctor/pi-resources.ts`:
+Append these helpers and `loadDoctorPiResources()` to
+`src/cli/commands/doctor/pi-resources.ts`:
 
 ```typescript
 function projectTrustedForResourceListing(
@@ -863,7 +928,9 @@ function projectTrustedForResourceListing(
 }
 
 function enabledPaths(resources: ResolvedResource[]): string[] {
-  return resources.filter((resource) => resource.enabled).map((resource) => resource.path);
+  return resources
+    .filter((resource) => resource.enabled)
+    .map((resource) => resource.path);
 }
 
 function promptName(path: string): string {
@@ -881,9 +948,16 @@ async function resolveStaticResources(input: {
   promptNames: string[];
   extensionPaths: string[];
 }> {
-  const settingsManager = SettingsManager.create(input.repoRoot, input.agentDir, {
-    projectTrusted: projectTrustedForResourceListing(input.repoRoot, input.agentDir),
-  });
+  const settingsManager = SettingsManager.create(
+    input.repoRoot,
+    input.agentDir,
+    {
+      projectTrusted: projectTrustedForResourceListing(
+        input.repoRoot,
+        input.agentDir,
+      ),
+    },
+  );
   const packageManager = new DefaultPackageManager({
     cwd: input.repoRoot,
     agentDir: input.agentDir,
@@ -925,7 +999,10 @@ async function resolveStaticResources(input: {
         }).map((file) => file.path),
     skillNames: skills.skills.map((skill) => skill.name),
     promptNames: basePromptPaths.map(promptName),
-    extensionPaths: [...baseExtensionPaths, ...input.profile.additionalExtensionPaths],
+    extensionPaths: [
+      ...baseExtensionPaths,
+      ...input.profile.additionalExtensionPaths,
+    ],
   };
 }
 
@@ -939,7 +1016,10 @@ export async function loadDoctorPiResources(
   try {
     const loaded = await loadPatchmillConfigState(repoRoot, env, []);
     const blocks = [];
-    for (const profile of doctorPiResourceProfiles(loaded.config.skills, repoRoot)) {
+    for (const profile of doctorPiResourceProfiles(
+      loaded.config.skills,
+      repoRoot,
+    )) {
       const resources = await resolveStaticResources({
         repoRoot,
         agentDir,
@@ -970,7 +1050,8 @@ node --test src/cli/commands/doctor/pi-resources.test.ts
 npm run lint:ts
 ```
 
-Expected: PASS. If `DefaultPackageManager` construction types differ, adapt to the exported `.d.ts` shape rather than using private subpath imports.
+Expected: PASS. If `DefaultPackageManager` construction types differ, adapt to
+the exported `.d.ts` shape rather than using private subpath imports.
 
 - [ ] **Step 6: Commit Task 2**
 
@@ -994,8 +1075,11 @@ git commit -m "feat(doctor): resolve Pi resources read-only"
 
 **Interfaces:**
 
-- Consumes: `DoctorPiResourceProvider`, `DoctorPiResourceReport`, `formatPiResourceBlocks()`, `loadDoctorPiResources()`, and `piResourceDiscoveryFailureCheck()` from Task 2.
-- Produces: `formatDoctorReport(results, resourceBlocks?)` and centralized quiet handling in `runDoctor()`.
+- Consumes: `DoctorPiResourceProvider`, `DoctorPiResourceReport`,
+  `formatPiResourceBlocks()`, `loadDoctorPiResources()`, and
+  `piResourceDiscoveryFailureCheck()` from Task 2.
+- Produces: `formatDoctorReport(results, resourceBlocks?)` and centralized quiet
+  handling in `runDoctor()`.
 
 - [ ] **Step 1: Add reporting tests for resource blocks**
 
@@ -1044,7 +1128,8 @@ Run:
 node --test src/cli/commands/doctor/reporting.test.ts
 ```
 
-Expected: FAIL because `formatDoctorReport()` does not accept resource blocks yet.
+Expected: FAIL because `formatDoctorReport()` does not accept resource blocks
+yet.
 
 - [ ] **Step 3: Update report formatting**
 
@@ -1074,7 +1159,8 @@ export function formatDoctorReport(
   ];
 ```
 
-Keep the existing checklist, remediation, and success footer behavior below that initialization.
+Keep the existing checklist, remediation, and success footer behavior below that
+initialization.
 
 - [ ] **Step 4: Add main-flow tests with stubbed resource provider**
 
@@ -1298,32 +1384,32 @@ async function safeLoadPiResources(
 After the optional `--fix` block and before `runChecks`, add:
 
 ```typescript
-  const piResources = await safeLoadPiResources(
-    options.loadPiResources ?? loadDoctorPiResources,
-    config.repoRoot,
-  );
+const piResources = await safeLoadPiResources(
+  options.loadPiResources ?? loadDoctorPiResources,
+  config.repoRoot,
+);
 ```
 
 Replace result assembly with:
 
 ```typescript
-  const checkResults = await (options.runChecks ?? runDoctorChecks)(runner, {
-    repoRoot: config.repoRoot,
-  });
-  const results = [
-    ...(piResources.check ? [piResources.check] : []),
-    ...checkResults,
-  ];
+const checkResults = await (options.runChecks ?? runDoctorChecks)(runner, {
+  repoRoot: config.repoRoot,
+});
+const results = [
+  ...(piResources.check ? [piResources.check] : []),
+  ...checkResults,
+];
 ```
 
 Keep quiet policy centralized:
 
 ```typescript
-  const failed = hasDoctorFailures(results);
-  if (!config.quiet || failed) {
-    output.stdout(formatDoctorReport(results, piResources.blocks).join("\n"));
-  }
-  return failed ? 1 : 0;
+const failed = hasDoctorFailures(results);
+if (!config.quiet || failed) {
+  output.stdout(formatDoctorReport(results, piResources.blocks).join("\n"));
+}
+return failed ? 1 : 0;
 ```
 
 - [ ] **Step 7: Run doctor unit tests**
@@ -1352,7 +1438,8 @@ git commit -m "feat(doctor): print Pi resource profiles"
 
 **Files:**
 
-- Modify only if verification exposes a specific defect in files touched by Tasks 1-3.
+- Modify only if verification exposes a specific defect in files touched by
+  Tasks 1-3.
 
 **Interfaces:**
 
@@ -1387,7 +1474,8 @@ Run:
 npm run lint
 ```
 
-Expected: PASS. If Prettier reports formatting changes, run `npm run format`, inspect the diff, then rerun `npm run lint`.
+Expected: PASS. If Prettier reports formatting changes, run `npm run format`,
+inspect the diff, then rerun `npm run lint`.
 
 - [ ] **Step 4: Manually inspect doctor output shape**
 
@@ -1397,7 +1485,9 @@ Run:
 node bin/patchmill.ts doctor --quiet
 ```
 
-Expected when readiness checks pass: no output. Expected when a required check fails in the local environment: report prints resource blocks and the failure checklist.
+Expected when readiness checks pass: no output. Expected when a required check
+fails in the local environment: report prints resource blocks and the failure
+checklist.
 
 Run:
 
@@ -1405,18 +1495,23 @@ Run:
 node bin/patchmill.ts doctor
 ```
 
-Expected: resource profile blocks print first, followed by the existing `Patchmill doctor` checklist. If environment-specific host or provider checks fail, confirm the resource blocks still printed before the failure checklist.
+Expected: resource profile blocks print first, followed by the existing
+`Patchmill doctor` checklist. If environment-specific host or provider checks
+fail, confirm the resource blocks still printed before the failure checklist.
 
 - [ ] **Step 5: Verify doctor did not mutate Pi package state**
 
-Before and after running `node bin/patchmill.ts doctor`, compare local package state paths that should not change:
+Before and after running `node bin/patchmill.ts doctor`, compare local package
+state paths that should not change:
 
 ```bash
 git status --short
 find .patchmill/pi-agent -maxdepth 3 -type f 2>/dev/null | sort
 ```
 
-Expected: no new git-tracked changes and no package install/update side effects caused by doctor resource discovery. Existing local state files unrelated to this run may already exist; do not delete or modify them.
+Expected: no new git-tracked changes and no package install/update side effects
+caused by doctor resource discovery. Existing local state files unrelated to
+this run may already exist; do not delete or modify them.
 
 - [ ] **Step 6: Review the final diff**
 
@@ -1428,7 +1523,9 @@ git diff --stat HEAD~3..HEAD
 git diff HEAD~3..HEAD -- src/pi src/cli/commands/run-once src/cli/commands/triage src/cli/commands/doctor
 ```
 
-Expected: The diff is limited to shared Pi resource profiles, runtime call-site refactors, doctor resource discovery/formatting, and tests. No package dependency files changed.
+Expected: The diff is limited to shared Pi resource profiles, runtime call-site
+refactors, doctor resource discovery/formatting, and tests. No package
+dependency files changed.
 
 - [ ] **Step 7: Commit verification fixes if needed**
 
@@ -1445,6 +1542,13 @@ If no fixes were needed, leave the branch at the Task 3 commit.
 
 ## Plan Self-Review Checklist
 
-- Spec coverage: Task 1 covers profile specificity and drift prevention; Task 2 covers read-only discovery, missing package skips, no extension execution, and trust parity; Task 3 covers report formatting and quiet behavior; Task 4 covers verification and mutation checks.
-- Placeholder scan: The plan uses concrete file paths, function names, commands, expected results, and code snippets for every code-producing step.
-- Type consistency: `PatchmillPiResourceProfile`, `DoctorPiResourceBlock`, `DoctorPiResourceReport`, `DoctorPiResourceProvider`, `formatPiResourceBlocks()`, `loadDoctorPiResources()`, and `piResourceDiscoveryFailureCheck()` are defined before they are consumed.
+- Spec coverage: Task 1 covers profile specificity and drift prevention; Task 2
+  covers read-only discovery, missing package skips, no extension execution, and
+  trust parity; Task 3 covers report formatting and quiet behavior; Task 4
+  covers verification and mutation checks.
+- Placeholder scan: The plan uses concrete file paths, function names, commands,
+  expected results, and code snippets for every code-producing step.
+- Type consistency: `PatchmillPiResourceProfile`, `DoctorPiResourceBlock`,
+  `DoctorPiResourceReport`, `DoctorPiResourceProvider`,
+  `formatPiResourceBlocks()`, `loadDoctorPiResources()`, and
+  `piResourceDiscoveryFailureCheck()` are defined before they are consumed.
