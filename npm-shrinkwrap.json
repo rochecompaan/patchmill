@@ -515,7 +515,8 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      }
+      },
+      "integrity": "sha512-nwnOR3SuLYGRFfyQm8ri4Nj5VGVAvAM9GuqQd3u7BUQj0d6hmD2F8w7OHAAjThE3CuySIdM+v8E22QJG6/RfCg=="
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai": {
       "version": "0.80.10",
@@ -539,7 +540,8 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      }
+      },
+      "integrity": "sha512-Moe/H8c87yacDGK9dPbWphZNjVsrb3nTrIHycOQJAkFEnY9PYxOOd74+ny44kATfPU9Dm7aTHefar3pZF+UKUA=="
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui": {
       "version": "0.80.10",
@@ -551,7 +553,8 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      }
+      },
+      "integrity": "sha512-c2JO29PbhKPEQ6fgHQKAl0WhwuFqzWfzspMmP+8B5tpDuP+0mvarRbKKg8gq4b+pQx/QX+6aVS4ko7deoyjQjg=="
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@google/genai": {
       "version": "1.52.0",
