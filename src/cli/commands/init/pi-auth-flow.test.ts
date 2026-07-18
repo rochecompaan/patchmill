@@ -52,6 +52,7 @@ function fakeRuntime(
     allModels?: ReturnType<typeof model>[];
     availableModels?: ReturnType<typeof model>[];
     names?: Record<string, string>;
+    apiKeyPrompts?: Array<Parameters<PiAuthInteraction["prompt"]>[0]>;
   } = {},
 ) {
   const credentials = { ...(options.credentials ?? {}) };
@@ -79,12 +80,18 @@ function fakeRuntime(
     getProviderDisplayName: (provider) => options.names?.[provider] ?? provider,
     login: async (provider, mode, interaction: PiAuthInteraction) => {
       if (mode === "api_key") {
-        const key = await interaction.prompt({
-          type: "secret",
-          message: "Enter API key:",
-        });
+        const prompts = options.apiKeyPrompts ?? [
+          {
+            type: "secret" as const,
+            message: "Enter API key:",
+          },
+        ];
+        const values = [];
+        for (const prompt of prompts) {
+          values.push(await interaction.prompt(prompt));
+        }
         loginCalls.push({ provider, mode });
-        credentials[provider] = { type: "api_key", key };
+        credentials[provider] = { type: "api_key", key: values[0] };
         return credentials[provider];
       }
       loginCalls.push({ provider, mode });
@@ -138,6 +145,57 @@ test("runInteractivePiAuthSetup stores API key auth, refreshes registry, and sel
     result.selection.status === "selected" && result.selection.model,
     "anthropic/claude-sonnet-4-5",
   );
+});
+
+test("runInteractivePiAuthSetup routes provider-owned API-key text prompts through generic prompt callbacks", async () => {
+  const runtime = fakeRuntime({
+    allModels: [model("cloudflare", "workers-ai")],
+    availableModels: [model("cloudflare", "workers-ai")],
+    names: { cloudflare: "Cloudflare" },
+    apiKeyPrompts: [
+      { type: "secret", message: "Enter API key:" },
+      { type: "text", message: "Enter Cloudflare account ID:" },
+    ],
+  });
+  const genericPrompts: Array<{
+    message: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+  }> = [];
+
+  await runInteractivePiAuthSetup({
+    repoRoot: "/repo",
+    agentDir: "/repo/.patchmill/pi-agent",
+    currentDefault: undefined,
+    initialReadiness: missingReadiness(),
+    runtime,
+    selectAuthMethod: async () => "api_key",
+    selectProvider: async ({ choices }) => choices[0],
+    promptApiKey: async () => "sk-cloudflare-test",
+    showBedrockInfo: async () => undefined,
+    selectModelInteractively: async ({ models }) =>
+      choice(models[0]?.provider, models[0]?.id),
+    oauthCallbacks: () => ({
+      onAuth: () => undefined,
+      onDeviceCode: () => undefined,
+      onPrompt: async (prompt) => {
+        genericPrompts.push(prompt);
+        return "account-id";
+      },
+      onSelect: async () => undefined,
+    }),
+  });
+
+  assert.deepEqual(runtime.loginCalls, [
+    { provider: "cloudflare", mode: "api_key" },
+  ]);
+  assert.deepEqual(genericPrompts, [
+    {
+      message: "Enter Cloudflare account ID:",
+      placeholder: undefined,
+      allowEmpty: true,
+    },
+  ]);
 });
 
 test("runInteractivePiAuthSetup calls OAuth login for subscription setup", async () => {

@@ -75,6 +75,12 @@ type SelectAuthPromptOption = (prompt: {
   options: Array<{ id: string; label: string }>;
 }) => Promise<string | undefined>;
 
+type PromptAuthText = (prompt: {
+  message: string;
+  placeholder?: string;
+  allowEmpty?: boolean;
+}) => Promise<string | undefined>;
+
 export type InteractivePiAuthSetupOptions = {
   repoRoot: string;
   agentDir: string;
@@ -125,6 +131,7 @@ async function promptForAuthValue(options: {
   prompt: PiAuthPrompt;
   provider: AuthProviderChoice;
   promptApiKey: PromptApiKey;
+  promptText?: PromptAuthText;
   selectOption: SelectAuthPromptOption;
 }): Promise<string> {
   if (options.prompt.type === "select") {
@@ -152,12 +159,25 @@ async function promptForAuthValue(options: {
     return selected;
   }
 
+  if (options.prompt.type === "text") {
+    const value = options.promptText
+      ? await options.promptText({
+          message: options.prompt.message,
+          placeholder: options.prompt.placeholder,
+          allowEmpty: true,
+        })
+      : await options.promptApiKey(options.provider);
+    if (value === undefined) throw loginCancelled();
+    return value;
+  }
+
   return assertApiKey(await options.promptApiKey(options.provider));
 }
 
 function createApiKeyInteraction(options: {
   provider: AuthProviderChoice;
   promptApiKey: PromptApiKey;
+  promptText?: PromptAuthText;
   selectOption: SelectAuthPromptOption;
 }): PiAuthInteraction {
   return {
@@ -166,6 +186,7 @@ function createApiKeyInteraction(options: {
         prompt,
         provider: options.provider,
         promptApiKey: options.promptApiKey,
+        promptText: options.promptText,
         selectOption: options.selectOption,
       }),
     notify: () => undefined,
@@ -255,6 +276,7 @@ export async function runInteractivePiAuthSetup(
     if (provider.id === "amazon-bedrock") {
       await options.showBedrockInfo();
     } else {
+      const callbacks = options.oauthCallbacks?.(provider);
       try {
         await options.runtime.login(
           provider.id,
@@ -262,9 +284,9 @@ export async function runInteractivePiAuthSetup(
           createApiKeyInteraction({
             provider,
             promptApiKey: options.promptApiKey,
+            promptText: callbacks?.onPrompt,
             selectOption: (prompt) =>
-              options.oauthCallbacks?.(provider).onSelect(prompt) ??
-              Promise.resolve(undefined),
+              callbacks?.onSelect(prompt) ?? Promise.resolve(undefined),
           }),
         );
       } catch (error) {
@@ -286,6 +308,8 @@ export async function runInteractivePiAuthSetup(
           );
         }
         throw error;
+      } finally {
+        callbacks?.dispose?.();
       }
     }
   } else {
