@@ -30,9 +30,11 @@ export type AuthOutput = {
   stderr: (line: string) => void;
 };
 
+type MaybePromise<T> = T | Promise<T>;
+
 export type PiReadinessDetector = (options: {
   agentDir: string;
-}) => PiReadiness;
+}) => MaybePromise<PiReadiness>;
 export type PiSmokeTestRunner = typeof runPiSmokeTest;
 
 const DEFAULT_OUTPUT: AuthOutput = {
@@ -92,7 +94,7 @@ export async function runAuth(
 
   const resolvedRepoRoot = repoRoot;
   const piAgentDir = localPiAgentDir(resolvedRepoRoot);
-  const readiness = (options.detectPiReadiness ?? detectPiReadiness)({
+  const readiness = await (options.detectPiReadiness ?? detectPiReadiness)({
     agentDir: piAgentDir,
   });
   const isInteractive = options.isInteractive ?? Boolean(process.stdin.isTTY);

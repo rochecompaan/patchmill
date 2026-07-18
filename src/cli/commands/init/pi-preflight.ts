@@ -1,36 +1,19 @@
-import { join } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
-  AuthStorage,
-  getAgentDir,
-  ModelRegistry,
-} from "@earendil-works/pi-coding-agent";
+  createRepoLocalPiRuntime,
+  type PatchmillPiRuntime,
+  type PiRuntimeModel,
+} from "./pi-runtime.ts";
 
-type PiAuthStatus = {
-  configured: boolean;
-  source?:
-    | "stored"
-    | "runtime"
-    | "environment"
-    | "fallback"
-    | "models_json_key"
-    | "models_json_command";
-  label?: string;
-};
+export type PiRegistryModel = PiRuntimeModel;
 
-type PiRegistryModel = {
-  provider: string;
-  id: string;
-  name?: string;
-  reasoning?: boolean;
-  input?: string[];
-};
-
-export type PiRegistryLike = {
-  getAvailable(): PiRegistryModel[];
-  getError(): string | undefined;
-  getProviderAuthStatus(provider: string): PiAuthStatus;
-  getProviderDisplayName(provider: string): string;
-};
+export type PiRegistryLike = Pick<
+  PatchmillPiRuntime,
+  | "getAvailable"
+  | "getError"
+  | "getProviderAuthStatus"
+  | "getProviderDisplayName"
+>;
 
 export type PiModelChoice = {
   provider: string;
@@ -38,7 +21,7 @@ export type PiModelChoice = {
   id: string;
   label: string;
   value: string;
-  authSource?: PiAuthStatus["source"];
+  authSource?: ReturnType<PiRegistryLike["getProviderAuthStatus"]>["source"];
   reasoning: boolean;
   input: string[];
 };
@@ -58,14 +41,12 @@ export type PiReadiness =
       message: string;
     };
 
-export function createPiRegistry(
+export async function createPiRegistry(
   options: { agentDir?: string } = {},
-): PiRegistryLike {
-  const agentDir = options.agentDir ?? getAgentDir();
-  const auth = AuthStorage.create(join(agentDir, "auth.json"));
-  const registry = ModelRegistry.create(auth, join(agentDir, "models.json"));
-  registry.refresh();
-  return registry;
+): Promise<PiRegistryLike> {
+  return createRepoLocalPiRuntime({
+    agentDir: options.agentDir ?? getAgentDir(),
+  });
 }
 
 function toChoice(
@@ -96,11 +77,9 @@ export function formatPiModelLabel(model: PiModelChoice): string {
   return model.label;
 }
 
-export function detectPiReadiness(
-  options: { registry?: PiRegistryLike; agentDir?: string } = {},
+export function detectPiReadinessFromRegistry(
+  registry: PiRegistryLike,
 ): PiReadiness {
-  const registry =
-    options.registry ?? createPiRegistry({ agentDir: options.agentDir });
   const models = registry
     .getAvailable()
     .map((model) => toChoice(registry, model));
@@ -132,4 +111,19 @@ export function detectPiReadiness(
         }
       : {}),
   };
+}
+
+export async function detectPiReadiness(
+  options: {
+    registry?: PiRegistryLike;
+    agentDir?: string;
+    createRuntime?: (options: { agentDir: string }) => Promise<PiRegistryLike>;
+  } = {},
+): Promise<PiReadiness> {
+  const registry =
+    options.registry ??
+    (await (options.createRuntime ?? createRepoLocalPiRuntime)({
+      agentDir: options.agentDir ?? getAgentDir(),
+    }));
+  return detectPiReadinessFromRegistry(registry);
 }

@@ -60,9 +60,11 @@ export type InitOutput = {
 };
 
 export type InitPrompt = (question: string) => Promise<string>;
+type MaybePromise<T> = T | Promise<T>;
+
 export type PiReadinessDetector = (options: {
   agentDir: string;
-}) => PiReadiness;
+}) => MaybePromise<PiReadiness>;
 export type PiSmokeTestRunner = typeof runPiSmokeTest;
 export type ProjectSkillInstaller = (options: {
   repoRoot: string;
@@ -270,7 +272,7 @@ export async function runInit(
     ].join("\n");
   }
 
-  const readiness = (options.detectPiReadiness ?? detectPiReadiness)({
+  const readiness = await (options.detectPiReadiness ?? detectPiReadiness)({
     agentDir: piAgentDir,
   });
   const persistDefaultModel = settingsWarning
