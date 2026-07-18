@@ -1,0 +1,312 @@
+import { homedir } from "node:os";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  parse,
+  relative,
+  resolve,
+} from "node:path";
+import {
+  DefaultPackageManager,
+  hasTrustRequiringProjectResources,
+  loadProjectContextFiles,
+  loadSkills,
+  ProjectTrustStore,
+  SettingsManager,
+  type MissingSourceAction,
+  type ResolvedResource,
+} from "@earendil-works/pi-coding-agent";
+import { loadPatchmillConfigState } from "../../../config/load.ts";
+import {
+  doctorPiResourceProfiles,
+  type PatchmillPiResourceProfile,
+} from "../../../pi/resource-profiles.ts";
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
+import type { DoctorCheckResult } from "./checks.ts";
+
+export type DoctorPiResourceSection = {
+  heading: "Context" | "Skills" | "Prompts" | "Extensions";
+  items: string[];
+};
+
+export type DoctorPiResourceBlock = {
+  label: string;
+  sections: DoctorPiResourceSection[];
+};
+
+export type DoctorPiResourceReport = {
+  blocks: DoctorPiResourceBlock[];
+  check?: DoctorCheckResult;
+};
+
+export type DoctorPiResourceProvider = (
+  repoRoot: string,
+) => Promise<DoctorPiResourceReport>;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+}
+
+function isInside(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function slashPath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+function displayPath(path: string, repoRoot: string): string {
+  const resolvedPath = resolve(path);
+  const resolvedRepoRoot = resolve(repoRoot);
+  if (isInside(resolvedRepoRoot, resolvedPath)) {
+    const rel = relative(resolvedRepoRoot, resolvedPath);
+    return slashPath(rel || basename(resolvedPath));
+  }
+
+  const home = homedir();
+  if (isInside(home, resolvedPath)) {
+    return slashPath(join("~", relative(home, resolvedPath)));
+  }
+
+  return slashPath(path);
+}
+
+function compactExtensionLabel(path: string): string {
+  const normalizedPath = slashPath(path);
+  const parsed = parse(normalizedPath);
+  return parsed.base === "index.ts" || parsed.base === "index.js"
+    ? basename(dirname(normalizedPath))
+    : parsed.base;
+}
+
+export function compactProfileBlock(input: {
+  label: string;
+  contextFiles: string[];
+  skillNames: string[];
+  promptNames: string[];
+  extensionPaths: string[];
+  repoRoot: string;
+}): DoctorPiResourceBlock {
+  const sections: DoctorPiResourceSection[] = [];
+
+  const context = input.contextFiles.map((path) =>
+    displayPath(path, input.repoRoot),
+  );
+  if (context.length > 0) sections.push({ heading: "Context", items: context });
+
+  const skills = uniqueSorted(input.skillNames);
+  if (skills.length > 0) sections.push({ heading: "Skills", items: skills });
+
+  const prompts = uniqueSorted(input.promptNames.map((name) => `/${name}`));
+  if (prompts.length > 0) sections.push({ heading: "Prompts", items: prompts });
+
+  const extensions = uniqueSorted(
+    input.extensionPaths.map(compactExtensionLabel),
+  );
+  if (extensions.length > 0) {
+    sections.push({ heading: "Extensions", items: extensions });
+  }
+
+  return { label: input.label, sections };
+}
+
+export function formatPiResourceBlocks(
+  blocks: DoctorPiResourceBlock[],
+): string[] {
+  return blocks.flatMap((block, blockIndex) => [
+    ...(blockIndex === 0 ? [] : [""]),
+    `[Pi resources: ${block.label}]`,
+    "",
+    ...block.sections.flatMap((section, sectionIndex) => [
+      ...(sectionIndex === 0 ? [] : [""]),
+      `[${section.heading}]`,
+      `  ${section.items.join(", ")}`,
+    ]),
+  ]);
+}
+
+export function piResourceWarningCheck(
+  warnings: string[],
+): DoctorCheckResult | undefined {
+  const uniqueWarnings = uniqueSorted(warnings);
+  if (uniqueWarnings.length === 0) return undefined;
+  return {
+    name: "pi resources",
+    status: "warn",
+    message: uniqueWarnings.join("; "),
+    remediation: [
+      "Patchmill doctor listed Pi resources without installing missing packages or executing extensions.",
+      "Install or update the listed Pi package sources outside doctor if you want those resources loaded, then rerun:",
+      "  patchmill doctor",
+    ],
+  };
+}
+
+export function piResourceDiscoveryFailureCheck(
+  error: unknown,
+): DoctorCheckResult {
+  return {
+    name: "pi resources",
+    status: "warn",
+    message: `could not list Pi resources: ${errorMessage(error)}`,
+    remediation: [
+      "Patchmill doctor could not list Pi's startup resources.",
+      "The readiness checks still ran; fix the Pi resource discovery error, then rerun:",
+      "  patchmill doctor",
+    ],
+  };
+}
+
+function projectTrustedForResourceListing(
+  repoRoot: string,
+  agentDir: string,
+): boolean {
+  if (!hasTrustRequiringProjectResources(repoRoot)) return true;
+
+  const savedDecision = new ProjectTrustStore(agentDir).get(repoRoot);
+  if (savedDecision !== null) return savedDecision;
+
+  const globalOnlySettings = SettingsManager.create(repoRoot, agentDir, {
+    projectTrusted: false,
+  });
+  return globalOnlySettings.getDefaultProjectTrust() === "always";
+}
+
+function enabledPaths(resources: ResolvedResource[]): string[] {
+  return resources
+    .filter((resource) => resource.enabled)
+    .map((resource) => resource.path);
+}
+
+function promptName(path: string): string {
+  return basename(path).replace(/\.md$/u, "");
+}
+
+function contextFilePaths(input: {
+  repoRoot: string;
+  agentDir: string;
+  projectTrusted: boolean;
+}): string[] {
+  const files = loadProjectContextFiles({
+    cwd: input.repoRoot,
+    agentDir: input.agentDir,
+  }).map((file) => file.path);
+
+  return input.projectTrusted
+    ? files
+    : files.filter((file) => isInside(resolve(input.agentDir), resolve(file)));
+}
+
+async function resolveStaticResources(input: {
+  repoRoot: string;
+  agentDir: string;
+  profile: PatchmillPiResourceProfile;
+  warnings: string[];
+}): Promise<{
+  contextFiles: string[];
+  skillNames: string[];
+  promptNames: string[];
+  extensionPaths: string[];
+}> {
+  const projectTrusted = projectTrustedForResourceListing(
+    input.repoRoot,
+    input.agentDir,
+  );
+  const settingsManager = SettingsManager.create(
+    input.repoRoot,
+    input.agentDir,
+    {
+      projectTrusted,
+    },
+  );
+  const packageManager = new DefaultPackageManager({
+    cwd: input.repoRoot,
+    agentDir: input.agentDir,
+    settingsManager,
+  });
+
+  const onMissing = async (source: string): Promise<MissingSourceAction> => {
+    input.warnings.push(`skipped missing package ${source}`);
+    return "skip";
+  };
+
+  const resolved = await packageManager.resolve(onMissing);
+  const baseSkillPaths = enabledPaths(resolved.skills);
+  const basePromptPaths = input.profile.noPromptTemplates
+    ? []
+    : enabledPaths(resolved.prompts);
+  const baseExtensionPaths = enabledPaths(resolved.extensions);
+
+  const skills = loadSkills({
+    cwd: input.repoRoot,
+    agentDir: input.agentDir,
+    includeDefaults: false,
+    skillPaths: [...baseSkillPaths, ...input.profile.additionalSkillPaths],
+  });
+  input.warnings.push(
+    ...skills.diagnostics.map((diagnostic) =>
+      diagnostic.path
+        ? `skills: ${diagnostic.message} (${diagnostic.path})`
+        : `skills: ${diagnostic.message}`,
+    ),
+  );
+
+  return {
+    contextFiles: input.profile.noContextFiles
+      ? []
+      : contextFilePaths({
+          repoRoot: input.repoRoot,
+          agentDir: input.agentDir,
+          projectTrusted,
+        }),
+    skillNames: skills.skills.map((skill) => skill.name),
+    promptNames: basePromptPaths.map(promptName),
+    extensionPaths: [
+      ...baseExtensionPaths,
+      ...input.profile.additionalExtensionPaths,
+    ],
+  };
+}
+
+export async function loadDoctorPiResources(
+  repoRoot: string,
+  env: Record<string, string | undefined> = process.env,
+): Promise<DoctorPiResourceReport> {
+  const agentDir = localPiAgentDir(repoRoot);
+  const warnings: string[] = [];
+
+  try {
+    const loaded = await loadPatchmillConfigState(repoRoot, env, []);
+    const blocks: DoctorPiResourceBlock[] = [];
+    for (const profile of doctorPiResourceProfiles(
+      loaded.config.skills,
+      repoRoot,
+    )) {
+      const resources = await resolveStaticResources({
+        repoRoot,
+        agentDir,
+        profile,
+        warnings,
+      });
+      const block = compactProfileBlock({
+        label: profile.label,
+        repoRoot,
+        ...resources,
+      });
+      if (block.sections.length > 0) blocks.push(block);
+    }
+
+    return { blocks, check: piResourceWarningCheck(warnings) };
+  } catch (error) {
+    return { blocks: [], check: piResourceDiscoveryFailureCheck(error) };
+  }
+}
