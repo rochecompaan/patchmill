@@ -68,26 +68,6 @@ class PromptComponent extends Container implements Focusable {
   }
 }
 
-class InfoComponent extends Container {
-  private readonly onClose: () => void;
-
-  constructor(lines: string[], onClose: () => void) {
-    super();
-    this.onClose = onClose;
-    for (const line of lines) this.addChild(new Text(line, 0, 0));
-  }
-
-  handleInput(data: string): void {
-    if (
-      matchesKey(data, Key.escape) ||
-      matchesKey(data, Key.ctrl("c")) ||
-      matchesKey(data, Key.enter)
-    ) {
-      this.onClose();
-    }
-  }
-}
-
 class OptionComponent extends Container {
   private selectedIndex = 0;
   private readonly title: string;
@@ -182,41 +162,6 @@ export function promptApiKeyInteractively(options: {
     title: options.providerName,
     prompt: "Enter API key:",
     terminal: options.terminal,
-  });
-}
-
-export async function showBedrockInfoInteractively(
-  options: {
-    terminal?: Terminal;
-  } = {},
-): Promise<void> {
-  const terminal = options.terminal ?? new ProcessTerminal();
-  const tui = new TUI(terminal, false);
-
-  await new Promise<void>((resolve) => {
-    let finished = false;
-    const finish = (): void => {
-      if (finished) return;
-      finished = true;
-      void stopTui(tui, terminal).finally(() => resolve());
-    };
-
-    const component = new InfoComponent(
-      [
-        "Amazon Bedrock setup",
-        "",
-        "Amazon Bedrock uses AWS credentials instead of a single API key.",
-        "Configure an AWS profile, IAM keys, bearer token, or role-based credentials.",
-        "See Pi providers.md for details.",
-        "",
-        "(escape/ctrl+c/enter to close)",
-      ],
-      finish,
-    );
-    tui.addChild(component);
-    tui.setFocus(component);
-    tui.start();
-    tui.requestRender(true);
   });
 }
 

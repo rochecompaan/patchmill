@@ -2,7 +2,6 @@ import type { LocalPiDefaultModel } from "./pi-agent-settings.ts";
 import {
   createOAuthCallbacks,
   promptApiKeyInteractively,
-  showBedrockInfoInteractively,
 } from "./pi-auth-dialog.ts";
 import {
   createAuthProviderChoices,
@@ -65,7 +64,6 @@ export type SelectAuthProvider = (options: {
 export type PromptApiKey = (
   provider: AuthProviderChoice,
 ) => Promise<string | undefined>;
-export type ShowBedrockInfo = () => Promise<void>;
 export type OAuthCallbacksFactory = (
   provider: AuthProviderChoice,
 ) => OAuthLoginCallbacksLike;
@@ -90,7 +88,6 @@ export type InteractivePiAuthSetupOptions = {
   selectAuthMethod: SelectAuthMethod;
   selectProvider: SelectAuthProvider;
   promptApiKey: PromptApiKey;
-  showBedrockInfo: ShowBedrockInfo;
   selectModelInteractively: SelectInteractiveModel;
   persistDefaultModel?: PersistDefaultModel;
   oauthCallbacks?: OAuthCallbacksFactory;
@@ -273,44 +270,40 @@ export async function runInteractivePiAuthSetup(
   }
 
   if (mode === "api_key") {
-    if (provider.id === "amazon-bedrock") {
-      await options.showBedrockInfo();
-    } else {
-      const callbacks = options.oauthCallbacks?.(provider);
-      try {
-        await options.runtime.login(
-          provider.id,
-          "api_key",
-          createApiKeyInteraction({
-            provider,
-            promptApiKey: options.promptApiKey,
-            promptText: callbacks?.onPrompt,
-            selectOption: (prompt) =>
-              callbacks?.onSelect(prompt) ?? Promise.resolve(undefined),
-          }),
+    const callbacks = options.oauthCallbacks?.(provider);
+    try {
+      await options.runtime.login(
+        provider.id,
+        "api_key",
+        createApiKeyInteraction({
+          provider,
+          promptApiKey: options.promptApiKey,
+          promptText: callbacks?.onPrompt,
+          selectOption: (prompt) =>
+            callbacks?.onSelect(prompt) ?? Promise.resolve(undefined),
+        }),
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "API key cannot be empty."
+      ) {
+        return unavailable(
+          options.initialReadiness,
+          "invalid-selection",
+          "API key cannot be empty.",
         );
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message === "API key cannot be empty."
-        ) {
-          return unavailable(
-            options.initialReadiness,
-            "invalid-selection",
-            "API key cannot be empty.",
-          );
-        }
-        if (error instanceof Error && error.message === "Login cancelled") {
-          return unavailable(
-            options.initialReadiness,
-            "cancelled",
-            "Pi provider authentication was cancelled.",
-          );
-        }
-        throw error;
-      } finally {
-        callbacks?.dispose?.();
       }
+      if (error instanceof Error && error.message === "Login cancelled") {
+        return unavailable(
+          options.initialReadiness,
+          "cancelled",
+          "Pi provider authentication was cancelled.",
+        );
+      }
+      throw error;
+    } finally {
+      callbacks?.dispose?.();
     }
   } else {
     const callbacks =
@@ -360,7 +353,6 @@ export async function setupPiInteractively(options: {
       selectProviderInteractively({ mode, choices }),
     promptApiKey: (provider) =>
       promptApiKeyInteractively({ providerName: provider.name }),
-    showBedrockInfo: () => showBedrockInfoInteractively(),
     selectModelInteractively:
       options.selectModelInteractively ?? defaultSelectModelInteractively,
     persistDefaultModel: options.persistDefaultModel,

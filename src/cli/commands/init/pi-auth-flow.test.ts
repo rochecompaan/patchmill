@@ -133,7 +133,6 @@ test("runInteractivePiAuthSetup stores API key auth, refreshes registry, and sel
     selectAuthMethod: async () => "api_key",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "sk-ant-test",
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async ({ models }) => {
       selectorModels = models;
       return choice("anthropic");
@@ -181,7 +180,6 @@ test("runInteractivePiAuthSetup routes provider-owned API-key text prompts throu
     selectAuthMethod: async () => "api_key",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "sk-cloudflare-test",
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async ({ models }) =>
       choice(models[0]?.provider, models[0]?.id),
     oauthCallbacks: () => ({
@@ -222,7 +220,6 @@ test("runInteractivePiAuthSetup calls OAuth login for subscription setup", async
     selectAuthMethod: async () => "oauth",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "unused",
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async ({ models }) =>
       choice(models[0]?.provider, models[0]?.id),
   });
@@ -234,13 +231,33 @@ test("runInteractivePiAuthSetup calls OAuth login for subscription setup", async
   assert.equal(result.selection.status, "selected");
 });
 
-test("runInteractivePiAuthSetup shows Bedrock guidance without storing a key", async () => {
+test("runInteractivePiAuthSetup runs Bedrock through persisted API-key login prompts", async () => {
   const runtime = fakeRuntime({
     allModels: [model("amazon-bedrock", "us.anthropic.claude")],
-    availableModels: [],
+    availableModels: [model("amazon-bedrock", "us.anthropic.claude")],
     names: { "amazon-bedrock": "Amazon Bedrock" },
+    apiKeyPrompts: [
+      {
+        type: "select",
+        message: "Select Amazon Bedrock authentication method:",
+        options: [
+          { id: "bearer-token", label: "Bearer token" },
+          { id: "aws-profile", label: "AWS profile" },
+          { id: "credential-chain", label: "Existing AWS credential chain" },
+        ],
+      },
+      { type: "text", message: "Enter AWS profile name" },
+    ],
   });
-  let bedrockShown = false;
+  const selectPrompts: Array<{
+    message: string;
+    options: Array<{ id: string; label: string }>;
+  }> = [];
+  const textPrompts: Array<{
+    message: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+  }> = [];
 
   const result = await runInteractivePiAuthSetup({
     repoRoot: "/repo",
@@ -251,20 +268,44 @@ test("runInteractivePiAuthSetup shows Bedrock guidance without storing a key", a
     selectAuthMethod: async () => "api_key",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "unused",
-    showBedrockInfo: async () => {
-      bedrockShown = true;
-    },
-    selectModelInteractively: async () => undefined,
+    selectModelInteractively: async ({ models }) =>
+      choice(models[0]?.provider, models[0]?.id),
+    oauthCallbacks: () => ({
+      onAuth: () => undefined,
+      onDeviceCode: () => undefined,
+      onPrompt: async (prompt) => {
+        textPrompts.push(prompt);
+        return "dev-profile";
+      },
+      onSelect: async (prompt) => {
+        selectPrompts.push(prompt);
+        return "aws-profile";
+      },
+    }),
   });
 
-  assert.equal(bedrockShown, true);
-  assert.deepEqual(runtime.loginCalls, []);
+  assert.deepEqual(runtime.loginCalls, [
+    { provider: "amazon-bedrock", mode: "api_key" },
+  ]);
+  assert.deepEqual(selectPrompts, [
+    {
+      message: "Select Amazon Bedrock authentication method:",
+      options: [
+        { id: "bearer-token", label: "Bearer token" },
+        { id: "aws-profile", label: "AWS profile" },
+        { id: "credential-chain", label: "Existing AWS credential chain" },
+      ],
+    },
+  ]);
+  assert.deepEqual(textPrompts, [
+    {
+      message: "Enter AWS profile name",
+      placeholder: undefined,
+      allowEmpty: true,
+    },
+  ]);
   assert.equal(runtime.refreshCount(), 1);
-  assert.equal(result.selection.status, "unavailable");
-  assert.equal(
-    result.selection.status === "unavailable" && result.selection.reason,
-    "not-ready",
-  );
+  assert.equal(result.selection.status, "selected");
 });
 
 test("runInteractivePiAuthSetup treats cancelled auth method as cancelled selection", async () => {
@@ -277,7 +318,6 @@ test("runInteractivePiAuthSetup treats cancelled auth method as cancelled select
     selectAuthMethod: async () => undefined,
     selectProvider: async () => undefined,
     promptApiKey: async () => undefined,
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async () => undefined,
   });
 
@@ -299,7 +339,6 @@ test("runInteractivePiAuthSetup rejects an empty API key", async () => {
     selectAuthMethod: async () => "api_key",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "   ",
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async () => undefined,
   });
 

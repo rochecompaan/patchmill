@@ -4,7 +4,6 @@ import type { Terminal } from "@earendil-works/pi-tui";
 import {
   createOAuthCallbacks,
   promptApiKeyInteractively,
-  showBedrockInfoInteractively,
 } from "./pi-auth-dialog.ts";
 
 class FakeTerminal implements Terminal {
@@ -76,19 +75,6 @@ test("promptApiKeyInteractively cancels on escape", async () => {
   terminal.sendInput("\u001b");
 
   assert.equal(await prompt, undefined);
-});
-
-test("showBedrockInfoInteractively resolves when escape closes the panel", async () => {
-  const terminal = new FakeTerminal();
-  const panel = showBedrockInfoInteractively({ terminal });
-
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.match(terminal.writes.join(""), /Amazon Bedrock setup/);
-
-  terminal.sendInput("\u001b");
-  await panel;
-
-  assert.equal(terminal.stopCalls, 1);
 });
 
 test("createOAuthCallbacks opens browser URLs for auth callbacks", () => {
