@@ -36,6 +36,11 @@ export type DoctorPiResourceBlock = {
   sections: DoctorPiResourceSection[];
 };
 
+export type DoctorPiExtensionResource = {
+  path: string;
+  metadata?: Pick<ResolvedResource["metadata"], "source" | "origin">;
+};
+
 export type DoctorPiResourceReport = {
   blocks: DoctorPiResourceBlock[];
   check?: DoctorCheckResult;
@@ -80,7 +85,7 @@ function displayPath(path: string, repoRoot: string): string {
   return slashPath(path);
 }
 
-function compactExtensionLabel(path: string): string {
+function compactExtensionPathLabel(path: string): string {
   const normalizedPath = slashPath(path);
   const parsed = parse(normalizedPath);
   return parsed.base === "index.ts" || parsed.base === "index.js"
@@ -88,12 +93,19 @@ function compactExtensionLabel(path: string): string {
     : parsed.base;
 }
 
+function compactExtensionLabel(resource: DoctorPiExtensionResource): string {
+  const pathLabel = compactExtensionPathLabel(resource.path);
+  return resource.metadata?.origin === "package"
+    ? `${resource.metadata.source}: ${pathLabel}`
+    : pathLabel;
+}
+
 export function compactProfileBlock(input: {
   label: string;
   contextFiles: string[];
   skillNames: string[];
   promptNames: string[];
-  extensionPaths: string[];
+  extensionResources: DoctorPiExtensionResource[];
   repoRoot: string;
 }): DoctorPiResourceBlock {
   const sections: DoctorPiResourceSection[] = [];
@@ -110,7 +122,7 @@ export function compactProfileBlock(input: {
   if (prompts.length > 0) sections.push({ heading: "Prompts", items: prompts });
 
   const extensions = uniqueSorted(
-    input.extensionPaths.map(compactExtensionLabel),
+    input.extensionResources.map(compactExtensionLabel),
   );
   if (extensions.length > 0) {
     sections.push({ heading: "Extensions", items: extensions });
@@ -187,6 +199,24 @@ function enabledPaths(resources: ResolvedResource[]): string[] {
     .map((resource) => resource.path);
 }
 
+function enabledExtensionResources(
+  resources: ResolvedResource[],
+): DoctorPiExtensionResource[] {
+  return resources
+    .filter((resource) => resource.enabled)
+    .map((resource) => ({
+      path: resource.path,
+      metadata: {
+        source: resource.metadata.source,
+        origin: resource.metadata.origin,
+      },
+    }));
+}
+
+function localExtensionResources(paths: string[]): DoctorPiExtensionResource[] {
+  return paths.map((path) => ({ path }));
+}
+
 function promptName(path: string): string {
   return basename(path).replace(/\.md$/u, "");
 }
@@ -201,17 +231,18 @@ function contextFilePaths(input: {
   }).map((file) => file.path);
 }
 
-async function resolveStaticResources(input: {
+type StaticBasePiResources = {
+  contextFiles: string[];
+  skillPaths: string[];
+  promptNames: string[];
+  extensionResources: DoctorPiExtensionResource[];
+};
+
+async function resolveStaticBaseResources(input: {
   repoRoot: string;
   agentDir: string;
-  profile: PatchmillPiResourceProfile;
   warnings: string[];
-}): Promise<{
-  contextFiles: string[];
-  skillNames: string[];
-  promptNames: string[];
-  extensionPaths: string[];
-}> {
+}): Promise<StaticBasePiResources> {
   const projectTrusted = projectTrustedForResourceListing(
     input.repoRoot,
     input.agentDir,
@@ -235,17 +266,38 @@ async function resolveStaticResources(input: {
   };
 
   const resolved = await packageManager.resolve(onMissing);
-  const baseSkillPaths = enabledPaths(resolved.skills);
-  const basePromptPaths = input.profile.noPromptTemplates
-    ? []
-    : enabledPaths(resolved.prompts);
-  const baseExtensionPaths = enabledPaths(resolved.extensions);
 
+  return {
+    contextFiles: contextFilePaths({
+      repoRoot: input.repoRoot,
+      agentDir: input.agentDir,
+    }),
+    skillPaths: enabledPaths(resolved.skills),
+    promptNames: enabledPaths(resolved.prompts).map(promptName),
+    extensionResources: enabledExtensionResources(resolved.extensions),
+  };
+}
+
+function profileStaticResources(input: {
+  repoRoot: string;
+  agentDir: string;
+  profile: PatchmillPiResourceProfile;
+  baseResources: StaticBasePiResources;
+  warnings: string[];
+}): {
+  contextFiles: string[];
+  skillNames: string[];
+  promptNames: string[];
+  extensionResources: DoctorPiExtensionResource[];
+} {
   const skills = loadSkills({
     cwd: input.repoRoot,
     agentDir: input.agentDir,
     includeDefaults: false,
-    skillPaths: [...baseSkillPaths, ...input.profile.additionalSkillPaths],
+    skillPaths: [
+      ...input.baseResources.skillPaths,
+      ...input.profile.additionalSkillPaths,
+    ],
   });
   input.warnings.push(
     ...skills.diagnostics.map((diagnostic) =>
@@ -258,15 +310,14 @@ async function resolveStaticResources(input: {
   return {
     contextFiles: input.profile.noContextFiles
       ? []
-      : contextFilePaths({
-          repoRoot: input.repoRoot,
-          agentDir: input.agentDir,
-        }),
+      : input.baseResources.contextFiles,
     skillNames: skills.skills.map((skill) => skill.name),
-    promptNames: basePromptPaths.map(promptName),
-    extensionPaths: [
-      ...baseExtensionPaths,
-      ...input.profile.additionalExtensionPaths,
+    promptNames: input.profile.noPromptTemplates
+      ? []
+      : input.baseResources.promptNames,
+    extensionResources: [
+      ...input.baseResources.extensionResources,
+      ...localExtensionResources(input.profile.additionalExtensionPaths),
     ],
   };
 }
@@ -280,15 +331,21 @@ export async function loadDoctorPiResources(
 
   try {
     const loaded = await loadPatchmillConfigState(repoRoot, env, []);
+    const baseResources = await resolveStaticBaseResources({
+      repoRoot,
+      agentDir,
+      warnings,
+    });
     const blocks: DoctorPiResourceBlock[] = [];
     for (const profile of doctorPiResourceProfiles(
       loaded.config.skills,
       repoRoot,
     )) {
-      const resources = await resolveStaticResources({
+      const resources = profileStaticResources({
         repoRoot,
         agentDir,
         profile,
+        baseResources,
         warnings,
       });
       const block = compactProfileBlock({

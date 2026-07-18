@@ -19,9 +19,17 @@ test("compactProfileBlock builds sorted compact sections", () => {
     contextFiles: [join(repoRoot, "AGENTS.md")],
     skillNames: ["github", "brainstorming"],
     promptNames: ["review-loop", "parallel-review"],
-    extensionPaths: [
-      join(repoRoot, "extensions", "todos.ts"),
-      join(repoRoot, "extensions", "pi-remote", "extension", "index.ts"),
+    extensionResources: [
+      { path: join(repoRoot, "extensions", "todos.ts") },
+      {
+        path: join(
+          repoRoot,
+          "extensions",
+          "pi-remote",
+          "extension",
+          "index.ts",
+        ),
+      },
     ],
     repoRoot,
   });
@@ -67,7 +75,7 @@ test("compactProfileBlock omits empty categories", () => {
       contextFiles: [],
       skillNames: [],
       promptNames: ["review-loop"],
-      extensionPaths: [],
+      extensionResources: [],
       repoRoot,
     }),
     {
@@ -75,6 +83,37 @@ test("compactProfileBlock omits empty categories", () => {
       sections: [{ heading: "Prompts", items: ["/review-loop"] }],
     },
   );
+});
+
+test("compactProfileBlock labels package-backed extensions with their source", () => {
+  const block = compactProfileBlock({
+    label: "run-once planning",
+    contextFiles: [],
+    skillNames: [],
+    promptNames: [],
+    extensionResources: [
+      {
+        path: join(
+          repoRoot,
+          ".pi",
+          "packages",
+          "acme",
+          "extension",
+          "index.ts",
+        ),
+        metadata: { source: "npm:@acme/pi-tools@1.0.0", origin: "package" },
+      },
+      { path: join(repoRoot, "extensions", "todos.ts") },
+    ],
+    repoRoot,
+  });
+
+  assert.deepEqual(block.sections, [
+    {
+      heading: "Extensions",
+      items: ["npm:@acme/pi-tools@1.0.0: extension", "todos.ts"],
+    },
+  ]);
 });
 
 test("piResourceWarningCheck returns undefined without warnings", () => {
