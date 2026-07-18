@@ -26,7 +26,7 @@ export type AuthProviderRuntimeLike = {
   get(provider: string): PiCredential | undefined;
   getAll(): PiRuntimeModel[];
   getProviderDisplayName(provider: string): string;
-  getProviderAuthStatus(provider: string): PiCredentialStatus;
+  getProviderCredentialState(provider: string): PiCredentialStatus;
 };
 
 export type AuthProviderChoice = {
@@ -120,7 +120,7 @@ export function createAuthProviderChoices(options: {
         name: provider.name,
         mode: options.mode,
         credential: options.runtime.get(provider.id),
-        status: options.runtime.getProviderAuthStatus(provider.id),
+        status: options.runtime.getProviderCredentialState(provider.id),
       }),
     );
   }
@@ -131,7 +131,7 @@ export function createAuthProviderChoices(options: {
       name: options.runtime.getProviderDisplayName(provider),
       mode: options.mode,
       credential: options.runtime.get(provider),
-      status: options.runtime.getProviderAuthStatus(provider),
+      status: options.runtime.getProviderCredentialState(provider),
     }),
   );
 }

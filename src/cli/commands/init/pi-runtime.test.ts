@@ -79,7 +79,7 @@ function fakeRuntime() {
             auth: { apiKey: {}, oauth: { name: "Claude Pro/Max" } },
           }
         : undefined,
-    getProviderAuthStatus: (provider) =>
+    getProviderCredentialState: (provider) =>
       provider === "anthropic"
         ? { configured: true, source: "stored" }
         : { configured: false },
@@ -146,7 +146,7 @@ test("ModelRuntime adapter lists OAuth providers and reads stored credentials", 
     { id: "anthropic", name: "Claude Pro/Max" },
   ]);
   assert.equal(adapter.get("anthropic"), credential);
-  assert.deepEqual(adapter.getProviderAuthStatus("anthropic"), {
+  assert.deepEqual(adapter.getProviderCredentialState("anthropic"), {
     configured: true,
     source: "stored",
   });

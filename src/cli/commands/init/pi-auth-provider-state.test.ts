@@ -30,7 +30,7 @@ function runtime(
     getAll: () => options.models ?? [],
     getProviderDisplayName: (provider: string) =>
       options.names?.[provider] ?? provider,
-    getProviderAuthStatus: (provider: string) =>
+    getProviderCredentialState: (provider: string) =>
       statuses[provider] ?? {
         configured: Boolean(credentials[provider]),
         source: credentials[provider] ? "stored" : undefined,

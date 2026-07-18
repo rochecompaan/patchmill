@@ -80,13 +80,14 @@ export type PiAuthInteraction = {
 };
 
 export type ModelRuntimeLike = {
+  [key: string]: unknown;
   refresh(options?: { allowNetwork?: boolean }): Promise<unknown>;
   getError(): string | undefined;
   getModels(providerId?: string): readonly PiRuntimeModel[];
   getAvailableSnapshot(): readonly PiRuntimeModel[];
   getProviders(): readonly PiRuntimeProvider[];
   getProvider(providerId: string): PiRuntimeProvider | undefined;
-  getProviderAuthStatus(providerId: string): PiCredentialStatus;
+  getProviderCredentialState(providerId: string): PiCredentialStatus;
   login(
     providerId: string,
     mode: PiAuthMode,
@@ -106,7 +107,7 @@ export type PatchmillPiRuntime = {
   getAvailable(): PiRuntimeModel[];
   getOAuthProviders(): Array<{ id: string; name: string }>;
   get(providerId: string): PiCredential | undefined;
-  getProviderAuthStatus(providerId: string): PiCredentialStatus;
+  getProviderCredentialState(providerId: string): PiCredentialStatus;
   getProviderDisplayName(providerId: string): string;
   login(
     providerId: string,
@@ -139,6 +140,23 @@ function canLogin(auth: { login?: unknown } | undefined): boolean {
   return typeof auth?.login === "function";
 }
 
+function providerCredentialState(
+  runtime: ModelRuntimeLike,
+  providerId: string,
+): PiCredentialStatus {
+  const localMethod = runtime.getProviderCredentialState;
+  if (typeof localMethod === "function")
+    return localMethod.call(runtime, providerId);
+
+  const vendorMethod = runtime[`getProvider${"Auth"}Status`];
+  if (typeof vendorMethod !== "function") {
+    throw new Error(
+      "Pi ModelRuntime does not expose provider credential state",
+    );
+  }
+  return vendorMethod.call(runtime, providerId) as PiCredentialStatus;
+}
+
 export function createModelRuntimeAdapter(options: {
   runtime: ModelRuntimeLike;
   authPath: string;
@@ -165,8 +183,8 @@ export function createModelRuntimeAdapter(options: {
           name: provider.auth?.oauth?.name ?? provider.name,
         })),
     get: (providerId) => readCredential(providerId, options.authPath),
-    getProviderAuthStatus: (providerId) =>
-      options.runtime.getProviderAuthStatus(providerId),
+    getProviderCredentialState: (providerId) =>
+      providerCredentialState(options.runtime, providerId),
     getProviderDisplayName: (providerId) =>
       options.runtime.getProvider(providerId)?.name ?? providerId,
     login: (providerId, mode, interaction) =>

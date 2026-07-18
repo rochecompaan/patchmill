@@ -13,7 +13,7 @@ function registry(
   return {
     getAvailable: () => models,
     getError: () => undefined,
-    getProviderAuthStatus: (provider) => ({
+    getProviderCredentialState: (provider) => ({
       configured: models.some((model) => model.provider === provider),
       source: "stored",
     }),
@@ -104,7 +104,7 @@ test("detectPiReadinessFromRegistry reports error when Pi registry cannot load m
   const readiness = detectPiReadinessFromRegistry({
     getAvailable: () => [],
     getError: () => "bad models.json",
-    getProviderAuthStatus: () => ({ configured: false }),
+    getProviderCredentialState: () => ({ configured: false }),
     getProviderDisplayName: (provider) => provider,
   });
 

@@ -11,7 +11,7 @@ export type PiRegistryLike = Pick<
   PatchmillPiRuntime,
   | "getAvailable"
   | "getError"
-  | "getProviderAuthStatus"
+  | "getProviderCredentialState"
   | "getProviderDisplayName"
 >;
 
@@ -21,7 +21,9 @@ export type PiModelChoice = {
   id: string;
   label: string;
   value: string;
-  authSource?: ReturnType<PiRegistryLike["getProviderAuthStatus"]>["source"];
+  authSource?: ReturnType<
+    PiRegistryLike["getProviderCredentialState"]
+  >["source"];
   reasoning: boolean;
   input: string[];
 };
@@ -61,7 +63,7 @@ function toChoice(
     id: model.id,
     label,
     value: `${model.provider}/${model.id}`,
-    authSource: registry.getProviderAuthStatus(model.provider).source,
+    authSource: registry.getProviderCredentialState(model.provider).source,
     reasoning: model.reasoning ?? false,
     input: model.input ?? ["text"],
   };

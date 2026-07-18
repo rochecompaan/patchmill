@@ -71,7 +71,7 @@ function fakeRuntime(
     getAvailable: () => options.availableModels ?? [],
     getOAuthProviders: () => options.oauthProviders ?? [],
     get: (provider) => credentials[provider],
-    getProviderAuthStatus: (provider) =>
+    getProviderCredentialState: (provider) =>
       options.statuses?.[provider] ?? {
         configured: Boolean(credentials[provider]),
         source: credentials[provider] ? "stored" : undefined,
