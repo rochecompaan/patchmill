@@ -1,7 +1,8 @@
 import type {
-  AuthCredential,
-  AuthStatus,
-} from "@earendil-works/pi-coding-agent";
+  PiCredentialStatus,
+  PiCredential,
+  PiRuntimeModel,
+} from "./pi-runtime.ts";
 
 export type AuthMode = "oauth" | "api_key";
 
@@ -20,20 +21,12 @@ export type OAuthProviderLike = {
   name: string;
 };
 
-export type AuthStorageLike = {
+export type AuthProviderRuntimeLike = {
   getOAuthProviders(): OAuthProviderLike[];
-  get(provider: string): AuthCredential | undefined;
-  getAuthStatus(provider: string): AuthStatus;
-};
-
-export type RegistryModelLike = {
-  provider: string;
-};
-
-export type AuthRegistryLike = {
-  getAll(): RegistryModelLike[];
+  get(provider: string): PiCredential | undefined;
+  getAll(): PiRuntimeModel[];
   getProviderDisplayName(provider: string): string;
-  getProviderAuthStatus(provider: string): AuthStatus;
+  getProviderAuthStatus(provider: string): PiCredentialStatus;
 };
 
 export type AuthProviderChoice = {
@@ -60,8 +53,8 @@ const MAX_VISIBLE_PROVIDER_ROWS = 8;
 
 function statusLabel(options: {
   mode: AuthMode;
-  credential: AuthCredential | undefined;
-  status: AuthStatus;
+  credential: PiCredential | undefined;
+  status: PiCredentialStatus;
 }): string {
   const { credential, mode, status } = options;
 
@@ -93,8 +86,8 @@ function choice(options: {
   id: string;
   name: string;
   mode: AuthMode;
-  credential: AuthCredential | undefined;
-  status: AuthStatus;
+  credential: PiCredential | undefined;
+  status: PiCredentialStatus;
 }): AuthProviderChoice {
   const suffix = statusLabel(options);
   return {
@@ -106,40 +99,39 @@ function choice(options: {
   };
 }
 
-function apiProviderIds(registry: AuthRegistryLike): string[] {
-  return Array.from(new Set(registry.getAll().map((model) => model.provider)))
+function apiProviderIds(runtime: AuthProviderRuntimeLike): string[] {
+  return Array.from(new Set(runtime.getAll().map((model) => model.provider)))
     .filter((provider) => provider.length > 0)
     .sort((left, right) =>
-      registry
+      runtime
         .getProviderDisplayName(left)
-        .localeCompare(registry.getProviderDisplayName(right)),
+        .localeCompare(runtime.getProviderDisplayName(right)),
     );
 }
 
 export function createAuthProviderChoices(options: {
   mode: AuthMode;
-  authStorage: AuthStorageLike;
-  registry: AuthRegistryLike;
+  runtime: AuthProviderRuntimeLike;
 }): AuthProviderChoice[] {
   if (options.mode === "oauth") {
-    return options.authStorage.getOAuthProviders().map((provider) =>
+    return options.runtime.getOAuthProviders().map((provider) =>
       choice({
         id: provider.id,
         name: provider.name,
         mode: options.mode,
-        credential: options.authStorage.get(provider.id),
-        status: options.authStorage.getAuthStatus(provider.id),
+        credential: options.runtime.get(provider.id),
+        status: options.runtime.getProviderAuthStatus(provider.id),
       }),
     );
   }
 
-  return apiProviderIds(options.registry).map((provider) =>
+  return apiProviderIds(options.runtime).map((provider) =>
     choice({
       id: provider,
-      name: options.registry.getProviderDisplayName(provider),
+      name: options.runtime.getProviderDisplayName(provider),
       mode: options.mode,
-      credential: options.authStorage.get(provider),
-      status: options.registry.getProviderAuthStatus(provider),
+      credential: options.runtime.get(provider),
+      status: options.runtime.getProviderAuthStatus(provider),
     }),
   );
 }
