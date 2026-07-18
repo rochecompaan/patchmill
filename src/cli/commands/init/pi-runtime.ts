@@ -105,6 +105,7 @@ export type PatchmillPiRuntime = {
   getError(): string | undefined;
   getAll(): PiRuntimeModel[];
   getAvailable(): PiRuntimeModel[];
+  getApiKeyProviders(): Array<{ id: string; name: string }>;
   getOAuthProviders(): Array<{ id: string; name: string }>;
   get(providerId: string): PiCredential | undefined;
   getProviderCredentialState(providerId: string): PiCredentialStatus;
@@ -138,6 +139,12 @@ function runtimeModels(models: readonly PiRuntimeModel[]): PiRuntimeModel[] {
 
 function canLogin(auth: { login?: unknown } | undefined): boolean {
   return typeof auth?.login === "function";
+}
+
+function runtimeProviderMap(
+  providers: readonly PiRuntimeProvider[],
+): Map<string, PiRuntimeProvider> {
+  return new Map(providers.map((provider) => [provider.id, provider]));
 }
 
 function providerCredentialState(
@@ -174,6 +181,19 @@ export function createModelRuntimeAdapter(options: {
     getError: () => options.runtime.getError(),
     getAll: () => runtimeModels(options.runtime.getModels()),
     getAvailable: () => runtimeModels(options.runtime.getAvailableSnapshot()),
+    getApiKeyProviders: () => {
+      const providers = runtimeProviderMap(options.runtime.getProviders());
+      const modelProviderIds = Array.from(
+        new Set(options.runtime.getModels().map((model) => model.provider)),
+      );
+      return modelProviderIds
+        .map((providerId) => providers.get(providerId))
+        .filter(
+          (provider): provider is PiRuntimeProvider =>
+            provider !== undefined && canLogin(provider.auth?.apiKey),
+        )
+        .map((provider) => ({ id: provider.id, name: provider.name }));
+    },
     getOAuthProviders: () =>
       options.runtime
         .getProviders()

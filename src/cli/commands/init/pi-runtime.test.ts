@@ -70,6 +70,21 @@ function fakeRuntime() {
           apiKey: { login: async () => ({ type: "api_key", key: "sk" }) },
         },
       },
+      {
+        id: "openai-codex",
+        name: "OpenAI Codex",
+        auth: {
+          oauth: {
+            name: "ChatGPT Plus/Pro",
+            login: async () => ({
+              type: "oauth",
+              refresh: "r",
+              access: "a",
+              expires: 1,
+            }),
+          },
+        },
+      },
     ],
     getProvider: (provider) =>
       provider === "anthropic"
@@ -124,6 +139,19 @@ test("ModelRuntime adapter exposes model snapshots and provider display names", 
   assert.equal(adapter.getProviderDisplayName("missing"), "missing");
 });
 
+test("ModelRuntime adapter lists API-key providers that support API-key login", () => {
+  const runtime = fakeRuntime();
+  const adapter = createModelRuntimeAdapter({
+    runtime,
+    authPath: "/repo/.patchmill/pi-agent/auth.json",
+  });
+
+  assert.deepEqual(adapter.getApiKeyProviders(), [
+    { id: "anthropic", name: "Anthropic" },
+    { id: "openai", name: "OpenAI" },
+  ]);
+});
+
 test("ModelRuntime adapter lists OAuth providers and reads stored credentials", () => {
   const runtime = fakeRuntime();
   const credential: PiCredential = {
@@ -144,6 +172,7 @@ test("ModelRuntime adapter lists OAuth providers and reads stored credentials", 
 
   assert.deepEqual(adapter.getOAuthProviders(), [
     { id: "anthropic", name: "Claude Pro/Max" },
+    { id: "openai-codex", name: "ChatGPT Plus/Pro" },
   ]);
   assert.equal(adapter.get("anthropic"), credential);
   assert.deepEqual(adapter.getProviderCredentialState("anthropic"), {

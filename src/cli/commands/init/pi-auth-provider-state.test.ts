@@ -20,12 +20,21 @@ function runtime(
     statuses?: Record<string, PiCredentialStatus>;
     models?: FakeModel[];
     names?: Record<string, string>;
+    apiKey?: Array<{ id: string; name: string }>;
   } = {},
 ) {
   const credentials = options.credentials ?? {};
   const statuses = options.statuses ?? {};
   return {
     getOAuthProviders: () => options.oauth ?? [],
+    getApiKeyProviders: () =>
+      options.apiKey ??
+      Array.from(new Set((options.models ?? []).map((model) => model.provider)))
+        .filter((provider) => provider.length > 0)
+        .map((provider) => ({
+          id: provider,
+          name: options.names?.[provider] ?? provider,
+        })),
     get: (provider: string) => credentials[provider],
     getAll: () => options.models ?? [],
     getProviderDisplayName: (provider: string) =>
@@ -78,7 +87,7 @@ test("createAuthProviderChoices lists subscription providers with configured sta
   );
 });
 
-test("createAuthProviderChoices lists unique API-key providers from all registry models", () => {
+test("createAuthProviderChoices lists API-key providers exposed by the runtime", () => {
   const choices = createAuthProviderChoices({
     mode: "api_key",
     runtime: runtime({
@@ -101,6 +110,28 @@ test("createAuthProviderChoices lists unique API-key providers from all registry
     "Anthropic • unconfigured",
     "Custom Proxy • unconfigured",
   ]);
+});
+
+test("createAuthProviderChoices excludes model providers without API-key login support", () => {
+  const choices = createAuthProviderChoices({
+    mode: "api_key",
+    runtime: runtime({
+      apiKey: [{ id: "anthropic", name: "Anthropic" }],
+      models: [
+        { provider: "anthropic", id: "claude-sonnet-4-5" },
+        { provider: "openai-codex", id: "gpt-5.5" },
+      ],
+      names: {
+        anthropic: "Anthropic",
+        "openai-codex": "OpenAI Codex",
+      },
+    }),
+  });
+
+  assert.deepEqual(
+    choices.map((choice) => choice.id),
+    ["anthropic"],
+  );
 });
 
 test("createAuthProviderChoices renders cross-mode and external auth status labels", () => {

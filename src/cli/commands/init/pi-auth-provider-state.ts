@@ -1,8 +1,4 @@
-import type {
-  PiCredentialStatus,
-  PiCredential,
-  PiRuntimeModel,
-} from "./pi-runtime.ts";
+import type { PiCredentialStatus, PiCredential } from "./pi-runtime.ts";
 
 export type AuthMode = "oauth" | "api_key";
 
@@ -22,9 +18,9 @@ export type OAuthProviderLike = {
 };
 
 export type AuthProviderRuntimeLike = {
+  getApiKeyProviders(): OAuthProviderLike[];
   getOAuthProviders(): OAuthProviderLike[];
   get(provider: string): PiCredential | undefined;
-  getAll(): PiRuntimeModel[];
   getProviderDisplayName(provider: string): string;
   getProviderCredentialState(provider: string): PiCredentialStatus;
 };
@@ -99,14 +95,13 @@ function choice(options: {
   };
 }
 
-function apiProviderIds(runtime: AuthProviderRuntimeLike): string[] {
-  return Array.from(new Set(runtime.getAll().map((model) => model.provider)))
-    .filter((provider) => provider.length > 0)
-    .sort((left, right) =>
-      runtime
-        .getProviderDisplayName(left)
-        .localeCompare(runtime.getProviderDisplayName(right)),
-    );
+function apiKeyProviders(
+  runtime: AuthProviderRuntimeLike,
+): OAuthProviderLike[] {
+  return runtime
+    .getApiKeyProviders()
+    .filter((provider) => provider.id.length > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export function createAuthProviderChoices(options: {
@@ -125,13 +120,13 @@ export function createAuthProviderChoices(options: {
     );
   }
 
-  return apiProviderIds(options.runtime).map((provider) =>
+  return apiKeyProviders(options.runtime).map((provider) =>
     choice({
-      id: provider,
-      name: options.runtime.getProviderDisplayName(provider),
+      id: provider.id,
+      name: provider.name,
       mode: options.mode,
-      credential: options.runtime.get(provider),
-      status: options.runtime.getProviderCredentialState(provider),
+      credential: options.runtime.get(provider.id),
+      status: options.runtime.getProviderCredentialState(provider.id),
     }),
   );
 }

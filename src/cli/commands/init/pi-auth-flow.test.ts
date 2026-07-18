@@ -70,6 +70,15 @@ function fakeRuntime(
     getError: () => undefined,
     getAll: () => options.allModels ?? [],
     getAvailable: () => options.availableModels ?? [],
+    getApiKeyProviders: () =>
+      Array.from(
+        new Set((options.allModels ?? []).map((item) => item.provider)),
+      )
+        .filter((provider) => provider.length > 0)
+        .map((provider) => ({
+          id: provider,
+          name: options.names?.[provider] ?? provider,
+        })),
     getOAuthProviders: () => options.oauthProviders ?? [],
     get: (provider) => credentials[provider],
     getProviderCredentialState: (provider) =>
