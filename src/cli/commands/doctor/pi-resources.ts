@@ -194,16 +194,11 @@ function promptName(path: string): string {
 function contextFilePaths(input: {
   repoRoot: string;
   agentDir: string;
-  projectTrusted: boolean;
 }): string[] {
-  const files = loadProjectContextFiles({
+  return loadProjectContextFiles({
     cwd: input.repoRoot,
     agentDir: input.agentDir,
   }).map((file) => file.path);
-
-  return input.projectTrusted
-    ? files
-    : files.filter((file) => isInside(resolve(input.agentDir), resolve(file)));
 }
 
 async function resolveStaticResources(input: {
@@ -266,7 +261,6 @@ async function resolveStaticResources(input: {
       : contextFilePaths({
           repoRoot: input.repoRoot,
           agentDir: input.agentDir,
-          projectTrusted,
         }),
     skillNames: skills.skills.map((skill) => skill.name),
     promptNames: basePromptPaths.map(promptName),

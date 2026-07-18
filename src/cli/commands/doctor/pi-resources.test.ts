@@ -136,3 +136,28 @@ test("non-mutating discovery skips missing configured package sources", async ()
     await rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("context files mirror Pi even when project package resources are untrusted", async () => {
+  const tmp = await mkdtemp(join(tmpdir(), "patchmill-doctor-context-"));
+  try {
+    await writeFile(
+      join(tmp, "patchmill.config.json"),
+      JSON.stringify({ host: { provider: "forgejo-tea", repo: "OWNER/repo" } }),
+      "utf8",
+    );
+    await writeFile(join(tmp, "AGENTS.md"), "# project instructions\n", "utf8");
+    await mkdir(join(tmp, ".agents", "skills"), { recursive: true });
+
+    const report = await loadDoctorPiResources(tmp, {});
+    const planning = report.blocks.find(
+      (block) => block.label === "run-once planning",
+    );
+    const context = planning?.sections.find(
+      (section) => section.heading === "Context",
+    );
+
+    assert.ok(context?.items.includes("AGENTS.md"));
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
