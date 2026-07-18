@@ -12,7 +12,12 @@ import type {
   PiPromptContracts,
   PlanPiInput,
 } from "./types.ts";
-import { skillInvocationPaths } from "../workflow/skills.ts";
+import { DEFAULT_PATCHMILL_SKILLS } from "../workflow/skills.ts";
+import {
+  profileExtensionArgs,
+  runOnceImplementationPiProfile,
+  runOncePlanningPiProfile,
+} from "./resource-profiles.ts";
 
 function defaultImplementationPolicy(
   baseBranch: string,
@@ -35,6 +40,11 @@ export class PiRunner implements PiPromptContracts {
 
   plan(input: PlanPiInput) {
     const projectPolicy = input.projectPolicy ?? DEFAULT_PATCHMILL_POLICY;
+    const profile = runOncePlanningPiProfile(
+      input.skills ?? DEFAULT_PATCHMILL_SKILLS,
+      input.repoRoot,
+    );
+
     return runPiPrompt(
       this.runner,
       input.repoRoot,
@@ -49,10 +59,8 @@ export class PiRunner implements PiPromptContracts {
       {
         ...input.runOptions,
         stage: "pi-plan",
-        skillPaths: skillInvocationPaths(
-          [input.skills?.planning],
-          input.repoRoot,
-        ),
+        skillPaths: profile.additionalSkillPaths,
+        extensionArgs: profileExtensionArgs(profile),
         issueNumber: input.issue.number,
         repoRoot: input.repoRoot,
         taskContract: projectPolicy.pi.taskContract,
@@ -64,6 +72,10 @@ export class PiRunner implements PiPromptContracts {
     const worktreeRoot = resolve(input.repoRoot, input.worktreePath);
     const projectPolicy =
       input.projectPolicy ?? defaultImplementationPolicy(input.git.baseBranch);
+    const profile = runOnceImplementationPiProfile(
+      input.skills ?? DEFAULT_PATCHMILL_SKILLS,
+      input.repoRoot,
+    );
 
     return runPiPrompt(
       this.runner,
@@ -81,16 +93,8 @@ export class PiRunner implements PiPromptContracts {
       {
         ...input.runOptions,
         stage: "pi-implementation",
-        skillPaths: skillInvocationPaths(
-          [
-            input.skills?.toolchain,
-            input.skills?.implementation,
-            input.skills?.review,
-            input.skills?.visualEvidence,
-            input.skills?.landing,
-          ],
-          input.repoRoot,
-        ),
+        skillPaths: profile.additionalSkillPaths,
+        extensionArgs: profileExtensionArgs(profile),
         issueNumber: input.issue.number,
         repoRoot: worktreeRoot,
         taskContract: projectPolicy.pi.taskContract,

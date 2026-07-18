@@ -1,5 +1,8 @@
 import { join } from "node:path";
-import { skillInvocationPaths } from "../../../workflow/skills.ts";
+import {
+  profileExtensionArgs,
+  runOnceDevelopmentEnvironmentPiProfile,
+} from "../../../pi/resource-profiles.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
@@ -153,6 +156,10 @@ export async function runDevelopmentEnvironmentStage(
   }
 
   const worktreeRoot = join(options.config.repoRoot, options.worktreePath);
+  const profile = runOnceDevelopmentEnvironmentPiProfile(
+    options.config.skills,
+    options.config.repoRoot,
+  );
   const result = await options.runStep(
     "development environment",
     async (): Promise<AgentIssueDevelopmentEnvironmentResult> => {
@@ -177,10 +184,8 @@ export async function runDevelopmentEnvironmentStage(
           progress: options.progressReporter,
           stage: "pi-development-environment",
           parseResult: parseDevelopmentEnvironmentResult,
-          skillPaths: skillInvocationPaths(
-            [options.config.skills.toolchain, developmentEnvironmentSkill],
-            options.config.repoRoot,
-          ),
+          skillPaths: profile.additionalSkillPaths,
+          extensionArgs: profileExtensionArgs(profile),
           streamOutput: options.streamPiOutput,
           issueNumber: options.issue.number,
           repoRoot: worktreeRoot,

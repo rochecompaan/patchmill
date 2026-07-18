@@ -12,9 +12,13 @@ import { TRIAGE_CANONICAL_BUCKETS } from "../../../policy/triage-state.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
-  skillInvocationPaths,
   type PatchmillSkillsConfig,
 } from "../../../workflow/skills.ts";
+import {
+  profileContextArgs,
+  profileSkillArgs,
+  triagePiProfile,
+} from "../../../pi/resource-profiles.ts";
 import type {
   CommandRunner,
   IssueSummary,
@@ -376,9 +380,7 @@ export async function runTriageDryRunAgent(
 ): Promise<TriagePreview[]> {
   const prompt = buildTriageDryRunPrompt(input);
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
-  const skillArgs = skillInvocationPaths([skills.triage], repoRoot).flatMap(
-    (path) => ["--skill", path],
-  );
+  const profile = triagePiProfile(skills, repoRoot);
   const thinking = input.thinking ?? "high";
   return withPromptFile("agent-triage-dry-run-", prompt, async (promptPath) =>
     runWithToolCallObservation(input.onToolCall, async (sessionDir) => {
@@ -391,9 +393,9 @@ export async function runTriageDryRunAgent(
         piCommandArgs(piCommand, [
           "--tools",
           "read,grep,find,ls",
-          "--no-context-files",
+          ...profileContextArgs(profile),
           ...sessionArgs,
-          ...skillArgs,
+          ...profileSkillArgs(profile),
           "--thinking",
           thinking,
           "-p",
