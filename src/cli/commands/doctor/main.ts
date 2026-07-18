@@ -10,6 +10,12 @@ import { createCommandRunner } from "../triage/command.ts";
 import { parseArgs } from "./args.ts";
 import { runDoctorChecks, type DoctorCheckResult } from "./checks.ts";
 import { formatDoctorReport, hasDoctorFailures } from "./reporting.ts";
+import {
+  loadDoctorPiResources,
+  piResourceDiscoveryFailureCheck,
+  type DoctorPiResourceProvider,
+  type DoctorPiResourceReport,
+} from "./pi-resources.ts";
 import type { CommandRunner } from "../triage/types.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
@@ -83,6 +89,17 @@ async function runDoctorLabelSetup(
   });
 }
 
+async function safeLoadPiResources(
+  provider: DoctorPiResourceProvider,
+  repoRoot: string,
+): Promise<DoctorPiResourceReport> {
+  try {
+    return await provider(repoRoot);
+  } catch (error) {
+    return { blocks: [], check: piResourceDiscoveryFailureCheck(error) };
+  }
+}
+
 export async function runDoctor(
   args: string[],
   repoRoot = cwd(),
@@ -96,6 +113,7 @@ export async function runDoctor(
       runner: CommandRunner,
       options: { repoRoot: string },
     ) => Promise<DoctorCheckResult[]>;
+    loadPiResources?: DoctorPiResourceProvider;
   } = {},
 ): Promise<number> {
   const config = parseArgs(args, repoRoot);
@@ -121,12 +139,20 @@ export async function runDoctor(
       );
     }
   }
-  const results = await (options.runChecks ?? runDoctorChecks)(runner, {
+  const piResources = await safeLoadPiResources(
+    options.loadPiResources ?? loadDoctorPiResources,
+    config.repoRoot,
+  );
+  const checkResults = await (options.runChecks ?? runDoctorChecks)(runner, {
     repoRoot: config.repoRoot,
   });
+  const results = [
+    ...(piResources.check ? [piResources.check] : []),
+    ...checkResults,
+  ];
   const failed = hasDoctorFailures(results);
   if (!config.quiet || failed) {
-    output.stdout(formatDoctorReport(results).join("\n"));
+    output.stdout(formatDoctorReport(results, piResources.blocks).join("\n"));
   }
   return failed ? 1 : 0;
 }

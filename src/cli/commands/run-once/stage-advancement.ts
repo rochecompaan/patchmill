@@ -1,6 +1,9 @@
 import { isAbsolute, join, relative } from "node:path";
 import type { IssueHostProvider } from "../../../host/types.ts";
-import { skillInvocationPaths } from "../../../workflow/skills.ts";
+import {
+  profileExtensionArgs,
+  runOncePlanningPiProfile,
+} from "../../../pi/resource-profiles.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
@@ -338,6 +341,11 @@ export async function advancePlanningStages({
     if (specCreated) checkpoints.specCreated = true;
   }
 
+  const planningProfile = runOncePlanningPiProfile(
+    config.skills,
+    planningRepoRoot,
+  );
+
   if (!spec.exists && !preexistingPlan.exists) {
     if (!specPath) throw new Error("Spec path was not resolved");
     const createdSpecPath = specPath;
@@ -359,10 +367,8 @@ export async function advancePlanningStages({
         {
           progress: runOptions.progress,
           stage: "pi-plan",
-          skillPaths: skillInvocationPaths(
-            [config.skills.planning],
-            planningRepoRoot,
-          ),
+          skillPaths: planningProfile.additionalSkillPaths,
+          extensionArgs: profileExtensionArgs(planningProfile),
           streamOutput: runOptions.streamPiOutput,
           issueNumber: issue.number,
           repoRoot: planningRepoRoot,
@@ -535,10 +541,8 @@ export async function advancePlanningStages({
         {
           progress: runOptions.progress,
           stage: "pi-plan",
-          skillPaths: skillInvocationPaths(
-            [config.skills.planning],
-            planningRepoRoot,
-          ),
+          skillPaths: planningProfile.additionalSkillPaths,
+          extensionArgs: profileExtensionArgs(planningProfile),
           streamOutput: runOptions.streamPiOutput,
           issueNumber: issue.number,
           repoRoot: planningRepoRoot,

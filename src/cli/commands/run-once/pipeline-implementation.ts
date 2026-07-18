@@ -1,5 +1,8 @@
 import { join } from "node:path";
-import { skillInvocationPaths } from "../../../workflow/skills.ts";
+import {
+  profileExtensionArgs,
+  runOnceImplementationPiProfile,
+} from "../../../pi/resource-profiles.ts";
 import { runDevelopmentEnvironmentStage } from "./development-environment-stage.ts";
 import {
   assertIssueTodosComplete,
@@ -355,6 +358,10 @@ export async function runPipelineImplementationStage(
             targetBranch: worktreeStrategy.baseBranch,
           },
         };
+        const profile = runOnceImplementationPiProfile(
+          config.skills,
+          config.repoRoot,
+        );
 
         piResult = await runPiPrompt(
           runner,
@@ -380,16 +387,8 @@ export async function runPipelineImplementationStage(
           {
             progress: progressReporter,
             stage: "pi-implementation",
-            skillPaths: skillInvocationPaths(
-              [
-                config.skills.toolchain,
-                config.skills.implementation,
-                config.skills.review,
-                config.skills.visualEvidence,
-                config.skills.landing,
-              ],
-              config.repoRoot,
-            ),
+            skillPaths: profile.additionalSkillPaths,
+            extensionArgs: profileExtensionArgs(profile),
             streamOutput: runOptions.streamPiOutput,
             issueNumber: issue.number,
             repoRoot: worktreeRoot,

@@ -3,12 +3,15 @@ import { test } from "node:test";
 import { HELP_TEXT, runDoctor } from "./main.ts";
 import type { CommandRunner } from "../triage/types.ts";
 import type { DoctorCheckResult } from "./checks.ts";
+import type { DoctorPiResourceReport } from "./pi-resources.ts";
 
 const runner: CommandRunner = {
   async run() {
     return { code: 0, stdout: "", stderr: "" };
   },
 };
+
+const emptyResources: DoctorPiResourceReport = { blocks: [] };
 
 test("runDoctor prints help", async () => {
   const stdout: string[] = [];
@@ -42,7 +45,11 @@ test("runDoctor returns zero when checks pass", async () => {
       [],
       "/repo",
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
-      { runner, runChecks: async () => checks },
+      {
+        runner,
+        loadPiResources: async () => emptyResources,
+        runChecks: async () => checks,
+      },
     ),
     0,
   );
@@ -60,7 +67,11 @@ test("runDoctor returns one when any check fails", async () => {
       [],
       "/repo",
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
-      { runner, runChecks: async () => checks },
+      {
+        runner,
+        loadPiResources: async () => emptyResources,
+        runChecks: async () => checks,
+      },
     ),
     1,
   );
@@ -78,6 +89,7 @@ test("runDoctor --fix runs label setup and prints its review", async () => {
       { stdout: (line) => stdout.push(line), stderr: () => undefined },
       {
         runner,
+        loadPiResources: async () => emptyResources,
         runChecks: async () => [
           { name: "labels", status: "pass", message: "ok" },
         ],
@@ -111,6 +123,7 @@ test("runDoctor --fix --yes passes assumeYes", async () => {
       { stdout: () => undefined, stderr: () => undefined },
       {
         runner,
+        loadPiResources: async () => emptyResources,
         runChecks: async () => [],
         setupLabels: async (options) => {
           assumeYes = options.assumeYes;
@@ -127,4 +140,155 @@ test("runDoctor --fix --yes passes assumeYes", async () => {
   );
 
   assert.equal(assumeYes, true);
+});
+
+test("runDoctor prints Pi resource blocks before checks", async () => {
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runDoctor(
+      [],
+      "/repo",
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        runner,
+        loadPiResources: async () => ({
+          blocks: [
+            {
+              label: "run-once planning",
+              sections: [
+                { heading: "Context", items: ["AGENTS.md"] },
+                { heading: "Skills", items: ["github"] },
+              ],
+            },
+          ],
+        }),
+        runChecks: async () => [
+          { name: "config", status: "pass", message: "patchmill.config.json" },
+        ],
+      },
+    ),
+    0,
+  );
+
+  assert.match(
+    stdout.join("\n"),
+    /^\[Pi resources: run-once planning\]\n\n\[Context\]\n {2}AGENTS\.md\n\n\[Skills\]\n {2}github\n\nPatchmill doctor/m,
+  );
+});
+
+test("runDoctor adds Pi resource warnings without failing", async () => {
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runDoctor(
+      [],
+      "/repo",
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        runner,
+        loadPiResources: async () => ({
+          blocks: [],
+          check: {
+            name: "pi resources",
+            status: "warn",
+            message: "skipped missing package npm:@acme/pi-tools",
+          },
+        }),
+        runChecks: async () => [
+          { name: "config", status: "pass", message: "patchmill.config.json" },
+        ],
+      },
+    ),
+    0,
+  );
+
+  assert.match(stdout.join("\n"), /! pi resources: skipped missing package/);
+  assert.match(stdout.join("\n"), /Ready for safe dry runs/);
+});
+
+test("runDoctor converts thrown Pi resource provider errors to warnings", async () => {
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runDoctor(
+      [],
+      "/repo",
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        runner,
+        loadPiResources: async () => {
+          throw new Error("resource load exploded");
+        },
+        runChecks: async () => [
+          { name: "config", status: "pass", message: "patchmill.config.json" },
+        ],
+      },
+    ),
+    0,
+  );
+
+  assert.match(
+    stdout.join("\n"),
+    /! pi resources: could not list Pi resources: resource load exploded/,
+  );
+});
+
+test("runDoctor --quiet suppresses resource-only output", async () => {
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runDoctor(
+      ["--quiet"],
+      "/repo",
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        runner,
+        loadPiResources: async () => ({
+          blocks: [
+            {
+              label: "run-once planning",
+              sections: [{ heading: "Skills", items: ["github"] }],
+            },
+          ],
+        }),
+        runChecks: async () => [
+          { name: "config", status: "pass", message: "patchmill.config.json" },
+        ],
+      },
+    ),
+    0,
+  );
+
+  assert.deepEqual(stdout, []);
+});
+
+test("runDoctor --quiet prints resources when a required check fails", async () => {
+  const stdout: string[] = [];
+
+  assert.equal(
+    await runDoctor(
+      ["--quiet"],
+      "/repo",
+      { stdout: (line) => stdout.push(line), stderr: () => undefined },
+      {
+        runner,
+        loadPiResources: async () => ({
+          blocks: [
+            {
+              label: "run-once planning",
+              sections: [{ heading: "Skills", items: ["github"] }],
+            },
+          ],
+        }),
+        runChecks: async () => [
+          { name: "config", status: "fail", message: "missing" },
+        ],
+      },
+    ),
+    1,
+  );
+
+  assert.match(stdout.join("\n"), /\[Pi resources: run-once planning\]/);
+  assert.match(stdout.join("\n"), /✗ config: missing/);
 });

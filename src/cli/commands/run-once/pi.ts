@@ -1,8 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import {
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
@@ -31,32 +29,13 @@ import type {
   ProgressReporter,
 } from "./types.ts";
 
-const require = createRequire(import.meta.url);
-const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
-  require.resolve("pi-subagents/package.json"),
-);
-const PATCHMILL_PACKAGE_ROOT = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../..",
-);
-const PATCHMILL_TODOS_EXTENSION = join(
-  PATCHMILL_PACKAGE_ROOT,
-  "extensions",
-  "todos.ts",
-);
-
 function piPromptArgs(
   promptPath: string,
   sessionDir?: string,
   skillPaths: string[] = [],
+  extensionArgs: string[] = [],
 ): string[] {
   const skillArgs = skillPaths.flatMap((path) => ["--skill", path]);
-  const extensionArgs = [
-    "-e",
-    PI_SUBAGENTS_PACKAGE_ROOT,
-    "-e",
-    PATCHMILL_TODOS_EXTENSION,
-  ];
   const baseArgs = [...extensionArgs, ...skillArgs, "-p"];
   return sessionDir
     ? [...baseArgs, "--session-dir", sessionDir, `@${promptPath}`]
@@ -296,6 +275,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   stage: RunPiPromptStage;
   parseResult?: (stdout: string) => Result;
   skillPaths?: string[];
+  extensionArgs?: string[];
   heartbeatMs?: number;
   streamOutput?: (chunk: string) => void;
   issueNumber?: number;
@@ -511,7 +491,12 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
         piCommand.command,
         piCommandArgs(
           piCommand,
-          piPromptArgs(promptPath, sessionDir, options?.skillPaths),
+          piPromptArgs(
+            promptPath,
+            sessionDir,
+            options?.skillPaths,
+            options?.extensionArgs,
+          ),
         ),
         {
           cwd,

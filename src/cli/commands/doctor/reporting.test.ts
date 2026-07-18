@@ -72,3 +72,36 @@ test("formatDoctorReport prints warnings but keeps next command", () => {
   );
   assert.match(lines.join("\n"), /Ready for safe dry runs/);
 });
+
+test("formatDoctorReport prepends Pi resource blocks", () => {
+  assert.deepEqual(
+    formatDoctorReport(passing, [
+      {
+        label: "run-once planning",
+        sections: [
+          { heading: "Context", items: ["AGENTS.md"] },
+          { heading: "Skills", items: ["github"] },
+        ],
+      },
+    ]),
+    [
+      "[Pi resources: run-once planning]",
+      "",
+      "[Context]",
+      "  AGENTS.md",
+      "",
+      "[Skills]",
+      "  github",
+      "",
+      "Patchmill doctor",
+      "",
+      "✓ config: patchmill.config.json",
+      "✓ git: clean worktree",
+      "",
+      "Ready for safe dry runs.",
+      "",
+      "Next:",
+      "  patchmill triage --dry-run",
+    ],
+  );
+});

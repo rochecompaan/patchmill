@@ -66,6 +66,13 @@ function promptPath(args: string[]): string {
   return promptArg.slice(1);
 }
 
+const runOnceExtensionArgs = [
+  "-e",
+  "/repo/node_modules/pi-subagents",
+  "-e",
+  "/repo/extensions/todos.ts",
+];
+
 async function writeTodo(
   repoRoot: string,
   id: string,
@@ -94,7 +101,10 @@ test("runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failu
   });
 
   await assert.rejects(
-    () => runPiPrompt(runner, "/repo/worktree", "prompt body"),
+    () =>
+      runPiPrompt(runner, "/repo/worktree", "prompt body", {
+        extensionArgs: runOnceExtensionArgs,
+      }),
     /pi failed: pi exploded/,
   );
 });
@@ -113,7 +123,10 @@ test("runPiPrompt loads bundled Pi extensions before the prompt argument", async
     };
   });
 
-  await runPiPrompt(runner, "/repo", "prompt", { stage: "pi-plan" });
+  await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    extensionArgs: runOnceExtensionArgs,
+  });
 });
 
 test("runPiPrompt can parse development environment results", async () => {
@@ -170,6 +183,7 @@ test("runPiPrompt passes configured skill files before the prompt argument", asy
       "/repo/.patchmill/skills/writing-plans/SKILL.md",
       "/repo/.patchmill/skills/review/SKILL.md",
     ],
+    extensionArgs: runOnceExtensionArgs,
   });
 });
 
@@ -363,6 +377,7 @@ test("runPiPrompt streams messages appended to the prompted pi session JSONL", a
 
   const result = await runPiPrompt(runner, "/repo", "prompt", {
     stage: "pi-plan",
+    extensionArgs: runOnceExtensionArgs,
     streamOutput: (chunk) => streamed.push(chunk),
   });
 

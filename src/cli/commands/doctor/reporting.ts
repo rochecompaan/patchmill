@@ -1,4 +1,8 @@
 import type { DoctorCheckResult } from "./checks.ts";
+import {
+  formatPiResourceBlocks,
+  type DoctorPiResourceBlock,
+} from "./pi-resources.ts";
 
 function prefix(status: DoctorCheckResult["status"]): string {
   if (status === "pass") return "✓";
@@ -10,8 +14,17 @@ export function hasDoctorFailures(results: DoctorCheckResult[]): boolean {
   return results.some((result) => result.status === "fail");
 }
 
-export function formatDoctorReport(results: DoctorCheckResult[]): string[] {
-  const lines = ["Patchmill doctor", ""];
+export function formatDoctorReport(
+  results: DoctorCheckResult[],
+  resourceBlocks: DoctorPiResourceBlock[] = [],
+): string[] {
+  const resourceLines = formatPiResourceBlocks(resourceBlocks);
+  const lines = [
+    ...resourceLines,
+    ...(resourceLines.length > 0 ? [""] : []),
+    "Patchmill doctor",
+    "",
+  ];
   lines.push(
     ...results.map(
       (result) => `${prefix(result.status)} ${result.name}: ${result.message}`,
