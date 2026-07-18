@@ -90,7 +90,7 @@ test("piResourceWarningCheck reports skipped packages without failing", () => {
       message: "skipped missing package npm:@acme/pi-tools",
       remediation: [
         "Patchmill doctor listed Pi resources without installing missing packages or executing extensions.",
-        "Install or update the listed Pi package sources outside doctor if you want those resources loaded, then rerun:",
+        "Install or update skipped Pi package sources outside doctor, and inspect or fix the listed static Pi resource diagnostics, then rerun:",
         "  patchmill doctor",
       ],
     },
