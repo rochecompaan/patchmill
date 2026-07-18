@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import {
   basename,
@@ -13,7 +14,6 @@ import {
   hasTrustRequiringProjectResources,
   loadProjectContextFiles,
   loadSkills,
-  ProjectTrustStore,
   SettingsManager,
   type MissingSourceAction,
   type ResolvedResource,
@@ -178,13 +178,54 @@ export function piResourceDiscoveryFailureCheck(
   };
 }
 
+function canonicalPath(path: string): string {
+  const resolvedPath = resolve(path);
+  try {
+    return realpathSync(resolvedPath);
+  } catch {
+    return resolvedPath;
+  }
+}
+
+function readSavedProjectTrustDecision(
+  repoRoot: string,
+  agentDir: string,
+): boolean | null {
+  const trustPath = join(resolve(agentDir), "trust.json");
+  if (!existsSync(trustPath)) return null;
+
+  const parsed = JSON.parse(readFileSync(trustPath, "utf8")) as unknown;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`Invalid trust store ${trustPath}: expected an object`);
+  }
+
+  const data = parsed as Record<string, unknown>;
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== true && value !== false && value !== null) {
+      throw new Error(
+        `Invalid trust store ${trustPath}: value for ${JSON.stringify(key)} must be true, false, or null`,
+      );
+    }
+  }
+
+  let currentDir = canonicalPath(repoRoot);
+  while (true) {
+    const value = data[currentDir];
+    if (value === true || value === false) return value;
+
+    const parentDir = dirname(currentDir);
+    if (parentDir === currentDir) return null;
+    currentDir = parentDir;
+  }
+}
+
 function projectTrustedForResourceListing(
   repoRoot: string,
   agentDir: string,
 ): boolean {
   if (!hasTrustRequiringProjectResources(repoRoot)) return true;
 
-  const savedDecision = new ProjectTrustStore(agentDir).get(repoRoot);
+  const savedDecision = readSavedProjectTrustDecision(repoRoot, agentDir);
   if (savedDecision !== null) return savedDecision;
 
   const globalOnlySettings = SettingsManager.create(repoRoot, agentDir, {

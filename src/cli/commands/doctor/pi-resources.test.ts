@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -196,6 +197,24 @@ test("context files mirror Pi even when project package resources are untrusted"
     );
 
     assert.ok(context?.items.includes("AGENTS.md"));
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resource discovery does not create local Pi agent trust state", async () => {
+  const tmp = await mkdtemp(join(tmpdir(), "patchmill-doctor-trust-"));
+  try {
+    await writeFile(
+      join(tmp, "patchmill.config.json"),
+      JSON.stringify({ host: { provider: "forgejo-tea", repo: "OWNER/repo" } }),
+      "utf8",
+    );
+    await mkdir(join(tmp, ".agents", "skills"), { recursive: true });
+
+    await loadDoctorPiResources(tmp, {});
+
+    assert.equal(existsSync(join(tmp, ".patchmill")), false);
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
