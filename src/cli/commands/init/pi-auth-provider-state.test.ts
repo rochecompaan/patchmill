@@ -9,47 +9,41 @@ import {
   visibleProviderRows,
   type AuthProviderChoice,
 } from "./pi-auth-provider-state.ts";
-import type {
-  AuthCredential,
-  AuthStatus,
-} from "@earendil-works/pi-coding-agent";
+import type { PiCredentialStatus, PiCredential } from "./pi-runtime.ts";
 
 type FakeModel = { provider: string; id: string; name?: string };
 
-function storage(
+function runtime(
   options: {
     oauth?: Array<{ id: string; name: string }>;
-    credentials?: Record<string, AuthCredential>;
-    statuses?: Record<string, AuthStatus>;
+    credentials?: Record<string, PiCredential>;
+    statuses?: Record<string, PiCredentialStatus>;
+    models?: FakeModel[];
+    names?: Record<string, string>;
+    apiKey?: Array<{ id: string; name: string }>;
   } = {},
 ) {
   const credentials = options.credentials ?? {};
   const statuses = options.statuses ?? {};
   return {
     getOAuthProviders: () => options.oauth ?? [],
+    getApiKeyProviders: () =>
+      options.apiKey ??
+      Array.from(new Set((options.models ?? []).map((model) => model.provider)))
+        .filter((provider) => provider.length > 0)
+        .map((provider) => ({
+          id: provider,
+          name: options.names?.[provider] ?? provider,
+        })),
     get: (provider: string) => credentials[provider],
-    getAuthStatus: (provider: string) =>
+    getAll: () => options.models ?? [],
+    getProviderDisplayName: (provider: string) =>
+      options.names?.[provider] ?? provider,
+    getProviderCredentialState: (provider: string) =>
       statuses[provider] ?? {
         configured: Boolean(credentials[provider]),
         source: credentials[provider] ? "stored" : undefined,
       },
-  };
-}
-
-function registry(
-  options: {
-    models?: FakeModel[];
-    names?: Record<string, string>;
-    statuses?: Record<string, AuthStatus>;
-  } = {},
-) {
-  const statuses = options.statuses ?? {};
-  return {
-    getAll: () => options.models ?? [],
-    getProviderDisplayName: (provider: string) =>
-      options.names?.[provider] ?? provider,
-    getProviderAuthStatus: (provider: string) =>
-      statuses[provider] ?? { configured: false },
   };
 }
 
@@ -67,7 +61,7 @@ test("auth method choices match Patchmill init prompt order", () => {
 test("createAuthProviderChoices lists subscription providers with configured status", () => {
   const choices = createAuthProviderChoices({
     mode: "oauth",
-    authStorage: storage({
+    runtime: runtime({
       oauth: [
         { id: "anthropic", name: "Anthropic (Claude Pro/Max)" },
         { id: "openai-codex", name: "ChatGPT Plus/Pro" },
@@ -81,7 +75,6 @@ test("createAuthProviderChoices lists subscription providers with configured sta
         },
       },
     }),
-    registry: registry(),
   });
 
   assert.deepEqual(labels(choices), [
@@ -94,11 +87,10 @@ test("createAuthProviderChoices lists subscription providers with configured sta
   );
 });
 
-test("createAuthProviderChoices lists unique API-key providers from all registry models", () => {
+test("createAuthProviderChoices lists API-key providers exposed by the runtime", () => {
   const choices = createAuthProviderChoices({
     mode: "api_key",
-    authStorage: storage(),
-    registry: registry({
+    runtime: runtime({
       models: [
         { provider: "anthropic", id: "claude-sonnet-4-5" },
         { provider: "anthropic", id: "claude-opus-4-1" },
@@ -120,10 +112,32 @@ test("createAuthProviderChoices lists unique API-key providers from all registry
   ]);
 });
 
+test("createAuthProviderChoices excludes model providers without API-key login support", () => {
+  const choices = createAuthProviderChoices({
+    mode: "api_key",
+    runtime: runtime({
+      apiKey: [{ id: "anthropic", name: "Anthropic" }],
+      models: [
+        { provider: "anthropic", id: "claude-sonnet-4-5" },
+        { provider: "openai-codex", id: "gpt-5.5" },
+      ],
+      names: {
+        anthropic: "Anthropic",
+        "openai-codex": "OpenAI Codex",
+      },
+    }),
+  });
+
+  assert.deepEqual(
+    choices.map((choice) => choice.id),
+    ["anthropic"],
+  );
+});
+
 test("createAuthProviderChoices renders cross-mode and external auth status labels", () => {
   const choices = createAuthProviderChoices({
     mode: "api_key",
-    authStorage: storage({
+    runtime: runtime({
       credentials: {
         anthropic: {
           type: "oauth",
@@ -133,8 +147,6 @@ test("createAuthProviderChoices renders cross-mode and external auth status labe
         },
         openai: { type: "api_key", key: "sk-test" },
       },
-    }),
-    registry: registry({
       models: [
         { provider: "anthropic", id: "claude" },
         { provider: "openai", id: "gpt" },

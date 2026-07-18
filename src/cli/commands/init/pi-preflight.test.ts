@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
 import { test } from "node:test";
 import {
-  createPiRegistry,
   detectPiReadiness,
+  detectPiReadinessFromRegistry,
   formatPiModelLabel,
   type PiRegistryLike,
 } from "./pi-preflight.ts";
@@ -14,7 +13,7 @@ function registry(
   return {
     getAvailable: () => models,
     getError: () => undefined,
-    getProviderAuthStatus: (provider) => ({
+    getProviderCredentialState: (provider) => ({
       configured: models.some((model) => model.provider === provider),
       source: "stored",
     }),
@@ -23,24 +22,28 @@ function registry(
   };
 }
 
-test("createPiRegistry uses auth and models from the provided agent dir", () => {
-  const registry = createPiRegistry({ agentDir: "/repo/.patchmill/pi-agent" });
+test("detectPiReadiness creates a repo-local runtime when no registry is injected", async () => {
+  const readiness = await detectPiReadiness({
+    createRuntime: async () =>
+      registry([
+        {
+          provider: "anthropic",
+          id: "claude-sonnet-4-5",
+          name: "Claude Sonnet 4.5",
+          reasoning: true,
+          input: ["text"],
+        },
+      ]),
+    agentDir: "/repo/.patchmill/pi-agent",
+  });
 
-  assert.equal(registry.getError(), undefined);
-  assert.equal(
-    String(registry.constructor.name).length > 0,
-    true,
-    "registry should be constructed",
-  );
-  assert.equal(
-    join("/repo/.patchmill/pi-agent", "auth.json"),
-    "/repo/.patchmill/pi-agent/auth.json",
-  );
+  assert.equal(readiness.status, "ready");
+  assert.equal(readiness.models[0]?.value, "anthropic/claude-sonnet-4-5");
 });
 
-test("detectPiReadiness reports ready when Pi registry has available models", () => {
-  const readiness = detectPiReadiness({
-    registry: registry([
+test("detectPiReadinessFromRegistry reports ready when Pi registry has available models", () => {
+  const readiness = detectPiReadinessFromRegistry(
+    registry([
       {
         provider: "anthropic",
         id: "claude-sonnet-4-5",
@@ -49,7 +52,7 @@ test("detectPiReadiness reports ready when Pi registry has available models", ()
         input: ["text"],
       },
     ]),
-  });
+  );
 
   assert.equal(readiness.status, "ready");
   assert.equal(readiness.models.length, 1);
@@ -65,20 +68,18 @@ test("detectPiReadiness reports ready when Pi registry has available models", ()
   });
 });
 
-test("detectPiReadiness reports ready with a warning when registry has an error and available models", () => {
-  const readiness = detectPiReadiness({
-    registry: {
-      ...registry([
-        {
-          provider: "anthropic",
-          id: "claude-sonnet-4-5",
-          name: "Claude Sonnet 4.5",
-          reasoning: true,
-          input: ["text"],
-        },
-      ]),
-      getError: () => "bad models.json",
-    },
+test("detectPiReadinessFromRegistry reports ready with a warning when registry has an error and available models", () => {
+  const readiness = detectPiReadinessFromRegistry({
+    ...registry([
+      {
+        provider: "anthropic",
+        id: "claude-sonnet-4-5",
+        name: "Claude Sonnet 4.5",
+        reasoning: true,
+        input: ["text"],
+      },
+    ]),
+    getError: () => "bad models.json",
   });
 
   assert.equal(readiness.status, "ready");
@@ -89,8 +90,8 @@ test("detectPiReadiness reports ready with a warning when registry has an error 
   );
 });
 
-test("detectPiReadiness reports missing when Pi registry has no available models", () => {
-  const readiness = detectPiReadiness({ registry: registry([]) });
+test("detectPiReadinessFromRegistry reports missing when Pi registry has no available models", () => {
+  const readiness = detectPiReadinessFromRegistry(registry([]));
 
   assert.deepEqual(readiness, {
     status: "missing",
@@ -99,14 +100,12 @@ test("detectPiReadiness reports missing when Pi registry has no available models
   });
 });
 
-test("detectPiReadiness reports error when Pi registry cannot load models", () => {
-  const readiness = detectPiReadiness({
-    registry: {
-      getAvailable: () => [],
-      getError: () => "bad models.json",
-      getProviderAuthStatus: () => ({ configured: false }),
-      getProviderDisplayName: (provider) => provider,
-    },
+test("detectPiReadinessFromRegistry reports error when Pi registry cannot load models", () => {
+  const readiness = detectPiReadinessFromRegistry({
+    getAvailable: () => [],
+    getError: () => "bad models.json",
+    getProviderCredentialState: () => ({ configured: false }),
+    getProviderDisplayName: (provider) => provider,
   });
 
   assert.deepEqual(readiness, {

@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  runInteractivePiAuthSetup,
-  type PiAuthFlowRegistry,
-  type PiAuthFlowStorage,
-} from "./pi-auth-flow.ts";
-import type {
-  AuthCredential,
-  AuthStatus,
-} from "@earendil-works/pi-coding-agent";
+import { runInteractivePiAuthSetup } from "./pi-auth-flow.ts";
 import type { PiModelChoice, PiReadiness } from "./pi-preflight.ts";
+import type {
+  PatchmillPiRuntime,
+  PiAuthInteraction,
+  PiAuthMode,
+  PiCredentialStatus,
+  PiCredential,
+} from "./pi-runtime.ts";
 
 function missingReadiness(): PiReadiness {
   return {
@@ -45,73 +44,80 @@ function choice(
   };
 }
 
-function fakeStorage(
+function fakeRuntime(
   options: {
     oauthProviders?: Array<{ id: string; name: string }>;
-    credentials?: Record<string, AuthCredential>;
-    statuses?: Record<string, AuthStatus>;
+    credentials?: Record<string, PiCredential>;
+    statuses?: Record<string, PiCredentialStatus>;
+    allModels?: ReturnType<typeof model>[];
+    availableModels?: ReturnType<typeof model>[];
+    names?: Record<string, string>;
+    apiKeyPrompts?: Array<Parameters<PiAuthInteraction["prompt"]>[0]>;
   } = {},
 ) {
   const credentials = { ...(options.credentials ?? {}) };
-  const setCalls: Array<[string, AuthCredential]> = [];
-  const loginCalls: string[] = [];
-  const storage: PiAuthFlowStorage & {
-    setCalls: Array<[string, AuthCredential]>;
-    loginCalls: string[];
+  const loginCalls: Array<{ provider: string; mode: PiAuthMode }> = [];
+  let refreshed = 0;
+  const runtime: PatchmillPiRuntime & {
+    loginCalls: typeof loginCalls;
+    refreshCount: () => number;
   } = {
-    setCalls,
     loginCalls,
+    refreshCount: () => refreshed,
+    refresh: async () => {
+      refreshed += 1;
+    },
+    getError: () => undefined,
+    getAll: () => options.allModels ?? [],
+    getAvailable: () => options.availableModels ?? [],
+    getApiKeyProviders: () =>
+      Array.from(
+        new Set((options.allModels ?? []).map((item) => item.provider)),
+      )
+        .filter((provider) => provider.length > 0)
+        .map((provider) => ({
+          id: provider,
+          name: options.names?.[provider] ?? provider,
+        })),
     getOAuthProviders: () => options.oauthProviders ?? [],
     get: (provider) => credentials[provider],
-    getAuthStatus: (provider) =>
+    getProviderCredentialState: (provider) =>
       options.statuses?.[provider] ?? {
         configured: Boolean(credentials[provider]),
         source: credentials[provider] ? "stored" : undefined,
       },
-    set: (provider, credential) => {
-      credentials[provider] = credential;
-      setCalls.push([provider, credential]);
-    },
-    login: async (provider) => {
+    getProviderDisplayName: (provider) => options.names?.[provider] ?? provider,
+    login: async (provider, mode, interaction: PiAuthInteraction) => {
+      if (mode === "api_key") {
+        const prompts = options.apiKeyPrompts ?? [
+          {
+            type: "secret" as const,
+            message: "Enter API key:",
+          },
+        ];
+        const values = [];
+        for (const prompt of prompts) {
+          values.push(await interaction.prompt(prompt));
+        }
+        loginCalls.push({ provider, mode });
+        credentials[provider] = { type: "api_key", key: values[0] };
+        return credentials[provider];
+      }
+      loginCalls.push({ provider, mode });
       credentials[provider] = {
         type: "oauth",
         refresh: "refresh",
         access: "access",
         expires: 1,
       };
-      loginCalls.push(provider);
+      return credentials[provider];
     },
   };
-  return storage;
-}
-
-function fakeRegistry(
-  options: {
-    allModels?: ReturnType<typeof model>[];
-    availableModels?: ReturnType<typeof model>[];
-    names?: Record<string, string>;
-    statuses?: Record<string, AuthStatus>;
-  } = {},
-) {
-  let refreshed = 0;
-  const registry: PiAuthFlowRegistry & { refreshCount: () => number } = {
-    refreshCount: () => refreshed,
-    refresh: () => {
-      refreshed += 1;
-    },
-    getAll: () => options.allModels ?? [],
-    getAvailable: () => options.availableModels ?? [],
-    getError: () => undefined,
-    getProviderAuthStatus: (provider) =>
-      options.statuses?.[provider] ?? { configured: false },
-    getProviderDisplayName: (provider) => options.names?.[provider] ?? provider,
-  };
-  return registry;
+  return runtime;
 }
 
 test("runInteractivePiAuthSetup stores API key auth, refreshes registry, and selects a refreshed model", async () => {
-  const storage = fakeStorage();
-  const registry = fakeRegistry({
+  const runtime = fakeRuntime({
     allModels: [model("anthropic")],
     availableModels: [model("anthropic")],
     names: { anthropic: "Anthropic" },
@@ -123,22 +129,21 @@ test("runInteractivePiAuthSetup stores API key auth, refreshes registry, and sel
     agentDir: "/repo/.patchmill/pi-agent",
     currentDefault: undefined,
     initialReadiness: missingReadiness(),
-    authStorage: storage,
-    registry,
+    runtime,
     selectAuthMethod: async () => "api_key",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "sk-ant-test",
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async ({ models }) => {
       selectorModels = models;
       return choice("anthropic");
     },
   });
 
-  assert.deepEqual(storage.setCalls, [
-    ["anthropic", { type: "api_key", key: "sk-ant-test" }],
+  assert.deepEqual(runtime.loginCalls, [
+    { provider: "anthropic", mode: "api_key" },
   ]);
-  assert.equal(registry.refreshCount(), 1);
+  assert.equal(runtime.get("anthropic")?.type, "api_key");
+  assert.equal(runtime.refreshCount(), 1);
   assert.deepEqual(
     selectorModels.map((selected) => selected.value),
     ["anthropic/claude-sonnet-4-5"],
@@ -150,11 +155,59 @@ test("runInteractivePiAuthSetup stores API key auth, refreshes registry, and sel
   );
 });
 
-test("runInteractivePiAuthSetup calls OAuth login for subscription setup", async () => {
-  const storage = fakeStorage({
-    oauthProviders: [{ id: "openai-codex", name: "ChatGPT Plus/Pro" }],
+test("runInteractivePiAuthSetup routes provider-owned API-key text prompts through generic prompt callbacks", async () => {
+  const runtime = fakeRuntime({
+    allModels: [model("cloudflare", "workers-ai")],
+    availableModels: [model("cloudflare", "workers-ai")],
+    names: { cloudflare: "Cloudflare" },
+    apiKeyPrompts: [
+      { type: "secret", message: "Enter API key:" },
+      { type: "text", message: "Enter Cloudflare account ID:" },
+    ],
   });
-  const registry = fakeRegistry({
+  const genericPrompts: Array<{
+    message: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+  }> = [];
+
+  await runInteractivePiAuthSetup({
+    repoRoot: "/repo",
+    agentDir: "/repo/.patchmill/pi-agent",
+    currentDefault: undefined,
+    initialReadiness: missingReadiness(),
+    runtime,
+    selectAuthMethod: async () => "api_key",
+    selectProvider: async ({ choices }) => choices[0],
+    promptApiKey: async () => "sk-cloudflare-test",
+    selectModelInteractively: async ({ models }) =>
+      choice(models[0]?.provider, models[0]?.id),
+    oauthCallbacks: () => ({
+      onAuth: () => undefined,
+      onDeviceCode: () => undefined,
+      onPrompt: async (prompt) => {
+        genericPrompts.push(prompt);
+        return "account-id";
+      },
+      onSelect: async () => undefined,
+    }),
+  });
+
+  assert.deepEqual(runtime.loginCalls, [
+    { provider: "cloudflare", mode: "api_key" },
+  ]);
+  assert.deepEqual(genericPrompts, [
+    {
+      message: "Enter Cloudflare account ID:",
+      placeholder: undefined,
+      allowEmpty: true,
+    },
+  ]);
+});
+
+test("runInteractivePiAuthSetup calls OAuth login for subscription setup", async () => {
+  const runtime = fakeRuntime({
+    oauthProviders: [{ id: "openai-codex", name: "ChatGPT Plus/Pro" }],
     availableModels: [model("openai-codex", "gpt-5.5")],
   });
 
@@ -163,54 +216,96 @@ test("runInteractivePiAuthSetup calls OAuth login for subscription setup", async
     agentDir: "/repo/.patchmill/pi-agent",
     currentDefault: undefined,
     initialReadiness: missingReadiness(),
-    authStorage: storage,
-    registry,
+    runtime,
     selectAuthMethod: async () => "oauth",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "unused",
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async ({ models }) =>
       choice(models[0]?.provider, models[0]?.id),
   });
 
-  assert.deepEqual(storage.loginCalls, ["openai-codex"]);
-  assert.equal(registry.refreshCount(), 1);
+  assert.deepEqual(runtime.loginCalls, [
+    { provider: "openai-codex", mode: "oauth" },
+  ]);
+  assert.equal(runtime.refreshCount(), 1);
   assert.equal(result.selection.status, "selected");
 });
 
-test("runInteractivePiAuthSetup shows Bedrock guidance without storing a key", async () => {
-  const storage = fakeStorage();
-  const registry = fakeRegistry({
+test("runInteractivePiAuthSetup runs Bedrock through persisted API-key login prompts", async () => {
+  const runtime = fakeRuntime({
     allModels: [model("amazon-bedrock", "us.anthropic.claude")],
-    availableModels: [],
+    availableModels: [model("amazon-bedrock", "us.anthropic.claude")],
     names: { "amazon-bedrock": "Amazon Bedrock" },
+    apiKeyPrompts: [
+      {
+        type: "select",
+        message: "Select Amazon Bedrock authentication method:",
+        options: [
+          { id: "bearer-token", label: "Bearer token" },
+          { id: "aws-profile", label: "AWS profile" },
+          { id: "credential-chain", label: "Existing AWS credential chain" },
+        ],
+      },
+      { type: "text", message: "Enter AWS profile name" },
+    ],
   });
-  let bedrockShown = false;
+  const selectPrompts: Array<{
+    message: string;
+    options: Array<{ id: string; label: string }>;
+  }> = [];
+  const textPrompts: Array<{
+    message: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+  }> = [];
 
   const result = await runInteractivePiAuthSetup({
     repoRoot: "/repo",
     agentDir: "/repo/.patchmill/pi-agent",
     currentDefault: undefined,
     initialReadiness: missingReadiness(),
-    authStorage: storage,
-    registry,
+    runtime,
     selectAuthMethod: async () => "api_key",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "unused",
-    showBedrockInfo: async () => {
-      bedrockShown = true;
-    },
-    selectModelInteractively: async () => undefined,
+    selectModelInteractively: async ({ models }) =>
+      choice(models[0]?.provider, models[0]?.id),
+    oauthCallbacks: () => ({
+      onAuth: () => undefined,
+      onDeviceCode: () => undefined,
+      onPrompt: async (prompt) => {
+        textPrompts.push(prompt);
+        return "dev-profile";
+      },
+      onSelect: async (prompt) => {
+        selectPrompts.push(prompt);
+        return "aws-profile";
+      },
+    }),
   });
 
-  assert.equal(bedrockShown, true);
-  assert.deepEqual(storage.setCalls, []);
-  assert.equal(registry.refreshCount(), 1);
-  assert.equal(result.selection.status, "unavailable");
-  assert.equal(
-    result.selection.status === "unavailable" && result.selection.reason,
-    "not-ready",
-  );
+  assert.deepEqual(runtime.loginCalls, [
+    { provider: "amazon-bedrock", mode: "api_key" },
+  ]);
+  assert.deepEqual(selectPrompts, [
+    {
+      message: "Select Amazon Bedrock authentication method:",
+      options: [
+        { id: "bearer-token", label: "Bearer token" },
+        { id: "aws-profile", label: "AWS profile" },
+        { id: "credential-chain", label: "Existing AWS credential chain" },
+      ],
+    },
+  ]);
+  assert.deepEqual(textPrompts, [
+    {
+      message: "Enter AWS profile name",
+      placeholder: undefined,
+      allowEmpty: true,
+    },
+  ]);
+  assert.equal(runtime.refreshCount(), 1);
+  assert.equal(result.selection.status, "selected");
 });
 
 test("runInteractivePiAuthSetup treats cancelled auth method as cancelled selection", async () => {
@@ -219,12 +314,10 @@ test("runInteractivePiAuthSetup treats cancelled auth method as cancelled select
     agentDir: "/repo/.patchmill/pi-agent",
     currentDefault: undefined,
     initialReadiness: missingReadiness(),
-    authStorage: fakeStorage(),
-    registry: fakeRegistry(),
+    runtime: fakeRuntime(),
     selectAuthMethod: async () => undefined,
     selectProvider: async () => undefined,
     promptApiKey: async () => undefined,
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async () => undefined,
   });
 
@@ -236,22 +329,20 @@ test("runInteractivePiAuthSetup treats cancelled auth method as cancelled select
 });
 
 test("runInteractivePiAuthSetup rejects an empty API key", async () => {
-  const storage = fakeStorage();
+  const runtime = fakeRuntime({ allModels: [model("anthropic")] });
   const result = await runInteractivePiAuthSetup({
     repoRoot: "/repo",
     agentDir: "/repo/.patchmill/pi-agent",
     currentDefault: undefined,
     initialReadiness: missingReadiness(),
-    authStorage: storage,
-    registry: fakeRegistry({ allModels: [model("anthropic")] }),
+    runtime,
     selectAuthMethod: async () => "api_key",
     selectProvider: async ({ choices }) => choices[0],
     promptApiKey: async () => "   ",
-    showBedrockInfo: async () => undefined,
     selectModelInteractively: async () => undefined,
   });
 
-  assert.deepEqual(storage.setCalls, []);
+  assert.deepEqual(runtime.loginCalls, []);
   assert.equal(result.selection.status, "unavailable");
   assert.equal(
     result.selection.status === "unavailable" && result.selection.reason,

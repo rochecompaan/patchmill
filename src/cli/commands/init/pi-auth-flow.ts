@@ -1,18 +1,12 @@
-import { join } from "node:path";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import type { AuthCredential } from "@earendil-works/pi-coding-agent";
 import type { LocalPiDefaultModel } from "./pi-agent-settings.ts";
 import {
   createOAuthCallbacks,
   promptApiKeyInteractively,
-  showBedrockInfoInteractively,
 } from "./pi-auth-dialog.ts";
 import {
   createAuthProviderChoices,
   type AuthMode,
   type AuthProviderChoice,
-  type AuthRegistryLike,
-  type AuthStorageLike,
 } from "./pi-auth-provider-state.ts";
 import {
   selectPiModel,
@@ -25,7 +19,17 @@ import {
   selectProviderInteractively,
 } from "./pi-auth-selector.ts";
 import { selectModelInteractively as defaultSelectModelInteractively } from "./pi-model-selector.ts";
-import { detectPiReadiness, type PiReadiness } from "./pi-preflight.ts";
+import {
+  detectPiReadinessFromRegistry,
+  type PiReadiness,
+} from "./pi-preflight.ts";
+import {
+  createRepoLocalPiRuntime,
+  type PatchmillPiRuntime,
+  type PiAuthEvent,
+  type PiAuthInteraction,
+  type PiAuthPrompt,
+} from "./pi-runtime.ts";
 
 export type OAuthLoginCallbacksLike = {
   onAuth: (info: { url: string; instructions?: string }) => void;
@@ -50,22 +54,7 @@ export type OAuthLoginCallbacksLike = {
   dispose?: () => void;
 };
 
-export type PiAuthFlowStorage = AuthStorageLike & {
-  set(provider: string, credential: AuthCredential): void;
-  login(provider: string, callbacks: OAuthLoginCallbacksLike): Promise<void>;
-};
-
-export type PiAuthFlowRegistry = AuthRegistryLike & {
-  refresh(): void;
-  getAvailable(): Array<{
-    provider: string;
-    id: string;
-    name?: string;
-    reasoning?: boolean;
-    input?: string[];
-  }>;
-  getError(): string | undefined;
-};
+export type PiAuthFlowRuntime = PatchmillPiRuntime;
 
 export type SelectAuthMethod = () => Promise<AuthMode | undefined>;
 export type SelectAuthProvider = (options: {
@@ -75,22 +64,30 @@ export type SelectAuthProvider = (options: {
 export type PromptApiKey = (
   provider: AuthProviderChoice,
 ) => Promise<string | undefined>;
-export type ShowBedrockInfo = () => Promise<void>;
 export type OAuthCallbacksFactory = (
   provider: AuthProviderChoice,
 ) => OAuthLoginCallbacksLike;
+
+type SelectAuthPromptOption = (prompt: {
+  message: string;
+  options: Array<{ id: string; label: string }>;
+}) => Promise<string | undefined>;
+
+type PromptAuthText = (prompt: {
+  message: string;
+  placeholder?: string;
+  allowEmpty?: boolean;
+}) => Promise<string | undefined>;
 
 export type InteractivePiAuthSetupOptions = {
   repoRoot: string;
   agentDir: string;
   currentDefault: LocalPiDefaultModel | undefined;
   initialReadiness: PiReadiness;
-  authStorage: PiAuthFlowStorage;
-  registry: PiAuthFlowRegistry;
+  runtime: PiAuthFlowRuntime;
   selectAuthMethod: SelectAuthMethod;
   selectProvider: SelectAuthProvider;
   promptApiKey: PromptApiKey;
-  showBedrockInfo: ShowBedrockInfo;
   selectModelInteractively: SelectInteractiveModel;
   persistDefaultModel?: PersistDefaultModel;
   oauthCallbacks?: OAuthCallbacksFactory;
@@ -116,17 +113,135 @@ function unavailable(
   };
 }
 
-export function createRepoLocalPiAuth(options: { agentDir: string }): {
-  authStorage: PiAuthFlowStorage;
-  registry: PiAuthFlowRegistry;
-} {
-  const authStorage = AuthStorage.create(join(options.agentDir, "auth.json"));
-  const registry = ModelRegistry.create(
-    authStorage,
-    join(options.agentDir, "models.json"),
-  );
-  registry.refresh();
-  return { authStorage, registry };
+function loginCancelled(): Error {
+  return new Error("Login cancelled");
+}
+
+function assertApiKey(value: string | undefined): string {
+  if (value === undefined) throw loginCancelled();
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("API key cannot be empty.");
+  return trimmed;
+}
+
+async function promptForAuthValue(options: {
+  prompt: PiAuthPrompt;
+  provider: AuthProviderChoice;
+  promptApiKey: PromptApiKey;
+  promptText?: PromptAuthText;
+  selectOption: SelectAuthPromptOption;
+}): Promise<string> {
+  if (options.prompt.type === "select") {
+    const selected = await options.selectOption({
+      message: options.prompt.message,
+      options: options.prompt.options.map((option) => ({
+        id: option.id,
+        label: option.description
+          ? `${option.label} — ${option.description}`
+          : option.label,
+      })),
+    });
+    if (selected === undefined) throw loginCancelled();
+    return selected;
+  }
+
+  if (options.prompt.type === "manual_code") {
+    const selected = await options.selectOption({
+      message: options.prompt.message,
+      options: [
+        { id: "manual", label: options.prompt.placeholder ?? "Enter code" },
+      ],
+    });
+    if (selected === undefined) throw loginCancelled();
+    return selected;
+  }
+
+  if (options.prompt.type === "text") {
+    const value = options.promptText
+      ? await options.promptText({
+          message: options.prompt.message,
+          placeholder: options.prompt.placeholder,
+          allowEmpty: true,
+        })
+      : await options.promptApiKey(options.provider);
+    if (value === undefined) throw loginCancelled();
+    return value;
+  }
+
+  return assertApiKey(await options.promptApiKey(options.provider));
+}
+
+function createApiKeyInteraction(options: {
+  provider: AuthProviderChoice;
+  promptApiKey: PromptApiKey;
+  promptText?: PromptAuthText;
+  selectOption: SelectAuthPromptOption;
+}): PiAuthInteraction {
+  return {
+    prompt: (prompt) =>
+      promptForAuthValue({
+        prompt,
+        provider: options.provider,
+        promptApiKey: options.promptApiKey,
+        promptText: options.promptText,
+        selectOption: options.selectOption,
+      }),
+    notify: () => undefined,
+  };
+}
+
+function createPiAuthInteraction(
+  callbacks: OAuthLoginCallbacksLike,
+): PiAuthInteraction {
+  return {
+    signal: callbacks.signal,
+    notify: (event: PiAuthEvent) => {
+      if (event.type === "auth_url") {
+        callbacks.onAuth({ url: event.url, instructions: event.instructions });
+      } else if (event.type === "device_code") {
+        callbacks.onDeviceCode({
+          userCode: event.userCode,
+          verificationUri: event.verificationUri,
+          intervalSeconds: event.intervalSeconds,
+          expiresInSeconds: event.expiresInSeconds,
+        });
+      } else if (event.type === "progress" || event.type === "info") {
+        callbacks.onProgress?.(event.message);
+      }
+    },
+    prompt: async (prompt: PiAuthPrompt) => {
+      if (prompt.type === "select") {
+        const selected = await callbacks.onSelect({
+          message: prompt.message,
+          options: prompt.options.map((option) => ({
+            id: option.id,
+            label: option.description
+              ? `${option.label} — ${option.description}`
+              : option.label,
+          })),
+        });
+        if (selected === undefined) throw loginCancelled();
+        return selected;
+      }
+      if (prompt.type === "manual_code") {
+        if (!callbacks.onManualCodeInput) throw loginCancelled();
+        return callbacks.onManualCodeInput();
+      }
+      return callbacks.onPrompt({
+        message: prompt.message,
+        placeholder: prompt.placeholder,
+        allowEmpty: prompt.type === "text",
+      });
+    },
+  };
+}
+
+export async function createRepoLocalPiAuth(options: {
+  agentDir: string;
+}): Promise<{ runtime: PiAuthFlowRuntime }> {
+  return {
+    runtime: await createRepoLocalPiRuntime({ agentDir: options.agentDir }),
+  };
 }
 
 export async function runInteractivePiAuthSetup(
@@ -143,8 +258,7 @@ export async function runInteractivePiAuthSetup(
 
   const choices = createAuthProviderChoices({
     mode,
-    authStorage: options.authStorage,
-    registry: options.registry,
+    runtime: options.runtime,
   });
   const provider = await options.selectProvider({ mode, choices });
   if (!provider) {
@@ -156,39 +270,57 @@ export async function runInteractivePiAuthSetup(
   }
 
   if (mode === "api_key") {
-    if (provider.id === "amazon-bedrock") {
-      await options.showBedrockInfo();
-    } else {
-      const apiKey = await options.promptApiKey(provider);
-      if (apiKey === undefined) {
-        return unavailable(
-          options.initialReadiness,
-          "cancelled",
-          "Pi provider authentication was cancelled.",
-        );
-      }
-      const trimmed = apiKey.trim();
-      if (!trimmed) {
+    const callbacks = options.oauthCallbacks?.(provider);
+    try {
+      await options.runtime.login(
+        provider.id,
+        "api_key",
+        createApiKeyInteraction({
+          provider,
+          promptApiKey: options.promptApiKey,
+          promptText: callbacks?.onPrompt,
+          selectOption: (prompt) =>
+            callbacks?.onSelect(prompt) ?? Promise.resolve(undefined),
+        }),
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "API key cannot be empty."
+      ) {
         return unavailable(
           options.initialReadiness,
           "invalid-selection",
           "API key cannot be empty.",
         );
       }
-      options.authStorage.set(provider.id, { type: "api_key", key: trimmed });
+      if (error instanceof Error && error.message === "Login cancelled") {
+        return unavailable(
+          options.initialReadiness,
+          "cancelled",
+          "Pi provider authentication was cancelled.",
+        );
+      }
+      throw error;
+    } finally {
+      callbacks?.dispose?.();
     }
   } else {
     const callbacks =
       options.oauthCallbacks?.(provider) ?? createOAuthCallbacks();
     try {
-      await options.authStorage.login(provider.id, callbacks);
+      await options.runtime.login(
+        provider.id,
+        "oauth",
+        createPiAuthInteraction(callbacks),
+      );
     } finally {
       callbacks.dispose?.();
     }
   }
 
-  options.registry.refresh();
-  const readiness = detectPiReadiness({ registry: options.registry });
+  await options.runtime.refresh();
+  const readiness = detectPiReadinessFromRegistry(options.runtime);
   const selection = await selectPiModel({
     readiness,
     isInteractive: true,
@@ -207,7 +339,7 @@ export async function setupPiInteractively(options: {
   selectModelInteractively?: SelectInteractiveModel;
   persistDefaultModel?: PersistDefaultModel;
 }): Promise<InteractivePiAuthSetupResult> {
-  const { authStorage, registry } = createRepoLocalPiAuth({
+  const { runtime } = await createRepoLocalPiAuth({
     agentDir: options.agentDir,
   });
   return runInteractivePiAuthSetup({
@@ -215,14 +347,12 @@ export async function setupPiInteractively(options: {
     agentDir: options.agentDir,
     currentDefault: options.currentDefault,
     initialReadiness: options.initialReadiness,
-    authStorage,
-    registry,
+    runtime,
     selectAuthMethod: () => selectAuthMethodInteractively(),
     selectProvider: ({ mode, choices }) =>
       selectProviderInteractively({ mode, choices }),
     promptApiKey: (provider) =>
       promptApiKeyInteractively({ providerName: provider.name }),
-    showBedrockInfo: () => showBedrockInfoInteractively(),
     selectModelInteractively:
       options.selectModelInteractively ?? defaultSelectModelInteractively,
     persistDefaultModel: options.persistDefaultModel,
