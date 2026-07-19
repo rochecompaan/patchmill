@@ -102,7 +102,7 @@ Patchmill gives agents at each workflow stage.
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
-    "implementation": ".patchmill/skills/subagent-driven-development",
+    "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   }
 }

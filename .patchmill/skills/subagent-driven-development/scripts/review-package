@@ -1,4 +1,4 @@
-#!/nix/store/zh1ijdhb6gng1509b1zrilb6xlzx60j6-bash-5.3p9/bin/bash
+#!/usr/bin/env bash
 # Generate a review package: commit list, stat summary, and the net
 # diff with extended context, written to a file the reviewer reads in one
 # call. Using the recorded per-task BASE (not HEAD~1) keeps multi-commit

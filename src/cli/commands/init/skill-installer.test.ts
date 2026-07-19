@@ -27,7 +27,6 @@ import {
   defaultSkillSourceRoots,
   installProjectSkills,
   type SkillInstallerDependencies,
-  validateExistingSkillDirectory,
 } from "./skill-installer.ts";
 
 const skillInstallerDependencies: SkillInstallerDependencies = {
@@ -106,6 +105,13 @@ description: Execute plans.
 # Implementation
 `;
 
+const validationReadyImplementationSkill = `---
+name: subagent-dev-with-validation-and-pr-checks
+description: Execute plans with final validation and PR readiness.
+---
+# Subagent Dev with Validation and PR Checks
+`;
+
 const finalReviewedImplementationSkill = `---
 name: subagent-dev-with-codex-and-thermo-reviews
 description: Use when executing Patchmill implementation plans that require final full-worktree readiness review before landing
@@ -127,10 +133,17 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
   await writeSkill(
     patchmillSource,
+    "subagent-dev-with-validation-and-pr-checks",
+    validationReadyImplementationSkill,
+  );
+  await writeSkill(
+    patchmillSource,
     "subagent-dev-with-codex-and-thermo-reviews",
     finalReviewedImplementationSkill,
     {
       "prompts/final-review.md": "review the final worktree\n",
+      "prompts/final-validation-review.md": "review final validation\n",
+      "prompts/fix-pr-checks.md": "repair failed PR checks\n",
       "rubrics/armin-codex-review-prompt.md":
         "review using Armin's Codex adaptation\n",
     },
@@ -174,6 +187,10 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     packSkills: [
       { name: "patchmill-issue-triage", source: "patchmill" },
       {
+        name: "subagent-dev-with-validation-and-pr-checks",
+        source: "patchmill",
+      },
+      {
         name: "subagent-dev-with-codex-and-thermo-reviews",
         source: "patchmill",
       },
@@ -193,6 +210,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   assert.deepEqual(result.skillConfig, buildRecommendedProjectSkillConfig());
   assert.deepEqual(result.installedSkills, [
     ".patchmill/skills/patchmill-issue-triage",
+    ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/patchmill-planning",
@@ -201,6 +219,19 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     ".patchmill/skills/test-driven-development",
     ".patchmill/skills/subagent-driven-development",
   ]);
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-dev-with-validation-and-pr-checks",
+        "SKILL.md",
+      ),
+      "utf8",
+    ),
+    validationReadyImplementationSkill,
+  );
   assert.equal(
     await readFile(
       join(
@@ -254,6 +285,34 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       "utf8",
     ),
     "review the final worktree\n",
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-dev-with-codex-and-thermo-reviews",
+        "prompts",
+        "final-validation-review.md",
+      ),
+      "utf8",
+    ),
+    "review final validation\n",
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-dev-with-codex-and-thermo-reviews",
+        "prompts",
+        "fix-pr-checks.md",
+      ),
+      "utf8",
+    ),
+    "repair failed PR checks\n",
   );
   assert.equal(
     await readFile(
@@ -333,12 +392,24 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         sha256: hashText(triageSkill),
       },
       {
+        path: ".patchmill/skills/subagent-dev-with-validation-and-pr-checks/SKILL.md",
+        sha256: hashText(validationReadyImplementationSkill),
+      },
+      {
         path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
         sha256: hashText(finalReviewedImplementationSkill),
       },
       {
         path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md",
         sha256: hashText("review the final worktree\n"),
+      },
+      {
+        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-validation-review.md",
+        sha256: hashText("review final validation\n"),
+      },
+      {
+        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-pr-checks.md",
+        sha256: hashText("repair failed PR checks\n"),
       },
       {
         path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md",
@@ -779,172 +850,6 @@ test("installProjectSkills refuses to overwrite existing skill root", async () =
       packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
     }),
     /Refusing to overwrite existing skill path: \.patchmill\/skills/,
-  );
-});
-
-test("validateExistingSkillDirectory returns local config for path mode", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-issue-triage",
-    triageSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-planning",
-    patchmillPlanningSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/brainstorming",
-    brainstormingSkill,
-  );
-  await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
-  await writeSkill(
-    repoRoot,
-    "project-skills/subagent-driven-development",
-    implementationSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-visual-evidence",
-    `---
-name: patchmill-visual-evidence
-description: Capture visual evidence.
----
-# Visual Evidence
-`,
-    { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
-  );
-
-  assert.deepEqual(
-    await validateExistingSkillDirectory(repoRoot, "project-skills"),
-    buildRecommendedProjectSkillConfig("project-skills"),
-  );
-});
-
-test("validateExistingSkillDirectory fails when visual evidence helper script is missing", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-issue-triage",
-    triageSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-planning",
-    patchmillPlanningSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/brainstorming",
-    brainstormingSkill,
-  );
-  await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
-  await writeSkill(
-    repoRoot,
-    "project-skills/subagent-driven-development",
-    implementationSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-visual-evidence",
-    `---
-name: patchmill-visual-evidence
-description: Capture visual evidence.
----
-# Visual Evidence
-`,
-  );
-
-  await assert.rejects(
-    validateExistingSkillDirectory(repoRoot, "project-skills"),
-    /Missing required skill file: project-skills\/patchmill-visual-evidence\/scripts\/capture-visual-evidence\.cjs/,
-  );
-});
-
-test("validateExistingSkillDirectory fails when a required skill is missing", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-planning",
-    patchmillPlanningSkill,
-  );
-
-  await assert.rejects(
-    validateExistingSkillDirectory(repoRoot, "project-skills"),
-    /Missing required skill file: project-skills\/patchmill-issue-triage\/SKILL\.md/,
-  );
-});
-
-test("validateExistingSkillDirectory fails when planning wrapper siblings are missing", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-issue-triage",
-    triageSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-planning",
-    patchmillPlanningSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/subagent-driven-development",
-    implementationSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-visual-evidence",
-    `---
-name: patchmill-visual-evidence
-description: Capture visual evidence.
----
-# Visual Evidence
-`,
-    { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
-  );
-
-  await assert.rejects(
-    validateExistingSkillDirectory(repoRoot, "project-skills"),
-    /Missing required skill file: project-skills\/brainstorming\/SKILL\.md/,
-  );
-});
-
-test("validateExistingSkillDirectory fails when SKILL.md is a directory", async () => {
-  const repoRoot = await tempRoot("patchmill-install-repo-");
-  await mkdir(
-    join(repoRoot, "project-skills", "patchmill-issue-triage", "SKILL.md"),
-    {
-      recursive: true,
-    },
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-planning",
-    patchmillPlanningSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/subagent-driven-development",
-    implementationSkill,
-  );
-  await writeSkill(
-    repoRoot,
-    "project-skills/patchmill-visual-evidence",
-    `---
-name: patchmill-visual-evidence
-description: Capture visual evidence.
----
-# Visual Evidence
-`,
-    { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
-  );
-
-  await assert.rejects(
-    validateExistingSkillDirectory(repoRoot, "project-skills"),
-    /Missing required skill file: project-skills\/patchmill-issue-triage\/SKILL\.md/,
   );
 });
 

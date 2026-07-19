@@ -24,6 +24,8 @@ import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_PLANNING_SKILL,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
+  SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
+  SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
   buildSkillPackMetadata,
@@ -115,6 +117,7 @@ export async function assertSkillFile(
   path: string,
   displayPath: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
+  options: { executable?: boolean } = {},
 ): Promise<void> {
   try {
     const skillFile = await dependencies.stat(path);
@@ -124,6 +127,14 @@ export async function assertSkillFile(
     await dependencies.access(path, constants.R_OK);
   } catch {
     throw new Error(`Missing required skill file: ${displayPath}`);
+  }
+
+  if (options.executable) {
+    try {
+      await dependencies.access(path, constants.X_OK);
+    } catch {
+      throw new Error(`Missing required executable skill file: ${displayPath}`);
+    }
   }
 }
 
@@ -384,7 +395,7 @@ export async function validateExistingSkillDirectory(
       skillPath: projectSkillPath("writing-plans", skillDir),
     },
     {
-      name: "subagent-driven-development",
+      name: SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
       skillPath: skillConfig.implementation,
     },
   ]) {
@@ -392,6 +403,48 @@ export async function validateExistingSkillDirectory(
       name,
       resolve(repoRoot, skillPath),
       skillPath,
+    );
+  }
+
+  const taskImplementationSkillPath = projectSkillPath(
+    "subagent-driven-development",
+    skillDir,
+  );
+  for (const relativeFile of [
+    "SKILL.md",
+    "implementer-prompt.md",
+    "task-reviewer-prompt.md",
+  ]) {
+    await assertSkillFile(
+      resolve(repoRoot, taskImplementationSkillPath, relativeFile),
+      `${taskImplementationSkillPath}/${relativeFile}`,
+    );
+  }
+  for (const relativeFile of [
+    "scripts/review-package",
+    "scripts/sdd-workspace",
+    "scripts/task-brief",
+  ]) {
+    await assertSkillFile(
+      resolve(repoRoot, taskImplementationSkillPath, relativeFile),
+      `${taskImplementationSkillPath}/${relativeFile}`,
+      defaultDependencies,
+      { executable: true },
+    );
+  }
+
+  const sharedPromptSkillPath = projectSkillPath(
+    SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
+    skillDir,
+  );
+  for (const relativeFile of [
+    "prompts/final-validation-review.md",
+    "prompts/fix-pr-checks.md",
+    "prompts/fix-review-findings.md",
+  ]) {
+    await assertSkillFile(
+      resolve(repoRoot, sharedPromptSkillPath, relativeFile),
+      `${sharedPromptSkillPath}/${relativeFile}`,
     );
   }
 

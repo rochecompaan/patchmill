@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -19,6 +19,20 @@ async function writeSkill(repoRoot: string, skillRoot: string, name: string) {
     join(dir, "SKILL.md"),
     `---\nname: ${name}\ndescription: Test skill\n---\n`,
   );
+  if (name === "subagent-driven-development") {
+    await writeFile(join(dir, "implementer-prompt.md"), "implement\n");
+    await writeFile(join(dir, "task-reviewer-prompt.md"), "review\n");
+    await mkdir(join(dir, "scripts"), { recursive: true });
+    for (const scriptName of [
+      "review-package",
+      "sdd-workspace",
+      "task-brief",
+    ]) {
+      const scriptPath = join(dir, "scripts", scriptName);
+      await writeFile(scriptPath, "#!/usr/bin/env bash\n");
+      await chmod(scriptPath, 0o755);
+    }
+  }
   if (name === "patchmill-visual-evidence") {
     await mkdir(join(dir, "scripts"), { recursive: true });
     await writeFile(
@@ -225,7 +239,42 @@ test("interactive init add-to-git with path skills commits the provided skill ro
   await writeSkill(repoRoot, "custom-skills", "patchmill-planning");
   await writeSkill(repoRoot, "custom-skills", "brainstorming");
   await writeSkill(repoRoot, "custom-skills", "writing-plans");
+  await writeSkill(
+    repoRoot,
+    "custom-skills",
+    "subagent-dev-with-validation-and-pr-checks",
+  );
   await writeSkill(repoRoot, "custom-skills", "subagent-driven-development");
+  await writeSkill(
+    repoRoot,
+    "custom-skills",
+    "subagent-dev-with-codex-and-thermo-reviews",
+  );
+  await mkdir(
+    join(
+      repoRoot,
+      "custom-skills",
+      "subagent-dev-with-codex-and-thermo-reviews",
+      "prompts",
+    ),
+    { recursive: true },
+  );
+  for (const prompt of [
+    "final-validation-review.md",
+    "fix-pr-checks.md",
+    "fix-review-findings.md",
+  ]) {
+    await writeFile(
+      join(
+        repoRoot,
+        "custom-skills",
+        "subagent-dev-with-codex-and-thermo-reviews",
+        "prompts",
+        prompt,
+      ),
+      `${prompt}\n`,
+    );
+  }
   await writeSkill(repoRoot, "custom-skills", "patchmill-visual-evidence");
 
   const { output } = await runInitForGitPolicy(repoRoot, {

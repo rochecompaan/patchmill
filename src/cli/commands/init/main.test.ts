@@ -8,7 +8,8 @@ import { HELP_TEXT, runInit } from "./main.ts";
 const PROJECT_LOCAL_SKILLS = {
   triage: ".patchmill/skills/patchmill-issue-triage",
   planning: ".patchmill/skills/patchmill-planning",
-  implementation: ".patchmill/skills/subagent-driven-development",
+  implementation:
+    ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
   visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
 };
 
@@ -118,6 +119,15 @@ test("runInit installs project-local skills by default", async () => {
       ".patchmill",
       "skills",
       "subagent-driven-development",
+      "SKILL.md",
+    ),
+  );
+  await access(
+    join(
+      repoRoot,
+      ".patchmill",
+      "skills",
+      "subagent-dev-with-validation-and-pr-checks",
       "SKILL.md",
     ),
   );

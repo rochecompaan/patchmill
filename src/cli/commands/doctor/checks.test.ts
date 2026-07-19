@@ -70,7 +70,7 @@ function recommendedProjectLocalConfig() {
     skills: {
       triage: `${DEFAULT_PROJECT_SKILL_DIR}/patchmill-issue-triage`,
       planning: `${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`,
-      implementation: `${DEFAULT_PROJECT_SKILL_DIR}/subagent-driven-development`,
+      implementation: `${DEFAULT_PROJECT_SKILL_DIR}/subagent-dev-with-validation-and-pr-checks`,
       visualEvidence: `${DEFAULT_PROJECT_SKILL_DIR}/patchmill-visual-evidence`,
     },
   };
@@ -876,7 +876,7 @@ test("runDoctorChecks fails when project-local visual evidence helper is missing
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     "Execute plans.",
   );
 
@@ -886,7 +886,7 @@ test("runDoctorChecks fails when project-local visual evidence helper is missing
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     implementationSkill,
   );
   await writeProjectLocalSkill(
@@ -958,8 +958,11 @@ test("runDoctorChecks fails when project-local visual evidence helper is a direc
   );
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-driven-development",
-    skillDocument("subagent-driven-development", "Execute plans."),
+    "subagent-dev-with-validation-and-pr-checks",
+    skillDocument(
+      "subagent-dev-with-validation-and-pr-checks",
+      "Execute plans.",
+    ),
   );
   await writeProjectLocalSkill(
     repoRoot,
@@ -1133,7 +1136,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
     );
     const planningSkill = skillDocument("writing-plans", "Write plans.");
     const implementationSkill = skillDocument(
-      "subagent-driven-development",
+      "subagent-dev-with-validation-and-pr-checks",
       "Execute plans.",
     );
 
@@ -1147,7 +1150,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
     await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
     await writeProjectLocalSkill(
       repoRoot,
-      "subagent-driven-development",
+      "subagent-dev-with-validation-and-pr-checks",
       implementationSkill,
     );
     await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1205,7 +1208,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
     "Write plans with local tweaks.",
   );
   const implementationSkill = skillDocument(
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     "Execute plans.",
   );
 
@@ -1219,7 +1222,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
   );
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1233,7 +1236,9 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
       sha256: hashText(originalPlanningSkill),
     },
     {
-      path: projectLocalMetadataSkillPath("subagent-driven-development"),
+      path: projectLocalMetadataSkillPath(
+        "subagent-dev-with-validation-and-pr-checks",
+      ),
       sha256: hashText(implementationSkill),
     },
     ...projectLocalVisualEvidenceMetadata(),
@@ -1268,7 +1273,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     "Execute plans.",
   );
 
@@ -1278,7 +1283,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1292,7 +1297,9 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
       sha256: hashText(planningSkill),
     },
     {
-      path: projectLocalMetadataSkillPath("subagent-driven-development"),
+      path: projectLocalMetadataSkillPath(
+        "subagent-dev-with-validation-and-pr-checks",
+      ),
       sha256: hashText(implementationSkill),
     },
     ...projectLocalVisualEvidenceMetadata(),
@@ -1388,7 +1395,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     "Execute plans.",
   );
 
@@ -1398,7 +1405,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1412,7 +1419,9 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
       sha256: hashText(planningSkill),
     },
     {
-      path: projectLocalMetadataSkillPath("subagent-driven-development"),
+      path: projectLocalMetadataSkillPath(
+        "subagent-dev-with-validation-and-pr-checks",
+      ),
       sha256: hashText(implementationSkill),
     },
     ...projectLocalVisualEvidenceMetadata(),
@@ -1447,7 +1456,7 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     "Execute plans.",
   );
 
@@ -1457,7 +1466,7 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-driven-development",
+    "subagent-dev-with-validation-and-pr-checks",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);

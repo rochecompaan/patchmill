@@ -8,6 +8,8 @@ import type { PatchmillSkillsConfig } from "./skills.ts";
 
 export const DEFAULT_PROJECT_SKILL_DIR = ".patchmill/skills";
 export const SKILL_PACK_METADATA_FILE = "patchmill-skill-pack.json";
+export const SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL =
+  "subagent-dev-with-validation-and-pr-checks";
 export const SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
   "subagent-dev-with-codex-and-thermo-reviews";
 export const SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
@@ -62,7 +64,7 @@ export function requiredSkillFiles(skillName: string): string[] {
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
-  version: "2026.07.1",
+  version: "2026.07.2",
   source: {
     type: "github-release",
     repository: "obra/superpowers",
@@ -72,6 +74,10 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   },
   skills: [
     { name: bundledTriageSkill.globalName, source: "patchmill" },
+    {
+      name: SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
+      source: "patchmill",
+    },
     {
       name: SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
       source: "patchmill",
@@ -133,7 +139,10 @@ export function buildRecommendedProjectSkillConfig(
   return {
     triage: bundledProjectLocalConfig.triage,
     planning: projectSkillPath(PATCHMILL_PLANNING_SKILL, skillDir),
-    implementation: projectSkillPath("subagent-driven-development", skillDir),
+    implementation: projectSkillPath(
+      SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
+      skillDir,
+    ),
     visualEvidence: bundledProjectLocalConfig.visualEvidence,
   };
 }

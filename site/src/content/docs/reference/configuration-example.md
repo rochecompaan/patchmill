@@ -54,7 +54,7 @@ skills, and git policy from defaults.
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/writing-plans",
-    "implementation": ".patchmill/skills/subagent-driven-development",
+    "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     "toolchain": ".patchmill/skills/project-toolchain",
     "review": ".patchmill/skills/project-review",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence",

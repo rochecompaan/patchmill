@@ -57,14 +57,15 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
   assert.deepEqual(buildRecommendedProjectSkillConfig(), {
     triage: ".patchmill/skills/patchmill-issue-triage",
     planning: ".patchmill/skills/patchmill-planning",
-    implementation: ".patchmill/skills/subagent-driven-development",
+    implementation:
+      ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
   });
 });
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07.1");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07.2");
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.source, {
     type: "github-release",
     repository: "obra/superpowers",
@@ -74,6 +75,10 @@ test("default pack records pinned external source", () => {
   });
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
+    {
+      name: "subagent-dev-with-validation-and-pr-checks",
+      source: "patchmill",
+    },
     {
       name: "subagent-dev-with-codex-and-thermo-reviews",
       source: "patchmill",
@@ -149,7 +154,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.07.1",
+      version: "2026.07.2",
       source: {
         type: "github-release",
         repository: "obra/superpowers",
