@@ -523,6 +523,44 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     prompt,
     /Users control subagent models, thinking, tools, context mode, skills, and nesting behavior through pi-subagents configuration\./,
   );
+  assert.match(prompt, /Non-interactive subagent orchestration:/);
+  assert.match(
+    prompt,
+    /This Patchmill `pi -p` invocation has one turn and will not be resumed/,
+  );
+  assert.match(
+    prompt,
+    /Use whatever subagent topology the configured implementation skill requires/,
+  );
+  assert.match(
+    prompt,
+    /Use `subagent\(\{ action: "status" \}\)` to inspect active runs/,
+  );
+  assert.match(prompt, /Status is inspection, not waiting/);
+  assert.match(
+    prompt,
+    /do not advance past a checkpoint that depends on a subagent/,
+  );
+  assert.match(
+    prompt,
+    /call `wait\(\{ id \}\)` or `wait\(\{ all: true \}\)` rather than ending the turn/,
+  );
+  assert.match(
+    prompt,
+    /Any queued, running, paused, needs-attention, or otherwise unresolved run prohibits the final response/,
+  );
+  assert.match(prompt, /Patchmill subagent finalization gate:/);
+  assert.match(
+    prompt,
+    /Never return progress prose or promise to continue after the response/,
+  );
+
+  const finalizationGateIndex = prompt.indexOf(
+    "Patchmill subagent finalization gate:",
+  );
+  const landingContractsIndex = prompt.indexOf("Landing result contracts:");
+  assert.ok(finalizationGateIndex >= 0);
+  assert.ok(landingContractsIndex > finalizationGateIndex);
   assert.doesNotMatch(prompt, new RegExp("Authoritative agent " + "team"));
   assert.doesNotMatch(prompt, new RegExp("dispatch" + "Model"));
   assert.doesNotMatch(prompt, /Example worker dispatch/);

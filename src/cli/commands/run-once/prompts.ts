@@ -235,6 +235,21 @@ function formatSubagentSupport(): string {
   ].join("\n");
 }
 
+function formatNonInteractiveSubagentOrchestration(): string {
+  return [
+    "Non-interactive subagent orchestration:",
+    "- This Patchmill `pi -p` invocation has one turn and will not be resumed.",
+    "- Use whatever subagent topology the configured implementation skill requires, including multiple sequential or parallel background runs.",
+    "- Track every subagent run until it reaches a terminal state.",
+    '- Use `subagent({ action: "status" })` to inspect active runs, or include an `id` to inspect one run.',
+    "- Status is inspection, not waiting. Do not repeatedly poll status merely to pass time.",
+    "- You may continue genuinely independent work while background runs are active, but do not advance past a checkpoint that depends on a subagent until it completes and you consume its result.",
+    "- When no independent work remains and a result is required, call `wait({ id })` or `wait({ all: true })` rather than ending the turn.",
+    "- Before finalizing, inspect active runs. Any queued, running, paused, needs-attention, or otherwise unresolved run prohibits the final response.",
+    "- Resolve, await, resume, or interrupt every outstanding run before finalization.",
+  ].join("\n");
+}
+
 function firstContextFile(policy: PatchmillProjectPolicy): string {
   return policy.contextFileNames[0] ?? "AGENTS.md";
 }
@@ -551,6 +566,16 @@ Return this exact JSON object after PR handoff succeeds:
   "reviewSummary": "short reviewer/fix summary",
   "landingDecision": "PR required: <reason>"
 }`;
+}
+
+function renderSubagentFinalizationGate(): string {
+  return `Patchmill subagent finalization gate:
+Before returning any terminal result:
+1. Call \`subagent({ action: "status" })\` and confirm no subagent run is unresolved.
+2. Confirm every task, review, accepted fix, re-review, validation command, PR check, todo, and landing step required by the configured workflow is complete.
+3. Resolve, await, resume, or interrupt every outstanding run before returning.
+4. Return only the specified \`merged\`, \`pr-created\`, or genuine human-input blocker JSON object.
+Never return progress prose or promise to continue after the response. This non-interactive Pi invocation has no subsequent turn.`;
 }
 
 function renderLandingResultContracts(input: {
@@ -875,6 +900,8 @@ ${untrustedIssueContentBoundary()}
 
 ${formatSubagentSupport()}
 
+${formatNonInteractiveSubagentOrchestration()}
+
 ${formatResumeContext(resume)}${formatDevelopmentEnvironment(developmentEnvironment)}Issue body:
 ${issueBody(issue.body)}
 
@@ -889,6 +916,8 @@ ${renderVisualEvidenceSkillStep(skills)}
 ${renderVisualEvidenceDataSection(projectPolicy)}
 
 ${renderLandingSkillStep(skills)}
+
+${renderSubagentFinalizationGate()}
 
 ${renderLandingResultContracts({
   allowDirectLand: git.allowDirectLand,
