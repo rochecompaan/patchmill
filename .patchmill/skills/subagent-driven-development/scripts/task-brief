@@ -1,4 +1,4 @@
-#!/nix/store/zh1ijdhb6gng1509b1zrilb6xlzx60j6-bash-5.3p9/bin/bash
+#!/usr/bin/env bash
 # Extract one task's full text from an implementation plan into a file the
 # implementer reads in one call, so the task text never has to be pasted
 # through the controller's context.

@@ -106,6 +106,13 @@ description: Execute plans.
 # Implementation
 `;
 
+const validationReadyImplementationSkill = `---
+name: subagent-dev-with-validation-and-pr-checks
+description: Execute plans with final validation and PR readiness.
+---
+# Subagent Dev with Validation and PR Checks
+`;
+
 const finalReviewedImplementationSkill = `---
 name: subagent-dev-with-codex-and-thermo-reviews
 description: Use when executing Patchmill implementation plans that require final full-worktree readiness review before landing
@@ -127,10 +134,17 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
   await writeSkill(
     patchmillSource,
+    "subagent-dev-with-validation-and-pr-checks",
+    validationReadyImplementationSkill,
+  );
+  await writeSkill(
+    patchmillSource,
     "subagent-dev-with-codex-and-thermo-reviews",
     finalReviewedImplementationSkill,
     {
       "prompts/final-review.md": "review the final worktree\n",
+      "prompts/final-validation-review.md": "review final validation\n",
+      "prompts/fix-pr-checks.md": "repair failed PR checks\n",
       "rubrics/armin-codex-review-prompt.md":
         "review using Armin's Codex adaptation\n",
     },
@@ -174,6 +188,10 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     packSkills: [
       { name: "patchmill-issue-triage", source: "patchmill" },
       {
+        name: "subagent-dev-with-validation-and-pr-checks",
+        source: "patchmill",
+      },
+      {
         name: "subagent-dev-with-codex-and-thermo-reviews",
         source: "patchmill",
       },
@@ -193,6 +211,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   assert.deepEqual(result.skillConfig, buildRecommendedProjectSkillConfig());
   assert.deepEqual(result.installedSkills, [
     ".patchmill/skills/patchmill-issue-triage",
+    ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/patchmill-planning",
@@ -201,6 +220,19 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     ".patchmill/skills/test-driven-development",
     ".patchmill/skills/subagent-driven-development",
   ]);
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-dev-with-validation-and-pr-checks",
+        "SKILL.md",
+      ),
+      "utf8",
+    ),
+    validationReadyImplementationSkill,
+  );
   assert.equal(
     await readFile(
       join(
@@ -254,6 +286,34 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       "utf8",
     ),
     "review the final worktree\n",
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-dev-with-codex-and-thermo-reviews",
+        "prompts",
+        "final-validation-review.md",
+      ),
+      "utf8",
+    ),
+    "review final validation\n",
+  );
+  assert.equal(
+    await readFile(
+      join(
+        repoRoot,
+        ".patchmill",
+        "skills",
+        "subagent-dev-with-codex-and-thermo-reviews",
+        "prompts",
+        "fix-pr-checks.md",
+      ),
+      "utf8",
+    ),
+    "repair failed PR checks\n",
   );
   assert.equal(
     await readFile(
@@ -333,12 +393,24 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         sha256: hashText(triageSkill),
       },
       {
+        path: ".patchmill/skills/subagent-dev-with-validation-and-pr-checks/SKILL.md",
+        sha256: hashText(validationReadyImplementationSkill),
+      },
+      {
         path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
         sha256: hashText(finalReviewedImplementationSkill),
       },
       {
         path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md",
         sha256: hashText("review the final worktree\n"),
+      },
+      {
+        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-validation-review.md",
+        sha256: hashText("review final validation\n"),
+      },
+      {
+        path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-pr-checks.md",
+        sha256: hashText("repair failed PR checks\n"),
       },
       {
         path: ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/armin-codex-review-prompt.md",
@@ -802,8 +874,8 @@ test("validateExistingSkillDirectory returns local config for path mode", async 
   await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
   await writeSkill(
     repoRoot,
-    "project-skills/subagent-driven-development",
-    implementationSkill,
+    "project-skills/subagent-dev-with-validation-and-pr-checks",
+    validationReadyImplementationSkill,
   );
   await writeSkill(
     repoRoot,

@@ -1,4 +1,4 @@
-#!/nix/store/zh1ijdhb6gng1509b1zrilb6xlzx60j6-bash-5.3p9/bin/bash
+#!/usr/bin/env bash
 # Start the brainstorm server and output connection info
 # Usage: start-server.sh [--project-dir <path>] [--host <bind-host>] [--url-host <display-host>] [--foreground] [--background]
 #

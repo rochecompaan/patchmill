@@ -183,6 +183,13 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
           "To opt in, update patchmill.config.json:\n" +
           '  "planning": ".patchmill/skills/patchmill-planning"',
       },
+      {
+        version: "2026.07.2",
+        message:
+          "Patchmill's recommended implementation skill now adds final validation and PR readiness.\n" +
+          "To opt in, update patchmill.config.json:\n" +
+          '  "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks"',
+      },
     ],
   });
   assert.equal(

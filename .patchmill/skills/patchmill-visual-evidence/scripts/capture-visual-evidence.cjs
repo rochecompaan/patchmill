@@ -1,4 +1,4 @@
-#!/nix/store/zvj0hl7rhh0ccr5vkcg3ijs3xm3sgyac-nodejs-24.16.0/bin/node
+#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");

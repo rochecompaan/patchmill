@@ -1,7 +1,7 @@
 {
   "pack": {
     "name": "patchmill-recommended",
-    "version": "2026.07.1",
+    "version": "2026.07.2",
     "source": {
       "type": "github-release",
       "repository": "obra/superpowers",
@@ -9,7 +9,7 @@
       "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
     }
   },
-  "installedAt": "2026-07-17T15:49:12.965Z",
+  "installedAt": "2026-07-19T09:54:15.578Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -31,11 +31,11 @@
     },
     {
       "path": ".patchmill/skills/brainstorming/scripts/start-server.sh",
-      "sha256": "40684112a967c8a2afe4c1ea0662c2decfab4916407b3f20f29ae468ece6c7f3"
+      "sha256": "a4e5ae84275bcaacd2f84345afeabe59cf7b00ba080e123da7cc1fb226f12847"
     },
     {
       "path": ".patchmill/skills/brainstorming/scripts/stop-server.sh",
-      "sha256": "a9816fb097000f082ede8bd7b359a258d3fea7fbe2a6bfd9a399b9a1647358ee"
+      "sha256": "0b5ccbbd57f62d3ed88993f7940b5ee0e5c0fc9b21c550c623da4f6292e47daf"
     },
     {
       "path": ".patchmill/skills/brainstorming/spec-document-reviewer-prompt.md",
@@ -75,7 +75,7 @@
     },
     {
       "path": ".patchmill/skills/patchmill-visual-evidence/scripts/capture-visual-evidence.cjs",
-      "sha256": "0aa8dcdc1e8e7cc2af7a3490ce13fc26b0be7fdb27ec75785e65481ca193c55a"
+      "sha256": "ca8dbf9c16c6e4b8ac0069edc003aef19d4bc35e033de3f1e653d3d08cd17380"
     },
     {
       "path": ".patchmill/skills/receiving-code-review/SKILL.md",
@@ -91,7 +91,7 @@
     },
     {
       "path": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
-      "sha256": "9bd9e7576469c45ca4e96b0dfc0d675415fb3cdd0e8f1581b3da77c740e6ad24"
+      "sha256": "f86341c2285e8628cccac057283e948d2779433e71fe4ded1f3ade8f0536c748"
     },
     {
       "path": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/prompts/implement-plan.md",
@@ -99,11 +99,19 @@
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
-      "sha256": "dbc5087dd349cfe46d6a251370fb71462f5114d3965e39e834e6dd7d249912dd"
+      "sha256": "9a476033ae8f332500f4955e6e1dc4d464eb83b206733ee95dfdb519b6150a75"
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md",
       "sha256": "8fc9f11c9a55dba64842e634ffc658c8c0fec00ec9896023987a7b05b3d78fdf"
+    },
+    {
+      "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-validation-review.md",
+      "sha256": "1e1a8f5ede275d8684896361c3708a4295285f8d50f0570c06b0c54c9a2e41e2"
+    },
+    {
+      "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-pr-checks.md",
+      "sha256": "2922c730896b7b46181dd266863cc33d03185059464456e92a01a7629e077a79"
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-review-findings.md",
@@ -118,6 +126,10 @@
       "sha256": "b9df382a7afe8d16418bb5a996e17d99c6095f39ccaefd6222eb9fcc824daabe"
     },
     {
+      "path": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks/SKILL.md",
+      "sha256": "e8c1412fb3928592ec0c268de980941a0e3fedf909e6c5ad095f0465c6fe816c"
+    },
+    {
       "path": ".patchmill/skills/subagent-driven-development/SKILL.md",
       "sha256": "41ab239a6ad1c487cd839fdac972a8c9cf0f5e90efa59a63f963767864f0df4c"
     },
@@ -127,15 +139,15 @@
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/scripts/review-package",
-      "sha256": "45a8a9a83fe0819657def3420378874be1b31af9c9fcf85b210bf43cff23ba53"
+      "sha256": "0c0629f6e2c46fc8bf68dcfb8a247ab24eb548b7004fe494035e6fcba9b5cdfb"
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/scripts/sdd-workspace",
-      "sha256": "157565e949c519c0153995a9d541c370a9b3468341dfa2143ec37fa41a5c89b6"
+      "sha256": "9430befaff459ed862415b700c1a9efe45fd34838a684802a1d8320de0c3a007"
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/scripts/task-brief",
-      "sha256": "3f3a8f1c8cf031d903710731e9f1b621bd7ad418715bca079476463d77e16371"
+      "sha256": "5380283f00bffa99ab82ae78482b7d248abe10655129c72ca7050bdc0b6a85e1"
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/task-reviewer-prompt.md",
@@ -163,7 +175,7 @@
     },
     {
       "path": ".patchmill/skills/systematic-debugging/find-polluter.sh",
-      "sha256": "29f8756a433415b6fb2153775b40e7dfc9ac8f7d06a134a4ad5fea269a8851e6"
+      "sha256": "6462747eae9b175ac145b78bcfaeab755654a75e32637f08eb633f065a9e1d7c"
     },
     {
       "path": ".patchmill/skills/systematic-debugging/root-cause-tracing.md",
@@ -259,7 +271,7 @@
     },
     {
       "path": ".patchmill/skills/writing-skills/render-graphs.js",
-      "sha256": "9522a06eaf880c7850b88772c2a3646a7d23e8c96d5498cda5d24440849835f2"
+      "sha256": "ccda971a87bb185f8febf81c56b556a20d026fa980c17b35fa3e8824fbb37852"
     },
     {
       "path": ".patchmill/skills/writing-skills/testing-skills-with-subagents.md",
