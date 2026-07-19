@@ -57,7 +57,8 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
   assert.deepEqual(buildRecommendedProjectSkillConfig(), {
     triage: ".patchmill/skills/patchmill-issue-triage",
     planning: ".patchmill/skills/patchmill-planning",
-    implementation: ".patchmill/skills/subagent-driven-development",
+    implementation:
+      ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
   });
 });
@@ -74,6 +75,10 @@ test("default pack records pinned external source", () => {
   });
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
+    {
+      name: "subagent-dev-with-validation-and-pr-checks",
+      source: "patchmill",
+    },
     {
       name: "subagent-dev-with-codex-and-thermo-reviews",
       source: "patchmill",

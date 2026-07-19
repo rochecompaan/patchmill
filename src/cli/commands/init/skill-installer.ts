@@ -24,6 +24,7 @@ import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_PLANNING_SKILL,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
+  SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
   buildSkillPackMetadata,
@@ -384,7 +385,7 @@ export async function validateExistingSkillDirectory(
       skillPath: projectSkillPath("writing-plans", skillDir),
     },
     {
-      name: "subagent-driven-development",
+      name: SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
       skillPath: skillConfig.implementation,
     },
   ]) {

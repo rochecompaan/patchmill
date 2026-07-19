@@ -98,8 +98,11 @@ Common `skills` keys include:
 
 Initialized repositories that use project-local skills default to paths under
 `.patchmill/skills/`, including `.patchmill/skills/patchmill-planning` for
-planning, `.patchmill/skills/subagent-driven-development` for implementation,
-and `.patchmill/skills/patchmill-visual-evidence` for visual evidence.
+planning, `.patchmill/skills/subagent-dev-with-validation-and-pr-checks` for
+implementation, and `.patchmill/skills/patchmill-visual-evidence` for visual
+evidence. The implementation wrapper delegates task execution to the installed
+Superpowers skill and adds final validation plus PR-check readiness without the
+optional Codex/thermo full-worktree loops.
 
 ## Landing skill
 
