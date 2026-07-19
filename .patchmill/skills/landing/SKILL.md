@@ -36,11 +36,17 @@ safe and confirms the issue was closed:
 }
 ```
 
-For everything else, create or update a pull request and return `pr-created`
-final JSON. Prefer PR fallback for visual UI changes, migrations, large
-refactors, dependency updates, security-sensitive changes, and anything that
-needs human product, UX, or architecture review. Include a `landingDecision`
-that explains why human review is required:
+For everything else, create or update a pull request and follow the configured
+implementation skill's post-PR check readiness procedure. Do not return final
+`pr-created` JSON immediately after creating the PR. Wait for observable
+required checks; repair code-related test/lint/format/type-check/build failures
+through the configured worker loop; and return an operator blocker for
+cancelled, timed-out, infrastructure, permissions, quota, billing, or host
+service failures. Return `pr-created` only after required checks pass. Prefer PR
+fallback for visual UI changes, migrations, large refactors, dependency updates,
+security-sensitive changes, and anything that needs human product, UX, or
+architecture review. Include a `landingDecision` that explains why human review
+is required:
 
 ```json
 {

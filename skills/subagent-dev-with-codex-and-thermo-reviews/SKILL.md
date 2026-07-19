@@ -8,12 +8,12 @@ description:
 # Patchmill Subagent Dev with Codex and Thermo Reviews
 
 Execute the implementation plan with Superpowers' subagent-driven-development
-pattern, then close the work with two mandatory full-worktree Pi review loops:
-Codex first, thermo-nuclear second.
+pattern, then close the work with Codex, thermo-nuclear, and final
+validation-readiness review before landing.
 
 **Core principle:** task-level reviews catch local issues; final full-worktree
-reviews catch integration, regression, and structural issues before Patchmill
-lands or opens a PR.
+reviews and final validation readiness catch integration, regression,
+structural, and known command failures before Patchmill lands or opens a PR.
 
 ## Required sub-skills and agents
 
@@ -24,9 +24,10 @@ lands or opens a PR.
   subagents.
 - **REQUIRED SUB-SKILL:** Use `superpowers:verification-before-completion`
   before claiming success.
-- Use Pi `subagent` with the canonical `reviewer` agent for both final review
-  passes.
-- Use Pi `subagent` with `worker` to fix accepted findings.
+- Use Pi `subagent` with the canonical `reviewer` agent for both final code
+  review passes and the final validation-readiness review.
+- Use Pi `subagent` with `worker` to fix accepted final-review findings, final
+  validation findings, and code-related failed PR checks.
 - Do **not** use legacy `code-reviewer`; in Pi, it is a disabled compatibility
   shim.
 
@@ -140,15 +141,67 @@ landing:
 Do not use the thermo-nuclear pass as permission for broad unapproved rewrites.
 Escalate scope or architecture changes to the human first.
 
-### 7. Complete Patchmill handoff
+### 7. Run final validation-readiness review
 
-After both final review loops are closed:
+Only start this after the Codex and thermo-nuclear review loops are closed.
+Refresh base SHA, current HEAD, `git status --short`, plan/spec paths, required
+validation commands, and prior validation evidence.
 
-1. Run final verification commands.
-2. Summarize implementation commits, validation, Codex review result,
-   thermo-nuclear review result, and any deferred findings.
-3. Continue with the configured landing skill or Patchmill PR/direct-land
+Dispatch a fresh-context, review-only `reviewer` using
+`prompts/final-validation-review.md`. The reviewer must run every feasible
+required final command and treat any repository-fixable non-zero result as an
+Important or Critical finding. Every base-to-head file is in scope, including
+materialized plan/spec files and files created by earlier workflow commits.
+
+Prior passing summaries are evidence only. They do not permit the reviewer to
+skip commands. Landing is blocked until the reviewer returns `pass` or
+`pass-with-deferred-minor-findings`.
+
+### 8. Fix final validation findings
+
+When the validation-readiness reviewer reports repository-fixable findings:
+
+1. Synthesize the accepted validation findings with exact commands, concise
+   output, and affected paths.
+2. Dispatch `worker` using the skill's existing `fix-review-findings.md`
+   contract (`prompts/fix-review-findings.md`).
+3. Require focused fixes, appropriate validation, and a Conventional Commit.
+4. Refresh HEAD, worktree status, and validation evidence.
+5. Re-run the final validation-readiness review.
+
+If validation is blocked by external tooling, infrastructure, credentials, or
+operator action, return the existing blocked contract with evidence. Never
+classify a branch-added failing file as out of scope merely because the
+implementation worker did not edit it.
+
+### 9. Complete landing and verify PR checks
+
+After all three final review gates are closed:
+
+1. Summarize implementation commits, passing validation, Codex review, thermo
+   review, final validation-readiness review, and deferred findings.
+2. Continue with the configured landing skill or Patchmill PR/direct-land
    instructions.
+3. For direct landing, return `merged` only after the final validation-readiness
+   review passed.
+4. For PR fallback, create or update the pull request, then obtain its URL and
+   current head SHA before returning final JSON.
+5. Wait for all observable required PR checks using configured host tooling.
+6. If all required checks pass, return the normal `pr-created` final JSON with
+   only current passing validation evidence.
+7. If test, lint, formatting, type-check, or build checks fail, collect failed
+   check names, URLs, and failed-step logs. Dispatch `worker` using
+   `prompts/fix-pr-checks.md`, then wait for replacement checks after its push.
+8. Allow at most two PR-check repair passes. If code-related checks still fail,
+   return the existing blocked contract with the remaining failures and links.
+9. Treat cancelled, timed-out, infrastructure, permissions, quota, billing, or
+   host-service failures as operator blockers. Do not dispatch a code-repair
+   worker for them.
+
+For GitHub, use `gh pr checks` and `gh run view --log-failed` or equivalent
+supported commands. For Forgejo/Gitea, use the configured `tea` or API tooling.
+If required checks cannot be observed, report that limitation rather than
+claiming the PR is ready.
 
 ## Supporting files
 
@@ -158,6 +211,10 @@ After both final review loops are closed:
   thermo-nuclear code quality review rubric.
 - `prompts/final-review.md` — final reviewer subagent contract.
 - `prompts/fix-review-findings.md` — worker fix subagent contract.
+- `prompts/final-validation-review.md` — final review-only command execution and
+  validation finding contract shared by both implementation workflows.
+- `prompts/fix-pr-checks.md` — worker contract for code-related failed checks on
+  an existing pull request, shared by both implementation workflows.
 
 ## Red flags
 
@@ -172,6 +229,11 @@ Never:
 - Skip re-review after fixes.
 - Ignore uncommitted or untracked implementation changes.
 - Proceed to landing with unresolved Critical or Important findings.
+- Proceed to landing after a required validation command exits non-zero.
+- Dismiss branch-added plan/spec or workflow artifacts as unchanged.
+- Return `pr-created` before observable required checks finish.
+- Dispatch code workers for infrastructure or operator failures.
+- Run more than two PR-check repair passes.
 
 ## Dispatch shape reference
 
@@ -186,11 +248,31 @@ subagent({
 });
 ```
 
+Final validation uses fresh reviewer context:
+
+```typescript
+subagent({
+  agent: "reviewer",
+  context: "fresh",
+  task: "Use prompts/final-validation-review.md with the final scope and required commands below...",
+  output: false,
+});
+```
+
 Fix passes should use the normal implementation worker:
 
 ```typescript
 subagent({
   agent: "worker",
-  task: "Use prompts/fix-review-findings.md for the accepted review findings below...",
+  task: "Use prompts/fix-review-findings.md for accepted review or validation findings below...",
+});
+```
+
+PR-check repair uses the normal worker context:
+
+```typescript
+subagent({
+  agent: "worker",
+  task: "Use prompts/fix-pr-checks.md for failed check evidence below...",
 });
 ```
