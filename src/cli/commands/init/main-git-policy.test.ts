@@ -19,6 +19,21 @@ async function writeSkill(repoRoot: string, skillRoot: string, name: string) {
     join(dir, "SKILL.md"),
     `---\nname: ${name}\ndescription: Test skill\n---\n`,
   );
+  if (name === "subagent-driven-development") {
+    await writeFile(join(dir, "implementer-prompt.md"), "implement\n");
+    await writeFile(join(dir, "task-reviewer-prompt.md"), "review\n");
+    await mkdir(join(dir, "scripts"), { recursive: true });
+    for (const scriptName of [
+      "review-package",
+      "sdd-workspace",
+      "task-brief",
+    ]) {
+      await writeFile(
+        join(dir, "scripts", scriptName),
+        "#!/usr/bin/env bash\n",
+      );
+    }
+  }
   if (name === "patchmill-visual-evidence") {
     await mkdir(join(dir, "scripts"), { recursive: true });
     await writeFile(

@@ -401,11 +401,19 @@ export async function validateExistingSkillDirectory(
     "subagent-driven-development",
     skillDir,
   );
-  await assertRequiredSkillFiles(
-    "subagent-driven-development",
-    resolve(repoRoot, taskImplementationSkillPath),
-    taskImplementationSkillPath,
-  );
+  for (const relativeFile of [
+    "SKILL.md",
+    "implementer-prompt.md",
+    "task-reviewer-prompt.md",
+    "scripts/review-package",
+    "scripts/sdd-workspace",
+    "scripts/task-brief",
+  ]) {
+    await assertSkillFile(
+      resolve(repoRoot, taskImplementationSkillPath, relativeFile),
+      `${taskImplementationSkillPath}/${relativeFile}`,
+    );
+  }
 
   const sharedPromptSkillPath = projectSkillPath(
     SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
