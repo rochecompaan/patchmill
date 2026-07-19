@@ -12,7 +12,6 @@ import {
   appendPiSessionEntry,
   assistantToolCall,
   createMockRunner,
-  delay,
   initializePiSession,
   promptPath,
   waitForCondition,
@@ -380,7 +379,11 @@ test("runOneIssue moves streamed tool calls under the active implementation task
         call,
         assistantToolCall("call-1", "subagent", { agent: "worker" }),
       );
-      await delay(150);
+      await waitForCondition(
+        () =>
+          events.some((event) => event.observation?.toolCallId === "call-1"),
+        () => "waiting for call-1 observation",
+      );
 
       await writeTodo(
         worktreeRoot,
@@ -398,7 +401,11 @@ test("runOneIssue moves streamed tool calls under the active implementation task
         call,
         assistantToolCall("call-2", "subagent", { agent: "worker" }),
       );
-      await delay(150);
+      await waitForCondition(
+        () =>
+          events.some((event) => event.observation?.toolCallId === "call-2"),
+        () => "waiting for call-2 observation",
+      );
 
       await writeTodo(
         worktreeRoot,
@@ -416,7 +423,11 @@ test("runOneIssue moves streamed tool calls under the active implementation task
         call,
         assistantToolCall("call-3", "subagent", { agent: "worker" }),
       );
-      await delay(150);
+      await waitForCondition(
+        () =>
+          events.some((event) => event.observation?.toolCallId === "call-3"),
+        () => "waiting for call-3 observation",
+      );
 
       await writeTodo(
         worktreeRoot,
@@ -428,7 +439,11 @@ test("runOneIssue moves streamed tool calls under the active implementation task
         call,
         assistantToolCall("call-4", "subagent", { agent: "reviewer" }),
       );
-      await delay(150);
+      await waitForCondition(
+        () =>
+          events.some((event) => event.observation?.toolCallId === "call-4"),
+        () => "waiting for call-4 observation",
+      );
 
       return {
         code: 0,

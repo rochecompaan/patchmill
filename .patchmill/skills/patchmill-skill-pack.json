@@ -9,7 +9,7 @@
       "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
     }
   },
-  "installedAt": "2026-07-19T09:54:15.578Z",
+  "installedAt": "2026-07-19T15:21:16.194Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -91,7 +91,7 @@
     },
     {
       "path": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
-      "sha256": "f86341c2285e8628cccac057283e948d2779433e71fe4ded1f3ade8f0536c748"
+      "sha256": "fcdd5f487b0e51b12449f22324a7758d7d1b7a1e89c999c856668cfe3bb03a03"
     },
     {
       "path": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/prompts/implement-plan.md",
@@ -99,7 +99,7 @@
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/SKILL.md",
-      "sha256": "9a476033ae8f332500f4955e6e1dc4d464eb83b206733ee95dfdb519b6150a75"
+      "sha256": "8f56de76517fec17f55b7ffcdc534bb45ba8b7b64a1dc15dbf2388f136d3d835"
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-review.md",
@@ -127,7 +127,7 @@
     },
     {
       "path": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks/SKILL.md",
-      "sha256": "e8c1412fb3928592ec0c268de980941a0e3fedf909e6c5ad095f0465c6fe816c"
+      "sha256": "9aa542ce2f7c6fb32427765c9e5ad6c410dca4ebb58c487675754175be9dd881"
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/SKILL.md",

@@ -35,6 +35,34 @@ Before launching any subagent, list available agents with
 `subagent({ action: "list" })` and confirm `reviewer` and `worker` are
 executable.
 
+## Non-interactive Patchmill orchestration
+
+Patchmill runs this skill inside a one-turn, non-interactive `pi -p` invocation.
+Preserve the configured worker and reviewer topology, including multiple
+sequential or parallel runs, while keeping lifecycle ownership in the parent
+agent.
+
+- Track every foreground or background subagent run until it reaches a terminal
+  state.
+- Use `subagent({ action: "status" })` to inspect active runs, or include an
+  `id` to inspect one run.
+- Status is inspection, not waiting. Do not repeatedly poll status merely to
+  pass time.
+- The parent may continue genuinely independent work while background runs are
+  active, but it must not advance past a checkpoint that depends on a subagent
+  until that run completes and its result is consumed.
+- When no independent work remains and a required result is outstanding, call
+  `wait({ id })` or `wait({ all: true })` rather than ending the turn.
+- Before final handoff, inspect active runs. Any queued, running, paused,
+  needs-attention, or otherwise unresolved run prohibits the final response.
+- Resolve, await, resume, or interrupt every outstanding run before
+  finalization.
+- A subagent result is an intermediate workflow checkpoint. Continue through
+  every remaining task, review, fix, re-review, validation, PR-check, todo, and
+  landing step required by this skill.
+- Never return progress prose or promise to continue after the response. This
+  non-interactive invocation has no subsequent turn.
+
 ## Process
 
 ### 1. Execute the implementation plan
@@ -234,6 +262,10 @@ Never:
 - Return `pr-created` before observable required checks finish.
 - Dispatch code workers for infrastructure or operator failures.
 - Run more than two PR-check repair passes.
+- End the Patchmill turn while any subagent run remains unresolved.
+- Use repeated status checks as a substitute for `wait` when no independent work
+  remains.
+- Return progress prose or promise to continue in a later turn.
 
 ## Dispatch shape reference
 
