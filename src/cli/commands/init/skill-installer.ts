@@ -24,6 +24,7 @@ import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_PLANNING_SKILL,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
+  SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
   SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
@@ -393,6 +394,31 @@ export async function validateExistingSkillDirectory(
       name,
       resolve(repoRoot, skillPath),
       skillPath,
+    );
+  }
+
+  const taskImplementationSkillPath = projectSkillPath(
+    "subagent-driven-development",
+    skillDir,
+  );
+  await assertRequiredSkillFiles(
+    "subagent-driven-development",
+    resolve(repoRoot, taskImplementationSkillPath),
+    taskImplementationSkillPath,
+  );
+
+  const sharedPromptSkillPath = projectSkillPath(
+    SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
+    skillDir,
+  );
+  for (const relativeFile of [
+    "prompts/final-validation-review.md",
+    "prompts/fix-pr-checks.md",
+    "prompts/fix-review-findings.md",
+  ]) {
+    await assertSkillFile(
+      resolve(repoRoot, sharedPromptSkillPath, relativeFile),
+      `${sharedPromptSkillPath}/${relativeFile}`,
     );
   }
 

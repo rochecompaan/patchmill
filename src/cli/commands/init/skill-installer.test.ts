@@ -127,6 +127,45 @@ description: Use when executing Patchmill implementation plans with one implemen
 # Single Subagent Dev with Codex and Thermo Reviews
 `;
 
+const validationWrapperSharedPrompts = {
+  "prompts/final-validation-review.md": "review final validation\n",
+  "prompts/fix-pr-checks.md": "repair failed PR checks\n",
+  "prompts/fix-review-findings.md": "fix validation findings\n",
+};
+
+async function writeValidationWrapperPathModeDependencies(
+  root: string,
+  skillDir: string,
+  options: { omit?: string } = {},
+): Promise<void> {
+  if (options.omit !== "subagent-dev-with-validation-and-pr-checks") {
+    await writeSkill(
+      root,
+      `${skillDir}/subagent-dev-with-validation-and-pr-checks`,
+      validationReadyImplementationSkill,
+    );
+  }
+  if (options.omit !== "subagent-driven-development") {
+    await writeSkill(
+      root,
+      `${skillDir}/subagent-driven-development`,
+      implementationSkill,
+    );
+  }
+
+  const sharedPrompts = Object.fromEntries(
+    Object.entries(validationWrapperSharedPrompts).filter(
+      ([path]) => path !== options.omit,
+    ),
+  );
+  await writeSkill(
+    root,
+    `${skillDir}/subagent-dev-with-codex-and-thermo-reviews`,
+    finalReviewedImplementationSkill,
+    sharedPrompts,
+  );
+}
+
 test("installProjectSkills copies skills and writes metadata", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
   const patchmillSource = await tempRoot("patchmill-install-patchmill-");
@@ -872,11 +911,7 @@ test("validateExistingSkillDirectory returns local config for path mode", async 
     brainstormingSkill,
   );
   await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
-  await writeSkill(
-    repoRoot,
-    "project-skills/subagent-dev-with-validation-and-pr-checks",
-    validationReadyImplementationSkill,
-  );
+  await writeValidationWrapperPathModeDependencies(repoRoot, "project-skills");
   await writeSkill(
     repoRoot,
     "project-skills/patchmill-visual-evidence",
@@ -893,6 +928,73 @@ description: Capture visual evidence.
     await validateExistingSkillDirectory(repoRoot, "project-skills"),
     buildRecommendedProjectSkillConfig("project-skills"),
   );
+});
+
+test("validateExistingSkillDirectory fails when validation wrapper runtime dependencies are missing", async () => {
+  for (const { omit, expectedPath } of [
+    {
+      omit: "subagent-driven-development",
+      expectedPath: "project-skills/subagent-driven-development/SKILL.md",
+    },
+    {
+      omit: "prompts/final-validation-review.md",
+      expectedPath:
+        "project-skills/subagent-dev-with-codex-and-thermo-reviews/prompts/final-validation-review.md",
+    },
+    {
+      omit: "prompts/fix-review-findings.md",
+      expectedPath:
+        "project-skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-review-findings.md",
+    },
+    {
+      omit: "prompts/fix-pr-checks.md",
+      expectedPath:
+        "project-skills/subagent-dev-with-codex-and-thermo-reviews/prompts/fix-pr-checks.md",
+    },
+  ]) {
+    const repoRoot = await tempRoot("patchmill-install-repo-");
+    await writeSkill(
+      repoRoot,
+      "project-skills/patchmill-issue-triage",
+      triageSkill,
+    );
+    await writeSkill(
+      repoRoot,
+      "project-skills/patchmill-planning",
+      patchmillPlanningSkill,
+    );
+    await writeSkill(
+      repoRoot,
+      "project-skills/brainstorming",
+      brainstormingSkill,
+    );
+    await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
+    await writeValidationWrapperPathModeDependencies(
+      repoRoot,
+      "project-skills",
+      {
+        omit,
+      },
+    );
+    await writeSkill(
+      repoRoot,
+      "project-skills/patchmill-visual-evidence",
+      `---
+name: patchmill-visual-evidence
+description: Capture visual evidence.
+---
+# Visual Evidence
+`,
+      { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
+    );
+
+    await assert.rejects(
+      validateExistingSkillDirectory(repoRoot, "project-skills"),
+      new RegExp(
+        `Missing required skill file: ${expectedPath.replaceAll("/", "\\/")}`,
+      ),
+    );
+  }
 });
 
 test("validateExistingSkillDirectory fails when visual evidence helper script is missing", async () => {

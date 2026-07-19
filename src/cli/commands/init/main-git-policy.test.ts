@@ -230,6 +230,37 @@ test("interactive init add-to-git with path skills commits the provided skill ro
     "custom-skills",
     "subagent-dev-with-validation-and-pr-checks",
   );
+  await writeSkill(repoRoot, "custom-skills", "subagent-driven-development");
+  await writeSkill(
+    repoRoot,
+    "custom-skills",
+    "subagent-dev-with-codex-and-thermo-reviews",
+  );
+  await mkdir(
+    join(
+      repoRoot,
+      "custom-skills",
+      "subagent-dev-with-codex-and-thermo-reviews",
+      "prompts",
+    ),
+    { recursive: true },
+  );
+  for (const prompt of [
+    "final-validation-review.md",
+    "fix-pr-checks.md",
+    "fix-review-findings.md",
+  ]) {
+    await writeFile(
+      join(
+        repoRoot,
+        "custom-skills",
+        "subagent-dev-with-codex-and-thermo-reviews",
+        "prompts",
+        prompt,
+      ),
+      `${prompt}\n`,
+    );
+  }
   await writeSkill(repoRoot, "custom-skills", "patchmill-visual-evidence");
 
   const { output } = await runInitForGitPolicy(repoRoot, {
