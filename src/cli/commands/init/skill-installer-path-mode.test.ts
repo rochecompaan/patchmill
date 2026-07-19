@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -122,7 +122,7 @@ description: Capture visual evidence.
 async function writeValidationWrapperDependencies(
   root: string,
   skillDir: string,
-  options: { omit?: string } = {},
+  options: { executableTaskScripts?: boolean; omit?: string } = {},
 ): Promise<void> {
   if (options.omit !== "subagent-dev-with-validation-and-pr-checks/SKILL.md") {
     await writeSkill(
@@ -144,6 +144,16 @@ async function writeValidationWrapperDependencies(
       implementationSkill,
       rawFiles,
     );
+    if (options.executableTaskScripts !== false) {
+      for (const script of Object.keys(rawFiles).filter((path) =>
+        path.startsWith("scripts/"),
+      )) {
+        await chmod(
+          join(root, skillDir, "subagent-driven-development", script),
+          0o755,
+        );
+      }
+    }
   }
 
   const sharedPrompts = Object.fromEntries(
@@ -200,6 +210,19 @@ test("validateExistingSkillDirectory fails when validation wrapper runtime depen
       ),
     );
   }
+});
+
+test("validateExistingSkillDirectory fails when task implementation scripts are not executable", async () => {
+  const repoRoot = await tempRoot("patchmill-install-repo-");
+  await writeBaseProjectLocalSkills(repoRoot);
+  await writeValidationWrapperDependencies(repoRoot, "project-skills", {
+    executableTaskScripts: false,
+  });
+
+  await assert.rejects(
+    validateExistingSkillDirectory(repoRoot, "project-skills"),
+    /Missing required executable skill file: project-skills\/subagent-driven-development\/scripts\/review-package/,
+  );
 });
 
 test("validateExistingSkillDirectory fails when visual evidence helper script is missing", async () => {

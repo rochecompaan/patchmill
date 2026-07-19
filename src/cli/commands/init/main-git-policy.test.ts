@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -28,10 +28,9 @@ async function writeSkill(repoRoot: string, skillRoot: string, name: string) {
       "sdd-workspace",
       "task-brief",
     ]) {
-      await writeFile(
-        join(dir, "scripts", scriptName),
-        "#!/usr/bin/env bash\n",
-      );
+      const scriptPath = join(dir, "scripts", scriptName);
+      await writeFile(scriptPath, "#!/usr/bin/env bash\n");
+      await chmod(scriptPath, 0o755);
     }
   }
   if (name === "patchmill-visual-evidence") {

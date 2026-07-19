@@ -117,6 +117,7 @@ export async function assertSkillFile(
   path: string,
   displayPath: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
+  options: { executable?: boolean } = {},
 ): Promise<void> {
   try {
     const skillFile = await dependencies.stat(path);
@@ -126,6 +127,14 @@ export async function assertSkillFile(
     await dependencies.access(path, constants.R_OK);
   } catch {
     throw new Error(`Missing required skill file: ${displayPath}`);
+  }
+
+  if (options.executable) {
+    try {
+      await dependencies.access(path, constants.X_OK);
+    } catch {
+      throw new Error(`Missing required executable skill file: ${displayPath}`);
+    }
   }
 }
 
@@ -405,6 +414,13 @@ export async function validateExistingSkillDirectory(
     "SKILL.md",
     "implementer-prompt.md",
     "task-reviewer-prompt.md",
+  ]) {
+    await assertSkillFile(
+      resolve(repoRoot, taskImplementationSkillPath, relativeFile),
+      `${taskImplementationSkillPath}/${relativeFile}`,
+    );
+  }
+  for (const relativeFile of [
     "scripts/review-package",
     "scripts/sdd-workspace",
     "scripts/task-brief",
@@ -412,6 +428,8 @@ export async function validateExistingSkillDirectory(
     await assertSkillFile(
       resolve(repoRoot, taskImplementationSkillPath, relativeFile),
       `${taskImplementationSkillPath}/${relativeFile}`,
+      defaultDependencies,
+      { executable: true },
     );
   }
 
