@@ -79,6 +79,10 @@ export default defineConfig({
               slug: "guides/skills-configuration",
             },
             { label: "Providers", slug: "guides/providers" },
+            {
+              label: "Pi and subagents",
+              slug: "guides/pi-and-subagents",
+            },
           ],
         },
         {
