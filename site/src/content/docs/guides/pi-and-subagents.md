@@ -86,8 +86,11 @@ same role characteristics.
   model such as `openai-codex/gpt-5.4`.
 - `subagents.agentOverrides.<role>.thinking` sets that role's thinking level.
 
-Supported thinking levels are `off`, `minimal`, `low`, `medium`, `high`,
-`xhigh`, and `max`. Choose a level supported by the selected provider and model.
+Pi recognizes `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max` for
+the main runtime. For an explicit subagent role override, use `minimal`, `low`,
+`medium`, `high`, `xhigh`, or `max`; `off` lets the child use its default
+thinking level instead. Choose a level supported by the selected provider and
+model.
 
 ## Verify the configuration
 
