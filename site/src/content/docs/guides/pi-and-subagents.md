@@ -15,12 +15,15 @@ started by Patchmill in:
 Keep this machine-specific runtime state local. Do not commit
 `.patchmill/pi-agent/` with repository configuration or project-local skills.
 
-:::caution[Configure each role explicitly] Without a `model` override, a
-built-in subagent inherits the orchestrator model. Built-in roles may provide
-thinking defaults, but setting both the model and thinking level explicitly
-makes the intended cost, latency, and reasoning policy clear. Repository
-exploration, implementation, and review should not all run with the
-orchestrator's defaults. :::
+:::caution[Configure each role explicitly]
+
+Without a `model` override, a built-in subagent inherits the orchestrator model.
+Built-in roles may provide thinking defaults, but setting both the model and
+thinking level explicitly makes the intended cost, latency, and reasoning policy
+clear. Repository exploration, implementation, and review should not all run
+with the orchestrator's defaults.
+
+:::
 
 ## Authenticate the required providers
 
