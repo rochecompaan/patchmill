@@ -51,6 +51,10 @@ Issue-host authentication remains separate: use `gh auth login` for GitHub and
 `tea` login configuration for Forgejo/Gitea access. `patchmill auth` only
 manages Patchmill's repo-local Pi provider state.
 
+When the orchestrator, `scout`, `worker`, or `reviewer` use different providers,
+authenticate each provider in this isolated runtime. See
+[Pi and subagents](/guides/pi-and-subagents/) for the role-specific settings.
+
 ## Validate provider access
 
 Run the doctor command after provider changes:

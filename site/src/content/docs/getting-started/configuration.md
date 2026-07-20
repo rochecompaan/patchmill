@@ -244,6 +244,10 @@ Commit `patchmill.config.json` and project-local skills when the workflow should
 be shared by the team. Keep machine-specific runtime state such as
 `.patchmill/pi-agent/`, `.patchmill/runs/`, and `.patchmill/triage-runs/` local.
 
+Configure the main Pi orchestrator and role-specific subagent defaults in
+[Pi and subagents](/guides/pi-and-subagents/). Keep those settings local with
+the rest of `.patchmill/pi-agent/`.
+
 ## What not to configure first
 
 You usually do not need to set `git.baseBranch`. When it is omitted, `run-once`
