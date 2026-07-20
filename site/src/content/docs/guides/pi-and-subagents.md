@@ -4,8 +4,9 @@ description:
   Choose role-specific models and thinking levels for Patchmill's Pi runtime.
 ---
 
-Patchmill runs Pi with an isolated agent directory at `.patchmill/pi-agent/`.
-Configure the Pi sessions started by Patchmill in:
+Patchmill sets `PI_CODING_AGENT_DIR` to `.patchmill/pi-agent/` for its Pi
+processes, giving them an isolated agent directory. Configure the Pi sessions
+started by Patchmill in:
 
 ```text
 .patchmill/pi-agent/settings.json
