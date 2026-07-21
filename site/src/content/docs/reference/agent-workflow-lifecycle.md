@@ -181,6 +181,11 @@ Patchmill bundles `pi-subagents`, so implementation prompts may rely on the Pi
 not hard-code a worker/reviewer procedure; it renders skill lines from runtime
 configuration and observes subagent tool calls through the Pi session stream.
 
+Built-in subagents inherit the orchestrator model unless they have explicit
+model overrides. Configure role-specific model and thinking defaults for
+`scout`, `worker`, and `reviewer`; see
+[Pi and subagents](/guides/pi-and-subagents/).
+
 The implementation prompt accepts these final statuses:
 
 - `blocked`: stop safely, leave committed work as-is, and include questions,
