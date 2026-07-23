@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,10 @@ const packagePaths = {
   packageJson: join(rootDir, "package.json"),
   packageLock: join(rootDir, "package-lock.json"),
   shrinkwrap: join(rootDir, "npm-shrinkwrap.json"),
+};
+const trackedMetadataPaths = {
+  ...packagePaths,
+  nixPackage: join(rootDir, "nix/package.nix"),
 };
 const validationCommands = [
   "node --test src/cli/commands/init/pi-dependency-contract.test.ts",
@@ -177,32 +181,23 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function changedMetadataFiles() {
-  const output = await new Promise((resolve, reject) => {
-    const child = spawn(
-      "git",
-      [
-        "diff",
-        "--name-only",
-        "--",
-        "package.json",
-        "package-lock.json",
-        "npm-shrinkwrap.json",
-        "nix/package.nix",
-      ],
-      { cwd: rootDir },
-    );
-    let stdout = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error("Unable to inspect changed package metadata"));
-    });
-  });
-  return output.trim() ? output.trim().split("\n") : [];
+async function snapshotMetadataFiles() {
+  return Object.fromEntries(
+    await Promise.all(
+      Object.entries(trackedMetadataPaths).map(async ([name, path]) => [
+        name,
+        await readFile(path),
+      ]),
+    ),
+  );
+}
+
+async function changedMetadataFiles(snapshot) {
+  if (!snapshot) return [];
+  const current = await snapshotMetadataFiles();
+  return Object.entries(trackedMetadataPaths)
+    .filter(([name]) => !snapshot[name].equals(current[name]))
+    .map(([, path]) => path.slice(rootDir.length + 1));
 }
 
 async function main() {
@@ -219,10 +214,12 @@ async function main() {
     changedFiles: [],
     validationCommands,
   };
+  let metadataSnapshot;
 
   try {
     Object.assign(options, parseArgs(args));
     summary.validateOnly = options.validateOnly;
+    metadataSnapshot = await snapshotMetadataFiles();
     const packageJson = await readJson(packagePaths.packageJson);
     const currentPins = getRootPins(packageJson);
     const latestVersions =
@@ -274,7 +271,7 @@ async function main() {
     if (!resolved.noUpdate && !options.validateOnly && !options.skipNixHash) {
       await run("scripts/update-npm-deps-hash.sh", []);
     }
-    summary.changedFiles = await changedMetadataFiles();
+    summary.changedFiles = await changedMetadataFiles(metadataSnapshot);
     console.log(
       `Changed metadata files: ${summary.changedFiles.join(", ") || "none"}`,
     );
@@ -283,9 +280,9 @@ async function main() {
   } catch (error) {
     summary.error = errorMessage(error);
     try {
-      summary.changedFiles = await changedMetadataFiles();
+      summary.changedFiles = await changedMetadataFiles(metadataSnapshot);
     } catch {
-      // Preserve the primary failure when Git cannot report changed metadata.
+      // Preserve the primary failure when metadata comparison also fails.
     }
     try {
       await writeSummary(options, summary);

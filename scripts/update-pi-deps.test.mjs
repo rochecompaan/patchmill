@@ -9,10 +9,11 @@ import { spawn } from "node:child_process";
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const scriptPath = join(rootDir, "scripts/update-pi-deps.mjs");
 
-function runUpdateScript(args) {
+function runUpdateScript(args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [scriptPath, ...args], {
       cwd: rootDir,
+      ...options,
     });
     let stderr = "";
     child.stderr.on("data", (chunk) => {
@@ -23,26 +24,30 @@ function runUpdateScript(args) {
   });
 }
 
-test("update CLI creates parent directories for successful summaries", async () => {
+test("update CLI works without Git on PATH", async () => {
   const tempDir = await mkdtemp(join(tmpdir(), "patchmill-pi-deps-test-"));
   const summaryPath = join(tempDir, "nested", "summary.json");
 
   try {
-    const result = await runUpdateScript([
-      "--mode",
-      "manual",
-      "--target-version",
-      "0.80.10",
-      "--validate-only",
-      "--skip-nix-hash",
-      "--summary-json",
-      summaryPath,
-    ]);
+    const result = await runUpdateScript(
+      [
+        "--mode",
+        "manual",
+        "--target-version",
+        "0.80.10",
+        "--validate-only",
+        "--skip-nix-hash",
+        "--summary-json",
+        summaryPath,
+      ],
+      { env: { ...process.env, PATH: tempDir } },
+    );
 
     assert.equal(result.code, 0, result.stderr);
     const summary = JSON.parse(await readFile(summaryPath, "utf8"));
     assert.equal(summary.validateOnly, true);
     assert.equal(summary.noUpdate, false);
+    assert.deepEqual(summary.changedFiles, []);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
