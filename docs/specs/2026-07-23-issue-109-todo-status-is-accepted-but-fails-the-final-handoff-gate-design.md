@@ -107,11 +107,12 @@ for claim as open work.
 ### Patchmill Pi invocation
 
 When `runPiPrompt` launches Pi, pass the resolved task contract's done statuses
-to the todo extension, alongside the existing todo-root environment. Use a stable
-format such as a JSON string array to avoid ambiguity around status names.
+to the todo extension, alongside the existing todo-root environment. Use a
+stable format such as a JSON string array to avoid ambiguity around status
+names.
 
-Invalid or empty environment values should fall back to the shared default inside
-the extension. Config validation should continue to require
+Invalid or empty environment values should fall back to the shared default
+inside the extension. Config validation should continue to require
 `doneStatuses` to be an array of strings; implementation may additionally reject
 blank normalized statuses if not already covered.
 
