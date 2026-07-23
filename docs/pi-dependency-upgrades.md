@@ -18,6 +18,16 @@ node scripts/update-pi-deps.mjs \
 
 Omit `--skip-nix-hash` when preparing real dependency changes.
 
+## Repository automation token
+
+Configure the repository secret `PATCHMILL_AUTOMATION_TOKEN` with a fine-grained
+personal access token for a dedicated automation account that can create
+branches and pull requests. The workflow uses it only after all upgrade
+validations pass, so the resulting review-gated PR can trigger normal pull
+request checks; GitHub Actions' default `GITHUB_TOKEN` does not trigger those
+workflows. Checkout does not persist this token while dependency validation
+runs.
+
 ## Required local checks for a real upgrade
 
 ```bash

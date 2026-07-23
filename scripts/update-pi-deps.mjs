@@ -94,6 +94,70 @@ function run(command, args) {
   });
 }
 
+async function updatePackageMetadata(packageJson, targets) {
+  const tempDir = await mkdtemp(join(tmpdir(), "patchmill-pi-deps-"));
+  const originalPaths = Object.fromEntries(
+    Object.keys(packagePaths).map((name) => [
+      name,
+      join(tempDir, `${name}.json`),
+    ]),
+  );
+  const requested = PI_PACKAGES.map((name) => `${name}=${targets[name]}`).join(
+    ", ",
+  );
+  let originalsSaved = false;
+
+  try {
+    await Promise.all(
+      Object.entries(packagePaths).map(([name, path]) =>
+        copyFile(path, originalPaths[name]),
+      ),
+    );
+    originalsSaved = true;
+
+    packageJson.dependencies ??= {};
+    for (const name of PI_PACKAGES)
+      packageJson.dependencies[name] = targets[name];
+    await writeJson(packagePaths.packageJson, packageJson);
+
+    await run("npm", ["install", "--package-lock-only", "--ignore-scripts"]);
+    const updatedShrinkwrap = join(tempDir, "updated-shrinkwrap.json");
+    await copyFile(packagePaths.shrinkwrap, updatedShrinkwrap);
+    await rm(packagePaths.shrinkwrap);
+    await run("npm", ["install", "--package-lock-only", "--ignore-scripts"]);
+    await copyFile(updatedShrinkwrap, packagePaths.shrinkwrap);
+    await run("npx", [
+      "prettier",
+      "--write",
+      "package.json",
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+    ]);
+  } catch (error) {
+    let restoreError;
+    if (originalsSaved) {
+      try {
+        await Promise.all(
+          Object.entries(packagePaths).map(([name, path]) =>
+            copyFile(originalPaths[name], path),
+          ),
+        );
+      } catch (failure) {
+        restoreError = failure;
+      }
+    }
+    const message = `Unable to resolve requested Pi dependency versions (${requested}): ${error.message}`;
+    if (restoreError) {
+      throw new Error(
+        `${message}; additionally failed to restore original metadata: ${restoreError.message}`,
+      );
+    }
+    throw new Error(message);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function changedMetadataFiles() {
   const output = await new Promise((resolve, reject) => {
     const child = spawn(
@@ -160,46 +224,7 @@ async function main() {
   );
 
   if (!resolved.noUpdate && !options.validateOnly) {
-    packageJson.dependencies ??= {};
-    for (const name of PI_PACKAGES)
-      packageJson.dependencies[name] = resolved.targets[name];
-    await writeJson(packagePaths.packageJson, packageJson);
-
-    const tempDir = await mkdtemp(join(tmpdir(), "patchmill-pi-deps-"));
-    const temporaryShrinkwrap = join(tempDir, "npm-shrinkwrap.json");
-    try {
-      try {
-        await run("npm", [
-          "install",
-          "--package-lock-only",
-          "--ignore-scripts",
-        ]);
-        await copyFile(packagePaths.shrinkwrap, temporaryShrinkwrap);
-        await rm(packagePaths.shrinkwrap);
-        await run("npm", [
-          "install",
-          "--package-lock-only",
-          "--ignore-scripts",
-        ]);
-        await copyFile(temporaryShrinkwrap, packagePaths.shrinkwrap);
-        await run("npx", [
-          "prettier",
-          "--write",
-          "package.json",
-          "package-lock.json",
-          "npm-shrinkwrap.json",
-        ]);
-      } catch (error) {
-        const requested = PI_PACKAGES.map(
-          (name) => `${name}=${resolved.targets[name]}`,
-        ).join(", ");
-        throw new Error(
-          `Unable to resolve requested Pi dependency versions (${requested}): ${error.message}`,
-        );
-      }
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
+    await updatePackageMetadata(packageJson, resolved.targets);
   }
 
   const [updatedPackageJson, packageLock, shrinkwrap] = await Promise.all([
