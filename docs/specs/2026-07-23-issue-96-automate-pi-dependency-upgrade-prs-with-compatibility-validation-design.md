@@ -22,8 +22,8 @@ review; it will not auto-merge, publish, or bypass failing compatibility checks.
   `scripts/update-npm-deps-hash.sh`.
 - CI already runs Node tests, linting, packed npm install smoke checks, Nix hash
   validation, and Nix install smoke checks.
-- `src/cli/commands/init/pi-dependency-contract.test.ts` asserts the validated Pi
-  version and the Pi runtime exports Patchmill depends on.
+- `src/cli/commands/init/pi-dependency-contract.test.ts` asserts the validated
+  Pi version and the Pi runtime exports Patchmill depends on.
 
 ## Goals
 
@@ -65,9 +65,9 @@ contract in versioned code and makes failures actionable in CI logs.
 
 ### Option C: External release bot
 
-An external bot could run the same logic outside GitHub Actions, but it would add
-new credentials and operational surface area without improving validation. The
-repository already has the needed CI, Nix, and PR automation primitives.
+An external bot could run the same logic outside GitHub Actions, but it would
+add new credentials and operational surface area without improving validation.
+The repository already has the needed CI, Nix, and PR automation primitives.
 
 **Decision:** Use Option B. Keep the core logic in repository scripts so it can
 run locally, under `workflow_dispatch`, on a schedule, and on PR validation.
@@ -112,15 +112,15 @@ The update script should codify the proven manual upgrade workflow:
    `nix/package.nix` records the correct `npmDepsHash`.
 
 The script should print a concise summary of changed files and target versions.
-If npm cannot resolve either target version, the error should include the package
-name and requested version.
+If npm cannot resolve either target version, the error should include the
+package name and requested version.
 
 ### Compatibility assertions
 
 Keep `src/cli/commands/init/pi-dependency-contract.test.ts` as the primary Pi
 runtime boundary test, but make the expected version derive from the exact root
-`package.json` pins instead of requiring a hand-edited constant on every upgrade.
-The test should fail with messages such as:
+`package.json` pins instead of requiring a hand-edited constant on every
+upgrade. The test should fail with messages such as:
 
 - `@earendil-works/pi-coding-agent resolved 0.x.y but package.json pins 0.a.b`;
 - `@earendil-works/pi-tui resolved 0.x.y but package.json pins 0.a.b`;
@@ -180,9 +180,9 @@ failure details.
 
 ### CI validation on upgrade PRs
 
-Update the existing CI workflow to call the reusable packed-artifact smoke script
-instead of duplicating shell logic. The normal PR checks will then validate both
-manually opened and automation-created Pi upgrade PRs.
+Update the existing CI workflow to call the reusable packed-artifact smoke
+script instead of duplicating shell logic. The normal PR checks will then
+validate both manually opened and automation-created Pi upgrade PRs.
 
 The Nix job should continue to run `scripts/update-npm-deps-hash.sh` and fail if
 `nix/package.nix` changes, ensuring contributors cannot forget the hash update.
@@ -196,7 +196,8 @@ The Nix job should continue to run `scripts/update-npm-deps-hash.sh` and fail if
 - Modified: `src/cli/commands/init/pi-dependency-contract.test.ts` to derive
   expected versions from exact root package pins.
 - Modified during generated PRs: `package.json`, `package-lock.json`,
-  `npm-shrinkwrap.json`, and `nix/package.nix` when the dependency graph changes.
+  `npm-shrinkwrap.json`, and `nix/package.nix` when the dependency graph
+  changes.
 
 ## Error handling and logs
 
@@ -232,7 +233,8 @@ Recommended verification for the implementation plan:
 - run the packed-artifact smoke script from a local tarball;
 - run lint: `npm run lint`;
 - because npm metadata can change in generated PRs, run
-  `scripts/update-npm-deps-hash.sh` and `nix build .#patchmill --print-build-logs`;
+  `scripts/update-npm-deps-hash.sh` and
+  `nix build .#patchmill --print-build-logs`;
 - manually dispatch the new workflow in validate-only mode before relying on the
   schedule.
 
@@ -242,8 +244,9 @@ Recommended verification for the implementation plan:
    versions.
 2. Manually dispatch validate-only mode against the current pins to prove the
    workflow does not require an actual newer version.
-3. Manually dispatch with explicit current versions or a harmless fixture path if
-   supported by the implementation to exercise the no-op and validation paths.
+3. Manually dispatch with explicit current versions or a harmless fixture path
+   if supported by the implementation to exercise the no-op and validation
+   paths.
 4. Let the next scheduled run create a real upgrade PR when npm publishes newer
    compatible Pi packages.
 
