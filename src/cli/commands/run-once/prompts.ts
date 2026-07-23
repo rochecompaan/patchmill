@@ -1,6 +1,9 @@
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
-import { todoCompletionStatus } from "../../../policy/todo-statuses.ts";
+import {
+  normalizeTodoDoneStatuses,
+  todoCompletionStatus,
+} from "../../../policy/todo-statuses.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   type PatchmillSkillsConfig,
@@ -316,7 +319,9 @@ function renderTaskTodoBodyRequirements(requirements: string[]): string {
 
 function renderTerminalStatuses(taskContract: PatchmillPiTaskContract): string {
   return renderConjoinedList(
-    taskContract.doneStatuses.map((status) => `\`${status}\``),
+    normalizeTodoDoneStatuses(taskContract.doneStatuses).map(
+      (status) => `\`${status}\``,
+    ),
   );
 }
 

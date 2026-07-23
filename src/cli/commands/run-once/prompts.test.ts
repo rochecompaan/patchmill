@@ -980,7 +980,7 @@ test("task contract overrides drive todo instructions in plan and implementation
           "checkpoint details",
           "latest validation",
         ],
-        doneStatuses: ["shipped"],
+        doneStatuses: [" Shipped ", "shipped"],
         planTaskHeadingPattern: "### Step <number> - <label>",
         openTaskTodosBlockFinalHandoff: false,
       },
@@ -1013,6 +1013,7 @@ test("task contract overrides drive todo instructions in plan and implementation
   );
   assert.match(planPrompt, /work-42-step-<two-digit-number>-<slug>/);
   assert.match(planPrompt, /This contract treats `shipped` as terminal/);
+  assert.doesNotMatch(planPrompt, /` Shipped `|`shipped` and `shipped`/);
   assert.match(
     planPrompt,
     /After the plan document is committed, set the plan-related task todo status to `shipped`/,
@@ -1033,6 +1034,10 @@ test("task contract overrides drive todo instructions in plan and implementation
   assert.match(
     implementationPrompt,
     /This contract treats `shipped` as terminal/,
+  );
+  assert.doesNotMatch(
+    implementationPrompt,
+    /` Shipped `|`shipped` and `shipped`/,
   );
   assert.match(
     implementationPrompt,
