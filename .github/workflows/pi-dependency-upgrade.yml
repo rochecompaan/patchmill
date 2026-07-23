@@ -109,8 +109,9 @@ jobs:
       - name: Verify Nix npm dependency hash
         if: steps.update.outputs.no_update != 'true'
         run: |
+          cp nix/package.nix .tmp/nix-package.nix.before-hash
           scripts/update-npm-deps-hash.sh
-          if ! git diff --exit-code -- nix/package.nix; then
+          if ! cmp --silent .tmp/nix-package.nix.before-hash nix/package.nix; then
             echo "::error file=nix/package.nix::npmDepsHash is stale after Pi dependency update."
             exit 1
           fi
@@ -133,6 +134,11 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.PATCHMILL_AUTOMATION_TOKEN }}
+          add-paths: |
+            package.json
+            package-lock.json
+            npm-shrinkwrap.json
+            nix/package.nix
           branch: automation/pi-deps-${{ steps.update.outputs.target_version }}
           delete-branch: true
           title:
