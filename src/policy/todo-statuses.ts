@@ -23,6 +23,13 @@ export function normalizeTodoDoneStatuses(
   return normalized.length > 0 ? normalized : [...DEFAULT_TODO_DONE_STATUSES];
 }
 
+export function todoCompletionStatus(
+  doneStatuses: readonly string[] = DEFAULT_TODO_DONE_STATUSES,
+): string {
+  const normalized = normalizeTodoDoneStatuses(doneStatuses);
+  return normalized.includes("closed") ? "closed" : (normalized[0] ?? "closed");
+}
+
 export function todoStatusIsDone(
   status: string | undefined,
   doneStatuses: readonly string[] = DEFAULT_TODO_DONE_STATUSES,

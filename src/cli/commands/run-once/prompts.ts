@@ -1,5 +1,6 @@
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
+import { todoCompletionStatus } from "../../../policy/todo-statuses.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   type PatchmillSkillsConfig,
@@ -331,6 +332,7 @@ function renderTaskContractTodoWorkflowLines(
   const todoTitleGlob = renderIssueTodoTitleGlob(taskContract, issueNumber);
   const todoTags = renderTaskTodoTags(taskContract, issueNumber);
   const terminalStatusLine = `- This contract treats ${renderTerminalStatuses(taskContract)} as terminal.`;
+  const completionStatus = todoCompletionStatus(taskContract.doneStatuses);
   const sharedLines = [
     `- Store issue task todos under \`${taskContract.todoRoot}\`.`,
     ...(todoTags.length > 0 ? [`- Tag each task todo with ${todoTags}.`] : []),
@@ -350,7 +352,7 @@ function renderTaskContractTodoWorkflowLines(
           ]
         : []),
       terminalStatusLine,
-      "- After the plan document is committed, set the plan-related task todo status to `closed` so they reflect the committed plan state.",
+      `- After the plan document is committed, set the plan-related task todo status to \`${completionStatus}\` so they reflect the committed plan state.`,
     ];
   }
 
@@ -371,7 +373,7 @@ function renderTaskContractTodoWorkflowLines(
       : []),
     "- Do not create a single broad implementation todo.",
     "- Claim or update the current task todo before doing work on that task.",
-    "- Set a task todo status to `closed` only after code, tests, review, fixes, and verification for that task are done.",
+    `- Set a task todo status to \`${completionStatus}\` only after code, tests, review, fixes, and verification for that task are done.`,
     terminalStatusLine,
   ];
 

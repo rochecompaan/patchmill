@@ -39,6 +39,7 @@ import { Type } from "typebox";
 import {
 	parseTodoDoneStatusesEnv,
 	PI_TODO_DONE_STATUSES_ENV,
+	todoCompletionStatus,
 	todoStatusIsDone,
 } from "../src/policy/todo-statuses.ts";
 import path from "node:path";
@@ -118,8 +119,13 @@ function activeTodoStatusVocabulary(): string[] {
 	return statuses.filter((status, index) => statuses.indexOf(status) === index);
 }
 
+export function todoCloseStatus(): string {
+	return todoCompletionStatus(activeTodoDoneStatuses());
+}
+
 function todoParams() {
 	const doneStatuses = activeTodoDoneStatuses();
+	const completionStatus = todoCloseStatus();
 	const statusVocabulary = activeTodoStatusVocabulary();
 	return Type.Object({
 		action: stringEnum([
@@ -139,7 +145,7 @@ function todoParams() {
 		title: Type.Optional(Type.String({ description: "Short summary shown in lists" })),
 		status: Type.Optional(
 			stringEnum(statusVocabulary, {
-				description: `Todo status. Use open for unfinished work. Prefer closed when work is complete. Terminal statuses: ${doneStatuses.join(", ")}.`,
+				description: `Todo status. Use open for unfinished work. Prefer \`${completionStatus}\` when work is complete. Terminal statuses: ${doneStatuses.join(", ")}.`,
 			}),
 		),
 		tags: Type.Optional(Type.Array(Type.String({ description: "Todo tag" }))),
@@ -1481,7 +1487,7 @@ export default function todosExtension(pi: ExtensionAPI) {
 			`Manage file-based todos in ${todosDirLabel} (list, list-all, get, create, update, append, delete, claim, release). ` +
 			"Title is the short summary; body is long-form markdown notes (update replaces, append adds). " +
 			"Todo ids are shown as TODO-<hex>; id parameters accept TODO-<hex> or the raw hex filename. " +
-			`Claim tasks before working on them to avoid conflicts. Prefer status \`closed\` when work is complete. Accepted terminal statuses: ${activeTodoDoneStatuses().join(", ")}.`,
+			`Claim tasks before working on them to avoid conflicts. Prefer status \`${todoCloseStatus()}\` when work is complete. Accepted terminal statuses: ${activeTodoDoneStatuses().join(", ")}.`,
 		parameters: todoParams(),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -1989,7 +1995,7 @@ export default function todosExtension(pi: ExtensionAPI) {
 						return "stay";
 					}
 
-					const nextStatus = action === "close" ? "closed" : "open";
+					const nextStatus = action === "close" ? todoCloseStatus() : "open";
 					const result = await updateTodoStatus(todosDir, record.id, nextStatus, ctx);
 					if ("error" in result) {
 						ctx.ui.notify(result.error, "error");

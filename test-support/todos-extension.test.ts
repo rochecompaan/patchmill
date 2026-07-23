@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import todosExtension from "../extensions/todos.ts";
+import todosExtension, { todoCloseStatus } from "../extensions/todos.ts";
 import { PI_TODO_DONE_STATUSES_ENV } from "../src/policy/todo-statuses.ts";
 
 type RegisteredTool = {
@@ -43,6 +43,7 @@ test("todo extension groups complete todos as closed and blocks claims", async (
   delete process.env[PI_TODO_DONE_STATUSES_ENV];
   try {
     const tool = registerTodoTool();
+    assert.equal(todoCloseStatus(), "closed");
     const schema = tool.parameters as {
       properties?: { status?: { enum?: string[] } };
     };
@@ -121,11 +122,20 @@ test("todo extension uses configured terminal statuses in its guidance and group
   process.env[PI_TODO_DONE_STATUSES_ENV] = JSON.stringify(["shipped"]);
   try {
     const tool = registerTodoTool();
+    assert.match(
+      tool.description,
+      /Prefer status `shipped` when work is complete/,
+    );
     assert.match(tool.description, /Accepted terminal statuses: shipped/);
+    assert.equal(todoCloseStatus(), "shipped");
     const schema = tool.parameters as {
       properties?: { status?: { enum?: string[] } };
     };
     assert.deepEqual(schema.properties?.status?.enum, ["open", "shipped"]);
+    assert.match(
+      schema.properties?.status?.description ?? "",
+      /Prefer `shipped` when work is complete/,
+    );
 
     const cwd = await mkdtemp(
       join(tmpdir(), "patchmill-custom-todos-extension-"),

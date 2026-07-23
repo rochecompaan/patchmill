@@ -1014,6 +1014,10 @@ test("task contract overrides drive todo instructions in plan and implementation
   assert.match(planPrompt, /work-42-step-<two-digit-number>-<slug>/);
   assert.match(planPrompt, /This contract treats `shipped` as terminal/);
   assert.match(
+    planPrompt,
+    /After the plan document is committed, set the plan-related task todo status to `shipped`/,
+  );
+  assert.match(
     implementationPrompt,
     /Store issue task todos under `\.patchmill\/todos`/,
   );
@@ -1029,6 +1033,10 @@ test("task contract overrides drive todo instructions in plan and implementation
   assert.match(
     implementationPrompt,
     /This contract treats `shipped` as terminal/,
+  );
+  assert.match(
+    implementationPrompt,
+    /Set a task todo status to `shipped` only after code, tests, review, fixes, and verification/,
   );
   assert.doesNotMatch(
     implementationPrompt,
