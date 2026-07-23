@@ -35,8 +35,12 @@
  * naturally.
  */
 import { DynamicBorder, copyToClipboard, getMarkdownTheme, keyHint, type ExtensionAPI, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import {
+	parseTodoDoneStatusesEnv,
+	PI_TODO_DONE_STATUSES_ENV,
+	todoStatusIsDone,
+} from "../src/policy/todo-statuses.ts";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -98,29 +102,53 @@ type KeybindingMatcher = {
 	matches: (keyData: string, keybindingId: string) => boolean;
 };
 
-const TodoParams = Type.Object({
-	action: StringEnum([
-		"list",
-		"list-all",
-		"get",
-		"create",
-		"update",
-		"append",
-		"delete",
-		"claim",
-		"release",
-	] as const),
-	id: Type.Optional(
-		Type.String({ description: "Todo id (TODO-<hex> or raw hex filename)" }),
-	),
-	title: Type.Optional(Type.String({ description: "Short summary shown in lists" })),
-	status: Type.Optional(Type.String({ description: "Todo status" })),
-	tags: Type.Optional(Type.Array(Type.String({ description: "Todo tag" }))),
-	body: Type.Optional(
-		Type.String({ description: "Long-form details (markdown). Update replaces; append adds." }),
-	),
-	force: Type.Optional(Type.Boolean({ description: "Override another session's assignment" })),
-});
+function stringEnum(
+	values: readonly string[],
+	options: Record<string, unknown> = {},
+) {
+	return Type.Unsafe({ type: "string", enum: [...values], ...options });
+}
+
+function activeTodoDoneStatuses(): string[] {
+	return parseTodoDoneStatusesEnv(process.env[PI_TODO_DONE_STATUSES_ENV]);
+}
+
+function activeTodoStatusVocabulary(): string[] {
+	const statuses = ["open", ...activeTodoDoneStatuses()];
+	return statuses.filter((status, index) => statuses.indexOf(status) === index);
+}
+
+function todoParams() {
+	const doneStatuses = activeTodoDoneStatuses();
+	const statusVocabulary = activeTodoStatusVocabulary();
+	return Type.Object({
+		action: stringEnum([
+			"list",
+			"list-all",
+			"get",
+			"create",
+			"update",
+			"append",
+			"delete",
+			"claim",
+			"release",
+		] as const),
+		id: Type.Optional(
+			Type.String({ description: "Todo id (TODO-<hex> or raw hex filename)" }),
+		),
+		title: Type.Optional(Type.String({ description: "Short summary shown in lists" })),
+		status: Type.Optional(
+			stringEnum(statusVocabulary, {
+				description: `Todo status. Use open for unfinished work. Prefer closed when work is complete. Terminal statuses: ${doneStatuses.join(", ")}.`,
+			}),
+		),
+		tags: Type.Optional(Type.Array(Type.String({ description: "Todo tag" }))),
+		body: Type.Optional(
+			Type.String({ description: "Long-form details (markdown). Update replaces; append adds." }),
+		),
+		force: Type.Optional(Type.Boolean({ description: "Override another session's assignment" })),
+	});
+}
 
 type TodoAction =
 	| "list"
@@ -182,7 +210,7 @@ function displayTodoId(id: string): string {
 }
 
 function isTodoClosed(status: string): boolean {
-	return ["closed", "done"].includes(status.toLowerCase());
+	return todoStatusIsDone(status, activeTodoDoneStatuses());
 }
 
 function clearAssignmentIfClosed(todo: TodoFrontMatter): void {
@@ -265,6 +293,7 @@ class TodoSelectorComponent extends Container implements Focusable {
 	private headerText: Text;
 	private hintText: Text;
 	private currentSessionId?: string;
+	private onQuickAction?: (todo: TodoFrontMatter, action: "work" | "refine") => void;
 
 	private _focused = false;
 	get focused(): boolean {
@@ -284,13 +313,14 @@ class TodoSelectorComponent extends Container implements Focusable {
 		onCancel: () => void,
 		initialSearchInput?: string,
 		currentSessionId?: string,
-		private onQuickAction?: (todo: TodoFrontMatter, action: "work" | "refine") => void,
+		onQuickAction?: (todo: TodoFrontMatter, action: "work" | "refine") => void,
 	) {
 		super();
 		this.tui = tui;
 		this.theme = theme;
 		this.keybindings = keybindings;
 		this.currentSessionId = currentSessionId;
+		this.onQuickAction = onQuickAction;
 		this.allTodos = todos;
 		this.filteredTodos = todos;
 		this.onSelectCallback = onSelect;
@@ -1451,8 +1481,8 @@ export default function todosExtension(pi: ExtensionAPI) {
 			`Manage file-based todos in ${todosDirLabel} (list, list-all, get, create, update, append, delete, claim, release). ` +
 			"Title is the short summary; body is long-form markdown notes (update replaces, append adds). " +
 			"Todo ids are shown as TODO-<hex>; id parameters accept TODO-<hex> or the raw hex filename. " +
-			"Claim tasks before working on them to avoid conflicts, and close them when complete.",
-		parameters: TodoParams,
+			`Claim tasks before working on them to avoid conflicts. Prefer status \`closed\` when work is complete. Accepted terminal statuses: ${activeTodoDoneStatuses().join(", ")}.`,
+		parameters: todoParams(),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const todosDir = getTodosDir(ctx.cwd);
