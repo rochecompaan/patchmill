@@ -29,6 +29,15 @@ const validationCommands = [
   "nix build .#patchmill --print-build-logs",
 ];
 
+function summaryPathFromArgs(args) {
+  for (let index = args.length - 2; index >= 0; index -= 1) {
+    if (args[index] === "--summary-json" && !args[index + 1].startsWith("--")) {
+      return args[index + 1];
+    }
+  }
+  return undefined;
+}
+
 function parseArgs(args) {
   const options = {
     mode: "scheduled",
@@ -197,7 +206,11 @@ async function changedMetadataFiles() {
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  const options = {
+    summaryJson: summaryPathFromArgs(args),
+    validateOnly: false,
+  };
   const summary = {
     noUpdate: false,
     validateOnly: options.validateOnly,
@@ -208,6 +221,8 @@ async function main() {
   };
 
   try {
+    Object.assign(options, parseArgs(args));
+    summary.validateOnly = options.validateOnly;
     const packageJson = await readJson(packagePaths.packageJson);
     const currentPins = getRootPins(packageJson);
     const latestVersions =

@@ -48,6 +48,27 @@ test("update CLI creates parent directories for successful summaries", async () 
   }
 });
 
+test("update CLI records parse failures in the summary", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "patchmill-pi-deps-test-"));
+  const summaryPath = join(tempDir, "nested", "summary.json");
+
+  try {
+    const result = await runUpdateScript([
+      "--summary-json",
+      summaryPath,
+      "--mode",
+      "invalid",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /--mode must be scheduled or manual/);
+    const summary = JSON.parse(await readFile(summaryPath, "utf8"));
+    assert.match(summary.error, /--mode must be scheduled or manual/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("update CLI records actionable failures in the summary", async () => {
   const tempDir = await mkdtemp(join(tmpdir(), "patchmill-pi-deps-test-"));
   const summaryPath = join(tempDir, "nested", "summary.json");
