@@ -34,7 +34,7 @@ test("DEFAULT_PI_TASK_CONTRACT preserves the current Pi task conventions", () =>
       "checkpoint details",
       "the latest last error or validation notes",
     ],
-    doneStatuses: ["closed", "completed", "done"],
+    doneStatuses: ["closed", "completed", "complete", "done"],
     planTaskHeadingPattern: "## Task <number>: <label>",
     openTaskTodosBlockFinalHandoff: true,
   });
@@ -70,6 +70,11 @@ test("task contract helpers render and compile default issue todo patterns", () 
     true,
   );
   assert.equal(issueTodoStatusDone(DEFAULT_PI_TASK_CONTRACT, "open"), false);
+  assert.equal(
+    issueTodoStatusDone(DEFAULT_PI_TASK_CONTRACT, " Complete "),
+    true,
+  );
+  assert.equal(issueTodoStatusDone(DEFAULT_PI_TASK_CONTRACT, "DONE"), true);
 });
 
 test("task contract helpers compile default and custom plan heading patterns", () => {

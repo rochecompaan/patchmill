@@ -1,4 +1,8 @@
 import { isAbsolute, join } from "node:path";
+import {
+  DEFAULT_TODO_DONE_STATUSES,
+  todoStatusIsDone,
+} from "./todo-statuses.ts";
 
 export type PatchmillPiTaskContract = {
   todoRoot: string;
@@ -27,7 +31,7 @@ export const DEFAULT_PI_TASK_CONTRACT: PatchmillPiTaskContract = {
     "checkpoint details",
     "the latest last error or validation notes",
   ],
-  doneStatuses: ["closed", "completed", "done"],
+  doneStatuses: [...DEFAULT_TODO_DONE_STATUSES],
   planTaskHeadingPattern: "## Task <number>: <label>",
   openTaskTodosBlockFinalHandoff: true,
 };
@@ -125,7 +129,7 @@ export function issueTodoStatusDone(
   contract: PatchmillPiTaskContract,
   status: string | undefined,
 ): boolean {
-  return status !== undefined && contract.doneStatuses.includes(status);
+  return todoStatusIsDone(status, contract.doneStatuses);
 }
 
 export function compilePlanTaskHeadingPattern(

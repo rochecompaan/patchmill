@@ -35,7 +35,7 @@ test("DEFAULT_PATCHMILL_POLICY stays generic", () => {
       "checkpoint details",
       "the latest last error or validation notes",
     ],
-    doneStatuses: ["closed", "completed", "done"],
+    doneStatuses: ["closed", "completed", "complete", "done"],
     planTaskHeadingPattern: "## Task <number>: <label>",
     openTaskTodosBlockFinalHandoff: true,
   });
