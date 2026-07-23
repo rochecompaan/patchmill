@@ -168,6 +168,102 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
   );
 });
 
+test("runOneIssue accepts pr-created handoff when issue task todos are complete", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const selected = issue(
+    24,
+    ["agent-ready", "bug"],
+    "Accept complete todo status",
+  );
+  const existingPlanPath = join(
+    config.plansDir,
+    "2026-05-01-issue-24-accept-complete-todo-status.md",
+  );
+  const worktreePath =
+    ".worktrees/patchmill-issue-24-accept-complete-todo-status";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+  await mkdir(worktreeRoot, { recursive: true });
+  await writeFile(existingPlanPath, "# plan\n", "utf8");
+  await writeTodo(
+    worktreeRoot,
+    "task-1",
+    "issue-24-task-01-status-helper",
+    "complete",
+  );
+  await writeTodo(
+    worktreeRoot,
+    "task-2",
+    "issue-24-task-02-final-gate",
+    "complete",
+  );
+
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: `worktree ${worktreeRoot}\n`, stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-24-accept-complete-todo-status\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "abc123 implementation\n", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout:
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/24","branch":"agent/issue-24-accept-complete-todo-status","commits":["abc123"],"validation":["git diff --check ok"],"reviewSummary":"reviewed"}',
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+});
+
 test("runOneIssue accepts direct squash-landed implementation results when skills.landing is configured", async () => {
   const config = await makeConfig({
     dryRun: false,
