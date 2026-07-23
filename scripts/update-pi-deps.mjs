@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,6 +158,16 @@ async function updatePackageMetadata(packageJson, targets) {
   }
 }
 
+async function writeSummary(options, summary) {
+  if (!options.summaryJson) return;
+  await mkdir(dirname(options.summaryJson), { recursive: true });
+  await writeJson(options.summaryJson, summary);
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function changedMetadataFiles() {
   const output = await new Promise((resolve, reject) => {
     const child = spawn(
@@ -188,66 +198,89 @@ async function changedMetadataFiles() {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const packageJson = await readJson(packagePaths.packageJson);
-  const currentPins = getRootPins(packageJson);
-  const latestVersions =
-    options.mode === "scheduled"
-      ? Object.fromEntries(
-          await Promise.all(
-            PI_PACKAGES.map(async (name) => [
-              name,
-              await fetchLatestVersion(name),
-            ]),
-          ),
-        )
-      : undefined;
-  const resolved = resolveUpgradeTarget({
-    mode: options.mode,
-    currentPins,
-    latestVersions,
-    manualVersions: options.manualVersions,
-  });
   const summary = {
-    noUpdate: resolved.noUpdate,
+    noUpdate: false,
     validateOnly: options.validateOnly,
-    targets: resolved.targets,
-    warnings: resolved.warnings,
+    targets: {},
+    warnings: [],
     changedFiles: [],
     validationCommands,
   };
 
-  console.log(
-    `Current Pi pins: ${PI_PACKAGES.map((name) => `${name}=${currentPins[name]}`).join(", ")}`,
-  );
-  console.log(
-    `Selected Pi targets: ${PI_PACKAGES.map((name) => `${name}=${resolved.targets[name]}`).join(", ")}`,
-  );
+  try {
+    const packageJson = await readJson(packagePaths.packageJson);
+    const currentPins = getRootPins(packageJson);
+    const latestVersions =
+      options.mode === "scheduled"
+        ? Object.fromEntries(
+            await Promise.all(
+              PI_PACKAGES.map(async (name) => [
+                name,
+                await fetchLatestVersion(name),
+              ]),
+            ),
+          )
+        : undefined;
+    const resolved = resolveUpgradeTarget({
+      mode: options.mode,
+      currentPins,
+      latestVersions,
+      manualVersions: options.manualVersions,
+    });
+    Object.assign(summary, {
+      noUpdate: resolved.noUpdate,
+      targets: resolved.targets,
+      warnings: resolved.warnings,
+    });
 
-  if (!resolved.noUpdate && !options.validateOnly) {
-    await updatePackageMetadata(packageJson, resolved.targets);
+    console.log(
+      `Current Pi pins: ${PI_PACKAGES.map((name) => `${name}=${currentPins[name]}`).join(", ")}`,
+    );
+    console.log(
+      `Selected Pi targets: ${PI_PACKAGES.map((name) => `${name}=${resolved.targets[name]}`).join(", ")}`,
+    );
+
+    if (!resolved.noUpdate && !options.validateOnly) {
+      await updatePackageMetadata(packageJson, resolved.targets);
+    }
+
+    const [updatedPackageJson, packageLock, shrinkwrap] = await Promise.all([
+      readJson(packagePaths.packageJson),
+      readJson(packagePaths.packageLock),
+      readJson(packagePaths.shrinkwrap),
+    ]);
+    assertLockfilesMatchTargets({
+      packageJson: updatedPackageJson,
+      packageLock,
+      shrinkwrap,
+      targets: resolved.targets,
+    });
+
+    if (!resolved.noUpdate && !options.validateOnly && !options.skipNixHash) {
+      await run("scripts/update-npm-deps-hash.sh", []);
+    }
+    summary.changedFiles = await changedMetadataFiles();
+    console.log(
+      `Changed metadata files: ${summary.changedFiles.join(", ") || "none"}`,
+    );
+    if (resolved.noUpdate) console.log("No Pi dependency update available");
+    await writeSummary(options, summary);
+  } catch (error) {
+    summary.error = errorMessage(error);
+    try {
+      summary.changedFiles = await changedMetadataFiles();
+    } catch {
+      // Preserve the primary failure when Git cannot report changed metadata.
+    }
+    try {
+      await writeSummary(options, summary);
+    } catch (summaryError) {
+      console.error(
+        `Unable to write failure summary: ${errorMessage(summaryError)}`,
+      );
+    }
+    throw error;
   }
-
-  const [updatedPackageJson, packageLock, shrinkwrap] = await Promise.all([
-    readJson(packagePaths.packageJson),
-    readJson(packagePaths.packageLock),
-    readJson(packagePaths.shrinkwrap),
-  ]);
-  assertLockfilesMatchTargets({
-    packageJson: updatedPackageJson,
-    packageLock,
-    shrinkwrap,
-    targets: resolved.targets,
-  });
-
-  if (!resolved.noUpdate && !options.validateOnly && !options.skipNixHash) {
-    await run("scripts/update-npm-deps-hash.sh", []);
-  }
-  summary.changedFiles = await changedMetadataFiles();
-  console.log(
-    `Changed metadata files: ${summary.changedFiles.join(", ") || "none"}`,
-  );
-  if (resolved.noUpdate) console.log("No Pi dependency update available");
-  if (options.summaryJson) await writeJson(options.summaryJson, summary);
 }
 
 main().catch((error) => {
