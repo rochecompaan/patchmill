@@ -54,6 +54,21 @@ test("scheduled mode does not update equal or older numeric versions", () => {
   assert.deepEqual(result.targets, currentPins);
 });
 
+test("scheduled mode requires a newer version than both current pins", () => {
+  const pins = {
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@earendil-works/pi-tui": "0.80.12",
+  };
+  const result = resolveUpgradeTarget({
+    mode: "scheduled",
+    currentPins: pins,
+    latestVersions: newerVersions,
+  });
+
+  assert.equal(result.noUpdate, true);
+  assert.deepEqual(result.targets, pins);
+});
+
 test("manual mode warns when Pi package versions differ", () => {
   const result = resolveUpgradeTarget({
     mode: "manual",

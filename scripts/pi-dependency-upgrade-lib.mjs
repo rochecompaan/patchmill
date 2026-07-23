@@ -77,8 +77,8 @@ export function resolveUpgradeTarget({
         `Scheduled Pi upgrade requires matching latest versions: ${PI_PACKAGES[0]}=${codingAgent}, ${PI_PACKAGES[1]}=${tui}`,
       );
     }
-    const noUpdate = PI_PACKAGES.every(
-      (name) => compareVersions(codingAgent, currentPins[name]) <= 0,
+    const noUpdate = !PI_PACKAGES.every(
+      (name) => compareVersions(codingAgent, currentPins[name]) > 0,
     );
     return {
       noUpdate,
