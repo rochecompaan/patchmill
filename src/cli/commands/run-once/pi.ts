@@ -5,6 +5,10 @@ import {
   DEFAULT_PI_TASK_CONTRACT,
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
+import {
+  PI_TODO_DONE_STATUSES_ENV,
+  serializeTodoDoneStatuses,
+} from "../../../policy/todo-statuses.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import {
   piAgentCommandEnv,
@@ -504,6 +508,10 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
             PI_TODO_PATH:
               options?.taskContract?.todoRoot ??
               DEFAULT_PI_TASK_CONTRACT.todoRoot,
+            [PI_TODO_DONE_STATUSES_ENV]: serializeTodoDoneStatuses(
+              options?.taskContract?.doneStatuses ??
+                DEFAULT_PI_TASK_CONTRACT.doneStatuses,
+            ),
           }),
         },
       );
