@@ -30,23 +30,7 @@ jobs:
         run: npm test
 
       - name: Smoke test npm package install
-        run: |
-          package_tgz="$(npm pack --silent)"
-          smoke_dir="$(mktemp -d)"
-          npm_cache="$(mktemp -d)"
-          cleanup() {
-            rm -rf "$GITHUB_WORKSPACE/dist" "$GITHUB_WORKSPACE/$package_tgz" "$smoke_dir" "$npm_cache"
-          }
-          trap cleanup EXIT
-          mkdir -p "$smoke_dir/home" "$smoke_dir/config" "$smoke_dir/project"
-          cd "$smoke_dir/project"
-          npm init -y >/dev/null
-          npm_config_cache="$npm_cache" npm install "$GITHUB_WORKSPACE/$package_tgz"
-          ./node_modules/.bin/patchmill --help >/dev/null
-          HOME="$smoke_dir/home" \
-            XDG_CONFIG_HOME="$smoke_dir/config" \
-            ./node_modules/.bin/patchmill init >/dev/null
-          test -f .patchmill/skills/patchmill-issue-triage/SKILL.md
+        run: node scripts/smoke-packed-artifact.mjs
 
       - name: Lint
         run: npm run lint
