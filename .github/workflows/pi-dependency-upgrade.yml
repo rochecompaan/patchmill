@@ -1,0 +1,143 @@
+name: Pi dependency upgrade
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      target-version:
+        description: "Version to apply to both Pi runtime packages"
+        required: false
+        type: string
+      pi-coding-agent-version:
+        description: "Explicit @earendil-works/pi-coding-agent version"
+        required: false
+        type: string
+      pi-tui-version:
+        description: "Explicit @earendil-works/pi-tui version"
+        required: false
+        type: string
+      validate-only:
+        description: "Validate selected versions without creating a PR"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pi-dependency-upgrade
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Update Pi dependency metadata
+        id: update
+        env:
+          TARGET_VERSION: ${{ inputs.target-version }}
+          PI_CODING_AGENT_VERSION: ${{ inputs.pi-coding-agent-version }}
+          PI_TUI_VERSION: ${{ inputs.pi-tui-version }}
+          VALIDATE_ONLY: ${{ inputs.validate-only || false }}
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          args=(--summary-json .tmp/pi-deps-summary.json)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            args+=(--mode manual)
+            [[ -n "${TARGET_VERSION:-}" ]] && args+=(--target-version "$TARGET_VERSION")
+            [[ -n "${PI_CODING_AGENT_VERSION:-}" ]] && args+=(--pi-coding-agent-version "$PI_CODING_AGENT_VERSION")
+            [[ -n "${PI_TUI_VERSION:-}" ]] && args+=(--pi-tui-version "$PI_TUI_VERSION")
+            [[ "$VALIDATE_ONLY" == "true" ]] && args+=(--validate-only)
+          else
+            args+=(--mode scheduled)
+          fi
+          node scripts/update-pi-deps.mjs "${args[@]}"
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require("node:fs");
+          const summary = JSON.parse(fs.readFileSync(".tmp/pi-deps-summary.json", "utf8"));
+          const target = summary.targets["@earendil-works/pi-coding-agent"];
+          console.log(`no_update=${summary.noUpdate ? "true" : "false"}`);
+          console.log(`validate_only=${summary.validateOnly ? "true" : "false"}`);
+          console.log(`target_version=${target}`);
+          NODE
+
+      - name: Reinstall updated dependencies
+        if: steps.update.outputs.no_update != 'true'
+        run: npm ci
+
+      - name: Run Pi compatibility contract
+        if: steps.update.outputs.no_update != 'true'
+        run: node --test src/cli/commands/init/pi-dependency-contract.test.ts
+
+      - name: Run Node tests
+        if: steps.update.outputs.no_update != 'true'
+        run: npm test
+
+      - name: Run packed artifact smoke test
+        if: steps.update.outputs.no_update != 'true'
+        run: node scripts/smoke-packed-artifact.mjs
+
+      - name: Run lint
+        if: steps.update.outputs.no_update != 'true'
+        run: npm run lint
+
+      - name: Verify Nix npm dependency hash
+        if: steps.update.outputs.no_update != 'true'
+        run: |
+          scripts/update-npm-deps-hash.sh
+          if ! git diff --exit-code -- nix/package.nix; then
+            echo "::error file=nix/package.nix::npmDepsHash is stale after Pi dependency update."
+            exit 1
+          fi
+
+      - name: Build Nix package
+        if: steps.update.outputs.no_update != 'true'
+        run: nix build .#patchmill --print-build-logs
+
+      - name: Render pull request body
+        if: >-
+          steps.update.outputs.no_update != 'true' &&
+          steps.update.outputs.validate_only != 'true'
+        run: |
+          node -e 'import("./scripts/pi-dependency-upgrade-lib.mjs").then(({renderPullRequestBody}) => { const fs = require("node:fs"); const summary = JSON.parse(fs.readFileSync(".tmp/pi-deps-summary.json", "utf8")); fs.writeFileSync(".tmp/pi-deps-pr-body.md", renderPullRequestBody(summary)); })'
+
+      - name: Create or update Pi dependency upgrade PR
+        if: >-
+          steps.update.outputs.no_update != 'true' &&
+          steps.update.outputs.validate_only != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/pi-deps-${{ steps.update.outputs.target_version }}
+          delete-branch: true
+          title:
+            "chore(deps): update Pi runtime packages to ${{
+            steps.update.outputs.target_version }}"
+          body-path: .tmp/pi-deps-pr-body.md
+          commit-message:
+            "chore(deps): update Pi runtime packages to ${{
+            steps.update.outputs.target_version }}"
+          labels: dependencies, automated-pr
