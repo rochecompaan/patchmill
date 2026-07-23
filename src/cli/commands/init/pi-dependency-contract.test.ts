@@ -5,7 +5,15 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import * as piCodingAgent from "@earendil-works/pi-coding-agent";
 
-const EXPECTED_PI_VERSION = "0.80.10";
+const PI_PACKAGES = [
+  "@earendil-works/pi-coding-agent",
+  "@earendil-works/pi-tui",
+] as const;
+
+const ROOT_PACKAGE_JSON = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../package.json",
+);
 
 const REQUIRED_INIT_RUNTIME_EXPORTS = [
   "ModelRuntime",
@@ -18,6 +26,32 @@ type PackageJson = {
   version: string;
   dependencies?: Record<string, string>;
 };
+
+function isExactVersion(spec: string | undefined): spec is string {
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+    spec ?? "",
+  );
+}
+
+function rootPiPins(): Record<(typeof PI_PACKAGES)[number], string> {
+  const rootPackage = JSON.parse(
+    readFileSync(ROOT_PACKAGE_JSON, "utf8"),
+  ) as PackageJson;
+  const dependencies = rootPackage.dependencies ?? {};
+  const pins = {} as Record<(typeof PI_PACKAGES)[number], string>;
+
+  for (const name of PI_PACKAGES) {
+    const spec = dependencies[name];
+    assert.equal(
+      isExactVersion(spec),
+      true,
+      `${name} must be pinned to an exact version in package.json; found ${spec ?? "missing"}`,
+    );
+    pins[name] = spec;
+  }
+
+  return pins;
+}
 
 function packageJson(name: string): PackageJson {
   let packageDir = dirname(fileURLToPath(import.meta.resolve(name)));
@@ -39,15 +73,17 @@ function packageJson(name: string): PackageJson {
   throw new Error(`Could not locate package.json for ${name}`);
 }
 
-test("resolved Pi packages use the validated exact version", () => {
-  assert.equal(
-    packageJson("@earendil-works/pi-coding-agent").version,
-    EXPECTED_PI_VERSION,
-  );
-  assert.equal(
-    packageJson("@earendil-works/pi-tui").version,
-    EXPECTED_PI_VERSION,
-  );
+test("resolved Pi packages use the package.json exact pins", () => {
+  const pins = rootPiPins();
+
+  for (const name of PI_PACKAGES) {
+    const resolved = packageJson(name);
+    assert.equal(
+      resolved.version,
+      pins[name],
+      `${name} resolved ${resolved.version} but package.json pins ${pins[name]}`,
+    );
+  }
 });
 
 test("resolved pi-coding-agent exports the runtime symbols used by patchmill init", () => {
