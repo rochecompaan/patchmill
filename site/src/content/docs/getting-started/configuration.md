@@ -157,6 +157,38 @@ installs opt-in implementation skills such as:
 See [Skills configuration](/guides/skills-configuration/) for the full skill
 surface.
 
+## Clean up successful development environments
+
+Use the top-level `cleanupHook` when a successful implementation leaves local
+services or issue-specific development resources that a deterministic script can
+remove:
+
+```json
+{
+  "cleanupHook": "./scripts/cleanup.sh"
+}
+```
+
+Patchmill invokes the configured path through `bash` from the issue worktree.
+For example, a repository using a worktree-scoped Docker Compose project could
+provide:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+docker compose down --remove-orphans
+```
+
+Use the repository's own teardown command when it uses another environment tool.
+Make cleanup idempotent, namespace resources to the current issue or worktree,
+tolerate resources that are already absent, and leave Patchmill's Git worktree
+and branch intact.
+
+The hook runs only after a successful PR or merge handoff. See
+[Cleanup after successful handoff](/using-patchmill/run-once/#cleanup-after-successful-handoff)
+for ordering, retry, failure-reporting, and workspace-ownership details.
+
 ## Configure visual evidence paths
 
 Visual evidence has two parts:
