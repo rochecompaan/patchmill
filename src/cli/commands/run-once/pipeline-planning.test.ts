@@ -757,6 +757,120 @@ test("runOneIssue blocks required spec review when a created spec commit is unve
   assert.equal(state.checkpoints.specReadyCommentPosted, undefined);
 });
 
+test("runOneIssue blocks required spec publication when worktree content differs from its commit", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(
+    38,
+    ["agent-ready", "enhancement"],
+    "Changed spec worktree",
+  );
+  const specPath =
+    "docs/specs/2026-05-09-issue-38-changed-spec-worktree-design.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "cat-file") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "diff") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      assert.ok(call.cwd);
+      const absoluteSpecPath = join(call.cwd, specPath);
+      await mkdir(dirname(absoluteSpecPath), { recursive: true });
+      await writeFile(absoluteSpecPath, "# Changed spec\n", "utf8");
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "spec-created",
+          specPath,
+          commit: "spec123",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(
+    result.reason,
+    new RegExp(
+      `Cannot publish spec artifact ${specPath} from commit spec123 because worktree content differs from the committed artifact`,
+    ),
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "comment" &&
+        /Spec ready|patchmill-artifact/.test(commentBody(call)),
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args.includes("spec-review"),
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "diff" &&
+        call.args.includes("spec123") &&
+        call.args.includes(specPath),
+    ),
+    true,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 38), "utf8"),
+  );
+  assert.equal(state.checkpoints.specCreated, true);
+  assert.equal(state.checkpoints.specPublished, undefined);
+  assert.equal(state.checkpoints.specReadyCommentPosted, undefined);
+});
+
 test("runOneIssue stops at spec-review when agent-ready has an existing spec and spec approval is required", async () => {
   const config = await makeConfig({
     execute: true,

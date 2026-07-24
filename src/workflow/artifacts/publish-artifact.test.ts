@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -57,4 +57,30 @@ test("publishWorkflowArtifact rejects a path outside the configured artifact dir
     }),
     /spec path must be inside configured specsDir/,
   );
+});
+
+test("publishWorkflowArtifact rejects a symlink artifact without publishing", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-publish-"));
+  const artifactDir = join(repoRoot, "docs", "specs");
+  const artifactPath = join(artifactDir, "issue-42-design.md");
+  const targetPath = join(repoRoot, "README.md");
+  const comments: string[] = [];
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(targetPath, "# Repository\n", "utf8");
+  await symlink(targetPath, artifactPath);
+
+  await assert.rejects(
+    publishWorkflowArtifact({
+      kind: "spec",
+      issueNumber: 42,
+      repoRoot,
+      artifactPath,
+      artifactDir,
+      publishComment: async (_issueNumber, body) => {
+        comments.push(body);
+      },
+    }),
+    /is not a file/,
+  );
+  assert.deepEqual(comments, []);
 });

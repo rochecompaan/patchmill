@@ -38,6 +38,9 @@ function defaultGitPreflightResult(call: Call): CommandResult | undefined {
   if (call.command === "git" && call.args[0] === "cat-file") {
     return { code: 0, stdout: "", stderr: "" };
   }
+  if (call.command === "git" && call.args[0] === "diff") {
+    return { code: 0, stdout: "", stderr: "" };
+  }
   if (
     call.command === "git" &&
     call.args[0] === "worktree" &&

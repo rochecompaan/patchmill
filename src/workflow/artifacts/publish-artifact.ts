@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
   formatPublishedArtifactComment,
@@ -45,7 +45,7 @@ function pathInside(path: string, dir: string): boolean {
 }
 
 async function assertFile(path: string): Promise<void> {
-  const info = await stat(path);
+  const info = await lstat(path);
   if (!info.isFile()) throw new Error(`${path} is not a file`);
 }
 

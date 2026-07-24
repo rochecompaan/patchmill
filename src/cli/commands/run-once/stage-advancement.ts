@@ -157,12 +157,30 @@ async function assertCommittedArtifact(input: {
           { cwd: input.repoRoot },
         )
       : undefined;
-  if (commitResult.code === 0 && artifactResult?.code === 0) return;
+  if (commitResult.code !== 0 || artifactResult?.code !== 0) {
+    const output = gitFailureOutput(artifactResult ?? commitResult);
+    const detail = output ? `: ${output}` : "";
+    throw new Error(
+      `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because the committed artifact is not verifiable${detail}`,
+    );
+  }
 
-  const output = gitFailureOutput(artifactResult ?? commitResult);
+  const worktreeDiff = await input.runner.run(
+    "git",
+    ["diff", "--quiet", input.commit, "--", input.path],
+    { cwd: input.repoRoot },
+  );
+  if (worktreeDiff.code === 0) return;
+
+  const output = gitFailureOutput(worktreeDiff);
   const detail = output ? `: ${output}` : "";
+  if (worktreeDiff.code === 1) {
+    throw new Error(
+      `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because worktree content differs from the committed artifact${detail}`,
+    );
+  }
   throw new Error(
-    `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because the committed artifact is not verifiable${detail}`,
+    `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because the committed artifact worktree comparison failed${detail}`,
   );
 }
 
