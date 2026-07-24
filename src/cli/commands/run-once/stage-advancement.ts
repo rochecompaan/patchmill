@@ -431,19 +431,38 @@ export async function advancePlanningStages({
     config.approvalPolicy.specApproval.required &&
     specCreated &&
     specPath &&
+    !specCommit
+  ) {
+    throw new Error(
+      `Cannot publish spec artifact ${specPath} without a commit SHA`,
+    );
+  }
+
+  if (
+    config.approvalPolicy.specApproval.required &&
+    specCreated &&
+    specPath &&
     !checkpoints.specPublished
   ) {
     await runStep("publish spec artifact", async () => {
-      await publishWorkflowArtifact({
-        kind: "spec",
-        issueNumber: issue.number,
-        repoRoot: planningRepoRoot,
-        artifactPath: specPath,
-        artifactDir: planningSpecsDir,
-        publishComment: async (issueNumber, body) => {
-          await host.commentIssue(issueNumber, body);
-        },
-      });
+      try {
+        await publishWorkflowArtifact({
+          kind: "spec",
+          issueNumber: issue.number,
+          repoRoot: planningRepoRoot,
+          artifactPath: specPath,
+          artifactDir: planningSpecsDir,
+          publishComment: async (issueNumber, body) => {
+            await host.commentIssue(issueNumber, body);
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Failed to publish spec artifact ${specPath}: ${message}`,
+          { cause: error },
+        );
+      }
     });
     await writeRunState(
       config.runStateDir,
@@ -643,19 +662,38 @@ export async function advancePlanningStages({
     config.approvalPolicy.planApproval.required &&
     planCreated &&
     planPath &&
+    !planCommit
+  ) {
+    throw new Error(
+      `Cannot publish plan artifact ${planPath} without a commit SHA`,
+    );
+  }
+
+  if (
+    config.approvalPolicy.planApproval.required &&
+    planCreated &&
+    planPath &&
     !checkpoints.planPublished
   ) {
     await runStep("publish plan artifact", async () => {
-      await publishWorkflowArtifact({
-        kind: "plan",
-        issueNumber: issue.number,
-        repoRoot: planningRepoRoot,
-        artifactPath: planPath,
-        artifactDir: planningPlansDir,
-        publishComment: async (issueNumber, body) => {
-          await host.commentIssue(issueNumber, body);
-        },
-      });
+      try {
+        await publishWorkflowArtifact({
+          kind: "plan",
+          issueNumber: issue.number,
+          repoRoot: planningRepoRoot,
+          artifactPath: planPath,
+          artifactDir: planningPlansDir,
+          publishComment: async (issueNumber, body) => {
+            await host.commentIssue(issueNumber, body);
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Failed to publish plan artifact ${planPath}: ${message}`,
+          { cause: error },
+        );
+      }
     });
     await writeRunState(
       config.runStateDir,

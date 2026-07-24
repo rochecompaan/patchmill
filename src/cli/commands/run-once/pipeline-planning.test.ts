@@ -622,7 +622,12 @@ test("runOneIssue preserves a committed spec when required publication fails", a
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "blocked");
-  assert.match(result.reason, /artifact upload failed/);
+  assert.match(
+    result.reason,
+    new RegExp(
+      `Failed to publish spec artifact ${expectedSpecPath}: .*artifact upload failed`,
+    ),
+  );
   assert.equal(
     runner.calls.some(
       (call) =>
@@ -638,6 +643,98 @@ test("runOneIssue preserves a committed spec when required publication fails", a
   );
   assert.equal(state.specCommit, "abc123");
   assert.equal(state.checkpoints.specCreated, true);
+  assert.equal(state.checkpoints.specPublished, undefined);
+  assert.equal(state.checkpoints.specReadyCommentPosted, undefined);
+});
+
+test("runOneIssue blocks required spec review when a created spec has no commit", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(
+    36,
+    ["agent-ready", "enhancement"],
+    "Uncommitted spec",
+  );
+  const specPath = "docs/specs/2026-05-09-issue-36-uncommitted-spec-design.md";
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      assert.ok(call.cwd);
+      const absoluteSpecPath = join(call.cwd, specPath);
+      await mkdir(dirname(absoluteSpecPath), { recursive: true });
+      await writeFile(absoluteSpecPath, "# Uncommitted spec\n", "utf8");
+      return {
+        code: 0,
+        stdout: JSON.stringify({ status: "spec-created", specPath }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(
+    result.reason,
+    new RegExp(`Cannot publish spec artifact ${specPath} without a commit SHA`),
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "comment" &&
+        /Spec ready|patchmill-artifact/.test(commentBody(call)),
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args.includes("spec-review"),
+    ),
+    false,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 36), "utf8"),
+  );
+  assert.equal(state.checkpoints.specCreated, true);
+  assert.equal(state.specCommit, undefined);
   assert.equal(state.checkpoints.specPublished, undefined);
   assert.equal(state.checkpoints.specReadyCommentPosted, undefined);
 });
@@ -1582,7 +1679,12 @@ test("runOneIssue preserves a committed plan when required publication fails", a
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "blocked");
-  assert.match(result.reason, /plan upload failed/);
+  assert.match(
+    result.reason,
+    new RegExp(
+      `Failed to publish plan artifact ${planPath}: .*plan upload failed`,
+    ),
+  );
   assert.equal(
     runner.calls.some(
       (call) =>
@@ -1598,6 +1700,112 @@ test("runOneIssue preserves a committed plan when required publication fails", a
   );
   assert.equal(state.planCommit, "plan456");
   assert.equal(state.checkpoints.planCreated, true);
+  assert.equal(state.checkpoints.planPublished, undefined);
+  assert.equal(state.checkpoints.planReadyCommentPosted, undefined);
+});
+
+test("runOneIssue blocks required plan review when a created plan has no commit", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: approvalPolicy({ specRequired: false, planRequired: true }),
+  });
+  const selected = issue(
+    37,
+    ["agent-ready", "enhancement"],
+    "Uncommitted plan",
+  );
+  const specPath = "docs/specs/2026-05-09-issue-37-uncommitted-plan-design.md";
+  const planPath = "docs/plans/2026-05-09-issue-37-uncommitted-plan.md";
+  let piCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCalls += 1;
+      if (piCalls === 1) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            status: "spec-created",
+            specPath,
+            commit: "spec123",
+          }),
+          stderr: "",
+        };
+      }
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, planPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, "# Uncommitted plan\n", "utf8");
+      return {
+        code: 0,
+        stdout: JSON.stringify({ status: "plan-created", planPath }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(
+    result.reason,
+    new RegExp(`Cannot publish plan artifact ${planPath} without a commit SHA`),
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "comment" &&
+        /Plan ready|patchmill-artifact/.test(commentBody(call)),
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args.includes("plan-review"),
+    ),
+    false,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 37), "utf8"),
+  );
+  assert.equal(state.checkpoints.planCreated, true);
+  assert.equal(state.planCommit, undefined);
   assert.equal(state.checkpoints.planPublished, undefined);
   assert.equal(state.checkpoints.planReadyCommentPosted, undefined);
 });
