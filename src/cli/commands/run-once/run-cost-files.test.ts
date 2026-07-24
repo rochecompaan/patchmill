@@ -106,6 +106,30 @@ test("summarizeRunCost uses mtime only when session and filename timestamps are 
   );
 });
 
+test("summarizeRunCost parses captured JSONL before checking the post-read manifest", async () => {
+  let listings = 0;
+  const io: RunCostIo = {
+    async listJsonlFiles() {
+      listings += 1;
+      return listings === 1
+        ? ["/sessions/a.jsonl"]
+        : ["/sessions/a.jsonl", "/sessions/b.jsonl"];
+    },
+    async stat() {
+      return { size: 1, mtimeMs: 1 };
+    },
+    async readFile() {
+      return "{not-json}\n";
+    },
+  };
+
+  await assert.rejects(
+    () => summarizeRunCost("/sessions", io),
+    /Malformed Pi session JSON/u,
+  );
+  assert.equal(listings, 1);
+});
+
 test("summarizeRunCost rejects a session manifest that changes after reading", async () => {
   let listings = 0;
   const io: RunCostIo = {
@@ -119,7 +143,7 @@ test("summarizeRunCost rejects a session manifest that changes after reading", a
       return { size: 1, mtimeMs: 1 };
     },
     async readFile() {
-      return "";
+      return `${assistant("entry-a")}\n`;
     },
   };
 

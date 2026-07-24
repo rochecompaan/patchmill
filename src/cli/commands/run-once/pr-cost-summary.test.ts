@@ -37,6 +37,30 @@ test("renders escaped aggregate rows and replaces an existing generated region",
   assert.ok(result.endsWith("after"));
   assert.equal(upsertRunCostSection(result, report), result);
 });
+test("does not emit injected markers from table cells on retry", () => {
+  const maliciousReport = {
+    ...report,
+    stages: [
+      {
+        ...report.stages[0],
+        models: [
+          {
+            ...report.stages[0].models[0],
+            model: "<!-- patchmill-run-cost:start -->",
+          },
+        ],
+      },
+    ],
+  };
+
+  const once = upsertRunCostSection("Summary\n", maliciousReport);
+  assert.equal(upsertRunCostSection(once, maliciousReport), once);
+  assert.equal(
+    once.includes("| Implementation | <!-- patchmill-run-cost:start --> |"),
+    false,
+  );
+});
+
 test("rejects unsafe marker shapes", () => {
   assert.throws(
     () => upsertRunCostSection("<!-- patchmill-run-cost:start -->", report),

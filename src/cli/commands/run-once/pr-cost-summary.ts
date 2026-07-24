@@ -12,6 +12,8 @@ function escapeCell(value: string): string {
   return value
     .replaceAll("\\", "\\\\")
     .replaceAll("|", "\\|")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
     .replace(/[\r\n]+/gu, " ")
     .trim();
 }

@@ -87,6 +87,7 @@ export async function summarizeRunCost(
       content,
     });
   }
+  const report = aggregateRunCost(files);
   const afterPaths = await io.listJsonlFiles(piSessionPath);
   const after = new Map(
     await Promise.all(
@@ -97,5 +98,5 @@ export async function summarizeRunCost(
     throw new RunCostReportError(
       "Pi session files changed while calculating run cost",
     );
-  return aggregateRunCost(files);
+  return report;
 }
