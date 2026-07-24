@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
@@ -446,6 +446,12 @@ test("runOneIssue writes spec and stops at spec-review when spec approval is req
   const selected = issue(31, ["agent-ready", "enhancement"], "Needs spec");
   const expectedSpecPath =
     "docs/specs/2026-05-09-issue-31-needs-spec-design.md";
+  const specContent = "# Needs spec\n\nApproved behavior.\n";
+  const publishedSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: expectedSpecPath,
+    content: specContent,
+  });
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -478,6 +484,10 @@ test("runOneIssue writes spec and stops at spec-review when spec approval is req
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       assert.match(prompt, /Create a design spec/);
+      assert.ok(call.cwd);
+      const absoluteSpecPath = join(call.cwd, expectedSpecPath);
+      await mkdir(dirname(absoluteSpecPath), { recursive: true });
+      await writeFile(absoluteSpecPath, specContent, "utf8");
       return {
         code: 0,
         stdout: `spec done\n{"status":"spec-created","specPath":"${expectedSpecPath}","commit":"abc123"}`,
@@ -506,6 +516,130 @@ test("runOneIssue writes spec and stops at spec-review when spec approval is req
     "spec-review",
   );
   assert.equal(finalEdit.args.includes("agent-ready"), false);
+  const publishedIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      commentBody(call) === publishedSpec,
+  );
+  const readyIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      /Spec ready/.test(commentBody(call)),
+  );
+  const reviewLabelIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit" &&
+      call.args.includes("spec-review"),
+  );
+  assert.ok(publishedIndex >= 0);
+  assert.ok(publishedIndex < readyIndex);
+  assert.ok(readyIndex < reviewLabelIndex);
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 31), "utf8"),
+  );
+  assert.equal(state.checkpoints.specPublished, true);
+});
+
+test("runOneIssue preserves a committed spec when required publication fails", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const selected = issue(
+    34,
+    ["agent-ready", "enhancement"],
+    "Spec upload failure",
+  );
+  const expectedSpecPath =
+    "docs/specs/2026-05-09-issue-34-spec-upload-failure-design.md";
+  const specContent = "# Spec upload failure\n\nApproved behavior.\n";
+  const publishedSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: expectedSpecPath,
+    content: specContent,
+  });
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      commentBody(call) === publishedSpec
+    ) {
+      return { code: 1, stdout: "", stderr: "artifact upload failed" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      assert.ok(call.cwd);
+      const absoluteSpecPath = join(call.cwd, expectedSpecPath);
+      await mkdir(dirname(absoluteSpecPath), { recursive: true });
+      await writeFile(absoluteSpecPath, specContent, "utf8");
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "spec-created",
+          specPath: expectedSpecPath,
+          commit: "abc123",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /artifact upload failed/);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args.includes("spec-review"),
+    ),
+    false,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 34), "utf8"),
+  );
+  assert.equal(state.specCommit, "abc123");
+  assert.equal(state.checkpoints.specCreated, true);
+  assert.equal(state.checkpoints.specPublished, undefined);
+  assert.equal(state.checkpoints.specReadyCommentPosted, undefined);
 });
 
 test("runOneIssue stops at spec-review when agent-ready has an existing spec and spec approval is required", async () => {
@@ -847,6 +981,10 @@ test("runOneIssue treats a newly-created replacement spec as needing fresh appro
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       assert.match(prompt, /Create a design spec/);
+      assert.ok(call.cwd);
+      const absoluteSpecPath = join(call.cwd, expectedSpecPath);
+      await mkdir(dirname(absoluteSpecPath), { recursive: true });
+      await writeFile(absoluteSpecPath, "# Missing approved spec\n", "utf8");
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -996,6 +1134,7 @@ test("runOneIssue resumes approved spec review with saved planning worktree", as
       checkpoints: {
         specPathResolved: true,
         specCreated: true,
+        specPublished: true,
         specReadyCommentPosted: true,
         readyLabelRestored: true,
       },

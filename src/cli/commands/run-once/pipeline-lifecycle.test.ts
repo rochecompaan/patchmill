@@ -26,10 +26,14 @@ test("workflowTransition describes approval transitions", async () => {
 });
 
 test("effectiveCheckpoints drops resume-only side-effect checkpoints for fresh runs", () => {
-  assert.deepEqual(effectiveCheckpoints({ claimed: true }), undefined);
-  assert.deepEqual(effectiveCheckpoints({ claimed: true }, true), {
-    claimed: true,
-  });
+  assert.deepEqual(
+    effectiveCheckpoints({ claimed: true, specPublished: true }),
+    undefined,
+  );
+  assert.deepEqual(
+    effectiveCheckpoints({ claimed: true, specPublished: true }, true),
+    { claimed: true, specPublished: true },
+  );
 });
 
 test("lifecycleLabels resolves configured labels", async () => {

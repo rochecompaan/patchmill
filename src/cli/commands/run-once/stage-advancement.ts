@@ -1,5 +1,6 @@
 import { isAbsolute, join, relative } from "node:path";
 import type { IssueHostProvider } from "../../../host/types.ts";
+import { publishWorkflowArtifact } from "../../../workflow/artifacts/publish-artifact.ts";
 import {
   profileExtensionArgs,
   runOncePlanningPiProfile,
@@ -424,6 +425,41 @@ export async function advancePlanningStages({
         issueNumber: issue.number,
       });
     });
+  }
+
+  if (
+    config.approvalPolicy.specApproval.required &&
+    specCreated &&
+    specPath &&
+    !checkpoints.specPublished
+  ) {
+    await runStep("publish spec artifact", async () => {
+      await publishWorkflowArtifact({
+        kind: "spec",
+        issueNumber: issue.number,
+        repoRoot: planningRepoRoot,
+        artifactPath: specPath,
+        artifactDir: planningSpecsDir,
+        publishComment: async (issueNumber, body) => {
+          await host.commentIssue(issueNumber, body);
+        },
+      });
+    });
+    await writeRunState(
+      config.runStateDir,
+      {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "planning",
+        ...planningWorkspaceState(),
+        specPath,
+        specCommit,
+        checkpoints: { specPublished: true },
+      },
+      timestamp,
+    );
+    checkpoints.specPublished = true;
+    await emitSimpleStep(issue.number, "publish spec");
   }
 
   const hasCurrentSpecApproval =
