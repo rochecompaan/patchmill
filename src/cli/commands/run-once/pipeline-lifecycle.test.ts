@@ -31,8 +31,11 @@ test("effectiveCheckpoints drops resume-only side-effect checkpoints for fresh r
     undefined,
   );
   assert.deepEqual(
-    effectiveCheckpoints({ claimed: true, specPublished: true }, true),
-    { claimed: true, specPublished: true },
+    effectiveCheckpoints(
+      { claimed: true, specPublished: true, planPublished: true },
+      true,
+    ),
+    { claimed: true, specPublished: true, planPublished: true },
   );
 });
 

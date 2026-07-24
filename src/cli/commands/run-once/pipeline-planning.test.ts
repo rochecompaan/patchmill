@@ -1071,6 +1071,10 @@ test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-
         prompt,
         new RegExp(specPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
       );
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, expectedPlanPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, "# Generated plan\n", "utf8");
       return {
         code: 0,
         stdout: `plan done\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"def456"}`,
@@ -1204,6 +1208,10 @@ test("runOneIssue resumes approved spec review with saved planning worktree", as
         prompt,
         new RegExp(specPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
       );
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, planPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, "# Generated plan\n", "utf8");
       return {
         code: 0,
         stdout: `plan done\n{"status":"plan-created","planPath":"${planPath}","commit":"def456"}`,
@@ -1257,6 +1265,7 @@ test("runOneIssue re-adds in-progress when approved plan resumes from saved plan
         claimed: true,
         planPathResolved: true,
         planCreated: true,
+        planPublished: true,
         planReadyCommentPosted: true,
         readyLabelRestored: true,
       },
@@ -1371,6 +1380,18 @@ test("runOneIssue writes spec then plan and stops at plan-review when only plan 
     "docs/specs/2026-05-09-issue-33-needs-spec-and-plan-design.md";
   const expectedPlanPath =
     "docs/plans/2026-05-09-issue-33-needs-spec-and-plan.md";
+  const specContent = "# Generated spec\n\nPlanning context.\n";
+  const planContent = "# Generated plan\n\n- [ ] Implement behavior.\n";
+  const publishedSpec = formatPublishedArtifactComment({
+    kind: "spec",
+    path: expectedSpecPath,
+    content: specContent,
+  });
+  const publishedPlan = formatPublishedArtifactComment({
+    kind: "plan",
+    path: expectedPlanPath,
+    content: planContent,
+  });
   let piCalls = 0;
   const runner = createMockRunner(async (call) => {
     if (
@@ -1404,12 +1425,20 @@ test("runOneIssue writes spec then plan and stops at plan-review when only plan 
     if (call.command === "pi") {
       piCalls += 1;
       if (piCalls === 1) {
+        assert.ok(call.cwd);
+        const absoluteSpecPath = join(call.cwd, expectedSpecPath);
+        await mkdir(dirname(absoluteSpecPath), { recursive: true });
+        await writeFile(absoluteSpecPath, specContent, "utf8");
         return {
           code: 0,
           stdout: `{"status":"spec-created","specPath":"${expectedSpecPath}","commit":"abc123"}`,
           stderr: "",
         };
       }
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, expectedPlanPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, planContent, "utf8");
       return {
         code: 0,
         stdout: `{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"def456"}`,
@@ -1427,6 +1456,150 @@ test("runOneIssue writes spec then plan and stops at plan-review when only plan 
   assert.equal(result.specPath, expectedSpecPath);
   assert.equal(result.planPath, expectedPlanPath);
   assert.equal(piCalls, 2);
+  const commentBodies = runner.calls
+    .filter((call) => call.command === "tea" && call.args[0] === "comment")
+    .map(commentBody);
+  assert.equal(commentBodies.includes(publishedSpec), false);
+  assert.equal(commentBodies.includes(publishedPlan), true);
+  const publishedIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      commentBody(call) === publishedPlan,
+  );
+  const readyIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      /Plan ready/.test(commentBody(call)),
+  );
+  const reviewLabelIndex = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "edit" &&
+      call.args.includes("plan-review"),
+  );
+  assert.ok(publishedIndex >= 0);
+  assert.ok(publishedIndex < readyIndex);
+  assert.ok(readyIndex < reviewLabelIndex);
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 33), "utf8"),
+  );
+  assert.equal(state.checkpoints.specPublished, undefined);
+  assert.equal(state.checkpoints.planPublished, true);
+});
+
+test("runOneIssue preserves a committed plan when required publication fails", async () => {
+  const config = await makeConfig({
+    execute: true,
+    dryRun: false,
+    approvalPolicy: approvalPolicy({ specRequired: false, planRequired: true }),
+  });
+  const selected = issue(
+    35,
+    ["agent-ready", "enhancement"],
+    "Plan upload failure",
+  );
+  const specPath =
+    "docs/specs/2026-05-09-issue-35-plan-upload-failure-design.md";
+  const planPath = "docs/plans/2026-05-09-issue-35-plan-upload-failure.md";
+  const planContent = "# Plan upload failure\n\n- [ ] Implement behavior.\n";
+  const publishedPlan = formatPublishedArtifactComment({
+    kind: "plan",
+    path: planPath,
+    content: planContent,
+  });
+  let piCalls = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "comment" &&
+      commentBody(call) === publishedPlan
+    ) {
+      return { code: 1, stdout: "", stderr: "plan upload failed" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      piCalls += 1;
+      if (piCalls === 1) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            status: "spec-created",
+            specPath,
+            commit: "spec123",
+          }),
+          stderr: "",
+        };
+      }
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, planPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, planContent, "utf8");
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "plan-created",
+          planPath,
+          commit: "plan456",
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /plan upload failed/);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit" &&
+        call.args.includes("plan-review"),
+    ),
+    false,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 35), "utf8"),
+  );
+  assert.equal(state.planCommit, "plan456");
+  assert.equal(state.checkpoints.planCreated, true);
+  assert.equal(state.checkpoints.planPublished, undefined);
+  assert.equal(state.checkpoints.planReadyCommentPosted, undefined);
 });
 
 test("runOneIssue stops after finding an existing plan when plan approval is required", async () => {
@@ -1537,6 +1710,10 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       assert.match(prompt, /Create an implementation plan/);
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, expectedPlanPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, "# Generated plan\n", "utf8");
       return {
         code: 0,
         stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
@@ -1609,6 +1786,10 @@ test("runOneIssue ignores stale plan approval when a new plan is created", async
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       assert.match(prompt, /Create an implementation plan/);
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, expectedPlanPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, "# Generated plan\n", "utf8");
       return {
         code: 0,
         stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
@@ -1916,6 +2097,7 @@ test("runOneIssue plan-only keeps planning resumable when the plan-ready comment
     dryRun: false,
     execute: true,
     planOnly: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
   });
   const selected = issue(
     13,
@@ -1924,6 +2106,12 @@ test("runOneIssue plan-only keeps planning resumable when the plan-ready comment
   );
   const expectedPlanPath =
     "docs/plans/2026-05-09-issue-13-recover-plan-only-comment-failure.md";
+  const planContent = "# Retry plan\n\n- [ ] Recover publication.\n";
+  const publishedPlan = formatPublishedArtifactComment({
+    kind: "plan",
+    path: expectedPlanPath,
+    content: planContent,
+  });
   let commentCalls = 0;
   const runner = createMockRunner(async (call) => {
     if (
@@ -1961,12 +2149,16 @@ test("runOneIssue plan-only keeps planning resumable when the plan-ready comment
 
     if (call.command === "tea" && call.args[0] === "comment") {
       commentCalls += 1;
-      return commentCalls === 2
+      return commentCalls === 3
         ? { code: 1, stdout: "", stderr: "comment exploded" }
         : { code: 0, stdout: "", stderr: "" };
     }
 
     if (call.command === "pi") {
+      assert.ok(call.cwd);
+      const absolutePlanPath = join(call.cwd, expectedPlanPath);
+      await mkdir(dirname(absolutePlanPath), { recursive: true });
+      await writeFile(absolutePlanPath, planContent, "utf8");
       return {
         code: 0,
         stdout: `planning...\n{"status":"plan-created","planPath":"${expectedPlanPath}","commit":"abc123"}`,
@@ -2005,6 +2197,88 @@ test("runOneIssue plan-only keeps planning resumable when the plan-ready comment
   );
   assert.equal(runState.status, "planning");
   assert.equal(runState.planCommit, "abc123");
+  assert.equal(runState.checkpoints.planPublished, true);
   assert.equal(runState.checkpoints.readyLabelRestored, undefined);
   assert.equal(runState.checkpoints.planReadyCommentPosted, undefined);
+
+  const retrySelected = { ...selected, labels: ["in-progress", "bug"] };
+  const retryWorktreePath =
+    ".worktrees/patchmill-issue-13-recover-plan-only-comment-failure";
+  const retryRunner = createMockRunner(async (call) => {
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, retryWorktreePath)}\n`,
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[1] === retryWorktreePath &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout: "agent/issue-13-recover-plan-only-comment-failure\n",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([retrySelected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      throw new Error("Pi should not rerun after a persisted plan");
+    }
+    throw new Error(
+      `unexpected retry command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const retry = await runOneIssue(retryRunner, config, { now: NOW });
+  assert.equal(
+    retry.status,
+    "plan-created",
+    retry.status === "blocked" ? retry.reason : undefined,
+  );
+  assert.equal(
+    retryRunner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "comment" &&
+        commentBody(call) === publishedPlan,
+    ),
+    false,
+  );
 });

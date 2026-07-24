@@ -639,6 +639,43 @@ export async function advancePlanningStages({
     });
   }
 
+  if (
+    config.approvalPolicy.planApproval.required &&
+    planCreated &&
+    planPath &&
+    !checkpoints.planPublished
+  ) {
+    await runStep("publish plan artifact", async () => {
+      await publishWorkflowArtifact({
+        kind: "plan",
+        issueNumber: issue.number,
+        repoRoot: planningRepoRoot,
+        artifactPath: planPath,
+        artifactDir: planningPlansDir,
+        publishComment: async (issueNumber, body) => {
+          await host.commentIssue(issueNumber, body);
+        },
+      });
+    });
+    await writeRunState(
+      config.runStateDir,
+      {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "planning",
+        ...planningWorkspaceState(),
+        specPath,
+        specCommit,
+        planPath,
+        planCommit,
+        checkpoints: { planPublished: true },
+      },
+      timestamp,
+    );
+    checkpoints.planPublished = true;
+    await emitSimpleStep(issue.number, "publish plan");
+  }
+
   const planGate = decidePlanApprovalGate({
     labels,
     planOnly: config.planOnly,
