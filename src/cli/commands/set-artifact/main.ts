@@ -8,6 +8,7 @@ import {
   publishWorkflowArtifact,
   type PublishComment,
 } from "../../../workflow/artifacts/publish-artifact.ts";
+export type { PublishComment } from "../../../workflow/artifacts/publish-artifact.ts";
 import { createCommandRunner } from "../triage/command.ts";
 
 export type SetArtifactOutput = {
