@@ -78,6 +78,7 @@ const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
   "planReadyCommentPosted",
   "worktreeReady",
   "implementationCompleted",
+  "prCostSummaryUpdated",
   "visualEvidenceValidated",
   "handoffCommentPosted",
   "doneLabelEnsured",
