@@ -149,6 +149,51 @@ test("writeRunState preserves issue details, timestamps, and last error across s
   assert.deepEqual(reread, finished);
 });
 
+test("writeRunState preserves a persisted cost report when checkpointing its publication", async () => {
+  const runStateDir = await mkdtemp(
+    join(tmpdir(), "patchmill-run-cost-state-"),
+  );
+  const runCostReport = {
+    stages: [
+      {
+        stage: "pi-implementation",
+        models: [
+          {
+            model: "gpt-5.5",
+            promptTokens: 6,
+            outputTokens: 4,
+            estimatedCostUsd: 0.1,
+          },
+        ],
+        promptTokens: 6,
+        outputTokens: 4,
+        estimatedCostUsd: 0.1,
+      },
+    ],
+    promptTokens: 6,
+    outputTokens: 4,
+    estimatedCostUsd: 0.1,
+  };
+  await writeRunState(runStateDir, {
+    issueNumber: 45,
+    title: "Resume cost publication",
+    status: "implementing",
+    implementationStatus: "pr-created",
+    prUrl: "https://github.com/acme/repo/pull/45",
+    runCostReport,
+    checkpoints: { implementationCompleted: true },
+  });
+
+  const state = await writeRunState(runStateDir, {
+    issueNumber: 45,
+    status: "implementing",
+    checkpoints: { prCostSummaryUpdated: true },
+  });
+
+  assert.deepEqual(state.runCostReport, runCostReport);
+  assert.equal(state.checkpoints.prCostSummaryUpdated, true);
+});
+
 test("writeRunState merges checkpoint updates", async () => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "agent-issue-run-state-checkpoints-"),

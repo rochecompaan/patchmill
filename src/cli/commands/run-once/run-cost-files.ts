@@ -45,7 +45,9 @@ function startedAt(content: string, path: string, fallback: number): number {
       /* aggregation reports nonblank malformed JSON */
     }
   }
-  const match = /^(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d\dZ)_/u.exec(basename(path));
+  const match = /^(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-\d\d\dZ)_/u.exec(
+    basename(path),
+  );
   if (match) {
     const time = Date.parse(
       match[1].replace(/T(\d\d)-(\d\d)-(\d\d)-(\d\d\d)Z/u, "T$1:$2:$3.$4Z"),
