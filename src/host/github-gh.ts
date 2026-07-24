@@ -1,3 +1,7 @@
+import {
+  readGitHubPullRequestBody,
+  updateGitHubPullRequestBody,
+} from "./github-pr-body.ts";
 import type {
   CommandResult,
   CommandRunner,
@@ -13,6 +17,7 @@ import type {
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,
+  PullRequestBodyHostProvider,
 } from "./types.ts";
 
 const ISSUE_LIST_JSON_FIELDS =
@@ -213,7 +218,10 @@ function isRepositoryNotFound(result: CommandResult): boolean {
 }
 
 export class GitHubGhHostProvider
-  implements IssueHostProvider, RepositorySetupHostProvider
+  implements
+    IssueHostProvider,
+    RepositorySetupHostProvider,
+    PullRequestBodyHostProvider
 {
   readonly id = "github-gh" as const;
   readonly displayName = "GitHub via gh";
@@ -222,6 +230,14 @@ export class GitHubGhHostProvider
 
   constructor(options: GitHubGhHostOptions) {
     this.options = options;
+  }
+
+  readPullRequestBody(prUrl: string): Promise<string> {
+    return readGitHubPullRequestBody(this.options, prUrl);
+  }
+
+  updatePullRequestBody(prUrl: string, body: string): Promise<void> {
+    return updateGitHubPullRequestBody(this.options, prUrl, body);
   }
 
   async checkCli(): Promise<HostCliCheck> {
