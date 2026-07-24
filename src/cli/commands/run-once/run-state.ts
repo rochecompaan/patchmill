@@ -98,6 +98,7 @@ function mergeRunState(
     "validation",
     "reviewSummary",
     "landingDecision",
+    "runCostReport",
     "visualEvidence",
   ].some((key) => Object.hasOwn(update, key));
   const implementationStatus = hasImplementationUpdate
@@ -127,6 +128,12 @@ function mergeRunState(
   const landingDecision = hasImplementationUpdate
     ? update.landingDecision
     : existingImplementation?.landingDecision;
+  const runCostReport =
+    update.implementationStatus === "merged"
+      ? undefined
+      : hasImplementationUpdate
+        ? update.runCostReport
+        : existingImplementation?.runCostReport;
   const visualEvidence = hasImplementationUpdate
     ? update.visualEvidence
     : existingImplementation?.visualEvidence;
@@ -176,6 +183,7 @@ function mergeRunState(
     validation,
     reviewSummary,
     landingDecision,
+    runCostReport,
     visualEvidence,
     handoffCommentPosted: handoffCommentPosted ? true : undefined,
     failureCommentKeys,
@@ -222,6 +230,9 @@ function mergeRunState(
   }
   if (landingDecision === undefined) {
     delete next.landingDecision;
+  }
+  if (runCostReport === undefined) {
+    delete next.runCostReport;
   }
   if (visualEvidence === undefined) {
     delete next.visualEvidence;

@@ -228,6 +228,34 @@ export async function writePiSessionMessage(
   );
 }
 
+export async function writePiPricedSessionMessage(
+  call: Call,
+  input: {
+    id: string;
+    model: string;
+    input: number;
+    cacheRead: number;
+    cacheWrite: number;
+    output: number;
+    estimatedCostUsd: number;
+  },
+): Promise<void> {
+  const sessionDirIndex = call.args.indexOf("--session-dir");
+  assert.ok(
+    sessionDirIndex >= 0,
+    `expected --session-dir in ${call.args.join(" ")}`,
+  );
+  const sessionDir = call.args[sessionDirIndex + 1];
+  assert.ok(sessionDir);
+  const sessionSubdir = join(sessionDir, "--repo--");
+  await mkdir(sessionSubdir, { recursive: true });
+  await writeFile(
+    join(sessionSubdir, "priced-session.jsonl"),
+    `${JSON.stringify({ type: "session", id: "session-priced", timestamp: "2026-07-19T12:00:00.000Z" })}\n${JSON.stringify({ type: "message", id: input.id, message: { role: "assistant", model: input.model, usage: { input: input.input, cacheRead: input.cacheRead, cacheWrite: input.cacheWrite, output: input.output, cost: { total: input.estimatedCostUsd } } } })}\n`,
+    "utf8",
+  );
+}
+
 export async function piSessionPath(call: Call): Promise<string> {
   const sessionDirIndex = call.args.indexOf("--session-dir");
   assert.ok(

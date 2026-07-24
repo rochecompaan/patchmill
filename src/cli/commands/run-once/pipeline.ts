@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
-import { createIssueHostProvider } from "../../../host/factory.ts";
+import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
@@ -64,6 +64,7 @@ import {
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
+import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
 import {
   runPiSessionPath,
   type AgentIssueProgressEvent,
@@ -102,7 +103,7 @@ export async function runOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  const host = createIssueHostProvider({
+  const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
     host: config.host,
@@ -618,6 +619,19 @@ export async function runOneIssue(
     labels = implementationStage.labels;
     checkpoints.worktreeReady = true;
 
+    const runCostReport = await resolvePipelineRunCost({
+      implementationKind: implementationStage.kind,
+      implementationStatus: implementationStage.result.status,
+      piSessionPath: runOptions.piSessionPath,
+      persistedReport: existingState?.runCostReport,
+      warn: (message, error) =>
+        progress(runOptions, "warning", "run-cost", message, {
+          issueNumber: issue.number,
+          data: error instanceof Error ? error.message : String(error ?? ""),
+          consoleMessage: `Warning: ${message}`,
+        }),
+    });
+
     const finishStage = await runPipelineFinishStage({
       runner,
       host,
@@ -630,6 +644,7 @@ export async function runOneIssue(
       needsInfoLabel: needsInfo,
       checkpoints,
       implemented: implementationStage.result,
+      runCostReport,
       specPath,
       specCommit,
       planPath,

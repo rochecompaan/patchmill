@@ -19,7 +19,9 @@ import type {
   CommandRunner,
   IssueSummary,
 } from "./types.ts";
-import type { IssueHostProvider } from "../../../host/types.ts";
+import type { RunOnceHostProvider } from "../../../host/types.ts";
+import type { RunCostReport } from "./run-cost.ts";
+import { publishPrRunCost } from "./pr-cost-publication.ts";
 import type { PipelineSuccessfulImplementationResult } from "./pipeline-implementation.ts";
 
 export type PipelineFinishStageResult =
@@ -28,7 +30,7 @@ export type PipelineFinishStageResult =
 
 export type PipelineFinishStageOptions = {
   runner: CommandRunner;
-  host: IssueHostProvider;
+  host: RunOnceHostProvider;
   config: AgentIssueConfig;
   issue: IssueSummary;
   labels: string[];
@@ -38,6 +40,7 @@ export type PipelineFinishStageOptions = {
   needsInfoLabel: string;
   checkpoints: Record<string, boolean | undefined>;
   implemented: PipelineSuccessfulImplementationResult;
+  runCostReport?: RunCostReport;
   specPath: string | undefined;
   specCommit: string | undefined;
   planPath: string | undefined;
@@ -100,6 +103,7 @@ export async function runPipelineFinishStage(
         validation: implemented.validation,
         reviewSummary: implemented.reviewSummary,
         landingDecision: implemented.landingDecision,
+        runCostReport: options.runCostReport,
         visualEvidence:
           implemented.status === "pr-created"
             ? implemented.visualEvidence
@@ -110,6 +114,50 @@ export async function runPipelineFinishStage(
       timestamp,
     );
     checkpoints.implementationCompleted = true;
+
+    if (
+      implemented.status === "pr-created" &&
+      options.runCostReport &&
+      !checkpoints.prCostSummaryUpdated
+    ) {
+      try {
+        const publication = await publishPrRunCost({
+          host,
+          prUrl: implemented.prUrl,
+          report: options.runCostReport,
+        });
+        await writeRunState(
+          config.runStateDir,
+          {
+            issueNumber: issue.number,
+            status: "implementing",
+            checkpoints: { prCostSummaryUpdated: true },
+          },
+          timestamp,
+        );
+        checkpoints.prCostSummaryUpdated = true;
+        await emitProgress(
+          runOptions,
+          "info",
+          "run-cost",
+          `PR run-cost summary ${publication}`,
+          { issueNumber: issue.number, data: options.runCostReport },
+        );
+      } catch (error) {
+        await emitProgress(
+          runOptions,
+          "warning",
+          "run-cost",
+          "Patchmill could not update the PR run-cost summary",
+          {
+            issueNumber: issue.number,
+            data: error instanceof Error ? error.message : String(error),
+            consoleMessage:
+              "Warning: Patchmill could not update the PR run-cost summary",
+          },
+        );
+      }
+    }
 
     if (
       implemented.status === "pr-created" &&
@@ -146,6 +194,7 @@ export async function runPipelineFinishStage(
           validation: implemented.validation,
           reviewSummary: implemented.reviewSummary,
           landingDecision: implemented.landingDecision,
+          runCostReport: options.runCostReport,
           visualEvidence: validatedEvidence,
           checkpoints: { visualEvidenceValidated: true },
         },

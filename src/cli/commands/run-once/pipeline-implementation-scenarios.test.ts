@@ -254,6 +254,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       "finding plan",
       "creating plan with pi",
       "running implementation with pi",
+      "Patchmill could not calculate the PR run-cost summary",
       "PR created: https://forgejo.example/pr/15",
       "removed local worktree .worktrees/patchmill-issue-15-ship-automation-pipeline",
       "deleted local branch agent/issue-15-ship-automation-pipeline",

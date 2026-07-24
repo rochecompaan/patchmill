@@ -1,4 +1,8 @@
 import {
+  readForgejoPullRequestBody,
+  updateForgejoPullRequestBody,
+} from "./forgejo-pr-body.ts";
+import {
   applyIssueLabels,
   commentIssue,
   createLabel as createLabelWithTea,
@@ -18,6 +22,7 @@ import type {
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,
+  PullRequestBodyHostProvider,
 } from "./types.ts";
 
 export type ForgejoTeaHostOptions = {
@@ -141,7 +146,10 @@ function isDefaultTeaLogin(entry: TeaLoginEntry): boolean {
 }
 
 export class ForgejoTeaHostProvider
-  implements IssueHostProvider, RepositorySetupHostProvider
+  implements
+    IssueHostProvider,
+    RepositorySetupHostProvider,
+    PullRequestBodyHostProvider
 {
   readonly id = "forgejo-tea" as const;
   readonly displayName = "Forgejo via tea";
@@ -150,6 +158,14 @@ export class ForgejoTeaHostProvider
 
   constructor(options: ForgejoTeaHostOptions) {
     this.options = options;
+  }
+
+  readPullRequestBody(prUrl: string): Promise<string> {
+    return readForgejoPullRequestBody(this.options, prUrl);
+  }
+
+  updatePullRequestBody(prUrl: string, body: string): Promise<void> {
+    return updateForgejoPullRequestBody(this.options, prUrl, body);
   }
 
   async checkCli(): Promise<HostCliCheck> {
