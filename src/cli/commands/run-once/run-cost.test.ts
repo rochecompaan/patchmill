@@ -66,3 +66,43 @@ test("rejects conflicting accounting and invalid persisted totals", () => {
     undefined,
   );
 });
+
+test("rejects empty persisted reports while accepting recorded zero usage", () => {
+  const zeroModel = {
+    model: "local-model",
+    promptTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsd: 0,
+  };
+  const zeroStage = {
+    stage: "pi-plan",
+    models: [zeroModel],
+    promptTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsd: 0,
+  };
+  const zeroReport = {
+    stages: [zeroStage],
+    promptTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsd: 0,
+  };
+
+  assert.equal(
+    parseRunCostReport({
+      stages: [],
+      promptTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+    }),
+    undefined,
+  );
+  assert.equal(
+    parseRunCostReport({
+      ...zeroReport,
+      stages: [{ ...zeroStage, models: [] }],
+    }),
+    undefined,
+  );
+  assert.deepEqual(parseRunCostReport(zeroReport), zeroReport);
+});

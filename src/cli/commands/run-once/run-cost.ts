@@ -184,6 +184,7 @@ export function parseRunCostReport(value: unknown): RunCostReport | undefined {
   if (
     !raw ||
     !Array.isArray(raw.stages) ||
+    raw.stages.length === 0 ||
     !validNumber(raw.promptTokens) ||
     !validNumber(raw.outputTokens) ||
     !validNumber(raw.estimatedCostUsd)
@@ -196,6 +197,7 @@ export function parseRunCostReport(value: unknown): RunCostReport | undefined {
       !stage ||
       typeof stage.stage !== "string" ||
       !Array.isArray(stage.models) ||
+      stage.models.length === 0 ||
       !validNumber(stage.promptTokens) ||
       !validNumber(stage.outputTokens) ||
       !validNumber(stage.estimatedCostUsd)
