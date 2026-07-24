@@ -33,6 +33,24 @@ labels, and cleanup remain optional; never infer them from plan completion.
 **REQUIRED SUB-SKILL:** Use `using-git-worktrees` before creating an isolated
 workspace. Keep task commands scoped to that worktree.
 
+### Planning-only worktrees
+
+When a worktree is used solely to create or review a specification and
+implementation plan:
+
+- Create or reuse the required isolated worktree.
+- Verify that its Git state is clean.
+- Do not bootstrap the development environment, install dependencies, start
+  services, or run baseline test suites.
+- Defer environment setup and test execution to the implementation workflow.
+
+Only perform additional setup or verification when it is necessary to answer a
+specific design question or validate a planning assumption; document the reason
+when doing so.
+
+This rule overrides generic worktree setup and baseline-test guidance for
+planning-only sessions.
+
 ## Produce the artifacts
 
 Follow the loaded planning skill. Create and review the spec, create and review
