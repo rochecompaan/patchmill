@@ -16,7 +16,7 @@ export type AgentIssueStepEvent =
 
 export type AgentIssueProgressEvent = {
   time: string;
-  level: "info" | "heartbeat" | "error" | "debug";
+  level: "info" | "warning" | "heartbeat" | "error" | "debug";
   stage: string;
   message: string;
   consoleMessage?: string;
