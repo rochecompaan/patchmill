@@ -11,9 +11,9 @@ means before implementation starts:
 - a **spec** describes the design, scope, and constraints;
 - a **plan** describes the implementation tasks Patchmill should execute.
 
-Developers often create these documents while discussing an issue. Patchmill can
-reuse them, but only after they are published in Patchmill's deterministic issue
-comment format.
+Developers often create these documents while discussing an issue.
+Human-authored or pre-existing artifacts can be reused after publication in
+Patchmill's deterministic issue comment format.
 
 ## Publish specs and plans
 
@@ -62,6 +62,25 @@ file and publish it with `set-spec` or `set-plan`.
 `set-spec` and `set-plan` publish file contents to the issue. They do not commit
 the local files. Commit source spec and plan files through the normal repository
 workflow when your team wants those files in git.
+
+## Automatic publication for required reviews
+
+When `run-once` creates a spec or plan whose approval gate is required, it:
+
+1. commits the artifact in the local issue worktree;
+2. publishes the committed file to the issue in the same deterministic format as
+   `set-spec` or `set-plan`;
+3. posts the concise ready comment;
+4. applies the configured review label; and
+5. stops for manual approval.
+
+The issue comment is the review surface because the planning branch remains
+local until implementation creates or lands a pull request. If publication
+fails, Patchmill preserves the committed workspace and does not request review.
+
+Automatic publication is limited to the artifact whose approval gate is
+required. Continue using `set-spec` and `set-plan` for human-authored or
+pre-existing artifacts.
 
 ## Updating an artifact
 
