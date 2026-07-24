@@ -1,25 +1,20 @@
 #!/usr/bin/env node
-import { readFile, stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
 import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
+import { type WorkflowArtifactKind } from "../../../workflow/artifacts/published-artifacts.ts";
 import {
-  formatPublishedArtifactComment,
-  type WorkflowArtifactKind,
-} from "../../../workflow/artifacts/published-artifacts.ts";
+  publishWorkflowArtifact,
+  type PublishComment,
+} from "../../../workflow/artifacts/publish-artifact.ts";
+export type { PublishComment } from "../../../workflow/artifacts/publish-artifact.ts";
 import { createCommandRunner } from "../triage/command.ts";
 
 export type SetArtifactOutput = {
   stdout: (line: string) => void;
   stderr: (line: string) => void;
 };
-
-export type PublishComment = (
-  issueNumber: number,
-  body: string,
-) => Promise<void>;
 
 export type SetArtifactCommandOptions = {
   repoRoot?: string;
@@ -109,24 +104,6 @@ function parseArgs(args: string[]): ParsedArgs {
   return parsed;
 }
 
-function normalizeRepoPath(repoRoot: string, absolutePath: string): string {
-  return relative(repoRoot, absolutePath).replaceAll("\\", "/");
-}
-
-function pathInside(path: string, dir: string): boolean {
-  const absoluteDir = resolve(dir);
-  const absolutePath = resolve(path);
-  const rel = relative(absoluteDir, absolutePath);
-  return (
-    rel.length === 0 || (!rel.startsWith("..") && !rel.includes(`..${sep}`))
-  );
-}
-
-async function assertFile(path: string): Promise<void> {
-  const info = await stat(path);
-  if (!info.isFile()) throw new Error(`${path} is not a file`);
-}
-
 async function defaultPublishComment(
   repoRoot: string,
   args: string[],
@@ -170,32 +147,21 @@ export async function runSetArtifactCommand(
   const repoRoot = options.repoRoot ?? cwd();
   const env = options.env ?? process.env;
   const config = await loadConfigForValidation(repoRoot, env, args);
-  const absolutePath = isAbsolute(parsed.path)
-    ? resolve(parsed.path)
-    : resolve(repoRoot, parsed.path);
   const expectedDir =
     kind === "spec" ? config.paths.specsDir : config.paths.plansDir;
-  const expectedDirName = kind === "spec" ? "specsDir" : "plansDir";
-  if (!pathInside(absolutePath, expectedDir)) {
-    throw new Error(
-      `${artifactName(kind)} path must be inside configured ${expectedDirName}`,
-    );
-  }
-  await assertFile(absolutePath);
-
-  const repoPath = normalizeRepoPath(repoRoot, absolutePath);
-  const content = await readFile(absolutePath, "utf8");
-  const body = formatPublishedArtifactComment({
-    kind,
-    path: repoPath,
-    content,
-  });
   const publishComment =
     options.publishComment ??
     (await defaultPublishComment(repoRoot, args, env));
-  await publishComment(parsed.issueNumber, body);
+  const published = await publishWorkflowArtifact({
+    kind,
+    issueNumber: parsed.issueNumber,
+    repoRoot,
+    artifactPath: parsed.path,
+    artifactDir: expectedDir,
+    publishComment,
+  });
   output.stdout(
-    `Set ${artifactName(kind)} for issue #${parsed.issueNumber} from ${repoPath}.`,
+    `Set ${artifactName(kind)} for issue #${parsed.issueNumber} from ${published.path}.`,
   );
   return 0;
 }

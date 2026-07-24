@@ -1,5 +1,6 @@
 import { isAbsolute, join, relative } from "node:path";
 import type { IssueHostProvider } from "../../../host/types.ts";
+import { publishWorkflowArtifact } from "../../../workflow/artifacts/publish-artifact.ts";
 import {
   profileExtensionArgs,
   runOncePlanningPiProfile,
@@ -128,6 +129,59 @@ function repoPath(
   }
 
   return { absolute: join(repoRoot, path), relative: path };
+}
+
+function gitFailureOutput(result: { stdout: string; stderr: string }): string {
+  return [result.stderr.trim(), result.stdout.trim()]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function assertCommittedArtifact(input: {
+  runner: CommandRunner;
+  repoRoot: string;
+  kind: "spec" | "plan";
+  path: string;
+  commit: string;
+}): Promise<void> {
+  const commitResult = await input.runner.run(
+    "git",
+    ["cat-file", "-e", "--", `${input.commit}^{commit}`],
+    { cwd: input.repoRoot },
+  );
+  const artifactResult =
+    commitResult.code === 0
+      ? await input.runner.run(
+          "git",
+          ["cat-file", "-e", "--", `${input.commit}:${input.path}`],
+          { cwd: input.repoRoot },
+        )
+      : undefined;
+  if (commitResult.code !== 0 || artifactResult?.code !== 0) {
+    const output = gitFailureOutput(artifactResult ?? commitResult);
+    const detail = output ? `: ${output}` : "";
+    throw new Error(
+      `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because the committed artifact is not verifiable${detail}`,
+    );
+  }
+
+  const worktreeDiff = await input.runner.run(
+    "git",
+    ["diff", "--quiet", input.commit, "--", input.path],
+    { cwd: input.repoRoot },
+  );
+  if (worktreeDiff.code === 0) return;
+
+  const output = gitFailureOutput(worktreeDiff);
+  const detail = output ? `: ${output}` : "";
+  if (worktreeDiff.code === 1) {
+    throw new Error(
+      `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because worktree content differs from the committed artifact${detail}`,
+    );
+  }
+  throw new Error(
+    `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because the committed artifact worktree comparison failed${detail}`,
+  );
 }
 
 function nextLabels(
@@ -426,6 +480,67 @@ export async function advancePlanningStages({
     });
   }
 
+  if (
+    config.approvalPolicy.specApproval.required &&
+    specCreated &&
+    specPath &&
+    !specCommit
+  ) {
+    throw new Error(
+      `Cannot publish spec artifact ${specPath} without a commit SHA`,
+    );
+  }
+
+  if (
+    config.approvalPolicy.specApproval.required &&
+    specCreated &&
+    specPath &&
+    !checkpoints.specPublished
+  ) {
+    await runStep("publish spec artifact", async () => {
+      await assertCommittedArtifact({
+        runner,
+        repoRoot: planningRepoRoot,
+        kind: "spec",
+        path: specPath,
+        commit: specCommit,
+      });
+      try {
+        await publishWorkflowArtifact({
+          kind: "spec",
+          issueNumber: issue.number,
+          repoRoot: planningRepoRoot,
+          artifactPath: specPath,
+          artifactDir: planningSpecsDir,
+          publishComment: async (issueNumber, body) => {
+            await host.commentIssue(issueNumber, body);
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Failed to publish spec artifact ${specPath}: ${message}`,
+          { cause: error },
+        );
+      }
+    });
+    await writeRunState(
+      config.runStateDir,
+      {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "planning",
+        ...planningWorkspaceState(),
+        specPath,
+        specCommit,
+        checkpoints: { specPublished: true },
+      },
+      timestamp,
+    );
+    checkpoints.specPublished = true;
+    await emitSimpleStep(issue.number, "publish spec");
+  }
+
   const hasCurrentSpecApproval =
     issue.labels.includes(config.approvalPolicy.specApproval.approvedLabel) &&
     !specCreatedThisRun;
@@ -601,6 +716,69 @@ export async function advancePlanningStages({
         issueNumber: issue.number,
       });
     });
+  }
+
+  if (
+    config.approvalPolicy.planApproval.required &&
+    planCreated &&
+    planPath &&
+    !planCommit
+  ) {
+    throw new Error(
+      `Cannot publish plan artifact ${planPath} without a commit SHA`,
+    );
+  }
+
+  if (
+    config.approvalPolicy.planApproval.required &&
+    planCreated &&
+    planPath &&
+    !checkpoints.planPublished
+  ) {
+    await runStep("publish plan artifact", async () => {
+      await assertCommittedArtifact({
+        runner,
+        repoRoot: planningRepoRoot,
+        kind: "plan",
+        path: planPath,
+        commit: planCommit,
+      });
+      try {
+        await publishWorkflowArtifact({
+          kind: "plan",
+          issueNumber: issue.number,
+          repoRoot: planningRepoRoot,
+          artifactPath: planPath,
+          artifactDir: planningPlansDir,
+          publishComment: async (issueNumber, body) => {
+            await host.commentIssue(issueNumber, body);
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Failed to publish plan artifact ${planPath}: ${message}`,
+          { cause: error },
+        );
+      }
+    });
+    await writeRunState(
+      config.runStateDir,
+      {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "planning",
+        ...planningWorkspaceState(),
+        specPath,
+        specCommit,
+        planPath,
+        planCommit,
+        checkpoints: { planPublished: true },
+      },
+      timestamp,
+    );
+    checkpoints.planPublished = true;
+    await emitSimpleStep(issue.number, "publish plan");
   }
 
   const planGate = decidePlanApprovalGate({
