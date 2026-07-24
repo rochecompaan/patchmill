@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.18.0](https://github.com/rochecompaan/patchmill/compare/v0.17.0...v0.18.0) (2026-07-24)
+
+
+### Features
+
+* **ci:** automate Pi dependency upgrade PRs ([#112](https://github.com/rochecompaan/patchmill/issues/112)) ([51a74b2](https://github.com/rochecompaan/patchmill/commit/51a74b2e496bf87277fb060fe0f74ec63e1e5eea))
+* **doctor:** Show Pi resource profiles in patchmill doctor ([#99](https://github.com/rochecompaan/patchmill/issues/99)) ([67ef0e0](https://github.com/rochecompaan/patchmill/commit/67ef0e0601bd52cb6edf373b7dbcbc55f6ba396e))
+* **pi:** Upgrade Patchmill to Pi 0.80.10 ([#101](https://github.com/rochecompaan/patchmill/issues/101)) ([365b78c](https://github.com/rochecompaan/patchmill/commit/365b78cabb0b5adfee92b55db3f26ee9649827e6))
+* **run-once:** Add run-once cost breakdown to PR summaries ([#113](https://github.com/rochecompaan/patchmill/issues/113)) ([dcccb33](https://github.com/rochecompaan/patchmill/commit/dcccb333b965a577e9811835a74e2e2fc12af402))
+* **run-once:** Publish approval-gated run-once artifacts for review ([#114](https://github.com/rochecompaan/patchmill/issues/114)) ([40fd24c](https://github.com/rochecompaan/patchmill/commit/40fd24cae53d3c75a40a3d89dbf238eac65c7ccf))
+* **skills:** add interactive Patchmill planning skill ([c550406](https://github.com/rochecompaan/patchmill/commit/c550406f6b1def73ee1a6106259cce5500280509))
+* **skills:** Prevent handoff with failed validation or PR checks ([#103](https://github.com/rochecompaan/patchmill/issues/103)) ([ac06e8d](https://github.com/rochecompaan/patchmill/commit/ac06e8d5153f68c5c763e142290329f101809cf6))
+
+
+### Bug Fixes
+
+* **run-once:** Fix todo terminal status compatibility ([#111](https://github.com/rochecompaan/patchmill/issues/111)) ([5ffb046](https://github.com/rochecompaan/patchmill/commit/5ffb046dc7d923758d67c0d6aca92744e5ca00d1))
+* **skills:** Prevent implementation handoff with unresolved subagents ([#105](https://github.com/rochecompaan/patchmill/issues/105)) ([75283f5](https://github.com/rochecompaan/patchmill/commit/75283f59ab17513d3724e5b5c826d59ea95cacc3))
+* **skills:** skip setup in planning-only worktrees ([7b1c6aa](https://github.com/rochecompaan/patchmill/commit/7b1c6aa54f6ae829c8370c3ef5a6b3b0a6281122))
+
 ## [0.17.0](https://github.com/rochecompaan/patchmill/compare/v0.16.0...v0.17.0) (2026-07-17)
 
 
