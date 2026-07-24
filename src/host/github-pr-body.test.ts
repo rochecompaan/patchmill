@@ -7,6 +7,41 @@ import {
 } from "./github-pr-body.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
 
+test("GitHub PR body adapter reads the configured PR body", async () => {
+  const calls: Array<{
+    command: string;
+    args: string[];
+    options: unknown;
+  }> = [];
+  const runner: CommandRunner = {
+    async run(command, args, options) {
+      calls.push({ command, args, options });
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          body: "Summary\n",
+          url: "https://github.com/acme/repo/pull/42",
+        }),
+        stderr: "",
+      };
+    },
+  };
+
+  const body = await readGitHubPullRequestBody(
+    { runner, repoRoot: "/repo" },
+    "https://github.com/acme/repo/pull/42",
+  );
+
+  assert.equal(body, "Summary\n");
+  assert.deepEqual(calls, [
+    {
+      command: "gh",
+      args: ["pr", "view", "42", "--json", "body,url"],
+      options: { cwd: "/repo", env: { GH_REPO: undefined } },
+    },
+  ]);
+});
+
 test("GitHub PR body adapter rejects a body returned for another repository", async () => {
   const runner: CommandRunner = {
     async run() {

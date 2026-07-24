@@ -26,6 +26,50 @@ async function withRepo(
   }
 }
 
+test("Forgejo PR body adapter reads the configured PR body", async () => {
+  await withRepo(async (repoRoot) => {
+    const calls: Array<{
+      command: string;
+      args: string[];
+      options: unknown;
+    }> = [];
+    const runner: CommandRunner = {
+      async run(command, args, options) {
+        calls.push({ command, args, options });
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            body: "Summary\n",
+            html_url: "https://git.example/acme/repo/pulls/42",
+          }),
+          stderr: "",
+        };
+      },
+    };
+
+    const body = await readForgejoPullRequestBody(
+      { runner, repoRoot, login: "robot" },
+      "https://git.example/acme/repo/pulls/42",
+    );
+
+    assert.equal(body, "Summary\n");
+    assert.deepEqual(calls, [
+      {
+        command: "tea",
+        args: [
+          "api",
+          "/repos/{owner}/{repo}/pulls/42",
+          "--repo",
+          "acme/repo",
+          "--login",
+          "robot",
+        ],
+        options: { cwd: repoRoot },
+      },
+    ]);
+  });
+});
+
 test("Forgejo PR body adapter validates returned repository URLs", async () => {
   await withRepo(async (repoRoot) => {
     const runner: CommandRunner = {
