@@ -16,6 +16,7 @@ import {
   createMockRunner,
   promptPath,
   workflowPiCalls,
+  writePiPricedSessionMessage,
 } from "../../../../test-support/run-once/mock-runner.ts";
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import {
@@ -42,6 +43,125 @@ const LANDING_SKILLS = {
 };
 
 const cleanupHook = "./scripts/cleanup.sh";
+
+test("runOneIssue calculates and publishes a fresh priced implementation session", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const selected = issue(47, ["plan-approved"], "Publish fresh run cost");
+  const planPath = "docs/plans/2026-05-09-issue-47-publish-fresh-run-cost.md";
+  const prUrl = "https://forgejo.example/acme/repo/pulls/47";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "tea" && call.args[0] === "api") {
+      assert.equal(call.args[1], "/repos/{owner}/{repo}/pulls/47");
+      return {
+        code: 0,
+        stdout: JSON.stringify({ body: "Summary\n", html_url: prUrl }),
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "pulls" &&
+      call.args[1] === "edit"
+    ) {
+      const description = call.args[call.args.indexOf("--description") + 1];
+      assert.match(description ?? "", /patchmill-run-cost:start/u);
+      assert.match(description ?? "", /\$0\.1250/u);
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea") return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      (call.args[1] === "list" || call.args[1] === "add")
+    )
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "pi") {
+      await writePiPricedSessionMessage(call, {
+        id: "fresh-priced-entry",
+        model: "gpt-5.5",
+        input: 10,
+        cacheRead: 20,
+        cacheWrite: 30,
+        output: 4,
+        estimatedCostUsd: 0.125,
+      });
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl,
+          branch: "agent/issue-47-publish-fresh-run-cost",
+          commits: ["abc123"],
+          validation: ["npm test"],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 47), "utf8"),
+  ) as {
+    checkpoints?: Record<string, boolean>;
+    runCostReport?: {
+      promptTokens: number;
+      outputTokens: number;
+      estimatedCostUsd: number;
+    };
+  };
+  assert.deepEqual(state.runCostReport, {
+    stages: [
+      {
+        stage: "pi-implementation",
+        models: [
+          {
+            model: "gpt-5.5",
+            promptTokens: 60,
+            outputTokens: 4,
+            estimatedCostUsd: 0.125,
+          },
+        ],
+        promptTokens: 60,
+        outputTokens: 4,
+        estimatedCostUsd: 0.125,
+      },
+    ],
+    promptTokens: 60,
+    outputTokens: 4,
+    estimatedCostUsd: 0.125,
+  });
+  assert.equal(state.checkpoints?.prCostSummaryUpdated, true);
+});
 
 test("runOneIssue reuses existing implementation result on resume without rerunning pi", async () => {
   const config = await makeConfig({
