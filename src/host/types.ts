@@ -70,6 +70,11 @@ export type HostCliCheck =
   | { ok: true; message: string }
   | { ok: false; message: string; remediation: string[] };
 
+export type PullRequestBodyHostProvider = {
+  readPullRequestBody(prUrl: string): Promise<string>;
+  updatePullRequestBody(prUrl: string, body: string): Promise<void>;
+};
+
 export type IssueHostProvider = {
   readonly id: PatchmillHostProviderId;
   readonly displayName: string;
@@ -84,3 +89,6 @@ export type IssueHostProvider = {
   applyLabels(change: LabelChangePlan): Promise<void>;
   commentIssue(issueNumber: number, body: string): Promise<void>;
 };
+
+export type RunOnceHostProvider = IssueHostProvider &
+  PullRequestBodyHostProvider;

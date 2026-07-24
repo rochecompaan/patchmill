@@ -5,6 +5,7 @@ import { GitHubGhHostProvider } from "./github-gh.ts";
 import type {
   IssueHostProvider,
   RepositorySetupHostProvider,
+  RunOnceHostProvider,
 } from "./types.ts";
 
 function createHostProvider(options: {
@@ -40,5 +41,13 @@ export function createIssueHostProvider(options: {
   repoRoot: string;
   host: PatchmillHostConfig;
 }): IssueHostProvider {
+  return createHostProvider(options);
+}
+
+export function createRunOnceHostProvider(options: {
+  runner: CommandRunner;
+  repoRoot: string;
+  host: PatchmillHostConfig;
+}): RunOnceHostProvider {
   return createHostProvider(options);
 }
