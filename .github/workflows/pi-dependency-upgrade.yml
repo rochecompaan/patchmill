@@ -2,7 +2,7 @@ name: Pi dependency upgrade
 
 on:
   schedule:
-    - cron: "17 6 * * 1"
+    - cron: "17 6 * * *"
   workflow_dispatch:
     inputs:
       target-version:
