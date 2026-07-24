@@ -127,13 +127,23 @@ jobs:
         run: |
           node -e 'import("./scripts/pi-dependency-upgrade-lib.mjs").then(({renderPullRequestBody}) => { const fs = require("node:fs"); const summary = JSON.parse(fs.readFileSync(".tmp/pi-deps-summary.json", "utf8")); fs.writeFileSync(".tmp/pi-deps-pr-body.md", renderPullRequestBody(summary)); })'
 
+      - name: Create automation bot token
+        id: app-token
+        if: >-
+          steps.update.outputs.no_update != 'true' &&
+          steps.update.outputs.validate_only != 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_BOT_PRIVATE_KEY }}
+
       - name: Create or update Pi dependency upgrade PR
         if: >-
           steps.update.outputs.no_update != 'true' &&
           steps.update.outputs.validate_only != 'true'
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.PATCHMILL_AUTOMATION_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           add-paths: |
             package.json
             package-lock.json
