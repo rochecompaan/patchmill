@@ -237,7 +237,7 @@ test("runOneIssue emits visible implementation subtask step labels", async () =>
         worktreeRoot,
         "task-1",
         "issue-15-task-01-date-range-model",
-        "closed",
+        "complete",
       );
       await writeTodo(
         worktreeRoot,

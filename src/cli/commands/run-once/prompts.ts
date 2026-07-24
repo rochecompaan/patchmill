@@ -1,6 +1,10 @@
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import {
+  normalizeTodoDoneStatuses,
+  todoCompletionStatus,
+} from "../../../policy/todo-statuses.ts";
+import {
   DEFAULT_PATCHMILL_SKILLS,
   type PatchmillSkillsConfig,
 } from "../../../workflow/skills.ts";
@@ -313,6 +317,14 @@ function renderTaskTodoBodyRequirements(requirements: string[]): string {
   return renderConjoinedList(requirements);
 }
 
+function renderTerminalStatuses(taskContract: PatchmillPiTaskContract): string {
+  return renderConjoinedList(
+    normalizeTodoDoneStatuses(taskContract.doneStatuses).map(
+      (status) => `\`${status}\``,
+    ),
+  );
+}
+
 function renderTaskContractTodoWorkflowLines(
   taskContract: PatchmillPiTaskContract,
   stage: "plan" | "implementation",
@@ -324,6 +336,8 @@ function renderTaskContractTodoWorkflowLines(
   );
   const todoTitleGlob = renderIssueTodoTitleGlob(taskContract, issueNumber);
   const todoTags = renderTaskTodoTags(taskContract, issueNumber);
+  const terminalStatusLine = `- This contract treats ${renderTerminalStatuses(taskContract)} as terminal.`;
+  const completionStatus = todoCompletionStatus(taskContract.doneStatuses);
   const sharedLines = [
     `- Store issue task todos under \`${taskContract.todoRoot}\`.`,
     ...(todoTags.length > 0 ? [`- Tag each task todo with ${todoTags}.`] : []),
@@ -342,7 +356,8 @@ function renderTaskContractTodoWorkflowLines(
             `- Each task todo body must include: ${renderTaskTodoBodyRequirements(taskContract.planTodoBodyRequirements)}.`,
           ]
         : []),
-      "- After the plan document is committed, mark the plan-related task todos complete so they reflect the committed plan state.",
+      terminalStatusLine,
+      `- After the plan document is committed, set the plan-related task todo status to \`${completionStatus}\` so they reflect the committed plan state.`,
     ];
   }
 
@@ -363,7 +378,8 @@ function renderTaskContractTodoWorkflowLines(
       : []),
     "- Do not create a single broad implementation todo.",
     "- Claim or update the current task todo before doing work on that task.",
-    "- Mark a task todo complete only after code, tests, review, fixes, and verification for that task are done.",
+    `- Set a task todo status to \`${completionStatus}\` only after code, tests, review, fixes, and verification for that task are done.`,
+    terminalStatusLine,
   ];
 
   if (taskContract.openTaskTodosBlockFinalHandoff) {

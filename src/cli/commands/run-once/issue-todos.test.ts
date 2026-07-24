@@ -52,6 +52,28 @@ test("readIssueTodoTasks returns sorted implementation task labels", async () =>
   ]);
 });
 
+test("issue todo readers treat every default terminal status as done", async () => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "agent-issue-complete-status-"),
+  );
+  await writeTodo(repoRoot, "a", "issue-19-task-01-first", " complete ");
+  await writeTodo(repoRoot, "b", "issue-19-task-02-second", "COMPLETED");
+  await writeTodo(repoRoot, "c", "issue-19-task-03-third", "Done");
+  await writeTodo(repoRoot, "d", "issue-19-task-04-fourth", "closed");
+
+  const tasks = await readIssueTodoTasks(repoRoot, 19);
+  assert.deepEqual(
+    tasks.map((task) => task.done),
+    [true, true, true, true],
+  );
+  assert.deepEqual(await issueTodoProgress(repoRoot, 19), {
+    current: 4,
+    total: 4,
+    label: "fourth",
+  });
+  await assertIssueTodosComplete(repoRoot, 19);
+});
+
 test("issueTodoProgress includes the current task label", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-progress-"));
   await writeTodo(repoRoot, "a", "issue-19-task-01-date-range-model", "closed");

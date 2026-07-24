@@ -174,7 +174,11 @@ test("buildPlanCreationPrompt includes issue context, workflow rules, and result
   );
   assert.match(
     prompt,
-    /After the plan document is committed, mark the plan-related task todos complete/,
+    /After the plan document is committed, set the plan-related task todo status to `closed`/,
+  );
+  assert.match(
+    prompt,
+    /This contract treats `closed`, `completed`, `complete`, and `done` as terminal/,
   );
   assert.match(prompt, /Number: #42/);
   assert.match(prompt, /Title: Add once runner helpers/);
@@ -467,7 +471,11 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   );
   assert.match(
     prompt,
-    /Mark a task todo complete only after code, tests, review, fixes, and verification/,
+    /Set a task todo status to `closed` only after code, tests, review, fixes, and verification/,
+  );
+  assert.match(
+    prompt,
+    /This contract treats `closed`, `completed`, `complete`, and `done` as terminal/,
   );
   assert.match(
     prompt,
@@ -972,7 +980,7 @@ test("task contract overrides drive todo instructions in plan and implementation
           "checkpoint details",
           "latest validation",
         ],
-        doneStatuses: ["shipped"],
+        doneStatuses: [" Shipped ", "shipped"],
         planTaskHeadingPattern: "### Step <number> - <label>",
         openTaskTodosBlockFinalHandoff: false,
       },
@@ -1004,6 +1012,12 @@ test("task contract overrides drive todo instructions in plan and implementation
     /Each task todo body must include: purpose, plan checklist item, and checkpoint details/,
   );
   assert.match(planPrompt, /work-42-step-<two-digit-number>-<slug>/);
+  assert.match(planPrompt, /This contract treats `shipped` as terminal/);
+  assert.doesNotMatch(planPrompt, /` Shipped `|`shipped` and `shipped`/);
+  assert.match(
+    planPrompt,
+    /After the plan document is committed, set the plan-related task todo status to `shipped`/,
+  );
   assert.match(
     implementationPrompt,
     /Store issue task todos under `\.patchmill\/todos`/,
@@ -1017,6 +1031,22 @@ test("task contract overrides drive todo instructions in plan and implementation
     /Each task todo body must include: purpose, plan checklist item, checkpoint details, and latest validation/,
   );
   assert.match(implementationPrompt, /work-42-step-<two-digit-number>-<slug>/);
+  assert.match(
+    implementationPrompt,
+    /This contract treats `shipped` as terminal/,
+  );
+  assert.doesNotMatch(
+    implementationPrompt,
+    /` Shipped `|`shipped` and `shipped`/,
+  );
+  assert.match(
+    implementationPrompt,
+    /Set a task todo status to `shipped` only after code, tests, review, fixes, and verification/,
+  );
+  assert.doesNotMatch(
+    implementationPrompt,
+    /`complete`, and `done` as terminal/,
+  );
   assert.match(
     implementationPrompt,
     /Open issue task todos do not block final handoff for this project/,
