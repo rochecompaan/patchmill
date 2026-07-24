@@ -34,7 +34,10 @@ export function workflowPiCalls(calls: Call[]): Call[] {
   return calls.filter((call) => call.command === "pi");
 }
 
-function defaultWorktreePreflightResult(call: Call): CommandResult | undefined {
+function defaultGitPreflightResult(call: Call): CommandResult | undefined {
+  if (call.command === "git" && call.args[0] === "cat-file") {
+    return { code: 0, stdout: "", stderr: "" };
+  }
   if (
     call.command === "git" &&
     call.args[0] === "worktree" &&
@@ -97,13 +100,13 @@ export function createMockRunner(
       try {
         return await handler(call);
       } catch (error) {
-        const worktreeFallback = defaultWorktreePreflightResult(call);
+        const gitFallback = defaultGitPreflightResult(call);
         if (
-          worktreeFallback &&
+          gitFallback &&
           error instanceof Error &&
           /^unexpected command:/u.test(error.message)
         ) {
-          return worktreeFallback;
+          return gitFallback;
         }
         throw error;
       }

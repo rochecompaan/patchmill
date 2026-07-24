@@ -131,6 +131,41 @@ function repoPath(
   return { absolute: join(repoRoot, path), relative: path };
 }
 
+function gitFailureOutput(result: { stdout: string; stderr: string }): string {
+  return [result.stderr.trim(), result.stdout.trim()]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function assertCommittedArtifact(input: {
+  runner: CommandRunner;
+  repoRoot: string;
+  kind: "spec" | "plan";
+  path: string;
+  commit: string;
+}): Promise<void> {
+  const commitResult = await input.runner.run(
+    "git",
+    ["cat-file", "-e", "--", `${input.commit}^{commit}`],
+    { cwd: input.repoRoot },
+  );
+  const artifactResult =
+    commitResult.code === 0
+      ? await input.runner.run(
+          "git",
+          ["cat-file", "-e", "--", `${input.commit}:${input.path}`],
+          { cwd: input.repoRoot },
+        )
+      : undefined;
+  if (commitResult.code === 0 && artifactResult?.code === 0) return;
+
+  const output = gitFailureOutput(artifactResult ?? commitResult);
+  const detail = output ? `: ${output}` : "";
+  throw new Error(
+    `Cannot publish ${input.kind} artifact ${input.path} from commit ${input.commit} because the committed artifact is not verifiable${detail}`,
+  );
+}
+
 function nextLabels(
   labels: string[],
   remove: string[],
@@ -445,6 +480,13 @@ export async function advancePlanningStages({
     !checkpoints.specPublished
   ) {
     await runStep("publish spec artifact", async () => {
+      await assertCommittedArtifact({
+        runner,
+        repoRoot: planningRepoRoot,
+        kind: "spec",
+        path: specPath,
+        commit: specCommit,
+      });
       try {
         await publishWorkflowArtifact({
           kind: "spec",
@@ -676,6 +718,13 @@ export async function advancePlanningStages({
     !checkpoints.planPublished
   ) {
     await runStep("publish plan artifact", async () => {
+      await assertCommittedArtifact({
+        runner,
+        repoRoot: planningRepoRoot,
+        kind: "plan",
+        path: planPath,
+        commit: planCommit,
+      });
       try {
         await publishWorkflowArtifact({
           kind: "plan",

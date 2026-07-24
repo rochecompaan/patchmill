@@ -647,7 +647,7 @@ test("runOneIssue preserves a committed spec when required publication fails", a
   assert.equal(state.checkpoints.specReadyCommentPosted, undefined);
 });
 
-test("runOneIssue blocks required spec review when a created spec has no commit", async () => {
+test("runOneIssue blocks required spec review when a created spec commit is unverifiable", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -675,6 +675,9 @@ test("runOneIssue blocks required spec review when a created spec has no commit"
     if (call.command === "git" && call.args[0] === "status") {
       return { code: 0, stdout: "", stderr: "" };
     }
+    if (call.command === "git" && call.args[0] === "cat-file") {
+      return { code: 1, stdout: "", stderr: "invalid commit" };
+    }
     if (
       call.command === "tea" &&
       call.args[0] === "labels" &&
@@ -695,7 +698,11 @@ test("runOneIssue blocks required spec review when a created spec has no commit"
       await writeFile(absoluteSpecPath, "# Uncommitted spec\n", "utf8");
       return {
         code: 0,
-        stdout: JSON.stringify({ status: "spec-created", specPath }),
+        stdout: JSON.stringify({
+          status: "spec-created",
+          specPath,
+          commit: "missing-spec-commit",
+        }),
         stderr: "",
       };
     }
@@ -709,7 +716,9 @@ test("runOneIssue blocks required spec review when a created spec has no commit"
   assert.equal(result.status, "blocked");
   assert.match(
     result.reason,
-    new RegExp(`Cannot publish spec artifact ${specPath} without a commit SHA`),
+    new RegExp(
+      `Cannot publish spec artifact ${specPath} from commit missing-spec-commit because the committed artifact is not verifiable`,
+    ),
   );
   assert.equal(
     runner.calls.some(
@@ -734,7 +743,16 @@ test("runOneIssue blocks required spec review when a created spec has no commit"
     await readFile(runStatePath(config.runStateDir, 36), "utf8"),
   );
   assert.equal(state.checkpoints.specCreated, true);
-  assert.equal(state.specCommit, undefined);
+  assert.equal(state.specCommit, "missing-spec-commit");
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "cat-file" &&
+        call.args.includes("missing-spec-commit^{commit}"),
+    ),
+    true,
+  );
   assert.equal(state.checkpoints.specPublished, undefined);
   assert.equal(state.checkpoints.specReadyCommentPosted, undefined);
 });
@@ -1704,7 +1722,7 @@ test("runOneIssue preserves a committed plan when required publication fails", a
   assert.equal(state.checkpoints.planReadyCommentPosted, undefined);
 });
 
-test("runOneIssue blocks required plan review when a created plan has no commit", async () => {
+test("runOneIssue blocks required plan review when a created plan is absent from its commit", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -1733,6 +1751,11 @@ test("runOneIssue blocks required plan review when a created plan has no commit"
     }
     if (call.command === "git" && call.args[0] === "status") {
       return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "cat-file") {
+      return call.args.includes("missing-plan-commit^{commit}")
+        ? { code: 0, stdout: "", stderr: "" }
+        : { code: 1, stdout: "", stderr: "missing committed artifact" };
     }
     if (
       call.command === "tea" &&
@@ -1766,7 +1789,11 @@ test("runOneIssue blocks required plan review when a created plan has no commit"
       await writeFile(absolutePlanPath, "# Uncommitted plan\n", "utf8");
       return {
         code: 0,
-        stdout: JSON.stringify({ status: "plan-created", planPath }),
+        stdout: JSON.stringify({
+          status: "plan-created",
+          planPath,
+          commit: "missing-plan-commit",
+        }),
         stderr: "",
       };
     }
@@ -1780,7 +1807,9 @@ test("runOneIssue blocks required plan review when a created plan has no commit"
   assert.equal(result.status, "blocked");
   assert.match(
     result.reason,
-    new RegExp(`Cannot publish plan artifact ${planPath} without a commit SHA`),
+    new RegExp(
+      `Cannot publish plan artifact ${planPath} from commit missing-plan-commit because the committed artifact is not verifiable`,
+    ),
   );
   assert.equal(
     runner.calls.some(
@@ -1805,7 +1834,25 @@ test("runOneIssue blocks required plan review when a created plan has no commit"
     await readFile(runStatePath(config.runStateDir, 37), "utf8"),
   );
   assert.equal(state.checkpoints.planCreated, true);
-  assert.equal(state.planCommit, undefined);
+  assert.equal(state.planCommit, "missing-plan-commit");
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "cat-file" &&
+        call.args.includes("missing-plan-commit^{commit}"),
+    ),
+    true,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "cat-file" &&
+        call.args.includes(`missing-plan-commit:${planPath}`),
+    ),
+    true,
+  );
   assert.equal(state.checkpoints.planPublished, undefined);
   assert.equal(state.checkpoints.planReadyCommentPosted, undefined);
 });
