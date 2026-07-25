@@ -60,6 +60,8 @@ When `run-once` executes work, the high-level sequence is:
 11. Run configured review, visual-evidence, and landing procedures when the
     workflow asks for them.
 12. Record run state and handoff information.
+13. After a successful PR or merge handoff, run the configured cleanup hook and,
+    for a PR handoff, perform built-in local workspace cleanup.
 
 Use [workflow artifacts](/using-patchmill/workflow-artifacts/) when humans have
 already written the spec or plan that Patchmill should reuse.
@@ -94,6 +96,36 @@ Implementation then runs with the configured implementation skill. Optional
 `toolchain`, `review`, `visualEvidence`, and `landing` skills add repository
 rules for validation commands, review passes, screenshot evidence, and the
 choice between direct landing and opening a pull request.
+
+## Cleanup after successful handoff
+
+Set the top-level `cleanupHook` when the repository needs a deterministic script
+to stop local services or remove issue-specific development resources. After
+implementation finishes as `pr-created` or `merged`, Patchmill records and
+reports the successful handoff, then runs:
+
+```sh
+bash <cleanupHook>
+```
+
+The command runs from the issue worktree. Relative hook paths therefore resolve
+from that worktree, and the script does not need its executable bit set because
+Patchmill invokes it through `bash`.
+
+For `pr-created`, Patchmill removes its local issue worktree and branch after
+the hook finishes. Keep environment cleanup inside the hook, but leave worktree,
+local branch, remote branch, pull request, and run-state cleanup to Patchmill.
+
+Make the script idempotent and scope its resources to the current issue or
+worktree. It should tolerate resources that are already absent and return a
+non-zero exit code when cleanup remains incomplete. Patchmill reports a hook
+failure as cleanup progress but does not change an already successful PR or
+merge result into an implementation failure.
+
+The hook does not run for approval gates, blockers, implementation failures, or
+other retryable outcomes. Those runs retain their environment for a later
+`run-once` retry, and Patchmill does not retry a failed cleanup hook
+automatically.
 
 ## Run state and retries
 

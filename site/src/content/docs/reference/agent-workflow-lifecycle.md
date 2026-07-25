@@ -101,6 +101,13 @@ Execute mode follows this high-level sequence:
 14. Run configured review, visual-evidence, and landing procedures when the
     workflow asks for them.
 15. Record run state, labels, comments, commits, and final handoff data.
+16. After a successful `pr-created` or `merged` handoff, run the configured
+    cleanup hook from the issue worktree and, for a PR handoff, remove the local
+    issue worktree and branch.
+
+See
+[Cleanup after successful handoff](/using-patchmill/run-once/#cleanup-after-successful-handoff)
+for hook execution, failure, retry, and workspace-ownership details.
 
 Dry-run mode keeps the preview cheap. It previews the selected issue and planned
 workflow transition, but it does not read workflow artifacts or write resumable
