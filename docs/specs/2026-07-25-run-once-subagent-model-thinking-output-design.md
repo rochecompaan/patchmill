@@ -1,7 +1,7 @@
 # Run-once subagent model and thinking output design
 
-**Issue:** #116  
-**Date:** 2026-07-25  
+**Issue:** #116
+**Date:** 2026-07-25
 **Status:** Approved
 
 ## Context
@@ -31,10 +31,14 @@ resolved model may encode its thinking level as a known suffix, for example
 
 ## Goals
 
-- Show the resolved child model and thinking level in run-once console output.
+- Show the resolved child model and thinking level in run-once console output
+  for foreground direct, parallel, and chain subagent calls.
 - Preserve near-live progress by observing partial tool results instead of
   waiting exclusively for completion.
-- Render one independent line per child in parallel subagent calls.
+- Render one independent line per child in parallel foreground subagent calls.
+- Preserve existing agent-only summaries for `async: true` calls because the
+  pinned `pi-subagents` version does not expose resolved child models in those
+  tool-result details.
 - Use values emitted by `pi-subagents` rather than independently reproducing
   its configuration and fallback precedence.
 - Avoid adding subagent tasks, output, or tool-result content to the parent LLM
@@ -72,8 +76,10 @@ Create `src/pi/subagent-progress.ts` as the pure boundary around the external
 result shape. It will:
 
 - validate that a partial or final tool result contains `details.results`;
-- extract each child's index, agent name, model, and optional explicit thinking
-  value;
+- Extract each child's stable index, agent name, model, and optional explicit
+  thinking value;
+- prefer `progress.index` from `pi-subagents` results and use the result-array
+  position only as a compatibility fallback;
 - split known thinking suffixes from model strings;
 - remove a provider prefix from the displayed model by retaining the portion
   after the final `/`;
@@ -120,10 +126,11 @@ Pi supplies the outer `type`, entry identifiers, parent link, and timestamp when
 the extension calls `pi.appendEntry()`. Custom entries are persisted for the
 session streamer but do not participate in LLM context.
 
-The deduplication key consists of tool call ID, child index, agent, model, and
-thinking. Repeated updates for the same child therefore produce one line. If a
-fallback launches the child with a different model or thinking tuple, the new
-tuple produces another truthful launch line instead of leaving stale output.
+The deduplication key consists of tool call ID, stable child index, agent,
+model, and thinking. Repeated updates for the same child therefore produce one
+line. If a fallback launches the child with a different model or thinking
+tuple, the new tuple produces another truthful launch line instead of leaving
+stale output.
 
 ### Run-once resource profiles
 
@@ -133,8 +140,9 @@ implementation sessions can all invoke subagents and must expose consistent
 progress. Triage remains unchanged.
 
 The observer lives under `src/pi/extensions/` so TypeScript builds it into the
-published `dist/src/pi/extensions/` tree. Resource-path construction must work
-from both source execution and compiled distribution execution.
+published `dist/src/pi/extensions/` tree. Resource-path construction detects
+whether `resource-profiles` is running from `dist/src/pi` or `src/pi` and
+selects the corresponding `.js` or `.ts` observer path.
 
 ### Session observation
 
@@ -160,15 +168,19 @@ observation as:
 🤖 subagent (agent=reviewer, model=gpt-5.6-sol, thinking=xhigh)
 ```
 
-Parallel calls produce one line per child:
+Parallel foreground calls produce one line per child:
 
 ```text
 🤖 subagent (agent=worker, model=gpt-5.6-terra, thinking=medium)
 🤖 subagent (agent=reviewer, model=gpt-5.6-sol, thinking=xhigh)
 ```
 
-Raw direct, parallel, and chain subagent execution calls will no longer emit the
-old agent-only summary. Subagent management calls, such as
+Foreground direct, parallel, and chain subagent execution calls will no longer
+emit the old agent-only summary because the observer supplies resolved launch
+metadata for those calls. Calls with `async: true` return
+`details.results: []` from the pinned `pi-subagents` version and run children
+out of process; they continue to emit the existing agent-only summary until
+resolved metadata is available. Subagent management calls, such as
 `subagent(action=list)`, continue through normal tool-call formatting.
 
 ## Data flow
@@ -218,6 +230,7 @@ event handling, validates external data, and changes operator-visible behavior.
   - parses provider-qualified model IDs and known thinking suffixes;
   - honors a separate explicit thinking field;
   - handles active-thinking fallback;
+  - uses stable `progress.index` values for out-of-order partial results;
   - extracts multiple parallel child results;
   - rejects malformed result and custom-entry data.
 - `src/pi/extensions/run-once-subagent-progress.test.ts`
@@ -234,7 +247,8 @@ event handling, validates external data, and changes operator-visible behavior.
 - `src/cli/commands/run-once/console-progress.test.ts`
   - asserts the exact requested output;
   - asserts separate lines for parallel children;
-  - verifies raw execution calls no longer emit agent-only lines;
+  - verifies foreground execution calls no longer emit agent-only lines;
+  - verifies async execution calls retain agent-only summaries;
   - preserves management-call formatting.
 - `src/pi/resource-profiles.test.ts`
   - verifies every run-once profile includes the observer extension;
@@ -264,10 +278,12 @@ does not apply.
   `🤖 subagent (agent=worker, model=<model>, thinking=<level>)`.
 - Provider prefixes and known thinking suffixes are not included in the displayed
   model field.
-- Parallel calls render one enriched line per child.
+- Parallel foreground calls render one enriched line per child.
 - Repeated partial/final updates do not duplicate an unchanged tuple.
 - A changed fallback tuple is reported rather than hidden.
-- Subagent execution calls do not emit the previous agent-only line.
+- Foreground subagent execution calls do not emit the previous agent-only line.
+- Async subagent calls retain an agent-only summary until resolved metadata is
+  available.
 - Subagent management calls retain normal tool-call output.
 - Custom progress entries do not enter LLM context and contain no task or child
   output.

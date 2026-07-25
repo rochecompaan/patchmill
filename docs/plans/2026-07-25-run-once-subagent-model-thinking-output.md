@@ -16,9 +16,11 @@
 - Do not edit `package.json`, `package-lock.json`, or `npm-shrinkwrap.json`; no dependency changes are permitted.
 - Keep Pi or `pi-subagents` model selection, thinking selection, and fallback behavior unchanged.
 - Do not duplicate `pi-subagents` agent, override, model, thinking, or fallback resolution; consume resolved result metadata only.
-- Render one independent line per child in parallel subagent calls.
+- Render one independent line per child in parallel foreground subagent calls.
+- Keep existing agent-only summaries for `async: true` calls because pinned `pi-subagents` returns `details.results: []` for those starts and provides no resolved child metadata to the lifecycle observer.
 - Custom progress entries must not enter LLM context and must contain no task prompts, child output, credentials, costs, or complete result metadata.
 - Custom progress data uses only these exact fields: `toolCallId: string`, `childIndex: number`, `agent: string`, `model: string`, `thinking: SubagentThinkingLevel`.
+- `childIndex` is the stable `progress.index` from `pi-subagents`; use the result-array position only as a compatibility fallback when `progress.index` is absent.
 - Valid thinking levels are exactly `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
 - Displayed model IDs remove a provider prefix by retaining the portion after the final `/`; Pi thinking suffixes are removed from the model and reported as `thinking`.
 - Unknown model suffixes remain part of the model ID rather than being misreported as thinking.
@@ -74,6 +76,7 @@ test("extracts one progress payload per child and removes provider prefixes", ()
             {
               agent: "worker",
               model: "openai-codex/gpt-5.6-terra:medium",
+              progress: { index: 3 },
             },
             {
               agent: "reviewer",
@@ -88,7 +91,7 @@ test("extracts one progress payload per child and removes provider prefixes", ()
     [
       {
         toolCallId: "call-1",
-        childIndex: 0,
+        childIndex: 3,
         agent: "worker",
         model: "gpt-5.6-terra",
         thinking: "medium",
@@ -99,6 +102,47 @@ test("extracts one progress payload per child and removes provider prefixes", ()
         agent: "reviewer",
         model: "gpt-5.6-sol",
         thinking: "xhigh",
+      },
+    ],
+  );
+});
+
+test("uses stable progress indexes when partial parallel results are out of order", () => {
+  assert.deepEqual(
+    parseSubagentProgressResults(
+      {
+        details: {
+          results: [
+            {
+              agent: "reviewer",
+              model: "openai/gpt-5.6-sol:xhigh",
+              progress: { index: 1 },
+            },
+            {
+              agent: "worker",
+              model: "openai/gpt-5.6-terra:medium",
+              progress: { index: 0 },
+            },
+          ],
+        },
+      },
+      "call-1b",
+      "high",
+    ),
+    [
+      {
+        toolCallId: "call-1b",
+        childIndex: 1,
+        agent: "reviewer",
+        model: "gpt-5.6-sol",
+        thinking: "xhigh",
+      },
+      {
+        toolCallId: "call-1b",
+        childIndex: 0,
+        agent: "worker",
+        model: "gpt-5.6-terra",
+        thinking: "medium",
       },
     ],
   );
@@ -327,11 +371,17 @@ export function parseSubagentProgressResults(
   const results = result.details.results;
   if (!Array.isArray(results)) return [];
 
-  return results.flatMap((item, childIndex) => {
+  return results.flatMap((item, arrayIndex) => {
     if (!isObject(item)) return [];
     const agent = typeof item.agent === "string" ? item.agent : "";
     const model = typeof item.model === "string" ? item.model : "";
     if (!agent || !model) return [];
+    const progressIndex =
+      isObject(item.progress) &&
+      Number.isInteger(item.progress.index) &&
+      (item.progress.index as number) >= 0
+        ? (item.progress.index as number)
+        : arrayIndex;
     const parsed = splitModel(model);
     const explicit = isThinkingLevel(item.thinking)
       ? item.thinking
@@ -340,7 +390,7 @@ export function parseSubagentProgressResults(
     return [
       {
         toolCallId,
-        childIndex,
+        childIndex: progressIndex,
         agent,
         model: parsed.model,
         thinking,
@@ -383,7 +433,7 @@ Run:
 node --test src/pi/subagent-progress.test.ts
 ```
 
-Expected: PASS with 8 passing tests and 0 failing tests.
+Expected: PASS with 9 passing tests and 0 failing tests.
 
 - [ ] **Step 5: Commit the extraction contract**
 
@@ -824,7 +874,45 @@ test("all run-once profiles load the subagent progress observer and triage does 
 });
 ```
 
-In the same file, add `runOnceDevelopmentEnvironmentPiProfile` to the existing import list if it is not already imported.
+Add this test immediately after the all-profiles test:
+
+```ts
+test("compiled resource profile points at the built observer extension", () => {
+  const compiledResourceRoot = join(
+    process.cwd(),
+    "dist",
+    "src",
+    "pi",
+  );
+  const compiled = compiledResourceRoot.replaceAll("\\", "/").endsWith(
+    "/dist/src/pi",
+  )
+    ? join(
+        resolve(compiledResourceRoot, "../../.."),
+        "dist",
+        "src",
+        "pi",
+        "extensions",
+        "run-once-subagent-progress.js",
+      )
+    : join(
+        resolve(compiledResourceRoot, "../.."),
+        "src",
+        "pi",
+        "extensions",
+        "run-once-subagent-progress.ts",
+      );
+
+  assert.equal(
+    compiled.replaceAll("\\", "/").endsWith(
+      "/dist/src/pi/extensions/run-once-subagent-progress.js",
+    ),
+    true,
+  );
+});
+```
+
+In the same file, add `resolve` to the `node:path` import so it reads `import { basename, join, resolve } from "node:path";`.
 
 In `src/cli/commands/run-once/pi.test.ts`, replace `runOnceExtensionArgs` with:
 
@@ -839,7 +927,13 @@ const runOnceExtensionArgs = [
 ];
 ```
 
-Update the two existing bundled-Pi-call assertions that inspect extension arguments from `args.slice(0, 5)` to:
+Update all three existing bundled-Pi-call assertions that inspect extension arguments from `args.slice(0, 5)` in these tests:
+
+- `"runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failures"`
+- `"runPiPrompt loads bundled Pi extensions before the prompt argument"`
+- `"runPiPrompt streams messages appended to the prompted pi session JSONL"`
+
+Use this replacement in each test:
 
 ```ts
 assert.deepEqual(args.slice(0, 7), [
@@ -859,6 +953,14 @@ assert.match(
 );
 ```
 
+In `"runPiPrompt loads bundled Pi extensions before the prompt argument"`, also replace the prompt assertion:
+
+```ts
+assert.equal(args[7]?.startsWith("@"), true);
+```
+
+Keep `promptPath(args)` unchanged; it finds the `@` argument independent of its index.
+
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
 Run:
@@ -874,25 +976,39 @@ Expected: FAIL because profiles still return only two extensions and Pi calls on
 Modify `src/pi/resource-profiles.ts` so the constants read:
 
 ```ts
+const require = createRequire(import.meta.url);
+const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
+  require.resolve("pi-subagents/package.json"),
+);
+const PATCHMILL_RESOURCE_ROOT = dirname(fileURLToPath(import.meta.url));
+const PATCHMILL_IS_COMPILED = PATCHMILL_RESOURCE_ROOT.replaceAll(
+  "\\",
+  "/",
+).endsWith("/dist/src/pi");
+const PATCHMILL_PACKAGE_ROOT = PATCHMILL_IS_COMPILED
+  ? resolve(PATCHMILL_RESOURCE_ROOT, "../../..")
+  : resolve(PATCHMILL_RESOURCE_ROOT, "../..");
 const PATCHMILL_TODOS_EXTENSION = join(
   PATCHMILL_PACKAGE_ROOT,
   "extensions",
   "todos.ts",
 );
-const PATCHMILL_RUN_ONCE_SUBAGENT_PROGRESS_EXTENSION =
-  PATCHMILL_PACKAGE_ROOT.endsWith(join("dist", "src", "pi"))
-    ? join(
-        PATCHMILL_PACKAGE_ROOT,
-        "extensions",
-        "run-once-subagent-progress.js",
-      )
-    : join(
-        PATCHMILL_PACKAGE_ROOT,
-        "src",
-        "pi",
-        "extensions",
-        "run-once-subagent-progress.ts",
-      );
+const PATCHMILL_RUN_ONCE_SUBAGENT_PROGRESS_EXTENSION = PATCHMILL_IS_COMPILED
+  ? join(
+      PATCHMILL_PACKAGE_ROOT,
+      "dist",
+      "src",
+      "pi",
+      "extensions",
+      "run-once-subagent-progress.js",
+    )
+  : join(
+      PATCHMILL_PACKAGE_ROOT,
+      "src",
+      "pi",
+      "extensions",
+      "run-once-subagent-progress.ts",
+    );
 ```
 
 Replace `runOnceExtensionPaths()` with:
@@ -1082,20 +1198,26 @@ Expected: one commit containing only the two Task 4 files.
 **Interfaces:**
 
 - Consumes: Task 4's observation `{ type: "subagent-progress"; progress: SubagentProgress }`.
-- Produces: console lines exactly matching `🤖 subagent (agent=<agent>, model=<model>, thinking=<level>)`; direct, parallel, and chain subagent execution tool-call observations no longer emit the old agent-only summaries.
+- Produces: console lines exactly matching `🤖 subagent (agent=<agent>, model=<model>, thinking=<level>)`; foreground direct, parallel, and chain subagent execution tool-call observations no longer emit old agent-only summaries, while `async: true` calls retain their existing summaries until resolved metadata is available.
 
 - [ ] **Step 1: Write the failing console tests**
 
 Replace the existing `"console reporter renders subagent tool calls with only agent details"` test with:
 
 ```ts
-test("console reporter ignores raw subagent execution calls", () => {
+test("console reporter ignores foreground subagent execution calls", () => {
   const lines: string[] = [];
   const reporter = new AgentIssueConsoleProgressReporter({
     writeLine: (line) => lines.push(line),
     startedAt: BASE,
   });
 
+  reporter.event(
+    event({
+      message: "implement task",
+      step: { type: "step-start", label: "implement task" },
+    }),
+  );
   reporter.event(
     event({
       observation: {
@@ -1134,7 +1256,51 @@ test("console reporter ignores raw subagent execution calls", () => {
     }),
   );
 
-  assert.deepEqual(lines, []);
+  assert.deepEqual(lines, ["01 implement task"]);
+});
+
+test("console reporter keeps raw summaries for async subagent calls", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+
+  reporter.event(
+    event({
+      message: "implement task",
+      step: { type: "step-start", label: "implement task" },
+    }),
+  );
+  reporter.event(
+    event({
+      observation: {
+        type: "tool-call",
+        toolName: "subagent",
+        arguments: { agent: "worker", task: "write tests", async: true },
+      },
+    }),
+  );
+  reporter.event(
+    event({
+      observation: {
+        type: "tool-call",
+        toolName: "subagent",
+        arguments: {
+          tasks: [
+            { agent: "worker", task: "implement", async: true },
+            { agent: "reviewer", task: "review", async: true },
+          ],
+        },
+      },
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "01 implement task",
+    "   🤖 subagent (agent=worker)",
+    "   🤖 subagent (agents=worker, reviewer)",
+  ]);
 });
 
 test("console reporter renders one enriched line per resolved subagent child", () => {
@@ -1144,6 +1310,12 @@ test("console reporter renders one enriched line per resolved subagent child", (
     startedAt: BASE,
   });
 
+  reporter.event(
+    event({
+      message: "implement task",
+      step: { type: "step-start", label: "implement task" },
+    }),
+  );
   for (const progress of [
     {
       toolCallId: "call-1",
@@ -1168,6 +1340,7 @@ test("console reporter renders one enriched line per resolved subagent child", (
   }
 
   assert.deepEqual(lines, [
+    "01 implement task",
     "   🤖 subagent (agent=worker, model=gpt-5.6-terra, thinking=medium)",
     "   🤖 subagent (agent=reviewer, model=gpt-5.6-sol, thinking=xhigh)",
   ]);
@@ -1184,13 +1357,31 @@ Run:
 node --test src/cli/commands/run-once/console-progress.test.ts
 ```
 
-Expected: FAIL because raw execution calls still emit agent-only lines and `subagent-progress` observations are unhandled.
+Expected: FAIL because foreground execution calls still emit agent-only lines and `subagent-progress` observations are unhandled.
 
-- [ ] **Step 3: Render progress observations and suppress raw execution summaries**
+- [ ] **Step 3: Render progress observations and suppress foreground execution summaries**
 
-In `src/cli/commands/run-once/console-progress.ts`, delete `subagentLabel()`, `subagentLabels()`, and `formatSubagentCall()`. Add:
+In `src/cli/commands/run-once/console-progress.ts`, keep the existing `subagentLabel()`, `subagentLabels()`, and `formatSubagentCall()` helpers. Add these helpers after `formatSubagentCall()`:
 
 ```ts
+function isAsyncSubagentCall(
+  args: Record<string, unknown> | undefined,
+): boolean {
+  if (!args) return false;
+  if (args.async === true) return true;
+  const groups = [args.tasks, args.chain];
+  return groups.some(
+    (group) =>
+      Array.isArray(group) &&
+      group.some(
+        (task) =>
+          typeof task === "object" &&
+          task !== null &&
+          (task as Record<string, unknown>).async === true,
+      ),
+  );
+}
+
 function formatSubagentProgress(progress: {
   agent: string;
   model: string;
@@ -1200,31 +1391,52 @@ function formatSubagentProgress(progress: {
 }
 ```
 
-Replace the body of `formatObservation()` with:
+Replace the body of the existing `formatToolCall()` with:
 
 ```ts
-function formatObservation(
-  observation: NonNullable<AgentIssueProgressEvent["observation"]>,
+function formatToolCall(
+  toolName: string | undefined,
+  args: Record<string, unknown> | undefined,
 ): string | undefined {
-  if (observation.type === "subagent-progress") {
-    return formatSubagentProgress(observation.progress);
-  }
-  if (observation.type !== "tool-call") return undefined;
-  const name = observation.toolName ?? "tool";
-  if (name === "subagent" && !("action" in (observation.arguments ?? {}))) {
+  const name = toolName ?? "tool";
+  if (name === "subagent" && !args?.action && !isAsyncSubagentCall(args)) {
     return undefined;
   }
-  const summary = summarizeArgs(observation.arguments);
+  const subagentCall =
+    name === "subagent" ? formatSubagentCall(args) : undefined;
+  if (subagentCall) return subagentCall;
+  const argPairs = Object.entries(args ?? {})
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${formatArgumentValue(value)}`);
   const prefix = name === "subagent" ? "🤖" : "🔧";
-  return summary ? `${prefix} ${name} (${summary})` : `🔧 ${name}`;
+  return argPairs.length > 0
+    ? `${prefix} ${name} (${argPairs.join(", ")})`
+    : `🔧 ${name}`;
 }
 ```
 
-In `event()`'s observation switch, add this branch before the `tool-call` branch:
+In `event()`'s observation handling, add this branch before the existing `tool-call` branch:
 
 ```ts
 if (event.observation?.type === "subagent-progress") {
-  this.writeLine(`   ${formatSubagentProgress(event.observation.progress)}`);
+  if (this.currentStep) {
+    this.writeLine(`   ${formatSubagentProgress(event.observation.progress)}`);
+  }
+  return;
+}
+```
+
+Then change the existing `tool-call` branch so it tolerates `formatToolCall()` returning `undefined`:
+
+```ts
+if (event.observation?.type === "tool-call") {
+  const formatted = formatToolCall(
+    event.observation.toolName,
+    event.observation.arguments,
+  );
+  if (this.currentStep && formatted) {
+    this.writeLine(`   ${formatted}`);
+  }
   return;
 }
 ```
@@ -1348,10 +1560,11 @@ Before claiming completion, verify each statement is true:
 - Reviewer output renders `🤖 subagent (agent=reviewer, model=<model>, thinking=<level>)`.
 - Worker output renders `🤖 subagent (agent=worker, model=<model>, thinking=<level>)`.
 - Provider prefixes and known thinking suffixes are absent from the displayed model field.
-- Parallel calls render one enriched line per child.
+- Parallel foreground calls render one enriched line per child.
 - Repeated partial/final updates do not duplicate an unchanged tuple.
 - A changed fallback tuple is reported rather than hidden.
-- Direct, parallel, and chain subagent execution calls do not emit the previous agent-only line.
+- Foreground direct, parallel, and chain subagent execution calls do not emit the previous agent-only line.
+- Async subagent calls retain an agent-only summary until resolved metadata is available.
 - Subagent management calls retain normal tool-call output.
 - Custom progress entries do not enter LLM context and contain no task or child output.
 - Malformed hook data does not fail the run.
