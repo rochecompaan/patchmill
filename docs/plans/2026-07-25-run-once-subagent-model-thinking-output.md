@@ -832,7 +832,92 @@ Expected: one commit containing only the two Task 2 files.
 - Consumes: Task 2's extension source path `src/pi/extensions/run-once-subagent-progress.ts` and its relative `../subagent-progress.ts` import.
 - Produces: `runOnceExtensionPaths()` returns three paths in order: `pi-subagents`, `extensions/todos.ts`, then the run-once subagent progress observer. Also exports `findPackageRoot(start: string): string`, which resolves the package root correctly from both `src/pi/` and `dist/src/pi/` (fixing the pre-existing `todos.ts` mis-resolution in the packed layout).
 
-- [ ] **Step 1: Write the failing profile and CLI expectation tests**
+- [ ] **Step 1: Write the failing root-resolution tests**
+
+In `src/pi/resource-profiles.test.ts`, add these tests after the existing profile tests:
+
+```ts
+test("findPackageRoot walks up from nested source and dist-style layouts", async () => {
+  await withRepo(async (repoRoot) => {
+    const nested = join(repoRoot, "dist", "src", "pi");
+    await mkdir(nested, { recursive: true });
+    await writeFile(
+      join(repoRoot, "package.json"),
+      JSON.stringify({ name: "patchmill-test" }),
+      "utf8",
+    );
+
+    assert.equal(findPackageRoot(nested), repoRoot);
+    assert.equal(findPackageRoot(join(repoRoot, "src", "pi")), repoRoot);
+  });
+});
+
+test("every run-once extension path exists on disk", async () => {
+  await withRepo(async (repoRoot) => {
+    const profile = runOncePlanningPiProfile(skills, repoRoot);
+    for (const path of profile.additionalExtensionPaths) {
+      assert.equal(existsSync(path), true, `missing extension: ${path}`);
+    }
+  });
+});
+```
+
+In the same file: add `mkdir` and `writeFile` to the `node:fs/promises` import, add `import { existsSync } from "node:fs";`, and add `findPackageRoot` to the `./resource-profiles.ts` import.
+
+- [ ] **Step 2: Run the root-resolution tests to verify they fail**
+
+Run:
+
+```sh
+node --test src/pi/resource-profiles.test.ts
+```
+
+Expected: FAIL with a module/exports error for `findPackageRoot`.
+
+- [ ] **Step 3: Resolve the package root robustly**
+
+The current `PATCHMILL_PACKAGE_ROOT` derives from `import.meta.url` with a fixed `../..`, which resolves to `<pkg>/dist` in the compiled layout — a pre-existing bug that already mis-resolves `extensions/todos.ts` in production, where Pi's loader logs the failure and continues without the extension. In `src/pi/resource-profiles.ts`, add `import { existsSync } from "node:fs";` and replace the root computation with a walk-up search that throws loudly at startup when no package root exists:
+
+```ts
+export function findPackageRoot(start: string): string {
+  let current = start;
+  for (;;) {
+    if (existsSync(join(current, "package.json"))) return current;
+    const parent = dirname(current);
+    if (parent === current) {
+      throw new Error(`could not find package.json walking up from ${start}`);
+    }
+    current = parent;
+  }
+}
+
+const PATCHMILL_PACKAGE_ROOT = findPackageRoot(
+  dirname(fileURLToPath(import.meta.url)),
+);
+```
+
+From `src/pi/` this stops at the repository root; from `dist/src/pi/` it stops at the package root because `dist/` contains no `package.json`.
+
+- [ ] **Step 4: Run the root-resolution tests to verify they pass**
+
+Run:
+
+```sh
+node --test src/pi/resource-profiles.test.ts
+```
+
+Expected: PASS with 0 failing tests (the exists-on-disk test covers the current two extension paths).
+
+- [ ] **Step 5: Commit the pre-existing root-resolution fix separately**
+
+```sh
+git add src/pi/resource-profiles.ts src/pi/resource-profiles.test.ts
+git commit -m "fix(pi): resolve package root from compiled layout"
+```
+
+Expected: one commit containing only the two files, so the pre-existing `todos.ts` production fix is reviewable independently of the feature wiring.
+
+- [ ] **Step 6: Write the failing observer-wiring tests**
 
 In `src/pi/resource-profiles.test.ts`, replace the planning-profile extension assertions with this test body while keeping all existing imports and helpers:
 
@@ -946,36 +1031,6 @@ test(
 
 The run must fail only at the expected provider/API-key stage; any `Failed to load extension`, `No such built-in module`, or `Cannot find package` output is a regression.
 
-Add these tests immediately after the all-profiles test:
-
-```ts
-test("findPackageRoot walks up from nested source and dist-style layouts", async () => {
-  await withRepo(async (repoRoot) => {
-    const nested = join(repoRoot, "dist", "src", "pi");
-    await mkdir(nested, { recursive: true });
-    await writeFile(
-      join(repoRoot, "package.json"),
-      JSON.stringify({ name: "patchmill-test" }),
-      "utf8",
-    );
-
-    assert.equal(findPackageRoot(nested), repoRoot);
-    assert.equal(findPackageRoot(join(repoRoot, "src", "pi")), repoRoot);
-  });
-});
-
-test("every run-once extension path exists on disk", async () => {
-  await withRepo(async (repoRoot) => {
-    const profile = runOncePlanningPiProfile(skills, repoRoot);
-    for (const path of profile.additionalExtensionPaths) {
-      assert.equal(existsSync(path), true, `missing extension: ${path}`);
-    }
-  });
-});
-```
-
-In the same file: add `mkdir` and `writeFile` to the `node:fs/promises` import, add `import { existsSync } from "node:fs";`, and add `findPackageRoot` to the `./resource-profiles.ts` import.
-
 In `src/cli/commands/run-once/pi.test.ts`, replace `runOnceExtensionArgs` with:
 
 ```ts
@@ -1023,7 +1078,7 @@ assert.equal(args[7]?.startsWith("@"), true);
 
 Keep `promptPath(args)` unchanged; it finds the `@` argument independent of its index.
 
-- [ ] **Step 2: Run the focused tests to verify they fail**
+- [ ] **Step 7: Run the wiring tests to verify they fail**
 
 Run:
 
@@ -1033,29 +1088,7 @@ node --test src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.t
 
 Expected: FAIL because profiles still return only two extensions and Pi calls only include two `-e` pairs.
 
-- [ ] **Step 3: Resolve the package root robustly and add the observer path**
-
-The current `PATCHMILL_PACKAGE_ROOT` derives from `import.meta.url` with a fixed `../..`, which resolves to `<pkg>/dist` in the compiled layout — a pre-existing bug that already mis-resolves `extensions/todos.ts` in production, where Pi's loader logs the failure and continues without the extension. In `src/pi/resource-profiles.ts`, add `import { existsSync } from "node:fs";` and replace the root computation with a walk-up search that throws loudly at startup when no package root exists:
-
-```ts
-export function findPackageRoot(start: string): string {
-  let current = start;
-  for (;;) {
-    if (existsSync(join(current, "package.json"))) return current;
-    const parent = dirname(current);
-    if (parent === current) {
-      throw new Error(`could not find package.json walking up from ${start}`);
-    }
-    current = parent;
-  }
-}
-
-const PATCHMILL_PACKAGE_ROOT = findPackageRoot(
-  dirname(fileURLToPath(import.meta.url)),
-);
-```
-
-From `src/pi/` this stops at the repository root; from `dist/src/pi/` it stops at the package root because `dist/` contains no `package.json`. Both `extensions/todos.ts` and the new observer path resolve correctly in source and packed layouts.
+- [ ] **Step 8: Add the observer extension path**
 
 Add this constant next to `PATCHMILL_TODOS_EXTENSION`. Use a single source path: Pi loads TypeScript extensions through jiti and `package.json` ships the `src/` tree, so no compiled/source path fork is needed. The observer lives under `src/pi/extensions/` — inside the eslint, tsc, and test-discovery globs — unlike the vendored `extensions/todos.ts`:
 
@@ -1081,7 +1114,7 @@ function runOnceExtensionPaths(): string[] {
 }
 ```
 
-- [ ] **Step 4: Run the focused tests to verify they pass**
+- [ ] **Step 9: Run the wiring tests to verify they pass**
 
 Run:
 
@@ -1091,14 +1124,14 @@ node --test src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.t
 
 Expected: PASS with 0 failing tests in all three files.
 
-- [ ] **Step 5: Commit the profile wiring**
+- [ ] **Step 10: Commit the profile wiring**
 
 ```sh
 git add src/pi/resource-profiles.ts src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.ts src/pi/extensions/run-once-subagent-progress.load.test.ts
 git commit -m "feat(pi): load run-once subagent observer"
 ```
 
-Expected: one commit containing only the four Task 3 files.
+Expected: one commit containing only the four wiring files, on top of the Step 5 root-resolution fix.
 
 ---
 
@@ -1115,7 +1148,6 @@ Expected: one commit containing only the four Task 3 files.
 - Produces:
   - `PiSessionObservation` gains `{ type: "subagent-progress"; progress: SubagentProgress }`.
   - `sessionEntryToObservations(entry: JsonObject): PiSessionObservation[]` returns the progress observation only for exact, valid progress custom entries.
-  - module-private `isAsyncSubagentCall(args: Record<string, unknown> | undefined): boolean` in `pi-session-stream.ts` (not exported).
   - `createPiSessionObservationStreamer()` buffers the original tool-call observation for foreground subagent execution calls instead of emitting it, drops the buffer when a progress observation arrives for the call, and replays the buffered observation unchanged when the call's toolResult arrives with no resolved metadata.
 
 - [ ] **Step 1: Write the failing session-stream tests**
@@ -1415,6 +1447,7 @@ In `src/cli/commands/run-once/pi-session-stream.ts`, add this import:
 ```ts
 import {
   parseSubagentProgressEntry,
+  subagentProgressKey,
   type SubagentProgress,
 } from "../../../pi/subagent-progress.ts";
 ```
@@ -1439,32 +1472,11 @@ if (subagentProgress) {
 
 Leave `sessionEntryToStreamText` and `sessionEntryToRawText` unchanged: valid custom entries are observations only, not raw or pretty text.
 
-Add this module-private helper after `toolCallObservations()` (the console reporter does not import it — reporter suppression logic is unnecessary under the buffer-and-replay design):
-
-```ts
-function isAsyncSubagentCall(
-  args: Record<string, unknown> | undefined,
-): boolean {
-  if (!args) return false;
-  if (args.async === true) return true;
-  const groups = [args.tasks, args.chain];
-  return groups.some(
-    (group) =>
-      Array.isArray(group) &&
-      group.some(
-        (task) =>
-          typeof task === "object" &&
-          task !== null &&
-          (task as Record<string, unknown>).async === true,
-      ),
-  );
-}
-```
-
-In `createPiSessionObservationStreamer`, add the buffer state next to `observedToolCallIds`:
+In `createPiSessionObservationStreamer`, add the buffer and re-read-dedup state next to `observedToolCallIds`:
 
 ```ts
 const pendingSubagentObservations = new Map<string, PiSessionObservation>();
+const emittedSubagentProgressKeys = new Set<string>();
 ```
 
 Replace the `processLine` observation loop with:
@@ -1472,6 +1484,9 @@ Replace the `processLine` observation loop with:
 ```ts
 for (const observation of sessionEntryToObservations(entry)) {
   if (observation.type === "subagent-progress") {
+    const key = subagentProgressKey(observation.progress);
+    if (emittedSubagentProgressKeys.has(key)) continue;
+    emittedSubagentProgressKeys.add(key);
     pendingSubagentObservations.delete(observation.progress.toolCallId);
     onObservation(observation);
     continue;
@@ -1489,7 +1504,7 @@ for (const observation of sessionEntryToObservations(entry)) {
       observation.toolName === "subagent" &&
       observation.arguments &&
       !("action" in observation.arguments) &&
-      !isAsyncSubagentCall(observation.arguments)
+      observation.arguments.async !== true
     ) {
       pendingSubagentObservations.set(toolCallId, observation);
       continue;
@@ -1499,7 +1514,11 @@ for (const observation of sessionEntryToObservations(entry)) {
 }
 ```
 
-Every `subagent-progress` entry flows through — the extension already deduplicates by full tuple key (`subagentProgressKey`) and each JSONL line is read once, so no streamer-side resolved-set guard is needed. The replay relies on one ordering invariant: the extension's `tool_execution_end` append lands in the JSONL before Pi writes the toolResult message. If that order ever reversed, a call would print its original summary followed by the enriched line — degraded, but never silent.
+The buffer predicate checks only top-level `async`: pinned `pi-subagents` declares `async` solely on the top-level params (`TaskParam`, `SequentialStep`, and `ParallelStep` have no such field), so a per-task deep-scan would be dead code that can misfire on stray input.
+
+The two dedup layers guard distinct failure modes: the extension's `subagentProgressKey` set deduplicates repeated lifecycle events, while the streamer's `emittedSubagentProgressKeys` set guards the file re-read path (`info.size < offset` resets `offset = 0` and replays earlier lines), mirroring the existing `observedToolCallIds` guard.
+
+The replay relies on one ordering invariant: the extension's `tool_execution_end` append lands in the JSONL before Pi writes the toolResult message (verified: `agent-session.js` awaits extension end handlers before `message_end` persistence). If that order ever reversed, a call would print its original summary followed by the enriched line — degraded, but never silent.
 
 - [ ] **Step 4: Run the focused test to verify it passes**
 
@@ -1628,14 +1647,12 @@ Expected: FAIL because `subagent-progress` observations are unhandled.
 
 - [ ] **Step 3: Render progress observations**
 
-In `src/cli/commands/run-once/console-progress.ts`, add one helper after `formatSubagentCall()`:
+In `src/cli/commands/run-once/console-progress.ts`, import the payload type and add one helper after `formatSubagentCall()`:
 
 ```ts
-function formatSubagentProgress(progress: {
-  agent: string;
-  model: string;
-  thinking?: string;
-}): string {
+import type { SubagentProgress } from "../../../pi/subagent-progress.ts";
+
+function formatSubagentProgress(progress: SubagentProgress): string {
   const thinking = progress.thinking ? `, thinking=${progress.thinking}` : "";
   return `🤖 subagent (agent=${progress.agent}, model=${progress.model}${thinking})`;
 }

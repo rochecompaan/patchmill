@@ -98,15 +98,16 @@ result shape. It will:
 - build stable deduplication keys;
 - define and validate the custom session-entry payload.
 
-A separate explicit thinking field, if a future `pi-subagents` result provides
-one, takes precedence. A known suffix on the resolved model remains
-authoritative because it is the exact model argument used to launch that child.
-When neither is present, `thinking` is omitted from the payload rather than
-guessed: the pinned `pi-subagents` deliberately omits the suffix for
-`thinking: "off"` and unset levels (passing `--thinking` separately), so a
-parent-side fallback such as `pi.getThinkingLevel()` can report a level the
-child was never launched with. Thinking is therefore displayed only when it is
-determinable from the child's own result metadata.
+When a child result ever carries both an explicit thinking field (a possible
+future `pi-subagents` addition) and a model suffix, the explicit field wins;
+otherwise a known suffix on the resolved model is authoritative because it is
+the exact model argument used to launch that child. When neither is present,
+`thinking` is omitted from the payload rather than guessed: in the pinned
+`pi-subagents`, thinking reaches the child only through the model suffix,
+which `applyThinkingSuffix()` deliberately omits for `off` and unset levels,
+so a parent-side fallback such as `pi.getThinkingLevel()` can report a level
+the child was never launched with. Thinking is therefore displayed only when
+it is determinable from the child's own result metadata.
 
 `progress.index` is present only on partial (running) snapshots; completed
 results are compacted and strip `progress`, so completion extraction uses the
