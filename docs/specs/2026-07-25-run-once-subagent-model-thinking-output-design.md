@@ -159,11 +159,21 @@ extension after `pi-subagents`. Planning, development-environment, and
 implementation sessions can all invoke subagents and must expose consistent
 progress. Triage remains unchanged.
 
-The observer lives under `src/pi/extensions/` and is loaded unconditionally as
-`<package-root>/src/pi/extensions/run-once-subagent-progress.ts`, identical to
-the existing `extensions/todos.ts` pattern: Pi loads extensions through jiti,
-so TypeScript sources work without compilation, and `package.json` ships the
-`src/` tree in the published package. No compiled/source path fork is needed.
+The observer is first-party Patchmill code, so it lives under
+`src/pi/extensions/` — inside the eslint, tsc, and test-discovery globs —
+rather than in `extensions/`, which holds vendored third-party code outside
+those globs. The two extension homes now exist deliberately. The profile loads
+the observer as `<package-root>/src/pi/extensions/run-once-subagent-progress.ts`:
+Pi loads extensions through jiti, so TypeScript sources work without
+compilation, and `package.json` ships the `src/` tree.
+
+`PATCHMILL_PACKAGE_ROOT` currently derives from `import.meta.url` with a fixed
+`../..`, which resolves to `<pkg>/dist` in the compiled layout — a pre-existing
+bug that already mis-resolves `extensions/todos.ts` in production, where Pi's
+loader logs the failure and continues without the extension. Replace it with a
+walk-up search for the nearest ancestor directory containing `package.json`,
+which resolves correctly from both `src/pi/` and `dist/src/pi/` and fixes both
+extension paths.
 
 ### Session observation
 
@@ -172,15 +182,19 @@ subagent-resolution observation. Only a `custom` entry with the exact `patchmill
 valid payload becomes this observation. Other custom entries continue to be
 ignored.
 
-The streamer also owns a correlation fallback: it tracks foreground subagent
-calls (assistant tool-call observations carry both `toolCallId` and arguments)
-and remembers which calls produced an enriched observation. When the
-corresponding toolResult message arrives for a tracked call that produced no
-enriched observation — for example a child whose result carries no `model`, or
-a whole-call error with no `details.results` — the streamer emits a fallback
-observation carrying the original arguments, and the reporter renders the
-existing agent-only line. This closes the suppress-then-hope gap where a
-foreground call could otherwise vanish from output entirely.
+The streamer also owns a completion fallback built on buffering rather than
+reconstruction: when a foreground subagent execution call is observed
+(assistant tool-call observations carry both `toolCallId` and arguments), the
+streamer buffers the original observation instead of emitting it. When an
+enriched progress observation arrives for that call, the buffer is dropped.
+When the call's toolResult message arrives and no enriched observation was
+seen — for example a child whose result carries no `model`, or a whole-call
+error with no `details.results` — the streamer replays the buffered original
+observation unchanged, and the reporter renders it through the same formatter
+main uses today (agent-only for direct/parallel args, the `🔧` argument form
+for chain args). This closes the suppress-then-hope gap where a foreground
+call could otherwise vanish from output entirely, without adding a second
+observation type or reporter-side suppression logic.
 
 No task text, child output, generic tool-result content, or arbitrary custom
 entry data will be forwarded.
@@ -208,8 +222,8 @@ Parallel foreground calls produce one line per child:
 
 Foreground direct, parallel, and chain subagent execution calls will no longer
 emit the old agent-only summary because the observer supplies resolved launch
-metadata for those calls; if no resolved metadata ever arrives, the streamer's
-correlation fallback restores the agent-only line at completion. When a
+metadata for those calls; if no resolved metadata ever arrives, the streamer
+replays the original call summary at completion. When a
 child's thinking level is not determinable from its own result metadata, the
 `thinking` segment is omitted from the enriched line rather than guessed.
 Calls with `async: true` return `details.results: []` from the pinned
@@ -246,9 +260,9 @@ observed or when a fallback changes the resolved tuple.
 - The completion hook supplies a second chance when partial updates are absent.
 - Unknown model suffixes remain part of the model ID rather than being
   misreported as a thinking level.
-- When a child's result carries no usable model metadata, the correlation
-  fallback emits the agent-only line at completion so the call never vanishes
-  from output.
+- When a child's result carries no usable model metadata, the streamer
+  replays the buffered original call summary at completion so the call never
+  vanishes from output.
 - A thinking level is never inferred from the parent session; when the child's
   own metadata does not determine one, the `thinking` segment is omitted.
 
@@ -284,18 +298,22 @@ event handling, validates external data, and changes operator-visible behavior.
 - `src/cli/commands/run-once/pi.test.ts`
   - converts valid custom entries into subagent-resolution observations;
   - ignores malformed and unrelated custom entries;
-  - emits the agent-only fallback observation when a tracked foreground call
-    completes without resolved metadata;
-  - suppresses the fallback when an enriched observation already exists.
+  - buffers a foreground execution call and replays its original observation
+    when the call completes without resolved metadata;
+  - emits every per-child progress observation for one call, including a
+    changed fallback tuple;
+  - never buffers async or management calls.
 - `src/cli/commands/run-once/console-progress.test.ts`
-  - asserts the exact requested output;
-  - asserts separate lines for parallel children;
-  - verifies foreground execution calls no longer emit agent-only lines;
-  - verifies async execution calls retain agent-only summaries;
-  - preserves management-call formatting.
+  - asserts the exact requested output, including separate lines for parallel
+    children;
+  - omits the `thinking` segment when it is not determinable;
+  - leaves every existing tool-call rendering test untouched, including
+    management-call formatting.
 - `src/pi/resource-profiles.test.ts`
   - verifies every run-once profile includes the observer extension;
-  - verifies triage does not include it.
+  - verifies triage does not include it;
+  - verifies package-root resolution from nested source and dist-style layouts;
+  - verifies every resolved extension path exists on disk.
 - `src/pi/extensions/run-once-subagent-progress.load.test.ts`
   - smoke-verifies that the bundled Pi CLI loads the multi-file TypeScript
     extension (including its relative `../subagent-progress.ts` import) and
@@ -314,8 +332,11 @@ npm pack --dry-run
 ```
 
 The package dry-run must show both `src/pi/extensions/run-once-subagent-progress.ts`
-and `src/pi/subagent-progress.ts`. No dependency changes are planned, so
-Patchmill's dependency-triggered Nix build requirement does not apply.
+and `src/pi/subagent-progress.ts`. The dry-run alone proves nothing about path
+resolution, so also install the packed tarball into a temporary directory and
+assert every run-once profile extension path exists on disk. No dependency
+changes are planned, so Patchmill's dependency-triggered Nix build requirement
+does not apply.
 
 ## Acceptance criteria
 
@@ -328,8 +349,11 @@ Patchmill's dependency-triggered Nix build requirement does not apply.
 - Parallel foreground calls render one enriched line per child.
 - Repeated partial/final updates do not duplicate an unchanged tuple.
 - A changed fallback tuple is reported rather than hidden.
-- A foreground call whose results carry no usable model metadata still produces
-  the agent-only line at completion.
+- A foreground call whose results carry no usable model metadata still prints
+  its original call summary at completion (agent-only for direct/parallel
+  args, the `🔧` argument form for chain args).
+- Every per-child progress observation for one call is rendered; a second
+  child or a changed fallback tuple is never swallowed.
 - The `thinking` segment appears only when determinable from the child's own
   result metadata; it is never inferred from the parent session.
 - Foreground subagent execution calls do not emit the previous agent-only line
