@@ -19,13 +19,15 @@
 - Render one independent line per child in parallel foreground subagent calls.
 - Keep existing agent-only summaries for `async: true` calls because pinned `pi-subagents` returns `details.results: []` for those starts and provides no resolved child metadata to the lifecycle observer.
 - Custom progress entries must not enter LLM context and must contain no task prompts, child output, credentials, costs, or complete result metadata.
-- Custom progress data uses only these exact fields: `toolCallId: string`, `childIndex: number`, `agent: string`, `model: string`, `thinking: SubagentThinkingLevel`.
-- `childIndex` is the stable `progress.index` from `pi-subagents`; use the result-array position only as a compatibility fallback when `progress.index` is absent.
+- Custom progress data uses only these exact fields: `toolCallId: string`, `childIndex: number`, `agent: string`, `model: string`, `thinking?: SubagentThinkingLevel`.
+- `thinking` is present only when determinable from the child's own result metadata (known model suffix or explicit field); never fall back to the parent session's thinking level, because `pi-subagents` omits the suffix for `off`/unset levels and passes `--thinking` separately.
+- `childIndex` is the stable `progress.index` from `pi-subagents`; use the result-array position only as a compatibility fallback when `progress.index` is absent (compacted final results strip `progress`, and both values derive from task order).
 - Valid thinking levels are exactly `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
 - Displayed model IDs remove a provider prefix by retaining the portion after the final `/`; Pi thinking suffixes are removed from the model and reported as `thinking`.
 - Unknown model suffixes remain part of the model ID rather than being misreported as thinking.
 - Repeated partial/final updates are deduplicated by tool call ID, child index, agent, model, and thinking.
 - A changed fallback tuple emits another line; the old tuple is not replaced retroactively.
+- When a foreground call produces no resolved model metadata, the session streamer emits an agent-only fallback observation at completion; a subagent call must never vanish from output.
 - Subagent management calls such as `subagent(action=list)` retain normal tool formatting.
 - Keep external-result validation and model normalization in `src/pi/subagent-progress.ts`; do not move that logic into `pi-session-stream.ts`.
 - Add only a small custom-entry dispatch branch to the already-large `pi-session-stream.ts`; do not perform a broader stream-module refactor.
@@ -48,8 +50,8 @@
 - Produces:
   - `export const SUBAGENT_PROGRESS_CUSTOM_TYPE = "patchmill-subagent-progress";`
   - `export type SubagentThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";`
-  - `export type SubagentProgress = { toolCallId: string; childIndex: number; agent: string; model: string; thinking: SubagentThinkingLevel };`
-  - `export function parseSubagentProgressResults(result: unknown, toolCallId: string, activeThinking: SubagentThinkingLevel): SubagentProgress[]`
+  - `export type SubagentProgress = { toolCallId: string; childIndex: number; agent: string; model: string; thinking?: SubagentThinkingLevel };`
+  - `export function parseSubagentProgressResults(result: unknown, toolCallId: string): SubagentProgress[]`
   - `export function parseSubagentProgressEntry(entry: Record<string, unknown>): SubagentProgress | undefined`
   - `export function subagentProgressKey(progress: SubagentProgress): string`
 
@@ -86,7 +88,6 @@ test("extracts one progress payload per child and removes provider prefixes", ()
         },
       },
       "call-1",
-      "high",
     ),
     [
       {
@@ -127,7 +128,6 @@ test("uses stable progress indexes when partial parallel results are out of orde
         },
       },
       "call-1b",
-      "high",
     ),
     [
       {
@@ -148,7 +148,7 @@ test("uses stable progress indexes when partial parallel results are out of orde
   );
 });
 
-test("prefers an explicit thinking field over the active Pi fallback", () => {
+test("honors an explicit thinking field on the child result", () => {
   assert.deepEqual(
     parseSubagentProgressResults(
       {
@@ -163,7 +163,6 @@ test("prefers an explicit thinking field over the active Pi fallback", () => {
         },
       },
       "call-2",
-      "high",
     ),
     [
       {
@@ -177,7 +176,7 @@ test("prefers an explicit thinking field over the active Pi fallback", () => {
   );
 });
 
-test("uses the active Pi thinking level when result metadata omits thinking", () => {
+test("omits thinking when the child's metadata cannot determine it", () => {
   assert.deepEqual(
     parseSubagentProgressResults(
       {
@@ -186,7 +185,6 @@ test("uses the active Pi thinking level when result metadata omits thinking", ()
         },
       },
       "call-3",
-      "xhigh",
     ),
     [
       {
@@ -194,7 +192,6 @@ test("uses the active Pi thinking level when result metadata omits thinking", ()
         childIndex: 0,
         agent: "reviewer",
         model: "gpt-5.6-sol",
-        thinking: "xhigh",
       },
     ],
   );
@@ -209,7 +206,6 @@ test("keeps unknown model suffixes in the model field", () => {
         },
       },
       "call-4",
-      "medium",
     ),
     [
       {
@@ -217,7 +213,6 @@ test("keeps unknown model suffixes in the model field", () => {
         childIndex: 0,
         agent: "worker",
         model: "model:preview",
-        thinking: "medium",
       },
     ],
   );
@@ -237,7 +232,6 @@ test("skips malformed children without dropping valid siblings", () => {
         },
       },
       "call-5",
-      "low",
     ),
     [
       {
@@ -253,10 +247,7 @@ test("skips malformed children without dropping valid siblings", () => {
 
 test("returns no progress for malformed result envelopes", () => {
   for (const result of [null, "malformed", { details: "invalid" }, {}]) {
-    assert.deepEqual(
-      parseSubagentProgressResults(result, "call-5b", "medium"),
-      [],
-    );
+    assert.deepEqual(parseSubagentProgressResults(result, "call-5b"), []);
   }
 });
 
@@ -278,10 +269,26 @@ test("parses only the exact progress custom entry contract", () => {
     progress,
   );
 
+  const withoutThinking = {
+    toolCallId: "call-6b",
+    childIndex: 0,
+    agent: "worker",
+    model: "gpt-5.6-terra",
+  };
+  assert.deepEqual(
+    parseSubagentProgressEntry({
+      type: "custom",
+      customType: SUBAGENT_PROGRESS_CUSTOM_TYPE,
+      data: withoutThinking,
+    }),
+    withoutThinking,
+  );
+
   for (const entry of [
     { type: "custom_message", customType: SUBAGENT_PROGRESS_CUSTOM_TYPE, data: progress },
     { type: "custom", customType: "other", data: progress },
     { type: "custom", customType: SUBAGENT_PROGRESS_CUSTOM_TYPE, data: { ...progress, model: 3 } },
+    { type: "custom", customType: SUBAGENT_PROGRESS_CUSTOM_TYPE, data: { ...progress, thinking: "bogus" } },
   ]) {
     assert.equal(parseSubagentProgressEntry(entry), undefined);
   }
@@ -297,6 +304,15 @@ test("builds a stable key from call, child, agent, model, and thinking", () => {
       thinking: "medium",
     }),
     "call-7\u00002\u0000worker\u0000gpt-5.6-terra\u0000medium",
+  );
+  assert.equal(
+    subagentProgressKey({
+      toolCallId: "call-7",
+      childIndex: 2,
+      agent: "worker",
+      model: "gpt-5.6-terra",
+    }),
+    "call-7\u00002\u0000worker\u0000gpt-5.6-terra\u0000",
   );
 });
 ```
@@ -335,7 +351,7 @@ export type SubagentProgress = {
   childIndex: number;
   agent: string;
   model: string;
-  thinking: SubagentThinkingLevel;
+  thinking?: SubagentThinkingLevel;
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -365,7 +381,6 @@ function splitModel(model: string): {
 export function parseSubagentProgressResults(
   result: unknown,
   toolCallId: string,
-  activeThinking: SubagentThinkingLevel,
 ): SubagentProgress[] {
   if (!isObject(result) || !isObject(result.details)) return [];
   const results = result.details.results;
@@ -386,14 +401,14 @@ export function parseSubagentProgressResults(
     const explicit = isThinkingLevel(item.thinking)
       ? item.thinking
       : undefined;
-    const thinking = explicit ?? parsed.thinking ?? activeThinking;
+    const thinking = explicit ?? parsed.thinking;
     return [
       {
         toolCallId,
         childIndex: progressIndex,
         agent,
         model: parsed.model,
-        thinking,
+        ...(thinking ? { thinking } : {}),
       },
     ];
   });
@@ -410,8 +425,14 @@ export function parseSubagentProgressEntry(
   if (!Number.isInteger(childIndex) || (childIndex as number) < 0) return undefined;
   if (typeof agent !== "string" || agent.length === 0) return undefined;
   if (typeof model !== "string" || model.length === 0) return undefined;
-  if (!isThinkingLevel(thinking)) return undefined;
-  return { toolCallId, childIndex: childIndex as number, agent, model, thinking };
+  if (thinking !== undefined && !isThinkingLevel(thinking)) return undefined;
+  return {
+    toolCallId,
+    childIndex: childIndex as number,
+    agent,
+    model,
+    ...(thinking ? { thinking } : {}),
+  };
 }
 
 export function subagentProgressKey(progress: SubagentProgress): string {
@@ -420,7 +441,7 @@ export function subagentProgressKey(progress: SubagentProgress): string {
     String(progress.childIndex),
     progress.agent,
     progress.model,
-    progress.thinking,
+    progress.thinking ?? "",
   ].join("\u0000");
 }
 ```
@@ -457,12 +478,11 @@ Expected: one commit containing only the two Task 1 files.
 
 - Consumes:
   - `SUBAGENT_PROGRESS_CUSTOM_TYPE`
-  - `SubagentThinkingLevel`
   - `SubagentProgress`
   - `parseSubagentProgressResults()`
   - `subagentProgressKey()`
 - Produces:
-  - `export type SubagentProgressObserverApi = { on(event: string, handler: (event: unknown) => void): void; appendEntry(customType: string, data: SubagentProgress): void; getThinkingLevel(): SubagentThinkingLevel }`
+  - `export type SubagentProgressObserverApi = { on(event: string, handler: (event: unknown) => void): void; appendEntry(customType: string, data: SubagentProgress): void }`
   - `export function registerRunOnceSubagentProgress(pi: SubagentProgressObserverApi): void`
   - default extension factory `export default function runOnceSubagentProgress(pi: SubagentProgressObserverApi): void`
 
@@ -485,7 +505,6 @@ type Harness = {
   api: SubagentProgressObserverApi;
   handlers: Map<string, Handler[]>;
   entries: Array<{ customType: string; data: SubagentProgress }>;
-  thinking: string;
 };
 
 function createHarness(): Harness {
@@ -494,16 +513,12 @@ function createHarness(): Harness {
   const state: Harness = {
     handlers,
     entries,
-    thinking: "high",
     api: {
       on(event, handler) {
         handlers.set(event, [...(handlers.get(event) ?? []), handler]);
       },
       appendEntry(customType, data) {
         entries.push({ customType, data });
-      },
-      getThinkingLevel() {
-        return state.thinking as "high";
       },
     },
   };
@@ -611,7 +626,6 @@ test("end event supplies the fallback when no partial update arrives", () => {
         childIndex: 0,
         agent: "worker",
         model: "gpt-5.6-terra",
-        thinking: "high",
       },
     },
   ]);
@@ -716,13 +730,11 @@ import {
   parseSubagentProgressResults,
   subagentProgressKey,
   type SubagentProgress,
-  type SubagentThinkingLevel,
 } from "../subagent-progress.ts";
 
 export type SubagentProgressObserverApi = {
   on(event: string, handler: (event: unknown) => void): void;
   appendEntry(customType: string, data: SubagentProgress): void;
-  getThinkingLevel(): SubagentThinkingLevel;
 };
 
 type SubagentProgressObserverState = {
@@ -739,11 +751,7 @@ function observe(
   toolCallId: string,
   result: unknown,
 ): void {
-  for (const progress of parseSubagentProgressResults(
-    result,
-    toolCallId,
-    pi.getThinkingLevel(),
-  )) {
+  for (const progress of parseSubagentProgressResults(result, toolCallId)) {
     const key = subagentProgressKey(progress);
     if (state.emitted.has(key)) continue;
     state.emitted.add(key);
@@ -805,13 +813,14 @@ Expected: one commit containing only the two Task 2 files.
 
 **Files:**
 
+- Create: `src/pi/extensions/run-once-subagent-progress.load.test.ts`
 - Modify: `src/pi/resource-profiles.ts`
 - Modify: `src/pi/resource-profiles.test.ts`
 - Modify: `src/cli/commands/run-once/pi.test.ts`
 
 **Interfaces:**
 
-- Consumes: Task 2's compiled extension source path `src/pi/extensions/run-once-subagent-progress.ts` and expected distribution path `dist/src/pi/extensions/run-once-subagent-progress.js`.
+- Consumes: Task 2's extension source path `src/pi/extensions/run-once-subagent-progress.ts` and its relative `../subagent-progress.ts` import.
 - Produces: `runOnceExtensionPaths()` returns three paths in order: `pi-subagents`, `extensions/todos.ts`, then the run-once subagent progress observer.
 
 - [ ] **Step 1: Write the failing profile and CLI expectation tests**
@@ -874,45 +883,59 @@ test("all run-once profiles load the subagent progress observer and triage does 
 });
 ```
 
-Add this test immediately after the all-profiles test:
+Create `src/pi/extensions/run-once-subagent-progress.load.test.ts` as a packaging smoke test. It passes Patchmill's Testing Value Gate because it proves the bundled Pi CLI loads the multi-file TypeScript extension — including the relative `../subagent-progress.ts` import — which no existing test covers (`extensions/todos.ts` is single-file):
 
 ```ts
-test("compiled resource profile points at the built observer extension", () => {
-  const compiledResourceRoot = join(
-    process.cwd(),
-    "dist",
-    "src",
-    "pi",
-  );
-  const compiled = compiledResourceRoot.replaceAll("\\", "/").endsWith(
-    "/dist/src/pi",
-  )
-    ? join(
-        resolve(compiledResourceRoot, "../../.."),
-        "dist",
-        "src",
-        "pi",
-        "extensions",
-        "run-once-subagent-progress.js",
-      )
-    : join(
-        resolve(compiledResourceRoot, "../.."),
-        "src",
-        "pi",
-        "extensions",
-        "run-once-subagent-progress.ts",
-      );
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { test } from "node:test";
 
-  assert.equal(
-    compiled.replaceAll("\\", "/").endsWith(
-      "/dist/src/pi/extensions/run-once-subagent-progress.js",
-    ),
-    true,
-  );
-});
+const require = createRequire(import.meta.url);
+const PI_CLI = join(
+  dirname(require.resolve("@earendil-works/pi-coding-agent/package.json")),
+  "dist",
+  "cli.js",
+);
+const EXTENSION = join(
+  process.cwd(),
+  "src",
+  "pi",
+  "extensions",
+  "run-once-subagent-progress.ts",
+);
+
+test(
+  "bundled Pi loads the multi-file observer extension and fails only at the provider stage",
+  { timeout: 60_000 },
+  () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        PI_CLI,
+        "-e",
+        EXTENSION,
+        "-p",
+        "Say ok",
+        "--no-tools",
+        "--provider",
+        "__invalid__",
+      ],
+      { encoding: "utf8" },
+    );
+    const output = `${result.stdout}\n${result.stderr}`;
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(
+      output,
+      /Failed to load extension|Cannot find package|No such built-in module/,
+    );
+    assert.match(output, /provider|api[- ]?key|invalid/i);
+  },
+);
 ```
 
-In the same file, add `resolve` to the `node:path` import so it reads `import { basename, join, resolve } from "node:path";`.
+The run must fail only at the expected provider/API-key stage; any `Failed to load extension`, `No such built-in module`, or `Cannot find package` output is a regression.
 
 In `src/cli/commands/run-once/pi.test.ts`, replace `runOnceExtensionArgs` with:
 
@@ -923,7 +946,7 @@ const runOnceExtensionArgs = [
   "-e",
   "/repo/extensions/todos.ts",
   "-e",
-  "/repo/dist/src/pi/extensions/run-once-subagent-progress.js",
+  "/repo/src/pi/extensions/run-once-subagent-progress.ts",
 ];
 ```
 
@@ -949,7 +972,7 @@ assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
 assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
 assert.match(
   args[5] ?? "",
-  /dist\/src\/pi\/extensions\/run-once-subagent-progress\.js$/,
+  /src\/pi\/extensions\/run-once-subagent-progress\.ts$/,
 );
 ```
 
@@ -971,44 +994,18 @@ node --test src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.t
 
 Expected: FAIL because profiles still return only two extensions and Pi calls only include two `-e` pairs.
 
-- [ ] **Step 3: Add the compiled extension path**
+- [ ] **Step 3: Add the observer extension path**
 
-Modify `src/pi/resource-profiles.ts` so the constants read:
+Add this constant next to `PATCHMILL_TODOS_EXTENSION` in `src/pi/resource-profiles.ts`. Use a single source path, identical to the `todos.ts` pattern: Pi loads TypeScript extensions through jiti and `package.json` ships the `src/` tree, so no compiled/source path fork is needed:
 
 ```ts
-const require = createRequire(import.meta.url);
-const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
-  require.resolve("pi-subagents/package.json"),
-);
-const PATCHMILL_RESOURCE_ROOT = dirname(fileURLToPath(import.meta.url));
-const PATCHMILL_IS_COMPILED = PATCHMILL_RESOURCE_ROOT.replaceAll(
-  "\\",
-  "/",
-).endsWith("/dist/src/pi");
-const PATCHMILL_PACKAGE_ROOT = PATCHMILL_IS_COMPILED
-  ? resolve(PATCHMILL_RESOURCE_ROOT, "../../..")
-  : resolve(PATCHMILL_RESOURCE_ROOT, "../..");
-const PATCHMILL_TODOS_EXTENSION = join(
+const PATCHMILL_RUN_ONCE_SUBAGENT_PROGRESS_EXTENSION = join(
   PATCHMILL_PACKAGE_ROOT,
+  "src",
+  "pi",
   "extensions",
-  "todos.ts",
+  "run-once-subagent-progress.ts",
 );
-const PATCHMILL_RUN_ONCE_SUBAGENT_PROGRESS_EXTENSION = PATCHMILL_IS_COMPILED
-  ? join(
-      PATCHMILL_PACKAGE_ROOT,
-      "dist",
-      "src",
-      "pi",
-      "extensions",
-      "run-once-subagent-progress.js",
-    )
-  : join(
-      PATCHMILL_PACKAGE_ROOT,
-      "src",
-      "pi",
-      "extensions",
-      "run-once-subagent-progress.ts",
-    );
 ```
 
 Replace `runOnceExtensionPaths()` with:
@@ -1028,19 +1025,19 @@ function runOnceExtensionPaths(): string[] {
 Run:
 
 ```sh
-node --test src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.ts
+node --test src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.ts src/pi/extensions/run-once-subagent-progress.load.test.ts
 ```
 
-Expected: PASS with 0 failing tests in both files.
+Expected: PASS with 0 failing tests in all three files.
 
 - [ ] **Step 5: Commit the profile wiring**
 
 ```sh
-git add src/pi/resource-profiles.ts src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.ts
+git add src/pi/resource-profiles.ts src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.ts src/pi/extensions/run-once-subagent-progress.load.test.ts
 git commit -m "feat(pi): load run-once subagent observer"
 ```
 
-Expected: one commit containing only the three Task 3 files.
+Expected: one commit containing only the four Task 3 files.
 
 ---
 
@@ -1055,10 +1052,42 @@ Expected: one commit containing only the three Task 3 files.
 
 - Consumes: Task 1's `SUBAGENT_PROGRESS_CUSTOM_TYPE`, `SubagentProgress`, and `parseSubagentProgressEntry()`.
 - Produces:
-  - `PiSessionObservation` gains `{ type: "subagent-progress"; progress: SubagentProgress }`.
-  - `sessionEntryToObservations(entry: JsonObject): PiSessionObservation[]` returns that observation only for exact, valid progress custom entries.
+  - `PiSessionObservation` gains `{ type: "subagent-progress"; progress: SubagentProgress }` and `{ type: "subagent-fallback"; toolName?: string; toolCallId?: string; arguments?: Record<string, unknown> }`.
+  - `sessionEntryToObservations(entry: JsonObject): PiSessionObservation[]` returns the progress observation only for exact, valid progress custom entries.
+  - `export function isAsyncSubagentCall(args: Record<string, unknown> | undefined): boolean` (Task 5's console reporter imports this).
+  - `createPiSessionObservationStreamer()` tracks foreground subagent calls by `toolCallId` and emits one `subagent-fallback` observation when the call's toolResult message arrives without any resolved progress observation.
 
 - [ ] **Step 1: Write the failing session-stream tests**
+
+Add `createPiSessionObservationStreamer` and `type PiSessionObservation` to the existing `./pi-session-stream.ts` import in `src/cli/commands/run-once/pi.test.ts`, then add this helper near the other test helpers:
+
+```ts
+async function collectObservations(
+  entries: Array<Record<string, unknown>>,
+): Promise<PiSessionObservation[]> {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-stream-"));
+  try {
+    const sessionDir = join(dir, "sessions");
+    await mkdir(join(sessionDir, "--repo--"), { recursive: true });
+    await writeFile(
+      join(sessionDir, "--repo--", "session.jsonl"),
+      entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+      "utf8",
+    );
+    const observations: PiSessionObservation[] = [];
+    const streamer = createPiSessionObservationStreamer(
+      sessionDir,
+      (observation) => observations.push(observation),
+      { pollMs: 10 },
+    );
+    streamer.start();
+    await streamer.stop();
+    return observations;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+```
 
 Add these tests near the existing `sessionEntryToObservations` coverage in `src/cli/commands/run-once/pi.test.ts`:
 
@@ -1124,6 +1153,132 @@ test("session stream ignores malformed and unrelated custom entries", () => {
     assert.deepEqual(sessionEntryToObservations(entry), []);
   }
 });
+
+test("session streamer emits an agent-only fallback when a foreground subagent call resolves no metadata", async () => {
+  const observations = await collectObservations([
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "subagent",
+            arguments: { agent: "worker", task: "implement" },
+          },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        content: [],
+      },
+    },
+  ]);
+
+  assert.deepEqual(
+    observations.filter(
+      (observation) => observation.type === "subagent-fallback",
+    ),
+    [
+      {
+        type: "subagent-fallback",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        arguments: { agent: "worker", task: "implement" },
+      },
+    ],
+  );
+});
+
+test("session streamer suppresses the fallback when resolved metadata arrived", async () => {
+  const observations = await collectObservations([
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "subagent",
+            arguments: { agent: "worker", task: "implement" },
+          },
+        ],
+      },
+    },
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        toolCallId: "call-1",
+        childIndex: 0,
+        agent: "worker",
+        model: "gpt-5.6-terra",
+        thinking: "medium",
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        content: [],
+      },
+    },
+  ]);
+
+  assert.equal(
+    observations.filter((observation) => observation.type === "subagent-progress")
+      .length,
+    1,
+  );
+  assert.equal(
+    observations.filter((observation) => observation.type === "subagent-fallback")
+      .length,
+    0,
+  );
+});
+
+test("session streamer does not emit fallbacks for async subagent calls", async () => {
+  const observations = await collectObservations([
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "subagent",
+            arguments: { agent: "worker", task: "implement", async: true },
+          },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        content: [],
+      },
+    },
+  ]);
+
+  assert.equal(
+    observations.filter((observation) => observation.type === "subagent-fallback")
+      .length,
+    0,
+  );
+});
 ```
 
 - [ ] **Step 2: Run the focused test to verify it fails**
@@ -1134,7 +1289,7 @@ Run:
 node --test src/cli/commands/run-once/pi.test.ts
 ```
 
-Expected: FAIL because `sessionEntryToObservations` returns no `subagent-progress` observation.
+Expected: FAIL because `sessionEntryToObservations` returns no `subagent-progress` observation and the streamer emits no `subagent-fallback` observation.
 
 - [ ] **Step 3: Add the custom-entry observation**
 
@@ -1147,12 +1302,18 @@ import {
 } from "../../../pi/subagent-progress.ts";
 ```
 
-Extend `PiSessionObservation` with this union member:
+Extend `PiSessionObservation` with these union members:
 
 ```ts
 | {
     type: "subagent-progress";
     progress: SubagentProgress;
+  }
+| {
+    type: "subagent-fallback";
+    toolName?: string;
+    toolCallId?: string;
+    arguments?: Record<string, unknown>;
   }
 ```
 
@@ -1166,6 +1327,82 @@ if (subagentProgress) {
 ```
 
 Leave `sessionEntryToStreamText` and `sessionEntryToRawText` unchanged: valid custom entries are observations only, not raw or pretty text.
+
+Add this exported helper after `toolCallObservations()`:
+
+```ts
+export function isAsyncSubagentCall(
+  args: Record<string, unknown> | undefined,
+): boolean {
+  if (!args) return false;
+  if (args.async === true) return true;
+  const groups = [args.tasks, args.chain];
+  return groups.some(
+    (group) =>
+      Array.isArray(group) &&
+      group.some(
+        (task) =>
+          typeof task === "object" &&
+          task !== null &&
+          (task as Record<string, unknown>).async === true,
+      ),
+  );
+}
+```
+
+In `createPiSessionObservationStreamer`, add the correlation state next to `observedToolCallIds`:
+
+```ts
+const pendingSubagentCalls = new Map<string, Record<string, unknown>>();
+const resolvedSubagentCallIds = new Set<string>();
+```
+
+Replace the `processLine` observation loop with:
+
+```ts
+for (const observation of sessionEntryToObservations(entry)) {
+  if (observation.type === "subagent-progress") {
+    const toolCallId = observation.progress.toolCallId;
+    if (resolvedSubagentCallIds.has(toolCallId)) continue;
+    resolvedSubagentCallIds.add(toolCallId);
+    pendingSubagentCalls.delete(toolCallId);
+    onObservation(observation);
+    continue;
+  }
+  if (observation.type === "tool-call" && observation.toolCallId) {
+    const toolCallId = observation.toolCallId;
+    if (observedToolCallIds.has(toolCallId)) {
+      if (
+        pendingSubagentCalls.has(toolCallId) &&
+        !resolvedSubagentCallIds.has(toolCallId)
+      ) {
+        resolvedSubagentCallIds.add(toolCallId);
+        const args = pendingSubagentCalls.get(toolCallId);
+        pendingSubagentCalls.delete(toolCallId);
+        onObservation({
+          type: "subagent-fallback",
+          toolName: "subagent",
+          toolCallId,
+          arguments: args,
+        });
+      }
+      continue;
+    }
+    observedToolCallIds.add(toolCallId);
+    if (
+      observation.toolName === "subagent" &&
+      observation.arguments &&
+      !("action" in observation.arguments) &&
+      !isAsyncSubagentCall(observation.arguments)
+    ) {
+      pendingSubagentCalls.set(toolCallId, observation.arguments);
+    }
+  }
+  onObservation(observation);
+}
+```
+
+The fallback relies on two invariants: the extension's `tool_execution_end` append lands in the JSONL before Pi writes the toolResult message, and `resolvedSubagentCallIds` guards both orders so a call can never produce both a fallback and an enriched line.
 
 - [ ] **Step 4: Run the focused test to verify it passes**
 
@@ -1197,7 +1434,7 @@ Expected: one commit containing only the two Task 4 files.
 
 **Interfaces:**
 
-- Consumes: Task 4's observation `{ type: "subagent-progress"; progress: SubagentProgress }`.
+- Consumes: Task 4's observations `{ type: "subagent-progress"; progress: SubagentProgress }` and `{ type: "subagent-fallback"; arguments?: Record<string, unknown> }`, plus Task 4's `isAsyncSubagentCall()`.
 - Produces: console lines exactly matching `🤖 subagent (agent=<agent>, model=<model>, thinking=<level>)`; foreground direct, parallel, and chain subagent execution tool-call observations no longer emit old agent-only summaries, while `async: true` calls retain their existing summaries until resolved metadata is available.
 
 - [ ] **Step 1: Write the failing console tests**
@@ -1345,6 +1582,69 @@ test("console reporter renders one enriched line per resolved subagent child", (
     "   🤖 subagent (agent=reviewer, model=gpt-5.6-sol, thinking=xhigh)",
   ]);
 });
+
+test("console reporter omits the thinking segment when it is not determinable", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+
+  reporter.event(
+    event({
+      message: "implement task",
+      step: { type: "step-start", label: "implement task" },
+    }),
+  );
+  reporter.event(
+    event({
+      observation: {
+        type: "subagent-progress",
+        progress: {
+          toolCallId: "call-1",
+          childIndex: 0,
+          agent: "worker",
+          model: "gpt-5.6-terra",
+        },
+      },
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "01 implement task",
+    "   🤖 subagent (agent=worker, model=gpt-5.6-terra)",
+  ]);
+});
+
+test("console reporter renders the agent-only fallback when no resolved metadata arrives", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+
+  reporter.event(
+    event({
+      message: "implement task",
+      step: { type: "step-start", label: "implement task" },
+    }),
+  );
+  reporter.event(
+    event({
+      observation: {
+        type: "subagent-fallback",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        arguments: { agent: "worker", task: "implement" },
+      },
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "01 implement task",
+    "   🤖 subagent (agent=worker)",
+  ]);
+});
 ```
 
 Keep the existing `"console reporter renders subagent management calls as normal tools"` test unchanged.
@@ -1361,37 +1661,26 @@ Expected: FAIL because foreground execution calls still emit agent-only lines an
 
 - [ ] **Step 3: Render progress observations and suppress foreground execution summaries**
 
-In `src/cli/commands/run-once/console-progress.ts`, keep the existing `subagentLabel()`, `subagentLabels()`, and `formatSubagentCall()` helpers. Add these helpers after `formatSubagentCall()`:
+In `src/cli/commands/run-once/console-progress.ts`, import the async detector added in Task 4:
 
 ```ts
-function isAsyncSubagentCall(
-  args: Record<string, unknown> | undefined,
-): boolean {
-  if (!args) return false;
-  if (args.async === true) return true;
-  const groups = [args.tasks, args.chain];
-  return groups.some(
-    (group) =>
-      Array.isArray(group) &&
-      group.some(
-        (task) =>
-          typeof task === "object" &&
-          task !== null &&
-          (task as Record<string, unknown>).async === true,
-      ),
-  );
-}
+import { isAsyncSubagentCall } from "./pi-session-stream.ts";
+```
 
+Keep the existing `subagentLabel()`, `subagentLabels()`, and `formatSubagentCall()` helpers. Add one helper after `formatSubagentCall()`:
+
+```ts
 function formatSubagentProgress(progress: {
   agent: string;
   model: string;
-  thinking: string;
+  thinking?: string;
 }): string {
-  return `🤖 subagent (agent=${progress.agent}, model=${progress.model}, thinking=${progress.thinking})`;
+  const thinking = progress.thinking ? `, thinking=${progress.thinking}` : "";
+  return `🤖 subagent (agent=${progress.agent}, model=${progress.model}${thinking})`;
 }
 ```
 
-Replace the body of the existing `formatToolCall()` with:
+Make exactly two changes to the existing `formatToolCall()`: widen the return type and add the suppression branch. Everything else — including the `🔧` prefix used by subagent management calls and the existing argument-pair mapping — stays byte-for-byte identical:
 
 ```ts
 function formatToolCall(
@@ -1406,21 +1695,26 @@ function formatToolCall(
     name === "subagent" ? formatSubagentCall(args) : undefined;
   if (subagentCall) return subagentCall;
   const argPairs = Object.entries(args ?? {})
-    .filter(([, value]) => value !== undefined)
-    .map(([key, value]) => `${key}=${formatArgumentValue(value)}`);
-  const prefix = name === "subagent" ? "🤖" : "🔧";
-  return argPairs.length > 0
-    ? `${prefix} ${name} (${argPairs.join(", ")})`
-    : `🔧 ${name}`;
+    .map(([key, value]) => `${key}=${formatArgumentValue(value)}`)
+    .join(", ");
+  return argPairs ? `🔧 ${name} (${argPairs})` : `🔧 ${name}`;
 }
 ```
 
-In `event()`'s observation handling, add this branch before the existing `tool-call` branch:
+In `event()`'s observation handling, add these branches before the existing `tool-call` branch:
 
 ```ts
 if (event.observation?.type === "subagent-progress") {
   if (this.currentStep) {
     this.writeLine(`   ${formatSubagentProgress(event.observation.progress)}`);
+  }
+  return;
+}
+
+if (event.observation?.type === "subagent-fallback") {
+  if (this.currentStep) {
+    const fallback = formatSubagentCall(event.observation.arguments);
+    if (fallback) this.writeLine(`   ${fallback}`);
   }
   return;
 }
@@ -1482,6 +1776,7 @@ Run:
 node --test \
   src/pi/subagent-progress.test.ts \
   src/pi/extensions/run-once-subagent-progress.test.ts \
+  src/pi/extensions/run-once-subagent-progress.load.test.ts \
   src/pi/resource-profiles.test.ts \
   src/cli/commands/run-once/pi.test.ts \
   src/cli/commands/run-once/console-progress.test.ts
@@ -1538,7 +1833,7 @@ Run:
 npm pack --dry-run
 ```
 
-Expected: the dry-run package contents include `dist/src/pi/extensions/run-once-subagent-progress.js` and the command exits successfully.
+Expected: the dry-run package contents include `src/pi/extensions/run-once-subagent-progress.ts` and `src/pi/subagent-progress.ts` (the observer is loaded from source via jiti, exactly like `extensions/todos.ts`), and the command exits successfully.
 
 - [ ] **Step 7: Commit any verification fixes**
 
@@ -1564,8 +1859,10 @@ Before claiming completion, verify each statement is true:
 - Repeated partial/final updates do not duplicate an unchanged tuple.
 - A changed fallback tuple is reported rather than hidden.
 - Foreground direct, parallel, and chain subagent execution calls do not emit the previous agent-only line.
+- A foreground call whose results carry no usable model metadata still prints the agent-only line at completion.
+- The `thinking` segment appears only when determinable from the child's own result metadata; it is never inferred from the parent session.
 - Async subagent calls retain an agent-only summary until resolved metadata is available.
-- Subagent management calls retain normal tool-call output.
+- Subagent management calls retain normal tool-call output (`🔧 subagent (action=list)`).
 - Custom progress entries do not enter LLM context and contain no task or child output.
 - Malformed hook data does not fail the run.
 - Focused tests, the full test suite, lint, build, diff checks, and package dry-run pass.
