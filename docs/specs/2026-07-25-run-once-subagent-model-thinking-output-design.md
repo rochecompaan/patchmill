@@ -77,6 +77,16 @@ Two alternatives were considered and rejected:
 - **Resolving local settings at tool-call time.** Rejected because it would
   duplicate `pi-subagents` agent, override, model, thinking, and fallback
   precedence rules and could drift from upstream behavior.
+- **Emitting both lines.** Print the agent-only line immediately, then print
+  enriched per-child lines as metadata resolves. This deletes the streamer's
+  buffer/replay machinery but adds a redundant line to every call: the
+  run-once console is a terse operator dashboard, the call summary is a strict
+  subset of the enriched line that typically arrives seconds later with the
+  first partial update, and subagent calls are frequent enough that the
+  duplicate noise obscures other tool output. Suppression until the outcome is
+  known was confirmed as an operator requirement during interactive planning;
+  the buffer/replay fallback is the price of that requirement and guarantees
+  the call never vanishes.
 
 ## Architecture
 
@@ -309,14 +319,18 @@ event handling, validates external data, and changes operator-visible behavior.
   - emits a changed fallback tuple;
   - resets state on session start;
   - ignores unrelated tools.
-- `src/cli/commands/run-once/pi.test.ts`
+- `src/cli/commands/run-once/pi-session-stream.test.ts`
   - converts valid custom entries into subagent-resolution observations;
   - ignores malformed and unrelated custom entries;
+  - marks toolResult observations with the `completed` completion signal;
   - buffers a foreground execution call and replays its original observation
     when the call completes without resolved metadata;
   - emits every per-child progress observation for one call, including a
     changed fallback tuple;
+  - deduplicates repeated progress entries across file re-reads;
   - never buffers async or management calls.
+- `src/cli/commands/run-once/pipeline-progress.test.ts`
+  - counts resolved subagent children as tool calls in step accounting.
 - `src/cli/commands/run-once/console-progress.test.ts`
   - asserts the exact requested output, including separate lines for parallel
     children;
@@ -329,9 +343,10 @@ event handling, validates external data, and changes operator-visible behavior.
   - verifies package-root resolution from nested source and dist-style layouts;
   - verifies every resolved extension path exists on disk.
 - `src/pi/extensions/run-once-subagent-progress.load.test.ts`
-  - smoke-verifies that the bundled Pi CLI loads the multi-file TypeScript
-    extension (including its relative `../subagent-progress.ts` import) and
-    fails only at the expected invalid-provider stage.
+  - smoke-verifies that the bundled Pi CLI loads the vendored
+    `extensions/todos.ts` and the multi-file TypeScript observer (including
+    its relative `../subagent-progress.ts` import) and fails only at the
+    expected invalid-provider stage.
 
 ### Direct verification
 

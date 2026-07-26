@@ -54,7 +54,7 @@
   - `export function parseSubagentProgressResults(result: unknown, toolCallId: string): SubagentProgress[]`
   - `export function parseSubagentProgressEntry(entry: Record<string, unknown>): SubagentProgress | undefined`
   - `export function subagentProgressKey(progress: SubagentProgress): string`
-  - `export function isObject(value: unknown): value is Record<string, unknown>` (shared with the Task 2 extension)
+  - `export function isRecord(value: unknown): value is Record<string, unknown>` (shared with the Task 2 extension; distinct from `pi-session-stream.ts`'s local array-rejecting `isObject`)
 
 - [ ] **Step 1: Write the failing extraction tests**
 
@@ -367,7 +367,7 @@ export type SubagentProgress = {
   thinking?: SubagentThinkingLevel;
 };
 
-export function isObject(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
@@ -397,16 +397,16 @@ export function parseSubagentProgressResults(
   result: unknown,
   toolCallId: string,
 ): SubagentProgress[] {
-  if (!isObject(result) || !isObject(result.details)) return [];
+  if (!isRecord(result) || !isRecord(result.details)) return [];
   const results = result.details.results;
   if (!Array.isArray(results)) return [];
 
   return results.flatMap((item, arrayIndex) => {
-    if (!isObject(item)) return [];
+    if (!isRecord(item)) return [];
     const agent = typeof item.agent === "string" ? item.agent : "";
     const model = typeof item.model === "string" ? item.model : "";
     if (!agent || !model) return [];
-    const rawIndex = isObject(item.progress) ? item.progress.index : undefined;
+    const rawIndex = isRecord(item.progress) ? item.progress.index : undefined;
     const progressIndex =
       typeof rawIndex === "number" &&
       Number.isInteger(rawIndex) &&
@@ -435,7 +435,7 @@ export function parseSubagentProgressEntry(
 ): SubagentProgress | undefined {
   if (entry.type !== "custom") return undefined;
   if (entry.customType !== SUBAGENT_PROGRESS_CUSTOM_TYPE) return undefined;
-  if (!isObject(entry.data)) return undefined;
+  if (!isRecord(entry.data)) return undefined;
   const { toolCallId, childIndex, agent, model, thinking } = entry.data;
   if (typeof toolCallId !== "string" || toolCallId.length === 0) return undefined;
   if (
@@ -749,7 +749,7 @@ Create `src/pi/extensions/run-once-subagent-progress.ts`:
 ```ts
 import {
   SUBAGENT_PROGRESS_CUSTOM_TYPE,
-  isObject,
+  isRecord,
   parseSubagentProgressResults,
   subagentProgressKey,
   type SubagentProgress,
@@ -788,13 +788,13 @@ export function registerRunOnceSubagentProgress(
   });
 
   pi.on("tool_execution_update", (event) => {
-    if (!isObject(event) || event.toolName !== "subagent") return;
+    if (!isRecord(event) || event.toolName !== "subagent") return;
     if (typeof event.toolCallId !== "string") return;
     observe(pi, state, event.toolCallId, event.partialResult);
   });
 
   pi.on("tool_execution_end", (event) => {
-    if (!isObject(event) || event.toolName !== "subagent") return;
+    if (!isRecord(event) || event.toolName !== "subagent") return;
     if (typeof event.toolCallId !== "string") return;
     observe(pi, state, event.toolCallId, event.result);
   });
@@ -987,7 +987,7 @@ test("all run-once profiles load the subagent progress observer and triage does 
 });
 ```
 
-Create `src/pi/extensions/run-once-subagent-progress.load.test.ts` as a packaging smoke test. It passes Patchmill's Testing Value Gate because it proves the bundled Pi CLI loads the multi-file TypeScript extension — including the relative `../subagent-progress.ts` import — which no existing test covers (`extensions/todos.ts` is single-file):
+Create `src/pi/extensions/run-once-subagent-progress.load.test.ts` as a packaging smoke test. It passes Patchmill's Testing Value Gate because it proves the bundled Pi CLI loads the vendored `extensions/todos.ts` and the multi-file TypeScript observer — including the relative `../subagent-progress.ts` import — which no existing test covers (`extensions/todos.ts` is single-file and, due to the root-resolution bug fixed in Step 3, has never loaded in production):
 
 ```ts
 import assert from "node:assert/strict";
@@ -1002,24 +1002,26 @@ const PI_CLI = join(
   "dist",
   "cli.js",
 );
-const EXTENSION = join(
-  process.cwd(),
-  "src",
-  "pi",
-  "extensions",
-  "run-once-subagent-progress.ts",
-);
+const EXTENSIONS = [
+  join(process.cwd(), "extensions", "todos.ts"),
+  join(
+    process.cwd(),
+    "src",
+    "pi",
+    "extensions",
+    "run-once-subagent-progress.ts",
+  ),
+];
 
 test(
-  "bundled Pi loads the multi-file observer extension and fails only at the provider stage",
+  "bundled Pi loads the run-once TypeScript extensions and fails only at the provider stage",
   { timeout: 60_000 },
   () => {
     const result = spawnSync(
       process.execPath,
       [
         PI_CLI,
-        "-e",
-        EXTENSION,
+        ...EXTENSIONS.flatMap((path) => ["-e", path]),
         "-p",
         "Say ok",
         "--no-tools",
@@ -1179,6 +1181,8 @@ Expected: one commit containing only the four wiring files, on top of the Step 5
 
 - Create: `src/cli/commands/run-once/pi-session-stream.test.ts`
 - Modify: `src/cli/commands/run-once/pi-session-stream.ts`
+- Modify: `src/cli/commands/run-once/pipeline-progress.ts`
+- Modify: `src/cli/commands/run-once/pipeline-progress.test.ts`
 
 **Interfaces:**
 
@@ -1186,7 +1190,8 @@ Expected: one commit containing only the four wiring files, on top of the Step 5
 - Produces:
   - `PiSessionObservation` gains `{ type: "subagent-progress"; progress: SubagentProgress }`.
   - `sessionEntryToObservations(entry: JsonObject): PiSessionObservation[]` returns the progress observation only for exact, valid progress custom entries.
-  - `createPiSessionObservationStreamer()` buffers the original tool-call observation for foreground subagent execution calls instead of emitting it, drops the buffer when a progress observation arrives for the call, and replays the buffered observation unchanged when the call's toolResult arrives with no resolved metadata.
+  - `createSubagentProgressGate(onObservation: (observation: PiSessionObservation) => void): (observation: PiSessionObservation) => void` — a self-contained unit owning tool-call deduplication, the pending-observation buffer, and the emitted-key set; `createPiSessionObservationStreamer` reduces to a one-line dispatch into it.
+  - ToolResult-derived `tool-call` observations carry an explicit `completed: true` marker that the gate (and only the gate) consumes.
 
 - [ ] **Step 1: Write the failing session-stream tests**
 
@@ -1200,6 +1205,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   createPiSessionObservationStreamer,
+  createSubagentProgressGate,
   sessionEntryToObservations,
   type PiSessionObservation,
 } from "./pi-session-stream.ts";
@@ -1228,6 +1234,17 @@ async function collectObservations(
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+function collectGateObservations(
+  input: PiSessionObservation[],
+): PiSessionObservation[] {
+  const emitted: PiSessionObservation[] = [];
+  const gate = createSubagentProgressGate((observation) =>
+    emitted.push(observation),
+  );
+  for (const observation of input) gate(observation);
+  return emitted;
 }
 ```
 
@@ -1296,7 +1313,29 @@ test("session stream ignores malformed and unrelated custom entries", () => {
   }
 });
 
-test("session streamer buffers a foreground subagent call and replays it when no metadata resolves", async () => {
+test("sessionEntryToObservations marks toolResult observations as completed", () => {
+  assert.deepEqual(
+    sessionEntryToObservations({
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        content: [],
+      },
+    }),
+    [
+      {
+        type: "tool-call",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        completed: true,
+      },
+    ],
+  );
+});
+
+test("session streamer buffers a foreground subagent call and replays it when no metadata resolves (end-to-end smoke)", async () => {
   const observations = await collectObservations([
     {
       type: "message",
@@ -1336,31 +1375,22 @@ test("session streamer buffers a foreground subagent call and replays it when no
   );
 });
 
-test("session streamer emits every per-child progress observation for one call", async () => {
-  const observations = await collectObservations([
+test("gate emits every per-child progress observation for one call", () => {
+  const observations = collectGateObservations([
     {
-      type: "message",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "toolCall",
-            id: "call-1",
-            name: "subagent",
-            arguments: {
-              tasks: [
-                { agent: "worker", task: "implement" },
-                { agent: "reviewer", task: "review" },
-              ],
-            },
-          },
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-1",
+      arguments: {
+        tasks: [
+          { agent: "worker", task: "implement" },
+          { agent: "reviewer", task: "review" },
         ],
       },
     },
     {
-      type: "custom",
-      customType: "patchmill-subagent-progress",
-      data: {
+      type: "subagent-progress",
+      progress: {
         toolCallId: "call-1",
         childIndex: 0,
         agent: "worker",
@@ -1369,9 +1399,8 @@ test("session streamer emits every per-child progress observation for one call",
       },
     },
     {
-      type: "custom",
-      customType: "patchmill-subagent-progress",
-      data: {
+      type: "subagent-progress",
+      progress: {
         toolCallId: "call-1",
         childIndex: 1,
         agent: "reviewer",
@@ -1380,13 +1409,10 @@ test("session streamer emits every per-child progress observation for one call",
       },
     },
     {
-      type: "message",
-      message: {
-        role: "toolResult",
-        toolName: "subagent",
-        toolCallId: "call-1",
-        content: [],
-      },
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-1",
+      completed: true,
     },
   ]);
 
@@ -1403,12 +1429,11 @@ test("session streamer emits every per-child progress observation for one call",
   );
 });
 
-test("session streamer emits a changed fallback tuple instead of deduplicating it away", async () => {
-  const observations = await collectObservations([
+test("gate emits a changed fallback tuple instead of deduplicating it away", () => {
+  const observations = collectGateObservations([
     {
-      type: "custom",
-      customType: "patchmill-subagent-progress",
-      data: {
+      type: "subagent-progress",
+      progress: {
         toolCallId: "call-1",
         childIndex: 0,
         agent: "reviewer",
@@ -1417,9 +1442,8 @@ test("session streamer emits a changed fallback tuple instead of deduplicating i
       },
     },
     {
-      type: "custom",
-      customType: "patchmill-subagent-progress",
-      data: {
+      type: "subagent-progress",
+      progress: {
         toolCallId: "call-1",
         childIndex: 0,
         agent: "reviewer",
@@ -1437,79 +1461,64 @@ test("session streamer emits a changed fallback tuple instead of deduplicating i
   );
 });
 
-test("session streamer does not replay the buffer on argument-ful re-read duplicates", async () => {
-  const toolCallEntry = {
-    type: "message",
-    message: {
-      role: "assistant",
-      content: [
-        {
-          type: "toolCall",
-          id: "call-1",
-          name: "subagent",
-          arguments: { agent: "worker", task: "implement" },
-        },
-      ],
+test("gate deduplicates repeated progress entries across file re-reads", () => {
+  const progress: PiSessionObservation = {
+    type: "subagent-progress",
+    progress: {
+      toolCallId: "call-1",
+      childIndex: 0,
+      agent: "worker",
+      model: "gpt-5.6-terra",
+      thinking: "medium",
     },
   };
-  const observations = await collectObservations([
-    toolCallEntry,
-    // Simulates the truncation-reset path re-reading the in-flight call line.
-    toolCallEntry,
+
+  assert.equal(collectGateObservations([progress, progress]).length, 1);
+});
+
+test("gate does not replay the buffer on argument-ful re-read duplicates", () => {
+  const callObservation: PiSessionObservation = {
+    type: "tool-call",
+    toolName: "subagent",
+    toolCallId: "call-1",
+    arguments: { agent: "worker", task: "implement" },
+  };
+  const observations = collectGateObservations([
+    callObservation,
+    callObservation,
     {
-      type: "message",
-      message: {
-        role: "toolResult",
-        toolName: "subagent",
-        toolCallId: "call-1",
-        content: [],
-      },
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-1",
+      completed: true,
     },
   ]);
 
   assert.deepEqual(
     observations.filter((observation) => observation.type === "tool-call"),
-    [
-      {
-        type: "tool-call",
-        toolName: "subagent",
-        toolCallId: "call-1",
-        arguments: { agent: "worker", task: "implement" },
-      },
-    ],
+    [callObservation],
   );
 });
 
-test("session streamer never buffers async or management subagent calls", async () => {
-  const observations = await collectObservations([
+test("gate never buffers async or management subagent calls", () => {
+  const observations = collectGateObservations([
     {
-      type: "message",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "toolCall",
-            id: "call-async",
-            name: "subagent",
-            arguments: { agent: "worker", task: "implement", async: true },
-          },
-          {
-            type: "toolCall",
-            id: "call-mgmt",
-            name: "subagent",
-            arguments: { action: "list" },
-          },
-        ],
-      },
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-async",
+      arguments: { agent: "worker", task: "implement", async: true },
     },
     {
-      type: "message",
-      message: {
-        role: "toolResult",
-        toolName: "subagent",
-        toolCallId: "call-async",
-        content: [],
-      },
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-mgmt",
+      arguments: { action: "list" },
+    },
+    {
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-async",
+      completed: true,
     },
   ]);
 
@@ -1522,15 +1531,54 @@ test("session streamer never buffers async or management subagent calls", async 
 });
 ```
 
-- [ ] **Step 2: Run the focused test to verify it fails**
+Add this test to `src/cli/commands/run-once/pipeline-progress.test.ts` (its `collectProgressEvents` harness already exists):
+
+```ts
+test("step accounting counts resolved subagent children as tool calls", async () => {
+  const { events, progress: reporter } = collectProgressEvents();
+  const accounting = createStepAccounting({
+    progress: reporter,
+    issueNumber: 1,
+  });
+  await accounting.start("implement");
+  for (const progress of [
+    {
+      toolCallId: "call-1",
+      childIndex: 0,
+      agent: "worker",
+      model: "gpt-5.6-terra",
+      thinking: "medium" as const,
+    },
+    {
+      toolCallId: "call-1",
+      childIndex: 1,
+      agent: "reviewer",
+      model: "gpt-5.6-sol",
+      thinking: "xhigh" as const,
+    },
+  ]) {
+    await accounting.observe("pi", { type: "subagent-progress", progress });
+  }
+  await accounting.start("next");
+  const complete = events.find((event) => event.step?.type === "step-complete");
+  assert.equal(
+    complete?.step?.type === "step-complete"
+      ? complete.step.toolCalls
+      : undefined,
+    2,
+  );
+});
+```
+
+- [ ] **Step 2: Run the focused tests to verify they fail**
 
 Run:
 
 ```sh
-node --test src/cli/commands/run-once/pi-session-stream.test.ts
+node --test src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pipeline-progress.test.ts
 ```
 
-Expected: FAIL because `sessionEntryToObservations` returns no `subagent-progress` observation and the streamer neither buffers nor replays foreground subagent calls.
+Expected: FAIL because `sessionEntryToObservations` returns no `subagent-progress` observation and no `completed` marker, the gate does not exist, and accounting does not count subagent children.
 
 - [ ] **Step 3: Add the custom-entry observation and buffer/replay**
 
@@ -1544,13 +1592,17 @@ import {
 } from "../../../pi/subagent-progress.ts";
 ```
 
-Extend `PiSessionObservation` with this union member (no second observation type is needed — the fallback below replays the original tool-call observation):
+Extend `PiSessionObservation` with the new union member, and add an optional completion marker to the existing `tool-call` variant (no second observation type is needed — the fallback below replays the original tool-call observation):
 
 ```ts
 | {
     type: "subagent-progress";
     progress: SubagentProgress;
   }
+```
+
+```ts
+completed?: boolean;
 ```
 
 At the start of `sessionEntryToObservations`, before the existing `custom_message` branch, add:
@@ -1562,61 +1614,89 @@ if (subagentProgress) {
 }
 ```
 
-Leave `sessionEntryToStreamText` and `sessionEntryToRawText` unchanged: valid custom entries are observations only, not raw or pretty text.
-
-In `createPiSessionObservationStreamer`, add the buffer and re-read-dedup state next to `observedToolCallIds`:
+In the same function's toolResult branch, mark the observation as a completion signal:
 
 ```ts
-const pendingSubagentObservations = new Map<string, PiSessionObservation>();
-const emittedSubagentProgressKeys = new Set<string>();
+observations.push({
+  type: "tool-call",
+  ...(toolName ? { toolName } : {}),
+  ...(toolCallId ? { toolCallId } : {}),
+  completed: true,
+});
 ```
 
-Replace the `processLine` observation loop with:
+Leave `sessionEntryToStreamText` and `sessionEntryToRawText` unchanged: valid custom entries are observations only, not raw or pretty text.
+
+Extract all buffer/replay/dedup state into an exported, self-contained gate after `sessionEntryToObservations`, so the subtle logic is unit-testable without the polling harness:
 
 ```ts
-for (const observation of sessionEntryToObservations(entry)) {
-  if (observation.type === "subagent-progress") {
-    const key = subagentProgressKey(observation.progress);
-    if (emittedSubagentProgressKeys.has(key)) continue;
-    emittedSubagentProgressKeys.add(key);
-    pendingSubagentObservations.delete(observation.progress.toolCallId);
-    onObservation(observation);
-    continue;
-  }
-  if (observation.type === "tool-call" && observation.toolCallId) {
-    const toolCallId = observation.toolCallId;
-    if (observedToolCallIds.has(toolCallId)) {
-      if (observation.arguments === undefined) {
-        const buffered = pendingSubagentObservations.get(toolCallId);
-        pendingSubagentObservations.delete(toolCallId);
-        if (buffered) onObservation(buffered);
+export function createSubagentProgressGate(
+  onObservation: (observation: PiSessionObservation) => void,
+): (observation: PiSessionObservation) => void {
+  const seenToolCallIds = new Set<string>();
+  const pendingSubagentObservations = new Map<string, PiSessionObservation>();
+  const emittedSubagentProgressKeys = new Set<string>();
+
+  return (observation) => {
+    if (observation.type === "subagent-progress") {
+      const key = subagentProgressKey(observation.progress);
+      if (emittedSubagentProgressKeys.has(key)) return;
+      emittedSubagentProgressKeys.add(key);
+      pendingSubagentObservations.delete(observation.progress.toolCallId);
+      onObservation(observation);
+      return;
+    }
+    if (observation.type === "tool-call" && observation.toolCallId) {
+      const toolCallId = observation.toolCallId;
+      if (seenToolCallIds.has(toolCallId)) {
+        if (observation.completed === true) {
+          const buffered = pendingSubagentObservations.get(toolCallId);
+          pendingSubagentObservations.delete(toolCallId);
+          if (buffered) onObservation(buffered);
+        }
+        return;
       }
-      continue;
+      seenToolCallIds.add(toolCallId);
+      if (
+        observation.toolName === "subagent" &&
+        observation.arguments &&
+        !("action" in observation.arguments) &&
+        observation.arguments.async !== true
+      ) {
+        pendingSubagentObservations.set(toolCallId, observation);
+        return;
+      }
     }
-    observedToolCallIds.add(toolCallId);
-    if (
-      observation.toolName === "subagent" &&
-      observation.arguments &&
-      !("action" in observation.arguments) &&
-      observation.arguments.async !== true
-    ) {
-      pendingSubagentObservations.set(toolCallId, observation);
-      continue;
-    }
-  }
-  onObservation(observation);
+    onObservation(observation);
+  };
 }
+```
+
+In `createPiSessionObservationStreamer`, remove the local `observedToolCallIds` set (the gate owns tool-call deduplication) and reduce `processLine`'s observation loop to a one-line dispatch:
+
+```ts
+const gate = createSubagentProgressGate(onObservation);
+
+const processLine = (line: string) => {
+  const entry = parseSessionLine(line);
+  if (!entry) return;
+  for (const observation of sessionEntryToObservations(entry)) {
+    gate(observation);
+  }
+  if (options.verboseOutput) {
+    const text = sessionEntryToRawText(entry);
+    if (text !== undefined) options.verboseOutput(text);
+  }
+};
 ```
 
 The buffer predicate checks only top-level `async`: pinned `pi-subagents` declares `async` solely on the top-level params (`TaskParam`, `SequentialStep`, and `ParallelStep` have no such field), so a per-task deep-scan would be dead code that can misfire on stray input.
 
-The two dedup layers guard distinct failure modes: the extension's `subagentProgressKey` set deduplicates repeated lifecycle events, while the streamer's `emittedSubagentProgressKeys` set guards the file re-read path (`info.size < offset` resets `offset = 0` and replays earlier lines), mirroring the existing `observedToolCallIds` guard.
+The two dedup layers guard distinct failure modes: the extension's `subagentProgressKey` set deduplicates repeated lifecycle events, while the gate's `emittedSubagentProgressKeys` set guards the file re-read path (`info.size < offset` resets `offset = 0` and replays earlier lines).
 
-The replay fires only on argument-less duplicate observations (produced by toolResult messages). This matters because the truncation-reset path (`info.size < offset` → `offset = 0`) re-reads earlier lines: an argument-ful assistant toolCall re-read for a still-running call must neither replay the buffer mid-flight nor consume it, so the gate also preserves the buffer for the genuine toolResult.
+The replay fires only on observations explicitly marked `completed: true` — an intentional contract, not an incidental shape property. The replay relies on one ordering invariant: the extension's `tool_execution_end` append lands in the JSONL before Pi writes the toolResult message (verified: `agent-session.js` awaits extension end handlers before `message_end` persistence). If that order ever reversed, a call would print its original summary followed by the enriched line — degraded, but never silent.
 
-The replay relies on one ordering invariant: the extension's `tool_execution_end` append lands in the JSONL before Pi writes the toolResult message (verified: `agent-session.js` awaits extension end handlers before `message_end` persistence). If that order ever reversed, a call would print its original summary followed by the enriched line — degraded, but never silent.
-
-- [ ] **Step 4: Run the focused test to verify it passes**
+- [ ] **Step 4: Run the streamer tests to verify they pass**
 
 Run:
 
@@ -1626,14 +1706,36 @@ node --test src/cli/commands/run-once/pi-session-stream.test.ts
 
 Expected: PASS with 0 failing tests.
 
-- [ ] **Step 5: Commit the session observation**
+- [ ] **Step 5: Keep step accounting accurate**
+
+In `src/cli/commands/run-once/pipeline-progress.ts`, change the `observe()` counting branch so resolved subagent children still register — each child is a real Pi execution, and replayed foreground calls continue to count through the replayed tool-call observation:
+
+```ts
+if (
+  (observation.type === "tool-call" ||
+    observation.type === "subagent-progress") &&
+  activeStep
+) {
+  activeStep.toolCalls += 1;
+}
+```
+
+Run:
 
 ```sh
-git add src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts
+node --test src/cli/commands/run-once/pipeline-progress.test.ts
+```
+
+Expected: PASS with 0 failing tests.
+
+- [ ] **Step 6: Commit the session observation**
+
+```sh
+git add src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pipeline-progress.ts src/cli/commands/run-once/pipeline-progress.test.ts
 git commit -m "feat(run-once): stream subagent launch progress"
 ```
 
-Expected: one commit containing only the two Task 4 files.
+Expected: one commit containing only the four Task 4 files.
 
 ---
 
@@ -1812,6 +1914,7 @@ node --test \
   src/pi/resource-profiles.test.ts \
   src/cli/commands/run-once/pi.test.ts \
   src/cli/commands/run-once/pi-session-stream.test.ts \
+  src/cli/commands/run-once/pipeline-progress.test.ts \
   src/cli/commands/run-once/console-progress.test.ts
 ```
 
