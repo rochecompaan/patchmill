@@ -99,9 +99,11 @@ result shape. It will:
 - define and validate the custom session-entry payload.
 
 When a child result ever carries both an explicit thinking field (a possible
-future `pi-subagents` addition) and a model suffix, the explicit field wins;
-otherwise a known suffix on the resolved model is authoritative because it is
-the exact model argument used to launch that child. When neither is present,
+future `pi-subagents` addition) and a known model suffix, the suffix wins —
+matching `pi-subagents`' own `applyThinkingSuffix()`, which leaves an
+already-suffixed model untouched, and its display formatting, which prefers
+the suffix. An explicit field is used only when the model carries no known
+suffix. When neither is present,
 `thinking` is omitted from the payload rather than guessed: in the pinned
 `pi-subagents`, thinking reaches the child only through the model suffix,
 which `applyThinkingSuffix()` deliberately omits for `off` and unset levels,
@@ -264,6 +266,12 @@ observed or when a fallback changes the resolved tuple.
   `toolCallId`. If `sessionEntryToObservations` ever stops mapping toolResult
   messages that way, buffered foreground calls would silently never replay;
   the Task 4 streamer tests pin this coupling.
+- Accepted gap: in a parallel call where at least one child resolves metadata,
+  the buffered call summary is dropped, so a sibling whose result never
+  carries a model (for example a pre-launch spawn failure) gets no line.
+  Synthesizing per-child residual summaries would require per-child tracking
+  this design deliberately avoids; the failed sibling still surfaces through
+  the call's normal tool-result and error output.
 - Unknown model suffixes remain part of the model ID rather than being
   misreported as a thinking level.
 - When a child's result carries no usable model metadata, the streamer

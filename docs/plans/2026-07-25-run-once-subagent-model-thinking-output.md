@@ -4,7 +4,7 @@
 
 **Goal:** Render each run-once subagent child's resolved model and thinking level in Patchmill console progress output.
 
-**Architecture:** A compiled Patchmill Pi extension observes `pi-subagents` partial and final tool results, extracts one normalized progress payload per child, and persists non-context custom session entries. Patchmill's run-once session streamer turns only those validated entries into observations, and the console reporter emits one `🤖 subagent (agent=..., model=..., thinking=...)` line per child.
+**Architecture:** A Patchmill Pi extension — loaded from TypeScript source via jiti — observes `pi-subagents` partial and final tool results, extracts one normalized progress payload per child, and persists non-context custom session entries. Patchmill's run-once session streamer turns only those validated entries into observations, and the console reporter emits one `🤖 subagent (agent=..., model=..., thinking=...)` line per child.
 
 **Tech Stack:** TypeScript, Node.js 22 built-in test runner, node:assert/strict, Pi extension lifecycle events, Pi JSONL sessions, ESLint, Prettier, markdownlint, npm package dry-runs.
 
@@ -54,6 +54,7 @@
   - `export function parseSubagentProgressResults(result: unknown, toolCallId: string): SubagentProgress[]`
   - `export function parseSubagentProgressEntry(entry: Record<string, unknown>): SubagentProgress | undefined`
   - `export function subagentProgressKey(progress: SubagentProgress): string`
+  - `export function isObject(value: unknown): value is Record<string, unknown>` (shared with the Task 2 extension)
 
 - [ ] **Step 1: Write the failing extraction tests**
 
@@ -148,7 +149,7 @@ test("uses stable progress indexes when partial parallel results are out of orde
   );
 });
 
-test("honors an explicit thinking field on the child result", () => {
+test("uses an explicit thinking field only when the model carries no known suffix", () => {
   assert.deepEqual(
     parseSubagentProgressResults(
       {
@@ -157,6 +158,11 @@ test("honors an explicit thinking field on the child result", () => {
             {
               agent: "worker",
               model: "gpt-5.6-terra",
+              thinking: "low",
+            },
+            {
+              agent: "reviewer",
+              model: "gpt-5.6-sol:high",
               thinking: "low",
             },
           ],
@@ -171,6 +177,13 @@ test("honors an explicit thinking field on the child result", () => {
         agent: "worker",
         model: "gpt-5.6-terra",
         thinking: "low",
+      },
+      {
+        toolCallId: "call-2",
+        childIndex: 1,
+        agent: "reviewer",
+        model: "gpt-5.6-sol",
+        thinking: "high",
       },
     ],
   );
@@ -354,7 +367,7 @@ export type SubagentProgress = {
   thinking?: SubagentThinkingLevel;
 };
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
@@ -404,7 +417,7 @@ export function parseSubagentProgressResults(
     const explicit = isThinkingLevel(item.thinking)
       ? item.thinking
       : undefined;
-    const thinking = explicit ?? parsed.thinking;
+    const thinking = parsed.thinking ?? explicit;
     return [
       {
         toolCallId,
@@ -736,6 +749,7 @@ Create `src/pi/extensions/run-once-subagent-progress.ts`:
 ```ts
 import {
   SUBAGENT_PROGRESS_CUSTOM_TYPE,
+  isObject,
   parseSubagentProgressResults,
   subagentProgressKey,
   type SubagentProgress,
@@ -749,10 +763,6 @@ export type SubagentProgressObserverApi = {
 type SubagentProgressObserverState = {
   emitted: Set<string>;
 };
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function observe(
   pi: SubagentProgressObserverApi,
@@ -1427,6 +1437,49 @@ test("session streamer emits a changed fallback tuple instead of deduplicating i
   );
 });
 
+test("session streamer does not replay the buffer on argument-ful re-read duplicates", async () => {
+  const toolCallEntry = {
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "subagent",
+          arguments: { agent: "worker", task: "implement" },
+        },
+      ],
+    },
+  };
+  const observations = await collectObservations([
+    toolCallEntry,
+    // Simulates the truncation-reset path re-reading the in-flight call line.
+    toolCallEntry,
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        content: [],
+      },
+    },
+  ]);
+
+  assert.deepEqual(
+    observations.filter((observation) => observation.type === "tool-call"),
+    [
+      {
+        type: "tool-call",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        arguments: { agent: "worker", task: "implement" },
+      },
+    ],
+  );
+});
+
 test("session streamer never buffers async or management subagent calls", async () => {
   const observations = await collectObservations([
     {
@@ -1533,9 +1586,11 @@ for (const observation of sessionEntryToObservations(entry)) {
   if (observation.type === "tool-call" && observation.toolCallId) {
     const toolCallId = observation.toolCallId;
     if (observedToolCallIds.has(toolCallId)) {
-      const buffered = pendingSubagentObservations.get(toolCallId);
-      pendingSubagentObservations.delete(toolCallId);
-      if (buffered) onObservation(buffered);
+      if (observation.arguments === undefined) {
+        const buffered = pendingSubagentObservations.get(toolCallId);
+        pendingSubagentObservations.delete(toolCallId);
+        if (buffered) onObservation(buffered);
+      }
       continue;
     }
     observedToolCallIds.add(toolCallId);
@@ -1556,6 +1611,8 @@ for (const observation of sessionEntryToObservations(entry)) {
 The buffer predicate checks only top-level `async`: pinned `pi-subagents` declares `async` solely on the top-level params (`TaskParam`, `SequentialStep`, and `ParallelStep` have no such field), so a per-task deep-scan would be dead code that can misfire on stray input.
 
 The two dedup layers guard distinct failure modes: the extension's `subagentProgressKey` set deduplicates repeated lifecycle events, while the streamer's `emittedSubagentProgressKeys` set guards the file re-read path (`info.size < offset` resets `offset = 0` and replays earlier lines), mirroring the existing `observedToolCallIds` guard.
+
+The replay fires only on argument-less duplicate observations (produced by toolResult messages). This matters because the truncation-reset path (`info.size < offset` → `offset = 0`) re-reads earlier lines: an argument-ful assistant toolCall re-read for a still-running call must neither replay the buffer mid-flight nor consume it, so the gate also preserves the buffer for the genuine toolResult.
 
 The replay relies on one ordering invariant: the extension's `tool_execution_end` append lands in the JSONL before Pi writes the toolResult message (verified: `agent-session.js` awaits extension end handlers before `message_end` persistence). If that order ever reversed, a call would print its original summary followed by the enriched line — degraded, but never silent.
 
@@ -1788,7 +1845,7 @@ Run:
 npm run build
 ```
 
-Expected: TypeScript compilation succeeds and produces `dist/src/pi/extensions/run-once-subagent-progress.js`.
+Expected: TypeScript compilation succeeds. (`dist/src/pi/extensions/run-once-subagent-progress.js` is emitted as a side effect of compiling `src/`; nothing loads it — the profile loads the TypeScript source via jiti.)
 
 - [ ] **Step 5: Check the diff**
 
