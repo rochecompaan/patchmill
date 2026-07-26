@@ -259,6 +259,11 @@ observed or when a fallback changes the resolved tuple.
 - Repeated partial and final results are deduplicated.
 - Extension parsing failures must not interrupt the parent Pi run.
 - The completion hook supplies a second chance when partial updates are absent.
+- The never-vanish replay is triggered by the toolResult message producing a
+  duplicate, argument-less `tool-call` observation for an already-seen
+  `toolCallId`. If `sessionEntryToObservations` ever stops mapping toolResult
+  messages that way, buffered foreground calls would silently never replay;
+  the Task 4 streamer tests pin this coupling.
 - Unknown model suffixes remain part of the model ID rather than being
   misreported as a thinking level.
 - When a child's result carries no usable model metadata, the streamer

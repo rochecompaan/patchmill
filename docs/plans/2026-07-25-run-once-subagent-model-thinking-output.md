@@ -1044,13 +1044,14 @@ const runOnceExtensionArgs = [
 ];
 ```
 
-Update all three existing bundled-Pi-call assertions that inspect extension arguments from `args.slice(0, 5)` in these tests:
+Update all four existing bundled-Pi-call assertions that inspect extension arguments from `args.slice(0, 5)` or `args.slice(0, 9)` in these tests:
 
 - `"runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failures"`
 - `"runPiPrompt loads bundled Pi extensions before the prompt argument"`
 - `"runPiPrompt streams messages appended to the prompted pi session JSONL"`
+- `"runPiPrompt passes configured skill files before the prompt argument"`
 
-Use this replacement in each test:
+Use this replacement in each of the first three tests:
 
 ```ts
 assert.deepEqual(args.slice(0, 7), [
@@ -1076,7 +1077,34 @@ In `"runPiPrompt loads bundled Pi extensions before the prompt argument"`, also 
 assert.equal(args[7]?.startsWith("@"), true);
 ```
 
+In `"runPiPrompt passes configured skill files before the prompt argument"`, the third `-e` pair shifts the two `--skill` pairs to indices 6–9 and `-p` to index 10, so replace its assertions with:
+
+```ts
+assert.deepEqual(args.slice(0, 11), [
+  "-e",
+  args[1],
+  "-e",
+  args[3],
+  "-e",
+  args[5],
+  "--skill",
+  "/repo/.patchmill/skills/writing-plans/SKILL.md",
+  "--skill",
+  "/repo/.patchmill/skills/review/SKILL.md",
+  "-p",
+]);
+assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
+assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
+assert.match(
+  args[5] ?? "",
+  /src\/pi\/extensions\/run-once-subagent-progress\.ts$/,
+);
+assert.equal(args[11]?.startsWith("@"), true);
+```
+
 Keep `promptPath(args)` unchanged; it finds the `@` argument independent of its index.
+
+In `src/pi/resource-profiles.test.ts`, add `runOnceDevelopmentEnvironmentPiProfile` to the `./resource-profiles.ts` import (the all-profiles test uses it).
 
 - [ ] **Step 7: Run the wiring tests to verify they fail**
 
@@ -1139,8 +1167,8 @@ Expected: one commit containing only the four wiring files, on top of the Step 5
 
 **Files:**
 
+- Create: `src/cli/commands/run-once/pi-session-stream.test.ts`
 - Modify: `src/cli/commands/run-once/pi-session-stream.ts`
-- Modify: `src/cli/commands/run-once/pi.test.ts`
 
 **Interfaces:**
 
@@ -1152,9 +1180,20 @@ Expected: one commit containing only the four wiring files, on top of the Step 5
 
 - [ ] **Step 1: Write the failing session-stream tests**
 
-Add `createPiSessionObservationStreamer` and `type PiSessionObservation` to the existing `./pi-session-stream.ts` import in `src/cli/commands/run-once/pi.test.ts`, then add this helper near the other test helpers:
+Create `src/cli/commands/run-once/pi-session-stream.test.ts` — these tests target `pi-session-stream.ts` directly, and `pi.test.ts` is already over a thousand lines:
 
 ```ts
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import {
+  createPiSessionObservationStreamer,
+  sessionEntryToObservations,
+  type PiSessionObservation,
+} from "./pi-session-stream.ts";
+
 async function collectObservations(
   entries: Array<Record<string, unknown>>,
 ): Promise<PiSessionObservation[]> {
@@ -1182,7 +1221,7 @@ async function collectObservations(
 }
 ```
 
-Add these tests near the existing `sessionEntryToObservations` coverage in `src/cli/commands/run-once/pi.test.ts`:
+Add these tests to the new file:
 
 ```ts
 test("session stream converts valid subagent progress custom entries", () => {
@@ -1435,12 +1474,12 @@ test("session streamer never buffers async or management subagent calls", async 
 Run:
 
 ```sh
-node --test src/cli/commands/run-once/pi.test.ts
+node --test src/cli/commands/run-once/pi-session-stream.test.ts
 ```
 
 Expected: FAIL because `sessionEntryToObservations` returns no `subagent-progress` observation and the streamer neither buffers nor replays foreground subagent calls.
 
-- [ ] **Step 3: Add the custom-entry observation**
+- [ ] **Step 3: Add the custom-entry observation and buffer/replay**
 
 In `src/cli/commands/run-once/pi-session-stream.ts`, add this import:
 
@@ -1525,7 +1564,7 @@ The replay relies on one ordering invariant: the extension's `tool_execution_end
 Run:
 
 ```sh
-node --test src/cli/commands/run-once/pi.test.ts
+node --test src/cli/commands/run-once/pi-session-stream.test.ts
 ```
 
 Expected: PASS with 0 failing tests.
@@ -1533,7 +1572,7 @@ Expected: PASS with 0 failing tests.
 - [ ] **Step 5: Commit the session observation**
 
 ```sh
-git add src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi.test.ts
+git add src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts
 git commit -m "feat(run-once): stream subagent launch progress"
 ```
 
@@ -1715,6 +1754,7 @@ node --test \
   src/pi/extensions/run-once-subagent-progress.load.test.ts \
   src/pi/resource-profiles.test.ts \
   src/cli/commands/run-once/pi.test.ts \
+  src/cli/commands/run-once/pi-session-stream.test.ts \
   src/cli/commands/run-once/console-progress.test.ts
 ```
 
