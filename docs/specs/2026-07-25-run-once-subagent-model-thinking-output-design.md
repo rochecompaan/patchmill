@@ -212,10 +212,12 @@ observation type or reporter-side suppression logic.
 No task text, child output, generic tool-result content, or arbitrary custom
 entry data will be forwarded.
 
-`pi-session-stream.ts` is already a large module, so this change will add only a
-small custom-entry dispatch branch there. External result validation and model
-normalization remain in `src/pi/subagent-progress.ts`; a broader stream-module
-refactor is unrelated to issue #116 and remains out of scope.
+`pi-session-stream.ts` is already a large module, so the stateful buffer/replay
+logic remains a focused exported gate with synchronous unit tests, while the
+polling loop only dispatches observations into it. External result validation,
+record validation, and model normalization remain in
+`src/pi/subagent-progress.ts`; a broader stream-module refactor is unrelated to
+issue #116 and remains out of scope.
 
 ### Console rendering
 
@@ -271,11 +273,10 @@ observed or when a fallback changes the resolved tuple.
 - Repeated partial and final results are deduplicated.
 - Extension parsing failures must not interrupt the parent Pi run.
 - The completion hook supplies a second chance when partial updates are absent.
-- The never-vanish replay is triggered by the toolResult message producing a
-  duplicate, argument-less `tool-call` observation for an already-seen
-  `toolCallId`. If `sessionEntryToObservations` ever stops mapping toolResult
-  messages that way, buffered foreground calls would silently never replay;
-  the Task 4 streamer tests pin this coupling.
+- The toolResult branch marks its `tool-call` observation with
+  `completed: true`. The gate replays a buffered foreground call only for that
+  explicit completion signal, rather than inferring completion from missing
+  arguments; the Task 4 streamer tests pin this contract.
 - Accepted gap: in a parallel call where at least one child resolves metadata,
   the buffered call summary is dropped, so a sibling whose result never
   carries a model (for example a pre-launch spawn failure) gets no line.
@@ -310,7 +311,7 @@ event handling, validates external data, and changes operator-visible behavior.
   - omits thinking when the child's metadata cannot determine it;
   - uses stable `progress.index` values for out-of-order partial results;
   - extracts multiple parallel child results;
-  - rejects malformed result and custom-entry data.
+  - rejects arrays and malformed result and custom-entry data.
 - `src/pi/extensions/run-once-subagent-progress.test.ts`
   - registers the expected Pi event handlers;
   - appends one custom entry per child on the first usable update;
@@ -319,6 +320,11 @@ event handling, validates external data, and changes operator-visible behavior.
   - emits a changed fallback tuple;
   - resets state on session start;
   - ignores unrelated tools.
+- `src/cli/commands/run-once/pi.test.ts`
+  - verifies all run-once extensions are forwarded before `-p` without
+    positional-index assertions;
+  - updates both existing toolResult-observation expectations for the explicit
+    `completed: true` contract.
 - `src/cli/commands/run-once/pi-session-stream.test.ts`
   - converts valid custom entries into subagent-resolution observations;
   - ignores malformed and unrelated custom entries;
@@ -330,7 +336,8 @@ event handling, validates external data, and changes operator-visible behavior.
   - deduplicates repeated progress entries across file re-reads;
   - never buffers async or management calls.
 - `src/cli/commands/run-once/pipeline-progress.test.ts`
-  - counts resolved subagent children as tool calls in step accounting.
+  - counts each distinct resolved subagent child once in step accounting, even
+    when a changed fallback tuple emits another line for the same child.
 - `src/cli/commands/run-once/console-progress.test.ts`
   - asserts the exact requested output, including separate lines for parallel
     children;
@@ -343,7 +350,8 @@ event handling, validates external data, and changes operator-visible behavior.
   - verifies package-root resolution from nested source and dist-style layouts;
   - verifies every resolved extension path exists on disk.
 - `src/pi/extensions/run-once-subagent-progress.load.test.ts`
-  - smoke-verifies that the bundled Pi CLI loads the vendored
+  - resolves Pi through the canonical `src/cli/pi-cli.ts` helper, then
+    smoke-verifies that the bundled CLI loads the vendored
     `extensions/todos.ts` and the multi-file TypeScript observer (including
     its relative `../subagent-progress.ts` import) and fails only at the
     expected invalid-provider stage.

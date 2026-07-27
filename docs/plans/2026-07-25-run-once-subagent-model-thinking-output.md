@@ -30,7 +30,7 @@
 - When a foreground call produces no resolved model metadata, the session streamer replays the buffered original tool-call observation at completion; a subagent call must never vanish from output.
 - Subagent management calls such as `subagent(action=list)` retain normal tool formatting.
 - Keep external-result validation and model normalization in `src/pi/subagent-progress.ts`; do not move that logic into `pi-session-stream.ts`.
-- Add only a small custom-entry dispatch branch to the already-large `pi-session-stream.ts`; do not perform a broader stream-module refactor.
+- Keep buffer/replay/dedup state in one focused exported gate inside the already-large `pi-session-stream.ts`, reduce the polling loop to dispatch, and do not perform a broader stream-module refactor.
 - Follow `superpowers:test-driven-development` for behavior changes: write each failing test first, run it to see it fail, then implement the smallest passing change.
 - Use `superpowers:verification-before-completion` before every completion claim and final handoff.
 - Use the `commit` skill format for every commit; commit only the task's files and do not push.
@@ -54,7 +54,7 @@
   - `export function parseSubagentProgressResults(result: unknown, toolCallId: string): SubagentProgress[]`
   - `export function parseSubagentProgressEntry(entry: Record<string, unknown>): SubagentProgress | undefined`
   - `export function subagentProgressKey(progress: SubagentProgress): string`
-  - `export function isRecord(value: unknown): value is Record<string, unknown>` (shared with the Task 2 extension; distinct from `pi-session-stream.ts`'s local array-rejecting `isObject`)
+  - `export function isRecord(value: unknown): value is Record<string, unknown>` (array-rejecting guard shared by the Task 2 extension and Task 4 session streamer)
 
 - [ ] **Step 1: Write the failing extraction tests**
 
@@ -65,6 +65,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   SUBAGENT_PROGRESS_CUSTOM_TYPE,
+  isRecord,
   parseSubagentProgressEntry,
   parseSubagentProgressResults,
   subagentProgressKey,
@@ -264,6 +265,11 @@ test("returns no progress for malformed result envelopes", () => {
   }
 });
 
+test("record validation rejects arrays", () => {
+  assert.equal(isRecord({}), true);
+  assert.equal(isRecord([]), false);
+});
+
 test("parses only the exact progress custom entry contract", () => {
   const progress = {
     toolCallId: "call-6",
@@ -368,7 +374,7 @@ export type SubagentProgress = {
 };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isThinkingLevel(value: unknown): value is SubagentThinkingLevel {
@@ -476,7 +482,7 @@ Run:
 node --test src/pi/subagent-progress.test.ts
 ```
 
-Expected: PASS with 9 passing tests and 0 failing tests.
+Expected: PASS with 10 passing tests and 0 failing tests.
 
 - [ ] **Step 5: Commit the extraction contract**
 
@@ -839,7 +845,7 @@ Expected: one commit containing only the two Task 2 files.
 
 **Interfaces:**
 
-- Consumes: Task 2's extension source path `src/pi/extensions/run-once-subagent-progress.ts` and its relative `../subagent-progress.ts` import.
+- Consumes: Task 2's extension source path `src/pi/extensions/run-once-subagent-progress.ts`, its relative `../subagent-progress.ts` import, and the canonical `resolveBundledPiCommand()` / `piCommandArgs()` helpers from `src/cli/pi-cli.ts`.
 - Produces: `runOnceExtensionPaths()` returns three paths in order: `pi-subagents`, `extensions/todos.ts`, then the run-once subagent progress observer. Also exports `findPackageRoot(start: string): string`, which resolves the package root correctly from both `src/pi/` and `dist/src/pi/` (fixing the pre-existing `todos.ts` mis-resolution in the packed layout).
 
 - [ ] **Step 1: Write the failing root-resolution tests**
@@ -987,21 +993,19 @@ test("all run-once profiles load the subagent progress observer and triage does 
 });
 ```
 
-Create `src/pi/extensions/run-once-subagent-progress.load.test.ts` as a packaging smoke test. It passes Patchmill's Testing Value Gate because it proves the bundled Pi CLI loads the vendored `extensions/todos.ts` and the multi-file TypeScript observer — including the relative `../subagent-progress.ts` import — which no existing test covers (`extensions/todos.ts` is single-file and, due to the root-resolution bug fixed in Step 3, has never loaded in production):
+Create `src/pi/extensions/run-once-subagent-progress.load.test.ts` as a packaging smoke test. It passes Patchmill's Testing Value Gate because it proves the bundled Pi CLI loads the vendored `extensions/todos.ts` and the multi-file TypeScript observer — including the relative `../subagent-progress.ts` import — which no existing test covers (`extensions/todos.ts` is single-file and, due to the root-resolution bug fixed in Step 3, has never loaded in production). Resolve Pi through `src/cli/pi-cli.ts`; the package exports map does not expose `@earendil-works/pi-coding-agent/package.json`, and the canonical helper already handles that case and reads the package's actual `bin` field:
 
 ```ts
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
+import {
+  piCommandArgs,
+  resolveBundledPiCommand,
+} from "../../cli/pi-cli.ts";
 
-const require = createRequire(import.meta.url);
-const PI_CLI = join(
-  dirname(require.resolve("@earendil-works/pi-coding-agent/package.json")),
-  "dist",
-  "cli.js",
-);
+const PI_COMMAND = resolveBundledPiCommand();
 const EXTENSIONS = [
   join(process.cwd(), "extensions", "todos.ts"),
   join(
@@ -1018,16 +1022,15 @@ test(
   { timeout: 60_000 },
   () => {
     const result = spawnSync(
-      process.execPath,
-      [
-        PI_CLI,
+      PI_COMMAND.command,
+      piCommandArgs(PI_COMMAND, [
         ...EXTENSIONS.flatMap((path) => ["-e", path]),
         "-p",
         "Say ok",
         "--no-tools",
         "--provider",
         "__invalid__",
-      ],
+      ]),
       { encoding: "utf8" },
     );
     const output = `${result.stdout}\n${result.stderr}`;
@@ -1056,62 +1059,55 @@ const runOnceExtensionArgs = [
 ];
 ```
 
-Update all four existing bundled-Pi-call assertions that inspect extension arguments from `args.slice(0, 5)` or `args.slice(0, 9)` in these tests:
+Immediately after `runOnceExtensionArgs`, add one assertion helper so future extension additions update a single expected list instead of four positional slices. The helper deliberately preserves the profile's documented extension order while deriving each `-e` value without magic indices, and verifies every extension precedes `-p`:
+
+```ts
+function optionValues(args: string[], option: string): string[] {
+  return args.flatMap((arg, index) => {
+    const value = args[index + 1];
+    return arg === option && value !== undefined ? [value] : [];
+  });
+}
+
+function assertRunOnceExtensionPaths(args: string[]): void {
+  const promptIndex = args.indexOf("-p");
+  assert.ok(promptIndex >= 0, `expected -p in ${args.join(" ")}`);
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "-e") {
+      assert.ok(index < promptIndex, "expected extensions before -p");
+    }
+  }
+  assert.deepEqual(optionValues(args, "-e"), [
+    "/repo/node_modules/pi-subagents",
+    "/repo/extensions/todos.ts",
+    "/repo/src/pi/extensions/run-once-subagent-progress.ts",
+  ]);
+}
+```
+
+In each of these four tests, replace the existing `args.slice(...)` and individual extension-index assertions with `assertRunOnceExtensionPaths(args);`:
 
 - `"runPiPrompt writes the prompt to a temp file and surfaces nonzero pi failures"`
 - `"runPiPrompt loads bundled Pi extensions before the prompt argument"`
 - `"runPiPrompt streams messages appended to the prompted pi session JSONL"`
 - `"runPiPrompt passes configured skill files before the prompt argument"`
 
-Use this replacement in each of the first three tests:
+In `"runPiPrompt loads bundled Pi extensions before the prompt argument"`, replace the positional prompt assertion with:
 
 ```ts
-assert.deepEqual(args.slice(0, 7), [
-  "-e",
-  args[1],
-  "-e",
-  args[3],
-  "-e",
-  args[5],
-  "-p",
-]);
-assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
-assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
-assert.match(
-  args[5] ?? "",
-  /src\/pi\/extensions\/run-once-subagent-progress\.ts$/,
-);
+const promptIndex = args.indexOf("-p");
+assert.equal(args[promptIndex + 1]?.startsWith("@"), true);
 ```
 
-In `"runPiPrompt loads bundled Pi extensions before the prompt argument"`, also replace the prompt assertion:
+In `"runPiPrompt passes configured skill files before the prompt argument"`, preserve the skill-value check without coupling it to extension indices:
 
 ```ts
-assert.equal(args[7]?.startsWith("@"), true);
-```
-
-In `"runPiPrompt passes configured skill files before the prompt argument"`, the third `-e` pair shifts the two `--skill` pairs to indices 6–9 and `-p` to index 10, so replace its assertions with:
-
-```ts
-assert.deepEqual(args.slice(0, 11), [
-  "-e",
-  args[1],
-  "-e",
-  args[3],
-  "-e",
-  args[5],
-  "--skill",
+assert.deepEqual(optionValues(args, "--skill"), [
   "/repo/.patchmill/skills/writing-plans/SKILL.md",
-  "--skill",
   "/repo/.patchmill/skills/review/SKILL.md",
-  "-p",
 ]);
-assert.match(args[1] ?? "", /node_modules\/pi-subagents$/);
-assert.match(args[3] ?? "", /extensions\/todos\.ts$/);
-assert.match(
-  args[5] ?? "",
-  /src\/pi\/extensions\/run-once-subagent-progress\.ts$/,
-);
-assert.equal(args[11]?.startsWith("@"), true);
+const promptIndex = args.indexOf("-p");
+assert.equal(args[promptIndex + 1]?.startsWith("@"), true);
 ```
 
 Keep `promptPath(args)` unchanged; it finds the `@` argument independent of its index.
@@ -1126,7 +1122,7 @@ Run:
 node --test src/pi/resource-profiles.test.ts src/cli/commands/run-once/pi.test.ts
 ```
 
-Expected: FAIL because profiles still return only two extensions and Pi calls only include two `-e` pairs.
+Expected: FAIL in `resource-profiles.test.ts` because profiles still return only two extensions. The `pi.test.ts` cases should pass and prove that three supplied `-e` pairs are forwarded without positional-index coupling.
 
 - [ ] **Step 8: Add the observer extension path**
 
@@ -1181,12 +1177,13 @@ Expected: one commit containing only the four wiring files, on top of the Step 5
 
 - Create: `src/cli/commands/run-once/pi-session-stream.test.ts`
 - Modify: `src/cli/commands/run-once/pi-session-stream.ts`
+- Modify: `src/cli/commands/run-once/pi.test.ts`
 - Modify: `src/cli/commands/run-once/pipeline-progress.ts`
 - Modify: `src/cli/commands/run-once/pipeline-progress.test.ts`
 
 **Interfaces:**
 
-- Consumes: Task 1's `SUBAGENT_PROGRESS_CUSTOM_TYPE`, `SubagentProgress`, and `parseSubagentProgressEntry()`.
+- Consumes: Task 1's `SUBAGENT_PROGRESS_CUSTOM_TYPE`, `SubagentProgress`, `isRecord()`, and `parseSubagentProgressEntry()`.
 - Produces:
   - `PiSessionObservation` gains `{ type: "subagent-progress"; progress: SubagentProgress }`.
   - `sessionEntryToObservations(entry: JsonObject): PiSessionObservation[]` returns the progress observation only for exact, valid progress custom entries.
@@ -1195,7 +1192,26 @@ Expected: one commit containing only the four wiring files, on top of the Step 5
 
 - [ ] **Step 1: Write the failing session-stream tests**
 
-Create `src/cli/commands/run-once/pi-session-stream.test.ts` — these tests target `pi-session-stream.ts` directly, and `pi.test.ts` is already over a thousand lines:
+In `src/cli/commands/run-once/pi.test.ts`, update the two existing exact toolResult-observation expectations for the explicit completion contract. In `"runPiPrompt emits structured observations and suppresses raw text unless streamOutput is provided"`, replace the expected tool-call item with:
+
+```ts
+{ type: "tool-call", toolName: "read", completed: true },
+```
+
+In `"sessionEntryToObservations reports tool calls without streaming tool results"`, replace the expected array with:
+
+```ts
+assert.deepEqual(observations, [
+  {
+    type: "tool-call",
+    toolName: "bash",
+    toolCallId: "call-1",
+    completed: true,
+  },
+]);
+```
+
+Create `src/cli/commands/run-once/pi-session-stream.test.ts` — new streamer coverage belongs here because `pi.test.ts` is already over a thousand lines:
 
 ```ts
 import assert from "node:assert/strict";
@@ -1534,7 +1550,7 @@ test("gate never buffers async or management subagent calls", () => {
 Add this test to `src/cli/commands/run-once/pipeline-progress.test.ts` (its `collectProgressEvents` harness already exists):
 
 ```ts
-test("step accounting counts resolved subagent children as tool calls", async () => {
+test("step accounting counts each resolved subagent child once", async () => {
   const { events, progress: reporter } = collectProgressEvents();
   const accounting = createStepAccounting({
     progress: reporter,
@@ -1548,6 +1564,14 @@ test("step accounting counts resolved subagent children as tool calls", async ()
       agent: "worker",
       model: "gpt-5.6-terra",
       thinking: "medium" as const,
+    },
+    {
+      // A changed fallback tuple is another truthful line, not another child.
+      toolCallId: "call-1",
+      childIndex: 0,
+      agent: "worker",
+      model: "gpt-5.6-terra-preview",
+      thinking: "high" as const,
     },
     {
       toolCallId: "call-1",
@@ -1575,10 +1599,10 @@ test("step accounting counts resolved subagent children as tool calls", async ()
 Run:
 
 ```sh
-node --test src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pipeline-progress.test.ts
+node --test src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/run-once/pipeline-progress.test.ts
 ```
 
-Expected: FAIL because `sessionEntryToObservations` returns no `subagent-progress` observation and no `completed` marker, the gate does not exist, and accounting does not count subagent children.
+Expected: FAIL because `sessionEntryToObservations` returns no `subagent-progress` observation or `completed` marker, the gate does not exist, both updated `pi.test.ts` expectations fail, and accounting does not count subagent children.
 
 - [ ] **Step 3: Add the custom-entry observation and buffer/replay**
 
@@ -1586,10 +1610,22 @@ In `src/cli/commands/run-once/pi-session-stream.ts`, add this import:
 
 ```ts
 import {
+  isRecord,
   parseSubagentProgressEntry,
   subagentProgressKey,
   type SubagentProgress,
 } from "../../../pi/subagent-progress.ts";
+```
+
+Delete the streamer's local `isObject` function and replace its call sites with the shared `isRecord`. Task 1's guard rejects arrays, so parsing behavior remains unchanged while external-result, extension-event, and session-entry validation use one record contract:
+
+```ts
+// Delete this local function:
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Replace every isObject(value) call in this file with isRecord(value).
 ```
 
 Extend `PiSessionObservation` with the new union member, and add an optional completion marker to the existing `tool-call` variant (no second observation type is needed — the fallback below replays the original tool-call observation):
@@ -1701,22 +1737,52 @@ The replay fires only on observations explicitly marked `completed: true` — an
 Run:
 
 ```sh
-node --test src/cli/commands/run-once/pi-session-stream.test.ts
+node --test src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pi.test.ts
 ```
 
-Expected: PASS with 0 failing tests.
+Expected: PASS with 0 failing tests, including both existing toolResult-observation assertions.
 
 - [ ] **Step 5: Keep step accounting accurate**
 
-In `src/cli/commands/run-once/pipeline-progress.ts`, change the `observe()` counting branch so resolved subagent children still register — each child is a real Pi execution, and replayed foreground calls continue to count through the replayed tool-call observation:
+In `src/cli/commands/run-once/pipeline-progress.ts`, track resolved child identities inside each active step. Each child is a real Pi execution, but a changed fallback tuple for the same `(toolCallId, childIndex)` is another truthful rendered line rather than another execution.
+
+Add the set to `ActiveStep`:
 
 ```ts
-if (
-  (observation.type === "tool-call" ||
-    observation.type === "subagent-progress") &&
-  activeStep
-) {
+type ActiveStep = {
+  label: string;
+  startOutputTokens: number;
+  toolCalls: number;
+  countedSubagentChildren: Set<string>;
+};
+```
+
+Initialize a fresh set whenever a step starts:
+
+```ts
+activeStep = {
+  label,
+  startOutputTokens: totalOutputTokens,
+  toolCalls: 0,
+  countedSubagentChildren: new Set<string>(),
+};
+```
+
+Replace the existing tool-call counting branch in `observe()` with distinct child counting. Unresolved foreground calls and async or management calls still count through their ordinary `tool-call` observations:
+
+```ts
+if (activeStep && observation.type === "tool-call") {
   activeStep.toolCalls += 1;
+}
+if (activeStep && observation.type === "subagent-progress") {
+  const childKey = JSON.stringify([
+    observation.progress.toolCallId,
+    observation.progress.childIndex,
+  ]);
+  if (!activeStep.countedSubagentChildren.has(childKey)) {
+    activeStep.countedSubagentChildren.add(childKey);
+    activeStep.toolCalls += 1;
+  }
 }
 ```
 
@@ -1731,11 +1797,11 @@ Expected: PASS with 0 failing tests.
 - [ ] **Step 6: Commit the session observation**
 
 ```sh
-git add src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pipeline-progress.ts src/cli/commands/run-once/pipeline-progress.test.ts
+git add src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/run-once/pipeline-progress.ts src/cli/commands/run-once/pipeline-progress.test.ts
 git commit -m "feat(run-once): stream subagent launch progress"
 ```
 
-Expected: one commit containing only the four Task 4 files.
+Expected: one commit containing only the five Task 4 files.
 
 ---
 
