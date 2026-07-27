@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
+import { PI_PACKAGES, getRootPins } from "./pi-dependency-upgrade-lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const scriptPath = join(rootDir, "scripts/update-pi-deps.mjs");
@@ -29,12 +30,18 @@ test("update CLI works without Git on PATH", async () => {
   const summaryPath = join(tempDir, "nested", "summary.json");
 
   try {
+    const packageJson = JSON.parse(
+      await readFile(join(rootDir, "package.json"), "utf8"),
+    );
+    const currentPins = getRootPins(packageJson);
     const result = await runUpdateScript(
       [
         "--mode",
         "manual",
-        "--target-version",
-        "0.80.10",
+        "--pi-coding-agent-version",
+        currentPins[PI_PACKAGES[0]],
+        "--pi-tui-version",
+        currentPins[PI_PACKAGES[1]],
         "--validate-only",
         "--skip-nix-hash",
         "--summary-json",

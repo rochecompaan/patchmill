@@ -4,6 +4,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { repairMissingLockfileIntegrities } from "./lockfile-integrity.mjs";
 import {
   PI_PACKAGES,
   assertLockfilesMatchTargets,
@@ -139,6 +140,18 @@ async function updatePackageMetadata(packageJson, targets) {
     await rm(packagePaths.shrinkwrap);
     await run("npm", ["install", "--package-lock-only", "--ignore-scripts"]);
     await copyFile(updatedShrinkwrap, packagePaths.shrinkwrap);
+    const [packageLock, shrinkwrap] = await Promise.all([
+      readJson(packagePaths.packageLock),
+      readJson(packagePaths.shrinkwrap),
+    ]);
+    await repairMissingLockfileIntegrities([
+      { label: "package-lock.json", lockfile: packageLock },
+      { label: "npm-shrinkwrap.json", lockfile: shrinkwrap },
+    ]);
+    await Promise.all([
+      writeJson(packagePaths.packageLock, packageLock),
+      writeJson(packagePaths.shrinkwrap, shrinkwrap),
+    ]);
     await run("npx", [
       "prettier",
       "--write",
