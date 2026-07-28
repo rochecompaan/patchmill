@@ -1150,9 +1150,10 @@ The current `PATCHMILL_PACKAGE_ROOT` derives from `import.meta.url` with a fixed
 `../..`, which resolves to `<pkg>/dist` in the compiled layout — a pre-existing
 bug that already mis-resolves `extensions/todos.ts` in production, where Pi's
 loader logs the failure and continues without the extension. In
-`src/pi/resource-profiles.ts`, add `import { existsSync } from "node:fs";` and
-replace the root computation with a walk-up search that throws loudly at startup
-when no package root exists:
+`src/pi/resource-profiles.ts`, add `import { existsSync } from "node:fs";`,
+remove the now-unused `resolve` name from the `node:path` import, and replace
+the root computation with a walk-up search that throws loudly at startup when no
+package root exists:
 
 ```ts
 export function findPackageRoot(start: string): string {
@@ -1591,6 +1592,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  createPiSessionMessageStreamer,
   createPiSessionObservationStreamer,
   createSubagentProgressGate,
   sessionEntryToObservations,
@@ -1773,20 +1775,39 @@ test("enriched session streaming flushes a safe fallback when metadata never res
   );
 });
 
-test("streamer stop propagates malformed JSON instead of skipping it", async () => {
+async function expectBackgroundParseFailure(
+  createStreamer: (sessionDir: string) => {
+    start(): void;
+    stop(): Promise<void>;
+  },
+): Promise<void> {
   const sessionDir = await mkdtemp(join(tmpdir(), "patchmill-stream-error-"));
   await mkdir(sessionDir, { recursive: true });
-  await writeFile(join(sessionDir, "session.jsonl"), "{not-json}\n", "utf8");
-  const streamer = createPiSessionObservationStreamer(
-    sessionDir,
-    () => undefined,
-  );
+  const sessionPath = join(sessionDir, "session.jsonl");
+  await writeFile(sessionPath, "{not-json}\n", "utf8");
+  const streamer = createStreamer(sessionDir);
 
   try {
+    streamer.start();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Replace the bad line before stop() polls. Rejection now proves that the
+    // background poll captured and retained the earlier SyntaxError.
+    await writeFile(sessionPath, "{}\n", "utf8");
     await assert.rejects(streamer.stop(), SyntaxError);
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }
+}
+
+test("both streamers propagate malformed JSON from background polling", async () => {
+  await expectBackgroundParseFailure((sessionDir) =>
+    createPiSessionMessageStreamer(sessionDir, () => undefined, { pollMs: 5 }),
+  );
+  await expectBackgroundParseFailure((sessionDir) =>
+    createPiSessionObservationStreamer(sessionDir, () => undefined, {
+      pollMs: 5,
+    }),
+  );
 });
 
 test("default gate mode preserves immediate triage-style delivery", () => {
@@ -2285,11 +2306,15 @@ let `JSON.parse()` propagate `SyntaxError`, and throw
 `TypeError("Pi session entry must be an object")` when parsed JSON is not a
 record. Empty lines remain ignorable.
 
-Because `start()` polls in the background, add a captured `pollError` and attach
-a rejection handler to every fire-and-forget `runPoll()` call. `stop()` must run
-one final poll, always flush pending calls, and propagate every parsing, I/O, or
-flush failure. If both final processing and flushing fail, throw an
-`AggregateError` containing both rather than replacing either.
+Because both session streamers call this shared parser from fire-and-forget
+polling, add one focused `createPollErrorTracker(runPoll)` helper and use it in
+both `createPiSessionMessageStreamer()` and
+`createPiSessionObservationStreamer()`. Every initial and interval poll goes
+through `schedule()`, and each `stop()` calls `finish()` before partial-line
+processing. The observation streamer must then always flush pending calls and
+propagate every parsing, I/O, or flush failure. If both final processing and
+flushing fail, throw an `AggregateError` containing both rather than replacing
+either.
 
 Extend `PiSessionObservation` with the new union member, and add an optional
 completion marker to the existing `tool-call` variant (no second observation
@@ -2453,20 +2478,43 @@ const processLine = (line: string) => {
 };
 ```
 
-Add `enrichSubagentProgress?: boolean` to the streamer options. In `stop()`,
-flush pending calls even when the final poll or partial-line processing throws;
-the `finally` preserves the original error:
+Add `enrichSubagentProgress?: boolean` to the observation-streamer options.
+Before the two streamer factories, add the shared background-error tracker:
 
 ```ts
-let pollError: unknown;
-const capturePollError = (error: unknown): void => {
-  pollError ??= error;
-};
+function createPollErrorTracker(runPoll: () => Promise<void>): {
+  schedule(): void;
+  finish(): Promise<void>;
+} {
+  let failed = false;
+  let firstError: unknown;
+  const capture = (error: unknown): void => {
+    if (failed) return;
+    failed = true;
+    firstError = error;
+  };
+  return {
+    schedule() {
+      void runPoll().catch(capture);
+    },
+    async finish() {
+      await runPoll().catch(capture);
+      if (failed) throw firstError;
+    },
+  };
+}
+```
 
-// In start(), use this for the initial poll and every timer callback:
-void runPoll().catch(capturePollError);
+After defining `runPoll()` inside each streamer, create
+`const pollErrors = createPollErrorTracker(runPoll)`. Replace the initial and
+interval `void runPoll()` calls in both `start()` methods with
+`pollErrors.schedule()`. The message streamer's `stop()` calls
+`await pollErrors.finish()` before processing its final partial line.
 
-// In the returned streamer:
+The observation streamer's `stop()` also flushes pending calls even when final
+polling or partial-line processing fails, and preserves simultaneous failures:
+
+```ts
 stop: async () => {
   if (timer) {
     clearInterval(timer);
@@ -2474,8 +2522,7 @@ stop: async () => {
   }
   const errors: unknown[] = [];
   try {
-    await runPoll().catch(capturePollError);
-    if (pollError !== undefined) throw pollError;
+    await pollErrors.finish();
     if (buffered.trim()) {
       processLine(buffered);
       buffered = "";
@@ -2544,8 +2591,8 @@ node --test src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands
 ```
 
 Expected: Prettier exits 0 and all three test files pass, including
-completion-marker, opt-in gating, shutdown flush, and immediate triage
-observations.
+completion-marker, opt-in gating, both streamers' background parsing failures,
+shutdown flush, and immediate triage observations.
 
 - [ ] **Step 5: Preserve parent-level step accounting**
 

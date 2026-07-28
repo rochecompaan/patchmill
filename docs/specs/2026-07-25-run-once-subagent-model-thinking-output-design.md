@@ -304,10 +304,11 @@ observed or when a fallback changes the resolved tuple.
   and chain siblings remain pending and each receive their own fallback.
 - Unknown model suffixes remain part of the model ID rather than being
   misreported as a thinking level.
-- Nonempty malformed session JSON and non-record JSON entries fail loudly.
-  Background polling captures its first parsing or I/O error and `stop()`
-  propagates it; shutdown flushing still runs, and simultaneous failures are
-  preserved in an `AggregateError`.
+- Nonempty malformed session JSON and non-record JSON entries fail loudly. A
+  shared poll-error tracker captures the first parsing or I/O failure from
+  background polling in both message and observation streamers, and each
+  `stop()` propagates it; observation shutdown flushing still runs, and
+  simultaneous failures are preserved in an `AggregateError`.
 - Process timeouts, spawn failures, package-root failures, and extension-load
   diagnostics fail their owning verification rather than being ignored.
 - A thinking level is never inferred from the parent session; when the child's
@@ -372,7 +373,8 @@ event handling, validates external data, and changes operator-visible behavior.
   - uses authoritative result behavior for submitted async/clarify shapes rather
     than guessing effective mode;
   - flushes pending children on shutdown;
-  - propagates malformed JSON parsing failures.
+  - starts both session streamer variants, lets background polling encounter
+    malformed JSON, and verifies each `stop()` propagates the parsing failure.
 - `src/cli/commands/triage/tool-call-observer.test.ts`
   - proves triage receives an assistant subagent call before any toolResult is
     written.
