@@ -5,17 +5,19 @@
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Render each run-once subagent child's resolved model and thinking
-level in Patchmill console progress output.
+**Goal:** Render each run-once subagent child's `pi-subagents`-reported model
+and thinking level when available, with one task-free agent-only fallback for
+every child whose metadata is unavailable.
 
 **Architecture:** A Patchmill Pi extension — loaded from TypeScript source via
 jiti — observes `pi-subagents` partial and final tool results, extracts one
-normalized progress payload per child, and persists non-context custom session
-entries. An opt-in run-once gate inventories requested children, suppresses the
-parent call, emits resolved metadata near-live, and flushes one safe agent-only
-fallback for every unresolved child; triage keeps immediate pass-through
-streaming. The console reporter emits one
-`🤖 subagent (agent=..., model=..., thinking=...)` line per resolved child.
+normalized reported-metadata payload per child, and persists non-context custom
+session entries. Patchmill follows one exact parent session file with async
+backpressure and an immediate fatal-error signal; an opt-in run-once gate
+suppresses the parent call, emits reported metadata near-live, and flushes one
+safe agent-only fallback for every unresolved child while triage remains
+pass-through. `runPiPrompt()` aborts Pi when streaming or observation delivery
+fails and aggregates all terminal causes.
 
 **Tech Stack:** TypeScript, Node.js 22 built-in test runner, node:assert/strict,
 Pi extension lifecycle events, Pi JSONL sessions, ESLint, Prettier,
@@ -31,9 +33,9 @@ markdownlint, npm package dry-runs.
 - Keep Pi or `pi-subagents` model selection, thinking selection, and fallback
   behavior unchanged.
 - Do not duplicate `pi-subagents` agent, override, model, thinking, or fallback
-  resolution; consume resolved result metadata only.
+  resolution; consume only metadata reported in child results.
 - Render one independent line per requested child, including children that fail
-  before resolved model metadata appears.
+  before reported model metadata appears.
 - Keep agent-only summaries for effective async starts because pinned
   `pi-subagents` returns `details.results: []`; buffer every execution shape and
   replay these summaries when the fast async-start tool result arrives rather
@@ -45,10 +47,15 @@ markdownlint, npm package dry-runs.
 - Custom progress data uses only these exact fields: `toolCallId: string`,
   `childIndex: number`, `agent: string`, `model: string`,
   `thinking?: SubagentThinkingLevel`.
-- `thinking` is present only when determinable from the child's own result
-  metadata (known model suffix or explicit field); never fall back to the parent
-  session's thinking level, because `pi-subagents` omits the suffix for
-  `off`/unset levels and passes `--thinking` separately.
+- Pinned `pi-subagents@0.25.0` reports the child model after the first assistant
+  message, but it does not report an independent runtime thinking level. It
+  encodes configured non-`off` thinking only as a model-argument suffix when a
+  model argument exists. Therefore `thinking` is present only for a known
+  reported suffix or future explicit result field; never infer it from the
+  parent session.
+- This is an explicitly reduced reporting contract: guaranteeing the actual
+  runtime thinking level for every child requires a future `pi-subagents`
+  result-contract change and is not implementable against pinned 0.25.0.
 - `childIndex` is the stable `progress.index` from `pi-subagents`; use the
   result-array position only as a compatibility fallback when `progress.index`
   is absent (compacted final results strip `progress`, and both values derive
@@ -67,7 +74,8 @@ markdownlint, npm package dry-runs.
 - Inventory direct, repeated `tasks`, sequential-chain, and chain-parallel
   children from the validated public call shape; at completion or shutdown, emit
   one agent-only fallback per unresolved child and never expose task text in
-  synthesized fallbacks.
+  synthesized fallbacks. Simultaneous nonempty `chain` and `tasks` are an
+  upstream mode conflict and pass through without invented child lines.
 - Preserve one `toolCalls` accounting unit per parent `toolCallId`, regardless
   of resolved, changed, or fallback child lines.
 - Subagent management calls such as `subagent(action=list)` retain normal tool
@@ -75,10 +83,18 @@ markdownlint, npm package dry-runs.
 - Keep external-result validation and model normalization in
   `src/pi/subagent-progress.ts`; do not move that logic into
   `pi-session-stream.ts`.
-- Keep buffer/replay/dedup state in one focused exported gate inside the
-  already-large `pi-session-stream.ts`, expose explicit `observe()` and
-  `flush()` operations, reduce the polling loop to dispatch, and do not perform
-  a broader stream-module refactor.
+- Keep buffer/resolution/dedup state in a focused exported gate inside
+  `pi-session-stream.ts`; move exact-file polling, async line backpressure, and
+  fatal-error signaling into `pi-session-file-follower.ts` rather than growing
+  the already-large streamer further.
+- Atomically pre-create a unique empty parent file before passing it through
+  Pi's explicit `--session`; never recursively select the newest JSONL from a
+  directory that can contain nested child sessions.
+- Await each observation before reading the next JSONL line. Observation,
+  parsing, and I/O failures abort the running Pi subprocess and are recursively
+  flattened with runner/cleanup failures without masking any cause.
+- Preserve final JSON on stdout and progress on stderr; terminal errors retain
+  separately labeled stdout and stderr content.
 - Bound and isolate the Pi extension-load smoke process; load only explicit
   extensions and fail loudly on spawn timeout or extension-load errors.
 - Verify source, npm-packed, and Nix-installed runtime layouts.
@@ -427,13 +443,17 @@ test("validates and projects the progress custom entry contract", () => {
   }
 });
 
-test("enumerates requested children in pinned result-index order", () => {
+test("enumerates requested children with pinned mode validation", () => {
   assert.deepEqual(requestedSubagentChildren({ agent: "reviewer" }), [
     { childIndex: 0, agent: "reviewer" },
   ]);
   assert.deepEqual(
     requestedSubagentChildren({
-      tasks: [{ agent: "worker", count: 2 }, { agent: "reviewer" }],
+      agent: "ignored",
+      tasks: [
+        { agent: "worker", task: "first", count: 2 },
+        { agent: "reviewer", task: "review" },
+      ],
     }),
     [
       { childIndex: 0, agent: "worker" },
@@ -443,8 +463,9 @@ test("enumerates requested children in pinned result-index order", () => {
   );
   assert.deepEqual(
     requestedSubagentChildren({
+      agent: "ignored",
       chain: [
-        { agent: "planner" },
+        { agent: "planner", task: "plan" },
         {
           parallel: [{ agent: "worker", count: 2 }, { agent: "reviewer" }],
         },
@@ -457,17 +478,48 @@ test("enumerates requested children in pinned result-index order", () => {
       { childIndex: 3, agent: "reviewer" },
     ],
   );
-  assert.deepEqual(requestedSubagentChildren({ action: "list" }), []);
   assert.equal(
     requestedSubagentChildren({
-      agent: "worker",
-      tasks: [{ agent: "reviewer" }],
+      tasks: [{ agent: "worker", task: "work" }],
+      chain: [{ agent: "planner", task: "plan" }],
+    }),
+    undefined,
+  );
+  assert.deepEqual(
+    requestedSubagentChildren({
+      agent: "reviewer",
+      tasks: [],
+      chain: [],
+    }),
+    [{ childIndex: 0, agent: "reviewer" }],
+  );
+  assert.deepEqual(requestedSubagentChildren({ action: "list" }), []);
+  assert.equal(
+    requestedSubagentChildren({ tasks: [{ agent: "worker" }] }),
+    undefined,
+  );
+  assert.equal(
+    requestedSubagentChildren({
+      tasks: [{ agent: "worker", task: "work", count: 0 }],
     }),
     undefined,
   );
   assert.equal(
-    requestedSubagentChildren({ tasks: [{ agent: "worker", count: 0 }] }),
+    requestedSubagentChildren({ chain: [{ agent: "planner" }] }),
     undefined,
+  );
+  assert.equal(
+    requestedSubagentChildren({
+      chain: [{ parallel: [{ agent: "worker" }] }],
+    }),
+    undefined,
+  );
+  assert.deepEqual(
+    requestedSubagentChildren({
+      task: "shared first task",
+      chain: [{ agent: "planner" }],
+    }),
+    [{ childIndex: 0, agent: "planner" }],
   );
 });
 
@@ -630,11 +682,20 @@ export function parseSubagentProgressEntry(
   };
 }
 
-function repeatedAgents(items: unknown): string[] | undefined {
+function repeatedAgents(
+  items: unknown,
+  options: { requireTask: boolean },
+): string[] | undefined {
   if (!Array.isArray(items) || items.length === 0) return undefined;
   const agents: string[] = [];
   for (const item of items) {
     if (!isRecord(item) || typeof item.agent !== "string" || !item.agent) {
+      return undefined;
+    }
+    if (Object.hasOwn(item, "task") && typeof item.task !== "string") {
+      return undefined;
+    }
+    if (options.requireTask && !Object.hasOwn(item, "task")) {
       return undefined;
     }
     const count = item.count ?? 1;
@@ -652,22 +713,19 @@ export function requestedSubagentChildren(
   args: Record<string, unknown>,
 ): RequestedSubagentChild[] | undefined {
   if (typeof args.action === "string") return [];
+  if (args.chain !== undefined && !Array.isArray(args.chain)) return undefined;
+  if (args.tasks !== undefined && !Array.isArray(args.tasks)) return undefined;
 
-  const modes = [
-    typeof args.agent === "string" && args.agent.length > 0,
-    args.tasks !== undefined,
-    args.chain !== undefined,
-  ].filter(Boolean).length;
-  if (modes !== 1) return undefined;
+  const chain = Array.isArray(args.chain) ? args.chain : [];
+  const tasks = Array.isArray(args.tasks) ? args.tasks : [];
+  const hasChain = chain.length > 0;
+  const hasTasks = tasks.length > 0;
+  if (hasChain && hasTasks) return undefined;
 
   let agents: string[] | undefined;
-  if (typeof args.agent === "string" && args.agent.length > 0) {
-    agents = [args.agent];
-  } else if (args.tasks !== undefined) {
-    agents = repeatedAgents(args.tasks);
-  } else if (Array.isArray(args.chain) && args.chain.length > 0) {
+  if (hasChain) {
     agents = [];
-    for (const step of args.chain) {
+    for (const [stepIndex, step] of chain.entries()) {
       if (!isRecord(step)) return undefined;
       const sequentialAgent =
         typeof step.agent === "string" && step.agent.length > 0
@@ -676,13 +734,29 @@ export function requestedSubagentChildren(
       const parallel = step.parallel !== undefined;
       if ((sequentialAgent !== undefined) === parallel) return undefined;
       if (sequentialAgent !== undefined) {
+        if (step.task !== undefined && typeof step.task !== "string") {
+          return undefined;
+        }
+        if (
+          stepIndex === 0 &&
+          typeof step.task !== "string" &&
+          typeof args.task !== "string"
+        ) {
+          return undefined;
+        }
         agents.push(sequentialAgent);
         continue;
       }
-      const expanded = repeatedAgents(step.parallel);
+      const expanded = repeatedAgents(step.parallel, {
+        requireTask: stepIndex === 0,
+      });
       if (!expanded) return undefined;
       agents.push(...expanded);
     }
+  } else if (hasTasks) {
+    agents = repeatedAgents(tasks, { requireTask: true });
+  } else if (typeof args.agent === "string" && args.agent.length > 0) {
+    agents = [args.agent];
   }
   if (!agents) return undefined;
   return agents.map((agent, childIndex) => ({ childIndex, agent }));
@@ -698,6 +772,16 @@ export function subagentProgressKey(progress: SubagentProgress): string {
   ]);
 }
 ```
+
+The inventory mirrors pinned 0.25.0 mode validation: simultaneous nonempty
+`chain` and `tasks` conflict and return `undefined`; exactly one nonempty
+aggregate mode ignores an accompanying `agent`; otherwise `agent` selects direct
+mode. Top-level task items require the schema's `task` property; direct tasks
+remain optional for self-contained agents. The first sequential chain step needs
+its own task or the top-level shared task, the first parallel step needs a task
+per child, and later chain steps retain upstream `{previous}` inheritance.
+Inputs that cannot be safely inventoried return `undefined` and pass through
+without enrichment buffering.
 
 - [ ] **Step 4: Format the task files and run the focused test**
 
@@ -1290,39 +1374,54 @@ handles that case and reads the package's actual `bin` field:
 ```ts
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { piCommandArgs, resolveBundledPiCommand } from "../../cli/pi-cli.ts";
 
 const PI_COMMAND = resolveBundledPiCommand();
-const EXTENSIONS = [
-  join(process.cwd(), "extensions", "todos.ts"),
-  join(
-    process.cwd(),
-    "src",
-    "pi",
-    "extensions",
-    "run-once-subagent-progress.ts",
-  ),
-];
+const TODOS_EXTENSION = join(process.cwd(), "extensions", "todos.ts");
+const OBSERVER_EXTENSION = join(
+  process.cwd(),
+  "src",
+  "pi",
+  "extensions",
+  "run-once-subagent-progress.ts",
+);
 
 test(
-  "isolated bundled Pi loads explicit run-once extensions before provider failure",
+  "isolated bundled Pi initializes run-once extensions and writes a sentinel",
   { timeout: 45_000 },
   async () => {
     const sandbox = await mkdtemp(join(tmpdir(), "patchmill-pi-load-"));
     const home = join(sandbox, "home");
     const agentDir = join(sandbox, "pi-agent");
+    const sentinel = join(sandbox, "extension-loaded");
+    const wrapper = join(sandbox, "load-wrapper.ts");
     await mkdir(home, { recursive: true });
     await mkdir(agentDir, { recursive: true });
+    await writeFile(
+      wrapper,
+      `import { writeFileSync } from "node:fs";
+import todos from ${JSON.stringify(pathToFileURL(TODOS_EXTENSION).href)};
+import observer from ${JSON.stringify(pathToFileURL(OBSERVER_EXTENSION).href)};
+export default function load(pi: Parameters<typeof observer>[0]): void {
+  todos(pi);
+  observer(pi);
+  writeFileSync(process.env.PATCHMILL_EXTENSION_SENTINEL!, "loaded");
+}
+`,
+      "utf8",
+    );
 
     try {
       const result = spawnSync(
         PI_COMMAND.command,
         piCommandArgs(PI_COMMAND, [
-          ...EXTENSIONS.flatMap((path) => ["-e", path]),
+          "-e",
+          wrapper,
           "--no-extensions",
           "--no-skills",
           "--no-prompt-templates",
@@ -1342,7 +1441,7 @@ test(
           timeout: 30_000,
           killSignal: "SIGKILL",
           env: {
-            ...process.env,
+            PATH: process.env.PATH ?? "",
             HOME: home,
             XDG_CONFIG_HOME: join(sandbox, "xdg-config"),
             XDG_DATA_HOME: join(sandbox, "xdg-data"),
@@ -1351,17 +1450,14 @@ test(
             PI_OFFLINE: "1",
             PI_SKIP_VERSION_CHECK: "1",
             PI_TELEMETRY: "0",
+            CI: "1",
+            PATCHMILL_EXTENSION_SENTINEL: sentinel,
           },
         },
       );
       assert.ifError(result.error);
-      const output = `${result.stdout}\n${result.stderr}`;
       assert.notEqual(result.status, 0);
-      assert.doesNotMatch(
-        output,
-        /Failed to load extension|Cannot find package|No such built-in module/,
-      );
-      assert.match(output, /provider|api[- ]?key|invalid/i);
+      assert.equal(await readFile(sentinel, "utf8"), "loaded");
     } finally {
       await rm(sandbox, { recursive: true, force: true });
     }
@@ -1370,14 +1466,16 @@ test(
 ```
 
 Pinned Pi documents `--no-extensions -e <path>` as the supported way to disable
-discovery while retaining explicit extensions. The isolated working directory,
-HOME/XDG/Pi-agent paths, disabled resource discovery, offline environment, and
-`--no-session` prevent ambient configuration from affecting the smoke test. The
-synchronous child has its own 30-second `SIGKILL` timeout;
-`assert.ifError(result.error)` turns a timeout or spawn failure into the primary
-test failure before output assertions run. The command must otherwise fail only
-at the expected provider/API-key stage; any `Failed to load extension`,
-`No such built-in module`, or `Cannot find package` output is a regression.
+discovery while retaining explicit extensions. The temporary wrapper imports and
+initializes both production extensions and writes the sentinel only after both
+registration functions return; this is stable proof independent of Pi's
+human-readable error wording. The isolated working directory, HOME/XDG/Pi-agent
+paths, disabled resource discovery, offline environment, and `--no-session`
+prevent ambient configuration from affecting the smoke test. The synchronous
+child has its own 30-second `SIGKILL` timeout; `assert.ifError(result.error)`
+turns a timeout or spawn failure into the primary failure. The intentionally
+invalid provider keeps the process bounded after extension initialization, but
+its diagnostic text is not part of the contract.
 
 In `src/cli/commands/run-once/pi.test.ts`, replace `runOnceExtensionArgs` with:
 
@@ -1522,17 +1620,16 @@ root-resolution fix.
 
 ---
 
-### Task 4: Stream validated custom progress entries
+### Task 4: Follow one parent session file with backpressure
 
 **Files:**
 
+- Create: `src/cli/error-causes.ts`
+- Create: `src/cli/error-causes.test.ts`
+- Create: `src/cli/commands/run-once/pi-session-file-follower.ts`
+- Create: `src/cli/commands/run-once/pi-session-file-follower.test.ts`
 - Create: `src/cli/commands/run-once/pi-session-stream.test.ts`
-- Create: `src/cli/commands/triage/tool-call-observer.test.ts`
 - Modify: `src/cli/commands/run-once/pi-session-stream.ts`
-- Modify: `src/cli/commands/run-once/pi.ts`
-- Modify: `src/cli/commands/run-once/pi.test.ts`
-- Modify: `src/cli/commands/run-once/pipeline-progress.ts`
-- Modify: `src/cli/commands/run-once/pipeline-progress.test.ts`
 
 **Interfaces:**
 
@@ -1540,54 +1637,177 @@ root-resolution fix.
   `isRecord()`, `parseSubagentProgressEntry()`, and
   `requestedSubagentChildren()`.
 - Produces:
+  - `appendErrorCauses(target, error)` recursively flattens nonempty nested
+    `AggregateError.errors` in encounter order while preserving an empty
+    `AggregateError` as a cause.
+  - `createPiSessionFileFollower(sessionFile, onLine, options): PiSessionFileFollower`
+    follows only one exact parent JSONL, awaits every line callback, and exposes
+    `{ start(): void; stop(): Promise<void>; failure: Promise<never> }`.
   - `PiSessionObservation` gains
     `{ type: "subagent-progress"; progress: SubagentProgress }`.
   - `sessionEntryToObservations(entry: JsonObject): PiSessionObservation[]`
-    returns the progress observation only for exact, valid progress custom
-    entries.
-  - `createSubagentProgressGate(onObservation, { enrichSubagentProgress }): { observe(observation): void; flush(): void }`
-    owns generic tool-call deduplication plus opt-in run-once buffering,
-    per-child resolution, residual fallback, and progress-key deduplication.
-  - `createPiSessionObservationStreamer()` defaults to immediate tool-call
-    delivery (triage behavior); `runPiPrompt()` explicitly enables subagent
-    enrichment.
-  - ToolResult-derived `tool-call` observations carry an explicit
-    `completed: true` marker consumed by the gate.
-  - Step accounting counts each parent `toolCallId` once, independent of the
-    number of resolved, changed, or fallback child observations.
+    validates the custom progress entry and marks toolResult observations with
+    `completed: true`.
+  - `createSubagentProgressGate({ enrichSubagentProgress }): { observe(observation): PiSessionObservation[]; flush(): PiSessionObservation[] }`
+    is a pure synchronous gate returning ordered outputs; it owns deduplication,
+    request inventory, per-child resolution, and residual fallbacks.
+  - `createPiSessionObservationStreamer(sessionFile, onObservation, options)`
+    defaults to immediate triage behavior, awaits each async observation before
+    consuming the next JSONL line, and exposes the follower's immediate
+    `failure` signal.
 
-- [ ] **Step 1: Write the failing session-stream tests**
+- [ ] **Step 1: Write the failing error-flattening and exact-file follower
+      tests**
 
-In `src/cli/commands/run-once/pi.test.ts`, update the two existing exact
-toolResult-observation expectations for the explicit completion contract. In
-`"runPiPrompt emits structured observations and suppresses raw text unless streamOutput is provided"`,
-replace the expected tool-call item with:
+Create `src/cli/error-causes.test.ts`:
 
 ```ts
-{ type: "tool-call", toolName: "read", completed: true },
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { appendErrorCauses } from "./error-causes.ts";
+
+test("recursively flattens aggregate causes in encounter order", () => {
+  const first = new Error("first");
+  const second = new Error("second");
+  const third = new Error("third");
+  const causes: unknown[] = [];
+
+  appendErrorCauses(
+    causes,
+    new AggregateError(
+      [first, new AggregateError([second, third], "nested")],
+      "outer",
+    ),
+  );
+
+  assert.deepEqual(causes, [first, second, third]);
+});
+
+test("preserves an empty aggregate as a terminal cause", () => {
+  const empty = new AggregateError([], "empty");
+  const causes: unknown[] = [];
+  appendErrorCauses(causes, empty);
+  assert.deepEqual(causes, [empty]);
+});
 ```
 
-In
-`"sessionEntryToObservations reports tool calls without streaming tool results"`,
-replace the expected array with:
+Create `src/cli/commands/run-once/pi-session-file-follower.test.ts`:
 
 ```ts
-assert.deepEqual(observations, [
-  {
-    type: "tool-call",
-    toolName: "bash",
-    toolCallId: "call-1",
-    completed: true,
-  },
-]);
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import { createPiSessionFileFollower } from "./pi-session-file-follower.ts";
+
+async function withTempDir<T>(run: (dir: string) => Promise<T>): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-session-follow-"));
+  try {
+    return await run(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+test("follows only the exact parent file and ignores newer nested JSONL", async () => {
+  await withTempDir(async (dir) => {
+    const parent = join(dir, "parent.jsonl");
+    const child = join(dir, "children", "child.jsonl");
+    await mkdir(join(dir, "children"), { recursive: true });
+    await writeFile(parent, "parent\n", "utf8");
+    await writeFile(child, "child\n", "utf8");
+    const lines: string[] = [];
+    const follower = createPiSessionFileFollower(parent, async (line) => {
+      lines.push(line);
+    });
+
+    follower.start();
+    await follower.stop();
+
+    assert.deepEqual(lines, ["parent"]);
+  });
+});
+
+test("awaits each line callback before delivering the next line", async () => {
+  await withTempDir(async (dir) => {
+    const parent = join(dir, "parent.jsonl");
+    await writeFile(parent, "first\nsecond\n", "utf8");
+    let releaseFirst: (() => void) | undefined;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const delivered: string[] = [];
+    const follower = createPiSessionFileFollower(parent, async (line) => {
+      delivered.push(line);
+      if (line === "first") {
+        firstStarted?.();
+        await firstBlocked;
+      }
+    });
+
+    follower.start();
+    await started;
+    assert.deepEqual(delivered, ["first"]);
+    releaseFirst?.();
+    await follower.stop();
+    assert.deepEqual(delivered, ["first", "second"]);
+  });
+});
+
+test("treats a missing pre-created session path as fatal", async () => {
+  await withTempDir(async (dir) => {
+    const follower = createPiSessionFileFollower(
+      join(dir, "missing.jsonl"),
+      async () => undefined,
+    );
+
+    follower.start();
+    await assert.rejects(
+      follower.failure,
+      (error) => (error as NodeJS.ErrnoException).code === "ENOENT",
+    );
+    await assert.rejects(
+      follower.stop(),
+      (error) => (error as NodeJS.ErrnoException).code === "ENOENT",
+    );
+  });
+});
+
+test("signals injected I/O failures immediately and stop rethrows the cause", async () => {
+  await withTempDir(async (dir) => {
+    const parent = join(dir, "parent.jsonl");
+    await writeFile(parent, "line\n", "utf8");
+    const ioError = Object.assign(new Error("read failed"), { code: "EIO" });
+    const follower = createPiSessionFileFollower(
+      parent,
+      async () => undefined,
+      {
+        readRange: async () => {
+          throw ioError;
+        },
+      },
+    );
+
+    follower.start();
+    await assert.rejects(follower.failure, (error) => error === ioError);
+    await assert.rejects(follower.stop(), (error) => error === ioError);
+  });
+});
 ```
+
+- [ ] **Step 2: Write the failing session-stream tests**
 
 Create `src/cli/commands/run-once/pi-session-stream.test.ts` — new streamer
 coverage belongs here because `pi.test.ts` is already over a thousand lines:
 
 ```ts
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -1605,17 +1825,18 @@ async function collectObservations(
 ): Promise<PiSessionObservation[]> {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-stream-"));
   try {
-    const sessionDir = join(dir, "sessions");
-    await mkdir(join(sessionDir, "--repo--"), { recursive: true });
+    const sessionFile = join(dir, "parent.jsonl");
     await writeFile(
-      join(sessionDir, "--repo--", "session.jsonl"),
-      entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+      sessionFile,
+      `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
       "utf8",
     );
     const observations: PiSessionObservation[] = [];
     const streamer = createPiSessionObservationStreamer(
-      sessionDir,
-      (observation) => observations.push(observation),
+      sessionFile,
+      (observation) => {
+        observations.push(observation);
+      },
       { pollMs: 10, enrichSubagentProgress },
     );
     streamer.start();
@@ -1628,10 +1849,7 @@ async function collectObservations(
 
 function createGateHarness(enrichSubagentProgress = true) {
   const emitted: PiSessionObservation[] = [];
-  const gate = createSubagentProgressGate(
-    (observation) => emitted.push(observation),
-    { enrichSubagentProgress },
-  );
+  const gate = createSubagentProgressGate({ enrichSubagentProgress });
   return { emitted, gate };
 }
 
@@ -1640,7 +1858,7 @@ function collectGateObservations(
   enrichSubagentProgress = true,
 ): PiSessionObservation[] {
   const { emitted, gate } = createGateHarness(enrichSubagentProgress);
-  for (const observation of input) gate.observe(observation);
+  for (const observation of input) emitted.push(...gate.observe(observation));
   return emitted;
 }
 ```
@@ -1776,38 +1994,85 @@ test("enriched session streaming flushes a safe fallback when metadata never res
 });
 
 async function expectBackgroundParseFailure(
-  createStreamer: (sessionDir: string) => {
+  rawLine: string,
+  errorType: typeof SyntaxError | typeof TypeError,
+  createStreamer: (sessionFile: string) => {
     start(): void;
     stop(): Promise<void>;
+    failure: Promise<never>;
   },
 ): Promise<void> {
-  const sessionDir = await mkdtemp(join(tmpdir(), "patchmill-stream-error-"));
-  await mkdir(sessionDir, { recursive: true });
-  const sessionPath = join(sessionDir, "session.jsonl");
-  await writeFile(sessionPath, "{not-json}\n", "utf8");
-  const streamer = createStreamer(sessionDir);
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-stream-error-"));
+  const sessionFile = join(dir, "parent.jsonl");
+  await writeFile(sessionFile, `${rawLine}\n`, "utf8");
+  const streamer = createStreamer(sessionFile);
 
   try {
     streamer.start();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // Replace the bad line before stop() polls. Rejection now proves that the
-    // background poll captured and retained the earlier SyntaxError.
-    await writeFile(sessionPath, "{}\n", "utf8");
-    await assert.rejects(streamer.stop(), SyntaxError);
+    await assert.rejects(streamer.failure, errorType);
+    await assert.rejects(streamer.stop(), errorType);
   } finally {
-    await rm(sessionDir, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
   }
 }
 
-test("both streamers propagate malformed JSON from background polling", async () => {
-  await expectBackgroundParseFailure((sessionDir) =>
-    createPiSessionMessageStreamer(sessionDir, () => undefined, { pollMs: 5 }),
+test("both streamers propagate malformed and non-record JSON", async () => {
+  for (const [rawLine, errorType] of [
+    ["{not-json", SyntaxError],
+    ["[]", TypeError],
+  ] as const) {
+    await expectBackgroundParseFailure(rawLine, errorType, (sessionFile) =>
+      createPiSessionMessageStreamer(sessionFile, () => undefined),
+    );
+    await expectBackgroundParseFailure(rawLine, errorType, (sessionFile) =>
+      createPiSessionObservationStreamer(sessionFile, () => undefined),
+    );
+  }
+});
+
+test("stop preserves simultaneous poll and fallback-delivery failures", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-stream-aggregate-"));
+  const sessionFile = join(dir, "parent.jsonl");
+  const flushError = new Error("fallback delivery failed");
+  await writeFile(
+    sessionFile,
+    `${JSON.stringify({
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "subagent",
+            arguments: { agent: "worker", task: "implement" },
+          },
+        ],
+      },
+    })}\n{not-json\n`,
+    "utf8",
   );
-  await expectBackgroundParseFailure((sessionDir) =>
-    createPiSessionObservationStreamer(sessionDir, () => undefined, {
-      pollMs: 5,
-    }),
+  const streamer = createPiSessionObservationStreamer(
+    sessionFile,
+    async () => {
+      throw flushError;
+    },
+    { enrichSubagentProgress: true },
   );
+
+  try {
+    streamer.start();
+    await assert.rejects(streamer.failure, SyntaxError);
+    await assert.rejects(streamer.stop(), (error) => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.errors.length, 2);
+      assert.ok(error.errors[0] instanceof SyntaxError);
+      assert.equal(error.errors[1], flushError);
+      return true;
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("default gate mode preserves immediate triage-style delivery", () => {
@@ -1819,7 +2084,7 @@ test("default gate mode preserves immediate triage-style delivery", () => {
     arguments: { agent: "worker", task: "implement" },
   };
 
-  gate.observe(call);
+  emitted.push(...gate.observe(call));
 
   assert.deepEqual(emitted, [call]);
 });
@@ -2076,6 +2341,86 @@ test("gate observes authoritative async results instead of guessing mode", () =>
   });
 });
 
+test("metadata-free completions emit one fallback per inventoried child", () => {
+  const observations = collectGateObservations([
+    {
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-parallel",
+      arguments: {
+        async: true,
+        tasks: [
+          { agent: "worker", task: "work", count: 2 },
+          { agent: "reviewer", task: "review" },
+        ],
+      },
+    },
+    {
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-parallel",
+      completed: true,
+    },
+    {
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-chain",
+      arguments: {
+        async: true,
+        chain: [
+          { agent: "planner", task: "plan" },
+          { parallel: [{ agent: "worker" }, { agent: "reviewer" }] },
+        ],
+      },
+    },
+    {
+      type: "tool-call",
+      toolName: "subagent",
+      toolCallId: "call-chain",
+      completed: true,
+    },
+  ]);
+
+  assert.deepEqual(
+    observations
+      .filter((observation) => observation.type === "tool-call")
+      .map((observation) => [
+        observation.toolCallId,
+        observation.arguments?.agent,
+      ]),
+    [
+      ["call-parallel", "worker"],
+      ["call-parallel", "worker"],
+      ["call-parallel", "reviewer"],
+      ["call-chain", "planner"],
+      ["call-chain", "worker"],
+      ["call-chain", "reviewer"],
+    ],
+  );
+});
+
+test("conflicting and uninventoriable execution shapes pass through immediately", () => {
+  for (const call of [
+    {
+      type: "tool-call" as const,
+      toolName: "subagent",
+      toolCallId: "call-invalid-task",
+      arguments: { tasks: [{ agent: "worker" }] },
+    },
+    {
+      type: "tool-call" as const,
+      toolName: "subagent",
+      toolCallId: "call-conflict",
+      arguments: {
+        tasks: [{ agent: "worker", task: "work" }],
+        chain: [{ agent: "planner", task: "plan" }],
+      },
+    },
+  ]) {
+    assert.deepEqual(collectGateObservations([call]), [call]);
+  }
+});
+
 test("management calls remain immediate in enriched mode", () => {
   const { emitted, gate } = createGateHarness();
   const call: PiSessionObservation = {
@@ -2085,41 +2430,45 @@ test("management calls remain immediate in enriched mode", () => {
     arguments: { action: "list" },
   };
 
-  gate.observe(call);
+  emitted.push(...gate.observe(call));
 
   assert.deepEqual(emitted, [call]);
 });
 
 test("shutdown flushes every unresolved chain child in index order", () => {
   const { emitted, gate } = createGateHarness();
-  gate.observe({
-    type: "tool-call",
-    toolName: "subagent",
-    toolCallId: "call-chain",
-    arguments: {
-      chain: [
-        { agent: "planner", task: "plan" },
-        {
-          parallel: [
-            { agent: "worker", task: "first", count: 2 },
-            { agent: "reviewer", task: "review" },
-          ],
-        },
-      ],
-    },
-  });
-  gate.observe({
-    type: "subagent-progress",
-    progress: {
+  emitted.push(
+    ...gate.observe({
+      type: "tool-call",
+      toolName: "subagent",
       toolCallId: "call-chain",
-      childIndex: 2,
-      agent: "worker",
-      model: "gpt-5.6-terra",
-      thinking: "medium",
-    },
-  });
+      arguments: {
+        chain: [
+          { agent: "planner", task: "plan" },
+          {
+            parallel: [
+              { agent: "worker", task: "first", count: 2 },
+              { agent: "reviewer", task: "review" },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  emitted.push(
+    ...gate.observe({
+      type: "subagent-progress",
+      progress: {
+        toolCallId: "call-chain",
+        childIndex: 2,
+        agent: "worker",
+        model: "gpt-5.6-terra",
+        thinking: "medium",
+      },
+    }),
+  );
 
-  gate.flush();
+  emitted.push(...gate.flush());
 
   assert.deepEqual(
     emitted
@@ -2128,80 +2477,6 @@ test("shutdown flushes every unresolved chain child in index order", () => {
     ["planner", "worker", "reviewer"],
   );
 });
-```
-
-Create `src/cli/commands/triage/tool-call-observer.test.ts` to pin the shared
-streamer's default pass-through policy at the triage integration boundary:
-
-```ts
-import assert from "node:assert/strict";
-import { appendFile } from "node:fs/promises";
-import { join } from "node:path";
-import { test } from "node:test";
-import { runWithToolCallObservation } from "./tool-call-observer.ts";
-
-function waitForObservation(observation: Promise<void>): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("triage tool call was delayed")),
-      2_000,
-    );
-    observation.then(
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
-test(
-  "triage observes a subagent call before its tool result exists",
-  { timeout: 5_000 },
-  async () => {
-    let observed = false;
-    let resolveObserved: (() => void) | undefined;
-    const firstObservation = new Promise<void>((resolve) => {
-      resolveObserved = resolve;
-    });
-
-    const result = await runWithToolCallObservation(
-      () => {
-        observed = true;
-        resolveObserved?.();
-      },
-      async (sessionDir) => {
-        assert.ok(sessionDir);
-        await appendFile(
-          join(sessionDir, "session.jsonl"),
-          `${JSON.stringify({
-            type: "message",
-            message: {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "call-1",
-                  name: "subagent",
-                  arguments: { agent: "reviewer", task: "review" },
-                },
-              ],
-            },
-          })}\n`,
-        );
-        await waitForObservation(firstObservation);
-        assert.equal(observed, true);
-        return "done";
-      },
-    );
-
-    assert.equal(result, "done");
-  },
-);
 ```
 
 Add this test to `src/cli/commands/run-once/pipeline-progress.test.ts` (its
@@ -2258,23 +2533,36 @@ test("step accounting counts one parent call across all child lines", async () =
 });
 ```
 
-- [ ] **Step 2: Run the focused tests to verify they fail**
+- [ ] **Step 3: Run the focused tests to verify they fail**
 
 Run:
 
 ```sh
-node --test src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/run-once/pipeline-progress.test.ts src/cli/commands/triage/tool-call-observer.test.ts
+node --test src/cli/error-causes.test.ts src/cli/commands/run-once/pi-session-file-follower.test.ts src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pipeline-progress.test.ts
 ```
 
-Expected: FAIL because `sessionEntryToObservations` returns no
-`subagent-progress` observation or `completed` marker, the gate does not exist,
-both updated `pi.test.ts` expectations fail, and accounting has no per-parent
-call-ID set. The triage test may already pass because it protects unchanged
-default behavior.
+Expected: FAIL because the exact-file follower and pure gate do not exist,
+custom entries and completion markers are not recognized, malformed JSON is
+silently skipped, callbacks have no backpressure, and accounting has no
+per-parent call-ID set. The triage test may already pass because it protects
+unchanged default behavior.
 
-- [ ] **Step 3: Add the custom-entry observation and opt-in per-child gate**
+- [ ] **Step 4: Add the follower, custom observation, and per-child gate**
 
-In `src/cli/commands/run-once/pi-session-stream.ts`, add this import:
+Create `src/cli/error-causes.ts`:
+
+```ts
+export function appendErrorCauses(target: unknown[], error: unknown): void {
+  if (error instanceof AggregateError && error.errors.length > 0) {
+    for (const cause of error.errors) appendErrorCauses(target, cause);
+    return;
+  }
+  target.push(error);
+}
+```
+
+In `src/cli/commands/run-once/pi-session-stream.ts`, import `appendErrorCauses`
+from `../../error-causes.ts` and add this import:
 
 ```ts
 import {
@@ -2306,15 +2594,131 @@ let `JSON.parse()` propagate `SyntaxError`, and throw
 `TypeError("Pi session entry must be an object")` when parsed JSON is not a
 record. Empty lines remain ignorable.
 
-Because both session streamers call this shared parser from fire-and-forget
-polling, add one focused `createPollErrorTracker(runPoll)` helper and use it in
-both `createPiSessionMessageStreamer()` and
-`createPiSessionObservationStreamer()`. Every initial and interval poll goes
-through `schedule()`, and each `stop()` calls `finish()` before partial-line
-processing. The observation streamer must then always flush pending calls and
-propagate every parsing, I/O, or flush failure. If both final processing and
-flushing fail, throw an `AggregateError` containing both rather than replacing
-either.
+Create `src/cli/commands/run-once/pi-session-file-follower.ts` as the focused
+filesystem shell. The owner atomically pre-creates the exact path, so every I/O
+and line-callback failure — including later `ENOENT` — rejects `failure`
+immediately and is rethrown by `stop()`:
+
+```ts
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+
+export type PiSessionFileFollower = {
+  start(): void;
+  stop(): Promise<void>;
+  failure: Promise<never>;
+};
+
+type FollowerOptions = {
+  pollMs?: number;
+  readRange?: (path: string, start: number, end: number) => Promise<string>;
+};
+
+function defaultReadRange(
+  path: string,
+  start: number,
+  end: number,
+): Promise<string> {
+  if (end <= start) return Promise.resolve("");
+  return new Promise((resolve, reject) => {
+    let text = "";
+    const stream = createReadStream(path, {
+      start,
+      end: end - 1,
+      encoding: "utf8",
+    });
+    stream.on("data", (chunk) => {
+      text += chunk;
+    });
+    stream.on("error", reject);
+    stream.on("end", () => resolve(text));
+  });
+}
+
+export function createPiSessionFileFollower(
+  sessionFile: string,
+  onLine: (line: string) => void | Promise<void>,
+  options: FollowerOptions = {},
+): PiSessionFileFollower {
+  const pollMs = options.pollMs ?? 100;
+  const readRange = options.readRange ?? defaultReadRange;
+  let timer: NodeJS.Timeout | undefined;
+  let polling: Promise<void> | undefined;
+  let offset = 0;
+  let buffered = "";
+  let failed = false;
+  let firstError: unknown;
+  let rejectFailure: (error: unknown) => void = () => undefined;
+  const failure = new Promise<never>((_, reject) => {
+    rejectFailure = reject;
+  });
+
+  const capture = (error: unknown): void => {
+    if (failed) return;
+    failed = true;
+    firstError = error;
+    rejectFailure(error);
+  };
+
+  const poll = async (): Promise<void> => {
+    const info = await stat(sessionFile);
+    if (info.size < offset) {
+      offset = 0;
+      buffered = "";
+    }
+    if (info.size === offset) return;
+    buffered += await readRange(sessionFile, offset, info.size);
+    offset = info.size;
+
+    let newline = buffered.indexOf("\n");
+    while (newline >= 0) {
+      await onLine(buffered.slice(0, newline));
+      buffered = buffered.slice(newline + 1);
+      newline = buffered.indexOf("\n");
+    }
+  };
+
+  const runPoll = (): Promise<void> => {
+    if (polling) return polling;
+    polling = poll().finally(() => {
+      polling = undefined;
+    });
+    return polling;
+  };
+
+  const schedule = (): void => {
+    void runPoll().catch(capture);
+  };
+
+  return {
+    failure,
+    start() {
+      if (timer) return;
+      schedule();
+      timer = setInterval(schedule, pollMs);
+    },
+    async stop() {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+      await runPoll().catch(capture);
+      if (!failed && buffered.trim()) {
+        try {
+          await onLine(buffered);
+          buffered = "";
+        } catch (error) {
+          capture(error);
+        }
+      }
+      if (failed) throw firstError;
+    },
+  };
+}
+```
+
+Every owner attaches a rejection handler to `failure` before `start()`; no catch
+translates or suppresses the error. The awaited `onLine` call is the
+backpressure boundary: the follower cannot parse or queue another entry while a
+reporter is still handling the current one.
 
 Extend `PiSessionObservation` with the new union member, and add an optional
 completion marker to the existing `tool-call` variant (no second observation
@@ -2379,32 +2783,31 @@ function fallbackObservation(
 }
 
 export function createSubagentProgressGate(
-  onObservation: (observation: PiSessionObservation) => void,
   options: { enrichSubagentProgress?: boolean } = {},
 ): {
-  observe(observation: PiSessionObservation): void;
-  flush(): void;
+  observe(observation: PiSessionObservation): PiSessionObservation[];
+  flush(): PiSessionObservation[];
 } {
   const seenToolCallIds = new Set<string>();
   const pendingSubagentCalls = new Map<string, PendingSubagentCall>();
   const emittedSubagentProgressKeys = new Set<string>();
 
-  const flushCall = (toolCallId: string): void => {
+  const flushCall = (toolCallId: string): PiSessionObservation[] => {
     const pending = pendingSubagentCalls.get(toolCallId);
     pendingSubagentCalls.delete(toolCallId);
-    if (!pending) return;
-    for (const child of pending.children) {
-      if (!pending.resolvedChildren.has(child.childIndex)) {
-        onObservation(fallbackObservation(toolCallId, child));
-      }
-    }
+    if (!pending) return [];
+    return pending.children.flatMap((child) =>
+      pending.resolvedChildren.has(child.childIndex)
+        ? []
+        : [fallbackObservation(toolCallId, child)],
+    );
   };
 
   return {
     observe(observation) {
       if (observation.type === "subagent-progress") {
         const key = subagentProgressKey(observation.progress);
-        if (emittedSubagentProgressKeys.has(key)) return;
+        if (emittedSubagentProgressKeys.has(key)) return [];
         emittedSubagentProgressKeys.add(key);
         const pending = pendingSubagentCalls.get(
           observation.progress.toolCallId,
@@ -2418,15 +2821,13 @@ export function createSubagentProgressGate(
         ) {
           pending.resolvedChildren.add(observation.progress.childIndex);
         }
-        onObservation(observation);
-        return;
+        return [observation];
       }
 
       if (observation.type === "tool-call" && observation.toolCallId) {
         const toolCallId = observation.toolCallId;
         if (seenToolCallIds.has(toolCallId)) {
-          if (observation.completed === true) flushCall(toolCallId);
-          return;
+          return observation.completed === true ? flushCall(toolCallId) : [];
         }
         seenToolCallIds.add(toolCallId);
         if (
@@ -2441,35 +2842,36 @@ export function createSubagentProgressGate(
               children,
               resolvedChildren: new Set<number>(),
             });
-            return;
+            return [];
           }
         }
       }
-      onObservation(observation);
+      return [observation];
     },
     flush() {
-      for (const toolCallId of [...pendingSubagentCalls.keys()]) {
-        flushCall(toolCallId);
-      }
+      return [...pendingSubagentCalls.keys()].flatMap(flushCall);
     },
   };
 }
 ```
 
-In `createPiSessionObservationStreamer`, remove the local `observedToolCallIds`
-set (the gate owns tool-call deduplication) and reduce `processLine`'s
-observation loop to a one-line dispatch:
+Import `createPiSessionFileFollower` and remove recursive session discovery,
+`readRange`, both duplicated polling loops, and the observation streamer's local
+`observedToolCallIds`. Build the observation streamer's async line callback from
+the pure gate:
 
 ```ts
-const gate = createSubagentProgressGate(onObservation, {
+const gate = createSubagentProgressGate({
   enrichSubagentProgress: options.enrichSubagentProgress,
 });
 
-const processLine = (line: string) => {
+const processLine = async (line: string): Promise<void> => {
   const entry = parseSessionLine(line);
   if (!entry) return;
   for (const observation of sessionEntryToObservations(entry)) {
-    gate.observe(observation);
+    for (const output of gate.observe(observation)) {
+      await onObservation(output);
+    }
   }
   if (options.verboseOutput) {
     const text = sessionEntryToRawText(entry);
@@ -2478,79 +2880,43 @@ const processLine = (line: string) => {
 };
 ```
 
-Add `enrichSubagentProgress?: boolean` to the observation-streamer options.
-Before the two streamer factories, add the shared background-error tracker:
+Change the callback type to
+`(observation: PiSessionObservation) => void | Promise<void>`. Each streamer
+creates one follower with the exact `sessionFile`; return `failure` directly and
+delegate `start()` to the follower. The message streamer's `stop()` is simply
+`follower.stop()`.
+
+Add `enrichSubagentProgress?: boolean` to the observation-streamer options. Its
+`stop()` always settles the follower and then delivers every residual fallback
+serially. The two boundary catches collect failures only so neither cause masks
+the other; one cause is rethrown unchanged and simultaneous causes are exposed
+through `AggregateError.errors`:
 
 ```ts
-function createPollErrorTracker(runPoll: () => Promise<void>): {
-  schedule(): void;
-  finish(): Promise<void>;
-} {
-  let failed = false;
-  let firstError: unknown;
-  const capture = (error: unknown): void => {
-    if (failed) return;
-    failed = true;
-    firstError = error;
-  };
-  return {
-    schedule() {
-      void runPoll().catch(capture);
-    },
-    async finish() {
-      await runPoll().catch(capture);
-      if (failed) throw firstError;
-    },
-  };
-}
-```
-
-After defining `runPoll()` inside each streamer, create
-`const pollErrors = createPollErrorTracker(runPoll)`. Replace the initial and
-interval `void runPoll()` calls in both `start()` methods with
-`pollErrors.schedule()`. The message streamer's `stop()` calls
-`await pollErrors.finish()` before processing its final partial line.
-
-The observation streamer's `stop()` also flushes pending calls even when final
-polling or partial-line processing fails, and preserves simultaneous failures:
-
-```ts
-stop: async () => {
-  if (timer) {
-    clearInterval(timer);
-    timer = undefined;
-  }
+async function stop(): Promise<void> {
   const errors: unknown[] = [];
   try {
-    await pollErrors.finish();
-    if (buffered.trim()) {
-      processLine(buffered);
-      buffered = "";
-    }
+    await follower.stop();
   } catch (error) {
-    errors.push(error);
+    appendErrorCauses(errors, error);
   }
   try {
-    gate.flush();
+    for (const observation of gate.flush()) {
+      await onObservation(observation);
+    }
   } catch (error) {
-    errors.push(error);
+    appendErrorCauses(errors, error);
   }
   if (errors.length === 1) throw errors[0];
   if (errors.length > 1) {
     throw new AggregateError(errors, "Pi session streamer stop failed");
   }
-},
+}
 ```
 
-In `runPiPrompt()`, opt in explicitly while preserving the existing verbose
-callback:
-
-```ts
-{
-  verboseOutput: options.verbosePiOutput ? streamOutput : undefined,
-  enrichSubagentProgress: true,
-},
-```
+Return `{ failure: follower.failure, start: follower.start, stop }`. The
+follower's failure promise is the immediate signal used by Task 5 to terminate
+Pi; `stop()` remains the authoritative drain and error-preservation boundary.
 
 Do not pass the option from triage. Default mode preserves current immediate
 delivery and generic tool-call-ID deduplication. Enriched mode buffers every
@@ -2560,12 +2926,14 @@ This intentionally avoids reproducing the pinned `forceTopLevelAsync` /
 foreground children, while a metadata-free async-start result quickly triggers
 residual fallbacks.
 
-The requested-child inventory mirrors only the pinned public expansion order:
-one direct child, `tasks` expanded by `count` in task order, and chain leaves
-flattened in the executor's global index order. It does not select agents,
-models, or thinking. Management calls return an empty inventory; malformed or
-conflicting shapes return `undefined` and pass through rather than being
-guessed.
+The requested-child inventory mirrors only pinned mode/expansion behavior:
+simultaneous nonempty `chain` and `tasks` conflict; exactly one aggregate mode
+ignores an accompanying `agent`; otherwise `agent` selects direct mode. Counted
+tasks and chain leaves flatten in result-index order. The inventory does not
+select agents, models, thinking, or effective async mode. Management calls
+return an empty inventory; conflicting aggregate modes, missing required
+top-level task fields, and shapes without a safe inventory return `undefined`
+and pass through rather than being guessed.
 
 The two dedup layers guard distinct failure modes: the extension's
 `subagentProgressKey` set deduplicates repeated lifecycle events, while the
@@ -2581,20 +2949,21 @@ never copied. The completion path relies on one ordering invariant:
 (verified in pinned `agent-session.js`). If ordering ever reverses, the fallback
 appears before a later enriched line — degraded, but never silent.
 
-- [ ] **Step 4: Format the streamer files and run their focused tests**
+- [ ] **Step 5: Format the streamer files and run their focused tests**
 
 Run:
 
 ```sh
-npx prettier --write src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pi.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/triage/tool-call-observer.test.ts
-node --test src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/triage/tool-call-observer.test.ts
+npx prettier --write src/cli/error-causes.ts src/cli/error-causes.test.ts src/cli/commands/run-once/pi-session-file-follower.ts src/cli/commands/run-once/pi-session-file-follower.test.ts src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts
+node --test src/cli/error-causes.test.ts src/cli/commands/run-once/pi-session-file-follower.test.ts src/cli/commands/run-once/pi-session-stream.test.ts
 ```
 
-Expected: Prettier exits 0 and all three test files pass, including
-completion-marker, opt-in gating, both streamers' background parsing failures,
-shutdown flush, and immediate triage observations.
+Expected: Prettier exits 0 and all three test files pass, including exact parent
+selection, backpressure, completion markers, opt-in gating, deterministic
+parsing/I/O failures, aggregate stop failures, shutdown flush, and immediate
+triage observations.
 
-- [ ] **Step 5: Preserve parent-level step accounting**
+- [ ] **Step 6: Preserve parent-level step accounting**
 
 In `src/cli/commands/run-once/pipeline-progress.ts`, track parent call IDs
 inside each active step. Multiple resolved children, changed tuples, and
@@ -2653,18 +3022,939 @@ node --test src/cli/commands/run-once/pipeline-progress.test.ts
 Expected: Prettier exits 0 and the focused tests pass, including
 `toolCalls === 1` for multiple child lines and a fallback sharing one parent ID.
 
-- [ ] **Step 6: Commit the session observation**
+- [ ] **Step 7: Commit the session observation**
 
 ```sh
-git add src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pi.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/triage/tool-call-observer.test.ts src/cli/commands/run-once/pipeline-progress.ts src/cli/commands/run-once/pipeline-progress.test.ts
+git add src/cli/error-causes.ts src/cli/error-causes.test.ts src/cli/commands/run-once/pi-session-file-follower.ts src/cli/commands/run-once/pi-session-file-follower.test.ts src/cli/commands/run-once/pi-session-stream.ts src/cli/commands/run-once/pi-session-stream.test.ts src/cli/commands/run-once/pipeline-progress.ts src/cli/commands/run-once/pipeline-progress.test.ts
 git commit -m "feat(run-once): stream subagent launch progress"
 ```
 
-Expected: one commit containing only the seven Task 4 files.
+Expected: one commit containing only the eight Task 4 files.
 
 ---
 
-### Task 5: Render enriched subagent progress lines
+### Task 5: Wire exact sessions, cancellation, and pipeline progression
+
+**Files:**
+
+- Modify: `src/cli/commands/triage/types.ts`
+- Modify: `src/cli/commands/triage/command.ts`
+- Modify: `src/cli/commands/triage/command.test.ts`
+- Modify: `src/cli/commands/triage/tool-call-observer.ts`
+- Create: `src/cli/commands/triage/tool-call-observer.test.ts`
+- Modify: `src/cli/commands/triage/dry-run-agent.ts`
+- Modify: `src/cli/commands/triage/dry-run-agent.test.ts`
+- Modify: `src/cli/commands/triage/execute-agent.ts`
+- Modify: `src/cli/commands/triage/execute-agent.test.ts`
+- Modify: `src/cli/commands/run-once/pi.ts`
+- Modify: `src/cli/commands/run-once/pi.test.ts`
+- Modify: `src/cli/commands/run-once/pipeline-implementation.ts`
+- Modify: `src/cli/commands/run-once/pipeline-progress-scenarios.test.ts`
+- Modify: `test-support/run-once/mock-runner.ts`
+
+**Interfaces:**
+
+- Consumes: Task 4's exact-file streamers and immediate `failure` promise.
+- Produces:
+  - `CommandRunOptions.signal?: AbortSignal`; the concrete runner passes it to
+    `spawn()` and does not resolve until the aborted child closes.
+  - `runPiPrompt()` atomically pre-creates a unique empty parent session file,
+    passes it through `--session`, enables enrichment, awaits observation
+    callbacks, aborts Pi on streamer failure, and aggregates runner/streamer
+    failures.
+  - Triage atomically pre-creates and passes the same exact `--session` path and
+    cancellation signal through its observed Pi calls while retaining default
+    non-enriched streaming.
+  - Implementation task refresh accepts both parent `tool-call` and
+    `subagent-progress` observations, using `progress.toolCallId` for child
+    attribution.
+
+- [ ] **Step 1: Write failing cancellation and production-wiring tests**
+
+Add to `src/cli/commands/triage/command.test.ts`:
+
+```ts
+test("command runner aborts the child and waits for close", async () => {
+  const runner = createCommandRunner();
+  const controller = new AbortController();
+  const started = Date.now();
+  const result = await runner.run(
+    process.execPath,
+    ["-e", "console.log('ready'); setInterval(() => {}, 1000)"],
+    {
+      signal: controller.signal,
+      onStdout: (chunk) => {
+        if (chunk.includes("ready")) controller.abort();
+      },
+    },
+  );
+
+  assert.notEqual(result.code, 0);
+  assert.ok(Date.now() - started < 5_000, "aborted child did not close");
+});
+```
+
+In `src/cli/commands/run-once/pi.test.ts`, add one helper and update every
+file-backed runner fixture from `--session-dir` to the exact `--session` path:
+
+```ts
+function sessionFile(args: string[]): string {
+  const index = args.indexOf("--session");
+  assert.ok(index >= 0, `expected --session in ${args.join(" ")}`);
+  const value = args[index + 1];
+  assert.ok(value);
+  return value;
+}
+```
+
+Add `spawnSync` from `node:child_process`, add `piCommandArgs` and
+`resolveBundledPiCommand` from `../../pi-cli.ts`, and add
+`type PiSessionObservation` to the existing import from
+`./pi-session-stream.ts`. Extend the structured-observation coverage with a real
+assistant call, custom progress entry, and completion result. The assertion
+proves production `runPiPrompt()` enables enrichment rather than only testing
+the gate directly:
+
+```ts
+test("runPiPrompt enables enrichment and flushes only unresolved children", async () => {
+  const observations: PiSessionObservation[] = [];
+  const runner = createMockRunner(async (call) => {
+    const parentSession = sessionFile(call.args);
+    assert.equal(await readFile(parentSession, "utf8"), "");
+    await writeFile(
+      parentSession,
+      [
+        { type: "session", version: 3, id: "parent", cwd: "/repo" },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "call-1",
+                name: "subagent",
+                arguments: {
+                  tasks: [
+                    { agent: "worker", task: "work" },
+                    { agent: "reviewer", task: "review" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        {
+          type: "custom",
+          customType: "patchmill-subagent-progress",
+          data: {
+            toolCallId: "call-1",
+            childIndex: 0,
+            agent: "worker",
+            model: "gpt-5.6-terra",
+            thinking: "medium",
+          },
+        },
+        {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolName: "subagent",
+            toolCallId: "call-1",
+            content: [],
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+      "utf8",
+    );
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    observeSession: true,
+    onObservation: async (observation) => {
+      observations.push(observation);
+    },
+  });
+
+  assert.deepEqual(
+    observations.filter(
+      (observation) =>
+        observation.type === "subagent-progress" ||
+        (observation.type === "tool-call" &&
+          observation.toolName === "subagent"),
+    ),
+    [
+      {
+        type: "subagent-progress",
+        progress: {
+          toolCallId: "call-1",
+          childIndex: 0,
+          agent: "worker",
+          model: "gpt-5.6-terra",
+          thinking: "medium",
+        },
+      },
+      {
+        type: "tool-call",
+        toolName: "subagent",
+        toolCallId: "call-1",
+        arguments: { agent: "reviewer" },
+      },
+    ],
+  );
+});
+```
+
+Add a simultaneous three-cause failure test. The boundary catch is intentional:
+the test requires runner, parser, and fallback-delivery causes to be recursively
+flattened into the top-level `AggregateError.errors` array.
+
+```ts
+test("runPiPrompt flattens runner, stream, and delivery failures", async () => {
+  const deliveryError = new Error("fallback delivery failed");
+  const runner = createMockRunner(async (call) => {
+    await writeFile(
+      sessionFile(call.args),
+      `${JSON.stringify({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "subagent",
+              arguments: { agent: "worker", task: "work" },
+            },
+          ],
+        },
+      })}\n{not-json\n`,
+      "utf8",
+    );
+    await new Promise<void>((resolve) => {
+      call.signal?.addEventListener("abort", () => resolve(), { once: true });
+    });
+    return { code: 17, stdout: "runner-out", stderr: "runner-aborted" };
+  });
+
+  await assert.rejects(
+    runPiPrompt(runner, "/repo", "prompt", {
+      stage: "pi-plan",
+      observeSession: true,
+      onObservation: async () => {
+        throw deliveryError;
+      },
+    }),
+    (error) => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.errors.length, 3);
+      assert.match(
+        String(error.errors[0]),
+        /code 17.*runner-out.*runner-aborted/s,
+      );
+      assert.ok(error.errors[1] instanceof SyntaxError);
+      assert.equal(error.errors[2], deliveryError);
+      return true;
+    },
+  );
+});
+```
+
+Add a slow-observer production case:
+
+```ts
+test("runPiPrompt applies observation backpressure", async () => {
+  let releaseFirst: (() => void) | undefined;
+  const blocked = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  let markStarted: (() => void) | undefined;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const delivered: string[] = [];
+  const runner = createMockRunner(async (call) => {
+    await writeFile(
+      sessionFile(call.args),
+      ["first", "second"]
+        .map((text) =>
+          JSON.stringify({
+            type: "message",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text }],
+              usage: { output: 1 },
+            },
+          }),
+        )
+        .join("\n") + "\n",
+      "utf8",
+    );
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  const run = runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    observeSession: true,
+    onObservation: async (observation) => {
+      if (observation.type !== "text") return;
+      delivered.push(observation.text);
+      if (observation.text === "first") {
+        markStarted?.();
+        await blocked;
+      }
+    },
+  });
+  await started;
+  assert.deepEqual(delivered, ["first"]);
+  releaseFirst?.();
+  await run;
+  assert.deepEqual(delivered, ["first", "second"]);
+});
+```
+
+Add a bounded bundled-Pi integration case proving the pre-created empty path is
+accepted by pinned Pi 0.80.10 and initialized before provider selection. It
+asserts stable session structure rather than matching diagnostic prose:
+
+```ts
+test("bundled Pi initializes a pre-created exact session file", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-pi-exact-session-"));
+  try {
+    const home = join(dir, "home");
+    const session = join(dir, "parent.jsonl");
+    await mkdir(home, { recursive: true });
+    await writeFile(session, "", { encoding: "utf8", flag: "wx" });
+    const piCommand = resolveBundledPiCommand();
+    const result = spawnSync(
+      piCommand.command,
+      piCommandArgs(piCommand, [
+        "--session",
+        session,
+        "--no-tools",
+        "--no-context-files",
+        "--provider",
+        "__patchmill_invalid_provider__",
+        "--model",
+        "__patchmill_invalid_model__",
+        "-p",
+        "Say ok",
+      ]),
+      {
+        cwd: dir,
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          PATH: process.env.PATH ?? "",
+          HOME: home,
+          XDG_CONFIG_HOME: join(home, ".config"),
+          XDG_CACHE_HOME: join(home, ".cache"),
+          XDG_DATA_HOME: join(home, ".local", "share"),
+          PI_CODING_AGENT_DIR: join(home, ".pi", "agent"),
+          CI: "1",
+        },
+      },
+    );
+
+    assert.equal(result.error, undefined);
+    assert.notEqual(result.status, 0);
+    const firstLine = (await readFile(session, "utf8")).split("\n")[0];
+    assert.ok(firstLine);
+    const header = JSON.parse(firstLine) as Record<string, unknown>;
+    assert.equal(header.type, "session");
+    assert.equal(header.cwd, dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+```
+
+This complements Task 4's follower unit test and proves no unbounded
+`pendingObservations` array remains.
+
+- [ ] **Step 2: Run the focused tests to verify they fail**
+
+Run:
+
+```sh
+node --test src/cli/commands/triage/command.test.ts src/cli/commands/triage/tool-call-observer.test.ts src/cli/commands/triage/dry-run-agent.test.ts src/cli/commands/triage/execute-agent.test.ts src/cli/commands/run-once/pi.test.ts
+```
+
+Expected: FAIL because `CommandRunOptions` has no signal, Pi still uses
+`--session-dir`, production does not atomically pre-create or enable the new
+exact-file contract, and terminal errors mask one another.
+
+- [ ] **Step 3: Add abortable command execution**
+
+In `src/cli/commands/triage/types.ts`, add `signal?: AbortSignal` to
+`CommandRunOptions`. In `command.ts`, pass it to `spawn()` and defer only
+`AbortError` settlement until close:
+
+```ts
+let abortError: Error | undefined;
+const child = spawn(command, args, {
+  cwd: options.cwd,
+  env: options.env ? { ...process.env, ...options.env } : undefined,
+  stdio: ["ignore", "pipe", "pipe"],
+  signal: options.signal,
+});
+
+child.on("error", (error) => {
+  if (error.name === "AbortError") {
+    abortError = error;
+    return;
+  }
+  settle({ code: 1, stdout, stderr: `${stderr}${error.message}` });
+});
+child.on("close", (code) => {
+  settle({
+    code: code ?? 1,
+    stdout,
+    stderr: abortError ? `${stderr}${abortError.message}` : stderr,
+  });
+});
+```
+
+Unexpected spawn failures retain the existing boundary-safe nonzero result;
+abort is not reported until the process has closed. Update `Call` in
+`pi.test.ts` and recording runners to retain `options.signal` so tests can
+coordinate cancellation.
+
+- [ ] **Step 4: Use a unique exact parent session file**
+
+In `pi.ts`, import `randomUUID` from `node:crypto` and replace the
+directory-only value with:
+
+```ts
+type PiSessionTarget = {
+  directory: string;
+  file: string;
+};
+
+async function createSessionTargetForPi(
+  options: RunPiPromptOptions,
+  promptTempDir: string,
+): Promise<PiSessionTarget | undefined> {
+  const directory = await createSessionDirForPi(options, promptTempDir);
+  if (!directory) return undefined;
+  const file = join(directory, `patchmill-parent-${randomUUID()}.jsonl`);
+  await writeFile(file, "", { encoding: "utf8", flag: "wx" });
+  return { directory, file };
+}
+```
+
+Pinned Pi CLI resolves only existing `--session` paths; `flag: "wx"` provides
+collision-safe atomic creation, and `SessionManager.open()` initializes the
+empty file with a valid header. Change `piPromptArgs()` to emit `--session`, not
+`--session-dir`, and pass the exact file to both streamer factories. Keep the
+debug event's existing `pi session dir` data equal to `target.directory`; add
+`pi session file` with `target.file`. Nested child JSONL can no longer compete
+because no discovery occurs.
+
+In `test-support/run-once/mock-runner.ts`, retain `options.signal` in `Call` and
+replace directory reconstruction with:
+
+```ts
+export function piSessionPath(call: Call): string {
+  const index = call.args.indexOf("--session");
+  assert.ok(index >= 0, `expected --session in ${call.args.join(" ")}`);
+  const path = call.args[index + 1];
+  assert.ok(path);
+  return path;
+}
+```
+
+Remove its `mkdir`-based `--session-dir` reconstruction and now-unused
+`mkdir`/`join` imports; update `writePiSessionMessage()`,
+`writePiPricedSessionMessage()`, `initializePiSession()`, and
+`appendPiSessionEntry()` to use the synchronous path helper. Update existing
+source/sessionRoot/exact-directory tests to assert the exact file lies beneath
+the expected directory. Add this production boundary regression:
+
+```ts
+test("runPiPrompt never streams a newer nested child session", async () => {
+  const texts: string[] = [];
+  const runner = createMockRunner(async (call) => {
+    const parent = sessionFile(call.args);
+    const child = join(dirname(parent), "children", "child.jsonl");
+    await mkdir(dirname(child), { recursive: true });
+    await writeFile(
+      parent,
+      `${JSON.stringify({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "parent" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+    await writeFile(
+      child,
+      `${JSON.stringify({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "child-secret" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    observeSession: true,
+    onObservation: async (observation) => {
+      if (observation.type === "text") texts.push(observation.text);
+    },
+  });
+
+  assert.deepEqual(texts, ["parent"]);
+});
+```
+
+- [ ] **Step 5: Serialize observations and abort on stream failure**
+
+Import Task 4's `appendErrorCauses` from `../../error-causes.ts`. Delete
+`pendingObservations`. Pass an async callback to the Task 4 observation streamer
+and await the external reporter directly:
+
+```ts
+const sessionStreamer = target
+  ? options?.observeSession
+    ? createPiSessionObservationStreamer(
+        target.file,
+        async (observation) => {
+          if (observation.type === "assistant-usage") {
+            latestTokenUsage = `tok: task=${observation.outputTokens} total=?`;
+            if (options.tokenUsageState) {
+              options.tokenUsageState.total += observation.outputTokens;
+            }
+          }
+          await options.onObservation?.(observation);
+        },
+        {
+          verboseOutput: options.verbosePiOutput ? streamOutput : undefined,
+          enrichSubagentProgress: true,
+        },
+      )
+    : createPiSessionMessageStreamer(
+        target.file,
+        streamOutput ?? (() => undefined),
+        messageStreamerOptions,
+      )
+  : undefined;
+```
+
+Create an `AbortController` before starting Pi. Attach a handled settlement to
+`sessionStreamer.failure` **before** calling `start()`:
+
+```ts
+const streamFailure = sessionStreamer
+  ? sessionStreamer.failure.then(
+      () => ({ type: "impossible" as const }),
+      (error: unknown) => ({ type: "stream-error" as const, error }),
+    )
+  : new Promise<never>(() => undefined);
+```
+
+Wrap `runner.run()` so it resolves to a tagged settlement rather than leaving a
+rejected promise unattended. Race it against `streamFailure`; when streaming
+wins, call `abortController.abort()` and await the runner settlement so the
+subprocess is confirmed closed.
+
+Use tagged settlements and aggregate terminal causes explicitly:
+
+```ts
+function assertResult(
+  result: CommandResult | undefined,
+): asserts result is CommandResult {
+  if (!result) throw new Error("Pi runner settled without a result");
+}
+
+const runnerSettlementPromise = runner
+  .run(command, args, { ...runOptions, signal: abortController.signal })
+  .then(
+    (result) => ({ type: "runner-result" as const, result }),
+    (error: unknown) => ({ type: "runner-error" as const, error }),
+  );
+const first = await Promise.race([runnerSettlementPromise, streamFailure]);
+if (first.type === "stream-error") abortController.abort();
+const runnerSettlement =
+  first.type === "runner-result" || first.type === "runner-error"
+    ? first
+    : await runnerSettlementPromise;
+
+const errors: unknown[] = [];
+let result: CommandResult | undefined;
+if (runnerSettlement.type === "runner-error") {
+  appendErrorCauses(errors, runnerSettlement.error);
+} else {
+  result = runnerSettlement.result;
+  if (result.code !== 0) {
+    errors.push(
+      new Error(
+        `pi exited with code ${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      ),
+    );
+  }
+}
+try {
+  await sessionStreamer?.stop();
+} catch (error) {
+  appendErrorCauses(errors, error);
+}
+if (result) {
+  try {
+    await emitPiOutput(result, options);
+  } catch (error) {
+    appendErrorCauses(errors, error);
+  }
+}
+if (errors.length === 1) throw errors[0];
+if (errors.length > 1) throw new AggregateError(errors, "Pi execution failed");
+assertResult(result);
+```
+
+`assertResult()` does not synthesize fallback output. Only parse stdout after
+this block. Move the existing body into a local `execute()` and replace the
+outer `finally`, which can currently mask body failures, with explicit cleanup
+settlements:
+
+```ts
+let value: Result | undefined;
+const terminalErrors: unknown[] = [];
+try {
+  value = await execute();
+} catch (error) {
+  appendErrorCauses(terminalErrors, error);
+}
+if (timer) clearInterval(timer);
+for (const settlement of await Promise.allSettled([
+  Promise.all(pendingHeartbeats),
+  rm(dir, { recursive: true, force: true }),
+])) {
+  if (settlement.status === "rejected") {
+    appendErrorCauses(terminalErrors, settlement.reason);
+  }
+}
+if (terminalErrors.length === 1) throw terminalErrors[0];
+if (terminalErrors.length > 1) {
+  throw new AggregateError(terminalErrors, "Pi execution and cleanup failed");
+}
+if (value === undefined) throw new Error("Pi execution produced no result");
+return value;
+```
+
+These catches are terminal ownership boundaries: none returns fallback data, and
+every captured cause is rethrown.
+
+- [ ] **Step 6: Propagate the cancellation contract through triage**
+
+Create `src/cli/commands/triage/tool-call-observer.test.ts` with an immediate
+pass-through case and a callback-failure cancellation case:
+
+```ts
+import assert from "node:assert/strict";
+import { appendFile } from "node:fs/promises";
+import { test } from "node:test";
+import { runWithToolCallObservation } from "./tool-call-observer.ts";
+
+function waitFor(signal: Promise<void>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("observation timed out")),
+      2_000,
+    );
+    signal.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+test("triage observes a subagent call before its tool result", async () => {
+  let observed: (() => void) | undefined;
+  const observation = new Promise<void>((resolve) => {
+    observed = resolve;
+  });
+
+  const result = await runWithToolCallObservation(
+    async () => observed?.(),
+    async (sessionFile, signal) => {
+      assert.ok(sessionFile);
+      assert.equal(signal.aborted, false);
+      await appendFile(
+        sessionFile,
+        `${JSON.stringify({
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "call-1",
+                name: "subagent",
+                arguments: { agent: "reviewer", task: "review" },
+              },
+            ],
+          },
+        })}\n`,
+      );
+      await waitFor(observation);
+      return "done";
+    },
+  );
+
+  assert.equal(result, "done");
+});
+
+test("triage aborts the run when callback delivery fails", async () => {
+  const deliveryError = new Error("observer failed");
+  await assert.rejects(
+    runWithToolCallObservation(
+      async () => {
+        throw deliveryError;
+      },
+      async (sessionFile, signal) => {
+        assert.ok(sessionFile);
+        await appendFile(
+          sessionFile,
+          `${JSON.stringify({
+            type: "message",
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "call-1",
+                  name: "read",
+                  arguments: {},
+                },
+              ],
+            },
+          })}\n`,
+        );
+        if (!signal.aborted) {
+          await new Promise<void>((resolve) =>
+            signal.addEventListener("abort", () => resolve(), { once: true }),
+          );
+        }
+        return "aborted";
+      },
+    ),
+    (error) => error === deliveryError,
+  );
+});
+```
+
+The timeout in `waitFor()` is bounded test failure reporting, not polling
+synchronization; the production `failure` promise drives cancellation.
+
+Change `runWithToolCallObservation()`'s callback to
+`(sessionFile: string | undefined, signal: AbortSignal) => Promise<T>`. Import
+`appendErrorCauses` from `../../error-causes.ts` and import `writeFile`; create
+`sessionFile = join(sessionDir, "parent.jsonl")`, and atomically pre-create it
+with `writeFile(sessionFile, "", { encoding: "utf8", flag: "wx" })` before
+starting the follower. Attach to `streamer.failure` before `start()`, abort the
+controller when it rejects, await the run settlement, `stop()`, and
+temp-directory cleanup settlements, and apply the same flattened
+one-error/`AggregateError` rule. Remove the masking outer `finally`. Await
+`onToolCall()` directly in the streamer's callback; remove `pendingToolCalls`.
+
+The observed branch follows this exact settlement shape:
+
+```ts
+const sessionFile = join(sessionDir, "parent.jsonl");
+await writeFile(sessionFile, "", { encoding: "utf8", flag: "wx" });
+const controller = new AbortController();
+const streamer = createPiSessionObservationStreamer(
+  sessionFile,
+  async (event) => {
+    if (event.type === "tool-call") await onToolCall(event);
+  },
+);
+const streamFailure = streamer.failure.then(
+  () => ({ type: "impossible" as const }),
+  (error: unknown) => ({ type: "stream-error" as const, error }),
+);
+streamer.start();
+const runSettlementPromise = run(sessionFile, controller.signal).then(
+  (value) => ({ type: "run-result" as const, value }),
+  (error: unknown) => ({ type: "run-error" as const, error }),
+);
+const first = await Promise.race([runSettlementPromise, streamFailure]);
+if (first.type === "stream-error") controller.abort();
+const runSettlement =
+  first.type === "run-result" || first.type === "run-error"
+    ? first
+    : await runSettlementPromise;
+const errors: unknown[] = [];
+if (runSettlement.type === "run-error") {
+  appendErrorCauses(errors, runSettlement.error);
+}
+try {
+  await streamer.stop();
+} catch (error) {
+  appendErrorCauses(errors, error);
+}
+try {
+  await rm(sessionDir, { recursive: true, force: true });
+} catch (error) {
+  appendErrorCauses(errors, error);
+}
+if (errors.length === 1) throw errors[0];
+if (errors.length > 1) {
+  throw new AggregateError(errors, "Observed triage Pi execution failed");
+}
+return (runSettlement as { type: "run-result"; value: T }).value;
+```
+
+When `onToolCall` is absent, keep the existing direct `run(undefined, signal)`
+path with a fresh non-aborted controller. In both `dry-run-agent.ts` and
+`execute-agent.ts`, rename the callback argument to `sessionFile`, change the
+observed branch from `["--session-dir", sessionDir]` to
+`["--session", sessionFile]`, retain `["--no-session"]` without an observer, and
+pass `signal` to `runner.run()` options.
+
+Import `basename` from `node:path` in both producer test files. Update each
+file's existing “enables session observation” test in `dry-run-agent.test.ts`
+and `execute-agent.test.ts` to assert `--session` is present, `--session-dir`
+and `--no-session` are absent, the target basename is `parent.jsonl`, and the
+recording runner receives a non-aborted signal. Inside each recording runner,
+read an observed `--session` target at invocation time and assert it is the
+pre-created empty file. Preserve the existing no-observer assertions for
+`--no-session`; extend each recording call type with `signal?: AbortSignal` and
+save `options.signal`. Update the dry-run trailing-garbage observed-path test
+from `--session-dir` to `--session`. Use this assertion shape in both producer
+tests:
+
+```ts
+const sessionIndex = call.args.indexOf("--session");
+assert.notEqual(sessionIndex, -1);
+assert.equal(call.args.includes("--session-dir"), false);
+assert.equal(call.args.includes("--no-session"), false);
+assert.equal(basename(call.args[sessionIndex + 1] ?? ""), "parent.jsonl");
+assert.equal(call.signal?.aborted, false);
+```
+
+These are production-producer wiring tests, not only wrapper-unit tests.
+
+- [ ] **Step 7: Preserve implementation-step refresh behavior**
+
+In `pipeline-implementation.ts`, derive the parent ID from either observation
+shape and refresh todo state for both:
+
+```ts
+function implementationToolCallId(
+  observation: AgentIssueProgressEvent["observation"],
+): string | undefined {
+  if (observation?.type === "tool-call") return observation.toolCallId;
+  if (observation?.type === "subagent-progress") {
+    return observation.progress.toolCallId;
+  }
+  return undefined;
+}
+
+const observeImplementation = async (
+  observation: AgentIssueProgressEvent["observation"],
+): Promise<void> => {
+  if (implementationToolCallId(observation)) {
+    await refreshImplementationTask({ startFinalWhenComplete: true });
+  }
+  await observePi("pi-implementation")(observation);
+};
+```
+
+In `pipeline-progress-scenarios.test.ts`, add `AgentIssueProgressEvent` to the
+existing type import from `./types.ts`, then add:
+
+```ts
+function subagentProgressEntry(
+  toolCallId: string,
+  agent: string,
+): Record<string, unknown> {
+  return {
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      toolCallId,
+      childIndex: 0,
+      agent,
+      model: agent === "reviewer" ? "gpt-5.6-sol" : "gpt-5.6-terra",
+      thinking: agent === "reviewer" ? "xhigh" : "medium",
+    },
+  };
+}
+
+function observedToolCallId(
+  event: AgentIssueProgressEvent,
+): string | undefined {
+  if (event.observation?.type === "tool-call") {
+    return event.observation.toolCallId;
+  }
+  if (event.observation?.type === "subagent-progress") {
+    return event.observation.progress.toolCallId;
+  }
+  return undefined;
+}
+```
+
+Replace each bare assistant subagent fixture with assistant call +
+`subagentProgressEntry(callId, agent)` + completed toolResult. Update waits and
+rendered IDs to use `observedToolCallId(event)`. Keep the exact step-transition
+sequence assertion; it proves suppressing the parent call no longer stalls
+todo-derived progression.
+
+- [ ] **Step 8: Format and run focused integration tests**
+
+Run:
+
+```sh
+npx prettier --write src/cli/commands/triage/types.ts src/cli/commands/triage/command.ts src/cli/commands/triage/command.test.ts src/cli/commands/triage/tool-call-observer.ts src/cli/commands/triage/tool-call-observer.test.ts src/cli/commands/triage/dry-run-agent.ts src/cli/commands/triage/dry-run-agent.test.ts src/cli/commands/triage/execute-agent.ts src/cli/commands/triage/execute-agent.test.ts src/cli/commands/run-once/pi.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/run-once/pipeline-implementation.ts src/cli/commands/run-once/pipeline-progress-scenarios.test.ts test-support/run-once/mock-runner.ts
+node --test src/cli/commands/triage/command.test.ts src/cli/commands/triage/tool-call-observer.test.ts src/cli/commands/triage/dry-run-agent.test.ts src/cli/commands/triage/execute-agent.test.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/run-once/pipeline-progress-scenarios.test.ts
+```
+
+Expected: Prettier exits 0; cancellation closes child processes; exact parent
+files exclude nested sessions; slow observers apply backpressure; simultaneous
+runner/stream failures are aggregated; and implementation steps still advance.
+
+- [ ] **Step 9: Commit production wiring**
+
+```sh
+git add src/cli/commands/triage/types.ts src/cli/commands/triage/command.ts src/cli/commands/triage/command.test.ts src/cli/commands/triage/tool-call-observer.ts src/cli/commands/triage/tool-call-observer.test.ts src/cli/commands/triage/dry-run-agent.ts src/cli/commands/triage/dry-run-agent.test.ts src/cli/commands/triage/execute-agent.ts src/cli/commands/triage/execute-agent.test.ts src/cli/commands/run-once/pi.ts src/cli/commands/run-once/pi.test.ts src/cli/commands/run-once/pipeline-implementation.ts src/cli/commands/run-once/pipeline-progress-scenarios.test.ts test-support/run-once/mock-runner.ts
+git commit -m "feat(run-once): coordinate subagent progress failures"
+```
+
+Expected: one commit containing only the Task 5 files.
+
+---
+
+### Task 6: Render enriched subagent progress lines
 
 **Files:**
 
@@ -2678,8 +3968,8 @@ Expected: one commit containing only the seven Task 4 files.
 - Produces: console lines exactly matching
   `🤖 subagent (agent=<agent>, model=<model>, thinking=<level>)`, with the
   `thinking` segment omitted when not determinable. The reporter needs no
-  suppression logic: the Task 4 streamer buffers foreground execution calls, and
-  replayed observations render through the existing formatter unchanged.
+  suppression logic: the Task 4 gate buffers inventoried execution calls, and
+  task-free residual observations render through the existing formatter.
 
 - [ ] **Step 1: Write the failing console tests**
 
@@ -2690,7 +3980,7 @@ unchanged — including
 these two tests:
 
 ```ts
-test("console reporter renders one enriched line per resolved subagent child", () => {
+test("console reporter renders one enriched line per reported subagent child", () => {
   const lines: string[] = [];
   const reporter = new AgentIssueConsoleProgressReporter({
     writeLine: (line) => lines.push(line),
@@ -2828,11 +4118,11 @@ git add src/cli/commands/run-once/console-progress.ts src/cli/commands/run-once/
 git commit -m "feat(run-once): show subagent model progress"
 ```
 
-Expected: one commit containing only the two Task 5 files.
+Expected: one commit containing only the two Task 6 files.
 
 ---
 
-### Task 6: Verify the Nix-installed runtime layout
+### Task 7: Verify the Nix-installed runtime layout
 
 **Files:**
 
@@ -2904,17 +4194,17 @@ Expected: one commit containing only `nix/package.nix`.
 
 ---
 
-### Task 7: Final regression and packaging verification
+### Task 8: Final regression and packaging verification
 
 **Files:**
 
-- Review: all Task 1 through Task 6 files.
+- Review: all Task 1 through Task 7 files.
 - Modify: only files needed to fix verification failures; record any fixes in a
   separate commit.
 
 **Interfaces:**
 
-- Consumes: all interfaces produced by Tasks 1 through 6.
+- Consumes: all interfaces produced by Tasks 1 through 7.
 - Produces: verified issue #116 branch ready for review; no implementation
   handoff until every command below passes.
 
@@ -2924,15 +4214,21 @@ Run:
 
 ```sh
 node --test \
+  src/cli/error-causes.test.ts \
   src/pi/subagent-progress.test.ts \
   src/pi/extensions/run-once-subagent-progress.test.ts \
   src/pi/extensions/run-once-subagent-progress.load.test.ts \
   src/pi/resource-profiles.test.ts \
   src/cli/commands/run-once/pi.test.ts \
+  src/cli/commands/run-once/pi-session-file-follower.test.ts \
   src/cli/commands/run-once/pi-session-stream.test.ts \
   src/cli/commands/run-once/pipeline-progress.test.ts \
+  src/cli/commands/run-once/pipeline-progress-scenarios.test.ts \
   src/cli/commands/run-once/console-progress.test.ts \
-  src/cli/commands/triage/tool-call-observer.test.ts
+  src/cli/commands/triage/command.test.ts \
+  src/cli/commands/triage/tool-call-observer.test.ts \
+  src/cli/commands/triage/dry-run-agent.test.ts \
+  src/cli/commands/triage/execute-agent.test.ts
 ```
 
 Expected: PASS with 0 failing tests.
@@ -2976,12 +4272,16 @@ source via jiti.)
 Run:
 
 ```sh
-git diff --check
+BASE_SHA="$(git merge-base main HEAD)"
+git diff --check "$BASE_SHA"...HEAD
+git diff --cached --check
+git diff --stat "$BASE_SHA"...HEAD
 git status --short --branch
 ```
 
-Expected: no whitespace errors; no untracked or modified files outside the issue
-branch's intentional planning and implementation commits.
+Expected: the committed base-to-HEAD range and index have no whitespace errors;
+the stat contains only intended issue files; and there are no unexpected
+untracked, staged, or unstaged changes.
 
 - [ ] **Step 6: Verify package contents**
 
@@ -3048,7 +4348,7 @@ Run:
 nix build .#patchmill --no-link --print-build-logs
 ```
 
-Expected: PASS, including Task 6's installed source-file and
+Expected: PASS, including Task 7's installed source-file and
 resolved-extension-path assertions under `$out/share/patchmill`.
 
 - [ ] **Step 9: Commit any verification fixes**
@@ -3071,17 +4371,17 @@ output; the final working tree is clean.
 
 Before claiming completion, verify each statement is true:
 
-- Reviewer output renders
-  `🤖 subagent (agent=reviewer, model=<model>, thinking=<level>)`.
-- Worker output renders
-  `🤖 subagent (agent=worker, model=<model>, thinking=<level>)`.
+- Reviewer and worker children render
+  `🤖 subagent (agent=<agent>, model=<reported-model>, thinking=<reported-level>)`
+  when both fields are reported; `thinking` is omitted when 0.25.0 cannot
+  determine it, and a task-free agent-only line remains the final fallback.
 - Only the leading provider segment and known thinking suffix are removed;
   nested model-ID segments remain intact.
 - Direct, repeated-task, sequential-chain, and chain-parallel calls render one
   visible line per requested child.
 - Repeated partial/final updates do not duplicate an unchanged tuple.
 - A changed fallback tuple is reported rather than hidden.
-- Resolved foreground children do not also emit the previous agent-only line.
+- Children with reported metadata do not also emit the previous agent-only line.
 - Completion and streamer shutdown emit one task-free, agent-only fallback for
   every unresolved child, including mixed-success parallel siblings.
 - Every per-child progress observation for one call is rendered; resolved
@@ -3089,10 +4389,15 @@ Before claiming completion, verify each statement is true:
   swallowed.
 - The `thinking` segment appears only when determinable from the child's own
   result metadata; it is never inferred from the parent session.
-- Effective async starts retain one agent-only summary without reimplementing
+- Effective async direct, counted-parallel, and chain starts emit exactly one
+  task-free agent-only fallback per inventoried child without reimplementing
   upstream async/default/clarify precedence.
 - Triage observes ordinary subagent calls immediately and never opts into
   run-once buffering.
+- Only the unique explicit parent `--session` file is followed; nested child
+  JSONL cannot be selected or mixed into parent progress.
+- Observation delivery is serial and backpressured; parsing, I/O, or reporter
+  failure aborts Pi and all terminal causes remain visible in one error.
 - Subagent management calls retain normal tool-call output
   (`🔧 subagent (action=list)`).
 - Custom progress entries and synthetic fallbacks do not enter LLM context and
@@ -3104,5 +4409,5 @@ Before claiming completion, verify each statement is true:
 - The Pi load smoke is bounded and isolated from ambient HOME/XDG/Pi resources.
 - Source, npm-packed, and Nix `$out/share/patchmill` extension paths all resolve
   and exist.
-- Focused tests, the full test suite, lint, build, diff checks, package checks,
-  and Nix build pass.
+- Focused tests, the full test suite, lint, build, committed base-to-HEAD and
+  staged diff checks, package checks, and Nix build pass.

@@ -12,9 +12,9 @@ calls using only the requested role:
 🤖 subagent (agent=worker)
 ```
 
-That output hides which model and thinking level `pi-subagents` resolved for a
-child. Operators therefore cannot confirm role-specific runtime configuration
-while an automated run is in progress.
+That output hides the model and thinking metadata `pi-subagents` reports for a
+child. Operators therefore cannot inspect role-specific launch metadata while an
+automated run is in progress.
 
 Pi exposes the original subagent arguments through `tool_execution_start` and
 `tool_call`. Those arguments are insufficient because normal calls commonly
@@ -23,21 +23,23 @@ inside `pi-subagents`, after the call is accepted.
 
 Pi also exposes `tool_execution_update` with the tool's partial result and
 `tool_execution_end` with its final result. The `pi-subagents` partial and final
-result details contain one result per child, including the resolved model. A
-resolved model may encode its thinking level as a known suffix, for example
-`openai-codex/gpt-5.6-terra:high`.
+result details contain one result per foreground child. An explicitly selected
+model is reported immediately; when no model is selected in agent configuration,
+0.25.0 fills `result.model` from the first child assistant message. Configured
+non-`off` thinking is visible only when 0.25.0 encoded it as a suffix on an
+explicit model argument, for example `openai-codex/gpt-5.6-terra:high`.
 
 ## Goals
 
-- Show the resolved child model and thinking level in run-once console output
-  for foreground direct, parallel, and chain subagent calls.
+- Show the child model and thinking level reported by `pi-subagents` in run-once
+  console output for foreground direct, parallel, and chain calls.
 - Preserve near-live progress by observing partial tool results instead of
   waiting exclusively for completion.
 - Render one independent visible line per requested child, including children
-  that fail before resolved model metadata appears.
-- Preserve agent-only summaries for effective async starts because the pinned
-  `pi-subagents` version exposes no resolved child models in those start
-  results.
+  that fail before reported model metadata appears.
+- Preserve one task-free agent-only fallback per inventoried child for effective
+  async starts because pinned 0.25.0 exposes no child results in the start
+  response.
 - Use values emitted by `pi-subagents` rather than independently reproducing its
   configuration and fallback precedence.
 - Avoid adding subagent tasks, output, or tool-result content to the parent LLM
@@ -55,6 +57,10 @@ resolved model may encode its thinking level as a known suffix, for example
 - Showing task prompts, child output, credentials, costs, or complete result
   metadata in the run-once progress line.
 - Updating npm dependencies.
+- Guaranteeing an actual runtime thinking level when pinned 0.25.0 reports no
+  thinking suffix or explicit thinking field. That requires a future upstream
+  result-contract change; this design never substitutes the parent level or an
+  invented fallback.
 
 ## Selected approach
 
@@ -66,7 +72,7 @@ will render the requested output.
 Two alternatives were considered and rejected:
 
 - **Completion-time parsing of the final toolResult message.** The final
-  `toolResult` message already persists `details.results` with resolved models,
+  `toolResult` message already persists `details.results` with reported models,
   so this would avoid the extension entirely. It was rejected because issue #116
   is specifically about _progress_ output: foreground worker and reviewer
   children routinely run for minutes, and a completion-time design shows nothing
@@ -86,6 +92,24 @@ Two alternatives were considered and rejected:
   confirmed as an operator requirement during interactive planning; the
   buffer/replay fallback is the price of that requirement and guarantees the
   call never vanishes.
+
+## Reporting contract limitation
+
+Pinned `pi-subagents@0.25.0` does not expose an independent actual runtime
+thinking level. Its child subprocess receives configured thinking only through
+the `--model` suffix when an explicit model exists; `off`, unset thinking, and
+default-model launches have no reportable level. The approved contract is
+therefore deliberately reduced:
+
+- render the model and thinking tuple exactly when `pi-subagents` reports it;
+- render the reported model without `thinking` when only model is available;
+- render one task-free agent-only fallback per unresolved child when no model is
+  available;
+- never infer values from the parent session or duplicate upstream resolution.
+
+A future upstream result field could strengthen this contract without changing
+the Patchmill transport. Until then, the output is reported launch/runtime
+metadata, not a guarantee that every line contains both actual values.
 
 ## Architecture
 
@@ -127,13 +151,18 @@ results are compacted and strip `progress`, so completion extraction uses the
 result-array position. Both values derive from task order, so a child's partial
 and final tuples share one deduplication key.
 
-Requested-child inventory mirrors only `pi-subagents`' public execution-shape
-expansion: a direct call contributes one child; `tasks` entries expand accepted
-`count` values in task order; and chain sequential and parallel leaves flatten
-into the executor's global child-index order. It does not resolve profiles,
-agents, models, thinking, defaults, or effective async mode. Management calls
-produce no inventory, and malformed or conflicting shapes remain unknown rather
-than being guessed.
+Requested-child inventory mirrors pinned execution-mode validation and
+result-index expansion. Simultaneous nonempty `chain` and `tasks` arrays are an
+invalid conflict and pass through immediately. With exactly one nonempty
+aggregate mode, an accompanying `agent` is ignored just as pinned `pi-subagents`
+ignores it; otherwise a valid `agent` selects direct mode. Top-level task items
+must include the schema-required string `task`; direct tasks remain optional for
+self-contained agents. The first sequential chain step needs its own task or the
+top-level shared task, the first parallel step needs a task per child, and later
+chain steps retain upstream inheritance. The inventory does not resolve
+profiles, agents, models, thinking, defaults, or effective async mode.
+Management calls and shapes that cannot be safely inventoried pass through
+rather than being guessed.
 
 ### Pi observer extension
 
@@ -204,44 +233,62 @@ subagent-resolution observation. Only a `custom` entry with the exact
 `patchmill-subagent-progress` type and a valid payload becomes this observation.
 Other custom entries continue to be ignored.
 
-The shared streamer exposes an explicit policy. Immediate pass-through is the
-default and preserves triage's current near-live tool-call delivery. Run-once
-opts into enrichment buffering. Generic tool-call-ID deduplication remains
-active in both policies.
+Patchmill atomically pre-creates one empty parent JSONL and passes its unique
+path to both Pi's explicit `--session` option and the streamer. Pinned Pi
+0.80.10 recognizes only an existing path during CLI resolution, then initializes
+an empty file with a valid session header in `SessionManager.open()`. Patchmill
+never recursively chooses the newest JSONL from a directory, so nested child
+sessions, artifacts, and stale files cannot replace or mix with the parent
+stream.
 
-In enriched mode, the gate inventories every recognized subagent execution shape
-and buffers the parent call regardless of submitted `async` or `clarify` fields.
-A custom progress observation marks only its matching child resolved, emits
-near-live, and leaves unresolved siblings pending. On the explicit
-`completed: true` toolResult signal, the gate emits one synthetic, agent-only
-fallback for each unresolved child in index order. Streamer shutdown invokes the
-same flush path after the final poll so a killed or incomplete Pi process cannot
-strand pending calls. Synthetic fallbacks contain only `agent`; they do not copy
-task text or other call arguments.
+`pi-session-file-follower.ts` owns exact-file I/O, sequential line delivery, and
+an immediate fatal-error promise. It awaits each line callback before reading
+the next line, providing real backpressure instead of accumulating reporter
+promises. Because Patchmill pre-creates the path with exclusive-create
+semantics, `ENOENT` is fatal; malformed nonempty JSON, non-record JSON, other
+I/O failures, and reporter rejection are also fatal.
 
-Buffering every execution shape deliberately avoids reproducing `pi-subagents`'
-effective-mode precedence (`forceTopLevelAsync`, submitted `async`, configured
-`asyncByDefault`, and `clarify`). A foreground result produces authoritative
-custom metadata. An effective async start produces no such metadata, so its fast
-toolResult flushes the existing agent-only summary. Management and malformed
-calls pass through immediately.
+The shared observation streamer exposes an explicit policy. Immediate
+pass-through is the default and preserves triage's current near-live delivery.
+Run-once opts into enrichment buffering. The pure gate returns ordered outputs;
+the async streamer awaits each output before continuing.
+
+In enriched mode, the gate inventories recognized execution shapes and buffers
+the parent call regardless of submitted `async` or `clarify`. A custom progress
+observation resolves only its matching child and leaves siblings pending. On
+`completed: true` or shutdown, the gate emits one synthetic, task-free
+agent-only fallback per unresolved child in index order. Effective async direct,
+counted-parallel, and chain calls therefore have the same one-line-per-child
+cardinality as foreground calls.
+
+Buffering every valid execution shape avoids reproducing async precedence
+(`forceTopLevelAsync`, submitted `async`, configured `asyncByDefault`, and
+`clarify`). Request inventory mirrors pinned mode validation: simultaneous
+nonempty `chain` and `tasks` conflict, exactly one aggregate mode outranks an
+accompanying `agent`, and otherwise `agent` selects direct mode. Management
+calls, conflicting aggregate modes, and shapes that cannot be safely inventoried
+pass through immediately.
+
+`runPiPrompt()` and triage attach to the follower's fatal promise before
+starting it. A stream or async reporter failure aborts the subprocess through
+`CommandRunOptions.signal`; owners await process close, stop/flush the streamer,
+and then rethrow the sole cause or a recursively flattened `AggregateError`
+whose top-level `errors` array contains every runner, streamer, and delivery
+cause. No terminal failure masks another.
 
 No task text, child output, generic tool-result content, or arbitrary custom
-entry data will be forwarded. The extension's end entry is expected to precede
-the toolResult in pinned Pi's JSONL ordering; if that invariant reverses, a safe
-fallback may precede a later enriched line, but the call is never silent.
+entry data is forwarded. The extension's end entry is expected to precede the
+toolResult in pinned Pi's JSONL ordering; if it reverses, a safe fallback may
+precede a later enriched line, but the call is never silent.
 
-`pi-session-stream.ts` is already a large module, so the stateful
-buffer/resolve/flush logic remains a focused exported gate with synchronous unit
-tests, while the polling loop only dispatches observations into it. External
-result validation, record validation, model normalization, and public
-child-shape inventory remain in `src/pi/subagent-progress.ts`; a broader
-stream-module refactor is unrelated to issue #116 and remains out of scope.
+The stateful gate stays in `pi-session-stream.ts`; exact-file polling is split
+into its own focused module, and external result validation/model normalization
+remain in `src/pi/subagent-progress.ts`.
 
-Run-once step accounting remains parent-level: all resolved, changed, and
+Run-once step accounting remains parent-level: all reported, changed, and
 fallback child observations sharing one `toolCallId` contribute one `toolCalls`
-unit. ID-less ordinary tool-call observations retain existing counting
-semantics.
+unit. Implementation todo-derived progression refreshes on both parent
+`tool-call` and `subagent-progress` observations.
 
 ### Console rendering
 
@@ -259,15 +306,13 @@ Parallel foreground calls produce one line per child:
 🤖 subagent (agent=reviewer, model=gpt-5.6-sol, thinking=xhigh)
 ```
 
-A resolved child no longer also emits the old agent-only summary. Each child
-whose model metadata never arrives receives one task-free, agent-only fallback
-at completion or shutdown, including unresolved siblings in mixed-result
-parallel calls. When a child's thinking level is not determinable from its own
-result metadata, the `thinking` segment is omitted from the enriched line rather
-than guessed. Effective async starts return `details.results: []` from the
-pinned `pi-subagents` version and therefore retain one agent-only summary.
-Subagent management calls, such as `subagent(action=list)`, continue through
-normal tool-call formatting.
+A child with reported metadata no longer also emits the old agent-only summary.
+Each child whose model metadata never arrives receives one task-free, agent-only
+fallback at completion or shutdown, including unresolved siblings in
+mixed-result calls. When thinking is not determinable, the segment is omitted
+rather than guessed. Effective async direct, counted-parallel, and chain starts
+return `details.results: []` and therefore emit one agent-only fallback per
+inventoried child. Management calls continue through normal tool formatting.
 
 ## Data flow
 
@@ -284,7 +329,7 @@ pi-subagents child update
 ```
 
 `tool_execution_end` follows the same path when no usable partial update was
-observed or when a fallback changes the resolved tuple.
+observed or when a fallback changes the reported tuple.
 
 ## Error handling
 
@@ -300,17 +345,19 @@ observed or when a fallback changes the resolved tuple.
   `completed: true`. The gate flushes per-child residual fallbacks only for that
   explicit completion signal or streamer shutdown, rather than inferring
   completion from missing arguments.
-- A resolved child clears only its matching inventory item; unresolved parallel
+- A reported child clears only its matching inventory item; unresolved parallel
   and chain siblings remain pending and each receive their own fallback.
 - Unknown model suffixes remain part of the model ID rather than being
   misreported as a thinking level.
-- Nonempty malformed session JSON and non-record JSON entries fail loudly. A
-  shared poll-error tracker captures the first parsing or I/O failure from
-  background polling in both message and observation streamers, and each
-  `stop()` propagates it; observation shutdown flushing still runs, and
-  simultaneous failures are preserved in an `AggregateError`.
+- Nonempty malformed session JSON, non-record JSON, I/O failures, and async
+  reporter rejection fail loudly through the follower's immediate `failure`
+  promise. The owner aborts Pi, awaits child close, drains shutdown fallbacks,
+  and preserves simultaneous failures in `AggregateError.errors`.
+- The owner atomically pre-creates the empty explicit session file; any later
+  `ENOENT` is fatal rather than translated to “not ready yet”.
 - Process timeouts, spawn failures, package-root failures, and extension-load
-  diagnostics fail their owning verification rather than being ignored.
+  failures remain fatal. Command errors label and preserve stdout and stderr
+  separately; final JSON remains stdout-only and progress remains stderr-only.
 - A thinking level is never inferred from the parent session; when the child's
   own metadata does not determine one, the `thinking` segment is omitted.
 
@@ -320,7 +367,7 @@ The custom entry contains only the tool call identifier, child index, agent,
 model ID, and thinking level. Synthetic unresolved-child observations contain
 only the parent tool call identifier and agent. Both paths exclude tasks,
 prompts, output, provider credentials, usage details, artifact paths, and error
-content. Using a custom entry rather than a custom message keeps the resolved
+content. Using a custom entry rather than a custom message keeps the reported
 observation out of LLM context.
 
 ## Testing strategy
@@ -337,10 +384,11 @@ event handling, validates external data, and changes operator-visible behavior.
   - omits thinking when the child's metadata cannot determine it;
   - uses stable `progress.index` values for out-of-order partial results;
   - extracts multiple parallel child results;
-  - inventories direct, counted tasks, sequential chain steps, and counted
-    chain-parallel leaves in pinned child-index order;
-  - rejects empty normalized models, arrays, conflicting execution shapes, and
-    malformed result and custom-entry data;
+  - inventories one nonempty aggregate mode before an accompanying agent,
+    rejects simultaneous nonempty chain/tasks conflicts, and inventories direct
+    agent mode with counted children in pinned result-index order;
+  - rejects empty normalized models, arrays, top-level tasks missing the
+    schema-required `task`, and malformed result/custom-entry data;
   - builds collision-safe stable tuple keys.
 - `src/pi/extensions/run-once-subagent-progress.test.ts`
   - registers the expected Pi event handlers;
@@ -353,34 +401,56 @@ event handling, validates external data, and changes operator-visible behavior.
 - `src/cli/commands/run-once/pi.test.ts`
   - verifies all run-once extensions are forwarded before `-p` without
     positional-index assertions;
-  - updates both existing toolResult-observation expectations for the explicit
-    `completed: true` contract.
+  - verifies production `runPiPrompt()` atomically pre-creates and uses a unique
+    exact `--session`, enables enrichment, ignores newer nested child JSONL, and
+    flushes only unresolved siblings;
+  - invokes bundled pinned Pi with a pre-created empty exact session and proves
+    Pi initializes a valid session header before the expected invalid-provider
+    exit;
+  - proves slow observers apply backpressure and simultaneous runner/streamer
+    failures are recursively flattened into top-level `AggregateError.errors`.
 - `src/pi/resource-profiles.test.ts`
   - updates the exact `profileExtensionArgs()` expectation for all three
     extension paths and their order;
   - verifies every run-once profile includes the observer, triage excludes it,
     package roots resolve from source/dist layouts, and every source-tree
     extension path exists.
+- `src/cli/error-causes.test.ts`
+  - proves recursive aggregate flattening preserves encounter order and retains
+    an empty aggregate as a terminal cause.
+- `src/cli/commands/run-once/pi-session-file-follower.test.ts`
+  - follows only the exact parent file, awaits line callbacks, and exposes
+    missing-file, injected I/O, and callback failures through both `failure` and
+    `stop()`.
 - `src/cli/commands/run-once/pi-session-stream.test.ts`
   - converts valid custom entries into subagent-resolution observations;
   - ignores malformed and unrelated custom entries;
   - marks toolResult observations with the `completed` completion signal;
   - defaults to immediate pass-through and buffers only when run-once opts in;
-  - emits every resolved child plus one agent-only fallback for each unresolved
-    direct, task, or chain child;
-  - emits changed tuples without resolving a child twice;
-  - deduplicates repeated progress entries across file re-reads;
-  - uses authoritative result behavior for submitted async/clarify shapes rather
-    than guessing effective mode;
-  - flushes pending children on shutdown;
-  - starts both session streamer variants, lets background polling encounter
-    malformed JSON, and verifies each `stop()` propagates the parsing failure.
-- `src/cli/commands/triage/tool-call-observer.test.ts`
-  - proves triage receives an assistant subagent call before any toolResult is
-    written.
+  - emits every reported child plus one fallback for each unresolved direct,
+    counted-task, or chain child;
+  - proves metadata-free effective async direct/parallel/chain completions have
+    one fallback per inventoried child;
+  - emits changed tuples without resolving a child twice and deduplicates file
+    re-reads;
+  - deterministically propagates malformed and non-record JSON and preserves
+    simultaneous poll/fallback-delivery failures.
+- `src/cli/commands/triage/command.test.ts`
+  - proves abort signals terminate child processes and runner settlement waits
+    for close.
+- `src/cli/commands/triage/tool-call-observer.test.ts`, `dry-run-agent.test.ts`,
+  and `execute-agent.test.ts`
+  - prove triage receives assistant calls immediately, atomically pre-creates
+    and forwards the exact `--session` path, preserves `--no-session` without an
+    observer, and aborts observed runs when streaming or callback delivery
+    fails.
 - `src/cli/commands/run-once/pipeline-progress.test.ts`
-  - counts one parent invocation across multiple resolved, changed, and fallback
+  - counts one parent invocation across multiple reported, changed, and fallback
     child observations sharing a `toolCallId`.
+- `src/cli/commands/run-once/pipeline-progress-scenarios.test.ts`
+  - feeds real custom progress entries through implementation observation and
+    preserves todo-derived task/final-review transitions after parent-call
+    suppression.
 - `src/cli/commands/run-once/console-progress.test.ts`
   - asserts the exact requested output, including separate lines for parallel
     children;
@@ -391,8 +461,8 @@ event handling, validates external data, and changes operator-visible behavior.
   - resolves Pi through the canonical `src/cli/pi-cli.ts` helper, then
     smoke-verifies that the bundled CLI loads the vendored `extensions/todos.ts`
     and the multi-file TypeScript observer (including its relative
-    `../subagent-progress.ts` import) and fails only at the expected
-    invalid-provider stage;
+    `../subagent-progress.ts` import) through a temporary wrapper that writes a
+    stable post-initialization sentinel;
   - runs the synchronous child with a process-level timeout, isolated working
     directory, temporary HOME/XDG/Pi-agent paths, no session, and ambient Pi
     resource discovery disabled.
@@ -405,7 +475,9 @@ Run focused tests during implementation, followed by:
 npm test
 npm run lint
 npm run build
-git diff --check
+BASE_SHA="$(git merge-base main HEAD)"
+git diff --check "$BASE_SHA"...HEAD
+git diff --cached --check
 npm pack --dry-run
 nix build .#patchmill --no-link --print-build-logs
 ```
@@ -424,33 +496,35 @@ and verify every resolved extension path exists; then build the real
 
 ## Acceptance criteria
 
-- A resolved reviewer invocation renders
-  `🤖 subagent (agent=reviewer, model=<model>, thinking=<level>)`.
-- A resolved worker invocation renders
-  `🤖 subagent (agent=worker, model=<model>, thinking=<level>)`.
+- Reviewer and worker children render the reported model and thinking tuple when
+  available; thinking is omitted when 0.25.0 does not report it, and no
+  parent/fallback value is invented.
 - Only the leading provider segment and a known thinking suffix are removed;
   nested model-ID segments remain intact.
-- Direct, repeated-task, sequential-chain, and chain-parallel calls render one
-  visible line per requested child.
-- Repeated partial/final updates do not duplicate an unchanged tuple.
-- A changed fallback tuple is reported rather than hidden.
-- Completion and streamer shutdown emit one task-free, agent-only fallback for
-  each unresolved child, including mixed-success siblings.
-- Every per-child progress observation for one call is rendered; a second child
-  or a changed fallback tuple is never swallowed.
-- The `thinking` segment appears only when determinable from the child's own
-  result metadata; it is never inferred from the parent session.
-- A resolved child does not also emit the previous agent-only line.
-- Effective async starts retain one agent-only summary without duplicating
-  upstream mode precedence.
-- Triage receives subagent calls immediately and never opts into run-once
-  buffering.
-- Subagent management calls retain normal tool-call output.
+- Valid direct, counted-task, sequential-chain, and chain-parallel calls render
+  one visible line per inventoried child; conflicting nonempty chain/tasks pass
+  through without invented child progress.
+- Repeated partial/final updates do not duplicate an unchanged tuple, and a
+  changed tuple is not hidden.
+- Completion and shutdown emit one task-free agent-only fallback for each
+  unresolved child. Effective async direct, counted-parallel, and chain starts
+  use that same per-child cardinality.
+- A child with reported metadata does not also emit the previous agent-only
+  line.
+- The unique empty parent session file is atomically pre-created, initialized by
+  Pi through `--session`, and observed exactly; newer nested child JSONL cannot
+  be selected or mixed into parent progress.
+- Observation delivery is serial/backpressured. Parsing, non-record JSON, I/O,
+  or reporter failure aborts Pi, waits for close, and remains visible alongside
+  runner/flush failures in the top-level flattened `AggregateError.errors`.
+- Implementation todo-derived step progression refreshes on enriched progress
+  after the parent tool-call observation is suppressed.
+- Triage remains immediate and non-enriched; management calls retain normal tool
+  formatting.
 - Custom progress entries and synthetic fallbacks contain no task or child
-  output and do not add content to the parent LLM context.
+  output and add no parent LLM context.
 - Parent `toolCalls` accounting remains one unit per `toolCallId`.
-- Malformed hook payloads are ignored at the external-data boundary, while
-  malformed session JSON, I/O, process timeout/spawn, package-root, and
-  extension-load failures propagate.
-- Focused tests, the full test suite, lint, build, diff checks, source/npm
-  package verification, and the Nix package build pass.
+- The isolated extension smoke uses a stable post-initialization sentinel rather
+  than human-readable error text.
+- Focused tests, full tests, lint, build, committed/staged diff checks,
+  source/npm verification, and the Nix package build pass.
