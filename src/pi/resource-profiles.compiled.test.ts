@@ -108,6 +108,21 @@ test(
           return true;
         },
       );
+
+      await mkdir(todosExtension);
+      const directoryProfile = join(
+        dirname(compiledProfile),
+        "resource-profiles-directory.js",
+      );
+      await copyFile(compiledProfile, directoryProfile);
+
+      await assert.rejects(
+        import(pathToFileURL(directoryProfile).href),
+        new RegExp(
+          `Patchmill extension is not a regular file: .*extensions[\\\\/]todos\\.ts`,
+          "u",
+        ),
+      );
     } finally {
       await rm(packageRoot, { recursive: true, force: true });
     }
