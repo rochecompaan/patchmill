@@ -912,8 +912,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+npm run build
 PACK_JSON="$WORK/npm-pack.json"
-HUSKY=0 npm pack --json --pack-destination "$WORK" >"$PACK_JSON"
+npm pack --ignore-scripts --json --pack-destination "$WORK" >"$PACK_JSON"
 TARBALL="$WORK/$(node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8'))[0].filename" <"$PACK_JSON")"
 test -f "$TARBALL"
 
@@ -957,8 +958,10 @@ NODE
 ```
 
 Expected: prints `all extension paths exist in the packed install` and
-returns 0. `WORK` exists before packing, so the trap removes the tarball and any
-partial/corrupt JSON output even when `npm pack` or JSON decoding fails;
+returns 0. Building before packing supplies `dist/`, while `--ignore-scripts`
+keeps `npm pack --json` output parseable by preventing lifecycle scripts from
+writing to stdout. `WORK` exists before packing, so the trap removes the tarball
+and any partial/corrupt JSON output even when `npm pack` or JSON decoding fails;
 decoding remains fail-loud.
 
 - [ ] **Step 4: Run focused and full project verification**
