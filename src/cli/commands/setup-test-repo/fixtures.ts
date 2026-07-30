@@ -1,7 +1,8 @@
 import { constants } from "node:fs";
 import { access, chmod, cp, readdir, readFile, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findPackageRoot } from "../../../package-root.ts";
 import { parseIssueFile, type SetupIssue } from "./issue-parser.ts";
 
 const FIXTURE_RELATIVE_PATH = join("fixtures", "patchmill-test-repo");
@@ -15,20 +16,10 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-async function findPackageRoot(startDir: string): Promise<string> {
-  let current = resolve(startDir);
-  for (;;) {
-    if (await exists(join(current, "package.json"))) return current;
-    const parent = dirname(current);
-    if (parent === current) throw new Error("Could not find package root");
-    current = parent;
-  }
-}
-
 export async function resolveFixtureDirectory(
   startDir = dirname(fileURLToPath(import.meta.url)),
 ): Promise<string> {
-  const packageRoot = await findPackageRoot(startDir);
+  const packageRoot = findPackageRoot(startDir);
   return join(packageRoot, FIXTURE_RELATIVE_PATH);
 }
 

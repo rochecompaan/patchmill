@@ -21,9 +21,28 @@ async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "patchmill-fixture-test-"));
 }
 
-test("resolveFixtureDirectory finds fixtures from the package root", async () => {
-  const fixtureDir = await resolveFixtureDirectory(process.cwd());
-  assert.match(fixtureDir, /fixtures\/patchmill-test-repo$/u);
+test("resolveFixtureDirectory finds fixtures from a nested package layout", async () => {
+  const packageRoot = await tempDir();
+  const nestedModuleDirectory = join(
+    packageRoot,
+    "dist",
+    "src",
+    "cli",
+    "commands",
+    "setup-test-repo",
+  );
+
+  try {
+    await mkdir(nestedModuleDirectory, { recursive: true });
+    await writeFile(join(packageRoot, "package.json"), "{}\n", "utf8");
+
+    assert.equal(
+      await resolveFixtureDirectory(nestedModuleDirectory),
+      join(packageRoot, "fixtures", "patchmill-test-repo"),
+    );
+  } finally {
+    await rm(packageRoot, { recursive: true, force: true });
+  }
 });
 
 test("validateFixtureDirectory rejects missing project brief", async () => {

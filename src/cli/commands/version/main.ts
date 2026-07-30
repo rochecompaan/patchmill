@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import {
+  findPackageRoot,
+  PackageRootNotFoundError,
+} from "../../../package-root.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill version
@@ -20,44 +24,30 @@ type PackageJson = {
   version?: unknown;
 };
 
-function hasErrorCode(error: unknown, code: string): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === code
-  );
-}
-
-function packageJsonCandidates(moduleUrl = import.meta.url): string[] {
-  const moduleDir = dirname(fileURLToPath(moduleUrl));
-  return [
-    join(moduleDir, "../../../../package.json"),
-    join(moduleDir, "../../../../../package.json"),
-  ];
-}
-
 export function readPackageVersion(moduleUrl = import.meta.url): string {
-  for (const packageJsonPath of packageJsonCandidates(moduleUrl)) {
-    let packageJson: PackageJson;
-    try {
-      packageJson = JSON.parse(
-        readFileSync(packageJsonPath, "utf8"),
-      ) as PackageJson;
-    } catch (error) {
-      if (hasErrorCode(error, "ENOENT")) continue;
-      throw error;
+  let packageRoot: string;
+  try {
+    packageRoot = findPackageRoot(dirname(fileURLToPath(moduleUrl)));
+  } catch (error) {
+    if (error instanceof PackageRootNotFoundError) {
+      throw new Error("Could not locate Patchmill package.json", {
+        cause: error,
+      });
     }
-
-    if (typeof packageJson.version !== "string") {
-      throw new Error(
-        `package.json at ${packageJsonPath} does not contain a string version`,
-      );
-    }
-    return packageJson.version;
+    throw error;
   }
 
-  throw new Error("Could not locate Patchmill package.json");
+  const packageJsonPath = join(packageRoot, "package.json");
+  const packageJson = JSON.parse(
+    readFileSync(packageJsonPath, "utf8"),
+  ) as PackageJson;
+
+  if (typeof packageJson.version !== "string") {
+    throw new Error(
+      `package.json at ${packageJsonPath} does not contain a string version`,
+    );
+  }
+  return packageJson.version;
 }
 
 export function runVersion(
