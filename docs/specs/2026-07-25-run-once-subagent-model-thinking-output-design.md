@@ -28,11 +28,12 @@ but it is not executable or eligible for plan approval as one unit.
 
 ## Program outcome
 
-When a run-once parent invokes `pi-subagents`, Patchmill renders one visible
-progress line for each requested child. The line includes the agent and every
-available authoritative model or thinking field reported for that child.
-Metadata appears near-live when the upstream lifecycle exposes it and remains
-visible when a child later fails.
+When a run-once parent invokes `pi-subagents`, Patchmill renders at least one
+visible progress outcome for each requested child. It emits one line for every
+distinct authoritative agent/model/thinking tuple reported for that child, or
+one safe agent-only fallback when no authoritative tuple arrives. Metadata
+appears near-live when the upstream lifecycle exposes it and remains visible
+when a child later fails.
 
 The completed program must preserve existing machine and operator interfaces:
 
@@ -51,10 +52,12 @@ Patchmill consumes effective child metadata from a validated `pi-subagents`
 release. Patchmill does not copy upstream agent, override, model, thinking,
 default, provider, or fallback resolution.
 
-The dependency-adoption issue must verify the contract for direct, counted,
-parallel, and chain execution. If an execution mode cannot report authoritative
-metadata, that gap is handled upstream; Patchmill never infers child thinking
-from the parent session or configuration files.
+The dependency-adoption issue must verify model/thinking metadata and stable
+per-child correlation identity and ordering across partial and final lifecycle
+results for direct, counted, parallel, and chain execution. If an execution mode
+cannot report authoritative metadata or identity, that gap is handled upstream;
+Patchmill never infers child thinking or child identity from the parent session
+or configuration files.
 
 Model identifiers retain all model-specific path segments. Presentation may
 remove a separately reported provider prefix only when the child metadata
@@ -62,10 +65,13 @@ contract distinguishes it unambiguously.
 
 ### Per-child visibility
 
-Every requested child has an independent visibility slot. An authoritative
-update resolves that child's slot; completion or shutdown produces one safe
-fallback for each unresolved slot. One child's metadata, failure, or repeated
-updates cannot hide another child.
+Every requested child has an independent visibility slot. The first distinct
+authoritative tuple resolves that child's fallback obligation. Exact duplicate
+tuples are suppressed, while a changed authoritative tuple emits an additional
+line and does not retroactively replace the earlier line. Completion or shutdown
+produces exactly one safe agent-only fallback for each child that received no
+authoritative tuple. One child's metadata, failure, or repeated updates cannot
+hide another child.
 
 Patchmill follows the validated upstream execution-mode rules instead of
 inventing an alternate mode resolver. In particular, conflicting nonempty
@@ -90,6 +96,9 @@ agent/model/thinking projection required by run-once.
 
 Entries must not include task text, child output, prompts, credentials, costs,
 full result objects, unrestricted paths, or other incidental result metadata.
+Synthetic unresolved-child fallbacks follow the same privacy boundary: they are
+task-free, agent-only progress observations, remain outside LLM context, and
+contain no child output or unrestricted result metadata.
 
 ## Delivery issues
 
@@ -101,9 +110,10 @@ remains independent of the progress feature.
 
 ### [#122: Upgrade `pi-subagents`](https://github.com/rochecompaan/patchmill/issues/122)
 
-Owns validation and adoption of a release that exposes effective child model and
-thinking metadata for every supported execution shape. Any remaining contract
-gap becomes a linked upstream blocker rather than local inference.
+Owns validation and adoption of a release that exposes effective child model,
+thinking, and stable correlation identity/order across partial and final results
+for every supported execution shape. Any remaining contract gap becomes a linked
+upstream blocker rather than local inference.
 
 ### [#123: Add deterministic run-once session streaming](https://github.com/rochecompaan/patchmill/issues/123)
 
@@ -119,9 +129,10 @@ session following or CLI presentation.
 
 ### [#125: Correlate per-child progress](https://github.com/rochecompaan/patchmill/issues/125)
 
-Owns execution-shape inventory, child correlation, unresolved fallbacks,
-parent-level accounting compatibility, async cardinality, and implementation
-todo progression. It does not own console formatting.
+Owns execution-shape inventory, child correlation, distinct-tuple updates,
+task-free agent-only unresolved fallbacks, parent-level accounting
+compatibility, async cardinality, and implementation todo progression. It does
+not own console formatting.
 
 ### [#126: Render enriched progress](https://github.com/rochecompaan/patchmill/issues/126)
 
@@ -151,7 +162,8 @@ and #122. Issue #125 requires #123 and #124. Issue #126 requires #125.
    and child slot.
 5. The pipeline records progress without increasing parent invocation
    accounting.
-6. The console renders one line for each resolved or fallback child on stderr.
+6. The console renders one line for each distinct authoritative tuple, or one
+   agent-only fallback for an otherwise unresolved child, on stderr.
 
 Each step has one owning issue and a bounded interface. Child specs may refine
 their internal implementation but may not weaken the program contracts above.
@@ -161,6 +173,8 @@ their internal implementation but may not weaken the program contracts above.
 - Unknown or unsupported metadata stays absent.
 - Invalid external entries cannot crash or contaminate unrelated progress.
 - Repeated updates are idempotent for the same child metadata tuple.
+- A changed authoritative tuple emits an additional line without replacing
+  earlier output.
 - Failed and unresolved children remain independently visible.
 - Observation errors cancel active work promptly.
 - Concurrent runner, observer, callback, cleanup, and close failures remain
@@ -187,16 +201,20 @@ is independently justified.
 The umbrella is complete only when all child issues are complete and integrated,
 and the combined behavior demonstrates that:
 
-- each requested run-once child produces one visible progress outcome;
-- each line includes its agent and all available authoritative model/thinking
-  metadata;
+- each requested run-once child produces at least one visible progress outcome;
+- exact duplicate tuples are suppressed while changed authoritative tuples emit
+  additional lines;
+- each authoritative line includes its agent and all available reported
+  model/thinking metadata;
 - displayed metadata reflects the child runtime contract rather than parent
   inference;
 - metadata can appear before parent tool completion;
 - failed and unresolved children remain visible;
 - task text, child output, credentials, and unrestricted result metadata never
-  enter custom progress entries;
-- direct, counted, parallel, and chain execution preserve child cardinality;
+  enter custom progress entries or synthetic fallbacks;
+- every unresolved fallback is task-free, agent-only, and outside LLM context;
+- direct, counted, parallel, and chain execution preserve stable child identity,
+  ordering, and cardinality across partial and final results;
 - parent `toolCalls` accounting remains one unit per parent tool-call ID;
 - implementation todo progression remains intact;
 - source, npm-packed, and Nix-installed layouts load the same observer;
