@@ -1,9 +1,30 @@
 # Run-once Subagent Model and Thinking Output Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> [!WARNING] **Deprecated as an executable plan — reference only**
+>
+> This plan combines multiple independently deliverable changes and is too large
+> for one issue or pull request. Do not execute or approve it as a single plan.
+> Its requirements are being decomposed into the child issues listed in issue
+> #116. Each child issue's approved spec and plan supersedes the corresponding
+> sections here.
+
+## Decomposition map
+
+| Original plan content                                                                                  | Authoritative delivery issue                                             |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Package-root portions of Task 3 and installed-layout portions of Task 7                                | [#121](https://github.com/rochecompaan/patchmill/issues/121)             |
+| Cross-cutting `pi-subagents` metadata contract and dependency assumptions                              | [#122](https://github.com/rochecompaan/patchmill/issues/122)             |
+| Exact-session following, backpressure, cancellation, and terminal-error portions of Tasks 4–5          | [#123](https://github.com/rochecompaan/patchmill/issues/123)             |
+| Metadata normalization, lifecycle observer, profile loading, and observer packaging in Tasks 1–3 and 7 | [#124](https://github.com/rochecompaan/patchmill/issues/124)             |
+| Child inventory, correlation, fallback, accounting, and pipeline progression in Tasks 4–5              | [#125](https://github.com/rochecompaan/patchmill/issues/125)             |
+| Console rendering and final output verification in Tasks 6 and 8                                       | [#126](https://github.com/rochecompaan/patchmill/issues/126)             |
+| Triage migration described in Task 5                                                                   | Deferred from #116; evaluate as an independent follow-up if still needed |
+| Cross-cutting verification in Task 8                                                                   | Reallocated to the child issue that owns each changed contract           |
+
+## Original monolithic plan
+
+The content below is retained as a searchable design inventory. It is not an
+approved execution sequence; child issue artifacts control scope and delivery.
 
 **Goal:** Render each run-once subagent child's `pi-subagents`-reported model
 and thinking level when available, with one task-free agent-only fallback for
