@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -52,6 +53,13 @@ test("run-once planning profile includes context and Patchmill run-once extensio
         .endsWith("/extensions/todos.ts"),
       true,
     );
+    for (const extensionPath of profile.additionalExtensionPaths) {
+      assert.equal(
+        existsSync(extensionPath),
+        true,
+        `missing extension: ${extensionPath}`,
+      );
+    }
     assert.deepEqual(profile.additionalSkillPaths, [
       join(repoRoot, "skills", "planning", "SKILL.md"),
     ]);

@@ -1,6 +1,8 @@
+import fs from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findPackageRoot } from "../package-root.ts";
 import {
   skillInvocationPaths,
   type PatchmillSkillsConfig,
@@ -10,14 +12,19 @@ const require = createRequire(import.meta.url);
 const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
   require.resolve("pi-subagents/package.json"),
 );
-const PATCHMILL_PACKAGE_ROOT = resolve(
+function requireRegularFile(path: string): string {
+  const stats = fs.statSync(path);
+  if (!stats.isFile()) {
+    throw new Error(`Patchmill extension is not a regular file: ${path}`);
+  }
+  return path;
+}
+
+const PATCHMILL_PACKAGE_ROOT = findPackageRoot(
   dirname(fileURLToPath(import.meta.url)),
-  "../..",
 );
-const PATCHMILL_TODOS_EXTENSION = join(
-  PATCHMILL_PACKAGE_ROOT,
-  "extensions",
-  "todos.ts",
+const PATCHMILL_TODOS_EXTENSION = requireRegularFile(
+  join(PATCHMILL_PACKAGE_ROOT, "extensions", "todos.ts"),
 );
 
 export type PatchmillPiResourceProfileId =

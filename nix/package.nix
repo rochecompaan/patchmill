@@ -75,6 +75,28 @@ buildNpmPackageNode24 rec {
       test -f .patchmill/skills/patchmill-issue-triage/SKILL.md
     )
     test -f "$out/share/${pname}/fixtures/patchmill-test-repo/README.md"
+    test -f "$out/share/${pname}/extensions/todos.ts"
+    (
+      cd "$out/share/${pname}"
+      ${nodejs_24}/bin/node --input-type=module -e "
+        import { existsSync } from 'node:fs';
+        import { runOncePlanningPiProfile } from './src/pi/resource-profiles.ts';
+        const skills = {
+          triage: 'triage', planning: 'planning', implementation: 'implementation',
+          developmentEnvironment: 'development-environment', toolchain: 'toolchain',
+          review: 'review', visualEvidence: 'visual-evidence', landing: 'landing',
+        };
+        const profile = runOncePlanningPiProfile(skills, process.cwd());
+        const missing = profile.additionalExtensionPaths.filter(
+          (extensionPath) => !existsSync(extensionPath),
+        );
+        if (missing.length > 0) {
+          console.error('missing installed extension paths:', missing.join(', '));
+          process.exit(1);
+        }
+        console.log('all installed extension paths exist');
+      "
+    )
     runHook postInstallCheck
   '';
 
