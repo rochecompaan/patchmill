@@ -1,11 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import {
+  createExactPiSessionObservationStreamer,
   sessionEntryToObservations,
   sessionEntryToStreamText,
 } from "./pi-session-stream.ts";
@@ -22,6 +32,7 @@ type Call = {
   env?: Record<string, string | undefined>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  signal?: AbortSignal;
 };
 
 function createMockRunner(
@@ -36,6 +47,7 @@ function createMockRunner(
         env: (options as { env?: Record<string, string | undefined> }).env,
         onStdout: options.onStdout,
         onStderr: options.onStderr,
+        signal: options.signal,
       });
     },
   };
@@ -506,6 +518,53 @@ test("runPiPrompt creates a fresh durable invocation leaf and ignores stale JSON
   );
 });
 
+test("runPiPrompt pre-creates and passes an exact observed parent session", async (t) => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-exact-session-"));
+  t.after(async () => rm(repoRoot, { recursive: true, force: true }));
+  const sessionRoot = join(
+    repoRoot,
+    ".patchmill",
+    "runs",
+    "issue-123",
+    "sessions",
+  );
+  const events: AgentIssueProgressEvent[] = [];
+  let sessionPath = "";
+  const runner = createMockRunner(async (call) => {
+    const args = assertBundledPiCall(call);
+    const sessionIndex = args.indexOf("--session");
+    assert.ok(sessionIndex >= 0, `expected --session in ${args.join(" ")}`);
+    assert.equal(args.includes("--session-dir"), false);
+    sessionPath = args[sessionIndex + 1] ?? "";
+    assert.equal(await readFile(sessionPath, "utf8"), "");
+    assert.equal(dirname(dirname(sessionPath)), join(sessionRoot, "pi-plan"));
+    assert.match(basename(sessionPath), /^parent-[0-9a-f-]+\.jsonl$/);
+    await writeFile(
+      sessionPath,
+      JSON.stringify({ type: "session", id: "parent" }) + "\n",
+    );
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    progress: { event: (event) => events.push(event) },
+    stage: "pi-plan",
+    observeSession: true,
+    sessionRoot,
+  });
+
+  assert.ok(
+    events.some(
+      (event) =>
+        event.message === "pi session path" && event.data === sessionPath,
+    ),
+  );
+});
+
 test("runPiPrompt preserves an exact sessionDir override and logs the actual session dir", async (t) => {
   const repoRoot = await mkdtemp(
     join(tmpdir(), "patchmill-pi-session-override-"),
@@ -517,20 +576,21 @@ test("runPiPrompt preserves an exact sessionDir override and logs the actual ses
   const events: AgentIssueProgressEvent[] = [];
   const exactSessionDir = join(repoRoot, "exact-session-dir");
   let capturedPromptPath = "";
+  let capturedSessionPath = "";
 
   const runner = createMockRunner(async (call) => {
     const args = assertBundledPiCall(call);
     capturedPromptPath = promptPath(args);
-    const sessionDirIndex = args.indexOf("--session-dir");
-    assert.ok(
-      sessionDirIndex >= 0,
-      `expected --session-dir in ${args.join(" ")}`,
-    );
-    assert.equal(args[sessionDirIndex + 1], exactSessionDir);
+    const sessionIndex = args.indexOf("--session");
+    assert.ok(sessionIndex >= 0, `expected --session in ${args.join(" ")}`);
+    const sessionPath = args[sessionIndex + 1] ?? "";
+    capturedSessionPath = sessionPath;
+    assert.equal(dirname(sessionPath), exactSessionDir);
+    assert.match(basename(sessionPath), /^parent-[0-9a-f-]+\.jsonl$/);
+    assert.equal(await readFile(sessionPath, "utf8"), "");
 
-    await mkdir(join(exactSessionDir, "--repo--"), { recursive: true });
     await writeFile(
-      join(exactSessionDir, "--repo--", "session.jsonl"),
+      sessionPath,
       JSON.stringify({ type: "session", id: "session-1", cwd: "/repo" }) + "\n",
       "utf8",
     );
@@ -553,7 +613,7 @@ test("runPiPrompt preserves an exact sessionDir override and logs the actual ses
     code: "ENOENT",
   });
   assert.equal(
-    await readFile(join(exactSessionDir, "--repo--", "session.jsonl"), "utf8"),
+    await readFile(capturedSessionPath, "utf8"),
     JSON.stringify({ type: "session", id: "session-1", cwd: "/repo" }) + "\n",
   );
   assert.ok(
@@ -576,15 +636,13 @@ test("runPiPrompt emits structured observations and suppresses raw text unless s
   }> = [];
   const streamed: string[] = [];
   const runner = createMockRunner(async (call) => {
-    const sessionDirIndex = call.args.indexOf("--session-dir");
+    const sessionIndex = call.args.indexOf("--session");
     assert.ok(
-      sessionDirIndex >= 0,
-      `expected --session-dir in ${call.args.join(" ")}`,
+      sessionIndex >= 0,
+      `expected --session in ${call.args.join(" ")}`,
     );
-    const sessionDir = call.args[sessionDirIndex + 1];
-    assert.ok(sessionDir);
-    const sessionPath = join(sessionDir, "--repo--", "session.jsonl");
-    await mkdir(join(sessionDir, "--repo--"), { recursive: true });
+    const sessionPath = call.args[sessionIndex + 1] ?? "";
+    assert.equal(await readFile(sessionPath, "utf8"), "");
     await writeFile(
       sessionPath,
       [
@@ -644,13 +702,11 @@ test("runPiPrompt emits structured observations and suppresses raw text unless s
 test("runPiPrompt streams raw text in verbose mode", async () => {
   const streamed: string[] = [];
   const runner = createMockRunner(async (call) => {
-    const sessionDirIndex = call.args.indexOf("--session-dir");
-    assert.ok(sessionDirIndex >= 0);
-    const sessionDir = call.args[sessionDirIndex + 1];
-    assert.ok(sessionDir);
-    await mkdir(join(sessionDir, "--repo--"), { recursive: true });
+    const sessionIndex = call.args.indexOf("--session");
+    assert.ok(sessionIndex >= 0);
+    const sessionPath = call.args[sessionIndex + 1] ?? "";
     await writeFile(
-      join(sessionDir, "--repo--", "session.jsonl"),
+      sessionPath,
       JSON.stringify({
         type: "message",
         message: {
@@ -680,13 +736,11 @@ test("runPiPrompt streams raw text in verbose mode", async () => {
 test("runPiPrompt verbose mode does not append synthetic token lines", async () => {
   const streamed: string[] = [];
   const runner = createMockRunner(async (call) => {
-    const sessionDirIndex = call.args.indexOf("--session-dir");
-    assert.ok(sessionDirIndex >= 0);
-    const sessionDir = call.args[sessionDirIndex + 1];
-    assert.ok(sessionDir);
-    await mkdir(join(sessionDir, "--repo--"), { recursive: true });
+    const sessionIndex = call.args.indexOf("--session");
+    assert.ok(sessionIndex >= 0);
+    const sessionPath = call.args[sessionIndex + 1] ?? "";
     await writeFile(
-      join(sessionDir, "--repo--", "session.jsonl"),
+      sessionPath,
       JSON.stringify({
         type: "message",
         message: {
@@ -712,6 +766,456 @@ test("runPiPrompt verbose mode does not append synthetic token lines", async () 
   });
 
   assert.deepEqual(streamed, ["verbose narration\n"]);
+});
+
+test("runPiPrompt reports cleanup failure after a successful Pi result", async () => {
+  const runner = createMockRunner(() => ({
+    code: 0,
+    stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+    stderr: "",
+  }));
+
+  await assert.rejects(
+    () =>
+      runPiPrompt(runner, "/repo", "prompt", {
+        stage: "pi-plan",
+        cleanupPromptTempDir: async () => {
+          throw new Error("cleanup exploded");
+        },
+      }),
+    /cleanup exploded/,
+  );
+});
+
+test("runPiPrompt ignores newer sibling and nested JSONL when observing an exact parent", async (t) => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-exact-ignore-"));
+  t.after(async () => rm(repoRoot, { recursive: true, force: true }));
+  const observations: string[] = [];
+  const runner = createMockRunner(async (call) => {
+    const sessionPath = call.args[call.args.indexOf("--session") + 1] ?? "";
+    const invocationDir = dirname(sessionPath);
+    await mkdir(join(invocationDir, "nested"), { recursive: true });
+    const entry = (text: string) =>
+      JSON.stringify({
+        type: "message",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      }) + "\n";
+    await writeFile(sessionPath, entry("parent"));
+    const nestedPath = join(invocationDir, "nested", "session.jsonl");
+    const siblingPath = join(invocationDir, "sibling.jsonl");
+    await writeFile(nestedPath, entry("nested"));
+    await writeFile(siblingPath, entry("sibling"));
+    await utimes(sessionPath, new Date(1_000), new Date(1_000));
+    await utimes(nestedPath, new Date(2_000), new Date(2_000));
+    await utimes(siblingPath, new Date(3_000), new Date(3_000));
+    assert.ok(
+      (await stat(nestedPath)).mtimeMs > (await stat(sessionPath)).mtimeMs,
+    );
+    assert.ok(
+      (await stat(siblingPath)).mtimeMs > (await stat(sessionPath)).mtimeMs,
+    );
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-plan",
+    observeSession: true,
+    sessionRoot: repoRoot,
+    onObservation: (observation) => {
+      if (observation.type === "text") observations.push(observation.text);
+    },
+  });
+  assert.deepEqual(observations, ["parent"]);
+});
+
+test("concurrent observed Pi prompts receive isolated exact parent sessions", async (t) => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-exact-concurrent-"));
+  t.after(async () => rm(repoRoot, { recursive: true, force: true }));
+  const sessionPaths: string[] = [];
+  let bothStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    bothStarted = resolve;
+  });
+  let arrivals = 0;
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const runner = createMockRunner(async (call) => {
+    const sessionPath = call.args[call.args.indexOf("--session") + 1] ?? "";
+    const prompt = await readFile(promptPath(call.args), "utf8");
+    const text =
+      prompt === "first"
+        ? "first parent"
+        : prompt === "second"
+          ? "second parent"
+          : undefined;
+    assert.ok(text, `unexpected concurrent prompt: ${prompt}`);
+    sessionPaths.push(sessionPath);
+    arrivals += 1;
+    if (arrivals === 2) bothStarted();
+    await released;
+    await writeFile(
+      sessionPath,
+      JSON.stringify({
+        type: "message",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      }) + "\n",
+      "utf8",
+    );
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+  const first: string[] = [];
+  const second: string[] = [];
+  const firstRun = runPiPrompt(runner, "/repo", "first", {
+    stage: "pi-plan",
+    observeSession: true,
+    sessionRoot: repoRoot,
+    onObservation: (observation) => {
+      if (observation.type === "text") first.push(observation.text);
+    },
+  });
+  const secondRun = runPiPrompt(runner, "/repo", "second", {
+    stage: "pi-plan",
+    observeSession: true,
+    sessionRoot: repoRoot,
+    onObservation: (observation) => {
+      if (observation.type === "text") second.push(observation.text);
+    },
+  });
+  await started;
+  release();
+  await Promise.all([firstRun, secondRun]);
+  assert.notEqual(sessionPaths[0], sessionPaths[1]);
+  assert.deepEqual(first, ["first parent"]);
+  assert.deepEqual(second, ["second parent"]);
+});
+
+test("runPiPrompt aborts the runner when exact observation fails", async (t) => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-observe-abort-"));
+  t.after(async () => rm(repoRoot, { recursive: true, force: true }));
+  let abortObserved = false;
+  let allowClose!: () => void;
+  const closeAllowed = new Promise<void>((resolve) => {
+    allowClose = resolve;
+  });
+  const runner = createMockRunner(async (call) => {
+    const args = assertBundledPiCall(call);
+    const sessionPath = args[args.indexOf("--session") + 1] ?? "";
+    await writeFile(sessionPath, "{bad json\n", "utf8");
+    call.signal?.addEventListener("abort", () => {
+      abortObserved = true;
+      allowClose();
+    });
+    await closeAllowed;
+    return {
+      code: 1,
+      stdout: "partial stdout",
+      stderr: "runner closed after abort",
+    };
+  });
+
+  await assert.rejects(
+    () =>
+      runPiPrompt(runner, "/repo", "prompt", {
+        stage: "pi-plan",
+        observeSession: true,
+        sessionRoot: repoRoot,
+      }),
+    (error) => error instanceof AggregateError && error.errors.length >= 2,
+  );
+  assert.equal(abortObserved, true);
+});
+
+test("runPiPrompt preserves observation, runner, and cleanup failures", async (t) => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-observe-causes-"));
+  t.after(async () => rm(repoRoot, { recursive: true, force: true }));
+  let allowClose!: () => void;
+  const closeAllowed = new Promise<void>((resolve) => {
+    allowClose = resolve;
+  });
+  const runner = createMockRunner(async (call) => {
+    const sessionPath = call.args[call.args.indexOf("--session") + 1] ?? "";
+    await writeFile(
+      sessionPath,
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "progress" }],
+        },
+      }) + "\n",
+      "utf8",
+    );
+    call.signal?.addEventListener("abort", allowClose);
+    await closeAllowed;
+    return { code: 1, stdout: "", stderr: "runner failed" };
+  });
+
+  await assert.rejects(
+    () =>
+      runPiPrompt(runner, "/repo", "prompt", {
+        stage: "pi-plan",
+        observeSession: true,
+        sessionRoot: repoRoot,
+        onObservation: () => Promise.reject(new Error("callback exploded")),
+        cleanupPromptTempDir: async () => {
+          throw new Error("cleanup exploded");
+        },
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true);
+      assert.deepEqual(
+        (error as AggregateError).errors.map(
+          (cause) => (cause as Error).message,
+        ),
+        [
+          "observation: callback exploded",
+          "runner: pi failed: runner failed",
+          "cleanup: cleanup exploded",
+        ],
+      );
+      return true;
+    },
+  );
+});
+
+test("exact session observation awaits callbacks in file order", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-stream-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const sessionPath = join(dir, "parent.jsonl");
+  await writeFile(
+    sessionPath,
+    ["first", "second"]
+      .map((text) =>
+        JSON.stringify({
+          type: "message",
+          message: { role: "assistant", content: [{ type: "text", text }] },
+        }),
+      )
+      .join("\n") + "\n",
+    "utf8",
+  );
+  const delivered: string[] = [];
+  let releaseFirst!: () => void;
+  const firstCanFinish = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  let firstStarted!: () => void;
+  const firstWasDelivered = new Promise<void>((resolve) => {
+    firstStarted = resolve;
+  });
+  const streamer = createExactPiSessionObservationStreamer(
+    sessionPath,
+    async (observation) => {
+      if (observation.type !== "text") return;
+      delivered.push(observation.text);
+      if (observation.text === "first") {
+        firstStarted();
+        await firstCanFinish;
+      }
+    },
+    { pollMs: 60_000 },
+  );
+
+  streamer.start();
+  await firstWasDelivered;
+  assert.deepEqual(delivered, ["first"]);
+  releaseFirst();
+  await streamer.stop();
+  assert.deepEqual(delivered, ["first", "second"]);
+});
+
+test("exact session observation de-duplicates matching tool call IDs", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-tool-call-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const sessionPath = join(dir, "parent.jsonl");
+  await writeFile(
+    sessionPath,
+    [
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "call-1", name: "bash" }],
+        },
+      },
+      {
+        type: "message",
+        message: { role: "toolResult", toolCallId: "call-1", toolName: "bash" },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+    "utf8",
+  );
+  const observed: Array<{ toolName?: string; toolCallId?: string }> = [];
+  const streamer = createExactPiSessionObservationStreamer(
+    sessionPath,
+    (observation) => {
+      if (observation.type === "tool-call") observed.push(observation);
+    },
+  );
+
+  streamer.start();
+  await streamer.stop();
+
+  assert.deepEqual(observed, [
+    { type: "tool-call", toolName: "bash", toolCallId: "call-1" },
+  ]);
+});
+
+test("exact session observation preserves UTF-8 split across byte-range polls", async () => {
+  const line = `${JSON.stringify({
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "café" }],
+    },
+  })}\n`;
+  const bytes = new TextEncoder().encode(line);
+  const accentedCharacter = new TextEncoder().encode("é");
+  const accentedStart = bytes.findIndex(
+    (_byte, index) =>
+      bytes[index] === accentedCharacter[0] &&
+      bytes[index + 1] === accentedCharacter[1],
+  );
+  assert.ok(accentedStart >= 0);
+  const split = accentedStart + 1;
+  let statCalls = 0;
+  let firstReadComplete!: () => void;
+  const firstReadCompleted = new Promise<void>((resolve) => {
+    firstReadComplete = resolve;
+  });
+  const delivered: string[] = [];
+  const streamer = createExactPiSessionObservationStreamer(
+    "parent.jsonl",
+    (observation) => {
+      if (observation.type === "text") delivered.push(observation.text);
+    },
+    {
+      statFile: async () => {
+        statCalls += 1;
+        return { size: statCalls === 1 ? split : bytes.length } as Stats;
+      },
+      readRange: async (_path, start, end) => {
+        const chunk = bytes.slice(start, end);
+        if (start === 0) firstReadComplete();
+        return chunk;
+      },
+    },
+  );
+
+  streamer.start();
+  await firstReadCompleted;
+  await streamer.stop();
+
+  assert.deepEqual(delivered, ["café"]);
+});
+
+test("exact session observation retains an undefined callback rejection", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-undefined-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const sessionPath = join(dir, "parent.jsonl");
+  await writeFile(
+    sessionPath,
+    `${JSON.stringify({
+      type: "message",
+      message: { role: "assistant", content: [{ type: "text", text: "boom" }] },
+    })}\n`,
+    "utf8",
+  );
+  const streamer = createExactPiSessionObservationStreamer(sessionPath, () =>
+    Promise.reject(),
+  );
+
+  streamer.start();
+  await assert.rejects(streamer.stop(), (error) => error === undefined);
+});
+
+test("exact session observation performs a final read after an active poll", async () => {
+  const first = `${JSON.stringify({
+    type: "message",
+    message: { role: "assistant", content: [{ type: "text", text: "first" }] },
+  })}\n`;
+  const second = `${JSON.stringify({
+    type: "message",
+    message: { role: "assistant", content: [{ type: "text", text: "second" }] },
+  })}\n`;
+  let releaseFirstRead!: () => void;
+  const firstReadCanFinish = new Promise<void>((resolve) => {
+    releaseFirstRead = resolve;
+  });
+  let firstReadStarted!: () => void;
+  const firstReadHasStarted = new Promise<void>((resolve) => {
+    firstReadStarted = resolve;
+  });
+  let statCalls = 0;
+  const delivered: string[] = [];
+  const streamer = createExactPiSessionObservationStreamer(
+    "parent.jsonl",
+    (observation) => {
+      if (observation.type === "text") delivered.push(observation.text);
+    },
+    {
+      statFile: async () => {
+        statCalls += 1;
+        return {
+          size: statCalls === 1 ? first.length : first.length + second.length,
+        } as Stats;
+      },
+      readRange: async (_path, start) => {
+        if (start === 0) {
+          firstReadStarted();
+          await firstReadCanFinish;
+          return new TextEncoder().encode(first);
+        }
+        return new TextEncoder().encode(second);
+      },
+    },
+  );
+
+  streamer.start();
+  await firstReadHasStarted;
+  const stopped = streamer.stop();
+  releaseFirstRead();
+  await stopped;
+
+  assert.deepEqual(delivered, ["first", "second"]);
+});
+
+test("exact session observation rejects malformed JSON and I/O errors", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-error-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const sessionPath = join(dir, "parent.jsonl");
+  await writeFile(sessionPath, "{bad json\n", "utf8");
+  const malformed = createExactPiSessionObservationStreamer(
+    sessionPath,
+    () => undefined,
+  );
+  malformed.start();
+  await assert.rejects(malformed.stop(), SyntaxError);
+
+  const ioError = new Error("injected stat failure");
+  const io = createExactPiSessionObservationStreamer(
+    sessionPath,
+    () => undefined,
+    {
+      statFile: async () => {
+        throw ioError;
+      },
+    },
+  );
+  io.start();
+  await assert.rejects(io.stop(), (error) => error === ioError);
 });
 
 test("runPiPrompt emits heartbeat events while pi is pending", async () => {
@@ -753,6 +1257,48 @@ test("runPiPrompt emits heartbeat events while pi is pending", async () => {
           event.message,
         ),
     ),
+  );
+});
+
+test("runPiPrompt aggregates heartbeat failures while Pi is pending", async () => {
+  const heartbeatError = new Error("heartbeat exploded");
+  let heartbeatFailed = false;
+  let finishRun!: () => void;
+  let runnerStarted!: () => void;
+  const runnerHasStarted = new Promise<void>((resolve) => {
+    runnerStarted = resolve;
+  });
+  const runner = createMockRunner(
+    () =>
+      new Promise<CommandResult>((resolve) => {
+        finishRun = () =>
+          resolve({
+            code: 0,
+            stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+            stderr: "",
+          });
+        runnerStarted();
+      }),
+  );
+
+  const run = runPiPrompt(runner, "/repo", "prompt", {
+    progress: {
+      event: (event) => {
+        if (event.level !== "heartbeat" || heartbeatFailed) return;
+        heartbeatFailed = true;
+        return runnerHasStarted.then(() => {
+          finishRun();
+          throw heartbeatError;
+        });
+      },
+    },
+    stage: "pi-plan",
+    heartbeatMs: 1,
+  });
+
+  await assert.rejects(
+    run,
+    (error) => error instanceof Error && error.message === "heartbeat exploded",
   );
 });
 

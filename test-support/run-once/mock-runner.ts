@@ -200,17 +200,8 @@ export async function writePiSessionMessage(
   text: string,
   usage?: { input: number; output: number; totalTokens: number },
 ): Promise<void> {
-  const sessionDirIndex = call.args.indexOf("--session-dir");
-  assert.ok(
-    sessionDirIndex >= 0,
-    `expected --session-dir in ${call.args.join(" ")}`,
-  );
-  const sessionDir = call.args[sessionDirIndex + 1];
-  assert.ok(sessionDir);
-  const sessionSubdir = join(sessionDir, "--repo--");
-  await mkdir(sessionSubdir, { recursive: true });
   await writeFile(
-    join(sessionSubdir, "session.jsonl"),
+    await piSessionPath(call),
     [
       JSON.stringify({
         type: "session",
@@ -246,27 +237,24 @@ export async function writePiPricedSessionMessage(
     estimatedCostUsd: number;
   },
 ): Promise<void> {
-  const sessionDirIndex = call.args.indexOf("--session-dir");
-  assert.ok(
-    sessionDirIndex >= 0,
-    `expected --session-dir in ${call.args.join(" ")}`,
-  );
-  const sessionDir = call.args[sessionDirIndex + 1];
-  assert.ok(sessionDir);
-  const sessionSubdir = join(sessionDir, "--repo--");
-  await mkdir(sessionSubdir, { recursive: true });
   await writeFile(
-    join(sessionSubdir, "priced-session.jsonl"),
+    await piSessionPath(call),
     `${JSON.stringify({ type: "session", id: "session-priced", timestamp: "2026-07-19T12:00:00.000Z" })}\n${JSON.stringify({ type: "message", id: input.id, message: { role: "assistant", model: input.model, usage: { input: input.input, cacheRead: input.cacheRead, cacheWrite: input.cacheWrite, output: input.output, cost: { total: input.estimatedCostUsd } } } })}\n`,
     "utf8",
   );
 }
 
 export async function piSessionPath(call: Call): Promise<string> {
+  const sessionIndex = call.args.indexOf("--session");
+  if (sessionIndex >= 0) {
+    const sessionPath = call.args[sessionIndex + 1];
+    assert.ok(sessionPath);
+    return sessionPath;
+  }
   const sessionDirIndex = call.args.indexOf("--session-dir");
   assert.ok(
     sessionDirIndex >= 0,
-    `expected --session-dir in ${call.args.join(" ")}`,
+    `expected a Pi session argument in ${call.args.join(" ")}`,
   );
   const sessionDir = call.args[sessionDirIndex + 1];
   assert.ok(sessionDir);

@@ -53,6 +53,7 @@ export type CommandRunOptions = {
   env?: Record<string, string | undefined>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  signal?: AbortSignal;
 };
 
 export type CommandRunner = {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -19,10 +19,15 @@ import {
 import { finalJsonCandidates } from "./final-json.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
+  createExactPiSessionObservationStreamer,
   createPiSessionMessageStreamer,
-  createPiSessionObservationStreamer,
   type PiSessionObservation,
 } from "./pi-session-stream.ts";
+import {
+  createPiSessionAllocation,
+  type PiSessionAllocation,
+} from "./pi-session-allocation.ts";
+import { aggregatePiErrors, type PiErrorCause } from "./pi-errors.ts";
 import type {
   AgentIssueBlockerQuestion,
   AgentIssueDevelopmentEnvironmentResult,
@@ -35,15 +40,19 @@ import type {
 
 function piPromptArgs(
   promptPath: string,
-  sessionDir?: string,
+  session: PiSessionAllocation | undefined,
   skillPaths: string[] = [],
   extensionArgs: string[] = [],
 ): string[] {
   const skillArgs = skillPaths.flatMap((path) => ["--skill", path]);
   const baseArgs = [...extensionArgs, ...skillArgs, "-p"];
-  return sessionDir
-    ? [...baseArgs, "--session-dir", sessionDir, `@${promptPath}`]
-    : [...baseArgs, `@${promptPath}`];
+  if (session?.sessionPath) {
+    return [...baseArgs, "--session", session.sessionPath, `@${promptPath}`];
+  }
+  if (session?.sessionDir) {
+    return [...baseArgs, "--session-dir", session.sessionDir, `@${promptPath}`];
+  }
+  return [...baseArgs, `@${promptPath}`];
 }
 
 function stringArray(value: unknown): string[] {
@@ -299,6 +308,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   taskContract?: PatchmillPiTaskContract;
   piAgentDir?: string;
   piCommand?: PiCommandSpec;
+  cleanupPromptTempDir?: (dir: string) => Promise<void>;
 };
 
 function stageStatus(stage: RunPiPromptStage): string {
@@ -375,29 +385,6 @@ async function emitPiOutput(
   });
 }
 
-async function createSessionDirForPi(
-  options: RunPiPromptOptions,
-  promptTempDir: string,
-): Promise<string | undefined> {
-  const shouldCreateSession = options.observeSession || options.streamOutput;
-  if (!shouldCreateSession) return undefined;
-
-  if (options.sessionDir) {
-    await mkdir(options.sessionDir, { recursive: true });
-    return options.sessionDir;
-  }
-
-  if (options.sessionRoot) {
-    const stageRoot = join(options.sessionRoot, options.stage);
-    await mkdir(stageRoot, { recursive: true });
-    return await mkdtemp(join(stageRoot, "invocation-"));
-  }
-
-  const sessionDir = join(promptTempDir, "sessions");
-  await mkdir(sessionDir, { recursive: true });
-  return sessionDir;
-}
-
 export async function runPiPrompt<Result = AgentIssuePiResult>(
   runner: CommandRunner,
   cwd: string,
@@ -406,77 +393,95 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
 ): Promise<Result> {
   const dir = await mkdtemp(join(tmpdir(), "agent-issue-prompt-"));
   const promptPath = join(dir, "prompt.md");
-  await writeFile(promptPath, prompt, "utf8");
-  const heartbeatMs = options?.heartbeatMs ?? 60_000;
-  const started = Date.now();
+  const causes: PiErrorCause[] = [];
+  const record = (label: string, error: unknown) => {
+    causes.push({ label, error });
+  };
+  let result: CommandResult | undefined;
+  let parsedResult: Result | undefined;
+  let hasParsedResult = false;
   let latestTokenUsage: string | undefined;
   const pendingHeartbeats: Promise<void>[] = [];
+  const heartbeatMs = options?.heartbeatMs ?? 60_000;
+  const started = Date.now();
   const timer = options?.progress
     ? setInterval(() => {
         const elapsedSeconds = Math.round((Date.now() - started) / 1000);
-        pendingHeartbeats.push(
-          heartbeatStatusLine(options, elapsedSeconds, latestTokenUsage)
-            .then((message) =>
-              options.progress?.event({
-                time: new Date().toISOString(),
-                level: "heartbeat",
-                stage: options.stage,
-                message,
-                elapsedSeconds,
-              }),
-            )
-            .then(() => undefined),
-        );
+        const heartbeat = heartbeatStatusLine(
+          options,
+          elapsedSeconds,
+          latestTokenUsage,
+        )
+          .then((message) =>
+            options.progress?.event({
+              time: new Date().toISOString(),
+              level: "heartbeat",
+              stage: options.stage,
+              message,
+              elapsedSeconds,
+            }),
+          )
+          .then(() => undefined)
+          .catch((error: unknown) => {
+            record("heartbeat", error);
+          });
+        pendingHeartbeats.push(heartbeat);
       }, heartbeatMs)
     : undefined;
 
   try {
+    await writeFile(promptPath, prompt, "utf8");
     await options?.progress?.event({
       time: new Date().toISOString(),
       level: "debug",
       stage: options.stage,
       message: "started pi",
     });
-    const streamOutput = options?.streamOutput;
-    const sessionDir = options
-      ? await createSessionDirForPi(options, dir)
+    const session = options
+      ? await createPiSessionAllocation({ ...options, promptTempDir: dir })
       : undefined;
-    if (sessionDir) {
+    if (session?.sessionDir) {
       await options?.progress?.event({
         time: new Date().toISOString(),
         level: "debug",
         stage: options.stage,
         message: "pi session dir",
-        data: sessionDir,
+        data: session.sessionDir,
       });
     }
-    const pendingObservations: Promise<void>[] = [];
-    const sessionStreamer = sessionDir
-      ? options?.observeSession
-        ? createPiSessionObservationStreamer(
-            sessionDir,
-            (observation) => {
-              if (observation.type === "assistant-usage") {
-                latestTokenUsage = `tok: task=${observation.outputTokens} total=?`;
-                if (options?.tokenUsageState) {
-                  options.tokenUsageState.total += observation.outputTokens;
-                }
+    if (session?.sessionPath) {
+      await options?.progress?.event({
+        time: new Date().toISOString(),
+        level: "debug",
+        stage: options.stage,
+        message: "pi session path",
+        data: session.sessionPath,
+      });
+    }
+
+    const controller = session?.sessionPath ? new AbortController() : undefined;
+    const sessionStreamer = session?.sessionPath
+      ? createExactPiSessionObservationStreamer(
+          session.sessionPath,
+          async (observation) => {
+            if (observation.type === "assistant-usage") {
+              latestTokenUsage = `tok: task=${observation.outputTokens} total=?`;
+              if (options?.tokenUsageState) {
+                options.tokenUsageState.total += observation.outputTokens;
               }
-              if (options?.onObservation) {
-                pendingObservations.push(
-                  Promise.resolve(options.onObservation(observation)).then(
-                    () => undefined,
-                  ),
-                );
-              }
-            },
-            {
-              verboseOutput: options.verbosePiOutput ? streamOutput : undefined,
-            },
-          )
-        : createPiSessionMessageStreamer(
-            sessionDir,
-            streamOutput ?? (() => undefined),
+            }
+            await options?.onObservation?.(observation);
+          },
+          {
+            verboseOutput: options?.verbosePiOutput
+              ? options.streamOutput
+              : undefined,
+          },
+        )
+      : session?.sessionDir
+        ? createPiSessionMessageStreamer(
+            session.sessionDir,
+            options?.streamOutput ?? (() => undefined),
             {
               totalTokensSoFar: options?.tokenUsageState?.total ?? 0,
               onTokenUsage: (usage) => {
@@ -486,9 +491,16 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
               },
             },
           )
-      : undefined;
+        : undefined;
+    let observationFailure: Promise<void> | undefined;
+    if (sessionStreamer && "failure" in sessionStreamer) {
+      observationFailure = sessionStreamer.failure.catch((error) => {
+        record("observation", error);
+        controller?.abort(error);
+      });
+    }
     sessionStreamer?.start();
-    let result: CommandResult;
+
     try {
       const piCommand = options?.piCommand ?? resolveBundledPiCommand();
       result = await runner.run(
@@ -497,7 +509,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
           piCommand,
           piPromptArgs(
             promptPath,
-            sessionDir,
+            session,
             options?.skillPaths,
             options?.extensionArgs,
           ),
@@ -513,23 +525,64 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
                 DEFAULT_PI_TASK_CONTRACT.doneStatuses,
             ),
           }),
+          signal: controller?.signal,
         },
       );
-    } finally {
-      await sessionStreamer?.stop();
-      await Promise.all(pendingObservations);
-    }
-    await emitPiOutput(result, options);
-    const stdout = result.stdout;
-    if (result.code !== 0) {
-      throw new Error(`pi failed: ${result.stderr || stdout || result.stdout}`);
+    } catch (error) {
+      record("runner", error);
     }
 
-    const parseResult = options?.parseResult ?? parsePiResult;
-    return parseResult(stdout) as Result;
+    void observationFailure;
+    try {
+      await sessionStreamer?.stop();
+    } catch (error) {
+      if (!causes.some((cause) => cause.error === error)) {
+        record("streamer shutdown", error);
+      }
+    }
+    if (result) {
+      try {
+        await emitPiOutput(result, options);
+      } catch (error) {
+        record("progress", error);
+      }
+      if (result.code !== 0) {
+        record(
+          "runner",
+          new Error(`pi failed: ${result.stderr || result.stdout}`),
+        );
+      }
+      if (causes.length === 0) {
+        try {
+          const parseResult = options?.parseResult ?? parsePiResult;
+          parsedResult = parseResult(result.stdout) as Result;
+          hasParsedResult = true;
+        } catch (error) {
+          record("result parsing", error);
+        }
+      }
+    }
+  } catch (error) {
+    record("pi prompt", error);
   } finally {
     if (timer) clearInterval(timer);
-    await Promise.all(pendingHeartbeats);
-    await rm(dir, { recursive: true, force: true });
+    try {
+      await Promise.all(pendingHeartbeats);
+    } catch (error) {
+      record("heartbeat", error);
+    }
+    try {
+      await (
+        options?.cleanupPromptTempDir ??
+        ((path: string) => rm(path, { recursive: true, force: true }))
+      )(dir);
+    } catch (error) {
+      record("cleanup", error);
+    }
   }
+
+  const combined = aggregatePiErrors("pi prompt failed", causes);
+  if (combined) throw combined;
+  if (hasParsedResult) return parsedResult as Result;
+  throw new Error("pi prompt finished without a result");
 }

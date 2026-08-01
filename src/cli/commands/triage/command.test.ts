@@ -71,6 +71,61 @@ test("command runner uses the provided cwd", async () => {
   assert.equal(result.stdout, `${cwd}\n`);
 });
 
+test("command runner aborts an in-flight process and waits for close", async () => {
+  const runner = createCommandRunner();
+  const controller = new AbortController();
+  let started!: () => void;
+  const didStart = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const resultPromise = runner.run(
+    process.execPath,
+    [
+      "-e",
+      [
+        "process.stdout.write('started\\n');",
+        "process.stderr.write('stderr-before-abort\\n');",
+        "process.on('SIGTERM', () => {",
+        "  process.stdout.write('closed-after-abort\\n');",
+        "  process.exit(0);",
+        "});",
+        "process.stdout.write('ready-to-abort\\n');",
+        "setInterval(() => {}, 1000);",
+      ].join(""),
+    ],
+    {
+      signal: controller.signal,
+      onStdout: (chunk) => {
+        if (chunk.includes("ready-to-abort")) started();
+      },
+    },
+  );
+
+  await didStart;
+  controller.abort();
+  const result = await resultPromise;
+
+  assert.notEqual(result.code, 0);
+  assert.match(result.stdout, /closed-after-abort/);
+  assert.match(result.stderr, /stderr-before-abort|aborted/i);
+});
+
+test("command runner does not spawn when signal is already aborted", async () => {
+  const runner = createCommandRunner();
+  const controller = new AbortController();
+  controller.abort();
+
+  const result = await runner.run(
+    process.execPath,
+    ["-e", "process.stdout.write('should-not-run')"],
+    { signal: controller.signal },
+  );
+
+  assert.notEqual(result.code, 0);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /aborted/i);
+});
+
 test("static runner returns queued results and records calls", async () => {
   const runner = createStaticCommandRunner([
     { code: 0, stdout: "one", stderr: "" },
