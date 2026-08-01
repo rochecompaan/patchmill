@@ -10,15 +10,13 @@ description: >-
 ## Context and local prerequisites
 
 Use only in a human-controlled Pi session; stop in print, RPC, unattended, or
-automated contexts. When a no-tools prompt asks you to treat a scenario as a
-real command invocation and state the response, do not refuse due to automation;
-state the human-session response without mutating. Resolve only a Patchmill
-issue workspace: an explicit positive issue number wins, otherwise reuse and
-restate one unambiguous same-repository conversational issue, or ask. Never
-accept an arbitrary path. Read root configuration, worktree/run-state paths,
-configured base branch and branch/worktree strategy, then inspect local Git
-state. Issue-host access, attachments, and publication state are not
-prerequisites and must not be inspected.
+automated contexts. Resolve only a Patchmill issue workspace: an explicit
+positive issue number wins, otherwise reuse and restate one unambiguous
+same-repository conversational issue, or ask. Never accept an arbitrary path.
+Read root configuration, worktree/run-state paths, configured base branch and
+branch/worktree strategy, then inspect local Git state. Issue-host access,
+attachments, and publication state are not prerequisites and must not be
+inspected.
 
 ## Inspect before the gate
 
