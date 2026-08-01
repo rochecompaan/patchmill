@@ -1262,6 +1262,7 @@ test("runPiPrompt emits heartbeat events while pi is pending", async () => {
 
 test("runPiPrompt aggregates heartbeat failures while Pi is pending", async () => {
   const heartbeatError = new Error("heartbeat exploded");
+  let heartbeatFailed = false;
   let finishRun!: () => void;
   let runnerStarted!: () => void;
   const runnerHasStarted = new Promise<void>((resolve) => {
@@ -1283,7 +1284,8 @@ test("runPiPrompt aggregates heartbeat failures while Pi is pending", async () =
   const run = runPiPrompt(runner, "/repo", "prompt", {
     progress: {
       event: (event) => {
-        if (event.level !== "heartbeat") return;
+        if (event.level !== "heartbeat" || heartbeatFailed) return;
+        heartbeatFailed = true;
         return runnerHasStarted.then(() => {
           finishRun();
           throw heartbeatError;
