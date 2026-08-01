@@ -407,19 +407,25 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
   const timer = options?.progress
     ? setInterval(() => {
         const elapsedSeconds = Math.round((Date.now() - started) / 1000);
-        pendingHeartbeats.push(
-          heartbeatStatusLine(options, elapsedSeconds, latestTokenUsage)
-            .then((message) =>
-              options.progress?.event({
-                time: new Date().toISOString(),
-                level: "heartbeat",
-                stage: options.stage,
-                message,
-                elapsedSeconds,
-              }),
-            )
-            .then(() => undefined),
-        );
+        const heartbeat = heartbeatStatusLine(
+          options,
+          elapsedSeconds,
+          latestTokenUsage,
+        )
+          .then((message) =>
+            options.progress?.event({
+              time: new Date().toISOString(),
+              level: "heartbeat",
+              stage: options.stage,
+              message,
+              elapsedSeconds,
+            }),
+          )
+          .then(() => undefined)
+          .catch((error: unknown) => {
+            record("heartbeat", error);
+          });
+        pendingHeartbeats.push(heartbeat);
       }, heartbeatMs)
     : undefined;
 

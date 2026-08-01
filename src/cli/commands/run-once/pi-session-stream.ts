@@ -26,11 +26,17 @@ type SessionStreamerOptions = {
   totalTokensSoFar?: number;
 };
 
+type ExactSessionReadRange = (
+  path: string,
+  start: number,
+  end: number,
+) => Promise<Uint8Array>;
+
 export type ExactPiSessionObservationStreamerOptions = {
   pollMs?: number;
   verboseOutput?: (chunk: string) => void;
   statFile?: typeof stat;
-  readRange?: typeof readRange;
+  readRange?: ExactSessionReadRange;
 };
 
 function isObject(value: unknown): value is JsonObject {
@@ -298,6 +304,24 @@ function readRange(path: string, start: number, end: number): Promise<string> {
   });
 }
 
+function readExactRange(
+  path: string,
+  start: number,
+  end: number,
+): Promise<Uint8Array> {
+  if (end <= start) return Promise.resolve(new Uint8Array());
+
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    const stream = createReadStream(path, { start, end: end - 1 });
+    stream.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    stream.on("error", reject);
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+}
+
 export function createExactPiSessionObservationStreamer(
   sessionPath: string,
   onObservation: (observation: PiSessionObservation) => void | Promise<void>,
@@ -305,11 +329,13 @@ export function createExactPiSessionObservationStreamer(
 ): { start(): void; stop(): Promise<void>; failure: Promise<never> } {
   const pollMs = options.pollMs ?? 100;
   const statFile = options.statFile ?? stat;
-  const readFileRange = options.readRange ?? readRange;
+  const readFileRange = options.readRange ?? readExactRange;
   let timer: NodeJS.Timeout | undefined;
   let polling: Promise<void> | undefined;
   let offset = 0;
   let buffered = "";
+  let decoder = new TextDecoder();
+  let failed = false;
   let failureError: unknown;
   let rejectFailure!: (error: unknown) => void;
   const failure = new Promise<never>((_resolve, reject) => {
@@ -318,17 +344,23 @@ export function createExactPiSessionObservationStreamer(
   void failure.catch(() => undefined);
 
   const recordFailure = (error: unknown) => {
-    if (failureError !== undefined) return;
+    if (failed) return;
+    failed = true;
     failureError = error;
     if (timer) clearInterval(timer);
     timer = undefined;
     rejectFailure(error);
   };
 
+  const observedToolCallIds = new Set<string>();
   const processLine = async (line: string) => {
     const entry = parseStrictSessionLine(line);
     if (!entry) return;
     for (const observation of sessionEntryToObservations(entry)) {
+      if (observation.type === "tool-call" && observation.toolCallId) {
+        if (observedToolCallIds.has(observation.toolCallId)) continue;
+        observedToolCallIds.add(observation.toolCallId);
+      }
       await onObservation(observation);
     }
     const text = sessionEntryToRawText(entry);
@@ -340,12 +372,13 @@ export function createExactPiSessionObservationStreamer(
     if (info.size < offset) {
       offset = 0;
       buffered = "";
+      decoder = new TextDecoder();
     }
     if (info.size === offset) return;
 
     const chunk = await readFileRange(sessionPath, offset, info.size);
     offset = info.size;
-    buffered += chunk;
+    buffered += decoder.decode(chunk, { stream: true });
     let newlineIndex = buffered.indexOf("\n");
     while (newlineIndex >= 0) {
       await processLine(buffered.slice(0, newlineIndex));
@@ -356,7 +389,7 @@ export function createExactPiSessionObservationStreamer(
 
   const runPoll = async (): Promise<void> => {
     if (polling) return polling;
-    if (failureError !== undefined) throw failureError;
+    if (failed) throw failureError;
     polling = poll()
       .catch((error: unknown) => {
         recordFailure(error);
@@ -370,7 +403,7 @@ export function createExactPiSessionObservationStreamer(
 
   return {
     start() {
-      if (timer || failureError !== undefined) return;
+      if (timer || failed) return;
       void runPoll().catch(() => undefined);
       timer = setInterval(() => {
         void runPoll().catch(() => undefined);
@@ -383,6 +416,7 @@ export function createExactPiSessionObservationStreamer(
         const activePoll = polling;
         if (activePoll) await activePoll;
         await runPoll();
+        buffered += decoder.decode();
         if (buffered.trim()) {
           await processLine(buffered);
           buffered = "";
@@ -390,7 +424,7 @@ export function createExactPiSessionObservationStreamer(
       } catch (error) {
         recordFailure(error);
       }
-      if (failureError !== undefined) throw failureError;
+      if (failed) throw failureError;
     },
     failure,
   };

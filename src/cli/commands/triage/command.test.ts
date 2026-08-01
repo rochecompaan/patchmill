@@ -89,13 +89,14 @@ test("command runner aborts an in-flight process and waits for close", async () 
         "  process.stdout.write('closed-after-abort\\n');",
         "  process.exit(0);",
         "});",
+        "process.stdout.write('ready-to-abort\\n');",
         "setInterval(() => {}, 1000);",
       ].join(""),
     ],
     {
       signal: controller.signal,
       onStdout: (chunk) => {
-        if (chunk.includes("started")) started();
+        if (chunk.includes("ready-to-abort")) started();
       },
     },
   );
@@ -105,7 +106,7 @@ test("command runner aborts an in-flight process and waits for close", async () 
   const result = await resultPromise;
 
   assert.notEqual(result.code, 0);
-  assert.match(result.stdout, /started|closed-after-abort/);
+  assert.match(result.stdout, /closed-after-abort/);
   assert.match(result.stderr, /stderr-before-abort|aborted/i);
 });
 

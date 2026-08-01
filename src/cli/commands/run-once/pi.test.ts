@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Stats } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
@@ -792,12 +800,20 @@ test("runPiPrompt ignores newer sibling and nested JSONL when observing an exact
         type: "message",
         message: { role: "assistant", content: [{ type: "text", text }] },
       }) + "\n";
-    await writeFile(
-      join(invocationDir, "nested", "session.jsonl"),
-      entry("nested"),
-    );
-    await writeFile(join(invocationDir, "sibling.jsonl"), entry("sibling"));
     await writeFile(sessionPath, entry("parent"));
+    const nestedPath = join(invocationDir, "nested", "session.jsonl");
+    const siblingPath = join(invocationDir, "sibling.jsonl");
+    await writeFile(nestedPath, entry("nested"));
+    await writeFile(siblingPath, entry("sibling"));
+    await utimes(sessionPath, new Date(1_000), new Date(1_000));
+    await utimes(nestedPath, new Date(2_000), new Date(2_000));
+    await utimes(siblingPath, new Date(3_000), new Date(3_000));
+    assert.ok(
+      (await stat(nestedPath)).mtimeMs > (await stat(sessionPath)).mtimeMs,
+    );
+    assert.ok(
+      (await stat(siblingPath)).mtimeMs > (await stat(sessionPath)).mtimeMs,
+    );
     return {
       code: 0,
       stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
@@ -1014,6 +1030,113 @@ test("exact session observation awaits callbacks in file order", async (t) => {
   assert.deepEqual(delivered, ["first", "second"]);
 });
 
+test("exact session observation de-duplicates matching tool call IDs", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-tool-call-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const sessionPath = join(dir, "parent.jsonl");
+  await writeFile(
+    sessionPath,
+    [
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "call-1", name: "bash" }],
+        },
+      },
+      {
+        type: "message",
+        message: { role: "toolResult", toolCallId: "call-1", toolName: "bash" },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+    "utf8",
+  );
+  const observed: Array<{ toolName?: string; toolCallId?: string }> = [];
+  const streamer = createExactPiSessionObservationStreamer(
+    sessionPath,
+    (observation) => {
+      if (observation.type === "tool-call") observed.push(observation);
+    },
+  );
+
+  streamer.start();
+  await streamer.stop();
+
+  assert.deepEqual(observed, [
+    { type: "tool-call", toolName: "bash", toolCallId: "call-1" },
+  ]);
+});
+
+test("exact session observation preserves UTF-8 split across byte-range polls", async () => {
+  const line = `${JSON.stringify({
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "café" }],
+    },
+  })}\n`;
+  const bytes = new TextEncoder().encode(line);
+  const accentedCharacter = new TextEncoder().encode("é");
+  const accentedStart = bytes.findIndex(
+    (_byte, index) =>
+      bytes[index] === accentedCharacter[0] &&
+      bytes[index + 1] === accentedCharacter[1],
+  );
+  assert.ok(accentedStart >= 0);
+  const split = accentedStart + 1;
+  let statCalls = 0;
+  let firstReadComplete!: () => void;
+  const firstReadCompleted = new Promise<void>((resolve) => {
+    firstReadComplete = resolve;
+  });
+  const delivered: string[] = [];
+  const streamer = createExactPiSessionObservationStreamer(
+    "parent.jsonl",
+    (observation) => {
+      if (observation.type === "text") delivered.push(observation.text);
+    },
+    {
+      statFile: async () => {
+        statCalls += 1;
+        return { size: statCalls === 1 ? split : bytes.length } as Stats;
+      },
+      readRange: async (_path, start, end) => {
+        const chunk = bytes.slice(start, end);
+        if (start === 0) firstReadComplete();
+        return chunk;
+      },
+    },
+  );
+
+  streamer.start();
+  await firstReadCompleted;
+  await streamer.stop();
+
+  assert.deepEqual(delivered, ["café"]);
+});
+
+test("exact session observation retains an undefined callback rejection", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-undefined-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const sessionPath = join(dir, "parent.jsonl");
+  await writeFile(
+    sessionPath,
+    `${JSON.stringify({
+      type: "message",
+      message: { role: "assistant", content: [{ type: "text", text: "boom" }] },
+    })}\n`,
+    "utf8",
+  );
+  const streamer = createExactPiSessionObservationStreamer(sessionPath, () =>
+    Promise.reject(),
+  );
+
+  streamer.start();
+  await assert.rejects(streamer.stop(), (error) => error === undefined);
+});
+
 test("exact session observation performs a final read after an active poll", async () => {
   const first = `${JSON.stringify({
     type: "message",
@@ -1049,9 +1172,9 @@ test("exact session observation performs a final read after an active poll", asy
         if (start === 0) {
           firstReadStarted();
           await firstReadCanFinish;
-          return first;
+          return new TextEncoder().encode(first);
         }
-        return second;
+        return new TextEncoder().encode(second);
       },
     },
   );
@@ -1130,6 +1253,46 @@ test("runPiPrompt emits heartbeat events while pi is pending", async () => {
           event.message,
         ),
     ),
+  );
+});
+
+test("runPiPrompt aggregates heartbeat failures while Pi is pending", async () => {
+  const heartbeatError = new Error("heartbeat exploded");
+  let finishRun!: () => void;
+  let runnerStarted!: () => void;
+  const runnerHasStarted = new Promise<void>((resolve) => {
+    runnerStarted = resolve;
+  });
+  const runner = createMockRunner(
+    () =>
+      new Promise<CommandResult>((resolve) => {
+        finishRun = () =>
+          resolve({
+            code: 0,
+            stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+            stderr: "",
+          });
+        runnerStarted();
+      }),
+  );
+
+  const run = runPiPrompt(runner, "/repo", "prompt", {
+    progress: {
+      event: (event) => {
+        if (event.level !== "heartbeat") return;
+        return runnerHasStarted.then(() => {
+          finishRun();
+          throw heartbeatError;
+        });
+      },
+    },
+    stage: "pi-plan",
+    heartbeatMs: 1,
+  });
+
+  await assert.rejects(
+    run,
+    (error) => error instanceof Error && error.message === "heartbeat exploded",
   );
 });
 
