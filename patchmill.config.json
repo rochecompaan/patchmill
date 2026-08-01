@@ -12,5 +12,17 @@
   },
   "git": {
     "allowDirectLand": false
+  },
+  "workflow": {
+    "specApproval": {
+      "required": true,
+      "reviewLabel": "spec-review",
+      "approvedLabel": "spec-approved"
+    },
+    "planApproval": {
+      "required": false,
+      "reviewLabel": "plan-review",
+      "approvedLabel": "plan-approved"
+    }
   }
 }
