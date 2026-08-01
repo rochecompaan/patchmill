@@ -759,6 +759,25 @@ test("runPiPrompt verbose mode does not append synthetic token lines", async () 
   assert.deepEqual(streamed, ["verbose narration\n"]);
 });
 
+test("runPiPrompt reports cleanup failure after a successful Pi result", async () => {
+  const runner = createMockRunner(() => ({
+    code: 0,
+    stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+    stderr: "",
+  }));
+
+  await assert.rejects(
+    () =>
+      runPiPrompt(runner, "/repo", "prompt", {
+        stage: "pi-plan",
+        cleanupPromptTempDir: async () => {
+          throw new Error("cleanup exploded");
+        },
+      }),
+    /cleanup exploded/,
+  );
+});
+
 test("runPiPrompt ignores newer sibling and nested JSONL when observing an exact parent", async (t) => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-exact-ignore-"));
   t.after(async () => rm(repoRoot, { recursive: true, force: true }));

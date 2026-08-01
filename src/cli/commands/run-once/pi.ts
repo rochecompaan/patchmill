@@ -398,6 +398,8 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
     causes.push({ label, error });
   };
   let result: CommandResult | undefined;
+  let parsedResult: Result | undefined;
+  let hasParsedResult = false;
   let latestTokenUsage: string | undefined;
   const pendingHeartbeats: Promise<void>[] = [];
   const heartbeatMs = options?.heartbeatMs ?? 60_000;
@@ -547,7 +549,8 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
       if (causes.length === 0) {
         try {
           const parseResult = options?.parseResult ?? parsePiResult;
-          return parseResult(result.stdout) as Result;
+          parsedResult = parseResult(result.stdout) as Result;
+          hasParsedResult = true;
         } catch (error) {
           record("result parsing", error);
         }
@@ -574,5 +577,6 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
 
   const combined = aggregatePiErrors("pi prompt failed", causes);
   if (combined) throw combined;
+  if (hasParsedResult) return parsedResult as Result;
   throw new Error("pi prompt finished without a result");
 }
