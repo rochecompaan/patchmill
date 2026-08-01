@@ -31,7 +31,9 @@ choice but do not block cleanup alone.
 ## Destructive confirmation
 
 Ask once for an explicit confirmation naming both the worktree and branch. A
-refusal makes no mutation. After confirmation, run commands from the primary
+refusal makes no mutation. After confirmation, reread configuration, Git, and
+run-state. If any displayed target or loss detail changed, show the new summary
+and require a new named confirmation. Then run commands from the primary
 checkout, never the target worktree. Always remove both targets: use
 `git worktree remove --force <path>` when required by state, and use
 `git branch -D <branch>` when unmerged (otherwise non-force removal/deletion is

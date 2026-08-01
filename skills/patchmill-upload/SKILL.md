@@ -23,19 +23,21 @@ conversational issue, or ask.
 Immediately read root configuration and reload provider, artifact directories,
 issue worktree, current issue/comments, host CLI/authentication, and
 `patchmill`. Stop before mutation if any required state cannot be resolved.
-Prefer spec/plan paths already established in conversation. Otherwise inspect
-only configured artifact directories in the issue worktree: select a sole valid,
-repository-relative candidate, ask for a path when candidates are multiple, and
-classify an absent artifact as missing without blocking the other.
+Prefer spec/plan paths already established in conversation. Validate every
+candidate, including conversational paths: it must exist inside the resolved
+issue worktree, be repository-relative, and stay under the configured artifact
+directory. Otherwise inspect those directories: select a sole valid candidate,
+ask when candidates are multiple, and classify an absent artifact as missing.
 
 ## Idempotent publication
 
 For each candidate, compare its repository-relative path and normalized
-content/checksum with the latest matching Patchmill attachment. Classify a match
-as **current**. From the issue worktree, publish a changed spec only with
-`patchmill set-spec --issue <issue> <spec-path>` and a changed plan only with
-`patchmill set-plan --issue <issue> <plan-path>`. Process spec and plan
-independently: a definitive failure for one does not prevent attempting the
+content/checksum with the latest matching trusted deterministic Patchmill
+attachment: require trusted publisher identity plus valid envelope and checksum.
+Classify a match as **current**. From the issue worktree, publish a changed spec
+only with `patchmill set-spec --issue <issue> <spec-path>` and a changed plan
+only with `patchmill set-plan --issue <issue> <plan-path>`. Process spec and
+plan independently: a definitive failure for one does not prevent attempting the
 other. Classify every artifact as uploaded, current, missing, ambiguous, or
 failed.
 

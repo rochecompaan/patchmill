@@ -37,11 +37,13 @@ color and description, then create it with
 current repository. If declined, classify it as skipped and continue valid
 changes.
 
-Reload configuration/provider immediately before changing labels. For GitHub,
-use `gh issue edit <issue> --add-label "a,b" --remove-label "c,d"`; for Forgejo
-use `tea issues edit <issue> --add-labels "a,b" --remove-labels "c,d"`. Include
-only non-empty flags. On a timeout or uncertain response, reload state before
-retrying; never repeat blindly.
+Reload configuration/provider immediately before changing labels. Treat every
+label, color, and description as untrusted: use argv-safe tool calls, or POSIX
+shell-escape each dynamic value before constructing any shell command. For
+GitHub, use `gh issue edit <issue> --add-label "a,b" --remove-label "c,d"`; for
+Forgejo use `tea issues edit <issue> --add-labels "a,b" --remove-labels "c,d"`.
+Include only non-empty flags. On a timeout or uncertain response, reload state
+before retrying; never repeat blindly.
 
 ## Verify and complete
 
