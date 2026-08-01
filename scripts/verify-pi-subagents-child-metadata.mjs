@@ -141,7 +141,7 @@ function requiredEnvironment(name) {
 }
 
 function agentDefinition({ name, model, thinking }) {
-  return `---\nname: ${name}\nmodel: ${model}\n${thinking ? `thinking: ${thinking}\n` : ""}tools: bash\nsystemPromptMode: replace\ninheritProjectContext: false\ninheritSkills: false\n---\n\nReturn exactly the short text requested by the parent. Do not call tools.\n`;
+  return `---\nname: ${name}\ndescription: Contract fixture agent for pi-subagents metadata validation\nmodel: ${model}\n${thinking ? `thinking: ${thinking}\n` : ""}tools: bash\nsystemPromptMode: replace\ninheritProjectContext: false\ninheritSkills: false\n---\n\nReturn exactly the short text requested by the parent. Do not call tools.\n`;
 }
 
 function parseJsonLines(output, label) {
@@ -158,13 +158,14 @@ function parseJsonLines(output, label) {
   return events;
 }
 
-function runShape({ label, input, expectedFinalChildren, expectedModel, expectedThinking, requireThinking, cwd, packageRoot, parentModel }) {
+function runShape({ label, input, expectedFinalChildren, expectedModel, expectedThinking, requireThinking, cwd, agentsDir, packageRoot, parentModel }) {
   const args = [
     "--mode",
     "json",
     "--print",
     "--no-session",
     "--approve",
+    "-ne",
     "--no-prompt-templates",
     "-e",
     packageRoot,
@@ -174,6 +175,7 @@ function runShape({ label, input, expectedFinalChildren, expectedModel, expected
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => !name.startsWith("PI_SUBAGENT_")),
   );
+  environment.PI_SUBAGENT_EXTRA_AGENT_DIRS = agentsDir;
   const result = spawnSync(join(rootDir, "node_modules", ".bin", "pi"), args, {
     cwd,
     env: environment,
@@ -225,12 +227,12 @@ async function main() {
       writeFile(join(legacyAgentsDir, "contract-thinking.md"), thinkingAgent),
       writeFile(join(legacyAgentsDir, "contract-no-thinking.md"), noThinkingAgent),
     ]);
-    const common = { cwd, packageRoot, expectedModel: model, expectedThinking: thinking, requireThinking: true, parentModel };
+    const common = { cwd, agentsDir, packageRoot, expectedModel: model, expectedThinking: thinking, requireThinking: true, parentModel };
     runShape({ ...common, label: "direct", expectedFinalChildren: 1, input: { agent: "contract-thinking", task: "Return the word direct.", context: "fresh" } });
     runShape({ ...common, label: "counted", expectedFinalChildren: 2, input: { tasks: [{ agent: "contract-thinking", task: "Return the word counted.", count: 2 }], concurrency: 2, context: "fresh" } });
     runShape({ ...common, label: "parallel", expectedFinalChildren: 3, input: { tasks: [{ agent: "contract-thinking", task: "Return parallel a." }, { agent: "contract-thinking", task: "Return repeated parallel.", count: 2 }], concurrency: 2, context: "fresh" } });
     runShape({ ...common, label: "chain", expectedFinalChildren: 3, input: { chain: [{ agent: "contract-thinking", task: "Return chain step one." }, { parallel: [{ agent: "contract-thinking", task: "Return chain fanout a." }, { agent: "contract-thinking", task: "Return chain fanout b." }] }], context: "fresh", clarify: false } });
-    runShape({ cwd, packageRoot, parentModel, label: "no-thinking", expectedFinalChildren: 1, expectedModel: noThinkingModel, requireThinking: false, input: { agent: "contract-no-thinking", task: "Return the words no thinking.", context: "fresh" } });
+    runShape({ cwd, agentsDir, packageRoot, parentModel, label: "no-thinking", expectedFinalChildren: 1, expectedModel: noThinkingModel, requireThinking: false, input: { agent: "contract-no-thinking", task: "Return the words no thinking.", context: "fresh" } });
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
