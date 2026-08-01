@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { findPackageRoot } from "../package-root.ts";
@@ -85,6 +85,17 @@ test(
         ),
         [true, true],
       );
+      const piSubagentsRoot = profile.additionalExtensionPaths[0];
+      assert.equal(basename(piSubagentsRoot), "pi-subagents");
+      const piSubagentsManifest = JSON.parse(
+        readFileSync(join(piSubagentsRoot, "package.json"), "utf8"),
+      ) as { pi?: { extensions?: string[] } };
+      assert.ok((piSubagentsManifest.pi?.extensions ?? []).length > 0);
+      for (const extension of piSubagentsManifest.pi?.extensions ?? []) {
+        const extensionPath = join(piSubagentsRoot, extension);
+        assert.equal(existsSync(extensionPath), true);
+        assert.equal(statSync(extensionPath).isFile(), true);
+      }
       assert.equal(
         profile.additionalExtensionPaths[1]
           ?.replaceAll("\\", "/")

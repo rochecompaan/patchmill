@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot } from "../package-root.ts";
@@ -7,11 +6,13 @@ import {
   skillInvocationPaths,
   type PatchmillSkillsConfig,
 } from "../workflow/skills.ts";
+import {
+  piSubagentsExtensionFiles,
+  resolvePiSubagentsPackageRoot,
+} from "./pi-subagents-package.ts";
 
-const require = createRequire(import.meta.url);
-const PI_SUBAGENTS_PACKAGE_ROOT = dirname(
-  require.resolve("pi-subagents/package.json"),
-);
+const PI_SUBAGENTS_PACKAGE_ROOT = resolvePiSubagentsPackageRoot();
+piSubagentsExtensionFiles();
 function requireRegularFile(path: string): string {
   const stats = fs.statSync(path);
   if (!stats.isFile()) {
