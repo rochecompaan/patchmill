@@ -22,6 +22,23 @@ export function aggregatePiErrors(
   );
 }
 
+export function appendPiErrorCause(
+  error: unknown,
+  label: string,
+  additionalError: unknown,
+): AggregateError {
+  const original = errorFromUnknown(error);
+  const additional = errorFromUnknown(additionalError);
+  const cause = new Error(`${label}: ${additional.message}`, {
+    cause: additional,
+  });
+  const causes =
+    original instanceof AggregateError
+      ? [...original.errors, cause]
+      : [original, cause];
+  return new AggregateError(causes, original.message);
+}
+
 export function formatErrorWithCauses(error: unknown): {
   message: string;
   causes?: string[];

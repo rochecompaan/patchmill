@@ -14,7 +14,7 @@ import {
 } from "./progress.ts";
 import { createCommandRunner } from "../triage/command.ts";
 import { detectDefaultBaseBranch } from "./git.ts";
-import { formatErrorWithCauses } from "./pi-errors.ts";
+import { appendPiErrorCause, formatErrorWithCauses } from "./pi-errors.ts";
 import type {
   AgentIssuePipelineResult,
   AgentIssueVisualEvidence,
@@ -335,18 +335,30 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       });
     } catch (error) {
       const formatted = formatErrorWithCauses(error);
-      await progress.event({
-        time: new Date().toISOString(),
-        level: "error",
-        stage: "error",
-        message: `blocked: ${formatted.message}`,
-        data: { error: formatted.message, causes: formatted.causes },
-      });
+      let terminalError = error;
+      try {
+        await progress.event({
+          time: new Date().toISOString(),
+          level: "error",
+          stage: "error",
+          message: `blocked: ${formatted.message}`,
+          data: { error: formatted.message, causes: formatted.causes },
+        });
+      } catch (reportingError) {
+        terminalError = appendPiErrorCause(
+          error,
+          "error reporting",
+          reportingError,
+        );
+      }
+      const terminalFormatted = formatErrorWithCauses(terminalError);
       console.log(
         JSON.stringify({
           status: "error",
-          error: formatted.message,
-          ...(formatted.causes ? { causes: formatted.causes } : {}),
+          error: terminalFormatted.message,
+          ...(terminalFormatted.causes
+            ? { causes: terminalFormatted.causes }
+            : {}),
           logPath,
         }),
       );

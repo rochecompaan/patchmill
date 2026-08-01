@@ -380,6 +380,8 @@ export function createExactPiSessionObservationStreamer(
       if (timer) clearInterval(timer);
       timer = undefined;
       try {
+        const activePoll = polling;
+        if (activePoll) await activePoll;
         await runPoll();
         if (buffered.trim()) {
           await processLine(buffered);

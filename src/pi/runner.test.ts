@@ -121,7 +121,13 @@ test("PiRunner plan forwards runOptions into runPiPrompt", async () => {
     assertBundledPiCall(call);
     assert.equal(call.cwd, repoRoot);
     assert.ok(call.args.includes("-p"));
-    assert.ok(call.args.includes("--session-dir"));
+    const sessionIndex = call.args.indexOf("--session");
+    assert.ok(sessionIndex >= 0);
+    assert.equal(call.args.includes("--session-dir"), false);
+    assert.match(
+      call.args[sessionIndex + 1] ?? "",
+      /parent-[0-9a-f-]+\.jsonl$/,
+    );
     assert.match(call.prompt, /Create an implementation plan/);
     assert.match(
       call.prompt,
@@ -274,7 +280,13 @@ test("PiRunner implementation uses the worktree root, derives the default landin
   const runner = createFakeRunner(async (call) => {
     assertBundledPiCall(call);
     assert.equal(call.cwd, worktreeRoot);
-    assert.ok(call.args.includes("--session-dir"));
+    const sessionIndex = call.args.indexOf("--session");
+    assert.ok(sessionIndex >= 0);
+    assert.equal(call.args.includes("--session-dir"), false);
+    assert.match(
+      call.args[sessionIndex + 1] ?? "",
+      /parent-[0-9a-f-]+\.jsonl$/,
+    );
     assert.match(call.prompt, /Resume context:/);
     assert.match(call.prompt, /Subagent support:/);
     assert.doesNotMatch(

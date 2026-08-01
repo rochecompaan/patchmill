@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { Stats } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -1010,6 +1011,57 @@ test("exact session observation awaits callbacks in file order", async (t) => {
   assert.deepEqual(delivered, ["first"]);
   releaseFirst();
   await streamer.stop();
+  assert.deepEqual(delivered, ["first", "second"]);
+});
+
+test("exact session observation performs a final read after an active poll", async () => {
+  const first = `${JSON.stringify({
+    type: "message",
+    message: { role: "assistant", content: [{ type: "text", text: "first" }] },
+  })}\n`;
+  const second = `${JSON.stringify({
+    type: "message",
+    message: { role: "assistant", content: [{ type: "text", text: "second" }] },
+  })}\n`;
+  let releaseFirstRead!: () => void;
+  const firstReadCanFinish = new Promise<void>((resolve) => {
+    releaseFirstRead = resolve;
+  });
+  let firstReadStarted!: () => void;
+  const firstReadHasStarted = new Promise<void>((resolve) => {
+    firstReadStarted = resolve;
+  });
+  let statCalls = 0;
+  const delivered: string[] = [];
+  const streamer = createExactPiSessionObservationStreamer(
+    "parent.jsonl",
+    (observation) => {
+      if (observation.type === "text") delivered.push(observation.text);
+    },
+    {
+      statFile: async () => {
+        statCalls += 1;
+        return {
+          size: statCalls === 1 ? first.length : first.length + second.length,
+        } as Stats;
+      },
+      readRange: async (_path, start) => {
+        if (start === 0) {
+          firstReadStarted();
+          await firstReadCanFinish;
+          return first;
+        }
+        return second;
+      },
+    },
+  );
+
+  streamer.start();
+  await firstReadHasStarted;
+  const stopped = streamer.stop();
+  releaseFirstRead();
+  await stopped;
+
   assert.deepEqual(delivered, ["first", "second"]);
 });
 
