@@ -34,12 +34,12 @@ function assertInvocationLeaf(actual: string, expectedStageRoot: string): void {
 
 function sessionDirs(calls: ReturnType<typeof workflowPiCalls>): string[] {
   return calls.map((call) => {
-    const sessionDirIndex = call.args.indexOf("--session-dir");
+    const sessionIndex = call.args.indexOf("--session");
     assert.ok(
-      sessionDirIndex >= 0,
-      `expected --session-dir in ${call.args.join(" ")}`,
+      sessionIndex >= 0,
+      `expected --session in ${call.args.join(" ")}`,
     );
-    return call.args[sessionDirIndex + 1] ?? "";
+    return dirname(call.args[sessionIndex + 1] ?? "");
   });
 }
 

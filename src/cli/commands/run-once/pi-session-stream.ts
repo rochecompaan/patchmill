@@ -26,6 +26,13 @@ type SessionStreamerOptions = {
   totalTokensSoFar?: number;
 };
 
+export type ExactPiSessionObservationStreamerOptions = {
+  pollMs?: number;
+  verboseOutput?: (chunk: string) => void;
+  statFile?: typeof stat;
+  readRange?: typeof readRange;
+};
+
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -40,6 +47,15 @@ function parseSessionLine(line: string): JsonObject | undefined {
   } catch {
     return undefined;
   }
+}
+
+function parseStrictSessionLine(line: string): JsonObject | undefined {
+  const trimmed = line.trim();
+  if (!trimmed) return undefined;
+  const parsed = JSON.parse(trimmed) as unknown;
+  if (!isObject(parsed))
+    throw new Error("Pi session line must be a JSON object");
+  return parsed;
 }
 
 function textContent(content: unknown): string | undefined {
@@ -249,10 +265,7 @@ async function findNewestSessionFile(dir: string): Promise<string | undefined> {
     await Promise.all(
       entries.map(async (entry) => {
         const path = join(current, entry.name);
-        if (entry.isDirectory()) {
-          await walk(path);
-          return;
-        }
+        if (entry.isDirectory()) return walk(path);
         if (!entry.isFile() || !entry.name.endsWith(".jsonl")) return;
 
         const info = await stat(path);
@@ -283,6 +296,102 @@ function readRange(path: string, start: number, end: number): Promise<string> {
     stream.on("error", reject);
     stream.on("end", () => resolve(text));
   });
+}
+
+export function createExactPiSessionObservationStreamer(
+  sessionPath: string,
+  onObservation: (observation: PiSessionObservation) => void | Promise<void>,
+  options: ExactPiSessionObservationStreamerOptions = {},
+): { start(): void; stop(): Promise<void>; failure: Promise<never> } {
+  const pollMs = options.pollMs ?? 100;
+  const statFile = options.statFile ?? stat;
+  const readFileRange = options.readRange ?? readRange;
+  let timer: NodeJS.Timeout | undefined;
+  let polling: Promise<void> | undefined;
+  let offset = 0;
+  let buffered = "";
+  let failureError: unknown;
+  let rejectFailure!: (error: unknown) => void;
+  const failure = new Promise<never>((_resolve, reject) => {
+    rejectFailure = reject;
+  });
+  void failure.catch(() => undefined);
+
+  const recordFailure = (error: unknown) => {
+    if (failureError !== undefined) return;
+    failureError = error;
+    if (timer) clearInterval(timer);
+    timer = undefined;
+    rejectFailure(error);
+  };
+
+  const processLine = async (line: string) => {
+    const entry = parseStrictSessionLine(line);
+    if (!entry) return;
+    for (const observation of sessionEntryToObservations(entry)) {
+      await onObservation(observation);
+    }
+    const text = sessionEntryToRawText(entry);
+    if (text !== undefined) options.verboseOutput?.(text);
+  };
+
+  const poll = async () => {
+    const info = await statFile(sessionPath);
+    if (info.size < offset) {
+      offset = 0;
+      buffered = "";
+    }
+    if (info.size === offset) return;
+
+    const chunk = await readFileRange(sessionPath, offset, info.size);
+    offset = info.size;
+    buffered += chunk;
+    let newlineIndex = buffered.indexOf("\n");
+    while (newlineIndex >= 0) {
+      await processLine(buffered.slice(0, newlineIndex));
+      buffered = buffered.slice(newlineIndex + 1);
+      newlineIndex = buffered.indexOf("\n");
+    }
+  };
+
+  const runPoll = async (): Promise<void> => {
+    if (polling) return polling;
+    if (failureError !== undefined) throw failureError;
+    polling = poll()
+      .catch((error: unknown) => {
+        recordFailure(error);
+        throw error;
+      })
+      .finally(() => {
+        polling = undefined;
+      });
+    return polling;
+  };
+
+  return {
+    start() {
+      if (timer || failureError !== undefined) return;
+      void runPoll().catch(() => undefined);
+      timer = setInterval(() => {
+        void runPoll().catch(() => undefined);
+      }, pollMs);
+    },
+    async stop() {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+      try {
+        await runPoll();
+        if (buffered.trim()) {
+          await processLine(buffered);
+          buffered = "";
+        }
+      } catch (error) {
+        recordFailure(error);
+      }
+      if (failureError !== undefined) throw failureError;
+    },
+    failure,
+  };
 }
 
 export function createPiSessionMessageStreamer(
@@ -317,18 +426,15 @@ export function createPiSessionMessageStreamer(
       sessionPath = await findNewestSessionFile(sessionDir);
       if (!sessionPath) return;
     }
-
     const info = await stat(sessionPath);
     if (info.size < offset) {
       offset = 0;
       buffered = "";
     }
     if (info.size === offset) return;
-
     const chunk = await readRange(sessionPath, offset, info.size);
     offset = info.size;
     buffered += chunk;
-
     let newlineIndex = buffered.indexOf("\n");
     while (newlineIndex >= 0) {
       processLine(buffered.slice(0, newlineIndex));
@@ -349,15 +455,11 @@ export function createPiSessionMessageStreamer(
     start() {
       if (timer) return;
       void runPoll();
-      timer = setInterval(() => {
-        void runPoll();
-      }, pollMs);
+      timer = setInterval(() => void runPoll(), pollMs);
     },
     async stop() {
-      if (timer) {
-        clearInterval(timer);
-        timer = undefined;
-      }
+      if (timer) clearInterval(timer);
+      timer = undefined;
       await runPoll();
       if (buffered.trim()) {
         processLine(buffered);
@@ -369,7 +471,7 @@ export function createPiSessionMessageStreamer(
 
 export function createPiSessionObservationStreamer(
   sessionDir: string,
-  onObservation: (observation: PiSessionObservation) => void,
+  onObservation: (observation: PiSessionObservation) => void | Promise<void>,
   options: { pollMs?: number; verboseOutput?: (chunk: string) => void } = {},
 ): { start(): void; stop(): Promise<void> } {
   const pollMs = options.pollMs ?? 100;
@@ -388,12 +490,10 @@ export function createPiSessionObservationStreamer(
         if (observedToolCallIds.has(observation.toolCallId)) continue;
         observedToolCallIds.add(observation.toolCallId);
       }
-      onObservation(observation);
+      void onObservation(observation);
     }
-    if (options.verboseOutput) {
-      const text = sessionEntryToRawText(entry);
-      if (text !== undefined) options.verboseOutput(text);
-    }
+    const text = sessionEntryToRawText(entry);
+    if (text !== undefined) options.verboseOutput?.(text);
   };
 
   const poll = async () => {
@@ -401,18 +501,15 @@ export function createPiSessionObservationStreamer(
       sessionPath = await findNewestSessionFile(sessionDir);
       if (!sessionPath) return;
     }
-
     const info = await stat(sessionPath);
     if (info.size < offset) {
       offset = 0;
       buffered = "";
     }
     if (info.size === offset) return;
-
     const chunk = await readRange(sessionPath, offset, info.size);
     offset = info.size;
     buffered += chunk;
-
     let newlineIndex = buffered.indexOf("\n");
     while (newlineIndex >= 0) {
       processLine(buffered.slice(0, newlineIndex));
@@ -433,15 +530,11 @@ export function createPiSessionObservationStreamer(
     start() {
       if (timer) return;
       void runPoll();
-      timer = setInterval(() => {
-        void runPoll();
-      }, pollMs);
+      timer = setInterval(() => void runPoll(), pollMs);
     },
     async stop() {
-      if (timer) {
-        clearInterval(timer);
-        timer = undefined;
-      }
+      if (timer) clearInterval(timer);
+      timer = undefined;
       await runPoll();
       if (buffered.trim()) {
         processLine(buffered);
