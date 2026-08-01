@@ -10,16 +10,16 @@ nested Pi/subagent sessions make that assumption unsafe: a concurrent, stale, or
 child JSONL can become the newest file and redirect progress observation away
 from the parent Pi process that `run-once` owns.
 
-The current observation path also delivers callback work by accumulating promises
-and awaiting them at shutdown. Slow callbacks can therefore overlap and reorder
-observable side effects. Poll/read failures and malformed JSON can be skipped or
-surface late, and callback failures do not cancel the running Pi command. When
-multiple shutdown failures happen together, later cleanup or runner errors can
-mask earlier observation failures.
+The current observation path also delivers callback work by accumulating
+promises and awaiting them at shutdown. Slow callbacks can therefore overlap and
+reorder observable side effects. Poll/read failures and malformed JSON can be
+skipped or surface late, and callback failures do not cancel the running Pi
+command. When multiple shutdown failures happen together, later cleanup or
+runner errors can mask earlier observation failures.
 
 Issue #123 is limited to the exact-session, streaming, cancellation, and
-terminal-error portions of parent issue #116. It does not change pi-subagents and
-it does not migrate triage to the exact-session API.
+terminal-error portions of parent issue #116. It does not change pi-subagents
+and it does not migrate triage to the exact-session API.
 
 ## Goals
 
@@ -33,19 +33,19 @@ it does not migrate triage to the exact-session API.
   the next observation is delivered.
 - Malformed JSON, session I/O errors, callback failures, runner failures, and
   cleanup failures are all reported without masking independent causes.
-- Observation failure aborts the running Pi command promptly, then awaits process
-  close and cleanup before reporting the complete terminal error.
+- Observation failure aborts the running Pi command promptly, then awaits
+  process close and cleanup before reporting the complete terminal error.
 - Successful `run-once` still writes only the final JSON object to stdout.
-  Progress, verbose Pi output, and error detail remain on stderr and in the JSONL
-  run log.
+  Progress, verbose Pi output, and error detail remain on stderr and in the
+  JSONL run log.
 - Tests use explicit synchronization primitives instead of timing races.
 
 ## Non-goals
 
 - Do not parse or render subagent-specific metadata.
 - Do not change `pi-subagents`.
-- Do not change run-once issue selection, artifact extraction, stage ordering, or
-  final result parsing except for preserving richer terminal errors.
+- Do not change run-once issue selection, artifact extraction, stage ordering,
+  or final result parsing except for preserving richer terminal errors.
 - Do not migrate triage to exact-session observation. Triage keeps its current
   directory-based tool-call observer and receives regression coverage only.
 - Do not make exact-session streaming a broad public API for every Patchmill
@@ -86,7 +86,8 @@ child/subagent logs available under the same durable invocation directory.
 ### Exact parent session allocation
 
 When `runPiPrompt()` is called by `run-once` with `observeSession: true`, it
-should allocate an exact parent session file instead of only a session directory:
+should allocate an exact parent session file instead of only a session
+directory:
 
 1. Resolve the durable invocation directory using the existing
    `sessionRoot/<stage>/invocation-*` policy from issue #92.
@@ -151,8 +152,8 @@ type CommandRunOptions = {
 ```
 
 `createCommandRunner()` should listen for `signal.abort`, send a termination
-signal to the child process, continue collecting stdout/stderr until `close`, and
-then settle exactly once. If the signal is already aborted before spawn, the
+signal to the child process, continue collecting stdout/stderr until `close`,
+and then settle exactly once. If the signal is already aborted before spawn, the
 runner should fail without spawning. A hard-kill timeout is optional only if the
 implementation can test it deterministically; the acceptance contract requires
 prompt cancellation and awaiting close, not a new process supervisor.
@@ -191,8 +192,8 @@ The combined error should include, when present:
 - prompt-temp cleanup errors.
 
 The CLI error path should format aggregate causes for both the JSONL log and the
-terminal. The final stdout object can add a `causes` array for error results, but
-successful and structured blocked/spec/plan/PR JSON contracts should remain
+terminal. The final stdout object can add a `causes` array for error results,
+but successful and structured blocked/spec/plan/PR JSON contracts should remain
 unchanged.
 
 ### stdout and stderr contract
@@ -251,8 +252,8 @@ Add cancellation and terminal-error tests:
 - Malformed JSON or callback rejection aborts the Pi command via the runner
   signal before the mock runner is allowed to complete normally.
 - After abort, `runPiPrompt()` still awaits runner close and cleanup.
-- Observation failure plus runner failure plus cleanup failure are all present in
-  the thrown aggregate error and in CLI error formatting.
+- Observation failure plus runner failure plus cleanup failure are all present
+  in the thrown aggregate error and in CLI error formatting.
 - A Pi nonzero exit without observation failure still reports stdout/stderr as
   before.
 
