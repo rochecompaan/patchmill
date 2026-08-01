@@ -847,14 +847,18 @@ test("concurrent observed Pi prompts receive isolated exact parent sessions", as
   });
   const runner = createMockRunner(async (call) => {
     const sessionPath = call.args[call.args.indexOf("--session") + 1] ?? "";
+    const prompt = await readFile(promptPath(call.args), "utf8");
+    const text =
+      prompt === "first"
+        ? "first parent"
+        : prompt === "second"
+          ? "second parent"
+          : undefined;
+    assert.ok(text, `unexpected concurrent prompt: ${prompt}`);
     sessionPaths.push(sessionPath);
     arrivals += 1;
     if (arrivals === 2) bothStarted();
     await released;
-    const text =
-      sessionPaths.indexOf(sessionPath) === 0
-        ? "first parent"
-        : "second parent";
     await writeFile(
       sessionPath,
       JSON.stringify({
