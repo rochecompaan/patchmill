@@ -26,6 +26,15 @@ Start here:
 - [Triage](https://patchmill.dev/using-patchmill/triage/)
 - [Run-once](https://patchmill.dev/using-patchmill/run-once/)
 
+## Roadmap
+
+Patchmill's roadmap moves from safe, unattended local operation to broader work
+sources, a unified control plane, and cloud-operated agents running in isolated
+sandboxes. The phases describe product direction rather than date or version
+commitments.
+
+Read the [Patchmill roadmap](docs/roadmap.md).
+
 ## Install
 
 ```sh
