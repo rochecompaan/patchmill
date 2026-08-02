@@ -11,8 +11,16 @@ import { getRootPins, PI_PACKAGES } from "./pi-dependency-upgrade-lib.mjs";
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const PI_SUBAGENTS_PACKAGE = "pi-subagents";
 
-function assertPiSubagentsInstalled({ projectRequire, nodeModulesDir, rootPin }) {
-  const packagePath = join(nodeModulesDir, PI_SUBAGENTS_PACKAGE, "package.json");
+function assertPiSubagentsInstalled({
+  projectRequire,
+  nodeModulesDir,
+  rootPin,
+}) {
+  const packagePath = join(
+    nodeModulesDir,
+    PI_SUBAGENTS_PACKAGE,
+    "package.json",
+  );
   if (!existsSync(packagePath)) {
     throw new Error(`Could not locate ${packagePath}`);
   }
@@ -25,16 +33,22 @@ function assertPiSubagentsInstalled({ projectRequire, nodeModulesDir, rootPin })
   const packageRoot = dirname(packagePath);
   const extensions = manifest.pi?.extensions;
   if (!Array.isArray(extensions) || extensions.length === 0) {
-    throw new Error(`${PI_SUBAGENTS_PACKAGE} manifest declares no Pi extensions`);
+    throw new Error(
+      `${PI_SUBAGENTS_PACKAGE} manifest declares no Pi extensions`,
+    );
   }
   for (const extension of extensions) {
     const extensionPath = join(packageRoot, extension);
     if (!existsSync(extensionPath) || !statSync(extensionPath).isFile()) {
-      throw new Error(`Missing ${PI_SUBAGENTS_PACKAGE} extension: ${extensionPath}`);
+      throw new Error(
+        `Missing ${PI_SUBAGENTS_PACKAGE} extension: ${extensionPath}`,
+      );
     }
   }
   projectRequire.resolve(`${PI_SUBAGENTS_PACKAGE}`);
-  console.log(`${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} from ${packagePath}`);
+  console.log(
+    `${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} from ${packagePath}`,
+  );
   return packageRoot;
 }
 
@@ -147,7 +161,7 @@ async function main() {
     const { runOncePlanningPiProfile } = await import(
       pathToFileURL(
         join(patchmillPackageRoot, "dist", "src", "pi", "resource-profiles.js"),
-      ).href,
+      ).href
     );
     const skills = {
       triage: "triage",
@@ -164,14 +178,18 @@ async function main() {
       realpathSync(profile.additionalExtensionPaths[0]) !==
       realpathSync(piSubagentsRoot)
     ) {
-      throw new Error("run-once profile does not load the installed pi-subagents package first");
+      throw new Error(
+        "run-once profile does not load the installed pi-subagents package first",
+      );
     }
     if (
       !profile.additionalExtensionPaths[1]
         ?.replaceAll("\\", "/")
         .endsWith("/extensions/todos.ts")
     ) {
-      throw new Error("run-once profile does not load the Patchmill todos extension second");
+      throw new Error(
+        "run-once profile does not load the Patchmill todos extension second",
+      );
     }
   } finally {
     if (process.env.PATCHMILL_KEEP_SMOKE_ARTIFACTS !== "1") {

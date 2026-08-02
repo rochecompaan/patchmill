@@ -16,7 +16,8 @@ export function collectSubagentEvents(events) {
     partials: events
       .filter(
         (event) =>
-          event.type === "tool_execution_update" && event.toolName === "subagent",
+          event.type === "tool_execution_update" &&
+          event.toolName === "subagent",
       )
       .map((event) => event.partialResult),
     finals: events
@@ -41,7 +42,15 @@ function childIdentity(row) {
     : undefined;
 }
 
-function validateChild({ child, id, label, expectedModel, expectedThinking, requireThinking, partial }) {
+function validateChild({
+  child,
+  id,
+  label,
+  expectedModel,
+  expectedThinking,
+  requireThinking,
+  partial,
+}) {
   const prefix = partial ? "partial child" : "child";
   if (id === undefined) {
     throw new Error(`${label}: ${prefix} missing upstream identity`);
@@ -50,10 +59,14 @@ function validateChild({ child, id, label, expectedModel, expectedThinking, requ
     throw new Error(`${label}: ${prefix} ${id} missing model ${expectedModel}`);
   }
   if (requireThinking && child?.thinking !== expectedThinking) {
-    throw new Error(`${label}: ${prefix} ${id} missing thinking ${expectedThinking}`);
+    throw new Error(
+      `${label}: ${prefix} ${id} missing thinking ${expectedThinking}`,
+    );
   }
   if (!requireThinking && "thinking" in child) {
-    throw new Error(`${label}: ${prefix} ${id} expected thinking absence but found ${child.thinking}`);
+    throw new Error(
+      `${label}: ${prefix} ${id} expected thinking absence but found ${child.thinking}`,
+    );
   }
 }
 
@@ -85,7 +98,9 @@ export function validateShapeContract(options) {
     options.requireUniqueSiblingIds &&
     new Set(finalIds).size !== finalIds.length
   ) {
-    throw new Error(`${options.label}: duplicate upstream identity in final children`);
+    throw new Error(
+      `${options.label}: duplicate upstream identity in final children`,
+    );
   }
   if (options.shape.partials.length === 0) {
     console.log(`${options.label}: upstream emitted no partial results`);
@@ -117,10 +132,16 @@ export function validateShapeContract(options) {
 }
 
 function readRootPin() {
-  const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
+  const packageJson = JSON.parse(
+    readFileSync(join(rootDir, "package.json"), "utf8"),
+  );
   const pin = packageJson.dependencies?.["pi-subagents"];
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(pin ?? "")) {
-    throw new Error(`pi-subagents must be an exact root pin; found ${pin ?? "missing"}`);
+  if (
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(pin ?? "")
+  ) {
+    throw new Error(
+      `pi-subagents must be an exact root pin; found ${pin ?? "missing"}`,
+    );
   }
   return pin;
 }
@@ -131,16 +152,20 @@ function resolvePiSubagentsRoot() {
 
 function assertInstalledPackage(pin, packageRoot) {
   const manifestPath = join(packageRoot, "package.json");
-  if (!existsSync(manifestPath)) throw new Error(`missing pi-subagents manifest: ${manifestPath}`);
+  if (!existsSync(manifestPath))
+    throw new Error(`missing pi-subagents manifest: ${manifestPath}`);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (manifest.version !== pin) {
-    throw new Error(`pi-subagents resolved ${manifest.version} but root pins ${pin}`);
+    throw new Error(
+      `pi-subagents resolved ${manifest.version} but root pins ${pin}`,
+    );
   }
 }
 
 function requiredEnvironment(name) {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required for live child metadata validation`);
+  if (!value)
+    throw new Error(`${name} is required for live child metadata validation`);
   return value;
 }
 
@@ -168,7 +193,18 @@ function parseJsonLines(output, label) {
   return events;
 }
 
-function runShape({ label, input, expectedFinalChildren, expectedModel, expectedThinking, requireThinking, cwd, agentsDir, packageRoot, parentModel }) {
+function runShape({
+  label,
+  input,
+  expectedFinalChildren,
+  expectedModel,
+  expectedThinking,
+  requireThinking,
+  cwd,
+  agentsDir,
+  packageRoot,
+  parentModel,
+}) {
   const args = [
     "--mode",
     "json",
@@ -181,9 +217,13 @@ function runShape({ label, input, expectedFinalChildren, expectedModel, expected
     packageRoot,
   ];
   if (parentModel) args.push("--model", parentModel);
-  args.push(`Call the subagent tool exactly once with this input and then stop:\n${JSON.stringify(input)}`);
+  args.push(
+    `Call the subagent tool exactly once with this input and then stop:\n${JSON.stringify(input)}`,
+  );
   const environment = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => !name.startsWith("PI_SUBAGENT_")),
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith("PI_SUBAGENT_"),
+    ),
   );
   environment.PI_SUBAGENT_EXTRA_AGENT_DIRS = agentsDir;
   const result = spawnSync(join(rootDir, "node_modules", ".bin", "pi"), args, {
@@ -195,7 +235,9 @@ function runShape({ label, input, expectedFinalChildren, expectedModel, expected
   });
   const rawOutput = `${result.stdout}\n${result.stderr}`;
   if (result.error || result.status !== 0) {
-    throw new Error(`${label}: Pi command failed: ${result.error?.message ?? `exit ${result.status}`}\n${rawOutput}`);
+    throw new Error(
+      `${label}: Pi command failed: ${result.error?.message ?? `exit ${result.status}`}\n${rawOutput}`,
+    );
   }
   const shape = collectSubagentEvents(parseJsonLines(result.stdout, label));
   try {
@@ -213,7 +255,9 @@ function runShape({ label, input, expectedFinalChildren, expectedModel, expected
       `${label}: ${error instanceof Error ? error.message : String(error)}\nRaw Pi output:\n${rawOutput}`,
     );
   }
-  console.log(`${label}: ${requireThinking ? "metadata contract passed" : "absence contract passed"}`);
+  console.log(
+    `${label}: ${requireThinking ? "metadata contract passed" : "absence contract passed"}`,
+  );
 }
 
 async function main() {
@@ -221,21 +265,37 @@ async function main() {
   const packageRoot = resolvePiSubagentsRoot();
   assertInstalledPackage(pin, packageRoot);
   const model = requiredEnvironment("PATCHMILL_PI_SUBAGENTS_CONTRACT_MODEL");
-  const thinking = process.env.PATCHMILL_PI_SUBAGENTS_CONTRACT_THINKING ?? "low";
-  const noThinkingModel = requiredEnvironment("PATCHMILL_PI_SUBAGENTS_CONTRACT_NO_THINKING_MODEL");
+  const thinking =
+    process.env.PATCHMILL_PI_SUBAGENTS_CONTRACT_THINKING ?? "low";
+  const noThinkingModel = requiredEnvironment(
+    "PATCHMILL_PI_SUBAGENTS_CONTRACT_NO_THINKING_MODEL",
+  );
   const parentModel = process.env.PATCHMILL_PI_SUBAGENTS_PARENT_MODEL;
   const cwd = await mkdtemp(join(tmpdir(), "patchmill-pi-subagents-contract-"));
   try {
     const agentsDir = join(cwd, ".pi", "agents");
     const legacyAgentsDir = join(cwd, ".agents");
-    await Promise.all([mkdir(agentsDir, { recursive: true }), mkdir(legacyAgentsDir)]);
-    const thinkingAgent = agentDefinition({ name: "contract-thinking", model, thinking });
-    const noThinkingAgent = agentDefinition({ name: "contract-no-thinking", model: noThinkingModel });
+    await Promise.all([
+      mkdir(agentsDir, { recursive: true }),
+      mkdir(legacyAgentsDir),
+    ]);
+    const thinkingAgent = agentDefinition({
+      name: "contract-thinking",
+      model,
+      thinking,
+    });
+    const noThinkingAgent = agentDefinition({
+      name: "contract-no-thinking",
+      model: noThinkingModel,
+    });
     await Promise.all([
       writeFile(join(agentsDir, "contract-thinking.md"), thinkingAgent),
       writeFile(join(agentsDir, "contract-no-thinking.md"), noThinkingAgent),
       writeFile(join(legacyAgentsDir, "contract-thinking.md"), thinkingAgent),
-      writeFile(join(legacyAgentsDir, "contract-no-thinking.md"), noThinkingAgent),
+      writeFile(
+        join(legacyAgentsDir, "contract-no-thinking.md"),
+        noThinkingAgent,
+      ),
     ]);
     const common = {
       cwd,
@@ -246,11 +306,82 @@ async function main() {
       requireThinking: true,
       parentModel,
     };
-    runShape({ ...common, label: "direct", expectedFinalChildren: 1, input: { agent: "contract-thinking", task: "Return the word direct.", context: "fresh" } });
-    runShape({ ...common, label: "counted", expectedFinalChildren: 2, input: { tasks: [{ agent: "contract-thinking", task: "Return the word counted.", count: 2 }], concurrency: 2, context: "fresh" } });
-    runShape({ ...common, label: "parallel", expectedFinalChildren: 3, input: { tasks: [{ agent: "contract-thinking", task: "Return parallel a." }, { agent: "contract-thinking", task: "Return repeated parallel.", count: 2 }], concurrency: 2, context: "fresh" } });
-    runShape({ ...common, label: "chain", expectedFinalChildren: 3, input: { chain: [{ agent: "contract-thinking", task: "Return chain step one." }, { parallel: [{ agent: "contract-thinking", task: "Return chain fanout a." }, { agent: "contract-thinking", task: "Return chain fanout b." }] }], context: "fresh", clarify: false } });
-    runShape({ cwd, agentsDir, packageRoot, parentModel, label: "no-thinking", expectedFinalChildren: 1, expectedModel: noThinkingModel, requireThinking: false, input: { agent: "contract-no-thinking", task: "Return the words no thinking.", context: "fresh" } });
+    runShape({
+      ...common,
+      label: "direct",
+      expectedFinalChildren: 1,
+      input: {
+        agent: "contract-thinking",
+        task: "Return the word direct.",
+        context: "fresh",
+      },
+    });
+    runShape({
+      ...common,
+      label: "counted",
+      expectedFinalChildren: 2,
+      input: {
+        tasks: [
+          {
+            agent: "contract-thinking",
+            task: "Return the word counted.",
+            count: 2,
+          },
+        ],
+        concurrency: 2,
+        context: "fresh",
+      },
+    });
+    runShape({
+      ...common,
+      label: "parallel",
+      expectedFinalChildren: 3,
+      input: {
+        tasks: [
+          { agent: "contract-thinking", task: "Return parallel a." },
+          {
+            agent: "contract-thinking",
+            task: "Return repeated parallel.",
+            count: 2,
+          },
+        ],
+        concurrency: 2,
+        context: "fresh",
+      },
+    });
+    runShape({
+      ...common,
+      label: "chain",
+      expectedFinalChildren: 3,
+      input: {
+        chain: [
+          { agent: "contract-thinking", task: "Return chain step one." },
+          {
+            parallel: [
+              { agent: "contract-thinking", task: "Return chain fanout a." },
+              { agent: "contract-thinking", task: "Return chain fanout b." },
+            ],
+          },
+        ],
+        context: "fresh",
+        clarify: false,
+      },
+    });
+    runShape({
+      cwd,
+      agentsDir,
+      packageRoot,
+      parentModel,
+      label: "no-thinking",
+      expectedFinalChildren: 1,
+      expectedModel: noThinkingModel,
+      requireThinking: false,
+      input: {
+        agent: "contract-no-thinking",
+        task: "Return the words no thinking.",
+        context: "fresh",
+      },
+    });
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

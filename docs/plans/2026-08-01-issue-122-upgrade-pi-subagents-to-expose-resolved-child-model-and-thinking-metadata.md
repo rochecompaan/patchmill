@@ -5,21 +5,20 @@
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Pin a `pi-subagents` release that exposes authoritative child
-`model`, `thinking`, identity, and ordering metadata, then prove Patchmill can
-load and validate that release in source, packed npm, and Nix-installed layouts.
+**Goal:** Pin a `pi-subagents` release that exposes authoritative child `model`,
+`thinking`, identity, and ordering metadata, then prove Patchmill can load and
+validate that release in source, packed npm, and Nix-installed layouts.
 
 **Architecture:** Keep `pi-subagents` as the only authority for child runtime
 metadata. Add a small Patchmill-side package-manifest validation helper, extend
 resource-profile, packed-artifact, and Nix install checks to prove the resolved
-extension files exist in the order Patchmill loads them, and add a live JSON-mode
-Pi contract script that validates raw foreground `subagent` partial/final
-results for direct, counted, parallel, and chain shapes without recomputing
-upstream model or thinking resolution.
+extension files exist in the order Patchmill loads them, and add a live
+JSON-mode Pi contract script that validates raw foreground `subagent`
+partial/final results for direct, counted, parallel, and chain shapes without
+recomputing upstream model or thinking resolution.
 
 **Tech Stack:** TypeScript ESM, Node.js 22.19+/24 `node:test`, npm exact pins
-and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
-`buildNpmPackage`.
+and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
 
 ## Global Constraints
 
@@ -87,11 +86,11 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   unit tests for the script's JSON event parsing and metadata validation using
   fixture event rows.
 - Modify `scripts/smoke-packed-artifact.mjs`: add `pi-subagents` version,
-  manifest extension-file, and run-once extension-order checks for the packed npm
-  install without adding it to the Pi runtime lockstep package list.
-- Modify `nix/package.nix`: refresh `npmDepsHash` and extend
-  `installCheckPhase` to verify installed `pi-subagents` version, manifest
-  extension files, and run-once extension order.
+  manifest extension-file, and run-once extension-order checks for the packed
+  npm install without adding it to the Pi runtime lockstep package list.
+- Modify `nix/package.nix`: refresh `npmDepsHash` and extend `installCheckPhase`
+  to verify installed `pi-subagents` version, manifest extension files, and
+  run-once extension order.
 
 ---
 
@@ -138,9 +137,9 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
 
   Expected: `package.json`, `package-lock.json`, and `npm-shrinkwrap.json`
   change; `package.json.dependencies["pi-subagents"]` is exactly `"0.37.2"`;
-  both lockfiles contain `packages[""].dependencies["pi-subagents"] ===
-  "0.37.2"` and `packages["node_modules/pi-subagents"].version ===
-  "0.37.2"`.
+  both lockfiles contain
+  `packages[""].dependencies["pi-subagents"] === "0.37.2"` and
+  `packages["node_modules/pi-subagents"].version === "0.37.2"`.
 
 - [ ] **Step 2: Write the failing dependency contract tests**
 
@@ -178,10 +177,19 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
     const pin = readRootPiSubagentsPin(join(rootDir, "package.json"));
     for (const filename of ["package-lock.json", "npm-shrinkwrap.json"]) {
       const lockfile = readJson(join(rootDir, filename)) as {
-        packages?: Record<string, { version?: string; dependencies?: Record<string, string> }>;
+        packages?: Record<
+          string,
+          { version?: string; dependencies?: Record<string, string> }
+        >;
       };
-      assert.equal(lockfile.packages?.[""]?.dependencies?.["pi-subagents"], pin);
-      assert.equal(lockfile.packages?.["node_modules/pi-subagents"]?.version, pin);
+      assert.equal(
+        lockfile.packages?.[""]?.dependencies?.["pi-subagents"],
+        pin,
+      );
+      assert.equal(
+        lockfile.packages?.["node_modules/pi-subagents"]?.version,
+        pin,
+      );
     }
   });
 
@@ -189,34 +197,55 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
     const packageRoot = resolvePiSubagentsPackageRoot();
     assert.equal(packageRoot.endsWith("pi-subagents"), true);
     const manifest = readInstalledPiSubagentsManifest();
-    assert.equal(manifest.version, readRootPiSubagentsPin(join(rootDir, "package.json")));
+    assert.equal(
+      manifest.version,
+      readRootPiSubagentsPin(join(rootDir, "package.json")),
+    );
     assert.ok(Array.isArray(manifest.pi?.extensions));
     assert.ok((manifest.pi?.extensions ?? []).length > 0);
     for (const extensionFile of piSubagentsExtensionFiles()) {
       assert.equal(extensionFile.startsWith(packageRoot), true);
-      assert.equal(existsSync(extensionFile), true, `missing extension ${extensionFile}`);
-      assert.equal(statSync(extensionFile).isFile(), true, `not a file ${extensionFile}`);
+      assert.equal(
+        existsSync(extensionFile),
+        true,
+        `missing extension ${extensionFile}`,
+      );
+      assert.equal(
+        statSync(extensionFile).isFile(),
+        true,
+        `not a file ${extensionFile}`,
+      );
     }
   });
 
   test("pi can load the resolved pi-subagents extension package without model execution", () => {
-    const result = spawnSync("./node_modules/.bin/pi", [
-      "--mode",
-      "json",
-      "--no-session",
-      "--offline",
-      "-e",
-      resolvePiSubagentsPackageRoot(),
-      "/subagents-doctor",
-    ], {
-      cwd: rootDir,
-      encoding: "utf8",
-      timeout: 30_000,
-    });
+    const result = spawnSync(
+      "./node_modules/.bin/pi",
+      [
+        "--mode",
+        "json",
+        "--no-session",
+        "--offline",
+        "-e",
+        resolvePiSubagentsPackageRoot(),
+        "/subagents-doctor",
+      ],
+      {
+        cwd: rootDir,
+        encoding: "utf8",
+        timeout: 30_000,
+      },
+    );
     assert.equal(result.error, undefined);
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(`${result.stdout}\n${result.stderr}`, /subagents|doctor|runtime paths/ui);
-    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /Unknown command|No such command|extension load failed/ui);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /subagents|doctor|runtime paths/iu,
+    );
+    assert.doesNotMatch(
+      `${result.stdout}\n${result.stderr}`,
+      /Unknown command|No such command|extension load failed/iu,
+    );
   });
   ```
 
@@ -287,7 +316,9 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   }
 
   export function readInstalledPiSubagentsManifest(): PiSubagentsPackageManifest {
-    return readJson<PiSubagentsPackageManifest>(resolvePiSubagentsPackageJson());
+    return readJson<PiSubagentsPackageManifest>(
+      resolvePiSubagentsPackageJson(),
+    );
   }
 
   export function piSubagentsExtensionFiles(): string[] {
@@ -295,16 +326,25 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
     const manifest = readInstalledPiSubagentsManifest();
     const extensions = manifest.pi?.extensions ?? [];
     if (extensions.length === 0) {
-      throw new Error(`${PI_SUBAGENTS_PACKAGE_NAME} manifest declares no Pi extensions`);
+      throw new Error(
+        `${PI_SUBAGENTS_PACKAGE_NAME} manifest declares no Pi extensions`,
+      );
     }
     return extensions.map((entry) => {
       const extensionPath = resolve(packageRoot, entry);
-      if (!extensionPath.startsWith(`${packageRoot}/`) && extensionPath !== packageRoot) {
-        throw new Error(`${PI_SUBAGENTS_PACKAGE_NAME} extension escapes package root: ${entry}`);
+      if (
+        !extensionPath.startsWith(`${packageRoot}/`) &&
+        extensionPath !== packageRoot
+      ) {
+        throw new Error(
+          `${PI_SUBAGENTS_PACKAGE_NAME} extension escapes package root: ${entry}`,
+        );
       }
       const stats = statSync(extensionPath);
       if (!stats.isFile()) {
-        throw new Error(`${PI_SUBAGENTS_PACKAGE_NAME} extension is not a regular file: ${extensionPath}`);
+        throw new Error(
+          `${PI_SUBAGENTS_PACKAGE_NAME} extension is not a regular file: ${extensionPath}`,
+        );
       }
       return extensionPath;
     });
@@ -333,8 +373,8 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
 
   Expected: PASS. If it fails because installed `0.37.2` omits a Pi extension
   manifest, cannot be resolved through normal Node resolution, or cannot be
-  loaded by `pi --mode json --offline -e <package-root> /subagents-doctor`, stop and open a focused
-  upstream blocker instead of adding a Patchmill fallback.
+  loaded by `pi --mode json --offline -e <package-root> /subagents-doctor`, stop
+  and open a focused upstream blocker instead of adding a Patchmill fallback.
 
 - [ ] **Step 6: Commit Task 1**
 
@@ -375,9 +415,17 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
 
   ```ts
   const piSubagentsExtensions = piSubagentsExtensionFiles();
-  assert.equal(profile.additionalExtensionPaths[0], resolvePiSubagentsPackageRoot());
+  assert.equal(
+    profile.additionalExtensionPaths[0],
+    resolvePiSubagentsPackageRoot(),
+  );
   assert.ok(piSubagentsExtensions.length > 0);
-  assert.equal(profile.additionalExtensionPaths[1]?.replaceAll("\\", "/").endsWith("/extensions/todos.ts"), true);
+  assert.equal(
+    profile.additionalExtensionPaths[1]
+      ?.replaceAll("\\", "/")
+      .endsWith("/extensions/todos.ts"),
+    true,
+  );
   ```
 
   Keep the existing loop that asserts every profile extension path exists. Add a
@@ -388,7 +436,10 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   function assertRunOnceExtensionOrder(extensionPaths: string[]): void {
     assert.equal(extensionPaths.length, 2);
     assert.equal(basename(extensionPaths[0] ?? ""), "pi-subagents");
-    assert.equal(extensionPaths[1]?.replaceAll("\\", "/").endsWith("/extensions/todos.ts"), true);
+    assert.equal(
+      extensionPaths[1]?.replaceAll("\\", "/").endsWith("/extensions/todos.ts"),
+      true,
+    );
   }
   ```
 
@@ -411,7 +462,10 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   Patchmill's separate package-root lookup:
 
   ```ts
-  import { piSubagentsExtensionFiles, resolvePiSubagentsPackageRoot } from "./pi-subagents-package.ts";
+  import {
+    piSubagentsExtensionFiles,
+    resolvePiSubagentsPackageRoot,
+  } from "./pi-subagents-package.ts";
 
   const PI_SUBAGENTS_PACKAGE_ROOT = resolvePiSubagentsPackageRoot();
   piSubagentsExtensionFiles();
@@ -477,8 +531,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
 
 **Interfaces:**
 
-- Produces CLI command:
-  `node scripts/verify-pi-subagents-child-metadata.mjs`.
+- Produces CLI command: `node scripts/verify-pi-subagents-child-metadata.mjs`.
 - Environment contract:
   - `PATCHMILL_PI_SUBAGENTS_CONTRACT_MODEL` is a configured tool-capable Pi
     model for children that should report effective thinking.
@@ -501,8 +554,8 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
 
 - [ ] **Step 1: Write deterministic parser and validator tests first**
 
-  Create `scripts/verify-pi-subagents-child-metadata.test.mjs` with fixture
-  JSON event rows that exercise:
+  Create `scripts/verify-pi-subagents-child-metadata.test.mjs` with fixture JSON
+  event rows that exercise:
 
   ```js
   import assert from "node:assert/strict";
@@ -515,16 +568,42 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   const finalResult = {
     details: {
       results: [
-        { id: "child-a", model: "provider/model-a", thinking: "low", content: "ok" },
-        { id: "child-b", model: "provider/model-a", thinking: "low", content: "ok" },
+        {
+          id: "child-a",
+          model: "provider/model-a",
+          thinking: "low",
+          content: "ok",
+        },
+        {
+          id: "child-b",
+          model: "provider/model-a",
+          thinking: "low",
+          content: "ok",
+        },
       ],
     },
   };
 
   test("validateShapeContract matches partial and final rows by upstream identity", () => {
     const shape = collectSubagentEvents([
-      { type: "tool_execution_update", toolName: "subagent", partialResult: { details: { results: [finalResult.details.results[0], finalResult.details.results[1]] } } },
-      { type: "tool_execution_end", toolName: "subagent", result: finalResult, isError: false },
+      {
+        type: "tool_execution_update",
+        toolName: "subagent",
+        partialResult: {
+          details: {
+            results: [
+              finalResult.details.results[0],
+              finalResult.details.results[1],
+            ],
+          },
+        },
+      },
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        result: finalResult,
+        isError: false,
+      },
     ]);
     validateShapeContract({
       label: "parallel",
@@ -538,43 +617,94 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   });
 
   test("validateShapeContract fails missing model, missing id, duplicate ids, and order drift", () => {
-    assert.throws(() => validateShapeContract({
-      label: "missing-model",
-      expectedModel: "provider/model-a",
-      expectedThinking: "low",
-      expectedFinalChildren: 1,
-      requireUniqueSiblingIds: false,
-      requireThinking: true,
-      shape: collectSubagentEvents([{ type: "tool_execution_end", toolName: "subagent", result: { details: { results: [{ id: "child-a", thinking: "low" }] } }, isError: false }]),
-    }), /missing model/u);
+    assert.throws(
+      () =>
+        validateShapeContract({
+          label: "missing-model",
+          expectedModel: "provider/model-a",
+          expectedThinking: "low",
+          expectedFinalChildren: 1,
+          requireUniqueSiblingIds: false,
+          requireThinking: true,
+          shape: collectSubagentEvents([
+            {
+              type: "tool_execution_end",
+              toolName: "subagent",
+              result: {
+                details: { results: [{ id: "child-a", thinking: "low" }] },
+              },
+              isError: false,
+            },
+          ]),
+        }),
+      /missing model/u,
+    );
 
-    assert.throws(() => validateShapeContract({
-      label: "missing-id",
-      expectedModel: "provider/model-a",
-      expectedThinking: "low",
-      expectedFinalChildren: 1,
-      requireUniqueSiblingIds: false,
-      requireThinking: true,
-      shape: collectSubagentEvents([{ type: "tool_execution_end", toolName: "subagent", result: { details: { results: [{ model: "provider/model-a", thinking: "low" }] } }, isError: false }]),
-    }), /missing upstream identity/u);
+    assert.throws(
+      () =>
+        validateShapeContract({
+          label: "missing-id",
+          expectedModel: "provider/model-a",
+          expectedThinking: "low",
+          expectedFinalChildren: 1,
+          requireUniqueSiblingIds: false,
+          requireThinking: true,
+          shape: collectSubagentEvents([
+            {
+              type: "tool_execution_end",
+              toolName: "subagent",
+              result: {
+                details: {
+                  results: [{ model: "provider/model-a", thinking: "low" }],
+                },
+              },
+              isError: false,
+            },
+          ]),
+        }),
+      /missing upstream identity/u,
+    );
 
-    assert.throws(() => validateShapeContract({
-      label: "duplicate-id",
-      expectedModel: "provider/model-a",
-      expectedThinking: "low",
-      expectedFinalChildren: 2,
-      requireUniqueSiblingIds: true,
-      requireThinking: true,
-      shape: collectSubagentEvents([{ type: "tool_execution_end", toolName: "subagent", result: { details: { results: [
-        { id: "same", model: "provider/model-a", thinking: "low" },
-        { id: "same", model: "provider/model-a", thinking: "low" },
-      ] } } }]),
-    }), /duplicate upstream identity/u);
+    assert.throws(
+      () =>
+        validateShapeContract({
+          label: "duplicate-id",
+          expectedModel: "provider/model-a",
+          expectedThinking: "low",
+          expectedFinalChildren: 2,
+          requireUniqueSiblingIds: true,
+          requireThinking: true,
+          shape: collectSubagentEvents([
+            {
+              type: "tool_execution_end",
+              toolName: "subagent",
+              result: {
+                details: {
+                  results: [
+                    { id: "same", model: "provider/model-a", thinking: "low" },
+                    { id: "same", model: "provider/model-a", thinking: "low" },
+                  ],
+                },
+              },
+            },
+          ]),
+        }),
+      /duplicate upstream identity/u,
+    );
   });
 
   test("validateShapeContract preserves legitimate thinking absence", () => {
     const shape = collectSubagentEvents([
-      { type: "tool_execution_end", toolName: "subagent", result: { details: { results: [{ id: "child-a", model: "provider/no-thinking" }] } }, isError: false },
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        result: {
+          details: {
+            results: [{ id: "child-a", model: "provider/no-thinking" }],
+          },
+        },
+        isError: false,
+      },
     ]);
     validateShapeContract({
       label: "no-thinking",
@@ -609,10 +739,19 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   export function collectSubagentEvents(events) {
     return {
       partials: events
-        .filter((event) => event.type === "tool_execution_update" && event.toolName === "subagent")
+        .filter(
+          (event) =>
+            event.type === "tool_execution_update" &&
+            event.toolName === "subagent",
+        )
         .map((event) => event.partialResult),
       finals: events
-        .filter((event) => event.type === "tool_execution_end" && event.toolName === "subagent" && event.isError !== true)
+        .filter(
+          (event) =>
+            event.type === "tool_execution_end" &&
+            event.toolName === "subagent" &&
+            event.isError !== true,
+        )
         .map((event) => event.result),
     };
   }
@@ -627,24 +766,48 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   }
 
   export function validateShapeContract(options) {
-    assert.equal(options.shape.finals.length, 1, `${options.label}: expected exactly one final subagent tool result`);
+    assert.equal(
+      options.shape.finals.length,
+      1,
+      `${options.label}: expected exactly one final subagent tool result`,
+    );
     const finalChildren = options.shape.finals.flatMap(childRows);
     if (finalChildren.length !== options.expectedFinalChildren) {
-      throw new Error(`${options.label}: expected exactly ${options.expectedFinalChildren} final children, got ${finalChildren.length}`);
+      throw new Error(
+        `${options.label}: expected exactly ${options.expectedFinalChildren} final children, got ${finalChildren.length}`,
+      );
     }
     const finalIds = finalChildren.map(childIdentity);
     finalChildren.forEach((child, index) => {
-      if (!finalIds[index]) throw new Error(`${options.label}: child ${index} missing upstream identity`);
-      if (child.model !== options.expectedModel) throw new Error(`${options.label}: child ${finalIds[index]} missing model ${options.expectedModel}`);
-      if (options.requireThinking && child.thinking !== options.expectedThinking) {
-        throw new Error(`${options.label}: child ${finalIds[index]} missing thinking ${options.expectedThinking}`);
+      if (!finalIds[index])
+        throw new Error(
+          `${options.label}: child ${index} missing upstream identity`,
+        );
+      if (child.model !== options.expectedModel)
+        throw new Error(
+          `${options.label}: child ${finalIds[index]} missing model ${options.expectedModel}`,
+        );
+      if (
+        options.requireThinking &&
+        child.thinking !== options.expectedThinking
+      ) {
+        throw new Error(
+          `${options.label}: child ${finalIds[index]} missing thinking ${options.expectedThinking}`,
+        );
       }
       if (!options.requireThinking && "thinking" in child) {
-        throw new Error(`${options.label}: expected thinking absence but found ${child.thinking}`);
+        throw new Error(
+          `${options.label}: expected thinking absence but found ${child.thinking}`,
+        );
       }
     });
-    if (options.requireUniqueSiblingIds && new Set(finalIds).size !== finalIds.length) {
-      throw new Error(`${options.label}: duplicate upstream identity in final children`);
+    if (
+      options.requireUniqueSiblingIds &&
+      new Set(finalIds).size !== finalIds.length
+    ) {
+      throw new Error(
+        `${options.label}: duplicate upstream identity in final children`,
+      );
     }
     if (options.shape.partials.length === 0) {
       console.log(`${options.label}: upstream emitted no partial results`);
@@ -657,13 +820,26 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
         continue;
       }
       partialChildren.forEach((child, index) => {
-        if (!partialIds[index]) throw new Error(`${options.label}: partial child ${index} missing upstream identity`);
-        if (child.model !== options.expectedModel) throw new Error(`${options.label}: partial child ${partialIds[index]} missing model ${options.expectedModel}`);
-        if (options.requireThinking && child.thinking !== options.expectedThinking) {
-          throw new Error(`${options.label}: partial child ${partialIds[index]} missing thinking ${options.expectedThinking}`);
+        if (!partialIds[index])
+          throw new Error(
+            `${options.label}: partial child ${index} missing upstream identity`,
+          );
+        if (child.model !== options.expectedModel)
+          throw new Error(
+            `${options.label}: partial child ${partialIds[index]} missing model ${options.expectedModel}`,
+          );
+        if (
+          options.requireThinking &&
+          child.thinking !== options.expectedThinking
+        ) {
+          throw new Error(
+            `${options.label}: partial child ${partialIds[index]} missing thinking ${options.expectedThinking}`,
+          );
         }
         if (!options.requireThinking && "thinking" in child) {
-          throw new Error(`${options.label}: partial child ${partialIds[index]} unexpectedly had thinking ${child.thinking}`);
+          throw new Error(
+            `${options.label}: partial child ${partialIds[index]} unexpectedly had thinking ${child.thinking}`,
+          );
         }
       });
       assert.deepEqual(partialIds, finalIds.slice(0, partialIds.length));
@@ -678,7 +854,6 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
 - [ ] **Step 4: Implement the live Pi runner**
 
   Add a runtime entrypoint that:
-
   1. Reads the exact root `pi-subagents` pin and installed package root using
      normal Node resolution.
   2. Creates a temporary project with local `.pi/agents/contract-thinking.md`
@@ -755,11 +930,12 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
     node scripts/verify-pi-subagents-child-metadata.mjs
   ```
 
-  Expected: tests PASS; the live script prints the four required `metadata
-  contract passed` lines and `no-thinking: absence contract passed`. If any
-  supported shape lacks model, thinking, identity, uniqueness, or ordering, or if
-  no configured no-thinking model can prove absence semantics, stop the PR,
-  capture the failing command output, and open/link a focused upstream blocker.
+  Expected: tests PASS; the live script prints the four required
+  `metadata contract passed` lines and `no-thinking: absence contract passed`.
+  If any supported shape lacks model, thinking, identity, uniqueness, or
+  ordering, or if no configured no-thinking model can prove absence semantics,
+  stop the PR, capture the failing command output, and open/link a focused
+  upstream blocker.
 
 - [ ] **Step 6: Commit Task 3**
 
@@ -787,8 +963,8 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   `PI_PACKAGES`.
 - Preserves: existing packed artifact checks for Patchmill initialization and Pi
   runtime packages.
-- Produces: packed npm and Nix installed checks that prove `pi-subagents` version
-  agreement, manifest extension files, and run-once extension order.
+- Produces: packed npm and Nix installed checks that prove `pi-subagents`
+  version agreement, manifest extension files, and run-once extension order.
 
 - [ ] **Step 1: Extend packed npm smoke checks**
 
@@ -797,16 +973,30 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   ```js
   const PI_SUBAGENTS_PACKAGE = "pi-subagents";
 
-  function assertPiSubagentsInstalled({ projectRequire, nodeModulesDir, rootPin }) {
-    const packagePath = join(nodeModulesDir, PI_SUBAGENTS_PACKAGE, "package.json");
-    if (!existsSync(packagePath)) throw new Error(`Could not locate ${packagePath}`);
+  function assertPiSubagentsInstalled({
+    projectRequire,
+    nodeModulesDir,
+    rootPin,
+  }) {
+    const packagePath = join(
+      nodeModulesDir,
+      PI_SUBAGENTS_PACKAGE,
+      "package.json",
+    );
+    if (!existsSync(packagePath))
+      throw new Error(`Could not locate ${packagePath}`);
     const manifest = JSON.parse(readFileSync(packagePath, "utf8"));
     if (manifest.version !== rootPin) {
-      throw new Error(`${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} but package.json pins ${rootPin}`);
+      throw new Error(
+        `${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} but package.json pins ${rootPin}`,
+      );
     }
     for (const extension of manifest.pi?.extensions ?? []) {
       const extensionPath = join(dirname(packagePath), extension);
-      if (!existsSync(extensionPath)) throw new Error(`Missing ${PI_SUBAGENTS_PACKAGE} extension: ${extensionPath}`);
+      if (!existsSync(extensionPath))
+        throw new Error(
+          `Missing ${PI_SUBAGENTS_PACKAGE} extension: ${extensionPath}`,
+        );
     }
     projectRequire.resolve(`${PI_SUBAGENTS_PACKAGE}/package.json`);
   }
@@ -835,14 +1025,30 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   `$out/share/${pname}/node_modules/pi-subagents/package.json`, and checks:
 
   ```js
-  const rootPin = packageJson.dependencies['pi-subagents'];
-  if (piSubagents.version !== rootPin) throw new Error('pi-subagents version drift');
-  const extensionPaths = piSubagents.pi.extensions.map((entry) => join(piSubagentsRoot, entry));
-  const missing = extensionPaths.filter((extensionPath) => !existsSync(extensionPath));
-  if (missing.length > 0) throw new Error(`missing pi-subagents extension paths: ''${missing.join(', ')}`);
+  const rootPin = packageJson.dependencies["pi-subagents"];
+  if (piSubagents.version !== rootPin)
+    throw new Error("pi-subagents version drift");
+  const extensionPaths = piSubagents.pi.extensions.map((entry) =>
+    join(piSubagentsRoot, entry),
+  );
+  const missing = extensionPaths.filter(
+    (extensionPath) => !existsSync(extensionPath),
+  );
+  if (missing.length > 0)
+    throw new Error(
+      `missing pi-subagents extension paths: ''${missing.join(", ")}`,
+    );
   const profile = runOncePlanningPiProfile(skills, process.cwd());
-  assert.equal(realpathSync(profile.additionalExtensionPaths[0]), realpathSync(piSubagentsRoot));
-  assert.equal(profile.additionalExtensionPaths[1].replaceAll('\\', '/').endsWith('/extensions/todos.ts'), true);
+  assert.equal(
+    realpathSync(profile.additionalExtensionPaths[0]),
+    realpathSync(piSubagentsRoot),
+  );
+  assert.equal(
+    profile.additionalExtensionPaths[1]
+      .replaceAll("\\", "/")
+      .endsWith("/extensions/todos.ts"),
+    true,
+  );
   ```
 
   Import `readFileSync`, `realpathSync`, and `strict as assert` in the snippet
@@ -972,7 +1178,8 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix
   Expected: every printed `pi-subagents` value is the same exact version,
   expected `0.37.2` unless Task 1 documented a newer first-passing release.
 
-- [ ] **Step 6: Commit validation fixes if any, then ensure the final branch is clean except intended changes**
+- [ ] **Step 6: Commit validation fixes if any, then ensure the final branch is
+      clean except intended changes**
 
   If validation fixes changed files, run:
 

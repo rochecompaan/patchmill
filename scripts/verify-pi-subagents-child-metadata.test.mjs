@@ -82,7 +82,9 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
             type: "tool_execution_end",
             toolName: "subagent",
             result: {
-              details: { results: [{ model: "provider/model-a", thinking: "low" }] },
+              details: {
+                results: [{ model: "provider/model-a", thinking: "low" }],
+              },
             },
             isError: false,
           },
@@ -129,9 +131,15 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
           {
             type: "tool_execution_update",
             toolName: "subagent",
-            partialResult: { details: { results: finalResult.details.results.toReversed() } },
+            partialResult: {
+              details: { results: finalResult.details.results.toReversed() },
+            },
           },
-          { type: "tool_execution_end", toolName: "subagent", result: finalResult },
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: finalResult,
+          },
         ]),
       }),
     /ordering differs/u,
