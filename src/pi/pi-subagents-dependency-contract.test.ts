@@ -68,13 +68,48 @@ test("installed pi-subagents manifest declares existing extension files", () => 
 });
 
 test("pi loads the resolved pi-subagents extension package without model execution", () => {
+  const badResult = spawnSync(
+    "./node_modules/.bin/pi",
+    [
+      "--mode",
+      "json",
+      "--print",
+      "--no-session",
+      "--offline",
+      "-ne",
+      "-e",
+      join(rootDir, "node_modules", "not-pi-subagents"),
+      "/subagents-doctor",
+    ],
+    { cwd: rootDir, encoding: "utf8", timeout: 30_000 },
+  );
+  assert.notEqual(badResult.status, 0, badResult.stdout);
+  assert.match(
+    `${badResult.stdout}\n${badResult.stderr}`,
+    /Failed to load extension|Extension path does not exist/iu,
+  );
+
   const result = spawnSync(
     "./node_modules/.bin/pi",
-    ["--offline", "-e", resolvePiSubagentsPackageRoot(), "--help"],
+    [
+      "--mode",
+      "json",
+      "--print",
+      "--no-session",
+      "--offline",
+      "-ne",
+      "-e",
+      resolvePiSubagentsPackageRoot(),
+      "/subagents-doctor",
+    ],
     { cwd: rootDir, encoding: "utf8", timeout: 30_000 },
   );
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(
+    `${result.stdout}\n${result.stderr}`,
+    /Subagents doctor report/iu,
+  );
   assert.doesNotMatch(
     `${result.stdout}\n${result.stderr}`,
     /extension load failed|Cannot find module|ERR_MODULE_NOT_FOUND/iu,

@@ -25,7 +25,10 @@ upstream configuration resolution.
 - Pin one `pi-subagents` release that satisfies Patchmill's child metadata
   contract. The issue identifies `0.37.2` as the expected first candidate; the
   implementation should validate that candidate from the installed package and
-  pin the first release that passes the contract.
+  pin the first release that passes the contract. Implementation validated
+  `0.37.2` first, found the missing foreground row identity blocker, and then
+  selected `0.39.0` as the first release whose raw foreground rows satisfy the
+  required identity, model, thinking, and ordering contract.
 - Require effective child `model` and `thinking` metadata for every Patchmill-
   supported `pi-subagents` execution shape: direct, counted, parallel, and
   chain.
@@ -148,12 +151,14 @@ The exact root pin, both lockfile root dependency entries, both resolved
 ### Pi resource profile validation
 
 `src/pi/resource-profiles.ts` should continue resolving the dependency-owned
-`pi-subagents` package root through
-`require.resolve("pi-subagents/package.json")` and loading it before
-`extensions/todos.ts`. Tests should verify not only that the package root
-exists, but also that the installed `pi-subagents` package manifest exposes its
-declared Pi extension files and that those files exist at the paths Pi will
-load.
+`pi-subagents` package root through normal Node package resolution and loading
+it before `extensions/todos.ts`. Because modern `pi-subagents` packages do not
+export the `./package.json` subpath, Patchmill resolves the public package entry
+and reads the adjacent manifest instead of relying on
+`require.resolve("pi-subagents/package.json")`. Tests should verify not only
+that the package root exists, but also that the installed `pi-subagents` package
+manifest exposes its declared Pi extension files and that those files exist at
+the paths Pi will load.
 
 ### Dependency contract tests
 

@@ -22,8 +22,9 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
 
 ## Global Constraints
 
-- Pin one exact `pi-subagents` release; validate `0.37.2` first and pin the
-  first release that passes the contract.
+- Pin one exact `pi-subagents` release; `0.37.2` was validated first and blocked
+  on missing foreground row identity, and `0.39.0` is the first release that
+  passes the contract.
 - Do not infer child `model`, `thinking`, identity, or ordering from Patchmill
   configuration, parent Pi settings, agent frontmatter, defaults, array indexes,
   or local copies of upstream resolution logic.
@@ -56,7 +57,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
 ## File Structure
 
 - Modify `package.json`: replace `"pi-subagents": "^0.25.0"` with the passing
-  exact version, expected `"0.37.2"`.
+  exact version, `"0.39.0"`.
 - Modify `package-lock.json` and `npm-shrinkwrap.json`: regenerate from npm so
   root dependency entries and `node_modules/pi-subagents.version` agree with the
   exact pin.
@@ -124,7 +125,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   Run from the repository root:
 
   ```sh
-  npm pkg set dependencies.pi-subagents=0.37.2
+  npm pkg set dependencies.pi-subagents=0.39.0
   npm install --package-lock-only --ignore-scripts
   tmp_shrinkwrap="$(mktemp)"
   cp npm-shrinkwrap.json "$tmp_shrinkwrap"
@@ -136,10 +137,10 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   ```
 
   Expected: `package.json`, `package-lock.json`, and `npm-shrinkwrap.json`
-  change; `package.json.dependencies["pi-subagents"]` is exactly `"0.37.2"`;
+  change; `package.json.dependencies["pi-subagents"]` is exactly `"0.39.0"`;
   both lockfiles contain
-  `packages[""].dependencies["pi-subagents"] === "0.37.2"` and
-  `packages["node_modules/pi-subagents"].version === "0.37.2"`.
+  `packages[""].dependencies["pi-subagents"] === "0.39.0"` and
+  `packages["node_modules/pi-subagents"].version === "0.39.0"`.
 
 - [ ] **Step 2: Write the failing dependency contract tests**
 
@@ -371,7 +372,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   node --test src/pi/pi-subagents-dependency-contract.test.ts
   ```
 
-  Expected: PASS. If it fails because installed `0.37.2` omits a Pi extension
+  Expected: PASS. If it fails because installed `0.39.0` omits a Pi extension
   manifest, cannot be resolved through normal Node resolution, or cannot be
   loaded by `pi --mode json --offline -e <package-root> /subagents-doctor`, stop
   and open a focused upstream blocker instead of adding a Patchmill fallback.
@@ -1016,7 +1017,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   ```
 
   Expected: PASS and output includes a line equivalent to
-  `pi-subagents resolved 0.37.2 from <packed-project>/node_modules/pi-subagents/package.json`.
+  `pi-subagents resolved 0.39.0 from <packed-project>/node_modules/pi-subagents/package.json`.
 
 - [ ] **Step 3: Extend Nix install checks**
 
@@ -1176,7 +1177,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   ```
 
   Expected: every printed `pi-subagents` value is the same exact version,
-  expected `0.37.2` unless Task 1 documented a newer first-passing release.
+  expected `0.39.0`.
 
 - [ ] **Step 6: Commit validation fixes if any, then ensure the final branch is
       clean except intended changes**
