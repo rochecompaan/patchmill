@@ -36,12 +36,16 @@ function childRows(result) {
 }
 
 function childIdentity(row) {
-  return row?.id;
+  return Number.isSafeInteger(row?.index) && row.index >= 0
+    ? row.index
+    : undefined;
 }
 
 function validateChild({ child, id, label, expectedModel, expectedThinking, requireThinking, partial }) {
   const prefix = partial ? "partial child" : "child";
-  if (!id) throw new Error(`${label}: ${prefix} missing upstream identity`);
+  if (id === undefined) {
+    throw new Error(`${label}: ${prefix} missing upstream identity`);
+  }
   if (child?.model !== expectedModel) {
     throw new Error(`${label}: ${prefix} ${id} missing model ${expectedModel}`);
   }

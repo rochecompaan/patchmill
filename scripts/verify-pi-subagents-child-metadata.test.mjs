@@ -8,8 +8,8 @@ import {
 const finalResult = {
   details: {
     results: [
-      { id: "child-a", model: "provider/model-a", thinking: "low", content: "ok" },
-      { id: "child-b", model: "provider/model-a", thinking: "low", content: "ok" },
+      { index: 0, model: "provider/model-a", thinking: "low", content: "ok" },
+      { index: 1, model: "provider/model-a", thinking: "low", content: "ok" },
     ],
   },
 };
@@ -39,7 +39,7 @@ test("validateShapeContract matches partial and final rows by upstream identity"
   });
 });
 
-test("validateShapeContract fails missing model, missing id, duplicate ids, and order drift", () => {
+test("validateShapeContract fails missing model, missing index, duplicate indexes, and order drift", () => {
   assert.throws(
     () =>
       validateShapeContract({
@@ -53,7 +53,7 @@ test("validateShapeContract fails missing model, missing id, duplicate ids, and 
           {
             type: "tool_execution_end",
             toolName: "subagent",
-            result: { details: { results: [{ id: "child-a", thinking: "low" }] } },
+            result: { details: { results: [{ index: 0, thinking: "low" }] } },
             isError: false,
           },
         ]),
@@ -63,7 +63,7 @@ test("validateShapeContract fails missing model, missing id, duplicate ids, and 
   assert.throws(
     () =>
       validateShapeContract({
-        label: "missing-id",
+        label: "missing-index",
         expectedModel: "provider/model-a",
         expectedThinking: "low",
         expectedFinalChildren: 1,
@@ -85,7 +85,7 @@ test("validateShapeContract fails missing model, missing id, duplicate ids, and 
   assert.throws(
     () =>
       validateShapeContract({
-        label: "duplicate-id",
+        label: "duplicate-index",
         expectedModel: "provider/model-a",
         expectedThinking: "low",
         expectedFinalChildren: 2,
@@ -98,8 +98,8 @@ test("validateShapeContract fails missing model, missing id, duplicate ids, and 
             result: {
               details: {
                 results: [
-                  { id: "same", model: "provider/model-a", thinking: "low" },
-                  { id: "same", model: "provider/model-a", thinking: "low" },
+                  { index: 0, model: "provider/model-a", thinking: "low" },
+                  { index: 0, model: "provider/model-a", thinking: "low" },
                 ],
               },
             },
@@ -136,7 +136,7 @@ test("validateShapeContract preserves legitimate thinking absence", () => {
       type: "tool_execution_end",
       toolName: "subagent",
       result: {
-        details: { results: [{ id: "child-a", model: "provider/no-thinking" }] },
+        details: { results: [{ index: 0, model: "provider/no-thinking" }] },
       },
       isError: false,
     },
