@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -78,6 +78,11 @@ test(
       assert.equal(build.status, 0, build.stderr || build.stdout);
 
       const compiled = await import(pathToFileURL(compiledProfile).href);
+      const compiledPiPackage = await import(
+        pathToFileURL(
+          join(packageRoot, "dist", "src", "pi", "pi-subagents-package.js"),
+        ).href
+      );
       const profile = compiled.runOncePlanningPiProfile(skills, packageRoot);
       assert.deepEqual(
         profile.additionalExtensionPaths.map((path: string) =>
@@ -87,15 +92,11 @@ test(
       );
       const piSubagentsRoot = profile.additionalExtensionPaths[0];
       assert.equal(basename(piSubagentsRoot), "pi-subagents");
-      const piSubagentsManifest = JSON.parse(
-        readFileSync(join(piSubagentsRoot, "package.json"), "utf8"),
-      ) as { pi?: { extensions?: string[] } };
-      assert.ok((piSubagentsManifest.pi?.extensions ?? []).length > 0);
-      for (const extension of piSubagentsManifest.pi?.extensions ?? []) {
-        const extensionPath = join(piSubagentsRoot, extension);
-        assert.equal(existsSync(extensionPath), true);
-        assert.equal(statSync(extensionPath).isFile(), true);
-      }
+      assert.equal(
+        piSubagentsRoot,
+        compiledPiPackage.resolvePiSubagentsPackageRoot(),
+      );
+      assert.ok(compiledPiPackage.piSubagentsExtensionFiles().length > 0);
       assert.equal(
         profile.additionalExtensionPaths[1]
           ?.replaceAll("\\", "/")

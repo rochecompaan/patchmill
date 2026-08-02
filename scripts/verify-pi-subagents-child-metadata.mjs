@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertInstalledPiSubagentsMatchesRootPin,
+  piSubagentsExtensionFiles,
+  readRootPiSubagentsPin,
+  resolvePiSubagentsPackageRoot,
+} from "../src/pi/pi-subagents-package.ts";
 
-const require = createRequire(import.meta.url);
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export function collectSubagentEvents(events) {
@@ -154,37 +157,6 @@ export function validateShapeContract(options) {
   }
 }
 
-function readRootPin() {
-  const packageJson = JSON.parse(
-    readFileSync(join(rootDir, "package.json"), "utf8"),
-  );
-  const pin = packageJson.dependencies?.["pi-subagents"];
-  if (
-    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(pin ?? "")
-  ) {
-    throw new Error(
-      `pi-subagents must be an exact root pin; found ${pin ?? "missing"}`,
-    );
-  }
-  return pin;
-}
-
-function resolvePiSubagentsRoot() {
-  return dirname(require.resolve("pi-subagents"));
-}
-
-function assertInstalledPackage(pin, packageRoot) {
-  const manifestPath = join(packageRoot, "package.json");
-  if (!existsSync(manifestPath))
-    throw new Error(`missing pi-subagents manifest: ${manifestPath}`);
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (manifest.version !== pin) {
-    throw new Error(
-      `pi-subagents resolved ${manifest.version} but root pins ${pin}`,
-    );
-  }
-}
-
 function requiredEnvironment(name) {
   const value = process.env[name];
   if (!value)
@@ -285,9 +257,10 @@ function runShape({
 }
 
 async function main() {
-  const pin = readRootPin();
-  const packageRoot = resolvePiSubagentsRoot();
-  assertInstalledPackage(pin, packageRoot);
+  readRootPiSubagentsPin(join(rootDir, "package.json"));
+  assertInstalledPiSubagentsMatchesRootPin(join(rootDir, "package.json"));
+  piSubagentsExtensionFiles();
+  const packageRoot = resolvePiSubagentsPackageRoot();
   const model = requiredEnvironment("PATCHMILL_PI_SUBAGENTS_CONTRACT_MODEL");
   const thinking =
     process.env.PATCHMILL_PI_SUBAGENTS_CONTRACT_THINKING ?? "low";

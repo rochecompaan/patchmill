@@ -79,29 +79,17 @@ buildNpmPackageNode24 rec {
     (
       cd "$out/share/${pname}"
       ${nodejs_24}/bin/node --input-type=module -e "
-        import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-        import { join } from 'node:path';
+        import { realpathSync } from 'node:fs';
         import assert from 'node:assert/strict';
         import { runOncePlanningPiProfile } from './src/pi/resource-profiles.ts';
-        const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
-        const rootPin = packageJson.dependencies['pi-subagents'];
-        const piSubagentsRoot = './node_modules/pi-subagents';
-        const piSubagents = JSON.parse(readFileSync(join(piSubagentsRoot, 'package.json'), 'utf8'));
-        if (piSubagents.version !== rootPin) {
-          throw new Error('pi-subagents version drift');
-        }
-        const extensionPaths = piSubagents.pi?.extensions?.map(
-          (entry) => join(piSubagentsRoot, entry),
-        ) ?? [];
-        if (extensionPaths.length === 0) {
-          throw new Error('pi-subagents manifest declares no extensions');
-        }
-        const missing = extensionPaths.filter(
-          (extensionPath) => !existsSync(extensionPath) || !statSync(extensionPath).isFile(),
-        );
-        if (missing.length > 0) {
-          throw new Error(\`missing pi-subagents extension paths: \''${missing.join(', ')}\`);
-        }
+        import {
+          assertInstalledPiSubagentsMatchesRootPin,
+          piSubagentsExtensionFiles,
+          resolvePiSubagentsPackageRoot,
+        } from './src/pi/pi-subagents-package.ts';
+        assertInstalledPiSubagentsMatchesRootPin('./package.json');
+        piSubagentsExtensionFiles();
+        const piSubagentsRoot = resolvePiSubagentsPackageRoot();
         const skills = {
           triage: 'triage', planning: 'planning', implementation: 'implementation',
           developmentEnvironment: 'development-environment', toolchain: 'toolchain',

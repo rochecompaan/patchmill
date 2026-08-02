@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -10,47 +10,6 @@ import { getRootPins, PI_PACKAGES } from "./pi-dependency-upgrade-lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const PI_SUBAGENTS_PACKAGE = "pi-subagents";
-
-function assertPiSubagentsInstalled({
-  projectRequire,
-  nodeModulesDir,
-  rootPin,
-}) {
-  const packagePath = join(
-    nodeModulesDir,
-    PI_SUBAGENTS_PACKAGE,
-    "package.json",
-  );
-  if (!existsSync(packagePath)) {
-    throw new Error(`Could not locate ${packagePath}`);
-  }
-  const manifest = JSON.parse(readFileSync(packagePath, "utf8"));
-  if (manifest.version !== rootPin) {
-    throw new Error(
-      `${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} but package.json pins ${rootPin}`,
-    );
-  }
-  const packageRoot = dirname(packagePath);
-  const extensions = manifest.pi?.extensions;
-  if (!Array.isArray(extensions) || extensions.length === 0) {
-    throw new Error(
-      `${PI_SUBAGENTS_PACKAGE} manifest declares no Pi extensions`,
-    );
-  }
-  for (const extension of extensions) {
-    const extensionPath = join(packageRoot, extension);
-    if (!existsSync(extensionPath) || !statSync(extensionPath).isFile()) {
-      throw new Error(
-        `Missing ${PI_SUBAGENTS_PACKAGE} extension: ${extensionPath}`,
-      );
-    }
-  }
-  projectRequire.resolve(`${PI_SUBAGENTS_PACKAGE}`);
-  console.log(
-    `${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} from ${packagePath}`,
-  );
-  return packageRoot;
-}
 
 function run(command, args, options = {}) {
   console.log(`$ ${[command, ...args].join(" ")}`);
@@ -150,13 +109,27 @@ async function main() {
       console.log(`${name} resolved ${resolved.version} from ${packagePath}`);
     }
 
-    const piSubagentsRoot = assertPiSubagentsInstalled({
-      projectRequire,
-      nodeModulesDir,
-      rootPin: rootPackageJson.dependencies?.[PI_SUBAGENTS_PACKAGE],
-    });
     const patchmillPackageRoot = dirname(
       projectRequire.resolve("patchmill/package.json"),
+    );
+    const compiledPiPackage = await import(
+      pathToFileURL(
+        join(
+          patchmillPackageRoot,
+          "dist",
+          "src",
+          "pi",
+          "pi-subagents-package.js",
+        ),
+      ).href
+    );
+    compiledPiPackage.assertInstalledPiSubagentsMatchesRootPin(
+      join(patchmillPackageRoot, "package.json"),
+    );
+    compiledPiPackage.piSubagentsExtensionFiles();
+    const piSubagentsRoot = compiledPiPackage.resolvePiSubagentsPackageRoot();
+    console.log(
+      `${PI_SUBAGENTS_PACKAGE} resolved ${compiledPiPackage.readInstalledPiSubagentsManifest().version} from ${join(piSubagentsRoot, "package.json")}`,
     );
     const { runOncePlanningPiProfile } = await import(
       pathToFileURL(

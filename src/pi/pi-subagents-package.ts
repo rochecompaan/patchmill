@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 const require = createRequire(import.meta.url);
 export const PI_SUBAGENTS_PACKAGE_NAME = "pi-subagents";
@@ -56,7 +56,12 @@ export function resolvePiSubagentsPackageJson(): string {
 function joinPackageRoot(entry: string): string {
   const packageRoot = resolvePiSubagentsPackageRoot();
   const candidate = resolve(packageRoot, entry);
-  if (relative(packageRoot, candidate).startsWith("..")) {
+  const relativePath = relative(packageRoot, candidate);
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
     throw new Error(
       `${PI_SUBAGENTS_PACKAGE_NAME} path escapes package root: ${entry}`,
     );
