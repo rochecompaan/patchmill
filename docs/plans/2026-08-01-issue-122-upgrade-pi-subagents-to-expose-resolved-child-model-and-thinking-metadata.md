@@ -395,8 +395,9 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
 
   Expected: PASS. If it fails because installed `0.39.0` omits a Pi extension
   manifest, cannot be resolved through normal Node resolution, or cannot be
-  loaded by `pi --mode json --offline -e <package-root> /subagents-doctor`, stop
-  and open a focused upstream blocker instead of adding a Patchmill fallback.
+  loaded by deterministic RPC `get_commands` with explicit `-e <package-root>`,
+  stop and open a focused upstream blocker instead of adding a Patchmill
+  fallback.
 
 - [ ] **Step 6: Commit Task 1**
 
@@ -591,13 +592,13 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
     details: {
       results: [
         {
-          id: "child-a",
+          index: 0,
           model: "provider/model-a",
           thinking: "low",
           content: "ok",
         },
         {
-          id: "child-b",
+          index: 1,
           model: "provider/model-a",
           thinking: "low",
           content: "ok",
@@ -653,7 +654,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
               type: "tool_execution_end",
               toolName: "subagent",
               result: {
-                details: { results: [{ id: "child-a", thinking: "low" }] },
+                details: { results: [{ index: 0, thinking: "low" }] },
               },
               isError: false,
             },
@@ -665,7 +666,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
     assert.throws(
       () =>
         validateShapeContract({
-          label: "missing-id",
+          label: "missing-index",
           expectedModel: "provider/model-a",
           expectedThinking: "low",
           expectedFinalChildren: 1,
@@ -690,7 +691,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
     assert.throws(
       () =>
         validateShapeContract({
-          label: "duplicate-id",
+          label: "duplicate-index",
           expectedModel: "provider/model-a",
           expectedThinking: "low",
           expectedFinalChildren: 2,
@@ -703,8 +704,8 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
               result: {
                 details: {
                   results: [
-                    { id: "same", model: "provider/model-a", thinking: "low" },
-                    { id: "same", model: "provider/model-a", thinking: "low" },
+                    { index: 0, model: "provider/model-a", thinking: "low" },
+                    { index: 0, model: "provider/model-a", thinking: "low" },
                   ],
                 },
               },
@@ -722,7 +723,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
         toolName: "subagent",
         result: {
           details: {
-            results: [{ id: "child-a", model: "provider/no-thinking" }],
+            results: [{ index: 0, model: "provider/no-thinking" }],
           },
         },
         isError: false,
@@ -812,7 +813,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
     }
     const finalIds = finalChildren.map(childIdentity);
     finalChildren.forEach((child, index) => {
-      if (!finalIds[index])
+      if (finalIds[index] === undefined)
         throw new Error(
           `${options.label}: child ${index} missing upstream identity`,
         );
@@ -853,7 +854,7 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
         continue;
       }
       partialChildren.forEach((child, index) => {
-        if (!partialIds[index])
+        if (partialIds[index] === undefined)
           throw new Error(
             `${options.label}: partial child ${index} missing upstream identity`,
           );

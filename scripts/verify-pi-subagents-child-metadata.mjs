@@ -234,6 +234,7 @@ function runShape({
     "--print",
     "--no-session",
     "--approve",
+    "--no-context-files",
     "-ne",
     "--no-prompt-templates",
     "-e",
