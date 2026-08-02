@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   collectSubagentEvents,
+  reportedThinkingModel,
   validateShapeContract,
 } from "./verify-pi-subagents-child-metadata.mjs";
 
@@ -13,6 +14,13 @@ const finalResult = {
     ],
   },
 };
+
+test("reportedThinkingModel matches the Pi model argument emitted for an explicit fixture thinking level", () => {
+  assert.equal(
+    reportedThinkingModel("provider/model-a", "low"),
+    "provider/model-a:low",
+  );
+});
 
 test("validateShapeContract matches partial and final rows by upstream identity", () => {
   const shape = collectSubagentEvents([

@@ -144,6 +144,12 @@ function requiredEnvironment(name) {
   return value;
 }
 
+// pi-subagents reports the exact Pi model argument it launches. This fixture
+// explicitly selects its thinking level instead of relying on parent settings.
+export function reportedThinkingModel(model, thinking) {
+  return `${model}:${thinking}`;
+}
+
 function agentDefinition({ name, model, thinking }) {
   return `---\nname: ${name}\ndescription: Contract fixture agent for pi-subagents metadata validation\nmodel: ${model}\n${thinking ? `thinking: ${thinking}\n` : ""}tools: bash\nsystemPromptMode: replace\ninheritProjectContext: false\ninheritSkills: false\n---\n\nReturn exactly the short text requested by the parent. Do not call tools.\n`;
 }
@@ -231,7 +237,15 @@ async function main() {
       writeFile(join(legacyAgentsDir, "contract-thinking.md"), thinkingAgent),
       writeFile(join(legacyAgentsDir, "contract-no-thinking.md"), noThinkingAgent),
     ]);
-    const common = { cwd, agentsDir, packageRoot, expectedModel: model, expectedThinking: thinking, requireThinking: true, parentModel };
+    const common = {
+      cwd,
+      agentsDir,
+      packageRoot,
+      expectedModel: reportedThinkingModel(model, thinking),
+      expectedThinking: thinking,
+      requireThinking: true,
+      parentModel,
+    };
     runShape({ ...common, label: "direct", expectedFinalChildren: 1, input: { agent: "contract-thinking", task: "Return the word direct.", context: "fresh" } });
     runShape({ ...common, label: "counted", expectedFinalChildren: 2, input: { tasks: [{ agent: "contract-thinking", task: "Return the word counted.", count: 2 }], concurrency: 2, context: "fresh" } });
     runShape({ ...common, label: "parallel", expectedFinalChildren: 3, input: { tasks: [{ agent: "contract-thinking", task: "Return parallel a." }, { agent: "contract-thinking", task: "Return repeated parallel.", count: 2 }], concurrency: 2, context: "fresh" } });
