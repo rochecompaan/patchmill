@@ -220,33 +220,49 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   });
 
   test("pi can load the resolved pi-subagents extension package without model execution", () => {
-    const result = spawnSync(
+    const badResult = spawnSync(
       "./node_modules/.bin/pi",
       [
         "--mode",
         "json",
+        "--print",
         "--no-session",
         "--offline",
+        "-ne",
+        "-e",
+        join(rootDir, "node_modules", "not-pi-subagents"),
+        "/subagents-doctor",
+      ],
+      { cwd: rootDir, encoding: "utf8", timeout: 30_000 },
+    );
+    assert.notEqual(badResult.status, 0, badResult.stdout);
+
+    const result = spawnSync(
+      "./node_modules/.bin/pi",
+      [
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--offline",
+        "-ne",
         "-e",
         resolvePiSubagentsPackageRoot(),
-        "/subagents-doctor",
       ],
       {
         cwd: rootDir,
         encoding: "utf8",
+        input: '{"type":"get_commands"}\n',
         timeout: 30_000,
+        env: Object.fromEntries(
+          Object.entries(process.env).filter(
+            ([name]) => !name.startsWith("PI_SUBAGENT_"),
+          ),
+        ),
       },
     );
     assert.equal(result.error, undefined);
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(
-      `${result.stdout}\n${result.stderr}`,
-      /subagents|doctor|runtime paths/iu,
-    );
-    assert.doesNotMatch(
-      `${result.stdout}\n${result.stderr}`,
-      /Unknown command|No such command|extension load failed/iu,
-    );
+    assert.match(`${result.stdout}\n${result.stderr}`, /subagents-doctor/iu);
   });
   ```
 
@@ -743,6 +759,10 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
 
   ```js
   export function collectSubagentEvents(events) {
+    const subagentFinals = events.filter(
+      (event) =>
+        event.type === "tool_execution_end" && event.toolName === "subagent",
+    );
     return {
       partials: events
         .filter(
@@ -751,14 +771,14 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
             event.toolName === "subagent",
         )
         .map((event) => event.partialResult),
-      finals: events
+      finals: subagentFinals
         .filter(
-          (event) =>
-            event.type === "tool_execution_end" &&
-            event.toolName === "subagent" &&
-            event.isError !== true,
+          (event) => event.isError !== true && event.result?.isError !== true,
         )
         .map((event) => event.result),
+      failures: subagentFinals.filter(
+        (event) => event.isError === true || event.result?.isError === true,
+      ),
     };
   }
 
@@ -768,10 +788,17 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   }
 
   function childIdentity(row) {
-    return row?.id;
+    return Number.isSafeInteger(row?.index) && row.index >= 0
+      ? row.index
+      : undefined;
   }
 
   export function validateShapeContract(options) {
+    assert.equal(
+      options.shape.failures?.length ?? 0,
+      0,
+      `${options.label}: expected no failed subagent tool results`,
+    );
     assert.equal(
       options.shape.finals.length,
       1,

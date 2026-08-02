@@ -116,7 +116,11 @@ test("pi loads the resolved pi-subagents extension package without model executi
         timeout: 30_000,
         maxBuffer: 10 * 1024 * 1024,
         env: {
-          ...process.env,
+          ...Object.fromEntries(
+            Object.entries(process.env).filter(
+              ([name]) => !name.startsWith("PI_SUBAGENT_"),
+            ),
+          ),
           HOME: homeDir,
           XDG_CONFIG_HOME: join(homeDir, ".config"),
         },

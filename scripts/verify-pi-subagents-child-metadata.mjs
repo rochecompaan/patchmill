@@ -12,6 +12,10 @@ const require = createRequire(import.meta.url);
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export function collectSubagentEvents(events) {
+  const subagentFinals = events.filter(
+    (event) =>
+      event.type === "tool_execution_end" && event.toolName === "subagent",
+  );
   return {
     partials: events
       .filter(
@@ -20,15 +24,14 @@ export function collectSubagentEvents(events) {
           event.toolName === "subagent",
       )
       .map((event) => event.partialResult),
-    finals: events
+    finals: subagentFinals
       .filter(
-        (event) =>
-          event.type === "tool_execution_end" &&
-          event.toolName === "subagent" &&
-          event.isError !== true &&
-          event.result?.isError !== true,
+        (event) => event.isError !== true && event.result?.isError !== true,
       )
       .map((event) => event.result),
+    failures: subagentFinals.filter(
+      (event) => event.isError === true || event.result?.isError === true,
+    ),
   };
 }
 
@@ -90,6 +93,11 @@ function assertPartialIdsInFinalOrder(label, partialIds, finalIds) {
 }
 
 export function validateShapeContract(options) {
+  assert.equal(
+    options.shape.failures?.length ?? 0,
+    0,
+    `${options.label}: expected no failed subagent tool results`,
+  );
   assert.equal(
     options.shape.finals.length,
     1,

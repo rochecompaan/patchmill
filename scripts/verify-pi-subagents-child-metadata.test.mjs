@@ -202,7 +202,44 @@ test("validateShapeContract rejects failed tool results and child exits", () => 
           },
         ]),
       }),
-    /expected exactly one final subagent tool result/u,
+    /expected no failed subagent tool results/u,
+  );
+  assert.throws(
+    () =>
+      validateShapeContract({
+        label: "failed-then-successful-tool-result",
+        expectedModel: "provider/model-a",
+        expectedThinking: "low",
+        expectedFinalChildren: 1,
+        requireUniqueSiblingIds: false,
+        requireThinking: true,
+        shape: collectSubagentEvents([
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: { isError: true, details: { results: [] } },
+            isError: false,
+          },
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: {
+              details: {
+                results: [
+                  {
+                    index: 0,
+                    model: "provider/model-a",
+                    thinking: "low",
+                    exitCode: 0,
+                  },
+                ],
+              },
+            },
+            isError: false,
+          },
+        ]),
+      }),
+    /expected no failed subagent tool results/u,
   );
   assert.throws(
     () =>
