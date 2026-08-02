@@ -69,6 +69,10 @@ export default defineConfig({
               label: "Workflow artifacts",
               slug: "using-patchmill/workflow-artifacts",
             },
+            {
+              label: "Interactive skills",
+              slug: "using-patchmill/interactive-skills",
+            },
           ],
         },
         {

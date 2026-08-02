@@ -55,6 +55,14 @@ patchmill init --skills none
 patchmill init --skills path:project-skills
 ```
 
+## User-global interactive skills
+
+The separately installed human tools `patchmill-plan`, `patchmill-upload`,
+`patchmill-label`, and `patchmill-cleanup` are not configured workflow entry
+points. Project skill updates do not manage them. See
+[Interactive skills](/using-patchmill/interactive-skills/) for installation,
+invocation, authority boundaries, and handoffs.
+
 ## Entry points and supporting skills
 
 The `skills` keys in `patchmill.config.json` are workflow entry points, not the
