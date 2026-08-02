@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -89,29 +96,63 @@ test("pi loads the resolved pi-subagents extension package without model executi
     /Failed to load extension|Extension path does not exist/iu,
   );
 
-  const result = spawnSync(
-    "./node_modules/.bin/pi",
-    [
-      "--mode",
-      "json",
-      "--print",
-      "--no-session",
-      "--offline",
-      "-ne",
-      "-e",
-      resolvePiSubagentsPackageRoot(),
-      "/subagents-doctor",
-    ],
-    { cwd: rootDir, encoding: "utf8", timeout: 30_000 },
-  );
-  assert.equal(result.error, undefined);
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(
-    `${result.stdout}\n${result.stderr}`,
-    /Subagents doctor report/iu,
-  );
-  assert.doesNotMatch(
-    `${result.stdout}\n${result.stderr}`,
-    /extension load failed|Cannot find module|ERR_MODULE_NOT_FOUND/iu,
-  );
+  const homeDir = mkdtempSync(join(tmpdir(), "patchmill-pi-subagents-rpc-"));
+  try {
+    const result = spawnSync(
+      "./node_modules/.bin/pi",
+      [
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--offline",
+        "-ne",
+        "-e",
+        resolvePiSubagentsPackageRoot(),
+      ],
+      {
+        cwd: rootDir,
+        encoding: "utf8",
+        input: '{"type":"get_commands"}\n',
+        timeout: 30_000,
+        maxBuffer: 10 * 1024 * 1024,
+        env: {
+          ...process.env,
+          HOME: homeDir,
+          XDG_CONFIG_HOME: join(homeDir, ".config"),
+        },
+      },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const responses = result.stdout
+      .split("\n")
+      .filter((line) => line.trim().length > 0)
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            type?: string;
+            command?: string;
+            success?: boolean;
+            data?: { commands?: Array<{ name?: string; source?: string }> };
+          },
+      );
+    const commandResponse = responses.find(
+      (response) =>
+        response.type === "response" && response.command === "get_commands",
+    );
+    assert.equal(commandResponse?.success, true, result.stdout);
+    assert.ok(
+      commandResponse?.data?.commands?.some(
+        (command) =>
+          command.name === "subagents-doctor" && command.source === "extension",
+      ),
+      result.stdout,
+    );
+    assert.doesNotMatch(
+      `${result.stdout}\n${result.stderr}`,
+      /extension load failed|Cannot find module|ERR_MODULE_NOT_FOUND/iu,
+    );
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+  }
 });

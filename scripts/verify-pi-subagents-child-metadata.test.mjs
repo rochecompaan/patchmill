@@ -171,6 +171,72 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
   );
 });
 
+test("validateShapeContract rejects failed tool results and child exits", () => {
+  assert.throws(
+    () =>
+      validateShapeContract({
+        label: "failed-tool-result",
+        expectedModel: "provider/model-a",
+        expectedThinking: "low",
+        expectedFinalChildren: 1,
+        requireUniqueSiblingIds: false,
+        requireThinking: true,
+        shape: collectSubagentEvents([
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: {
+              isError: true,
+              details: {
+                results: [
+                  {
+                    index: 0,
+                    model: "provider/model-a",
+                    thinking: "low",
+                    exitCode: 1,
+                  },
+                ],
+              },
+            },
+            isError: false,
+          },
+        ]),
+      }),
+    /expected exactly one final subagent tool result/u,
+  );
+  assert.throws(
+    () =>
+      validateShapeContract({
+        label: "failed-child-exit",
+        expectedModel: "provider/model-a",
+        expectedThinking: "low",
+        expectedFinalChildren: 1,
+        requireUniqueSiblingIds: false,
+        requireThinking: true,
+        shape: collectSubagentEvents([
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: {
+              details: {
+                results: [
+                  {
+                    index: 0,
+                    model: "provider/model-a",
+                    thinking: "low",
+                    exitCode: 1,
+                  },
+                ],
+              },
+            },
+            isError: false,
+          },
+        ]),
+      }),
+    /exited with code 1/u,
+  );
+});
+
 test("validateShapeContract preserves legitimate thinking absence", () => {
   const shape = collectSubagentEvents([
     {

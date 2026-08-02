@@ -25,7 +25,8 @@ export function collectSubagentEvents(events) {
         (event) =>
           event.type === "tool_execution_end" &&
           event.toolName === "subagent" &&
-          event.isError !== true,
+          event.isError !== true &&
+          event.result?.isError !== true,
       )
       .map((event) => event.result),
   };
@@ -54,6 +55,11 @@ function validateChild({
   const prefix = partial ? "partial child" : "child";
   if (id === undefined) {
     throw new Error(`${label}: ${prefix} missing upstream identity`);
+  }
+  if (child?.exitCode !== undefined && child.exitCode !== 0) {
+    throw new Error(
+      `${label}: ${prefix} ${id} exited with code ${child.exitCode}`,
+    );
   }
   if (child?.model !== expectedModel) {
     throw new Error(`${label}: ${prefix} ${id} missing model ${expectedModel}`);

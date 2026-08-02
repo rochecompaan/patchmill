@@ -61,10 +61,10 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
 - Modify `package-lock.json` and `npm-shrinkwrap.json`: regenerate from npm so
   root dependency entries and `node_modules/pi-subagents.version` agree with the
   exact pin.
-- Create `src/pi/pi-subagents-package.ts`: shared helpers that resolve
-  `pi-subagents/package.json` via Node resolution, read the installed manifest,
-  assert the installed version equals the exact root pin, and return declared Pi
-  extension file paths that exist as regular files.
+- Create `src/pi/pi-subagents-package.ts`: shared helpers that resolve the
+  public `pi-subagents` package entry via Node resolution, read the adjacent
+  installed manifest, assert the installed version equals the exact root pin,
+  and return declared Pi extension file paths that exist as regular files.
 - Create `src/pi/pi-subagents-dependency-contract.test.ts`: automated tests for
   exact root pin parsing, installed package version agreement, lockfile and
   shrinkwrap agreement, manifest extension declarations, and normal Pi
@@ -308,12 +308,17 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
     return spec;
   }
 
-  export function resolvePiSubagentsPackageJson(): string {
-    return require.resolve(`${PI_SUBAGENTS_PACKAGE_NAME}/package.json`);
+  /**
+   * Finds the package directory through the public package entry. pi-subagents
+   * intentionally does not export package.json, so resolving that subpath would
+   * violate its export map.
+   */
+  export function resolvePiSubagentsPackageRoot(): string {
+    return dirname(require.resolve(PI_SUBAGENTS_PACKAGE_NAME));
   }
 
-  export function resolvePiSubagentsPackageRoot(): string {
-    return dirname(resolvePiSubagentsPackageJson());
+  export function resolvePiSubagentsPackageJson(): string {
+    return resolve(resolvePiSubagentsPackageRoot(), "package.json");
   }
 
   export function readInstalledPiSubagentsManifest(): PiSubagentsPackageManifest {
@@ -1172,7 +1177,9 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
     const json = JSON.parse(fs.readFileSync(file, 'utf8'));
     console.log(file, json.dependencies?.['pi-subagents'] ?? json.packages?.['']?.dependencies?.['pi-subagents'], json.packages?.['node_modules/pi-subagents']?.version ?? 'root');
   }
-  console.log('installed', JSON.parse(fs.readFileSync(require.resolve('pi-subagents/package.json'), 'utf8')).version);
+  const piSubagentsEntry = require.resolve('pi-subagents');
+  const piSubagentsManifest = require('node:path').join(require('node:path').dirname(piSubagentsEntry), 'package.json');
+  console.log('installed', JSON.parse(fs.readFileSync(piSubagentsManifest, 'utf8')).version);
   NODE
   ```
 
