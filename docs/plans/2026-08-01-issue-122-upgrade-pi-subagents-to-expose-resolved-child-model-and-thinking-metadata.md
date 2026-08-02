@@ -958,9 +958,9 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
 
   ```sh
   node --test scripts/verify-pi-subagents-child-metadata.test.mjs
-  PATCHMILL_PI_SUBAGENTS_CONTRACT_MODEL="anthropic/claude-sonnet-4-5" \
+  PATCHMILL_PI_SUBAGENTS_CONTRACT_MODEL="openai-codex/gpt-5.5" \
     PATCHMILL_PI_SUBAGENTS_CONTRACT_THINKING="low" \
-    PATCHMILL_PI_SUBAGENTS_CONTRACT_NO_THINKING_MODEL="openai/gpt-4o" \
+    PATCHMILL_PI_SUBAGENTS_CONTRACT_NO_THINKING_MODEL="openai-codex/gpt-5.5" \
     node scripts/verify-pi-subagents-child-metadata.mjs
   ```
 
@@ -1146,9 +1146,9 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
   ```sh
   node --test src/pi/resource-profiles.test.ts
   node --test src/pi/pi-subagents-dependency-contract.test.ts
-  PATCHMILL_PI_SUBAGENTS_CONTRACT_MODEL="anthropic/claude-sonnet-4-5" \
+  PATCHMILL_PI_SUBAGENTS_CONTRACT_MODEL="openai-codex/gpt-5.5" \
     PATCHMILL_PI_SUBAGENTS_CONTRACT_THINKING="low" \
-    PATCHMILL_PI_SUBAGENTS_CONTRACT_NO_THINKING_MODEL="openai/gpt-4o" \
+    PATCHMILL_PI_SUBAGENTS_CONTRACT_NO_THINKING_MODEL="openai-codex/gpt-5.5" \
     node scripts/verify-pi-subagents-child-metadata.mjs
   ```
 
@@ -1205,8 +1205,10 @@ and lockfiles, Pi JSON event stream mode, `pi-subagents`, Nix `buildNpmPackage`.
     const json = JSON.parse(fs.readFileSync(file, 'utf8'));
     console.log(file, json.dependencies?.['pi-subagents'] ?? json.packages?.['']?.dependencies?.['pi-subagents'], json.packages?.['node_modules/pi-subagents']?.version ?? 'root');
   }
+  const { dirname, join } = require('node:path');
   const piSubagentsEntry = require.resolve('pi-subagents');
-  const piSubagentsManifest = require('node:path').join(require('node:path').dirname(piSubagentsEntry), 'package.json');
+  const piSubagentsRoot = dirname(piSubagentsEntry);
+  const piSubagentsManifest = join(piSubagentsRoot, 'package.json');
   console.log('installed', JSON.parse(fs.readFileSync(piSubagentsManifest, 'utf8')).version);
   NODE
   ```
