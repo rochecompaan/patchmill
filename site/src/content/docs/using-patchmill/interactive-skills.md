@@ -1,12 +1,12 @@
 ---
 title: Interactive skills
 description: >-
-  Install and use Patchmill's human-controlled Pi skills for planning,
+  Install and use Patchmill's human-controlled coding-agent skills for planning,
   publication, labels, and issue-worktree cleanup.
 ---
 
-Patchmill ships four human-invoked, user-global Pi skills for the parts of an
-issue workflow that need distinct authorization.
+Patchmill ships four human-invoked, user-global coding-agent skills for the
+parts of an issue workflow that need distinct authorization.
 
 ## User-global, not project-local
 
@@ -21,10 +21,15 @@ uses.
 
 The npm package ships `skills/patchmill-plan`, `skills/patchmill-upload`,
 `skills/patchmill-label`, and `skills/patchmill-cleanup`. An operator or
-configuration manager must expose those directories as Pi user-global skills,
-normally under `~/.pi/agent/skills/`; Patchmill does not provide an installer.
+configuration manager must expose those directories through the active coding
+agent's user-global skill mechanism; Patchmill does not provide an installer.
+The exact installation path depends on the coding agent.
 
-Use Pi's built-in command names:
+For example, Pi discovers user-global skills under `~/.pi/agent/skills/`. Place
+or link the four packaged directories there when Pi is the active agent.
+
+Invocation syntax also depends on the coding agent. With Pi, use its built-in
+command names:
 
 ```text
 /skill:patchmill-plan 123
@@ -36,11 +41,13 @@ Use Pi's built-in command names:
 /skill:patchmill-cleanup
 ```
 
-Abbreviated handoff text such as `/patchmill-upload 123` means
-`/skill:patchmill-upload 123` in stock Pi. Explicit positive issue numbers
-override conversational context. In one repository conversation, a later skill
-can omit its number when exactly one issue remains unambiguous, as upload and
-cleanup do above; explicitly supplying `123` remains valid.
+Skill handoffs may use abbreviated text such as `/patchmill-upload 123` to name
+the next skill. The active coding agent determines how to invoke it. When Pi is
+the active agent, `/patchmill-upload 123` maps to Pi's stock
+`/skill:patchmill-upload 123` command. Explicit positive issue numbers override
+conversational context. In one repository conversation, a later skill can omit
+its number when exactly one issue remains unambiguous, as upload and cleanup do
+above; explicitly supplying `123` remains valid.
 
 ## Review-first handoffs
 
