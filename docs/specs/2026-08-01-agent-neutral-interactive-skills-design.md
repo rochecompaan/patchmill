@@ -93,7 +93,7 @@ updates, unattended resource profiles, and Patchmill workflow configuration.
 Treat each skill edit as a writing-skills RED-GREEN-REFACTOR cycle and complete
 one skill before editing the next:
 
-1. run five fresh no-guidance unattended controls and save verbatim output;
+1. run five fresh no-guidance interactive controls and save verbatim output;
 2. run five fresh controls using the current skill in a compatible non-Pi,
    human-controlled interactive context and verify the Pi-only guard causes the
    expected RED refusal;
