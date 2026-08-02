@@ -25,7 +25,7 @@ buildNpmPackageNode24 rec {
         || baseName == "result");
   };
 
-  npmDepsHash = "sha256-yJ69LGTBkO1AZ5ZCUkWyCG4jK7Dj3m0MEcWXCJHYs+c=";
+  npmDepsHash = "sha256-IEqWfzil2at3+q4pbA0iErzQAB7CnjyLrmn/iqt2jQ4=";
   npmDepsFetcherVersion = 2;
 
   dontNpmBuild = true;
@@ -79,22 +79,44 @@ buildNpmPackageNode24 rec {
     (
       cd "$out/share/${pname}"
       ${nodejs_24}/bin/node --input-type=module -e "
-        import { existsSync } from 'node:fs';
+        import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+        import { join } from 'node:path';
+        import assert from 'node:assert/strict';
         import { runOncePlanningPiProfile } from './src/pi/resource-profiles.ts';
+        const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
+        const rootPin = packageJson.dependencies['pi-subagents'];
+        const piSubagentsRoot = './node_modules/pi-subagents';
+        const piSubagents = JSON.parse(readFileSync(join(piSubagentsRoot, 'package.json'), 'utf8'));
+        if (piSubagents.version !== rootPin) {
+          throw new Error('pi-subagents version drift');
+        }
+        const extensionPaths = piSubagents.pi?.extensions?.map(
+          (entry) => join(piSubagentsRoot, entry),
+        ) ?? [];
+        if (extensionPaths.length === 0) {
+          throw new Error('pi-subagents manifest declares no extensions');
+        }
+        const missing = extensionPaths.filter(
+          (extensionPath) => !existsSync(extensionPath) || !statSync(extensionPath).isFile(),
+        );
+        if (missing.length > 0) {
+          throw new Error(\`missing pi-subagents extension paths: \''${missing.join(', ')}\`);
+        }
         const skills = {
           triage: 'triage', planning: 'planning', implementation: 'implementation',
           developmentEnvironment: 'development-environment', toolchain: 'toolchain',
           review: 'review', visualEvidence: 'visual-evidence', landing: 'landing',
         };
         const profile = runOncePlanningPiProfile(skills, process.cwd());
-        const missing = profile.additionalExtensionPaths.filter(
-          (extensionPath) => !existsSync(extensionPath),
+        assert.equal(
+          realpathSync(profile.additionalExtensionPaths[0]),
+          realpathSync(piSubagentsRoot),
         );
-        if (missing.length > 0) {
-          console.error('missing installed extension paths:', missing.join(', '));
-          process.exit(1);
-        }
-        console.log('all installed extension paths exist');
+        assert.equal(
+          profile.additionalExtensionPaths[1].replaceAll('\\\\', '/').endsWith('/extensions/todos.ts'),
+          true,
+        );
+        console.log('installed pi-subagents manifest and extension order verified');
       "
     )
     runHook postInstallCheck

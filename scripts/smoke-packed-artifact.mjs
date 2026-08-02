@@ -1,14 +1,42 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRootPins, PI_PACKAGES } from "./pi-dependency-upgrade-lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const PI_SUBAGENTS_PACKAGE = "pi-subagents";
+
+function assertPiSubagentsInstalled({ projectRequire, nodeModulesDir, rootPin }) {
+  const packagePath = join(nodeModulesDir, PI_SUBAGENTS_PACKAGE, "package.json");
+  if (!existsSync(packagePath)) {
+    throw new Error(`Could not locate ${packagePath}`);
+  }
+  const manifest = JSON.parse(readFileSync(packagePath, "utf8"));
+  if (manifest.version !== rootPin) {
+    throw new Error(
+      `${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} but package.json pins ${rootPin}`,
+    );
+  }
+  const packageRoot = dirname(packagePath);
+  const extensions = manifest.pi?.extensions;
+  if (!Array.isArray(extensions) || extensions.length === 0) {
+    throw new Error(`${PI_SUBAGENTS_PACKAGE} manifest declares no Pi extensions`);
+  }
+  for (const extension of extensions) {
+    const extensionPath = join(packageRoot, extension);
+    if (!existsSync(extensionPath) || !statSync(extensionPath).isFile()) {
+      throw new Error(`Missing ${PI_SUBAGENTS_PACKAGE} extension: ${extensionPath}`);
+    }
+  }
+  projectRequire.resolve(`${PI_SUBAGENTS_PACKAGE}`);
+  console.log(`${PI_SUBAGENTS_PACKAGE} resolved ${manifest.version} from ${packagePath}`);
+  return packageRoot;
+}
 
 function run(command, args, options = {}) {
   console.log(`$ ${[command, ...args].join(" ")}`);
@@ -84,9 +112,10 @@ async function main() {
       throw new Error(`Installed Patchmill skill is missing: ${skillPath}`);
     }
 
-    const rootPins = getRootPins(
-      JSON.parse(await readFile(join(rootDir, "package.json"), "utf8")),
+    const rootPackageJson = JSON.parse(
+      await readFile(join(rootDir, "package.json"), "utf8"),
     );
+    const rootPins = getRootPins(rootPackageJson);
     const projectRequire = createRequire(join(projectDir, "package.json"));
     const nodeModulesDir = dirname(
       dirname(projectRequire.resolve("patchmill/package.json")),
@@ -105,6 +134,44 @@ async function main() {
         );
       }
       console.log(`${name} resolved ${resolved.version} from ${packagePath}`);
+    }
+
+    const piSubagentsRoot = assertPiSubagentsInstalled({
+      projectRequire,
+      nodeModulesDir,
+      rootPin: rootPackageJson.dependencies?.[PI_SUBAGENTS_PACKAGE],
+    });
+    const patchmillPackageRoot = dirname(
+      projectRequire.resolve("patchmill/package.json"),
+    );
+    const { runOncePlanningPiProfile } = await import(
+      pathToFileURL(
+        join(patchmillPackageRoot, "dist", "src", "pi", "resource-profiles.js"),
+      ).href,
+    );
+    const skills = {
+      triage: "triage",
+      planning: "planning",
+      implementation: "implementation",
+      developmentEnvironment: "development-environment",
+      toolchain: "toolchain",
+      review: "review",
+      visualEvidence: "visual-evidence",
+      landing: "landing",
+    };
+    const profile = runOncePlanningPiProfile(skills, patchmillPackageRoot);
+    if (
+      realpathSync(profile.additionalExtensionPaths[0]) !==
+      realpathSync(piSubagentsRoot)
+    ) {
+      throw new Error("run-once profile does not load the installed pi-subagents package first");
+    }
+    if (
+      !profile.additionalExtensionPaths[1]
+        ?.replaceAll("\\", "/")
+        .endsWith("/extensions/todos.ts")
+    ) {
+      throw new Error("run-once profile does not load the Patchmill todos extension second");
     }
   } finally {
     if (process.env.PATCHMILL_KEEP_SMOKE_ARTIFACTS !== "1") {
