@@ -47,6 +47,31 @@ test("validateShapeContract matches partial and final rows by upstream identity"
   });
 });
 
+test("validateShapeContract accepts partial rows that are an ordered subset of final rows", () => {
+  const shape = collectSubagentEvents([
+    {
+      type: "tool_execution_update",
+      toolName: "subagent",
+      partialResult: { details: { results: [finalResult.details.results[1]] } },
+    },
+    {
+      type: "tool_execution_end",
+      toolName: "subagent",
+      result: finalResult,
+      isError: false,
+    },
+  ]);
+  validateShapeContract({
+    label: "counted",
+    expectedModel: "provider/model-a",
+    expectedThinking: "low",
+    expectedFinalChildren: 2,
+    requireUniqueSiblingIds: true,
+    requireThinking: true,
+    shape,
+  });
+});
+
 test("validateShapeContract fails missing model, missing index, duplicate indexes, and order drift", () => {
   assert.throws(
     () =>
@@ -142,7 +167,7 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
           },
         ]),
       }),
-    /ordering differs/u,
+    /out of order/u,
   );
 });
 

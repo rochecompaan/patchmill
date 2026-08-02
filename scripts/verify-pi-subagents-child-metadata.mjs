@@ -70,6 +70,19 @@ function validateChild({
   }
 }
 
+function assertPartialIdsInFinalOrder(label, partialIds, finalIds) {
+  let searchStart = 0;
+  for (const partialId of partialIds) {
+    const finalIndex = finalIds.indexOf(partialId, searchStart);
+    if (finalIndex === -1) {
+      throw new Error(
+        `${label}: partial child identity ${partialId} missing from final children or out of order`,
+      );
+    }
+    searchStart = finalIndex + 1;
+  }
+}
+
 export function validateShapeContract(options) {
   assert.equal(
     options.shape.finals.length,
@@ -123,11 +136,7 @@ export function validateShapeContract(options) {
         partial: true,
       }),
     );
-    assert.deepEqual(
-      partialIds,
-      finalIds.slice(0, partialIds.length),
-      `${options.label}: partial and final child ordering differs`,
-    );
+    assertPartialIdsInFinalOrder(options.label, partialIds, finalIds);
   }
 }
 
