@@ -8,6 +8,7 @@ import {
 
 const finalResult = {
   details: {
+    runId: "run-a",
     results: [
       { index: 0, model: "provider/model-a", thinking: "low", content: "ok" },
       { index: 1, model: "provider/model-a", thinking: "low", content: "ok" },
@@ -27,7 +28,9 @@ test("validateShapeContract matches partial and final rows by upstream identity"
     {
       type: "tool_execution_update",
       toolName: "subagent",
-      partialResult: { details: { results: finalResult.details.results } },
+      partialResult: {
+        details: { runId: "run-a", results: finalResult.details.results },
+      },
     },
     {
       type: "tool_execution_end",
@@ -52,7 +55,12 @@ test("validateShapeContract accepts partial rows that are an ordered subset of f
     {
       type: "tool_execution_update",
       toolName: "subagent",
-      partialResult: { details: { results: [finalResult.details.results[1]] } },
+      partialResult: {
+        details: {
+          runId: "run-a",
+          results: [finalResult.details.results[1]],
+        },
+      },
     },
     {
       type: "tool_execution_end",
@@ -72,6 +80,62 @@ test("validateShapeContract accepts partial rows that are an ordered subset of f
   });
 });
 
+test("validateShapeContract requires a final runId", () => {
+  assert.throws(
+    () =>
+      validateShapeContract({
+        label: "missing-run-id",
+        expectedModel: "provider/model-a",
+        expectedThinking: "low",
+        expectedFinalChildren: 2,
+        requireUniqueSiblingIds: true,
+        requireThinking: true,
+        shape: collectSubagentEvents([
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: { details: { results: finalResult.details.results } },
+            isError: false,
+          },
+        ]),
+      }),
+    /missing details\.runId/u,
+  );
+});
+
+test("validateShapeContract rejects partial runId drift", () => {
+  assert.throws(
+    () =>
+      validateShapeContract({
+        label: "run-id-drift",
+        expectedModel: "provider/model-a",
+        expectedThinking: "low",
+        expectedFinalChildren: 2,
+        requireUniqueSiblingIds: true,
+        requireThinking: true,
+        shape: collectSubagentEvents([
+          {
+            type: "tool_execution_update",
+            toolName: "subagent",
+            partialResult: {
+              details: {
+                runId: "run-b",
+                results: finalResult.details.results,
+              },
+            },
+          },
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: finalResult,
+            isError: false,
+          },
+        ]),
+      }),
+    /partial runId run-b does not match final runId run-a/u,
+  );
+});
+
 test("validateShapeContract fails missing model, missing index, duplicate indexes, and order drift", () => {
   assert.throws(
     () =>
@@ -86,7 +150,12 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
           {
             type: "tool_execution_end",
             toolName: "subagent",
-            result: { details: { results: [{ index: 0, thinking: "low" }] } },
+            result: {
+              details: {
+                runId: "run-a",
+                results: [{ index: 0, thinking: "low" }],
+              },
+            },
             isError: false,
           },
         ]),
@@ -108,6 +177,7 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
             toolName: "subagent",
             result: {
               details: {
+                runId: "run-a",
                 results: [{ model: "provider/model-a", thinking: "low" }],
               },
             },
@@ -132,6 +202,7 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
             toolName: "subagent",
             result: {
               details: {
+                runId: "run-a",
                 results: [
                   { index: 0, model: "provider/model-a", thinking: "low" },
                   { index: 0, model: "provider/model-a", thinking: "low" },
@@ -157,7 +228,10 @@ test("validateShapeContract fails missing model, missing index, duplicate indexe
             type: "tool_execution_update",
             toolName: "subagent",
             partialResult: {
-              details: { results: finalResult.details.results.toReversed() },
+              details: {
+                runId: "run-a",
+                results: finalResult.details.results.toReversed(),
+              },
             },
           },
           {
@@ -188,6 +262,7 @@ test("validateShapeContract rejects failed tool results and child exits", () => 
             result: {
               isError: true,
               details: {
+                runId: "run-a",
                 results: [
                   {
                     index: 0,
@@ -217,7 +292,10 @@ test("validateShapeContract rejects failed tool results and child exits", () => 
           {
             type: "tool_execution_end",
             toolName: "subagent",
-            result: { isError: true, details: { results: [] } },
+            result: {
+              isError: true,
+              details: { runId: "run-a", results: [] },
+            },
             isError: false,
           },
           {
@@ -225,6 +303,7 @@ test("validateShapeContract rejects failed tool results and child exits", () => 
             toolName: "subagent",
             result: {
               details: {
+                runId: "run-a",
                 results: [
                   {
                     index: 0,
@@ -256,6 +335,7 @@ test("validateShapeContract rejects failed tool results and child exits", () => 
             toolName: "subagent",
             result: {
               details: {
+                runId: "run-a",
                 results: [
                   {
                     index: 0,
@@ -280,7 +360,10 @@ test("validateShapeContract preserves legitimate thinking absence", () => {
       type: "tool_execution_end",
       toolName: "subagent",
       result: {
-        details: { results: [{ index: 0, model: "provider/no-thinking" }] },
+        details: {
+          runId: "run-a",
+          results: [{ index: 0, model: "provider/no-thinking" }],
+        },
       },
       isError: false,
     },

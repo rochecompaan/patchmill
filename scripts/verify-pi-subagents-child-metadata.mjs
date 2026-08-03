@@ -43,6 +43,12 @@ function childRows(result) {
   throw new Error("subagent result missing details.results child rows");
 }
 
+function resultRunId(result) {
+  const runId = result?.details?.runId;
+  if (typeof runId === "string" && runId.trim().length > 0) return runId;
+  throw new Error("subagent result missing details.runId");
+}
+
 function childIdentity(row) {
   return Number.isSafeInteger(row?.index) && row.index >= 0
     ? row.index
@@ -106,6 +112,7 @@ export function validateShapeContract(options) {
     1,
     `${options.label}: expected exactly one final subagent tool result`,
   );
+  const finalRunId = resultRunId(options.shape.finals[0]);
   const finalChildren = options.shape.finals.flatMap(childRows);
   if (finalChildren.length !== options.expectedFinalChildren) {
     throw new Error(
@@ -136,6 +143,12 @@ export function validateShapeContract(options) {
     console.log(`${options.label}: upstream emitted no partial results`);
   }
   for (const partial of options.shape.partials) {
+    const partialRunId = resultRunId(partial);
+    if (partialRunId !== finalRunId) {
+      throw new Error(
+        `${options.label}: partial runId ${partialRunId} does not match final runId ${finalRunId}`,
+      );
+    }
     const partialChildren = childRows(partial);
     const partialIds = partialChildren.map(childIdentity);
     if (partialIds.length === 0) {
