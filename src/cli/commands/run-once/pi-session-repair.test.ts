@@ -92,6 +92,77 @@ test("readPiRepairFacts reports an async subagent launch with running status as 
   assert.equal(facts.unresolvedSummary, "1 unresolved async subagent run");
 });
 
+test("readPiRepairFacts recognizes installed pi-subagents async and status result shapes", async () => {
+  const sessionPath = await writeSession([
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-launch",
+            name: "subagent",
+            arguments: { agent: "reviewer", task: "review", async: true },
+          },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-launch",
+        content: [
+          {
+            type: "text",
+            text: 'Async: reviewer [deadbeef]\nUse subagent({ action: "status", id: "deadbeef" }) when you need the result.',
+          },
+        ],
+        details: { mode: "single", runId: "deadbeef", asyncId: "deadbeef" },
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-status",
+            name: "subagent",
+            arguments: { action: "status", id: "deadbeef" },
+          },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-status",
+        content: [{ type: "text", text: "Run: deadbeef\nState: running" }],
+      },
+    },
+  ]);
+
+  const facts = await readPiRepairFacts({
+    sessionPath,
+    parseError: new Error("parse failed"),
+  });
+  assert.deepEqual(facts.subagentRuns, [
+    {
+      id: "deadbeef",
+      lastAction: "status",
+      lastState: "running",
+      unresolved: true,
+    },
+  ]);
+  assert.equal(facts.unresolvedSummary, "1 unresolved async subagent run");
+});
+
 test("readPiRepairFacts treats terminal subagent states as resolved", async () => {
   const sessionPath = await writeSession([
     {

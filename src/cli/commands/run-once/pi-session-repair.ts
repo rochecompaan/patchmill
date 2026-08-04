@@ -18,8 +18,13 @@ const TERMINAL_STATES = new Set([
   "canceled",
   "interrupted",
 ]);
-const RUN_ID_PATTERN = /\b(?:pm-subagents|pi-subagents)-[A-Za-z0-9_-]+\b/gu;
-const RUN_ID = /^\b(?:pm-subagents|pi-subagents)-[A-Za-z0-9_-]+\b$/u;
+const PREFIXED_RUN_ID_PATTERN =
+  /\b(?:pm-subagents|pi-subagents)-[A-Za-z0-9_-]+\b/gu;
+const BRACKETED_RUN_ID_PATTERN = /\[(?<id>[A-Za-z0-9][A-Za-z0-9_-]{5,})\]/gu;
+const LABELED_RUN_ID_PATTERN =
+  /\b(?:Run|Async id):\s*(?<id>[A-Za-z0-9][A-Za-z0-9_-]{5,})\b/gu;
+const RUN_ID =
+  /^(?:(?:pm-subagents|pi-subagents)-[A-Za-z0-9_-]+|[A-Za-z0-9][A-Za-z0-9_-]{5,})$/u;
 
 type JsonObject = Record<string, unknown>;
 
@@ -81,8 +86,20 @@ function runFacts(value: unknown): Array<{ id: string; state?: string }> {
   ];
 }
 
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
 function regexRunIds(text: string): string[] {
-  return [...text.matchAll(RUN_ID_PATTERN)].map((match) => match[0]);
+  return unique([
+    ...[...text.matchAll(PREFIXED_RUN_ID_PATTERN)].map((match) => match[0]),
+    ...[...text.matchAll(BRACKETED_RUN_ID_PATTERN)].flatMap((match) =>
+      match.groups?.id ? [match.groups.id] : [],
+    ),
+    ...[...text.matchAll(LABELED_RUN_ID_PATTERN)].flatMap((match) =>
+      match.groups?.id ? [match.groups.id] : [],
+    ),
+  ]);
 }
 
 function stateFromText(text: string): string | undefined {
@@ -92,10 +109,15 @@ function stateFromText(text: string): string | undefined {
   return normalizedState(match?.[1]);
 }
 
+function stringRunId(value: unknown): string | undefined {
+  return typeof value === "string" && RUN_ID.test(value) ? value : undefined;
+}
+
 function assistantToolCalls(content: unknown): Array<{
   id?: string;
   action?: string;
   asyncLaunched: boolean;
+  targetRunId?: string;
 }> {
   if (!Array.isArray(content)) return [];
   return content.flatMap((part) => {
@@ -108,11 +130,13 @@ function assistantToolCalls(content: unknown): Array<{
     }
     const args = isObject(part.arguments) ? part.arguments : {};
     const action = typeof args.action === "string" ? args.action : undefined;
+    const targetRunId = stringRunId(args.id ?? args.runId);
     return [
       {
         ...(typeof part.id === "string" ? { id: part.id } : {}),
         ...(action ? { action } : {}),
         asyncLaunched: args.async === true,
+        ...(targetRunId ? { targetRunId } : {}),
       },
     ];
   });
@@ -146,7 +170,10 @@ export async function readPiRepairFacts(input: {
   parseError: unknown;
 }): Promise<PiRepairFacts> {
   const runs = new Map<string, MutableRun>();
-  const calls = new Map<string, { action?: string; asyncLaunched: boolean }>();
+  const calls = new Map<
+    string,
+    { action?: string; asyncLaunched: boolean; targetRunId?: string }
+  >();
   let lastAssistantTextExcerpt: string | undefined;
   let source = "";
   try {
@@ -196,17 +223,26 @@ export async function readPiRepairFacts(input: {
         : undefined;
     const text = textContent(message.content);
     if (!text) continue;
-    const discovered = (() => {
-      try {
-        return runFacts(JSON.parse(text));
-      } catch {
-        const state = stateFromText(text);
-        return regexRunIds(text).map((id) => ({
-          id,
-          ...(state ? { state } : {}),
-        }));
-      }
-    })();
+    const textState = stateFromText(text);
+    const discovered = [
+      ...(() => {
+        try {
+          return runFacts(JSON.parse(text));
+        } catch {
+          return regexRunIds(text).map((id) => ({
+            id,
+            ...(textState ? { state: textState } : {}),
+          }));
+        }
+      })(),
+      ...runFacts(message.details),
+    ];
+    if (call?.targetRunId && discovered.length === 0) {
+      discovered.push({
+        id: call.targetRunId,
+        ...(textState ? { state: textState } : {}),
+      });
+    }
     for (const fact of discovered) {
       updateRun(fact.id, {
         ...(call?.action ? { lastAction: call.action } : {}),
