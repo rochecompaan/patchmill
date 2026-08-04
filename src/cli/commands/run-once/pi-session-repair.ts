@@ -2,14 +2,13 @@ import { readFile } from "node:fs/promises";
 import { finalJsonCandidates } from "./final-json.ts";
 import { errorFromUnknown } from "./pi-errors.ts";
 
-const UNRESOLVED_STATES = new Set([
+const SUBAGENT_STATES = [
   "queued",
+  "pending",
   "running",
   "paused",
   "needs-attention",
   "unknown",
-]);
-const TERMINAL_STATES = new Set([
   "completed",
   "complete",
   "done",
@@ -17,6 +16,32 @@ const TERMINAL_STATES = new Set([
   "cancelled",
   "canceled",
   "interrupted",
+  "stopped",
+  "rejected",
+] as const;
+type SubagentState = (typeof SUBAGENT_STATES)[number];
+const SUBAGENT_STATE_PATTERN = new RegExp(
+  `\\b(${SUBAGENT_STATES.join("|")})\\b`,
+  "iu",
+);
+const UNRESOLVED_STATES = new Set<SubagentState>([
+  "queued",
+  "pending",
+  "running",
+  "paused",
+  "needs-attention",
+  "unknown",
+]);
+const TERMINAL_STATES = new Set<SubagentState>([
+  "completed",
+  "complete",
+  "done",
+  "failed",
+  "cancelled",
+  "canceled",
+  "interrupted",
+  "stopped",
+  "rejected",
 ]);
 const PREFIXED_RUN_ID_PATTERN =
   /\b(?:pm-subagents|pi-subagents)-[A-Za-z0-9_-]+\b/gu;
@@ -32,13 +57,13 @@ type MutableRun = {
   id: string;
   asyncLaunched: boolean;
   lastAction?: string;
-  lastState?: string;
+  lastState?: SubagentState;
 };
 
 export type PiRepairSubagentRunFact = {
   id: string;
   lastAction?: string;
-  lastState?: string;
+  lastState?: SubagentState;
   unresolved: boolean;
 };
 
@@ -67,13 +92,17 @@ function textContent(content: unknown): string | undefined {
   return text || undefined;
 }
 
-function normalizedState(value: unknown): string | undefined {
+function normalizedState(value: unknown): SubagentState | undefined {
   if (typeof value !== "string") return undefined;
   const state = value.trim().toLowerCase();
-  return state || undefined;
+  return SUBAGENT_STATES.includes(state as SubagentState)
+    ? (state as SubagentState)
+    : undefined;
 }
 
-function runFacts(value: unknown): Array<{ id: string; state?: string }> {
+function runFacts(
+  value: unknown,
+): Array<{ id: string; state?: SubagentState }> {
   if (Array.isArray(value)) return value.flatMap(runFacts);
   if (!isObject(value)) return [];
   const id = value.id ?? value.runId ?? value.asyncId;
@@ -91,9 +120,9 @@ function unique(values: string[]): string[] {
 }
 
 function preferFirstState(
-  facts: Array<{ id: string; state?: string }>,
-): Array<{ id: string; state?: string }> {
-  const merged = new Map<string, { id: string; state?: string }>();
+  facts: Array<{ id: string; state?: SubagentState }>,
+): Array<{ id: string; state?: SubagentState }> {
+  const merged = new Map<string, { id: string; state?: SubagentState }>();
   for (const fact of facts) {
     const existing = merged.get(fact.id);
     if (!existing) {
@@ -119,10 +148,8 @@ function regexRunIds(text: string): string[] {
   ]);
 }
 
-function stateFromText(text: string): string | undefined {
-  const match = text.match(
-    /\b(queued|running|paused|needs-attention|completed|complete|done|failed|cancelled|canceled|interrupted)\b/iu,
-  );
+function stateFromText(text: string): SubagentState | undefined {
+  const match = text.match(SUBAGENT_STATE_PATTERN);
   return normalizedState(match?.[1]);
 }
 
@@ -295,7 +322,9 @@ export async function readPiRepairFacts(input: {
       id: run.id,
       ...(run.lastAction ? { lastAction: run.lastAction } : {}),
       ...(run.lastState ? { lastState: run.lastState } : {}),
-      unresolved: TERMINAL_STATES.has(run.lastState ?? "") ? false : unresolved,
+      unresolved: run.lastState
+        ? !TERMINAL_STATES.has(run.lastState) && unresolved
+        : unresolved,
     };
   });
 
