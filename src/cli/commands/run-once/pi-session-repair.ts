@@ -90,6 +90,23 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+function preferFirstState(
+  facts: Array<{ id: string; state?: string }>,
+): Array<{ id: string; state?: string }> {
+  const merged = new Map<string, { id: string; state?: string }>();
+  for (const fact of facts) {
+    const existing = merged.get(fact.id);
+    if (!existing) {
+      merged.set(fact.id, fact);
+      continue;
+    }
+    if (existing.state === undefined && fact.state !== undefined) {
+      existing.state = fact.state;
+    }
+  }
+  return [...merged.values()];
+}
+
 function regexRunIds(text: string): string[] {
   return unique([
     ...[...text.matchAll(PREFIXED_RUN_ID_PATTERN)].map((match) => match[0]),
@@ -224,7 +241,7 @@ export async function readPiRepairFacts(input: {
     const text = textContent(message.content);
     if (!text) continue;
     const textState = stateFromText(text);
-    const discovered = [
+    const discovered = preferFirstState([
       ...(() => {
         try {
           return runFacts(JSON.parse(text));
@@ -236,7 +253,7 @@ export async function readPiRepairFacts(input: {
         }
       })(),
       ...runFacts(message.details),
-    ];
+    ]);
     if (call?.targetRunId && discovered.length === 0) {
       discovered.push({
         id: call.targetRunId,

@@ -144,6 +144,13 @@ test("readPiRepairFacts recognizes installed pi-subagents async and status resul
         toolName: "subagent",
         toolCallId: "call-status",
         content: [{ type: "text", text: "Run: deadbeef\nState: running" }],
+        details: {
+          mode: "single",
+          results: [],
+          lifecycleStatus: {
+            processTerminal: { runId: "deadbeef", state: "pending" },
+          },
+        },
       },
     },
   ]);
