@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { test } from "node:test";
 import {
+  piSubagentsExtensionFiles,
+  resolvePiSubagentsPackageRoot,
+} from "./pi-subagents-package.ts";
+import {
   doctorPiResourceProfiles,
   profileContextArgs,
   profileExtensionArgs,
@@ -22,6 +26,15 @@ async function withRepo<T>(fn: (repoRoot: string) => Promise<T>): Promise<T> {
   } finally {
     await rm(repoRoot, { recursive: true, force: true });
   }
+}
+
+function assertRunOnceExtensionOrder(extensionPaths: string[]): void {
+  assert.equal(extensionPaths.length, 2);
+  assert.equal(extensionPaths[0], resolvePiSubagentsPackageRoot());
+  assert.equal(
+    extensionPaths[1]?.replaceAll("\\", "/").endsWith("/extensions/todos.ts"),
+    true,
+  );
 }
 
 const skills: PatchmillSkillsConfig = {
@@ -42,17 +55,12 @@ test("run-once planning profile includes context and Patchmill run-once extensio
     assert.equal(profile.id, "run-once-planning");
     assert.equal(profile.noContextFiles, false);
     assert.equal(profile.noPromptTemplates, false);
-    assert.equal(profile.additionalExtensionPaths.length, 2);
+    assertRunOnceExtensionOrder(profile.additionalExtensionPaths);
     assert.equal(
       basename(profile.additionalExtensionPaths[0] ?? ""),
       "pi-subagents",
     );
-    assert.equal(
-      profile.additionalExtensionPaths[1]
-        ?.replaceAll("\\", "/")
-        .endsWith("/extensions/todos.ts"),
-      true,
-    );
+    assert.ok(piSubagentsExtensionFiles().length > 0);
     for (const extensionPath of profile.additionalExtensionPaths) {
       assert.equal(
         existsSync(extensionPath),

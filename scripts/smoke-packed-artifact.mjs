@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRootPins, PI_PACKAGES } from "./pi-dependency-upgrade-lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const PI_SUBAGENTS_PACKAGE = "pi-subagents";
 
 function run(command, args, options = {}) {
   console.log(`$ ${[command, ...args].join(" ")}`);
@@ -84,9 +85,10 @@ async function main() {
       throw new Error(`Installed Patchmill skill is missing: ${skillPath}`);
     }
 
-    const rootPins = getRootPins(
-      JSON.parse(await readFile(join(rootDir, "package.json"), "utf8")),
+    const rootPackageJson = JSON.parse(
+      await readFile(join(rootDir, "package.json"), "utf8"),
     );
+    const rootPins = getRootPins(rootPackageJson);
     const projectRequire = createRequire(join(projectDir, "package.json"));
     const nodeModulesDir = dirname(
       dirname(projectRequire.resolve("patchmill/package.json")),
@@ -105,6 +107,62 @@ async function main() {
         );
       }
       console.log(`${name} resolved ${resolved.version} from ${packagePath}`);
+    }
+
+    const patchmillPackageRoot = dirname(
+      projectRequire.resolve("patchmill/package.json"),
+    );
+    const compiledPiPackage = await import(
+      pathToFileURL(
+        join(
+          patchmillPackageRoot,
+          "dist",
+          "src",
+          "pi",
+          "pi-subagents-package.js",
+        ),
+      ).href
+    );
+    compiledPiPackage.assertInstalledPiSubagentsMatchesRootPin(
+      join(patchmillPackageRoot, "package.json"),
+    );
+    compiledPiPackage.piSubagentsExtensionFiles();
+    const piSubagentsRoot = compiledPiPackage.resolvePiSubagentsPackageRoot();
+    console.log(
+      `${PI_SUBAGENTS_PACKAGE} resolved ${compiledPiPackage.readInstalledPiSubagentsManifest().version} from ${join(piSubagentsRoot, "package.json")}`,
+    );
+    const { runOncePlanningPiProfile } = await import(
+      pathToFileURL(
+        join(patchmillPackageRoot, "dist", "src", "pi", "resource-profiles.js"),
+      ).href
+    );
+    const skills = {
+      triage: "triage",
+      planning: "planning",
+      implementation: "implementation",
+      developmentEnvironment: "development-environment",
+      toolchain: "toolchain",
+      review: "review",
+      visualEvidence: "visual-evidence",
+      landing: "landing",
+    };
+    const profile = runOncePlanningPiProfile(skills, patchmillPackageRoot);
+    if (
+      realpathSync(profile.additionalExtensionPaths[0]) !==
+      realpathSync(piSubagentsRoot)
+    ) {
+      throw new Error(
+        "run-once profile does not load the installed pi-subagents package first",
+      );
+    }
+    if (
+      !profile.additionalExtensionPaths[1]
+        ?.replaceAll("\\", "/")
+        .endsWith("/extensions/todos.ts")
+    ) {
+      throw new Error(
+        "run-once profile does not load the Patchmill todos extension second",
+      );
     }
   } finally {
     if (process.env.PATCHMILL_KEEP_SMOKE_ARTIFACTS !== "1") {
