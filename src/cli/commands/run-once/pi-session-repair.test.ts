@@ -170,6 +170,47 @@ test("readPiRepairFacts recognizes installed pi-subagents async and status resul
   assert.equal(facts.unresolvedSummary, "1 unresolved async subagent run");
 });
 
+test("readPiRepairFacts treats async default launch results as unresolved until terminal", async () => {
+  const sessionPath = await writeSession([
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-default-async",
+            name: "subagent",
+            arguments: { agent: "reviewer", task: "review" },
+          },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-default-async",
+        content: [{ type: "text", text: "Async: reviewer [deadbeef]" }],
+        details: { mode: "single", asyncId: "deadbeef" },
+      },
+    },
+  ]);
+
+  const facts = await readPiRepairFacts({
+    sessionPath,
+    parseError: new Error("parse failed"),
+  });
+  assert.deepEqual(facts.subagentRuns, [
+    {
+      id: "deadbeef",
+      unresolved: true,
+    },
+  ]);
+  assert.equal(facts.unresolvedSummary, "1 unresolved async subagent run");
+});
+
 test("readPiRepairFacts treats terminal subagent states as resolved", async () => {
   const sessionPath = await writeSession([
     {

@@ -130,6 +130,19 @@ function stringRunId(value: unknown): string | undefined {
   return typeof value === "string" && RUN_ID.test(value) ? value : undefined;
 }
 
+function hasAsyncLaunchId(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasAsyncLaunchId);
+  if (!isObject(value)) return false;
+  return (
+    stringRunId(value.asyncId) !== undefined ||
+    Object.values(value).some(hasAsyncLaunchId)
+  );
+}
+
+function isAsyncLaunchText(text: string): boolean {
+  return /^Async(?:\s|:)/mu.test(text);
+}
+
 function assistantToolCalls(content: unknown): Array<{
   id?: string;
   action?: string;
@@ -241,6 +254,10 @@ export async function readPiRepairFacts(input: {
     const text = textContent(message.content);
     if (!text) continue;
     const textState = stateFromText(text);
+    const asyncResultLaunched =
+      call?.asyncLaunched === true ||
+      isAsyncLaunchText(text) ||
+      hasAsyncLaunchId(message.details);
     const discovered = preferFirstState([
       ...(() => {
         try {
@@ -263,7 +280,7 @@ export async function readPiRepairFacts(input: {
     for (const fact of discovered) {
       updateRun(fact.id, {
         ...(call?.action ? { lastAction: call.action } : {}),
-        ...(call ? { asyncLaunched: call.asyncLaunched } : {}),
+        asyncLaunched: asyncResultLaunched,
         ...(fact.state ? { lastState: fact.state } : {}),
       });
     }

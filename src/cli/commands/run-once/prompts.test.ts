@@ -535,7 +535,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Non-interactive subagent orchestration:/);
   assert.match(
     prompt,
-    /This Patchmill `pi -p` invocation has one turn and will not be resumed/,
+    /This Patchmill `pi -p` invocation has one turn; do not rely on a future resumption to finish required work/,
   );
   assert.match(
     prompt,

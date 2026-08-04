@@ -243,7 +243,7 @@ function formatSubagentSupport(): string {
 function formatNonInteractiveSubagentOrchestration(): string {
   return [
     "Non-interactive subagent orchestration:",
-    "- This Patchmill `pi -p` invocation has one turn and will not be resumed.",
+    "- This Patchmill `pi -p` invocation has one turn; do not rely on a future resumption to finish required work.",
     "- Use whatever subagent topology the configured implementation skill requires, including multiple sequential or parallel background runs.",
     "- Track every subagent run until it reaches a terminal state.",
     '- Use `subagent({ action: "status" })` to inspect active runs, or include an `id` to inspect one run.',
