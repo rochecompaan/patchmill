@@ -11,7 +11,10 @@ import {
   runPlanApprovedImplementationScenario,
   writeBlockedRecoveryRunState,
 } from "../../../../test-support/run-once/pipeline-fixtures.ts";
-import { createMockRunner } from "../../../../test-support/run-once/mock-runner.ts";
+import {
+  createMockRunner,
+  writePiSessionMessage,
+} from "../../../../test-support/run-once/mock-runner.ts";
 import {
   issue,
   issueListPayload,
@@ -275,6 +278,50 @@ test("runOneIssue facade returns pr-created after implementation", async () => {
 
   assert.equal(result.status, "pr-created");
   assert.equal(result.prUrl, "https://forgejo.example/pr/9");
+});
+
+test("runOneIssue repairs an implementation prose finish without unresolved subagents", async () => {
+  const { result, runner, piPrompts } =
+    await runPlanApprovedImplementationScenario({
+      issueNumber: 135,
+      title: "Repair prose finish",
+      onPi: async ({ call, piPrompts: prompts }) => {
+        if (prompts.length === 1) {
+          await writePiSessionMessage(
+            call,
+            "Finalization is still in progress.",
+          );
+          return {
+            code: 0,
+            stdout: "Finalization is still in progress.",
+            stderr: "",
+          };
+        }
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            status: "pr-created",
+            prUrl: "https://forgejo.example/pr/135",
+            branch: "agent/issue-135-repair-prose-finish",
+            commits: ["123abc"],
+            validation: ["npm test"],
+          }),
+          stderr: "",
+        };
+      },
+    });
+
+  assert.equal(result.status, "pr-created");
+  assert.equal(piPrompts.length, 2);
+  assert.match(piPrompts[1] ?? "", /previous response was invalid/i);
+  assert.match(
+    piPrompts[1] ?? "",
+    /No unresolved async subagent runs were detected/,
+  );
+  const sessions = runner.calls
+    .filter((call) => call.command === "pi")
+    .map((call) => call.args[call.args.indexOf("--session") + 1]);
+  assert.equal(sessions[0], sessions[1]);
 });
 
 test("runOneIssue facade returns merged for direct landing", async () => {

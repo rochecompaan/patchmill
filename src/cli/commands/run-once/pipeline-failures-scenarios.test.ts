@@ -895,6 +895,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
     "2026-05-01-issue-42-handle-implementation-parse-failure.md",
   );
   await writeFile(existingPlanPath, "# plan\n", "utf8");
+  let piCalls = 0;
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -936,6 +937,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
     }
 
     if (call.command === "pi") {
+      piCalls += 1;
       return { code: 0, stdout: '{"status":"unknown"}', stderr: "" };
     }
 
@@ -947,6 +949,8 @@ test("runOneIssue records and comments unexpected implementation failures withou
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.equal(result.status, "blocked");
+  assert.equal(piCalls, 3);
+  assert.match(result.reason, /Pi repair attempts exhausted \(2\/2\)/);
   assert.match(result.reason, /supported final JSON status/);
   const editCalls = runner.calls.filter(
     (call) =>
@@ -980,6 +984,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
     runState.worktreePath,
     ".worktrees/patchmill-issue-42-handle-implementation-parse-failure",
   );
+  assert.match(runState.lastError, /Pi repair attempts exhausted \(2\/2\)/);
   assert.match(runState.lastError, /supported final JSON status/);
 
   const resumeRunner = createMockRunner(async (call) => {
