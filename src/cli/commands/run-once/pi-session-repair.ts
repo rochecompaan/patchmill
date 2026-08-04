@@ -76,7 +76,7 @@ function normalizedState(value: unknown): string | undefined {
 function runFacts(value: unknown): Array<{ id: string; state?: string }> {
   if (Array.isArray(value)) return value.flatMap(runFacts);
   if (!isObject(value)) return [];
-  const id = value.id ?? value.runId;
+  const id = value.id ?? value.runId ?? value.asyncId;
   const state = normalizedState(value.state ?? value.status);
   return [
     ...(typeof id === "string" && RUN_ID.test(id)

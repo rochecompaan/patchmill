@@ -120,7 +120,7 @@ test("readPiRepairFacts recognizes installed pi-subagents async and status resul
             text: 'Async: reviewer [deadbeef]\nUse subagent({ action: "status", id: "deadbeef" }) when you need the result.',
           },
         ],
-        details: { mode: "single", runId: "deadbeef", asyncId: "deadbeef" },
+        details: { mode: "single", asyncId: "deadbeef" },
       },
     },
     {
