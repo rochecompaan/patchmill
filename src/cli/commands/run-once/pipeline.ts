@@ -394,13 +394,23 @@ export async function runOneIssue(
     artifactWorkspace,
     runner,
   });
-  if (approvedArtifactPreflight) {
-    artifactPolicy = approvedArtifactPreflight.policy;
-  }
   await progress(runOptions, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
   await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
+  if (artifactWorkspace?.kind === "branch") {
+    const workspace = await ensureIssueWorkspace();
+    artifactPolicy = planningArtifactPolicyForWorkspace({
+      config,
+      existingState,
+      resolvedArtifacts,
+      worktreePath: workspace.worktreePath,
+      allowGeneratedSpec: false,
+      allowGeneratedPlan: false,
+    });
+  } else if (approvedArtifactPreflight) {
+    artifactPolicy = approvedArtifactPreflight.policy;
+  }
 
   let labels = resumed
     ? issue.labels.includes(inProgress)

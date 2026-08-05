@@ -361,8 +361,12 @@ test("runOneIssue recreates an approved implementing worktree after preflight", 
   const runner = {
     calls: baseRunner.calls,
     async run(...args: Parameters<typeof baseRunner.run>) {
-      const result = await baseRunner.run(...args);
       const [command, commandArgs] = args;
+      if (command === "git" && commandArgs[0] === "show") {
+        baseRunner.calls.push({ command, args: [...commandArgs] });
+        return { code: 0, stdout: "# plan\n", stderr: "" };
+      }
+      const result = await baseRunner.run(...args);
       if (
         command === "git" &&
         commandArgs[0] === "worktree" &&
@@ -857,4 +861,205 @@ test("runOneIssue reports missing branch and worktree blocked recovery before mu
     /Archive or remove stale run state/,
   );
   assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+});
+
+test("runOneIssue resumes an approved branch-only saved plan", async () => {
+  const issueNumber = 68;
+  const title = "Branch-only saved plan";
+  const planPath = "docs/plans/2026-05-14-issue-68-branch-only-saved-plan.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+    issueNumber,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const branch = "agent/issue-68-branch-only-saved-plan";
+  const worktreePath = ".worktrees/patchmill-issue-68-branch-only-saved-plan";
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber,
+      title,
+      status: "implementing",
+      planPath,
+      branch,
+      worktreePath,
+      checkpoints: {
+        claimed: true,
+        startedCommentPosted: true,
+        planPathResolved: true,
+      },
+    },
+    NOW.toISOString(),
+  );
+  const selected = issue(issueNumber, ["in-progress", "plan-approved"], title);
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "cat-file") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show") {
+      return { code: 0, stdout: "# plan\n", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(join(config.repoRoot, worktreePath, "docs", "plans"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(config.repoRoot, worktreePath, planPath),
+        "# plan\n",
+      );
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return { code: 0, stdout: `${branch}\n`, stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo/pr/68",
+          branch,
+          commits: ["abc123"],
+          validation: ["focused test passed"],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
+  const worktreeAdd = runner.calls.findIndex(
+    (call) =>
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add",
+  );
+  const firstPi = runner.calls.findIndex((call) => call.command === "pi");
+  assert.ok(worktreeAdd >= 0);
+  assert.ok(worktreeAdd < firstPi);
+});
+
+test("runOneIssue rejects an issue branch already checked out elsewhere before mutation", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 69,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const title = "Branch checked out elsewhere";
+  const branch = "agent/issue-69-branch-checked-out-elsewhere";
+  const selected = issue(69, ["plan-approved"], title);
+  const otherWorktree = join(config.repoRoot, ".worktrees", "other-issue");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${otherWorktree}\nbranch refs/heads/${branch}\n\n`,
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /already checked out at .*other-issue/u,
+  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    false,
+  );
 });

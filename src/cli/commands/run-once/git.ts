@@ -460,11 +460,33 @@ async function existingCommitLines(
     .filter(Boolean);
 }
 
-function porcelainWorktreePaths(stdout: string): string[] {
+type PorcelainWorktree = {
+  path: string;
+  branch?: string;
+};
+
+function porcelainWorktrees(stdout: string): PorcelainWorktree[] {
   return stdout
-    .split("\n")
-    .filter((line) => line.startsWith("worktree "))
-    .map((line) => resolve(line.slice("worktree ".length).trim()));
+    .trim()
+    .split("\n\n")
+    .flatMap((record) => {
+      const lines = record.split("\n");
+      const worktree = lines.find((line) => line.startsWith("worktree "));
+      if (!worktree) return [];
+      const branch = lines
+        .find((line) => line.startsWith("branch refs/heads/"))
+        ?.slice("branch refs/heads/".length);
+      return [
+        {
+          path: resolve(worktree.slice("worktree ".length).trim()),
+          ...(branch ? { branch } : {}),
+        },
+      ];
+    });
+}
+
+function porcelainWorktreePaths(stdout: string): string[] {
+  return porcelainWorktrees(stdout).map((worktree) => worktree.path);
 }
 
 export async function inspectIssueWorkspace(
@@ -479,7 +501,16 @@ export async function inspectIssueWorkspace(
     "git worktree list failed",
   );
   const expectedWorktreePath = resolve(repoRoot, expected.worktreePath);
-  if (!porcelainWorktreePaths(listed).includes(expectedWorktreePath)) {
+  const worktrees = porcelainWorktrees(listed);
+  const branchWorktree = worktrees.find(
+    (worktree) => worktree.branch === expected.branch,
+  );
+  if (branchWorktree && branchWorktree.path !== expectedWorktreePath) {
+    throw new Error(
+      `Issue branch ${expected.branch} is already checked out at ${branchWorktree.path}; expected ${expected.worktreePath}`,
+    );
+  }
+  if (!worktrees.some((worktree) => worktree.path === expectedWorktreePath)) {
     return (await branchExists(runner, repoRoot, expected.branch))
       ? { kind: "branch", branch: expected.branch }
       : { kind: "base" };

@@ -1,8 +1,12 @@
+import { join } from "node:path";
 import {
   assertIssueArtifactSourcesMaterializable,
   assertIssueArtifactSourcesMaterializableInBranch,
 } from "./artifact-source-materialization.ts";
-import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
+import type {
+  ResolvedIssueArtifactSource,
+  ResolvedIssueArtifactSources,
+} from "./artifact-sources.ts";
 import {
   PlanningArtifactSafetyError,
   planningArtifactRoot,
@@ -45,9 +49,10 @@ async function approvedArtifactPolicy(input: {
   options: ApprovedArtifactPreflightOptions;
   requireSpec: boolean;
   requirePlan: boolean;
+  resolvedArtifacts: ResolvedIssueArtifactSources;
 }): Promise<PlanningArtifactPolicy> {
-  const { options, requireSpec, requirePlan } = input;
-  const { config, existingState, resolvedArtifacts } = options;
+  const { options, requireSpec, requirePlan, resolvedArtifacts } = input;
+  const { config, existingState } = options;
   const hasApprovedSource =
     (requireSpec && !!resolvedArtifacts.spec) ||
     (requirePlan && !!resolvedArtifacts.plan);
@@ -87,6 +92,87 @@ async function approvedArtifactPolicy(input: {
     allowGeneratedSpec: false,
     allowGeneratedPlan: false,
   });
+}
+
+function assertExplicitMatchesSaved(input: {
+  kind: "spec" | "plan";
+  explicit?: ResolvedIssueArtifactSource;
+  savedPath?: string;
+  savedCommit?: string;
+}): void {
+  if (!input.explicit || !input.savedPath) return;
+  if (input.explicit.path !== input.savedPath) {
+    throw new PlanningArtifactSafetyError(
+      `Explicit ${input.kind} artifact ${input.explicit.path} does not match saved ${input.kind} ${input.savedPath}`,
+    );
+  }
+  if (
+    input.explicit.commit &&
+    input.savedCommit &&
+    input.explicit.commit !== input.savedCommit
+  ) {
+    throw new PlanningArtifactSafetyError(
+      `Explicit ${input.kind} artifact commit ${input.explicit.commit} does not match saved ${input.kind} commit ${input.savedCommit}`,
+    );
+  }
+}
+
+async function branchSavedArtifact(input: {
+  options: ApprovedArtifactPreflightOptions;
+  kind: "spec" | "plan";
+  required: boolean;
+}): Promise<ResolvedIssueArtifactSource | undefined> {
+  const { options, kind, required } = input;
+  if (!required || options.artifactWorkspace?.kind !== "branch") {
+    return undefined;
+  }
+  if (!options.runner) {
+    throw new PlanningArtifactSafetyError(
+      "Approved branch preflight requires a command runner",
+    );
+  }
+  const path =
+    kind === "spec"
+      ? options.existingState?.specPath
+      : options.existingState?.planPath;
+  if (!path) return undefined;
+  const commit =
+    kind === "spec"
+      ? options.existingState?.specCommit
+      : options.existingState?.planCommit;
+  const explicit = options.resolvedArtifacts[kind];
+  assertExplicitMatchesSaved({
+    kind,
+    explicit,
+    savedPath: path,
+    savedCommit: commit,
+  });
+
+  const object = `${options.artifactWorkspace.branch}:${path}^{blob}`;
+  const exists = await options.runner.run("git", ["cat-file", "-e", object], {
+    cwd: options.config.repoRoot,
+  });
+  if (exists.code === 1 || exists.code === 128) return undefined;
+  if (exists.code !== 0) {
+    throw new PlanningArtifactSafetyError(
+      `git cat-file failed while resolving saved ${kind} ${path} from ${options.artifactWorkspace.branch}`,
+    );
+  }
+  const content = await options.runner.run("git", ["show", object], {
+    cwd: options.config.repoRoot,
+  });
+  if (content.code !== 0) {
+    throw new PlanningArtifactSafetyError(
+      `git show failed while resolving saved ${kind} ${path} from ${options.artifactWorkspace.branch}`,
+    );
+  }
+  return {
+    path,
+    absolutePath: join(options.config.repoRoot, path),
+    content: content.stdout,
+    evidence: `saved ${kind} from ${options.artifactWorkspace.branch}`,
+    ...(commit ? { commit } : {}),
+  };
 }
 
 function missingApprovedArtifact(
@@ -175,10 +261,29 @@ export async function assertApprovedArtifactsResolvable(
   const requirePlan = options.issue.labels.includes(planLabel);
   if (!requireSpec && !requirePlan) return undefined;
 
+  const branchSpec = await branchSavedArtifact({
+    options,
+    kind: "spec",
+    required: requireSpec,
+  });
+  const branchPlan = await branchSavedArtifact({
+    options,
+    kind: "plan",
+    required: requirePlan,
+  });
+  const branchSavedArtifacts: ResolvedIssueArtifactSources = {
+    ...(branchSpec ? { spec: branchSpec } : {}),
+    ...(branchPlan ? { plan: branchPlan } : {}),
+  };
+  const preflightArtifacts = {
+    ...options.resolvedArtifacts,
+    ...branchSavedArtifacts,
+  };
   const policy = await approvedArtifactPolicy({
     options,
     requireSpec,
     requirePlan,
+    resolvedArtifacts: preflightArtifacts,
   });
   let artifacts: ResolvedPlanningArtifacts;
   try {
