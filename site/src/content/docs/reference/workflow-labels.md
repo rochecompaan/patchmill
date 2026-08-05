@@ -72,6 +72,16 @@ not triage buckets, so they are not nested under `labels` and are not added to
 plan-approved label as actionable workflow states. Review labels without
 matching approved labels are waiting states for human review.
 
+Approved labels are durable facts about the current resolvable artifacts.
+Patchmill preserves them through claim, implementation, failure, resume, and
+successful completion. Review, ready, in-progress, needs-info, and done labels
+continue to represent transient workflow or lifecycle state.
+
+An approved label requires its corresponding artifact to resolve. If
+`spec-approved` has no valid spec, or `plan-approved` has no valid plan,
+`run-once` stops with a safety error before claiming the issue or invoking Pi.
+Remove approval explicitly before replacing an approved artifact.
+
 ## Approval flows
 
 When both spec and plan approval are required:
@@ -102,9 +112,9 @@ When neither approval is required:
 agent-ready --run-once--> write spec, write plan, implement, stop at agent-done
 ```
 
-Humans may either replace review labels with approved labels or add approved
-labels while leaving review labels in place. Patchmill tolerates both and
-removes stale `spec-*` and `plan-*` workflow labels as it advances.
+Humans may either replace a review label with its approved label or leave both
+in place. Approval wins over review for the same stage; a later-stage review,
+such as `plan-review`, wins over durable approval from an earlier stage.
 
 `projectPolicy.planRequiresApproval` remains as a compatibility alias. If
 `workflow.planApproval.required` is omitted, Patchmill derives plan approval

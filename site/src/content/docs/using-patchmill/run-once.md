@@ -85,6 +85,11 @@ Typical gates are:
 After review, add the configured approved label, such as `spec-approved` or
 `plan-approved`, then run `patchmill run-once` again.
 
+Patchmill keeps that approval label after the workflow advances. A failed
+implementation can therefore resume without asking a human to approve the same
+artifact again. If an approved artifact is missing or invalid, restore the
+published artifact or explicitly remove approval before creating a replacement.
+
 ## Development environment and implementation
 
 If `skills.developmentEnvironment` is configured, Patchmill runs that skill from
