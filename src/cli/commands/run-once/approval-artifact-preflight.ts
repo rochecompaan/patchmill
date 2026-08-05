@@ -9,7 +9,10 @@ import {
   type ResolvedPlanningArtifacts,
 } from "./planning-artifacts.ts";
 import { pathExists } from "./paths.ts";
-import { mirrorConfiguredPathInWorktree } from "./pipeline-workspace.ts";
+import {
+  mirrorConfiguredPathInWorktree,
+  resumePlanningArtifactPolicy,
+} from "./pipeline-workspace.ts";
 import type {
   AgentIssueConfig,
   AgentIssueRunState,
@@ -31,6 +34,18 @@ function preflightPolicy(
   options: ApprovedArtifactPreflightOptions,
 ): PlanningArtifactPolicy {
   const { config, existingState } = options;
+  if (
+    existingState?.worktreePath &&
+    (existingState.specPath || existingState.planPath)
+  ) {
+    return resumePlanningArtifactPolicy({
+      config,
+      worktreePath: existingState.worktreePath,
+      existingState,
+      resolvedArtifacts: options.resolvedArtifacts,
+    });
+  }
+
   const worktreeRoot = existingState?.worktreePath
     ? join(config.repoRoot, existingState.worktreePath)
     : undefined;

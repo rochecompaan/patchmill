@@ -222,6 +222,34 @@ test("approved published artifact rejects a conflicting saved worktree target", 
   );
 });
 
+test("approved explicit plan must match a saved implementation resume plan", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.planApproval.approvedLabel];
+  const worktreePath = "worktrees/issue-140";
+  const resolved = source(config.repoRoot, "plan");
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "implementing",
+        branch: "agent/issue-140-keep-approved-artifacts",
+        worktreePath,
+        planPath: "docs/plans/saved-plan.md",
+        planCommit: "saved-plan-commit",
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: { plan: resolved },
+      now,
+    }),
+    /plan-approved.*Explicit plan artifact.*does not match saved plan/u,
+  );
+});
+
 test("preflight uses configured approval label names", async () => {
   const { config, issue } = await fixture();
   config.approvalPolicy = createWorkflowApprovalPolicy({
