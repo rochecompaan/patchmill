@@ -76,6 +76,14 @@ function preflightPolicy(
   };
 }
 
+function artifactMaterializationRoot(
+  options: ApprovedArtifactPreflightOptions,
+): string {
+  return options.existingState?.worktreePath
+    ? join(options.config.repoRoot, options.existingState.worktreePath)
+    : options.config.repoRoot;
+}
+
 function artifactDirs(
   options: ApprovedArtifactPreflightOptions,
   kind: "spec" | "plan",
@@ -181,7 +189,7 @@ export async function assertApprovedArtifactsResolvable(
   };
   try {
     await assertIssueArtifactSourcesMaterializable({
-      repoRoot: options.config.repoRoot,
+      repoRoot: artifactMaterializationRoot(options),
       issueNumber: options.issue.number,
       sources: approvedSources,
     });

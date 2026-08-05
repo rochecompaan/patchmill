@@ -188,6 +188,40 @@ test("approved published artifact rejects a conflicting local target", async () 
   );
 });
 
+test("approved published artifact rejects a conflicting saved worktree target", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  const resolved = source(config.repoRoot, "spec");
+  const worktreePath = "worktrees/issue-140";
+  const worktreeArtifactPath = join(
+    config.repoRoot,
+    worktreePath,
+    resolved.path,
+  );
+  await mkdir(join(config.repoRoot, worktreePath, "docs", "specs"), {
+    recursive: true,
+  });
+  await writeFile(worktreeArtifactPath, "# Stale worktree spec\n", "utf8");
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "implementing",
+        worktreePath,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: { spec: resolved },
+      now,
+    }),
+    /spec-approved.*would overwrite existing spec artifact/u,
+  );
+});
+
 test("preflight uses configured approval label names", async () => {
   const { config, issue } = await fixture();
   config.approvalPolicy = createWorkflowApprovalPolicy({
