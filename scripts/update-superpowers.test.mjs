@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -19,7 +19,18 @@ const release = (tag) => ({
   prerelease: false,
 });
 
-test("validate-only no-update checks the installed repository without commands", async () => {
+test("validate-only no-update checks the installed repository without commands", async (t) => {
+  try {
+    await access(join(rootDir, ".patchmill/skills/patchmill-skill-pack.json"));
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      t.skip(
+        "project-local managed skills are not included in packaged source",
+      );
+      return;
+    }
+    throw error;
+  }
   const summary = await runSuperpowersUpgrade(
     ["--mode", "manual", "--superpowers-version", "6.0.3", "--validate-only"],
     {

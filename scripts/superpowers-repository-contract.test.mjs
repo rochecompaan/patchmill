@@ -16,6 +16,21 @@ const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
 
 test("repository Superpowers references and managed skills agree with the canonical pin", async (t) => {
+  const metadataPath = join(
+    rootDir,
+    ".patchmill/skills/patchmill-skill-pack.json",
+  );
+  try {
+    await access(metadataPath);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      t.skip(
+        "project-local managed skills are not included in packaged source",
+      );
+      return;
+    }
+    throw error;
+  }
   const [packageJson, packageLock, shrinkwrap, notices, metadata] =
     await Promise.all(
       [
