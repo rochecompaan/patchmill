@@ -282,6 +282,11 @@ function markdownCodeFence(body) {
   return "`".repeat(Math.max(3, longestBacktickRun + 1));
 }
 
+function markdownCodeSpan(value) {
+  const fence = markdownCodeFence(value);
+  return `${fence}${value}${fence}`;
+}
+
 export function renderSuperpowersPullRequestBody(summary) {
   const lines = [
     "## Superpowers dependency upgrade",
@@ -290,7 +295,7 @@ export function renderSuperpowersPullRequestBody(summary) {
     "This pull request is review-gated and does not auto-merge or publish.",
     "",
     "## Changed files",
-    ...summary.changedFiles.map((path) => `- \`${path}\``),
+    ...summary.changedFiles.map((path) => `- ${markdownCodeSpan(path)}`),
     "",
     "## Validation",
     ...summary.validationCommands.map((command) => `- \`${command}\``),

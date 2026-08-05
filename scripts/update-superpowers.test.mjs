@@ -300,6 +300,38 @@ test("restores all tracked files and preserves the command failure in the summar
   }
 });
 
+test("restores tracked files when writing the success summary fails", async () => {
+  const fixture = await createFixture();
+  const summaryPath = join(fixture, "summary-directory");
+  const before = await snapshotEntries(fixture);
+  await mkdir(summaryPath);
+  try {
+    await assert.rejects(
+      runSuperpowersUpgrade(
+        [
+          "--mode",
+          "manual",
+          "--superpowers-version",
+          "6.2.0",
+          "--skip-nix-hash",
+          "--summary-json",
+          summaryPath,
+        ],
+        {
+          rootDir: fixture,
+          fetchImpl: releaseFetch,
+          runCommand: (command, args, cwd) =>
+            fixtureRunCommand(command, args, cwd, []),
+        },
+      ),
+      /(EISDIR|directory)/,
+    );
+    assert.deepEqual(await snapshotEntries(fixture), before);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("reports rollback failures without replacing the original failure", async () => {
   const fixture = await createFixture();
   const summaryPath = join(fixture, "summary.json");

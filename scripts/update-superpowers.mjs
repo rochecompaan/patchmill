@@ -320,6 +320,7 @@ export async function runSuperpowersUpgrade(args, dependencies = {}) {
         snapshot,
         await snapshotPaths(rootDir, trackedRoots),
       );
+      await writeSummary(options, summary);
     } catch (error) {
       try {
         await restorePaths(rootDir, trackedRoots, snapshot);
@@ -331,7 +332,6 @@ export async function runSuperpowersUpgrade(args, dependencies = {}) {
       summary.changedFiles = [];
       throw error;
     }
-    await writeSummary(options, summary);
     return summary;
   } catch (error) {
     summary.error = errorMessage(error);

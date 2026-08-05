@@ -176,6 +176,15 @@ test("reads release package versions and renders ordered release notes", async (
     contained,
     /`````\nFixes #123\n<!-- hide later content\n```` markdown\n`````/,
   );
+  const unsafePath = "skills/```\n## injected heading";
+  const changedFiles = renderSuperpowersPullRequestBody({
+    currentVersion: "6.0.3",
+    targetVersion: "6.2.0",
+    changedFiles: [unsafePath],
+    validationCommands: [],
+    releases: [normalizeGitHubRelease(release("v6.2.0"))],
+  });
+  assert.match(changedFiles, /- ````skills\/```\n## injected heading````/);
   assert.throws(
     () =>
       renderSuperpowersPullRequestBody({
