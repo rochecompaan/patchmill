@@ -249,14 +249,28 @@ export async function resolvePlanningArtifacts(input: {
       savedCommit: input.policy.saved.planCommit,
       savedCreated: input.policy.saved.planCreated,
     });
+    const explicitArtifact = (artifact: {
+      path: string;
+      commit?: string;
+    }): ResolvedPlanningArtifact => ({
+      path: artifact.path,
+      commit: artifact.commit,
+      exists: true,
+      fromState: false,
+      created: false,
+      generated: false,
+      rootSource: input.policy.primary.source,
+    });
 
     const discoveredPlan = input.policy.saved.planPath
       ? plan
-      : await findDiscovered({
-          roots: policyRoots,
-          issue: input.issue,
-          kind: "plan",
-        });
+      : input.policy.explicit?.plan
+        ? explicitArtifact(input.policy.explicit.plan)
+        : await findDiscovered({
+            roots: policyRoots,
+            issue: input.issue,
+            kind: "plan",
+          });
     const resolvedPlan = plan.exists
       ? plan
       : discoveredPlan.exists
@@ -271,11 +285,13 @@ export async function resolvePlanningArtifacts(input: {
       ? spec
       : input.policy.saved.specPath
         ? unresolvedArtifact()
-        : await findDiscovered({
-            roots: policyRoots,
-            issue: input.issue,
-            kind: "spec",
-          });
+        : input.policy.explicit?.spec
+          ? explicitArtifact(input.policy.explicit.spec)
+          : await findDiscovered({
+              roots: policyRoots,
+              issue: input.issue,
+              kind: "spec",
+            });
 
     if (input.policy.saved.planPath && !resolvedPlan.exists) {
       throw new PlanningArtifactSafetyError(

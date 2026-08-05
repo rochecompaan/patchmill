@@ -250,6 +250,40 @@ test("approved published artifact rejects a conflicting fallback resume target",
   );
 });
 
+test("approved explicit plan passes preflight with a saved spec and no saved plan", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.planApproval.approvedLabel];
+  const worktreePath = "worktrees/issue-140";
+  const specPath = "docs/specs/saved-spec.md";
+  await mkdir(join(config.repoRoot, worktreePath, "docs", "specs"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(config.repoRoot, worktreePath, specPath),
+    "# Saved spec\n",
+    "utf8",
+  );
+
+  await assert.doesNotReject(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "planning",
+        worktreePath,
+        specPath,
+        specCommit: "saved-spec-commit",
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: { plan: source(config.repoRoot, "plan") },
+      now,
+    }),
+  );
+});
+
 test("approved explicit plan must match a saved implementation resume plan", async () => {
   const { config, issue } = await fixture();
   issue.labels = [config.approvalPolicy.planApproval.approvedLabel];

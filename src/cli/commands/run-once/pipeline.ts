@@ -462,6 +462,34 @@ export async function runOneIssue(
     }
 
     if (artifactPolicy?.kind === "implementation-resume") {
+      const sourcesToMaterialize = {
+        ...(!artifactPolicy.saved.specPath && resolvedArtifacts.spec
+          ? { spec: resolvedArtifacts.spec }
+          : {}),
+        ...(!artifactPolicy.saved.planPath && resolvedArtifacts.plan
+          ? { plan: resolvedArtifacts.plan }
+          : {}),
+      };
+      if (sourcesToMaterialize.spec || sourcesToMaterialize.plan) {
+        const materializedArtifacts = await runStep(
+          "materialize issue artifact sources",
+          async () =>
+            materializeIssueArtifactSources({
+              repoRoot: artifactPolicy.primary.repoRoot,
+              runner,
+              issueNumber: issueForRun.number,
+              sources: sourcesToMaterialize,
+            }),
+        );
+        resolvedArtifacts = {
+          ...resolvedArtifacts,
+          ...materializedArtifacts,
+        };
+        artifactPolicy = {
+          ...artifactPolicy,
+          explicit: resolvedArtifacts,
+        };
+      }
       await resolvePlanningArtifacts({
         policy: artifactPolicy,
         issue: issueForRun,
