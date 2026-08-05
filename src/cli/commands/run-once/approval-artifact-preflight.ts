@@ -92,11 +92,14 @@ function preflightPolicy(
 }
 
 function artifactMaterializationRoot(
-  options: ApprovedArtifactPreflightOptions,
+  policy: PlanningArtifactPolicy,
+  artifact: ResolvedPlanningArtifacts["spec"],
 ): string {
-  return options.existingState?.worktreePath
-    ? join(options.config.repoRoot, options.existingState.worktreePath)
-    : options.config.repoRoot;
+  const roots = [policy.primary, ...(policy.fallbacks ?? [])];
+  return (
+    roots.find((root) => root.source === artifact.rootSource)?.repoRoot ??
+    policy.primary.repoRoot
+  );
 }
 
 function artifactDirs(
@@ -194,35 +197,11 @@ export async function assertApprovedArtifactsResolvable(
     await assertUnambiguousDiscovery(options, "plan", planLabel);
   }
 
-  const approvedSources = {
-    ...(requiresSpec && options.resolvedArtifacts.spec
-      ? { spec: options.resolvedArtifacts.spec }
-      : {}),
-    ...(requiresPlan && options.resolvedArtifacts.plan
-      ? { plan: options.resolvedArtifacts.plan }
-      : {}),
-  };
-  try {
-    await assertIssueArtifactSourcesMaterializable({
-      repoRoot: artifactMaterializationRoot(options),
-      issueNumber: options.issue.number,
-      sources: approvedSources,
-    });
-  } catch (error) {
-    const labels = [
-      ...(requiresSpec && approvedSources.spec ? [specLabel] : []),
-      ...(requiresPlan && approvedSources.plan ? [planLabel] : []),
-    ].join(", ");
-    const message = error instanceof Error ? error.message : String(error);
-    throw new PlanningArtifactSafetyError(
-      `Issue #${options.issue.number} has approval label ${labels}, but approved artifacts cannot be materialized: ${message}`,
-    );
-  }
-
+  const policy = preflightPolicy(options);
   let artifacts: ResolvedPlanningArtifacts;
   try {
     artifacts = await resolvePlanningArtifacts({
-      policy: preflightPolicy(options),
+      policy,
       issue: options.issue,
       now: options.now,
     });
@@ -244,5 +223,39 @@ export async function assertApprovedArtifactsResolvable(
   }
   if (requiresPlan && !artifacts.plan.exists) {
     throw missingApprovedArtifact(options.issue, planLabel, "plan");
+  }
+
+  const approvedSources = {
+    ...(requiresSpec && options.resolvedArtifacts.spec
+      ? { spec: options.resolvedArtifacts.spec }
+      : {}),
+    ...(requiresPlan && options.resolvedArtifacts.plan
+      ? { plan: options.resolvedArtifacts.plan }
+      : {}),
+  };
+  try {
+    if (approvedSources.spec) {
+      await assertIssueArtifactSourcesMaterializable({
+        repoRoot: artifactMaterializationRoot(policy, artifacts.spec),
+        issueNumber: options.issue.number,
+        sources: { spec: approvedSources.spec },
+      });
+    }
+    if (approvedSources.plan) {
+      await assertIssueArtifactSourcesMaterializable({
+        repoRoot: artifactMaterializationRoot(policy, artifacts.plan),
+        issueNumber: options.issue.number,
+        sources: { plan: approvedSources.plan },
+      });
+    }
+  } catch (error) {
+    const labels = [
+      ...(requiresSpec && approvedSources.spec ? [specLabel] : []),
+      ...(requiresPlan && approvedSources.plan ? [planLabel] : []),
+    ].join(", ");
+    const message = error instanceof Error ? error.message : String(error);
+    throw new PlanningArtifactSafetyError(
+      `Issue #${options.issue.number} has approval label ${labels}, but approved artifacts cannot be materialized: ${message}`,
+    );
   }
 }

@@ -222,6 +222,34 @@ test("approved published artifact rejects a conflicting saved worktree target", 
   );
 });
 
+test("approved published artifact rejects a conflicting fallback resume target", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  const resolved = source(config.repoRoot, "spec");
+  const worktreePath = "worktrees/issue-140";
+  await mkdir(config.specsDir, { recursive: true });
+  await writeFile(resolved.absolutePath, "# Stale fallback spec\n", "utf8");
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "implementing",
+        worktreePath,
+        specPath: resolved.path,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: { spec: resolved },
+      now,
+    }),
+    /spec-approved.*would overwrite existing spec artifact/u,
+  );
+});
+
 test("approved explicit plan must match a saved implementation resume plan", async () => {
   const { config, issue } = await fixture();
   issue.labels = [config.approvalPolicy.planApproval.approvedLabel];
