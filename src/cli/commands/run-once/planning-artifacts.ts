@@ -1,4 +1,5 @@
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
+import { findIssueArtifacts } from "./artifacts.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { pathExists } from "./paths.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
@@ -90,6 +91,16 @@ function promptBodyPath(
 
 function roots(policy: PlanningArtifactPolicy): PlanningArtifactRoot[] {
   return [policy.primary, ...(policy.fallbacks ?? [])];
+}
+
+export function planningArtifactRoot(
+  policy: PlanningArtifactPolicy,
+  artifact: ResolvedPlanningArtifact,
+): PlanningArtifactRoot {
+  return (
+    roots(policy).find((root) => root.source === artifact.rootSource) ??
+    policy.primary
+  );
 }
 
 function explicitMatchesSaved(input: {
@@ -367,4 +378,60 @@ export async function resolvePlanningArtifacts(input: {
           now: input.now,
         }),
   };
+}
+
+async function assertUnambiguousApprovedArtifact(input: {
+  policy: PlanningArtifactPolicy;
+  issue: IssueSummary;
+  kind: "spec" | "plan";
+  artifact: ResolvedPlanningArtifact;
+}): Promise<void> {
+  const explicit = input.policy.explicit?.[input.kind];
+  if (explicit || (input.artifact.fromState && input.artifact.exists)) return;
+
+  const candidates = (
+    await Promise.all(
+      roots(input.policy).map((root) =>
+        findIssueArtifacts(
+          input.kind === "spec" ? root.specsDir : root.plansDir,
+          input.issue.number,
+        ),
+      ),
+    )
+  ).flat();
+  const names = [
+    ...new Set(candidates.map((candidate) => basename(candidate))),
+  ];
+  if (names.length <= 1) return;
+
+  throw new PlanningArtifactSafetyError(
+    `Issue #${input.issue.number} has multiple ${input.kind} artifacts that could be resolved: ${names.join(", ")}`,
+  );
+}
+
+export async function resolveApprovedPlanningArtifacts(input: {
+  policy: PlanningArtifactPolicy;
+  issue: IssueSummary;
+  now: Date;
+  requireSpec: boolean;
+  requirePlan: boolean;
+}): Promise<ResolvedPlanningArtifacts> {
+  const artifacts = await resolvePlanningArtifacts(input);
+  if (input.requireSpec) {
+    await assertUnambiguousApprovedArtifact({
+      policy: input.policy,
+      issue: input.issue,
+      kind: "spec",
+      artifact: artifacts.spec,
+    });
+  }
+  if (input.requirePlan) {
+    await assertUnambiguousApprovedArtifact({
+      policy: input.policy,
+      issue: input.issue,
+      kind: "plan",
+      artifact: artifacts.plan,
+    });
+  }
+  return artifacts;
 }

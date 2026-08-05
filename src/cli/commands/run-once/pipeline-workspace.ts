@@ -8,7 +8,7 @@ import { cleanStatusIgnoredPaths as buildCleanStatusIgnoredPaths } from "./git.t
 import type { PlanningArtifactPolicy } from "./planning-artifacts.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import type { readRunState } from "./run-state.ts";
-import type { AgentIssueConfig } from "./types.ts";
+import type { AgentIssueConfig, AgentIssueRunState } from "./types.ts";
 
 export function cleanStatusIgnoredPaths(
   config: Pick<
@@ -86,6 +86,58 @@ export function resumePlanningArtifactPolicy(input: {
       planCreated: input.existingState.checkpoints?.planCreated,
     },
     explicit: input.resolvedArtifacts,
+  };
+}
+
+export function freshPlanningArtifactPolicy(input: {
+  config: Pick<AgentIssueConfig, "repoRoot" | "specsDir" | "plansDir">;
+  existingState?: AgentIssueRunState;
+  resolvedArtifacts: ResolvedIssueArtifactSources;
+  allowGeneratedSpec: boolean;
+  allowGeneratedPlan: boolean;
+}): PlanningArtifactPolicy {
+  const worktreeRoot = input.existingState?.worktreePath
+    ? join(input.config.repoRoot, input.existingState.worktreePath)
+    : undefined;
+  const primaryRoot = worktreeRoot ?? input.config.repoRoot;
+
+  return {
+    kind: "fresh",
+    primary: {
+      repoRoot: primaryRoot,
+      specsDir: mirrorConfiguredPathInWorktree(
+        input.config.repoRoot,
+        primaryRoot,
+        input.config.specsDir,
+      ),
+      plansDir: mirrorConfiguredPathInWorktree(
+        input.config.repoRoot,
+        primaryRoot,
+        input.config.plansDir,
+      ),
+      source: worktreeRoot ? "resume-worktree" : "primary-repo",
+    },
+    fallbacks: worktreeRoot
+      ? [
+          {
+            repoRoot: input.config.repoRoot,
+            specsDir: input.config.specsDir,
+            plansDir: input.config.plansDir,
+            source: "primary-repo",
+          },
+        ]
+      : undefined,
+    explicit: input.resolvedArtifacts,
+    saved: {
+      specPath: input.existingState?.specPath,
+      specCommit: input.existingState?.specCommit,
+      planPath: input.existingState?.planPath,
+      planCommit: input.existingState?.planCommit,
+      specCreated: input.existingState?.checkpoints?.specCreated,
+      planCreated: input.existingState?.checkpoints?.planCreated,
+    },
+    allowGeneratedSpec: input.allowGeneratedSpec,
+    allowGeneratedPlan: input.allowGeneratedPlan,
   };
 }
 

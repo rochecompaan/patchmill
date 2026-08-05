@@ -367,26 +367,19 @@ export async function runOneIssue(
   };
 
   const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
-  const hasApprovedArtifact = [
-    config.approvalPolicy.specApproval.approvedLabel,
-    config.approvalPolicy.planApproval.approvedLabel,
-  ].some((label) => issueForRun.labels.includes(label));
-  if (
-    hasApprovedArtifact &&
-    resumableState &&
-    existingState?.branch &&
-    existingState.worktreePath &&
-    (existingState.specPath || existingState.planPath)
-  ) {
-    await ensureIssueWorkspace();
-  }
-  await assertApprovedArtifactsResolvable({
+  const approvedArtifactPreflight = await assertApprovedArtifactsResolvable({
     config,
     issue: issueForRun,
     existingState,
     resolvedArtifacts,
     now: runOptions.now ?? new Date(),
+    ensureArtifactWorkspace: async () => {
+      await ensureIssueWorkspace();
+    },
   });
+  if (approvedArtifactPreflight?.policy.kind === "implementation-resume") {
+    artifactPolicy = approvedArtifactPreflight.policy;
+  }
   await progress(runOptions, "info", "git", "checking repository status", {
     issueNumber: issue.number,
   });
@@ -452,6 +445,7 @@ export async function runOneIssue(
     }
 
     if (
+      !artifactPolicy &&
       resumableState &&
       existingState &&
       (existingState.branch || existingState.worktreePath) &&
@@ -504,11 +498,13 @@ export async function runOneIssue(
           explicit: resolvedArtifacts,
         };
       }
-      await resolvePlanningArtifacts({
-        policy: artifactPolicy,
-        issue: issueForRun,
-        now: runOptions.now ?? new Date(),
-      });
+      if (!approvedArtifactPreflight) {
+        await resolvePlanningArtifacts({
+          policy: artifactPolicy,
+          issue: issueForRun,
+          now: runOptions.now ?? new Date(),
+        });
+      }
     } else {
       const artifactWorktree =
         resolvedArtifacts.spec || resolvedArtifacts.plan
