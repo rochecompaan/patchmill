@@ -513,6 +513,8 @@ export async function runOneIssue(
       ready,
       inProgress,
       needsInfo,
+      approvalGatesSatisfied:
+        ordinaryResumableState && existingState?.status === "implementing",
       existingState,
       resolvedArtifacts,
       artifactPolicy,

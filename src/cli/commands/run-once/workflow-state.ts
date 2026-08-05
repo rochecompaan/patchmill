@@ -188,7 +188,7 @@ export function retryableLabelsAfterDevelopmentEnvironmentFailure(
   const restore =
     originalActionableLabels.length > 0
       ? originalActionableLabels
-      : [options.policy.planApproval.approvedLabel];
+      : [options.readyLabel];
 
   return restore.reduce(addLabel, withoutInProgress);
 }

@@ -16,7 +16,10 @@ import {
   createMockRunner,
   promptPath,
 } from "../../../../test-support/run-once/mock-runner.ts";
-import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
+import {
+  approvalPolicy,
+  makeConfig,
+} from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import {
   collectProgressEvents,
   commentBody,
@@ -884,12 +887,21 @@ test("runOneIssue records and comments unexpected planning failures without repl
 });
 
 test("runOneIssue records and comments unexpected implementation failures without replacing in-progress", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ specRequired: true }),
+  });
   const selected = issue(
     42,
-    ["agent-ready", "enhancement"],
+    ["spec-review", "spec-approved", "enhancement"],
     "Handle implementation parse failure",
   );
+  const existingSpecPath = join(
+    config.specsDir,
+    "2026-05-01-issue-42-handle-implementation-parse-failure-design.md",
+  );
+  await writeFile(existingSpecPath, "# spec\n", "utf8");
   const existingPlanPath = join(
     config.plansDir,
     "2026-05-01-issue-42-handle-implementation-parse-failure.md",
@@ -954,7 +966,11 @@ test("runOneIssue records and comments unexpected implementation failures withou
       call.args[0] === "issues" &&
       call.args[1] === "edit",
   );
-  assert.equal(editCalls.length, 1);
+  const removedLabels = editCalls.flatMap((call) => {
+    const index = call.args.indexOf("--remove-labels");
+    return index < 0 ? [] : (call.args[index + 1]?.split(",") ?? []);
+  });
+  assert.equal(removedLabels.includes("spec-approved"), false);
 
   const failureComment = runner.calls
     .filter((call) => call.command === "tea" && call.args[0] === "comment")
@@ -996,7 +1012,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
             ? issueListPayload([
                 issue(
                   42,
-                  ["in-progress", "enhancement"],
+                  ["in-progress", "spec-approved", "enhancement"],
                   "Handle implementation parse failure",
                 ),
                 issue(100, ["agent-ready", "bug"], "Do not select me either"),

@@ -117,6 +117,7 @@ type PlanApprovedImplementationScenario = {
   title: string;
   issueLabels?: string[];
   planPath?: string;
+  specPath?: string;
   configOverrides?: Partial<AgentIssueConfig>;
   onPi?: (input: {
     call: Call;
@@ -144,6 +145,13 @@ export async function runPlanApprovedImplementationScenario(
     scenario.planPath ??
     `docs/plans/2026-05-14-issue-${scenario.issueNumber}-scenario.md`;
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  if (scenario.specPath) {
+    await writeFile(
+      join(config.repoRoot, scenario.specPath),
+      "# spec\n",
+      "utf8",
+    );
+  }
   const selected = issue(
     scenario.issueNumber,
     scenario.issueLabels ?? ["plan-approved"],

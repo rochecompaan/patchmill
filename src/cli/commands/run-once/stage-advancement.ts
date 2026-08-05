@@ -95,6 +95,7 @@ export type AdvancePlanningStagesOptions = {
   ready: string;
   inProgress: string;
   needsInfo: string;
+  approvalGatesSatisfied: boolean;
   existingState?: ExistingPlanningState;
   resolvedArtifacts?: ResolvedIssueArtifactSources;
   artifactPolicy?: PlanningArtifactPolicy;
@@ -228,6 +229,7 @@ export async function advancePlanningStages({
   ready,
   inProgress,
   needsInfo,
+  approvalGatesSatisfied,
   existingState,
   resolvedArtifacts,
   artifactPolicy,
@@ -538,9 +540,9 @@ export async function advancePlanningStages({
     await emitSimpleStep(issue.number, "publish spec");
   }
 
-  const hasCurrentSpecApproval = issue.labels.includes(
-    config.approvalPolicy.specApproval.approvedLabel,
-  );
+  const hasCurrentSpecApproval =
+    approvalGatesSatisfied ||
+    issue.labels.includes(config.approvalPolicy.specApproval.approvedLabel);
   const mustStopForSpecReview =
     config.approvalPolicy.specApproval.required &&
     specPath !== undefined &&
@@ -777,11 +779,13 @@ export async function advancePlanningStages({
     await emitSimpleStep(issue.number, "publish plan");
   }
 
-  const planGate = decidePlanApprovalGate({
-    labels,
-    planOnly: config.planOnly,
-    policy: config.approvalPolicy,
-  });
+  const planGate = approvalGatesSatisfied
+    ? ({ action: "proceed" } as const)
+    : decidePlanApprovalGate({
+        labels,
+        planOnly: config.planOnly,
+        policy: config.approvalPolicy,
+      });
 
   if (planGate.action !== "proceed") {
     const finalLabels =

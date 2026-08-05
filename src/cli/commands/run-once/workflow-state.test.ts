@@ -243,7 +243,7 @@ test("retryableLabelsAfterDevelopmentEnvironmentFailure restores original action
   );
 });
 
-test("retryableLabelsAfterDevelopmentEnvironmentFailure restores plan approval for resumed in-progress issues", () => {
+test("retryableLabelsAfterDevelopmentEnvironmentFailure restores ready for legacy resume", () => {
   assert.deepEqual(
     retryableLabelsAfterDevelopmentEnvironmentFailure(["in-progress", "bug"], {
       readyLabel: ready,
@@ -251,6 +251,6 @@ test("retryableLabelsAfterDevelopmentEnvironmentFailure restores plan approval f
       originalLabels: ["in-progress"],
       inProgressLabel: "in-progress",
     }),
-    ["bug", "plan-approved"],
+    ["bug", ready],
   );
 });

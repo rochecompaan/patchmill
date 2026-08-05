@@ -269,6 +269,7 @@ test("runOneIssue returns development-environment-not-ready without starting imp
   const { result, runner } = await runPlanApprovedImplementationScenario({
     issueNumber: 47,
     title: "Not ready",
+    issueLabels: ["agent-ready"],
     planPath: "docs/plans/2026-05-14-issue-47-not-ready.md",
     configOverrides: {
       skills: {
@@ -321,7 +322,7 @@ test("runOneIssue returns development-environment-not-ready without starting imp
     .at(-1);
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "plan-approved",
+    "agent-ready",
   );
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
@@ -335,6 +336,7 @@ test("runOneIssue preserves approval labels after development environment failur
     issueNumber: 49,
     title: "Approved but not ready",
     issueLabels: ["spec-approved", "plan-approved"],
+    specPath: "docs/specs/2026-05-14-issue-49-approved-not-ready-design.md",
     planPath: "docs/plans/2026-05-14-issue-49-approved-not-ready.md",
     configOverrides: {
       approvalPolicy: specAndPlanApprovalPolicy(),
@@ -367,10 +369,7 @@ test("runOneIssue preserves approval labels after development environment failur
         call.args[1] === "edit",
     )
     .at(-1);
-  assert.equal(
-    finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "spec-approved,plan-approved",
-  );
+  assert.equal(finalEdit?.args.includes("--add-labels"), false);
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
     "in-progress",
@@ -382,6 +381,7 @@ test("runOneIssue restores a retryable label after resumed development environme
   const config = await makeConfig({
     dryRun: false,
     execute: true,
+    approvalPolicy: specAndPlanApprovalPolicy(),
     skills: {
       ...DEFAULT_PATCHMILL_CONFIG.skills,
       developmentEnvironment: "./skills/development-environment",
@@ -492,7 +492,7 @@ test("runOneIssue restores a retryable label after resumed development environme
     .at(-1);
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "plan-approved",
+    "agent-ready",
   );
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
