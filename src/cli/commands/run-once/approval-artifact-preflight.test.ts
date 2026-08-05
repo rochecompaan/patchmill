@@ -376,6 +376,57 @@ test("approved explicit plan must match a saved implementation resume plan", asy
   );
 });
 
+test("approved branch-only resume rejects a missing saved plan even with a matching published source", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.planApproval.approvedLabel];
+  const planPath = "docs/plans/saved-plan.md";
+  const calls: string[][] = [];
+  const runner = {
+    async run(command: string, args: string[]) {
+      assert.equal(command, "git");
+      calls.push(args);
+      return { code: 1, stdout: "", stderr: "missing" };
+    },
+  };
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "implementing",
+        branch: "agent/issue-140-keep-approved-artifacts",
+        planPath,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: {
+        plan: {
+          ...source(config.repoRoot, "plan"),
+          path: planPath,
+          absolutePath: join(config.repoRoot, planPath),
+        },
+      },
+      now,
+      artifactWorkspace: {
+        kind: "branch",
+        branch: "agent/issue-140-keep-approved-artifacts",
+      },
+      runner,
+    }),
+    /Saved plan docs\/plans\/saved-plan\.md.*does not exist/u,
+  );
+  assert.deepEqual(calls, [
+    [
+      "cat-file",
+      "-e",
+      "agent/issue-140-keep-approved-artifacts:docs/plans/saved-plan.md^{blob}",
+    ],
+  ]);
+});
+
 test("approved branch-only resume rejects an explicit artifact that differs from saved identity", async () => {
   const { config, issue } = await fixture();
   issue.labels = [config.approvalPolicy.planApproval.approvedLabel];

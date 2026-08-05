@@ -503,9 +503,11 @@ export async function inspectIssueWorkspace(
   const expectedWorktreePath = resolve(repoRoot, expected.worktreePath);
   const worktrees = porcelainWorktrees(listed);
   const branchWorktree = worktrees.find(
-    (worktree) => worktree.branch === expected.branch,
+    (worktree) =>
+      worktree.branch === expected.branch &&
+      worktree.path !== expectedWorktreePath,
   );
-  if (branchWorktree && branchWorktree.path !== expectedWorktreePath) {
+  if (branchWorktree) {
     throw new Error(
       `Issue branch ${expected.branch} is already checked out at ${branchWorktree.path}; expected ${expected.worktreePath}`,
     );
