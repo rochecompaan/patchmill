@@ -79,7 +79,7 @@ test("paginates stable releases and selects complete ordered range", async () =>
   );
 });
 
-test("requires selected releases to have notes and supports no update", () => {
+test("requires selected releases to have notes and validates no-update targets", () => {
   assert.throws(
     () =>
       resolveSuperpowersUpgrade({
@@ -92,6 +92,29 @@ test("requires selected releases to have notes and supports no update", () => {
       }),
     /v6\.1\.0 has no release-note body/,
   );
+  assert.throws(
+    () =>
+      resolveSuperpowersUpgrade({
+        currentVersion: "6.0.3",
+        requestedVersion: "6.2.0",
+        releases: [
+          normalizeGitHubRelease(release("v6.1.0", { body: null })),
+          normalizeGitHubRelease(release("v6.2.0")),
+        ],
+      }),
+    /v6\.1\.0 has no release-note body/,
+  );
+  assert.doesNotThrow(() =>
+    resolveSuperpowersUpgrade({
+      currentVersion: "6.0.3",
+      requestedVersion: "6.2.0",
+      releases: [
+        normalizeGitHubRelease(release("v6.0.2", { body: null })),
+        normalizeGitHubRelease(release("v6.2.0")),
+        normalizeGitHubRelease(release("v6.3.0", { body: null })),
+      ],
+    }),
+  );
   assert.equal(
     resolveSuperpowersUpgrade({
       currentVersion: "6.0.3",
@@ -99,6 +122,15 @@ test("requires selected releases to have notes and supports no update", () => {
       releases: [normalizeGitHubRelease(release("v6.0.3"))],
     }).noUpdate,
     true,
+  );
+  assert.throws(
+    () =>
+      resolveSuperpowersUpgrade({
+        currentVersion: "6.0.3",
+        requestedVersion: "6.0.3",
+        releases: [],
+      }),
+    /Requested stable release v6\.0\.3 was not found/,
   );
 });
 
@@ -127,6 +159,23 @@ test("reads release package versions and renders ordered release notes", async (
   });
   assert.ok(body.indexOf("### v6.1.0") < body.indexOf("### v6.1.1"));
   assert.match(body, /does not auto-merge or publish/);
+  const contained = renderSuperpowersPullRequestBody({
+    currentVersion: "6.0.3",
+    targetVersion: "6.2.0",
+    changedFiles: [],
+    validationCommands: [],
+    releases: [
+      normalizeGitHubRelease(
+        release("v6.2.0", {
+          body: "Fixes #123\n<!-- hide later content\n```` markdown",
+        }),
+      ),
+    ],
+  });
+  assert.match(
+    contained,
+    /`````\nFixes #123\n<!-- hide later content\n```` markdown\n`````/,
+  );
   assert.throws(
     () =>
       renderSuperpowersPullRequestBody({

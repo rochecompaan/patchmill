@@ -48,11 +48,12 @@ export function getCurrentSuperpowersVersion(packageJson) {
 export function normalizeGitHubRelease(release) {
   if (release?.draft || release?.prerelease) return undefined;
   const version = normalizeVersion(release?.tag_name, "GitHub release tag");
+  const body = release?.body ?? "";
   for (const [key, value] of Object.entries({
     name: release?.name ?? release?.tag_name,
     htmlUrl: release?.html_url,
     publishedAt: release?.published_at,
-    body: release?.body,
+    body,
   })) {
     if (typeof value !== "string") {
       throw new Error(
@@ -66,7 +67,7 @@ export function normalizeGitHubRelease(release) {
     name: release.name ?? release.tag_name,
     htmlUrl: release.html_url,
     publishedAt: release.published_at,
-    body: release.body,
+    body,
   };
 }
 
@@ -193,15 +194,6 @@ export function resolveSuperpowersUpgrade({
       `Target Superpowers version ${target} is older than current version ${current}`,
     );
   }
-  if (compareVersions(target, current) === 0) {
-    return {
-      noUpdate: true,
-      currentVersion: current,
-      targetVersion: target,
-      targetTag: tagForVersion(target),
-      releases: [],
-    };
-  }
   const targetRelease = normalized.find(
     (release) => release.version === target,
   );
@@ -209,6 +201,15 @@ export function resolveSuperpowersUpgrade({
     throw new Error(
       `Requested stable release ${tagForVersion(target)} was not found`,
     );
+  if (compareVersions(target, current) === 0) {
+    return {
+      noUpdate: true,
+      currentVersion: current,
+      targetVersion: target,
+      targetTag: targetRelease.tag,
+      releases: [],
+    };
+  }
   const selected = normalized.filter(
     (release) =>
       compareVersions(release.version, current) > 0 &&
@@ -273,6 +274,14 @@ export function assertLockfilesMatchSuperpowersTarget({
   }
 }
 
+function markdownCodeFence(body) {
+  const longestBacktickRun = Math.max(
+    0,
+    ...(body.match(/`+/gu) ?? []).map((run) => run.length),
+  );
+  return "`".repeat(Math.max(3, longestBacktickRun + 1));
+}
+
 export function renderSuperpowersPullRequestBody(summary) {
   const lines = [
     "## Superpowers dependency upgrade",
@@ -299,7 +308,9 @@ export function renderSuperpowersPullRequestBody(summary) {
       "",
       `Release: ${release.htmlUrl}`,
       "",
+      markdownCodeFence(release.body),
       release.body,
+      markdownCodeFence(release.body),
     );
   }
   const body = `${lines.join("\n")}\n`;

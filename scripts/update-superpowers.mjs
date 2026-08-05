@@ -85,10 +85,21 @@ async function readJson(path) {
 async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
+export function commandEnvironment(environment = process.env) {
+  const sanitized = { ...environment };
+  delete sanitized.GITHUB_TOKEN;
+  delete sanitized.GH_TOKEN;
+  return sanitized;
+}
+
 async function defaultRunCommand(command, args, rootDir) {
   console.log(`$ ${[command, ...args].join(" ")}`);
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: rootDir, stdio: "inherit" });
+    const child = spawn(command, args, {
+      cwd: rootDir,
+      env: commandEnvironment(),
+      stdio: "inherit",
+    });
     child.on("error", reject);
     child.on("exit", (code) =>
       code === 0
@@ -211,6 +222,9 @@ export async function runSuperpowersUpgrade(args, dependencies = {}) {
   const rootDir = dependencies.rootDir ?? defaultRootDir;
   const runCommand = dependencies.runCommand ?? defaultRunCommand;
   const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const snapshotPaths =
+    dependencies.snapshotTrackedPaths ?? snapshotTrackedPaths;
+  const restorePaths = dependencies.restoreTrackedPaths ?? restoreTrackedPaths;
   let options = { summaryJson: summaryPathFromArgs(args), validateOnly: false };
   const summary = {
     currentVersion: undefined,
@@ -239,23 +253,21 @@ export async function runSuperpowersUpgrade(args, dependencies = {}) {
       releases,
     });
     Object.assign(summary, resolution);
-    if (!resolution.noUpdate) {
-      const packageVersion = await fetchReleasePackageVersion({
-        fetchImpl,
-        token: dependencies.token ?? process.env.GITHUB_TOKEN,
-        tag: resolution.targetTag,
-      });
-      if (packageVersion !== resolution.targetVersion)
-        throw new Error(
-          `Release package version ${packageVersion} does not match tag ${resolution.targetTag}`,
-        );
-    }
+    const packageVersion = await fetchReleasePackageVersion({
+      fetchImpl,
+      token: dependencies.token ?? process.env.GITHUB_TOKEN,
+      tag: resolution.targetTag,
+    });
+    if (packageVersion !== resolution.targetVersion)
+      throw new Error(
+        `Release package version ${packageVersion} does not match tag ${resolution.targetTag}`,
+      );
     if (options.validateOnly || resolution.noUpdate) {
       await assertSynchronizedRepository(rootDir, currentVersion);
       await writeSummary(options, summary);
       return summary;
     }
-    snapshot = await snapshotTrackedPaths(rootDir, trackedRoots);
+    snapshot = await snapshotPaths(rootDir, trackedRoots);
     try {
       packageJson.dependencies[SUPERPOWERS_PACKAGE] = tarballUrlForVersion(
         resolution.targetVersion,
@@ -306,10 +318,16 @@ export async function runSuperpowersUpgrade(args, dependencies = {}) {
       await assertSynchronizedRepository(rootDir, resolution.targetVersion);
       summary.changedFiles = changedTrackedFiles(
         snapshot,
-        await snapshotTrackedPaths(rootDir, trackedRoots),
+        await snapshotPaths(rootDir, trackedRoots),
       );
     } catch (error) {
-      await restoreTrackedPaths(rootDir, trackedRoots, snapshot);
+      try {
+        await restorePaths(rootDir, trackedRoots, snapshot);
+      } catch (restoreError) {
+        console.error(
+          `Unable to restore tracked files: ${errorMessage(restoreError)}`,
+        );
+      }
       summary.changedFiles = [];
       throw error;
     }
