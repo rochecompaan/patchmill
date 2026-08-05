@@ -284,6 +284,48 @@ test("approved explicit plan passes preflight with a saved spec and no saved pla
   );
 });
 
+test("approved branch-only resume resolves saved artifacts in the ensured workspace", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  const worktreePath = "worktrees/issue-140";
+  const specPath = "docs/specs/saved-spec.md";
+  await mkdir(join(config.repoRoot, worktreePath, "docs", "specs"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(config.repoRoot, worktreePath, specPath),
+    "# Saved spec\n",
+    "utf8",
+  );
+  let ensured = false;
+
+  const preflight = await assertApprovedArtifactsResolvable({
+    config,
+    issue,
+    existingState: {
+      issueNumber: issue.number,
+      title: issue.title,
+      status: "implementing",
+      branch: "agent/issue-140-keep-approved-artifacts",
+      specPath,
+      specCommit: "saved-spec-commit",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    resolvedArtifacts: {},
+    now,
+    ensureArtifactWorkspace: async () => {
+      ensured = true;
+      return { worktreePath };
+    },
+  });
+
+  assert.equal(ensured, true);
+  assert.equal(preflight?.policy.kind, "implementation-resume");
+  assert.equal(preflight?.artifacts.spec.path, specPath);
+  assert.equal(preflight?.artifacts.spec.exists, true);
+});
+
 test("approved explicit plan must match a saved implementation resume plan", async () => {
   const { config, issue } = await fixture();
   issue.labels = [config.approvalPolicy.planApproval.approvedLabel];
@@ -307,6 +349,33 @@ test("approved explicit plan must match a saved implementation resume plan", asy
       },
       resolvedArtifacts: { plan: resolved },
       now,
+    }),
+    /plan-approved.*Explicit plan artifact.*does not match saved plan/u,
+  );
+});
+
+test("approved branch-only resume rejects an explicit artifact that differs from saved identity", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.planApproval.approvedLabel];
+  const worktreePath = "worktrees/issue-140";
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "implementing",
+        branch: "agent/issue-140-keep-approved-artifacts",
+        planPath: "docs/plans/saved-plan.md",
+        planCommit: "saved-plan-commit",
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: { plan: source(config.repoRoot, "plan") },
+      now,
+      ensureArtifactWorkspace: async () => ({ worktreePath }),
     }),
     /plan-approved.*Explicit plan artifact.*does not match saved plan/u,
   );

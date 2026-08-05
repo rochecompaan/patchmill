@@ -89,6 +89,43 @@ export function resumePlanningArtifactPolicy(input: {
   };
 }
 
+export function hasSavedPlanningArtifactWorkspace(
+  state: AgentIssueRunState | undefined,
+): state is AgentIssueRunState {
+  return !!(
+    state &&
+    (state.branch || state.worktreePath) &&
+    (state.specPath || state.planPath)
+  );
+}
+
+export function planningArtifactPolicyForWorkspace(input: {
+  config: Pick<AgentIssueConfig, "repoRoot" | "specsDir" | "plansDir">;
+  existingState?: AgentIssueRunState;
+  resolvedArtifacts: ResolvedIssueArtifactSources;
+  worktreePath: string;
+  allowGeneratedSpec: boolean;
+  allowGeneratedPlan: boolean;
+}): PlanningArtifactPolicy {
+  if (hasSavedPlanningArtifactWorkspace(input.existingState)) {
+    return resumePlanningArtifactPolicy({
+      config: input.config,
+      worktreePath: input.worktreePath,
+      existingState: input.existingState,
+      resolvedArtifacts: input.resolvedArtifacts,
+    });
+  }
+
+  return freshPlanningArtifactPolicy({
+    config: input.config,
+    existingState: input.existingState,
+    resolvedArtifacts: input.resolvedArtifacts,
+    allowGeneratedSpec: input.allowGeneratedSpec,
+    allowGeneratedPlan: input.allowGeneratedPlan,
+    workspaceRoot: join(input.config.repoRoot, input.worktreePath),
+  });
+}
+
 export function freshPlanningArtifactPolicy(input: {
   config: Pick<AgentIssueConfig, "repoRoot" | "specsDir" | "plansDir">;
   existingState?: AgentIssueRunState;

@@ -9,7 +9,8 @@ import {
 } from "./planning-artifacts.ts";
 import {
   freshPlanningArtifactPolicy,
-  resumePlanningArtifactPolicy,
+  hasSavedPlanningArtifactWorkspace,
+  planningArtifactPolicyForWorkspace,
 } from "./pipeline-workspace.ts";
 import type {
   AgentIssueConfig,
@@ -26,17 +27,13 @@ export type ApprovedArtifactPreflightOptions = {
   existingState?: AgentIssueRunState;
   resolvedArtifacts: ResolvedIssueArtifactSources;
   now: Date;
-  ensureArtifactWorkspace?: () => Promise<PlanningArtifactPolicy>;
+  ensureArtifactWorkspace?: () => Promise<{ worktreePath: string }>;
 };
 
 export type ApprovedArtifactPreflight = {
   policy: PlanningArtifactPolicy;
   artifacts: ResolvedPlanningArtifacts;
 };
-
-function hasSavedArtifacts(state: AgentIssueRunState | undefined): boolean {
-  return !!(state?.specPath || state?.planPath);
-}
 
 async function approvedArtifactPolicy(input: {
   options: ApprovedArtifactPreflightOptions;
@@ -48,22 +45,29 @@ async function approvedArtifactPolicy(input: {
   const hasApprovedSource =
     (requireSpec && !!resolvedArtifacts.spec) ||
     (requirePlan && !!resolvedArtifacts.plan);
-  const needsSavedWorkspace =
-    !!existingState?.worktreePath && hasSavedArtifacts(existingState);
+  const needsSavedWorkspace = hasSavedPlanningArtifactWorkspace(existingState);
 
-  if (
-    options.ensureArtifactWorkspace &&
-    (needsSavedWorkspace || hasApprovedSource)
-  ) {
-    return await options.ensureArtifactWorkspace();
-  }
-  if (needsSavedWorkspace) {
-    return resumePlanningArtifactPolicy({
-      config,
-      worktreePath: existingState.worktreePath,
-      existingState,
-      resolvedArtifacts,
-    });
+  if (needsSavedWorkspace || hasApprovedSource) {
+    const workspace = options.ensureArtifactWorkspace
+      ? await options.ensureArtifactWorkspace()
+      : existingState?.worktreePath
+        ? { worktreePath: existingState.worktreePath }
+        : undefined;
+    if (workspace) {
+      return planningArtifactPolicyForWorkspace({
+        config,
+        existingState,
+        resolvedArtifacts,
+        worktreePath: workspace.worktreePath,
+        allowGeneratedSpec: false,
+        allowGeneratedPlan: false,
+      });
+    }
+    if (needsSavedWorkspace) {
+      throw new PlanningArtifactSafetyError(
+        `Saved planning artifacts require an ensured workspace before approval preflight`,
+      );
+    }
   }
 
   return freshPlanningArtifactPolicy({

@@ -55,8 +55,7 @@ import {
   cleanStatusIgnoredPaths,
   configuredWorktreeStrategy,
   expectedIssueWorkspace,
-  freshPlanningArtifactPolicy,
-  resumePlanningArtifactPolicy,
+  planningArtifactPolicyForWorkspace,
 } from "./pipeline-workspace.ts";
 import {
   emitSelectionDiagnostics,
@@ -374,28 +373,7 @@ export async function runOneIssue(
     existingState,
     resolvedArtifacts,
     now: runOptions.now ?? new Date(),
-    ensureArtifactWorkspace: async () => {
-      const workspace = await ensureIssueWorkspace();
-      const workspaceRoot = join(config.repoRoot, workspace.worktreePath);
-      if (
-        existingState?.worktreePath &&
-        (existingState.specPath || existingState.planPath)
-      ) {
-        return resumePlanningArtifactPolicy({
-          config,
-          worktreePath: workspace.worktreePath,
-          existingState,
-          resolvedArtifacts,
-        });
-      }
-      return freshPlanningArtifactPolicy({
-        config,
-        resolvedArtifacts,
-        allowGeneratedSpec: false,
-        allowGeneratedPlan: false,
-        workspaceRoot,
-      });
-    },
+    ensureArtifactWorkspace: ensureIssueWorkspace,
   });
   if (approvedArtifactPreflight) {
     artifactPolicy = approvedArtifactPreflight.policy;
@@ -474,11 +452,13 @@ export async function runOneIssue(
       const resumeWorktree = await ensureIssueWorkspace();
       const savedWorktreePath =
         existingState.worktreePath ?? resumeWorktree.worktreePath;
-      artifactPolicy = resumePlanningArtifactPolicy({
+      artifactPolicy = planningArtifactPolicyForWorkspace({
         config,
-        worktreePath: savedWorktreePath,
         existingState,
         resolvedArtifacts,
+        worktreePath: savedWorktreePath,
+        allowGeneratedSpec: false,
+        allowGeneratedPlan: false,
       });
       await progress(
         runOptions,
