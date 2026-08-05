@@ -1,7 +1,7 @@
 import { basename, isAbsolute, join, relative } from "node:path";
 import { findIssueArtifacts } from "./artifacts.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
-import { pathExists } from "./paths.ts";
+import { pathExists, pathIsRegularFile } from "./paths.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
 import { buildSpecPath, findIssueSpec } from "./specs.ts";
 import type { IssueSummary } from "./types.ts";
@@ -137,6 +137,11 @@ async function findSaved(input: {
   for (const root of input.roots) {
     const savedPath = repoPath(root.repoRoot, input.savedPath);
     if (await pathExists(savedPath.absolute)) {
+      if (!(await pathIsRegularFile(savedPath.absolute))) {
+        throw new PlanningArtifactSafetyError(
+          `Saved ${input.savedPath} is not a regular file`,
+        );
+      }
       return {
         path: savedPath.relative,
         commit: input.savedCommit,

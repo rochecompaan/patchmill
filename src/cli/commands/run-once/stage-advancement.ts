@@ -355,7 +355,7 @@ export async function advancePlanningStages({
     now,
   });
   if (
-    !artifactPolicy &&
+    artifactPolicyForRun.kind === "fresh" &&
     ensurePlanningArtifactWorkspace &&
     (planningArtifacts.plan.generated ||
       (!planningArtifacts.plan.exists && planningArtifacts.spec.generated))

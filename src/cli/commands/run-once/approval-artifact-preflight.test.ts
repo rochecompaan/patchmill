@@ -284,6 +284,31 @@ test("approved explicit plan passes preflight with a saved spec and no saved pla
   );
 });
 
+test("saved approved spec directory fails preflight", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  const specPath = "docs/specs/saved-spec-directory";
+  await mkdir(join(config.repoRoot, specPath), { recursive: true });
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "planning",
+        specPath,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: {},
+      now,
+    }),
+    /spec-approved.*Saved docs\/specs\/saved-spec-directory is not a regular file/u,
+  );
+});
+
 test("approved branch-only resume resolves saved artifacts in the ensured workspace", async () => {
   const { config, issue } = await fixture();
   issue.labels = [config.approvalPolicy.specApproval.approvedLabel];

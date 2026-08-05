@@ -1363,6 +1363,15 @@ test("runOneIssue writes a plan and preserves spec approval at plan review", asy
   const specPath = "docs/specs/2026-05-09-issue-32-needs-plan-design.md";
   await writeFile(join(config.repoRoot, specPath), "# Spec\n", "utf8");
   const expectedPlanPath = "docs/plans/2026-05-09-issue-32-needs-plan.md";
+  const expectedWorkspace = expectedIssueWorkspace(
+    selected.number,
+    selected.title,
+    configuredWorktreeStrategy(config),
+  );
+  const expectedWorkspaceRoot = join(
+    config.repoRoot,
+    expectedWorkspace.worktreePath,
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -1377,6 +1386,23 @@ test("runOneIssue writes a plan and preserves spec approval at plan review", asy
       };
     }
     if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (
@@ -1399,7 +1425,8 @@ test("runOneIssue writes a plan and preserves spec approval at plan review", asy
         prompt,
         new RegExp(specPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
       );
-      assert.ok(call.cwd);
+      assert.equal(call.cwd, expectedWorkspaceRoot);
+      assert.notEqual(call.cwd, config.repoRoot);
       const absolutePlanPath = join(call.cwd, expectedPlanPath);
       await mkdir(dirname(absolutePlanPath), { recursive: true });
       await writeFile(absolutePlanPath, "# Generated plan\n", "utf8");
