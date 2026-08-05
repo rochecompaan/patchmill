@@ -282,61 +282,6 @@ export async function runOneIssue(
   });
   issueForRun = artifactSources.issue;
   resolvedArtifacts = artifactSources.resolvedArtifacts;
-  await assertApprovedArtifactsResolvable({
-    config,
-    issue: issueForRun,
-    existingState,
-    resolvedArtifacts,
-    now: runOptions.now ?? new Date(),
-  });
-
-  await progress(runOptions, "info", "git", "checking repository status", {
-    issueNumber: issue.number,
-  });
-  await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
-  const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
-  let labels = resumed
-    ? issue.labels.includes(inProgress)
-      ? issue.labels
-      : nextLabels(issue.labels, [ready], [inProgress])
-    : nextLabels(issue.labels, [ready], [inProgress]);
-  if (
-    !checkpoints.claimed ||
-    (planningWorkspaceResumable && !issue.labels.includes(inProgress))
-  ) {
-    await runStep("claim issue", async () => {
-      await progress(
-        runOptions,
-        "info",
-        "labels",
-        `ensuring ${inProgress} label exists`,
-        { issueNumber: issue.number },
-      );
-      await ensureAutomationLabel(host, config, inProgress);
-      await host.applyLabels(
-        planLabelChange(issue.number, issue.labels, labels),
-      );
-      await progress(
-        runOptions,
-        "info",
-        "claim",
-        `claimed #${issue.number}: ${ready} -> ${inProgress}`,
-        { issueNumber: issue.number },
-      );
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          title: issue.title,
-          status: "claimed",
-          checkpoints: { claimed: true },
-          resetCheckpoints: resetStaleCheckpoints,
-        },
-        timestamp,
-      );
-      checkpoints.claimed = true;
-    });
-  }
   let specPath: string | undefined;
   let specCommit: string | undefined;
   let planPath: string | undefined;
@@ -420,6 +365,75 @@ export async function runOneIssue(
     ensuredWorktree = worktree;
     return worktree;
   };
+
+  const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
+  const hasApprovedArtifact = [
+    config.approvalPolicy.specApproval.approvedLabel,
+    config.approvalPolicy.planApproval.approvedLabel,
+  ].some((label) => issueForRun.labels.includes(label));
+  if (
+    hasApprovedArtifact &&
+    resumableState &&
+    existingState?.branch &&
+    existingState.worktreePath &&
+    (existingState.specPath || existingState.planPath)
+  ) {
+    await ensureIssueWorkspace();
+  }
+  await assertApprovedArtifactsResolvable({
+    config,
+    issue: issueForRun,
+    existingState,
+    resolvedArtifacts,
+    now: runOptions.now ?? new Date(),
+  });
+  await progress(runOptions, "info", "git", "checking repository status", {
+    issueNumber: issue.number,
+  });
+  await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
+
+  let labels = resumed
+    ? issue.labels.includes(inProgress)
+      ? issue.labels
+      : nextLabels(issue.labels, [ready], [inProgress])
+    : nextLabels(issue.labels, [ready], [inProgress]);
+  if (
+    !checkpoints.claimed ||
+    (planningWorkspaceResumable && !issue.labels.includes(inProgress))
+  ) {
+    await runStep("claim issue", async () => {
+      await progress(
+        runOptions,
+        "info",
+        "labels",
+        `ensuring ${inProgress} label exists`,
+        { issueNumber: issue.number },
+      );
+      await ensureAutomationLabel(host, config, inProgress);
+      await host.applyLabels(
+        planLabelChange(issue.number, issue.labels, labels),
+      );
+      await progress(
+        runOptions,
+        "info",
+        "claim",
+        `claimed #${issue.number}: ${ready} -> ${inProgress}`,
+        { issueNumber: issue.number },
+      );
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issue.number,
+          title: issue.title,
+          status: "claimed",
+          checkpoints: { claimed: true },
+          resetCheckpoints: resetStaleCheckpoints,
+        },
+        timestamp,
+      );
+      checkpoints.claimed = true;
+    });
+  }
 
   try {
     if (!checkpoints.startedCommentPosted) {

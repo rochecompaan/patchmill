@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
@@ -134,6 +134,73 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
     false,
   );
   assert.ok(runner.calls.find((call) => call.command === "pi"));
+});
+
+test("runOneIssue recreates an approved implementing worktree before preflight", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const planPath = "docs/plans/2026-06-20-issue-45-recover-blocked-run.md";
+  const worktreePath = ".worktrees/patchmill-issue-45-recover-blocked-run";
+  await writeBlockedRecoveryRunState(
+    config,
+    { issueNumber: 45, status: "implementing" },
+    {
+      createWorktreePath: false,
+      writePlanInPrimaryRepo: false,
+      writeSpecInPrimaryRepo: false,
+    },
+  );
+  const baseRunner = blockedRecoveryRunner(config, {
+    selectedLabels: ["in-progress", "plan-approved"],
+    worktreeRegistered: false,
+  });
+  const runner = {
+    calls: baseRunner.calls,
+    async run(...args: Parameters<typeof baseRunner.run>) {
+      const result = await baseRunner.run(...args);
+      const [command, commandArgs] = args;
+      if (
+        command === "git" &&
+        commandArgs[0] === "worktree" &&
+        commandArgs[1] === "add"
+      ) {
+        await mkdir(join(config.repoRoot, worktreePath, "docs", "plans"), {
+          recursive: true,
+        });
+        await writeFile(
+          join(config.repoRoot, worktreePath, planPath),
+          "# plan\n",
+          "utf8",
+        );
+      }
+      return result;
+    },
+  };
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  const worktreeAdd = runner.calls.findIndex(
+    (call) =>
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add",
+  );
+  const firstHostMutation = runner.calls.findIndex(
+    (call) =>
+      call.command === "tea" &&
+      ((call.args[0] === "issues" && call.args[1] === "edit") ||
+        call.args[0] === "comment"),
+  );
+  assert.ok(worktreeAdd >= 0, "expected saved worktree recreation");
+  assert.ok(
+    firstHostMutation < 0 || worktreeAdd < firstHostMutation,
+    "expected worktree recreation before host mutations",
+  );
 });
 
 test("runOneIssue resumes clean blocked implementation workspace after external prerequisite is fixed", async () => {
