@@ -1,6 +1,7 @@
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
+import { findIssueArtifacts } from "./artifacts.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
-import { pathExists } from "./paths.ts";
+import { pathExists, pathIsRegularFile } from "./paths.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
 import { buildSpecPath, findIssueSpec } from "./specs.ts";
 import type { IssueSummary } from "./types.ts";
@@ -92,6 +93,16 @@ function roots(policy: PlanningArtifactPolicy): PlanningArtifactRoot[] {
   return [policy.primary, ...(policy.fallbacks ?? [])];
 }
 
+export function planningArtifactRoot(
+  policy: PlanningArtifactPolicy,
+  artifact: ResolvedPlanningArtifact,
+): PlanningArtifactRoot {
+  return (
+    roots(policy).find((root) => root.source === artifact.rootSource) ??
+    policy.primary
+  );
+}
+
 function explicitMatchesSaved(input: {
   kind: "spec" | "plan";
   explicit?: { path: string; commit?: string };
@@ -126,6 +137,11 @@ async function findSaved(input: {
   for (const root of input.roots) {
     const savedPath = repoPath(root.repoRoot, input.savedPath);
     if (await pathExists(savedPath.absolute)) {
+      if (!(await pathIsRegularFile(savedPath.absolute))) {
+        throw new PlanningArtifactSafetyError(
+          `Saved ${input.savedPath} is not a regular file`,
+        );
+      }
       return {
         path: savedPath.relative,
         commit: input.savedCommit,
@@ -249,14 +265,28 @@ export async function resolvePlanningArtifacts(input: {
       savedCommit: input.policy.saved.planCommit,
       savedCreated: input.policy.saved.planCreated,
     });
+    const explicitArtifact = (artifact: {
+      path: string;
+      commit?: string;
+    }): ResolvedPlanningArtifact => ({
+      path: artifact.path,
+      commit: artifact.commit,
+      exists: true,
+      fromState: false,
+      created: false,
+      generated: false,
+      rootSource: input.policy.primary.source,
+    });
 
     const discoveredPlan = input.policy.saved.planPath
       ? plan
-      : await findDiscovered({
-          roots: policyRoots,
-          issue: input.issue,
-          kind: "plan",
-        });
+      : input.policy.explicit?.plan
+        ? explicitArtifact(input.policy.explicit.plan)
+        : await findDiscovered({
+            roots: policyRoots,
+            issue: input.issue,
+            kind: "plan",
+          });
     const resolvedPlan = plan.exists
       ? plan
       : discoveredPlan.exists
@@ -271,11 +301,13 @@ export async function resolvePlanningArtifacts(input: {
       ? spec
       : input.policy.saved.specPath
         ? unresolvedArtifact()
-        : await findDiscovered({
-            roots: policyRoots,
-            issue: input.issue,
-            kind: "spec",
-          });
+        : input.policy.explicit?.spec
+          ? explicitArtifact(input.policy.explicit.spec)
+          : await findDiscovered({
+              roots: policyRoots,
+              issue: input.issue,
+              kind: "spec",
+            });
 
     if (input.policy.saved.planPath && !resolvedPlan.exists) {
       throw new PlanningArtifactSafetyError(
@@ -351,4 +383,60 @@ export async function resolvePlanningArtifacts(input: {
           now: input.now,
         }),
   };
+}
+
+async function assertUnambiguousApprovedArtifact(input: {
+  policy: PlanningArtifactPolicy;
+  issue: IssueSummary;
+  kind: "spec" | "plan";
+  artifact: ResolvedPlanningArtifact;
+}): Promise<void> {
+  const explicit = input.policy.explicit?.[input.kind];
+  if (explicit || (input.artifact.fromState && input.artifact.exists)) return;
+
+  const candidates = (
+    await Promise.all(
+      roots(input.policy).map((root) =>
+        findIssueArtifacts(
+          input.kind === "spec" ? root.specsDir : root.plansDir,
+          input.issue.number,
+        ),
+      ),
+    )
+  ).flat();
+  const names = [
+    ...new Set(candidates.map((candidate) => basename(candidate))),
+  ];
+  if (names.length <= 1) return;
+
+  throw new PlanningArtifactSafetyError(
+    `Issue #${input.issue.number} has multiple ${input.kind} artifacts that could be resolved: ${names.join(", ")}`,
+  );
+}
+
+export async function resolveApprovedPlanningArtifacts(input: {
+  policy: PlanningArtifactPolicy;
+  issue: IssueSummary;
+  now: Date;
+  requireSpec: boolean;
+  requirePlan: boolean;
+}): Promise<ResolvedPlanningArtifacts> {
+  const artifacts = await resolvePlanningArtifacts(input);
+  if (input.requireSpec) {
+    await assertUnambiguousApprovedArtifact({
+      policy: input.policy,
+      issue: input.issue,
+      kind: "spec",
+      artifact: artifacts.spec,
+    });
+  }
+  if (input.requirePlan) {
+    await assertUnambiguousApprovedArtifact({
+      policy: input.policy,
+      issue: input.issue,
+      kind: "plan",
+      artifact: artifacts.plan,
+    });
+  }
+  return artifacts;
 }

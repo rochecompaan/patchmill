@@ -44,25 +44,29 @@ export function buildArtifactPath(
   );
 }
 
-export async function findIssueArtifact(
+export async function findIssueArtifacts(
   artifactDir: string,
   issueNumber: number,
-): Promise<string | undefined> {
+): Promise<string[]> {
   let entries;
   try {
     entries = await readdir(artifactDir, { withFileTypes: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return undefined;
-    }
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
 
   const marker = `-issue-${issueNumber}-`;
-  const match = entries
+  return entries
     .filter((entry) => entry.isFile() && entry.name.includes(marker))
     .map((entry) => entry.name)
-    .sort((left, right) => left.localeCompare(right))[0];
+    .sort((left, right) => left.localeCompare(right))
+    .map((entry) => join(artifactDir, entry));
+}
 
-  return match ? join(artifactDir, match) : undefined;
+export async function findIssueArtifact(
+  artifactDir: string,
+  issueNumber: number,
+): Promise<string | undefined> {
+  return (await findIssueArtifacts(artifactDir, issueNumber))[0];
 }

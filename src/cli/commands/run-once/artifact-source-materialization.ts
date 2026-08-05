@@ -47,24 +47,25 @@ async function existingContent(path: string): Promise<string | undefined> {
   }
 }
 
-export async function materializeIssueArtifactSources(
-  options: MaterializeIssueArtifactSourcesOptions,
-): Promise<ResolvedIssueArtifactSources> {
-  const entries = artifactEntries(options.sources);
-  if (entries.length === 0) return options.sources;
+type ArtifactWrite = {
+  entry: ArtifactEntry;
+  content: string;
+};
 
-  const writes: Array<{
-    entry: ArtifactEntry;
-    content: string;
-  }> = [];
-  for (const entry of entries) {
+async function materializationWrites(input: {
+  repoRoot: string;
+  issueNumber: number;
+  sources: ResolvedIssueArtifactSources;
+}): Promise<ArtifactWrite[]> {
+  const writes: ArtifactWrite[] = [];
+  for (const entry of artifactEntries(input.sources)) {
     const content = withTrailingNewline(entry.source.content);
-    const absolutePath = resolve(options.repoRoot, entry.source.path);
+    const absolutePath = resolve(input.repoRoot, entry.source.path);
     const existing = await existingContent(absolutePath);
     if (existing !== undefined) {
       if (existing !== content) {
         throw new Error(
-          `Issue #${options.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
+          `Issue #${input.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
         );
       }
       continue;
@@ -77,6 +78,59 @@ export async function materializeIssueArtifactSources(
       content,
     });
   }
+  return writes;
+}
+
+export async function assertIssueArtifactSourcesMaterializable(input: {
+  repoRoot: string;
+  issueNumber: number;
+  sources: ResolvedIssueArtifactSources;
+}): Promise<void> {
+  await materializationWrites(input);
+}
+
+export async function assertIssueArtifactSourcesMaterializableInBranch(input: {
+  repoRoot: string;
+  runner: CommandRunner;
+  branch: string;
+  issueNumber: number;
+  sources: ResolvedIssueArtifactSources;
+}): Promise<void> {
+  for (const entry of artifactEntries(input.sources)) {
+    const object = `${input.branch}:${entry.source.path}`;
+    const exists = await input.runner.run("git", ["cat-file", "-e", object], {
+      cwd: input.repoRoot,
+    });
+    if (exists.code === 1 || exists.code === 128) continue;
+    if (exists.code !== 0) {
+      throw new Error(
+        `git cat-file failed while checking issue #${input.issueNumber} ${entry.kind} artifact on ${input.branch}: ${commandOutput(exists)}`,
+      );
+    }
+
+    const content = await input.runner.run("git", ["show", object], {
+      cwd: input.repoRoot,
+    });
+    if (content.code !== 0) {
+      throw new Error(
+        `git show failed while checking issue #${input.issueNumber} ${entry.kind} artifact on ${input.branch}: ${commandOutput(content)}`,
+      );
+    }
+    if (content.stdout !== withTrailingNewline(entry.source.content)) {
+      throw new Error(
+        `Issue #${input.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
+      );
+    }
+  }
+}
+
+export async function materializeIssueArtifactSources(
+  options: MaterializeIssueArtifactSourcesOptions,
+): Promise<ResolvedIssueArtifactSources> {
+  const entries = artifactEntries(options.sources);
+  if (entries.length === 0) return options.sources;
+
+  const writes = await materializationWrites(options);
 
   for (const { entry, content } of writes) {
     await mkdir(dirname(entry.source.absolutePath), { recursive: true });

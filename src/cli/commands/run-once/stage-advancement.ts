@@ -95,6 +95,7 @@ export type AdvancePlanningStagesOptions = {
   ready: string;
   inProgress: string;
   needsInfo: string;
+  approvalGatesSatisfied: boolean;
   existingState?: ExistingPlanningState;
   resolvedArtifacts?: ResolvedIssueArtifactSources;
   artifactPolicy?: PlanningArtifactPolicy;
@@ -228,6 +229,7 @@ export async function advancePlanningStages({
   ready,
   inProgress,
   needsInfo,
+  approvalGatesSatisfied,
   existingState,
   resolvedArtifacts,
   artifactPolicy,
@@ -248,11 +250,9 @@ export async function advancePlanningStages({
   let specPath: string | undefined;
   let specCommit: string | undefined;
   let specCreated: boolean;
-  let specCreatedThisRun = false;
   let planPath: string | undefined;
   let planCommit: string | undefined;
   let planCreated: boolean;
-  let planCreatedThisRun = false;
 
   let planningArtifactWorkspace: PlanningArtifactWorkspace = {
     repoRoot: config.repoRoot,
@@ -324,11 +324,15 @@ export async function advancePlanningStages({
     allowGeneratedPlan: true,
   });
 
-  if (artifactPolicy?.kind === "implementation-resume") {
+  if (artifactPolicy) {
     planningArtifactWorkspace = {
       repoRoot: artifactPolicy.primary.repoRoot,
-      ...(existingState?.branch ? { branch: existingState.branch } : {}),
-      ...(existingState?.worktreePath
+      ...(artifactPolicy.kind === "implementation-resume" &&
+      existingState?.branch
+        ? { branch: existingState.branch }
+        : {}),
+      ...(artifactPolicy.kind === "implementation-resume" &&
+      existingState?.worktreePath
         ? { worktreePath: existingState.worktreePath }
         : {}),
     };
@@ -337,14 +341,21 @@ export async function advancePlanningStages({
     planningPlansDir = artifactPolicy.primary.plansDir;
   }
 
-  let artifactPolicyForRun = artifactPolicy ?? freshArtifactPolicy();
+  let artifactPolicyForRun =
+    artifactPolicy?.kind === "fresh"
+      ? {
+          ...artifactPolicy,
+          allowGeneratedSpec: true,
+          allowGeneratedPlan: true,
+        }
+      : (artifactPolicy ?? freshArtifactPolicy());
   let planningArtifacts = await resolvePlanningArtifacts({
     policy: artifactPolicyForRun,
     issue,
     now,
   });
   if (
-    !artifactPolicy &&
+    artifactPolicyForRun.kind === "fresh" &&
     ensurePlanningArtifactWorkspace &&
     (planningArtifacts.plan.generated ||
       (!planningArtifacts.plan.exists && planningArtifacts.spec.generated))
@@ -456,7 +467,6 @@ export async function advancePlanningStages({
     specPath = repoPath(planningRepoRoot, specResult.specPath).relative;
     specCommit = specResult.commit;
     specCreated = true;
-    specCreatedThisRun = true;
     await writeRunState(
       config.runStateDir,
       {
@@ -542,8 +552,8 @@ export async function advancePlanningStages({
   }
 
   const hasCurrentSpecApproval =
-    issue.labels.includes(config.approvalPolicy.specApproval.approvedLabel) &&
-    !specCreatedThisRun;
+    approvalGatesSatisfied ||
+    issue.labels.includes(config.approvalPolicy.specApproval.approvedLabel);
   const mustStopForSpecReview =
     config.approvalPolicy.specApproval.required &&
     specPath !== undefined &&
@@ -692,7 +702,6 @@ export async function advancePlanningStages({
     planPath = repoPath(planningRepoRoot, planned.planPath).relative;
     planCommit = planned.commit;
     planCreated = true;
-    planCreatedThisRun = true;
     await writeRunState(
       config.runStateDir,
       {
@@ -781,12 +790,13 @@ export async function advancePlanningStages({
     await emitSimpleStep(issue.number, "publish plan");
   }
 
-  const planGate = decidePlanApprovalGate({
-    labels,
-    planOnly: config.planOnly,
-    planCreatedThisRun,
-    policy: config.approvalPolicy,
-  });
+  const planGate = approvalGatesSatisfied
+    ? ({ action: "proceed" } as const)
+    : decidePlanApprovalGate({
+        labels,
+        planOnly: config.planOnly,
+        policy: config.approvalPolicy,
+      });
 
   if (planGate.action !== "proceed") {
     const finalLabels =

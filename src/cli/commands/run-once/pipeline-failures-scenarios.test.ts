@@ -16,7 +16,10 @@ import {
   createMockRunner,
   promptPath,
 } from "../../../../test-support/run-once/mock-runner.ts";
-import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
+import {
+  approvalPolicy,
+  makeConfig,
+} from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import {
   collectProgressEvents,
   commentBody,
@@ -884,12 +887,21 @@ test("runOneIssue records and comments unexpected planning failures without repl
 });
 
 test("runOneIssue records and comments unexpected implementation failures without replacing in-progress", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true });
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ specRequired: true }),
+  });
   const selected = issue(
     42,
-    ["agent-ready", "enhancement"],
+    ["spec-review", "spec-approved", "enhancement"],
     "Handle implementation parse failure",
   );
+  const existingSpecPath = join(
+    config.specsDir,
+    "2026-05-01-issue-42-handle-implementation-parse-failure-design.md",
+  );
+  await writeFile(existingSpecPath, "# spec\n", "utf8");
   const existingPlanPath = join(
     config.plansDir,
     "2026-05-01-issue-42-handle-implementation-parse-failure.md",
@@ -958,7 +970,11 @@ test("runOneIssue records and comments unexpected implementation failures withou
       call.args[0] === "issues" &&
       call.args[1] === "edit",
   );
-  assert.equal(editCalls.length, 1);
+  const removedLabels = editCalls.flatMap((call) => {
+    const index = call.args.indexOf("--remove-labels");
+    return index < 0 ? [] : (call.args[index + 1]?.split(",") ?? []);
+  });
+  assert.equal(removedLabels.includes("spec-approved"), false);
 
   const failureComment = runner.calls
     .filter((call) => call.command === "tea" && call.args[0] === "comment")
@@ -1004,7 +1020,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
             ? issueListPayload([
                 issue(
                   42,
-                  ["in-progress", "enhancement"],
+                  ["in-progress", "spec-approved", "enhancement"],
                   "Handle implementation parse failure",
                 ),
                 issue(100, ["agent-ready", "bug"], "Do not select me either"),
@@ -1069,6 +1085,162 @@ test("runOneIssue records and comments unexpected implementation failures withou
 
   assert.equal(resumed.status, "pr-created");
   assert.equal(resumed.issue.number, 42);
+});
+
+test("runOneIssue resumes required plan approval after unexpected implementation failure", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ planRequired: true }),
+  });
+  const selected = issue(
+    43,
+    ["plan-review", "plan-approved", "enhancement"],
+    "Handle plan approval implementation parse failure",
+  );
+  const planPath =
+    "docs/plans/2026-05-01-issue-43-handle-plan-approval-implementation-parse-failure.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      (call.args[0] === "status" || call.args[0] === "worktree")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      return { code: 0, stdout: '{"status":"unknown"}', stderr: "" };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const failed = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(failed.status, "blocked");
+  const removedLabels = runner.calls.flatMap((call) => {
+    const index = call.args.indexOf("--remove-labels");
+    return index < 0 ? [] : (call.args[index + 1]?.split(",") ?? []);
+  });
+  assert.equal(removedLabels.includes("plan-approved"), false);
+  const runState = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 43), "utf8"),
+  );
+  assert.equal(runState.status, "implementing");
+  assert.equal(runState.planPath, planPath);
+
+  const resumeRunner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(
+                  43,
+                  ["in-progress", "plan-approved", "enhancement"],
+                  "Handle plan approval implementation parse failure",
+                ),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "worktree") {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-43-handle-plan-approval-implementation-parse-failure")}\n`,
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return {
+        code: 0,
+        stdout:
+          "agent/issue-43-handle-plan-approval-implementation-parse-failure\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "abc123 partial work\n", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo/pr/43",
+          branch:
+            "agent/issue-43-handle-plan-approval-implementation-parse-failure",
+          commits: ["abc123"],
+          validation: ["just issue-runner-test ok"],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const resumed = await runOneIssue(resumeRunner, config, { now: NOW });
+
+  assert.equal(resumed.status, "pr-created");
+  assert.equal(resumed.issue.number, 43);
 });
 
 test("runOneIssue does not duplicate unexpected planning failure comments on rerun and still updates lastError", async () => {

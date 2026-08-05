@@ -59,6 +59,12 @@ file and publish it with `set-spec` or `set-plan`.
    `plan-approved`, according to the repository workflow policy.
 6. Run `patchmill run-once --issue <number>`.
 
+An approval label asserts that the corresponding artifact has been published or
+otherwise resolves unambiguously and is the artifact Patchmill must reuse. Do
+not apply `spec-approved` before a spec resolves or `plan-approved` before a
+plan resolves. Patchmill fails safely rather than synthesizing a replacement for
+a missing approved artifact.
+
 `set-spec` and `set-plan` publish file contents to the issue. They do not commit
 the local files. Commit source spec and plan files through the normal repository
 workflow when your team wants those files in git.
@@ -84,8 +90,10 @@ pre-existing artifacts.
 
 ## Updating an artifact
 
-Run `set-spec` or `set-plan` again when a developer revises an artifact before
-implementation:
+Before revising or replacing an approved spec, withdraw its `spec-approved`
+label and any downstream `plan-approved` label. Before revising or replacing an
+approved plan, withdraw its `plan-approved` label. Then run `set-spec` or
+`set-plan` again when a developer revises an artifact before implementation:
 
 ```sh
 patchmill set-plan --issue 99 docs/plans/log-entries-ui-v2.md

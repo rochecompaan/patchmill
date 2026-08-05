@@ -47,7 +47,6 @@ export type PlanApprovalGateDecision =
       action: "stop-for-plan-review";
       reviewLabel: string;
       missingLabel: string;
-      staleApprovedLabel?: string;
     };
 
 function has(labels: string[], label: string): boolean {
@@ -71,20 +70,20 @@ export function resolveWorkflowState(
   const { specApproval, planApproval } = policy;
 
   if (has(labels, planApproval.approvedLabel)) return { kind: "plan-approved" };
-  if (has(labels, specApproval.approvedLabel)) return { kind: "spec-approved" };
-  if (has(labels, readyLabel)) return { kind: "agent-ready" };
-  if (has(labels, specApproval.reviewLabel)) {
-    return {
-      kind: "waiting-spec-review",
-      missingLabel: specApproval.approvedLabel,
-    };
-  }
   if (has(labels, planApproval.reviewLabel)) {
     return {
       kind: "waiting-plan-review",
       missingLabel: planApproval.approvedLabel,
     };
   }
+  if (has(labels, specApproval.approvedLabel)) return { kind: "spec-approved" };
+  if (has(labels, specApproval.reviewLabel)) {
+    return {
+      kind: "waiting-spec-review",
+      missingLabel: specApproval.approvedLabel,
+    };
+  }
+  if (has(labels, readyLabel)) return { kind: "agent-ready" };
 
   return { kind: "not-actionable" };
 }
@@ -121,26 +120,18 @@ export function assertExplicitWorkflowState(
 export function decidePlanApprovalGate(options: {
   labels: string[];
   planOnly: boolean;
-  planCreatedThisRun?: boolean;
   policy: WorkflowApprovalPolicy;
 }): PlanApprovalGateDecision {
   if (options.planOnly) return { action: "stop-for-plan-only" };
   const approval = options.policy.planApproval;
   if (!approval.required) return { action: "proceed" };
-  if (
-    !options.planCreatedThisRun &&
-    options.labels.includes(approval.approvedLabel)
-  ) {
+  if (options.labels.includes(approval.approvedLabel)) {
     return { action: "proceed" };
   }
   return {
     action: "stop-for-plan-review",
     reviewLabel: approval.reviewLabel,
     missingLabel: approval.approvedLabel,
-    ...(options.planCreatedThisRun &&
-    options.labels.includes(approval.approvedLabel)
-      ? { staleApprovedLabel: approval.approvedLabel }
-      : {}),
   };
 }
 
@@ -151,9 +142,7 @@ export function cleanupLabelsForSpecReview(
   return addLabel(
     removeLabels(labels, [
       options.readyLabel,
-      options.policy.specApproval.approvedLabel,
       options.policy.planApproval.reviewLabel,
-      options.policy.planApproval.approvedLabel,
     ]),
     options.policy.specApproval.reviewLabel,
   );
@@ -167,8 +156,6 @@ export function cleanupLabelsForPlanReview(
     removeLabels(labels, [
       options.readyLabel,
       options.policy.specApproval.reviewLabel,
-      options.policy.specApproval.approvedLabel,
-      options.policy.planApproval.approvedLabel,
     ]),
     options.policy.planApproval.reviewLabel,
   );
@@ -181,9 +168,7 @@ export function cleanupLabelsForImplementation(
   return removeLabels(labels, [
     options.readyLabel,
     options.policy.specApproval.reviewLabel,
-    options.policy.specApproval.approvedLabel,
     options.policy.planApproval.reviewLabel,
-    options.policy.planApproval.approvedLabel,
   ]);
 }
 
@@ -203,7 +188,7 @@ export function retryableLabelsAfterDevelopmentEnvironmentFailure(
   const restore =
     originalActionableLabels.length > 0
       ? originalActionableLabels
-      : [options.policy.planApproval.approvedLabel];
+      : [options.readyLabel];
 
   return restore.reduce(addLabel, withoutInProgress);
 }

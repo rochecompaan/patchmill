@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
@@ -134,6 +134,76 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
     false,
   );
   assert.ok(runner.calls.find((call) => call.command === "pi"));
+});
+
+test("runOneIssue recreates an approved implementing worktree after preflight", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+  });
+  const planPath = "docs/plans/2026-06-20-issue-45-recover-blocked-run.md";
+  const worktreePath = ".worktrees/patchmill-issue-45-recover-blocked-run";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeBlockedRecoveryRunState(
+    config,
+    { issueNumber: 45, status: "implementing" },
+    {
+      createWorktreePath: false,
+      writePlanInPrimaryRepo: false,
+      writeSpecInPrimaryRepo: false,
+    },
+  );
+  const baseRunner = blockedRecoveryRunner(config, {
+    selectedLabels: ["in-progress", "plan-approved"],
+    worktreeRegistered: false,
+  });
+  const runner = {
+    calls: baseRunner.calls,
+    async run(...args: Parameters<typeof baseRunner.run>) {
+      const [command, commandArgs] = args;
+      if (command === "git" && commandArgs[0] === "show") {
+        baseRunner.calls.push({ command, args: [...commandArgs] });
+        return { code: 0, stdout: "# plan\n", stderr: "" };
+      }
+      const result = await baseRunner.run(...args);
+      if (
+        command === "git" &&
+        commandArgs[0] === "worktree" &&
+        commandArgs[1] === "add"
+      ) {
+        await mkdir(join(config.repoRoot, worktreePath, "docs", "plans"), {
+          recursive: true,
+        });
+        await writeFile(
+          join(config.repoRoot, worktreePath, planPath),
+          "# plan\n",
+          "utf8",
+        );
+      }
+      return result;
+    },
+  };
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  const worktreeAdd = runner.calls.findIndex(
+    (call) =>
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add",
+  );
+  const firstCleanStatus = runner.calls.findIndex(
+    (call) => call.command === "git" && call.args[0] === "status",
+  );
+  assert.ok(worktreeAdd >= 0, "expected saved worktree recreation");
+  assert.ok(firstCleanStatus >= 0, "expected primary clean-worktree check");
+  assert.ok(
+    firstCleanStatus < worktreeAdd,
+    "expected worktree recreation after the primary clean-worktree check",
+  );
 });
 
 test("runOneIssue resumes clean blocked implementation workspace after external prerequisite is fixed", async () => {
@@ -371,7 +441,13 @@ test("runOneIssue recovers blocked state overwritten by spec review stop", async
     issueNumber: 45,
     approvalPolicy: specAndPlanApprovalPolicy(),
   });
-  await writeBlockedRecoveryRunState(config);
+  await writeBlockedRecoveryRunState(
+    config,
+    {},
+    {
+      writeSpecInPrimaryRepo: true,
+    },
+  );
   await writeRunState(
     config.runStateDir,
     {

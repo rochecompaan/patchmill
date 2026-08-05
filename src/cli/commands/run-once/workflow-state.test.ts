@@ -73,6 +73,26 @@ test("resolveWorkflowState treats plan-approved as stronger than other workflow 
   );
 });
 
+test("resolveWorkflowState treats plan review as later than durable spec approval", () => {
+  assert.deepEqual(
+    resolveWorkflowState(["spec-approved", "plan-review"], {
+      readyLabel: ready,
+      policy,
+    }),
+    { kind: "waiting-plan-review", missingLabel: "plan-approved" },
+  );
+});
+
+test("resolveWorkflowState treats spec review as later than agent-ready", () => {
+  assert.deepEqual(
+    resolveWorkflowState([ready, "spec-review"], {
+      readyLabel: ready,
+      policy,
+    }),
+    { kind: "waiting-spec-review", missingLabel: "spec-approved" },
+  );
+});
+
 test("resolveWorkflowState treats review-only labels as waiting", () => {
   assert.deepEqual(
     resolveWorkflowState(["spec-review"], { readyLabel: ready, policy }),
@@ -158,22 +178,6 @@ test("decidePlanApprovalGate proceeds when the approved plan label is present", 
   assert.deepEqual(decision, { action: "proceed" });
 });
 
-test("decidePlanApprovalGate ignores stale approval on a newly-created plan", () => {
-  const decision = decidePlanApprovalGate({
-    labels: ["in-progress", "plan-approved"],
-    planOnly: false,
-    planCreatedThisRun: true,
-    policy: planApprovalPolicy(true),
-  });
-
-  assert.deepEqual(decision, {
-    action: "stop-for-plan-review",
-    reviewLabel: "plan-review",
-    missingLabel: "plan-approved",
-    staleApprovedLabel: "plan-approved",
-  });
-});
-
 test("decidePlanApprovalGate stops for plan-only without workflow review labels", () => {
   const decision = decidePlanApprovalGate({
     labels: ["in-progress"],
@@ -184,7 +188,7 @@ test("decidePlanApprovalGate stops for plan-only without workflow review labels"
   assert.deepEqual(decision, { action: "stop-for-plan-only" });
 });
 
-test("cleanupLabelsForSpecReview removes agent-ready and stale later approvals", () => {
+test("cleanupLabelsForSpecReview preserves approval labels", () => {
   assert.deepEqual(
     cleanupLabelsForSpecReview(
       [ready, "spec-approved", "plan-review", "plan-approved", "bug"],
@@ -193,11 +197,11 @@ test("cleanupLabelsForSpecReview removes agent-ready and stale later approvals",
         policy,
       },
     ),
-    ["bug", "spec-review"],
+    ["spec-approved", "plan-approved", "bug", "spec-review"],
   );
 });
 
-test("cleanupLabelsForPlanReview removes ready and all spec labels", () => {
+test("cleanupLabelsForPlanReview preserves approval labels", () => {
   assert.deepEqual(
     cleanupLabelsForPlanReview(
       [ready, "spec-review", "spec-approved", "plan-approved", "bug"],
@@ -206,11 +210,11 @@ test("cleanupLabelsForPlanReview removes ready and all spec labels", () => {
         policy,
       },
     ),
-    ["bug", "plan-review"],
+    ["spec-approved", "plan-approved", "bug", "plan-review"],
   );
 });
 
-test("cleanupLabelsForImplementation removes all workflow review and approval labels", () => {
+test("cleanupLabelsForImplementation preserves approval labels", () => {
   assert.deepEqual(
     cleanupLabelsForImplementation(
       [
@@ -223,7 +227,7 @@ test("cleanupLabelsForImplementation removes all workflow review and approval la
       ],
       { readyLabel: ready, policy },
     ),
-    ["bug"],
+    ["spec-approved", "plan-approved", "bug"],
   );
 });
 
@@ -239,7 +243,7 @@ test("retryableLabelsAfterDevelopmentEnvironmentFailure restores original action
   );
 });
 
-test("retryableLabelsAfterDevelopmentEnvironmentFailure restores plan approval for resumed in-progress issues", () => {
+test("retryableLabelsAfterDevelopmentEnvironmentFailure restores ready for legacy resume", () => {
   assert.deepEqual(
     retryableLabelsAfterDevelopmentEnvironmentFailure(["in-progress", "bug"], {
       readyLabel: ready,
@@ -247,6 +251,6 @@ test("retryableLabelsAfterDevelopmentEnvironmentFailure restores plan approval f
       originalLabels: ["in-progress"],
       inProgressLabel: "in-progress",
     }),
-    ["bug", "plan-approved"],
+    ["bug", ready],
   );
 });

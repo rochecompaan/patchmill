@@ -115,6 +115,40 @@ test("implementation resume rejects mismatched explicit artifact comments", asyn
   );
 });
 
+test("implementation resume uses an explicit plan when no plan was saved", async () => {
+  const { policy } = await repoFixture();
+
+  const artifacts = await resolvePlanningArtifacts({
+    policy: {
+      ...policy,
+      saved: {
+        specPath: "docs/specs/saved-spec.md",
+        specCommit: "spec123",
+      },
+      explicit: {
+        plan: {
+          path: "docs/plans/published-plan.md",
+          commit: "planpub",
+        },
+      },
+    },
+    issue: issue(45),
+    now: NOW,
+  });
+
+  assert.equal(artifacts.spec.path, "docs/specs/saved-spec.md");
+  assert.equal(artifacts.spec.fromState, true);
+  assert.deepEqual(artifacts.plan, {
+    path: "docs/plans/published-plan.md",
+    commit: "planpub",
+    exists: true,
+    fromState: false,
+    created: false,
+    generated: false,
+    rootSource: "resume-worktree",
+  });
+});
+
 test("fresh policy accepts explicit artifact comments before discovery", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-artifacts-"));
   const artifacts = await resolvePlanningArtifacts({

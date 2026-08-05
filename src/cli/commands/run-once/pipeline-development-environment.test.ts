@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { readRunState, runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
 import {
   issue,
@@ -269,6 +269,7 @@ test("runOneIssue returns development-environment-not-ready without starting imp
   const { result, runner } = await runPlanApprovedImplementationScenario({
     issueNumber: 47,
     title: "Not ready",
+    issueLabels: ["agent-ready"],
     planPath: "docs/plans/2026-05-14-issue-47-not-ready.md",
     configOverrides: {
       skills: {
@@ -321,7 +322,7 @@ test("runOneIssue returns development-environment-not-ready without starting imp
     .at(-1);
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "plan-approved",
+    "agent-ready",
   );
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
@@ -335,6 +336,7 @@ test("runOneIssue preserves approval labels after development environment failur
     issueNumber: 49,
     title: "Approved but not ready",
     issueLabels: ["spec-approved", "plan-approved"],
+    specPath: "docs/specs/2026-05-14-issue-49-approved-not-ready-design.md",
     planPath: "docs/plans/2026-05-14-issue-49-approved-not-ready.md",
     configOverrides: {
       approvalPolicy: specAndPlanApprovalPolicy(),
@@ -367,10 +369,150 @@ test("runOneIssue preserves approval labels after development environment failur
         call.args[1] === "edit",
     )
     .at(-1);
+  assert.equal(finalEdit?.args.includes("--add-labels"), false);
   assert.equal(
-    finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "spec-approved,plan-approved",
+    finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
+    "in-progress",
   );
+});
+
+test("runOneIssue retries worktree-only approved artifacts after development environment failure", async () => {
+  const issueNumber = 60;
+  const title = "Retry worktree approved plan";
+  const planPath =
+    "docs/plans/2026-05-14-issue-60-retry-worktree-approved-plan.md";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: specAndPlanApprovalPolicy(),
+    skills: {
+      ...DEFAULT_PATCHMILL_CONFIG.skills,
+      developmentEnvironment: "./skills/development-environment",
+    },
+  });
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  const selected = issue(issueNumber, ["plan-approved"], title);
+  const worktreePath =
+    ".worktrees/patchmill-issue-60-retry-worktree-approved-plan";
+  const branch = "agent/issue-60-retry-worktree-approved-plan";
+  const worktreeRoot = join(config.repoRoot, worktreePath);
+  let workspaceCreated = false;
+  let developmentEnvironmentRuns = 0;
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: workspaceCreated ? `worktree ${worktreeRoot}\n` : "",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      workspaceCreated = true;
+      await mkdir(dirname(join(worktreeRoot, planPath)), { recursive: true });
+      await writeFile(
+        join(worktreeRoot, planPath),
+        "# worktree plan\n",
+        "utf8",
+      );
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return { code: 0, stdout: `${branch}\n`, stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      const prompt = await readFile(promptPath(call.args), "utf8");
+      assert.match(prompt, /Prepare development environment/);
+      developmentEnvironmentRuns += 1;
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "not-ready",
+          reason: "Service unavailable",
+          evidence: ["service check failed"],
+          remediation: ["Start the service", "Re-run patchmill"],
+        }),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const first = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(first.status, "development-environment-not-ready");
+  const failedState = await readRunState(config.runStateDir, issueNumber);
+  assert.equal(failedState?.branch, branch);
+  assert.equal(failedState?.worktreePath, worktreePath);
+  await unlink(join(config.repoRoot, planPath));
+
+  const second = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(second.status, "development-environment-not-ready");
+  assert.equal(developmentEnvironmentRuns, 2);
+  assert.equal(
+    runner.calls.filter(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "-C" &&
+        call.args[2] === "branch",
+    ).length,
+    2,
+  );
+  const finalEdit = runner.calls
+    .filter(
+      (call) =>
+        call.command === "tea" &&
+        call.args[0] === "issues" &&
+        call.args[1] === "edit",
+    )
+    .at(-1);
+  assert.equal(finalEdit?.args.includes("--add-labels"), false);
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],
     "in-progress",
@@ -382,6 +524,7 @@ test("runOneIssue restores a retryable label after resumed development environme
   const config = await makeConfig({
     dryRun: false,
     execute: true,
+    approvalPolicy: specAndPlanApprovalPolicy(),
     skills: {
       ...DEFAULT_PATCHMILL_CONFIG.skills,
       developmentEnvironment: "./skills/development-environment",
@@ -492,7 +635,7 @@ test("runOneIssue restores a retryable label after resumed development environme
     .at(-1);
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "plan-approved",
+    "agent-ready",
   );
   assert.equal(
     finalEdit?.args[finalEdit.args.indexOf("--remove-labels") + 1],

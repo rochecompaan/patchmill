@@ -4,6 +4,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
+import {
+  configuredWorktreeStrategy,
+  expectedIssueWorkspace,
+} from "./pipeline-workspace.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import {
   issue,
@@ -200,6 +204,250 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
   assert.equal(comments.length, 1);
   assert.match(commentBody(comments[0]), /Plan ready/);
   assert.doesNotMatch(commentBody(comments[0]), /Existing plan ready/);
+});
+
+test("runOneIssue rejects approved published worktree conflicts before claiming", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const specPath = "docs/specs/conflicting-worktree-approved-spec.md";
+  const selected = {
+    ...issue(66, ["spec-approved", "enhancement"], "Conflicting worktree spec"),
+    comments: [
+      {
+        authorLogin: "patchmill-bot",
+        body: formatPublishedArtifactComment({
+          kind: "spec",
+          path: specPath,
+          content: "# Published spec\n",
+        }),
+      },
+    ],
+  };
+  const workspace = expectedIssueWorkspace(
+    selected.number,
+    selected.title,
+    configuredWorktreeStrategy(config),
+  );
+  await writeFile(
+    join(config.repoRoot, specPath),
+    "# Existing primary spec\n",
+    "utf8",
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(
+        join(config.repoRoot, workspace.worktreePath, "docs", "specs"),
+        { recursive: true },
+      );
+      await writeFile(
+        join(config.repoRoot, workspace.worktreePath, specPath),
+        "# Existing worktree spec\n",
+        "utf8",
+      );
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "-C") {
+      return { code: 0, stdout: `${workspace.branch}\n`, stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "logins") {
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /spec-approved.*would overwrite existing spec artifact/u,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
+  );
+});
+
+test("runOneIssue rejects an approved source conflicting with an unregistered issue branch before mutation", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const specPath = "docs/specs/branch-conflicting-approved-spec.md";
+  const selected = {
+    ...issue(
+      67,
+      ["spec-approved", "enhancement"],
+      "Branch conflicting worktree spec",
+    ),
+    comments: [
+      {
+        authorLogin: "patchmill-bot",
+        body: formatPublishedArtifactComment({
+          kind: "spec",
+          path: specPath,
+          content: "# Published spec\n",
+        }),
+      },
+    ],
+  };
+  const workspace = expectedIssueWorkspace(
+    selected.number,
+    selected.title,
+    configuredWorktreeStrategy(config),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "cat-file") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show") {
+      return { code: 0, stdout: "# Conflicting branch spec\n", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(
+        join(config.repoRoot, workspace.worktreePath, "docs", "specs"),
+        { recursive: true },
+      );
+      await writeFile(
+        join(config.repoRoot, workspace.worktreePath, specPath),
+        "# Conflicting branch spec\n",
+        "utf8",
+      );
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "logins") {
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /spec-approved.*would overwrite existing spec artifact/u,
+  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
+  );
 });
 
 test("runOneIssue uses deterministic published artifacts before filename discovery", async () => {
@@ -936,7 +1184,7 @@ test("runOneIssue stops at spec-review when agent-ready has an existing spec and
   );
 });
 
-test("runOneIssue stops at spec-review for plan-approved issues without spec approval", async () => {
+test("runOneIssue rejects plan-approved when no plan can be resolved before spec review", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -987,24 +1235,23 @@ test("runOneIssue stops at spec-review for plan-approved issues without spec app
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "spec-found");
-  assert.equal(result.specPath, specPath);
-  const finalEdit = runner.calls
-    .filter(
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /plan-approved.*no plan artifact could be resolved/u,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
       (call) =>
         call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "edit",
-    )
-    .at(-1);
-  assert.ok(finalEdit);
-  assert.equal(
-    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "spec-review",
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
   );
-  assert.equal(finalEdit.args.includes("plan-approved"), false);
 });
 
 test("runOneIssue fails fast when saved spec path access fails unexpectedly", async () => {
@@ -1165,7 +1412,7 @@ test("runOneIssue fails fast when saved plan path access fails unexpectedly", as
   assert.equal(piCalls, 0);
 });
 
-test("runOneIssue treats a newly-created replacement spec as needing fresh approval", async () => {
+test("runOneIssue rejects spec-approved when no spec can be resolved", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -1229,28 +1476,26 @@ test("runOneIssue treats a newly-created replacement spec as needing fresh appro
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "spec-created");
-  assert.equal(result.specPath, expectedSpecPath);
-  const finalEdit = runner.calls
-    .filter(
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /spec-approved.*no spec artifact could be resolved/u,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
       (call) =>
         call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "edit",
-    )
-    .at(-1);
-  assert.ok(finalEdit);
-  assert.equal(
-    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "spec-review",
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
   );
-  assert.equal(finalEdit.args.includes("spec-approved"), false);
-  assert.equal(finalEdit.args.includes("plan-approved"), false);
 });
 
-test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-review", async () => {
+test("runOneIssue writes a plan and preserves spec approval at plan review", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -1264,6 +1509,15 @@ test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-
   const specPath = "docs/specs/2026-05-09-issue-32-needs-plan-design.md";
   await writeFile(join(config.repoRoot, specPath), "# Spec\n", "utf8");
   const expectedPlanPath = "docs/plans/2026-05-09-issue-32-needs-plan.md";
+  const expectedWorkspace = expectedIssueWorkspace(
+    selected.number,
+    selected.title,
+    configuredWorktreeStrategy(config),
+  );
+  const expectedWorkspaceRoot = join(
+    config.repoRoot,
+    expectedWorkspace.worktreePath,
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -1278,6 +1532,23 @@ test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-
       };
     }
     if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (
@@ -1300,7 +1571,8 @@ test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-
         prompt,
         new RegExp(specPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
       );
-      assert.ok(call.cwd);
+      assert.equal(call.cwd, expectedWorkspaceRoot);
+      assert.notEqual(call.cwd, config.repoRoot);
       const absolutePlanPath = join(call.cwd, expectedPlanPath);
       await mkdir(dirname(absolutePlanPath), { recursive: true });
       await writeFile(absolutePlanPath, "# Generated plan\n", "utf8");
@@ -1331,8 +1603,11 @@ test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-
     finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
     "plan-review",
   );
-  assert.equal(finalEdit.args.includes("spec-review"), false);
-  assert.equal(finalEdit.args.includes("spec-approved"), false);
+  const removedLabels =
+    finalEdit.args[finalEdit.args.indexOf("--remove-labels") + 1]?.split(",") ??
+    [];
+  assert.deepEqual(removedLabels.sort(), ["in-progress", "spec-review"].sort());
+  assert.equal(removedLabels.includes("spec-approved"), false);
 });
 
 test("runOneIssue resumes approved spec review with saved planning worktree", async () => {
@@ -2113,7 +2388,7 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
   );
 });
 
-test("runOneIssue ignores stale plan approval when a new plan is created", async () => {
+test("runOneIssue rejects plan-approved when no plan can be resolved", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -2170,42 +2445,34 @@ test("runOneIssue ignores stale plan approval when a new plan is created", async
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "plan-created");
-  assert.equal(result.planPath, expectedPlanPath);
-  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /plan-approved.*no plan artifact could be resolved/u,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
   assert.equal(
     runner.calls.some(
-      (call) => call.command === "git" && call.args[0] === "worktree",
+      (call) =>
+        call.command === "tea" &&
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
     ),
-    true,
-  );
-  const editCalls = runner.calls.filter(
-    (call) =>
-      call.command === "tea" &&
-      call.args[0] === "issues" &&
-      call.args[1] === "edit",
-  );
-  const restoreCall = editCalls.at(-1);
-  assert.ok(restoreCall);
-  assert.equal(
-    restoreCall.args[restoreCall.args.indexOf("--add-labels") + 1],
-    "plan-review",
-  );
-  assert.equal(
-    restoreCall.args[restoreCall.args.indexOf("--remove-labels") + 1],
-    "plan-approved,in-progress",
+    false,
   );
 });
 
-test("runOneIssue proceeds when plan approval label is present and clears plan-review", async () => {
+test("runOneIssue preserves approvals while clearing review labels", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     approvalPolicy: approvalPolicy({ planRequired: true }),
   });
+  const specPath = "docs/specs/2026-05-14-issue-49-approved-spec-design.md";
   const planPath = "docs/plans/2026-05-14-issue-49-approved-plan.md";
+  await writeFile(join(config.repoRoot, specPath), "# spec\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   const selected = issue(
     49,
@@ -2305,10 +2572,15 @@ test("runOneIssue proceeds when plan approval label is present and clears plan-r
   );
   const finalEdit = editCalls.at(-1);
   assert.ok(finalEdit);
-  assert.equal(finalEdit.args.includes("spec-review"), false);
-  assert.equal(finalEdit.args.includes("spec-approved"), false);
-  assert.equal(finalEdit.args.includes("plan-review"), false);
-  assert.equal(finalEdit.args.includes("plan-approved"), false);
+  const removedLabels = editCalls.flatMap((call) => {
+    const index = call.args.indexOf("--remove-labels");
+    return index < 0 ? [] : (call.args[index + 1]?.split(",") ?? []);
+  });
+  assert.equal(removedLabels.includes("spec-approved"), false);
+  assert.equal(removedLabels.includes("plan-approved"), false);
+  assert.equal(removedLabels.includes("spec-review"), true);
+  assert.equal(removedLabels.includes("plan-review"), true);
+  assert.equal(removedLabels.includes("in-progress"), true);
 });
 
 test("runOneIssue claims the issue, comments automation start, writes run state, and exits plan-created for plan-only mode", async () => {

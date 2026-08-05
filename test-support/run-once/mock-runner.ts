@@ -36,7 +36,11 @@ export function workflowPiCalls(calls: Call[]): Call[] {
 
 function defaultGitPreflightResult(call: Call): CommandResult | undefined {
   if (call.command === "git" && call.args[0] === "cat-file") {
-    return { code: 0, stdout: "", stderr: "" };
+    return {
+      code: 0,
+      stdout: call.args[1] === "-t" ? "blob\n" : "",
+      stderr: "",
+    };
   }
   if (call.command === "git" && call.args[0] === "diff") {
     return { code: 0, stdout: "", stderr: "" };

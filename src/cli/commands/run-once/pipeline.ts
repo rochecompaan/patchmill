@@ -4,6 +4,7 @@ import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
+import { assertApprovedArtifactsResolvable } from "./approval-artifact-preflight.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
@@ -11,6 +12,7 @@ import {
   assertCleanWorktree,
   assertIssueBaseContainedInPrBase,
   ensureIssueWorktree,
+  inspectIssueWorkspace,
   type IssueWorktreeResult,
 } from "./git.ts";
 import {
@@ -54,7 +56,7 @@ import {
   cleanStatusIgnoredPaths,
   configuredWorktreeStrategy,
   expectedIssueWorkspace,
-  resumePlanningArtifactPolicy,
+  planningArtifactPolicyForWorkspace,
 } from "./pipeline-workspace.ts";
 import {
   emitSelectionDiagnostics,
@@ -281,54 +283,6 @@ export async function runOneIssue(
   });
   issueForRun = artifactSources.issue;
   resolvedArtifacts = artifactSources.resolvedArtifacts;
-
-  await progress(runOptions, "info", "git", "checking repository status", {
-    issueNumber: issue.number,
-  });
-  await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
-  const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
-  let labels = resumed
-    ? issue.labels.includes(inProgress)
-      ? issue.labels
-      : nextLabels(issue.labels, [ready], [inProgress])
-    : nextLabels(issue.labels, [ready], [inProgress]);
-  if (
-    !checkpoints.claimed ||
-    (planningWorkspaceResumable && !issue.labels.includes(inProgress))
-  ) {
-    await runStep("claim issue", async () => {
-      await progress(
-        runOptions,
-        "info",
-        "labels",
-        `ensuring ${inProgress} label exists`,
-        { issueNumber: issue.number },
-      );
-      await ensureAutomationLabel(host, config, inProgress);
-      await host.applyLabels(
-        planLabelChange(issue.number, issue.labels, labels),
-      );
-      await progress(
-        runOptions,
-        "info",
-        "claim",
-        `claimed #${issue.number}: ${ready} -> ${inProgress}`,
-        { issueNumber: issue.number },
-      );
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          title: issue.title,
-          status: "claimed",
-          checkpoints: { claimed: true },
-          resetCheckpoints: resetStaleCheckpoints,
-        },
-        timestamp,
-      );
-      checkpoints.claimed = true;
-    });
-  }
   let specPath: string | undefined;
   let specCommit: string | undefined;
   let planPath: string | undefined;
@@ -343,8 +297,7 @@ export async function runOneIssue(
     issue.title,
     worktreeStrategy,
   );
-  const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
-    if (ensuredWorktree) return ensuredWorktree;
+  const assertExpectedWorkspaceIdentity = (): void => {
     if (
       resumableState &&
       existingState?.branch &&
@@ -363,6 +316,24 @@ export async function runOneIssue(
         `Saved worktree ${existingState.worktreePath} does not match expected worktree path ${expectedWorkspace.worktreePath}`,
       );
     }
+  };
+  const hasApprovalLabel = [
+    config.approvalPolicy.specApproval.approvedLabel,
+    config.approvalPolicy.planApproval.approvedLabel,
+  ].some((label) => issueForRun.labels.includes(label));
+  const artifactWorkspace = hasApprovalLabel
+    ? await (async () => {
+        assertExpectedWorkspaceIdentity();
+        return await inspectIssueWorkspace(runner, config.repoRoot, {
+          branch: expectedWorkspace.branch,
+          worktreePath:
+            existingState?.worktreePath ?? expectedWorkspace.worktreePath,
+        });
+      })()
+    : undefined;
+  const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
+    if (ensuredWorktree) return ensuredWorktree;
+    assertExpectedWorkspaceIdentity();
 
     const worktree = await ensureIssueWorktree(
       runner,
@@ -413,6 +384,77 @@ export async function runOneIssue(
     return worktree;
   };
 
+  const { ready, inProgress, done, needsInfo } = lifecycleLabels(config);
+  const approvedArtifactPreflight = await assertApprovedArtifactsResolvable({
+    config,
+    issue: issueForRun,
+    existingState,
+    resolvedArtifacts,
+    now: runOptions.now ?? new Date(),
+    artifactWorkspace,
+    runner,
+  });
+  await progress(runOptions, "info", "git", "checking repository status", {
+    issueNumber: issue.number,
+  });
+  await assertCleanWorktree(runner, config.repoRoot, ignoredPaths);
+  if (artifactWorkspace?.kind === "branch") {
+    const workspace = await ensureIssueWorkspace();
+    artifactPolicy = planningArtifactPolicyForWorkspace({
+      config,
+      existingState,
+      resolvedArtifacts,
+      worktreePath: workspace.worktreePath,
+      allowGeneratedSpec: false,
+      allowGeneratedPlan: false,
+    });
+  } else if (approvedArtifactPreflight) {
+    artifactPolicy = approvedArtifactPreflight.policy;
+  }
+
+  let labels = resumed
+    ? issue.labels.includes(inProgress)
+      ? issue.labels
+      : nextLabels(issue.labels, [ready], [inProgress])
+    : nextLabels(issue.labels, [ready], [inProgress]);
+  if (
+    !checkpoints.claimed ||
+    (planningWorkspaceResumable && !issue.labels.includes(inProgress))
+  ) {
+    await runStep("claim issue", async () => {
+      await progress(
+        runOptions,
+        "info",
+        "labels",
+        `ensuring ${inProgress} label exists`,
+        { issueNumber: issue.number },
+      );
+      await ensureAutomationLabel(host, config, inProgress);
+      await host.applyLabels(
+        planLabelChange(issue.number, issue.labels, labels),
+      );
+      await progress(
+        runOptions,
+        "info",
+        "claim",
+        `claimed #${issue.number}: ${ready} -> ${inProgress}`,
+        { issueNumber: issue.number },
+      );
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issue.number,
+          title: issue.title,
+          status: "claimed",
+          checkpoints: { claimed: true },
+          resetCheckpoints: resetStaleCheckpoints,
+        },
+        timestamp,
+      );
+      checkpoints.claimed = true;
+    });
+  }
+
   try {
     if (!checkpoints.startedCommentPosted) {
       await host.commentIssue(issueForRun.number, startedComment(issueForRun));
@@ -430,6 +472,7 @@ export async function runOneIssue(
     }
 
     if (
+      !artifactPolicy &&
       resumableState &&
       existingState &&
       (existingState.branch || existingState.worktreePath) &&
@@ -438,11 +481,13 @@ export async function runOneIssue(
       const resumeWorktree = await ensureIssueWorkspace();
       const savedWorktreePath =
         existingState.worktreePath ?? resumeWorktree.worktreePath;
-      artifactPolicy = resumePlanningArtifactPolicy({
+      artifactPolicy = planningArtifactPolicyForWorkspace({
         config,
-        worktreePath: savedWorktreePath,
         existingState,
         resolvedArtifacts,
+        worktreePath: savedWorktreePath,
+        allowGeneratedSpec: false,
+        allowGeneratedPlan: false,
       });
       await progress(
         runOptions,
@@ -454,11 +499,41 @@ export async function runOneIssue(
     }
 
     if (artifactPolicy?.kind === "implementation-resume") {
-      await resolvePlanningArtifacts({
-        policy: artifactPolicy,
-        issue: issueForRun,
-        now: runOptions.now ?? new Date(),
-      });
+      const sourcesToMaterialize = {
+        ...(!artifactPolicy.saved.specPath && resolvedArtifacts.spec
+          ? { spec: resolvedArtifacts.spec }
+          : {}),
+        ...(!artifactPolicy.saved.planPath && resolvedArtifacts.plan
+          ? { plan: resolvedArtifacts.plan }
+          : {}),
+      };
+      if (sourcesToMaterialize.spec || sourcesToMaterialize.plan) {
+        const materializedArtifacts = await runStep(
+          "materialize issue artifact sources",
+          async () =>
+            materializeIssueArtifactSources({
+              repoRoot: artifactPolicy.primary.repoRoot,
+              runner,
+              issueNumber: issueForRun.number,
+              sources: sourcesToMaterialize,
+            }),
+        );
+        resolvedArtifacts = {
+          ...resolvedArtifacts,
+          ...materializedArtifacts,
+        };
+        artifactPolicy = {
+          ...artifactPolicy,
+          explicit: resolvedArtifacts,
+        };
+      }
+      if (!approvedArtifactPreflight) {
+        await resolvePlanningArtifacts({
+          policy: artifactPolicy,
+          issue: issueForRun,
+          now: runOptions.now ?? new Date(),
+        });
+      }
     } else {
       const artifactWorktree =
         resolvedArtifacts.spec || resolvedArtifacts.plan
@@ -505,6 +580,8 @@ export async function runOneIssue(
       ready,
       inProgress,
       needsInfo,
+      approvalGatesSatisfied:
+        ordinaryResumableState && existingState?.status === "implementing",
       existingState,
       resolvedArtifacts,
       artifactPolicy,
