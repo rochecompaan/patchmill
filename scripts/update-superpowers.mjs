@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { repairMissingLockfileIntegrities } from "./lockfile-integrity.mjs";
@@ -176,8 +176,8 @@ async function regenerateLockfiles(rootDir, runCommand) {
     rootDir,
   );
   const shrinkwrapPath = join(rootDir, "npm-shrinkwrap.json");
-  const originalShrinkwrap = await readFile(shrinkwrapPath);
-  await writeFile(shrinkwrapPath, "");
+  const updatedShrinkwrap = await readFile(shrinkwrapPath);
+  await rm(shrinkwrapPath);
   try {
     await runCommand(
       "npm",
@@ -185,7 +185,7 @@ async function regenerateLockfiles(rootDir, runCommand) {
       rootDir,
     );
   } finally {
-    await writeFile(shrinkwrapPath, originalShrinkwrap);
+    await writeFile(shrinkwrapPath, updatedShrinkwrap);
   }
   const [packageLock, shrinkwrap] = await Promise.all([
     readJson(join(rootDir, "package-lock.json")),
