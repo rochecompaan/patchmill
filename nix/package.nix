@@ -3,6 +3,7 @@
   buildNpmPackage,
   nodejs_24,
   makeWrapper,
+  git,
 }:
 
 let
@@ -30,7 +31,7 @@ buildNpmPackageNode24 rec {
 
   dontNpmBuild = true;
 
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [ makeWrapper git ];
 
   env = {
     HUSKY = "0";
