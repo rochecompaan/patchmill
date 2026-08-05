@@ -162,29 +162,34 @@ async function snapshotEntries(fixture) {
   );
 }
 
-test("validate-only no-update checks the installed repository without commands", async () => {
-  const summary = await runSuperpowersUpgrade(
-    ["--mode", "manual", "--superpowers-version", "6.0.3", "--validate-only"],
-    {
-      rootDir,
-      fetchImpl: async (url) =>
-        String(url).includes("/contents/package.json")
-          ? new Response(
-              JSON.stringify({
-                encoding: "base64",
-                content: Buffer.from(
-                  JSON.stringify({ version: "6.0.3" }),
-                ).toString("base64"),
-              }),
-            )
-          : new Response(JSON.stringify([release("v6.0.3")])),
-      runCommand: async () => assert.fail("must not run commands"),
-    },
-  );
-  assert.equal(summary.noUpdate, true);
-  assert.equal(summary.currentVersion, "6.0.3");
-  assert.deepEqual(summary.changedFiles, []);
-  assert.equal(validationCommands[0], "npm ci");
+test("validate-only no-update checks a synchronized repository without commands", async () => {
+  const fixture = await createFixture();
+  try {
+    const summary = await runSuperpowersUpgrade(
+      ["--mode", "manual", "--superpowers-version", "6.0.3", "--validate-only"],
+      {
+        rootDir: fixture,
+        fetchImpl: async (url) =>
+          String(url).includes("/contents/package.json")
+            ? new Response(
+                JSON.stringify({
+                  encoding: "base64",
+                  content: Buffer.from(
+                    JSON.stringify({ version: "6.0.3" }),
+                  ).toString("base64"),
+                }),
+              )
+            : new Response(JSON.stringify([release("v6.0.3")])),
+        runCommand: async () => assert.fail("must not run commands"),
+      },
+    );
+    assert.equal(summary.noUpdate, true);
+    assert.equal(summary.currentVersion, "6.0.3");
+    assert.deepEqual(summary.changedFiles, []);
+    assert.equal(validationCommands[0], "npm ci");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
 });
 
 test("writes parse failures to the requested summary", async () => {
