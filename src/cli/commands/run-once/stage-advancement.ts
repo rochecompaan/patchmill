@@ -248,11 +248,9 @@ export async function advancePlanningStages({
   let specPath: string | undefined;
   let specCommit: string | undefined;
   let specCreated: boolean;
-  let specCreatedThisRun = false;
   let planPath: string | undefined;
   let planCommit: string | undefined;
   let planCreated: boolean;
-  let planCreatedThisRun = false;
 
   let planningArtifactWorkspace: PlanningArtifactWorkspace = {
     repoRoot: config.repoRoot,
@@ -456,7 +454,6 @@ export async function advancePlanningStages({
     specPath = repoPath(planningRepoRoot, specResult.specPath).relative;
     specCommit = specResult.commit;
     specCreated = true;
-    specCreatedThisRun = true;
     await writeRunState(
       config.runStateDir,
       {
@@ -541,9 +538,9 @@ export async function advancePlanningStages({
     await emitSimpleStep(issue.number, "publish spec");
   }
 
-  const hasCurrentSpecApproval =
-    issue.labels.includes(config.approvalPolicy.specApproval.approvedLabel) &&
-    !specCreatedThisRun;
+  const hasCurrentSpecApproval = issue.labels.includes(
+    config.approvalPolicy.specApproval.approvedLabel,
+  );
   const mustStopForSpecReview =
     config.approvalPolicy.specApproval.required &&
     specPath !== undefined &&
@@ -692,7 +689,6 @@ export async function advancePlanningStages({
     planPath = repoPath(planningRepoRoot, planned.planPath).relative;
     planCommit = planned.commit;
     planCreated = true;
-    planCreatedThisRun = true;
     await writeRunState(
       config.runStateDir,
       {
@@ -784,7 +780,6 @@ export async function advancePlanningStages({
   const planGate = decidePlanApprovalGate({
     labels,
     planOnly: config.planOnly,
-    planCreatedThisRun,
     policy: config.approvalPolicy,
   });
 

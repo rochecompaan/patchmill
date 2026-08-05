@@ -936,7 +936,7 @@ test("runOneIssue stops at spec-review when agent-ready has an existing spec and
   );
 });
 
-test("runOneIssue stops at spec-review for plan-approved issues without spec approval", async () => {
+test("runOneIssue rejects plan-approved when no plan can be resolved before spec review", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -987,24 +987,23 @@ test("runOneIssue stops at spec-review for plan-approved issues without spec app
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "spec-found");
-  assert.equal(result.specPath, specPath);
-  const finalEdit = runner.calls
-    .filter(
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /plan-approved.*no plan artifact could be resolved/u,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
       (call) =>
         call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "edit",
-    )
-    .at(-1);
-  assert.ok(finalEdit);
-  assert.equal(
-    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "spec-review",
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
   );
-  assert.equal(finalEdit.args.includes("plan-approved"), false);
 });
 
 test("runOneIssue fails fast when saved spec path access fails unexpectedly", async () => {
@@ -1165,7 +1164,7 @@ test("runOneIssue fails fast when saved plan path access fails unexpectedly", as
   assert.equal(piCalls, 0);
 });
 
-test("runOneIssue treats a newly-created replacement spec as needing fresh approval", async () => {
+test("runOneIssue rejects spec-approved when no spec can be resolved", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -1229,25 +1228,23 @@ test("runOneIssue treats a newly-created replacement spec as needing fresh appro
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "spec-created");
-  assert.equal(result.specPath, expectedSpecPath);
-  const finalEdit = runner.calls
-    .filter(
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /spec-approved.*no spec artifact could be resolved/u,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
       (call) =>
         call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "edit",
-    )
-    .at(-1);
-  assert.ok(finalEdit);
-  assert.equal(
-    finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
-    "spec-review",
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
   );
-  assert.equal(finalEdit.args.includes("spec-approved"), false);
-  assert.equal(finalEdit.args.includes("plan-approved"), false);
 });
 
 test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-review", async () => {
@@ -2113,7 +2110,7 @@ test("runOneIssue stops after creating a plan when plan approval is required", a
   );
 });
 
-test("runOneIssue ignores stale plan approval when a new plan is created", async () => {
+test("runOneIssue rejects plan-approved when no plan can be resolved", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -2170,32 +2167,22 @@ test("runOneIssue ignores stale plan approval when a new plan is created", async
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "plan-created");
-  assert.equal(result.planPath, expectedPlanPath);
-  assert.equal((await workflowPiCalls(runner.calls)).length, 2);
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /plan-approved.*no plan artifact could be resolved/u,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
   assert.equal(
     runner.calls.some(
-      (call) => call.command === "git" && call.args[0] === "worktree",
+      (call) =>
+        call.command === "tea" &&
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
     ),
-    true,
-  );
-  const editCalls = runner.calls.filter(
-    (call) =>
-      call.command === "tea" &&
-      call.args[0] === "issues" &&
-      call.args[1] === "edit",
-  );
-  const restoreCall = editCalls.at(-1);
-  assert.ok(restoreCall);
-  assert.equal(
-    restoreCall.args[restoreCall.args.indexOf("--add-labels") + 1],
-    "plan-review",
-  );
-  assert.equal(
-    restoreCall.args[restoreCall.args.indexOf("--remove-labels") + 1],
-    "plan-approved,in-progress",
+    false,
   );
 });
 

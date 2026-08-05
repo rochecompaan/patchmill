@@ -4,6 +4,7 @@ import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
+import { assertApprovedArtifactsResolvable } from "./approval-artifact-preflight.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
@@ -281,6 +282,13 @@ export async function runOneIssue(
   });
   issueForRun = artifactSources.issue;
   resolvedArtifacts = artifactSources.resolvedArtifacts;
+  await assertApprovedArtifactsResolvable({
+    config,
+    issue: issueForRun,
+    existingState,
+    resolvedArtifacts,
+    now: runOptions.now ?? new Date(),
+  });
 
   await progress(runOptions, "info", "git", "checking repository status", {
     issueNumber: issue.number,
