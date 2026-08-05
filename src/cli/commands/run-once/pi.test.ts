@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Stats } from "node:fs";
 import {
+  appendFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -1574,4 +1575,216 @@ test("runPiPrompt reads planning task progress from the configured task contract
         progress.label === "dashboard wiring",
     ),
   );
+});
+
+test("createExactPiSessionObservationStreamer starts at a caller-provided byte offset", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-offset-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const sessionPath = join(dir, "parent.jsonl");
+  const oldEntry = `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "old progress" }] } })}\n`;
+  await writeFile(sessionPath, oldEntry, "utf8");
+  const observations: string[] = [];
+  const streamer = createExactPiSessionObservationStreamer(
+    sessionPath,
+    (observation) => {
+      if (observation.type === "text") observations.push(observation.text);
+    },
+    { startOffset: Buffer.byteLength(oldEntry) },
+  );
+  streamer.start();
+  await writeFile(
+    sessionPath,
+    `${oldEntry}${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "new progress" }] } })}\n`,
+    "utf8",
+  );
+  await streamer.stop();
+  assert.deepEqual(observations, ["new progress"]);
+});
+
+test("runPiPrompt repairs a parse failure by resuming the same exact session", async () => {
+  const prompts: string[] = [];
+  const sessions: string[] = [];
+  const observations: string[] = [];
+  const runner = createMockRunner(async (call) => {
+    const args = assertBundledPiCall(call);
+    prompts.push(await readFile(promptPath(args), "utf8"));
+    const sessionPath = args[args.indexOf("--session") + 1] ?? "";
+    sessions.push(sessionPath);
+    if (prompts.length === 1) {
+      await writeFile(
+        sessionPath,
+        [
+          {
+            type: "message",
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "review",
+                  name: "subagent",
+                  arguments: { async: true },
+                },
+              ],
+            },
+          },
+          {
+            type: "message",
+            message: {
+              role: "toolResult",
+              toolName: "subagent",
+              toolCallId: "review",
+              content: [
+                {
+                  type: "text",
+                  text: '{"id":"pm-subagents-abc123","state":"running"}',
+                },
+              ],
+            },
+          },
+          {
+            type: "message",
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Final review is running: pm-subagents-abc123.",
+                },
+              ],
+            },
+          },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n") + "\n",
+        "utf8",
+      );
+      return {
+        code: 0,
+        stdout: "Final review is running: pm-subagents-abc123.",
+        stderr: "",
+      };
+    }
+    await appendFile(
+      sessionPath,
+      `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "repair progress" }] } })}\n`,
+      "utf8",
+    );
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+
+  const result = await runPiPrompt(runner, "/repo/worktree", "primary prompt", {
+    stage: "pi-implementation",
+    observeSession: true,
+    skillPaths: ["/repo/.patchmill/skills/impl/SKILL.md"],
+    extensionArgs: runOnceExtensionArgs,
+    onObservation: (observation) => {
+      if (observation.type === "text") observations.push(observation.text);
+    },
+    repair: {
+      maxAttempts: 2,
+      buildPrompt: ({ attempt, facts }) =>
+        `repair attempt ${attempt}: ${facts.unresolvedSummary}`,
+    },
+  });
+
+  assert.equal(result.status, "plan-created");
+  assert.equal(prompts[0], "primary prompt");
+  assert.match(
+    prompts[1] ?? "",
+    /repair attempt 1: 1 unresolved async subagent run/,
+  );
+  assert.equal(sessions[0], sessions[1]);
+  assert.deepEqual(observations, [
+    "Final review is running: pm-subagents-abc123.",
+    "repair progress",
+  ]);
+});
+
+test("runPiPrompt does not repair a nonzero Pi exit or an unobserved parse failure", async () => {
+  let calls = 0;
+  const failed = createMockRunner(() => {
+    calls += 1;
+    return { code: 1, stdout: "progress", stderr: "boom" };
+  });
+  await assert.rejects(
+    () =>
+      runPiPrompt(failed, "/repo", "prompt", {
+        stage: "pi-implementation",
+        observeSession: true,
+        repair: { maxAttempts: 2, buildPrompt: () => "repair" },
+      }),
+    /pi failed: boom/,
+  );
+  assert.equal(calls, 1);
+
+  calls = 0;
+  const prose = createMockRunner(() => {
+    calls += 1;
+    return { code: 0, stdout: "progress", stderr: "" };
+  });
+  await assert.rejects(
+    () =>
+      runPiPrompt(prose, "/repo", "prompt", {
+        stage: "pi-implementation",
+        repair: { maxAttempts: 2, buildPrompt: () => "repair" },
+      }),
+    /supported final JSON status/,
+  );
+  assert.equal(calls, 1);
+});
+
+test("runPiPrompt enriches parse errors after exhausted repair attempts", async () => {
+  let calls = 0;
+  const runner = createMockRunner(async (call) => {
+    calls += 1;
+    const sessionPath = call.args[call.args.indexOf("--session") + 1] ?? "";
+    await writeFile(
+      sessionPath,
+      `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "Final review is running: pm-subagents-abc123." }] } })}\n`,
+      "utf8",
+    );
+    return { code: 0, stdout: "Final review is running", stderr: "" };
+  });
+  await assert.rejects(
+    () =>
+      runPiPrompt(runner, "/repo", "prompt", {
+        stage: "pi-implementation",
+        observeSession: true,
+        repair: { maxAttempts: 2, buildPrompt: () => "repair" },
+      }),
+    /Pi repair attempts exhausted after 2 attempts.*no unresolved async subagent runs detected.*Final review is running/s,
+  );
+  assert.equal(calls, 3);
+});
+
+test("runPiPrompt accepts a terminal result on the second repair attempt", async () => {
+  let calls = 0;
+  const runner = createMockRunner((call) => {
+    calls += 1;
+    const sessionPath = call.args[call.args.indexOf("--session") + 1] ?? "";
+    const stdout =
+      calls === 3
+        ? '{"status":"plan-created","planPath":"docs/plans/p.md"}'
+        : "progress prose";
+    return appendFile(
+      sessionPath,
+      `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: stdout }] } })}\n`,
+      "utf8",
+    ).then(() => ({ code: 0, stdout, stderr: "" }));
+  });
+  const result = await runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-implementation",
+    observeSession: true,
+    repair: {
+      maxAttempts: 2,
+      buildPrompt: ({ attempt }) => `repair ${attempt}`,
+    },
+  });
+  assert.equal(result.status, "plan-created");
+  assert.equal(calls, 3);
 });

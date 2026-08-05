@@ -37,6 +37,7 @@ export type ExactPiSessionObservationStreamerOptions = {
   verboseOutput?: (chunk: string) => void;
   statFile?: typeof stat;
   readRange?: ExactSessionReadRange;
+  startOffset?: number;
 };
 
 function isObject(value: unknown): value is JsonObject {
@@ -332,7 +333,7 @@ export function createExactPiSessionObservationStreamer(
   const readFileRange = options.readRange ?? readExactRange;
   let timer: NodeJS.Timeout | undefined;
   let polling: Promise<void> | undefined;
-  let offset = 0;
+  let offset = Math.max(0, Math.floor(options.startOffset ?? 0));
   let buffered = "";
   let decoder = new TextDecoder();
   let failed = false;

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildImplementationPrompt,
+  buildImplementationRepairPrompt,
   buildDevelopmentEnvironmentPrompt,
   buildPlanCreationPrompt,
   buildSpecCreationPrompt,
@@ -534,7 +535,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Non-interactive subagent orchestration:/);
   assert.match(
     prompt,
-    /This Patchmill `pi -p` invocation has one turn and will not be resumed/,
+    /This Patchmill `pi -p` invocation has one turn; do not rely on a future resumption to finish required work/,
   );
   assert.match(
     prompt,
@@ -1055,4 +1056,46 @@ test("task contract overrides drive todo instructions in plan and implementation
     implementationPrompt,
     /orchestrator rejects `pr-created` or `merged` results while any issue task todo remains open/,
   );
+});
+
+test("buildImplementationRepairPrompt includes unresolved subagent facts and terminal JSON contract", () => {
+  const prompt = buildImplementationRepairPrompt({
+    attempt: 1,
+    maxAttempts: 2,
+    facts: {
+      sessionPath: "/repo/parent.jsonl",
+      parseErrorMessage:
+        "Pi output did not include a supported final JSON status",
+      lastAssistantTextExcerpt:
+        "Task 4 is closed. Final review is running: pm-subagents-abc123.",
+      unresolvedSummary: "1 unresolved async subagent run",
+      subagentRuns: [
+        {
+          id: "pm-subagents-abc123",
+          lastAction: "status",
+          lastState: "running",
+          unresolved: true,
+        },
+      ],
+    },
+  });
+  assert.match(prompt, /previous response was invalid/i);
+  assert.match(prompt, /pm-subagents-abc123/);
+  assert.match(prompt, /last action=status, last state=running/);
+  assert.match(prompt, /return exactly one terminal JSON object/i);
+  assert.doesNotMatch(prompt, /```/);
+});
+
+test("buildImplementationRepairPrompt identifies when no unresolved subagent runs were detected", () => {
+  const prompt = buildImplementationRepairPrompt({
+    attempt: 1,
+    maxAttempts: 2,
+    facts: {
+      sessionPath: "/repo/parent.jsonl",
+      parseErrorMessage: "parse failed",
+      unresolvedSummary: "no unresolved async subagent runs detected",
+      subagentRuns: [],
+    },
+  });
+  assert.match(prompt, /No unresolved async subagent runs were detected/);
 });

@@ -28,6 +28,10 @@ import {
   type PiSessionAllocation,
 } from "./pi-session-allocation.ts";
 import { aggregatePiErrors, type PiErrorCause } from "./pi-errors.ts";
+import {
+  readPiRepairFacts,
+  type PiRepairPromptInput,
+} from "./pi-session-repair.ts";
 import type {
   AgentIssueBlockerQuestion,
   AgentIssueDevelopmentEnvironmentResult,
@@ -283,6 +287,11 @@ export type RunPiPromptStage =
   | "pi-development-environment"
   | "pi-implementation";
 
+export type PiRepairOptions = {
+  maxAttempts: number;
+  buildPrompt: (input: PiRepairPromptInput) => string;
+};
+
 export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   progress?: ProgressReporter;
   stage: RunPiPromptStage;
@@ -309,6 +318,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   piAgentDir?: string;
   piCommand?: PiCommandSpec;
   cleanupPromptTempDir?: (dir: string) => Promise<void>;
+  repair?: PiRepairOptions;
 };
 
 function stageStatus(stage: RunPiPromptStage): string {
@@ -397,9 +407,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
   const record = (label: string, error: unknown) => {
     causes.push({ label, error });
   };
-  let result: CommandResult | undefined;
-  let parsedResult: Result | undefined;
-  let hasParsedResult = false;
+  let parsedResult: { value: Result } | undefined;
   let latestTokenUsage: string | undefined;
   const pendingHeartbeats: Promise<void>[] = [];
   const heartbeatMs = options?.heartbeatMs ?? 60_000;
@@ -459,107 +467,178 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
       });
     }
 
-    const controller = session?.sessionPath ? new AbortController() : undefined;
-    const sessionStreamer = session?.sessionPath
-      ? createExactPiSessionObservationStreamer(
-          session.sessionPath,
-          async (observation) => {
-            if (observation.type === "assistant-usage") {
-              latestTokenUsage = `tok: task=${observation.outputTokens} total=?`;
-              if (options?.tokenUsageState) {
-                options.tokenUsageState.total += observation.outputTokens;
-              }
-            }
-            await options?.onObservation?.(observation);
-          },
-          {
-            verboseOutput: options?.verbosePiOutput
-              ? options.streamOutput
-              : undefined,
-          },
-        )
-      : session?.sessionDir
-        ? createPiSessionMessageStreamer(
-            session.sessionDir,
-            options?.streamOutput ?? (() => undefined),
-            {
-              totalTokensSoFar: options?.tokenUsageState?.total ?? 0,
-              onTokenUsage: (usage) => {
-                latestTokenUsage = usage.text;
+    const parseResult = options?.parseResult ?? parsePiResult;
+    const runPiProcessAttempt = async (
+      attemptPromptPath: string,
+      startOffset?: number,
+    ): Promise<CommandResult | undefined> => {
+      const controller = session?.sessionPath
+        ? new AbortController()
+        : undefined;
+      const sessionStreamer = session?.sessionPath
+        ? createExactPiSessionObservationStreamer(
+            session.sessionPath,
+            async (observation) => {
+              if (observation.type === "assistant-usage") {
+                latestTokenUsage = `tok: task=${observation.outputTokens} total=?`;
                 if (options?.tokenUsageState)
-                  options.tokenUsageState.total = usage.total;
-              },
+                  options.tokenUsageState.total += observation.outputTokens;
+              }
+              await options?.onObservation?.(observation);
+            },
+            {
+              startOffset,
+              verboseOutput: options?.verbosePiOutput
+                ? options.streamOutput
+                : undefined,
             },
           )
-        : undefined;
-    let observationFailure: Promise<void> | undefined;
-    if (sessionStreamer && "failure" in sessionStreamer) {
-      observationFailure = sessionStreamer.failure.catch((error) => {
-        record("observation", error);
-        controller?.abort(error);
-      });
-    }
-    sessionStreamer?.start();
-
-    try {
-      const piCommand = options?.piCommand ?? resolveBundledPiCommand();
-      result = await runner.run(
-        piCommand.command,
-        piCommandArgs(
-          piCommand,
-          piPromptArgs(
-            promptPath,
-            session,
-            options?.skillPaths,
-            options?.extensionArgs,
-          ),
-        ),
-        {
-          cwd,
-          env: piAgentCommandEnv(options?.piAgentDir ?? localPiAgentDir(cwd), {
-            PI_TODO_PATH:
-              options?.taskContract?.todoRoot ??
-              DEFAULT_PI_TASK_CONTRACT.todoRoot,
-            [PI_TODO_DONE_STATUSES_ENV]: serializeTodoDoneStatuses(
-              options?.taskContract?.doneStatuses ??
-                DEFAULT_PI_TASK_CONTRACT.doneStatuses,
-            ),
-          }),
-          signal: controller?.signal,
-        },
-      );
-    } catch (error) {
-      record("runner", error);
-    }
-
-    void observationFailure;
-    try {
-      await sessionStreamer?.stop();
-    } catch (error) {
-      if (!causes.some((cause) => cause.error === error)) {
-        record("streamer shutdown", error);
+        : session?.sessionDir
+          ? createPiSessionMessageStreamer(
+              session.sessionDir,
+              options?.streamOutput ?? (() => undefined),
+              {
+                totalTokensSoFar: options?.tokenUsageState?.total ?? 0,
+                onTokenUsage: (usage) => {
+                  latestTokenUsage = usage.text;
+                  if (options?.tokenUsageState)
+                    options.tokenUsageState.total = usage.total;
+                },
+              },
+            )
+          : undefined;
+      let observationFailure: Promise<void> | undefined;
+      if (sessionStreamer && "failure" in sessionStreamer) {
+        observationFailure = sessionStreamer.failure.catch((error) => {
+          record("observation", error);
+          controller?.abort(error);
+        });
       }
-    }
-    if (result) {
+      sessionStreamer?.start();
+      let attemptResult: CommandResult | undefined;
       try {
-        await emitPiOutput(result, options);
+        const piCommand = options?.piCommand ?? resolveBundledPiCommand();
+        attemptResult = await runner.run(
+          piCommand.command,
+          piCommandArgs(
+            piCommand,
+            piPromptArgs(
+              attemptPromptPath,
+              session,
+              options?.skillPaths,
+              options?.extensionArgs,
+            ),
+          ),
+          {
+            cwd,
+            env: piAgentCommandEnv(
+              options?.piAgentDir ?? localPiAgentDir(cwd),
+              {
+                PI_TODO_PATH:
+                  options?.taskContract?.todoRoot ??
+                  DEFAULT_PI_TASK_CONTRACT.todoRoot,
+                [PI_TODO_DONE_STATUSES_ENV]: serializeTodoDoneStatuses(
+                  options?.taskContract?.doneStatuses ??
+                    DEFAULT_PI_TASK_CONTRACT.doneStatuses,
+                ),
+              },
+            ),
+            signal: controller?.signal,
+          },
+        );
+      } catch (error) {
+        record("runner", error);
+      }
+      void observationFailure;
+      try {
+        await sessionStreamer?.stop();
+      } catch (error) {
+        if (!causes.some((cause) => cause.error === error))
+          record("streamer shutdown", error);
+      }
+      if (!attemptResult) return undefined;
+      try {
+        await emitPiOutput(attemptResult, options);
       } catch (error) {
         record("progress", error);
       }
-      if (result.code !== 0) {
+      if (attemptResult.code !== 0) {
         record(
           "runner",
-          new Error(`pi failed: ${result.stderr || result.stdout}`),
+          new Error(
+            `pi failed: ${attemptResult.stderr || attemptResult.stdout}`,
+          ),
         );
       }
-      if (causes.length === 0) {
-        try {
-          const parseResult = options?.parseResult ?? parsePiResult;
-          parsedResult = parseResult(result.stdout) as Result;
-          hasParsedResult = true;
-        } catch (error) {
-          record("result parsing", error);
-        }
+      return attemptResult;
+    };
+
+    const repair = options?.repair;
+    const repairSessionPath = session?.sessionPath;
+    let attemptPromptPath = promptPath;
+    let startOffset: number | undefined;
+    let parseError: unknown;
+    let repairAttempts = 0;
+
+    for (let attempt = 0; ; attempt += 1) {
+      const result = await runPiProcessAttempt(attemptPromptPath, startOffset);
+      if (!result || causes.length > 0) break;
+
+      try {
+        parsedResult = { value: parseResult(result.stdout) as Result };
+        break;
+      } catch (error) {
+        parseError = error;
+      }
+
+      if (!repair || attempt >= repair.maxAttempts || !repairSessionPath) break;
+
+      const repairAttempt = attempt + 1;
+      const facts = await readPiRepairFacts({
+        sessionPath: repairSessionPath,
+        parseError,
+      });
+      await options?.progress?.event({
+        time: new Date().toISOString(),
+        level: "info",
+        stage: options.stage,
+        message: `repairing invalid pi final result (${repairAttempt}/${repair.maxAttempts})`,
+        data: facts.unresolvedSummary,
+      });
+      const repairPromptPath = join(dir, `repair-${repairAttempt}.md`);
+      await writeFile(
+        repairPromptPath,
+        repair.buildPrompt({
+          attempt: repairAttempt,
+          maxAttempts: repair.maxAttempts,
+          facts,
+        }),
+        "utf8",
+      );
+      attemptPromptPath = repairPromptPath;
+      startOffset = facts.sessionByteSize;
+      repairAttempts = repairAttempt;
+    }
+
+    if (!parsedResult && parseError !== undefined && causes.length === 0) {
+      if (repairAttempts > 0 && repairSessionPath) {
+        const facts = await readPiRepairFacts({
+          sessionPath: repairSessionPath,
+          parseError,
+        });
+        record(
+          "result parsing",
+          new Error(
+            [
+              `Pi repair attempts exhausted after ${repairAttempts} attempts`,
+              `Unresolved async subagent summary: ${facts.unresolvedSummary}`,
+              `Last assistant prose: ${facts.lastAssistantTextExcerpt ?? "not detected"}`,
+              `Last parse error: ${facts.parseErrorMessage}`,
+            ].join("; "),
+          ),
+        );
+      } else {
+        record("result parsing", parseError);
       }
     }
   } catch (error) {
@@ -583,6 +662,6 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
 
   const combined = aggregatePiErrors("pi prompt failed", causes);
   if (combined) throw combined;
-  if (hasParsedResult) return parsedResult as Result;
+  if (parsedResult) return parsedResult.value;
   throw new Error("pi prompt finished without a result");
 }

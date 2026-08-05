@@ -11,7 +11,10 @@ import {
 } from "./issue-todos.ts";
 import { runPiPrompt } from "./pi.ts";
 import { readPlanTaskLabels } from "./plan-tasks.ts";
-import { buildImplementationPrompt } from "./prompts.ts";
+import {
+  buildImplementationPrompt,
+  buildImplementationRepairPrompt,
+} from "./prompts.ts";
 import { writeRunState } from "./run-state.ts";
 import {
   assertDirectLandAllowed,
@@ -400,6 +403,10 @@ export async function runPipelineImplementationStage(
             onObservation: observeImplementation,
             taskContract: projectPolicy.pi.taskContract,
             piAgentDir,
+            repair: {
+              maxAttempts: 2,
+              buildPrompt: buildImplementationRepairPrompt,
+            },
             onTaskProgress: async (taskProgress) => {
               await switchImplementationTask(
                 taskProgress.current,
