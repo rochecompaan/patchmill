@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -28,7 +28,10 @@ import {
   type PiSessionAllocation,
 } from "./pi-session-allocation.ts";
 import { aggregatePiErrors, type PiErrorCause } from "./pi-errors.ts";
-import { readPiRepairFacts, type PiRepairFacts } from "./pi-session-repair.ts";
+import {
+  readPiRepairFacts,
+  type PiRepairPromptInput,
+} from "./pi-session-repair.ts";
 import type {
   AgentIssueBlockerQuestion,
   AgentIssueDevelopmentEnvironmentResult,
@@ -284,16 +287,9 @@ export type RunPiPromptStage =
   | "pi-development-environment"
   | "pi-implementation";
 
-export type PiRepairPromptInput = {
-  attempt: number;
-  maxAttempts: number;
-  facts: PiRepairFacts;
-};
-
-export type PiRepairOptions<Result> = {
+export type PiRepairOptions = {
   maxAttempts: number;
   buildPrompt: (input: PiRepairPromptInput) => string;
-  parseResult?: (stdout: string) => Result;
 };
 
 export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
@@ -322,7 +318,7 @@ export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
   piAgentDir?: string;
   piCommand?: PiCommandSpec;
   cleanupPromptTempDir?: (dir: string) => Promise<void>;
-  repair?: PiRepairOptions<Result>;
+  repair?: PiRepairOptions;
 };
 
 function stageStatus(stage: RunPiPromptStage): string {
@@ -411,9 +407,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
   const record = (label: string, error: unknown) => {
     causes.push({ label, error });
   };
-  let result: CommandResult | undefined;
-  let parsedResult: Result | undefined;
-  let hasParsedResult = false;
+  let parsedResult: { value: Result } | undefined;
   let latestTokenUsage: string | undefined;
   const pendingHeartbeats: Promise<void>[] = [];
   const heartbeatMs = options?.heartbeatMs ?? 60_000;
@@ -579,83 +573,72 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
       return attemptResult;
     };
 
-    result = await runPiProcessAttempt(promptPath);
-    if (result && causes.length === 0) {
+    const repair = options?.repair;
+    const repairSessionPath = session?.sessionPath;
+    let attemptPromptPath = promptPath;
+    let startOffset: number | undefined;
+    let parseError: unknown;
+    let repairAttempts = 0;
+
+    for (let attempt = 0; ; attempt += 1) {
+      const result = await runPiProcessAttempt(attemptPromptPath, startOffset);
+      if (!result || causes.length > 0) break;
+
       try {
-        parsedResult = parseResult(result.stdout) as Result;
-        hasParsedResult = true;
+        parsedResult = { value: parseResult(result.stdout) as Result };
+        break;
       } catch (error) {
-        const repair = options?.repair;
-        if (
-          result.code !== 0 ||
-          !repair ||
-          repair.maxAttempts <= 0 ||
-          !session?.sessionPath
-        ) {
-          record("result parsing", error);
-        } else {
-          let parseError: unknown = error;
-          let finalFacts: PiRepairFacts | undefined;
-          for (let attempt = 1; attempt <= repair.maxAttempts; attempt += 1) {
-            const facts = await readPiRepairFacts({
-              sessionPath: session.sessionPath,
-              parseError,
-            });
-            finalFacts = facts;
-            await options?.progress?.event({
-              time: new Date().toISOString(),
-              level: "info",
-              stage: options.stage,
-              message: `repairing invalid pi final result (${attempt}/${repair.maxAttempts})`,
-              data: facts.unresolvedSummary,
-            });
-            const repairPromptPath = join(dir, `repair-${attempt}.md`);
-            await writeFile(
-              repairPromptPath,
-              repair.buildPrompt({
-                attempt,
-                maxAttempts: repair.maxAttempts,
-                facts,
-              }),
-              "utf8",
-            );
-            const sessionStartOffset = await stat(session.sessionPath)
-              .then((info) => info.size)
-              .catch(() => 0);
-            const repairResult = await runPiProcessAttempt(
-              repairPromptPath,
-              sessionStartOffset,
-            );
-            if (!repairResult || repairResult.code !== 0 || causes.length > 0)
-              break;
-            try {
-              parsedResult = (repair.parseResult ?? parseResult)(
-                repairResult.stdout,
-              ) as Result;
-              hasParsedResult = true;
-              break;
-            } catch (repairParseError) {
-              parseError = repairParseError;
-            }
-          }
-          if (!hasParsedResult && causes.length === 0) {
-            finalFacts = await readPiRepairFacts({
-              sessionPath: session.sessionPath,
-              parseError,
-            });
-            record(
-              "result parsing",
-              new Error(
-                [
-                  `Pi repair attempts exhausted (${repair.maxAttempts}/${repair.maxAttempts})`,
-                  `Unresolved async subagent summary: ${finalFacts.unresolvedSummary}`,
-                  `Last assistant prose: ${finalFacts.lastAssistantTextExcerpt ?? "not detected"}`,
-                  `Last parse error: ${finalFacts.parseErrorMessage}`,
-                ].join("; "),
-              ),
-            );
-          }
-        }
+        parseError = error;
+      }
+
+      if (!repair || attempt >= repair.maxAttempts || !repairSessionPath) break;
+
+      const repairAttempt = attempt + 1;
+      const facts = await readPiRepairFacts({
+        sessionPath: repairSessionPath,
+        parseError,
+      });
+      await options?.progress?.event({
+        time: new Date().toISOString(),
+        level: "info",
+        stage: options.stage,
+        message: `repairing invalid pi final result (${repairAttempt}/${repair.maxAttempts})`,
+        data: facts.unresolvedSummary,
+      });
+      const repairPromptPath = join(dir, `repair-${repairAttempt}.md`);
+      await writeFile(
+        repairPromptPath,
+        repair.buildPrompt({
+          attempt: repairAttempt,
+          maxAttempts: repair.maxAttempts,
+          facts,
+        }),
+        "utf8",
+      );
+      attemptPromptPath = repairPromptPath;
+      startOffset = facts.sessionByteSize;
+      repairAttempts = repairAttempt;
+    }
+
+    if (!parsedResult && parseError !== undefined && causes.length === 0) {
+      if (repairAttempts > 0 && repairSessionPath) {
+        const facts = await readPiRepairFacts({
+          sessionPath: repairSessionPath,
+          parseError,
+        });
+        record(
+          "result parsing",
+          new Error(
+            [
+              `Pi repair attempts exhausted after ${repairAttempts} attempts`,
+              `Unresolved async subagent summary: ${facts.unresolvedSummary}`,
+              `Last assistant prose: ${facts.lastAssistantTextExcerpt ?? "not detected"}`,
+              `Last parse error: ${facts.parseErrorMessage}`,
+            ].join("; "),
+          ),
+        );
+      } else {
+        record("result parsing", parseError);
       }
     }
   } catch (error) {
@@ -679,6 +662,6 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
 
   const combined = aggregatePiErrors("pi prompt failed", causes);
   if (combined) throw combined;
-  if (hasParsedResult) return parsedResult as Result;
+  if (parsedResult) return parsedResult.value;
   throw new Error("pi prompt finished without a result");
 }

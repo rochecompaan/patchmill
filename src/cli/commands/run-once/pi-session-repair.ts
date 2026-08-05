@@ -32,17 +32,6 @@ const UNRESOLVED_STATES = new Set<SubagentState>([
   "needs-attention",
   "unknown",
 ]);
-const TERMINAL_STATES = new Set<SubagentState>([
-  "completed",
-  "complete",
-  "done",
-  "failed",
-  "cancelled",
-  "canceled",
-  "interrupted",
-  "stopped",
-  "rejected",
-]);
 const PREFIXED_RUN_ID_PATTERN =
   /\b(?:pm-subagents|pi-subagents)-[A-Za-z0-9_-]+\b/gu;
 const BRACKETED_RUN_ID_PATTERN = /\[(?<id>[A-Za-z0-9][A-Za-z0-9_-]{5,})\]/gu;
@@ -69,10 +58,17 @@ export type PiRepairSubagentRunFact = {
 
 export type PiRepairFacts = {
   sessionPath: string;
+  sessionByteSize: number;
   parseErrorMessage: string;
   lastAssistantTextExcerpt?: string;
   subagentRuns: PiRepairSubagentRunFact[];
   unresolvedSummary: string;
+};
+
+export type PiRepairPromptInput = {
+  attempt: number;
+  maxAttempts: number;
+  facts: PiRepairFacts;
 };
 
 function isObject(value: unknown): value is JsonObject {
@@ -100,19 +96,24 @@ function normalizedState(value: unknown): SubagentState | undefined {
     : undefined;
 }
 
-function runFacts(
+function runFact(
+  value: unknown,
+): { id: string; state?: SubagentState } | undefined {
+  if (!isObject(value)) return undefined;
+  const id = stringRunId(value.id ?? value.runId ?? value.asyncId);
+  if (!id) return undefined;
+  const state = normalizedState(value.state ?? value.status);
+  return { id, ...(state ? { state } : {}) };
+}
+
+function structuredRunFacts(
   value: unknown,
 ): Array<{ id: string; state?: SubagentState }> {
-  if (Array.isArray(value)) return value.flatMap(runFacts);
+  if (Array.isArray(value))
+    return value.flatMap((entry) => runFact(entry) ?? []);
   if (!isObject(value)) return [];
-  const id = value.id ?? value.runId ?? value.asyncId;
-  const state = normalizedState(value.state ?? value.status);
-  return [
-    ...(typeof id === "string" && RUN_ID.test(id)
-      ? [{ id, ...(state ? { state } : {}) }]
-      : []),
-    ...Object.values(value).flatMap(runFacts),
-  ];
+  const candidates = [value, ...(Array.isArray(value.runs) ? value.runs : [])];
+  return candidates.flatMap((entry) => runFact(entry) ?? []);
 }
 
 function unique(values: string[]): string[] {
@@ -149,21 +150,47 @@ function regexRunIds(text: string): string[] {
 }
 
 function stateFromText(text: string): SubagentState | undefined {
+  // Legacy prose fallback only. Callers apply this whole-result state only
+  // when the result identifies exactly one run.
   const match = text.match(SUBAGENT_STATE_PATTERN);
   return normalizedState(match?.[1]);
+}
+
+function subagentResultRunFacts(
+  text: string,
+  details: unknown,
+): Array<{ id: string; state?: SubagentState }> {
+  let textFacts: Array<{ id: string; state?: SubagentState }> = [];
+  try {
+    textFacts = structuredRunFacts(JSON.parse(text));
+  } catch {
+    // Human-readable tool results are handled by the prose fallback below.
+  }
+  const structuredFacts = preferFirstState([
+    ...textFacts,
+    ...structuredRunFacts(details),
+  ]);
+  const proseIds = regexRunIds(text);
+  const textState = proseIds.length === 1 ? stateFromText(text) : undefined;
+  const proseFacts = proseIds.map((id) => ({
+    id,
+    ...(textState ? { state: textState } : {}),
+  }));
+  if (structuredFacts.length === 0) return proseFacts;
+
+  const structuredIds = new Set(structuredFacts.map((fact) => fact.id));
+  return preferFirstState([
+    ...structuredFacts,
+    ...proseFacts.filter((fact) => structuredIds.has(fact.id)),
+  ]);
 }
 
 function stringRunId(value: unknown): string | undefined {
   return typeof value === "string" && RUN_ID.test(value) ? value : undefined;
 }
 
-function hasAsyncLaunchId(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(hasAsyncLaunchId);
-  if (!isObject(value)) return false;
-  return (
-    stringRunId(value.asyncId) !== undefined ||
-    Object.values(value).some(hasAsyncLaunchId)
-  );
+function hasTopLevelAsyncLaunchId(value: unknown): boolean {
+  return isObject(value) && stringRunId(value.asyncId) !== undefined;
 }
 
 function isAsyncLaunchText(text: string): boolean {
@@ -216,7 +243,7 @@ function excerpt(text: string): string | undefined {
     : singleLine;
 }
 
-function unresolvedSummary(runs: PiRepairSubagentRunFact[]): string {
+function summarizeUnresolved(runs: PiRepairSubagentRunFact[]): string {
   const count = runs.filter((run) => run.unresolved).length;
   if (count === 0) return "no unresolved async subagent runs detected";
   return `${count} unresolved async subagent run${count === 1 ? "" : "s"}`;
@@ -284,20 +311,8 @@ export async function readPiRepairFacts(input: {
     const asyncResultLaunched =
       call?.asyncLaunched === true ||
       isAsyncLaunchText(text) ||
-      hasAsyncLaunchId(message.details);
-    const discovered = preferFirstState([
-      ...(() => {
-        try {
-          return runFacts(JSON.parse(text));
-        } catch {
-          return regexRunIds(text).map((id) => ({
-            id,
-            ...(textState ? { state: textState } : {}),
-          }));
-        }
-      })(),
-      ...runFacts(message.details),
-    ]);
+      hasTopLevelAsyncLaunchId(message.details);
+    const discovered = subagentResultRunFacts(text, message.details);
     if (call?.targetRunId && discovered.length === 0) {
       discovered.push({
         id: call.targetRunId,
@@ -313,26 +328,21 @@ export async function readPiRepairFacts(input: {
     }
   }
 
-  const subagentRuns = [...runs.values()].map((run) => {
-    const unresolved =
-      run.lastState !== undefined
-        ? UNRESOLVED_STATES.has(run.lastState)
-        : run.asyncLaunched;
-    return {
-      id: run.id,
-      ...(run.lastAction ? { lastAction: run.lastAction } : {}),
-      ...(run.lastState ? { lastState: run.lastState } : {}),
-      unresolved: run.lastState
-        ? !TERMINAL_STATES.has(run.lastState) && unresolved
-        : unresolved,
-    };
-  });
+  const subagentRuns = [...runs.values()].map((run) => ({
+    id: run.id,
+    ...(run.lastAction ? { lastAction: run.lastAction } : {}),
+    ...(run.lastState ? { lastState: run.lastState } : {}),
+    unresolved: run.lastState
+      ? UNRESOLVED_STATES.has(run.lastState)
+      : run.asyncLaunched,
+  }));
 
   return {
     sessionPath: input.sessionPath,
+    sessionByteSize: Buffer.byteLength(source),
     parseErrorMessage: errorFromUnknown(input.parseError).message,
     ...(lastAssistantTextExcerpt ? { lastAssistantTextExcerpt } : {}),
     subagentRuns,
-    unresolvedSummary: unresolvedSummary(subagentRuns),
+    unresolvedSummary: summarizeUnresolved(subagentRuns),
   };
 }

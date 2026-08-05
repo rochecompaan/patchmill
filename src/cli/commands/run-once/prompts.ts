@@ -1,6 +1,6 @@
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
-import type { PiRepairPromptInput } from "./pi.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
+import type { PiRepairPromptInput } from "./pi-session-repair.ts";
 import {
   normalizeTodoDoneStatuses,
   todoCompletionStatus,

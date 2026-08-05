@@ -1757,7 +1757,7 @@ test("runPiPrompt enriches parse errors after exhausted repair attempts", async 
         observeSession: true,
         repair: { maxAttempts: 2, buildPrompt: () => "repair" },
       }),
-    /Pi repair attempts exhausted \(2\/2\).*no unresolved async subagent runs detected.*Final review is running/s,
+    /Pi repair attempts exhausted after 2 attempts.*no unresolved async subagent runs detected.*Final review is running/s,
   );
   assert.equal(calls, 3);
 });

@@ -16,6 +16,26 @@ async function writeSession(lines: unknown[]): Promise<string> {
   return sessionPath;
 }
 
+test("readPiRepairFacts reports the session byte size used for repair streaming", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-repair-size-"));
+  const sessionPath = join(dir, "parent-session.jsonl");
+  const source = `${JSON.stringify({
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Review café is still running." }],
+    },
+  })}\n`;
+  await writeFile(sessionPath, source, "utf8");
+
+  const facts = await readPiRepairFacts({
+    sessionPath,
+    parseError: new Error("parse failed"),
+  });
+
+  assert.equal(facts.sessionByteSize, Buffer.byteLength(source));
+});
+
 test("readPiRepairFacts reports an async subagent launch with running status as unresolved", async () => {
   const sessionPath = await writeSession([
     { type: "session", id: "parent" },
@@ -168,6 +188,126 @@ test("readPiRepairFacts recognizes installed pi-subagents async and status resul
     },
   ]);
   assert.equal(facts.unresolvedSummary, "1 unresolved async subagent run");
+});
+
+test("readPiRepairFacts reads supported runs arrays without harvesting incidental nested ids", async () => {
+  const sessionPath = await writeSession([
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        content: [
+          {
+            type: "text",
+            text: "Run: incidental-run-id completed; Run: pi-subagents-status123 running",
+          },
+        ],
+        details: {
+          mode: "fleet",
+          runs: [
+            {
+              runId: "pi-subagents-status123",
+              status: "running",
+            },
+          ],
+          metadata: {
+            id: "incidental-run-id",
+            state: "running",
+          },
+        },
+      },
+    },
+  ]);
+
+  const facts = await readPiRepairFacts({
+    sessionPath,
+    parseError: new Error("parse failed"),
+  });
+
+  assert.deepEqual(facts.subagentRuns, [
+    {
+      id: "pi-subagents-status123",
+      lastState: "running",
+      unresolved: true,
+    },
+  ]);
+});
+
+test("readPiRepairFacts does not apply an ambiguous prose state to a known run", async () => {
+  const sessionPath = await writeSession([
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-launch",
+            name: "subagent",
+            arguments: { agent: "reviewer", task: "review", async: true },
+          },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-launch",
+        content: [
+          { type: "text", text: "Async: reviewer [pi-subagents-known123]" },
+        ],
+        details: { mode: "single", asyncId: "pi-subagents-known123" },
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-status",
+            name: "subagent",
+            arguments: { action: "status", id: "pi-subagents-known123" },
+          },
+        ],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "subagent",
+        toolCallId: "call-status",
+        content: [
+          {
+            type: "text",
+            text: "Run: incidental-run-id completed; Run: pi-subagents-known123 running",
+          },
+        ],
+        details: {
+          mode: "fleet",
+          runs: [{ runId: "pi-subagents-known123" }],
+        },
+      },
+    },
+  ]);
+
+  const facts = await readPiRepairFacts({
+    sessionPath,
+    parseError: new Error("parse failed"),
+  });
+
+  assert.deepEqual(facts.subagentRuns, [
+    {
+      id: "pi-subagents-known123",
+      lastAction: "status",
+      unresolved: true,
+    },
+  ]);
 });
 
 test("readPiRepairFacts treats async default launch results as unresolved until terminal", async () => {

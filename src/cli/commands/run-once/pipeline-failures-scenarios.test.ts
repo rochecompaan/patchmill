@@ -950,7 +950,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
 
   assert.equal(result.status, "blocked");
   assert.equal(piCalls, 3);
-  assert.match(result.reason, /Pi repair attempts exhausted \(2\/2\)/);
+  assert.match(result.reason, /Pi repair attempts exhausted after 2 attempts/);
   assert.match(result.reason, /supported final JSON status/);
   const editCalls = runner.calls.filter(
     (call) =>
@@ -984,7 +984,10 @@ test("runOneIssue records and comments unexpected implementation failures withou
     runState.worktreePath,
     ".worktrees/patchmill-issue-42-handle-implementation-parse-failure",
   );
-  assert.match(runState.lastError, /Pi repair attempts exhausted \(2\/2\)/);
+  assert.match(
+    runState.lastError,
+    /Pi repair attempts exhausted after 2 attempts/,
+  );
   assert.match(runState.lastError, /supported final JSON status/);
 
   const resumeRunner = createMockRunner(async (call) => {
