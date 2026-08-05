@@ -1,4 +1,7 @@
-import { assertIssueArtifactSourcesMaterializable } from "./artifact-source-materialization.ts";
+import {
+  assertIssueArtifactSourcesMaterializable,
+  assertIssueArtifactSourcesMaterializableInBranch,
+} from "./artifact-source-materialization.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import {
   PlanningArtifactSafetyError,
@@ -15,8 +18,10 @@ import {
 import type {
   AgentIssueConfig,
   AgentIssueRunState,
+  CommandRunner,
   IssueSummary,
 } from "./types.ts";
+import type { ReadOnlyIssueWorkspace } from "./git.ts";
 
 export type ApprovedArtifactPreflightOptions = {
   config: Pick<
@@ -27,9 +32,8 @@ export type ApprovedArtifactPreflightOptions = {
   existingState?: AgentIssueRunState;
   resolvedArtifacts: ResolvedIssueArtifactSources;
   now: Date;
-  resolveArtifactWorkspace?: () => Promise<
-    { worktreePath: string } | undefined
-  >;
+  artifactWorkspace?: ReadOnlyIssueWorkspace;
+  runner?: CommandRunner;
 };
 
 export type ApprovedArtifactPreflight = {
@@ -50,31 +54,18 @@ async function approvedArtifactPolicy(input: {
   const needsSavedWorkspace = hasSavedPlanningArtifactWorkspace(existingState);
 
   if (needsSavedWorkspace || hasApprovedSource) {
-    if (options.resolveArtifactWorkspace) {
-      const workspace = await options.resolveArtifactWorkspace();
-      if (workspace) {
-        return planningArtifactPolicyForWorkspace({
-          config,
-          existingState,
-          resolvedArtifacts,
-          worktreePath: workspace.worktreePath,
-          allowGeneratedSpec: false,
-          allowGeneratedPlan: false,
-        });
-      }
-
-      return freshPlanningArtifactPolicy({
+    if (options.artifactWorkspace?.kind === "worktree") {
+      return planningArtifactPolicyForWorkspace({
         config,
-        existingState: existingState
-          ? { ...existingState, worktreePath: undefined }
-          : undefined,
+        existingState,
         resolvedArtifacts,
+        worktreePath: options.artifactWorkspace.worktreePath,
         allowGeneratedSpec: false,
         allowGeneratedPlan: false,
       });
     }
 
-    if (existingState?.worktreePath) {
+    if (!options.artifactWorkspace && existingState?.worktreePath) {
       return planningArtifactPolicyForWorkspace({
         config,
         existingState,
@@ -88,7 +79,10 @@ async function approvedArtifactPolicy(input: {
 
   return freshPlanningArtifactPolicy({
     config,
-    existingState,
+    existingState:
+      options.artifactWorkspace && existingState
+        ? { ...existingState, worktreePath: undefined }
+        : existingState,
     resolvedArtifacts,
     allowGeneratedSpec: false,
     allowGeneratedPlan: false,
@@ -114,6 +108,8 @@ async function assertApprovedSourcesMaterializable(input: {
   requirePlan: boolean;
   specLabel: string;
   planLabel: string;
+  artifactWorkspace?: ReadOnlyIssueWorkspace;
+  runner?: CommandRunner;
 }): Promise<void> {
   const approved = [
     ...(input.requireSpec && input.sources.spec
@@ -140,11 +136,27 @@ async function assertApprovedSourcesMaterializable(input: {
 
   for (const entry of approved) {
     try {
-      await assertIssueArtifactSourcesMaterializable({
-        repoRoot: planningArtifactRoot(input.policy, entry.artifact).repoRoot,
-        issueNumber: input.issue.number,
-        sources: { [entry.kind]: entry.source },
-      });
+      const sources = { [entry.kind]: entry.source };
+      if (input.artifactWorkspace?.kind === "branch") {
+        if (!input.runner) {
+          throw new Error(
+            "Approved branch preflight requires a command runner",
+          );
+        }
+        await assertIssueArtifactSourcesMaterializableInBranch({
+          repoRoot: input.policy.primary.repoRoot,
+          runner: input.runner,
+          branch: input.artifactWorkspace.branch,
+          issueNumber: input.issue.number,
+          sources,
+        });
+      } else {
+        await assertIssueArtifactSourcesMaterializable({
+          repoRoot: planningArtifactRoot(input.policy, entry.artifact).repoRoot,
+          issueNumber: input.issue.number,
+          sources,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new PlanningArtifactSafetyError(
@@ -206,6 +218,8 @@ export async function assertApprovedArtifactsResolvable(
     requirePlan,
     specLabel,
     planLabel,
+    artifactWorkspace: options.artifactWorkspace,
+    runner: options.runner,
   });
 
   return { policy, artifacts };

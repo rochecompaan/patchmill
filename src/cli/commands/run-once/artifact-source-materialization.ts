@@ -89,6 +89,41 @@ export async function assertIssueArtifactSourcesMaterializable(input: {
   await materializationWrites(input);
 }
 
+export async function assertIssueArtifactSourcesMaterializableInBranch(input: {
+  repoRoot: string;
+  runner: CommandRunner;
+  branch: string;
+  issueNumber: number;
+  sources: ResolvedIssueArtifactSources;
+}): Promise<void> {
+  for (const entry of artifactEntries(input.sources)) {
+    const object = `${input.branch}:${entry.source.path}`;
+    const exists = await input.runner.run("git", ["cat-file", "-e", object], {
+      cwd: input.repoRoot,
+    });
+    if (exists.code === 1 || exists.code === 128) continue;
+    if (exists.code !== 0) {
+      throw new Error(
+        `git cat-file failed while checking issue #${input.issueNumber} ${entry.kind} artifact on ${input.branch}: ${commandOutput(exists)}`,
+      );
+    }
+
+    const content = await input.runner.run("git", ["show", object], {
+      cwd: input.repoRoot,
+    });
+    if (content.code !== 0) {
+      throw new Error(
+        `git show failed while checking issue #${input.issueNumber} ${entry.kind} artifact on ${input.branch}: ${commandOutput(content)}`,
+      );
+    }
+    if (content.stdout !== withTrailingNewline(entry.source.content)) {
+      throw new Error(
+        `Issue #${input.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
+      );
+    }
+  }
+}
+
 export async function materializeIssueArtifactSources(
   options: MaterializeIssueArtifactSourcesOptions,
 ): Promise<ResolvedIssueArtifactSources> {

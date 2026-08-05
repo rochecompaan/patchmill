@@ -322,8 +322,6 @@ test("approved branch-only resume resolves saved artifacts in the resolved works
     "# Saved spec\n",
     "utf8",
   );
-  let resolvedWorkspace = false;
-
   const preflight = await assertApprovedArtifactsResolvable({
     config,
     issue,
@@ -339,13 +337,12 @@ test("approved branch-only resume resolves saved artifacts in the resolved works
     },
     resolvedArtifacts: {},
     now,
-    resolveArtifactWorkspace: async () => {
-      resolvedWorkspace = true;
-      return { worktreePath };
+    artifactWorkspace: {
+      kind: "worktree",
+      branch: "agent/issue-140-keep-approved-artifacts",
+      worktreePath,
     },
   });
-
-  assert.equal(resolvedWorkspace, true);
   assert.equal(preflight?.policy.kind, "implementation-resume");
   assert.equal(preflight?.artifacts.spec.path, specPath);
   assert.equal(preflight?.artifacts.spec.exists, true);
@@ -400,7 +397,11 @@ test("approved branch-only resume rejects an explicit artifact that differs from
       },
       resolvedArtifacts: { plan: source(config.repoRoot, "plan") },
       now,
-      resolveArtifactWorkspace: async () => ({ worktreePath }),
+      artifactWorkspace: {
+        kind: "worktree",
+        branch: "agent/issue-140-keep-approved-artifacts",
+        worktreePath,
+      },
     }),
     /plan-approved.*Explicit plan artifact.*does not match saved plan/u,
   );

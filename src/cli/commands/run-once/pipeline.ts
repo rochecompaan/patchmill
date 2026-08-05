@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
@@ -12,6 +12,7 @@ import {
   assertCleanWorktree,
   assertIssueBaseContainedInPrBase,
   ensureIssueWorktree,
+  inspectIssueWorkspace,
   type IssueWorktreeResult,
 } from "./git.ts";
 import {
@@ -316,51 +317,20 @@ export async function runOneIssue(
       );
     }
   };
-  const resolveArtifactWorkspace = async (): Promise<
-    { worktreePath: string } | undefined
-  > => {
-    assertExpectedWorkspaceIdentity();
-    const result = await runner.run(
-      "git",
-      ["worktree", "list", "--porcelain"],
-      { cwd: config.repoRoot },
-    );
-    if (result.code !== 0) {
-      throw new AgentIssueSafetyError(
-        `git worktree list failed before approval preflight with exit code ${result.code}`,
-      );
-    }
-    const worktreePath =
-      existingState?.worktreePath ?? expectedWorkspace.worktreePath;
-    const expectedWorktreeRoot = resolve(config.repoRoot, worktreePath);
-    const registered = result.stdout
-      .split("\n")
-      .find(
-        (line) =>
-          line.startsWith("worktree ") &&
-          resolve(line.slice("worktree ".length)) === expectedWorktreeRoot,
-      );
-    if (!registered) return undefined;
-
-    const branchResult = await runner.run(
-      "git",
-      ["-C", worktreePath, "branch", "--show-current"],
-      { cwd: config.repoRoot },
-    );
-    if (branchResult.code !== 0) {
-      throw new AgentIssueSafetyError(
-        `git branch failed for ${worktreePath} before approval preflight with exit code ${branchResult.code}`,
-      );
-    }
-    const currentBranch = branchResult.stdout.trim();
-    if (currentBranch !== expectedWorkspace.branch) {
-      throw new AgentIssueSafetyError(
-        `Existing worktree ${worktreePath} is on ${currentBranch}, expected ${expectedWorkspace.branch}`,
-      );
-    }
-
-    return { worktreePath };
-  };
+  const hasApprovalLabel = [
+    config.approvalPolicy.specApproval.approvedLabel,
+    config.approvalPolicy.planApproval.approvedLabel,
+  ].some((label) => issueForRun.labels.includes(label));
+  const artifactWorkspace = hasApprovalLabel
+    ? await (async () => {
+        assertExpectedWorkspaceIdentity();
+        return await inspectIssueWorkspace(runner, config.repoRoot, {
+          branch: expectedWorkspace.branch,
+          worktreePath:
+            existingState?.worktreePath ?? expectedWorkspace.worktreePath,
+        });
+      })()
+    : undefined;
   const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
     if (ensuredWorktree) return ensuredWorktree;
     assertExpectedWorkspaceIdentity();
@@ -421,7 +391,8 @@ export async function runOneIssue(
     existingState,
     resolvedArtifacts,
     now: runOptions.now ?? new Date(),
-    resolveArtifactWorkspace,
+    artifactWorkspace,
+    runner,
   });
   if (approvedArtifactPreflight) {
     artifactPolicy = approvedArtifactPreflight.policy;

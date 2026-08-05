@@ -15,6 +15,11 @@ export type BaseBranchDetectionResult =
   | { status: "detected"; branch: string; source: "remote-head" | "upstream" }
   | { status: "fallback"; branch: string; reason: string };
 
+export type ReadOnlyIssueWorkspace =
+  | { kind: "worktree"; branch: string; worktreePath: string }
+  | { kind: "branch"; branch: string }
+  | { kind: "base" };
+
 function resolveStrategy(
   strategyOrBaseRef:
     | GitWorktreeStrategyConfig
@@ -460,6 +465,45 @@ function porcelainWorktreePaths(stdout: string): string[] {
     .split("\n")
     .filter((line) => line.startsWith("worktree "))
     .map((line) => resolve(line.slice("worktree ".length).trim()));
+}
+
+export async function inspectIssueWorkspace(
+  runner: CommandRunner,
+  repoRoot: string,
+  expected: { branch: string; worktreePath: string },
+): Promise<ReadOnlyIssueWorkspace> {
+  const listed = await commandOutput(
+    runner,
+    repoRoot,
+    ["worktree", "list", "--porcelain"],
+    "git worktree list failed",
+  );
+  const expectedWorktreePath = resolve(repoRoot, expected.worktreePath);
+  if (!porcelainWorktreePaths(listed).includes(expectedWorktreePath)) {
+    return (await branchExists(runner, repoRoot, expected.branch))
+      ? { kind: "branch", branch: expected.branch }
+      : { kind: "base" };
+  }
+
+  const currentBranch = (
+    await commandOutput(
+      runner,
+      repoRoot,
+      ["-C", expected.worktreePath, "branch", "--show-current"],
+      `git branch failed for ${expected.worktreePath}`,
+    )
+  ).trim();
+  if (currentBranch !== expected.branch) {
+    throw new Error(
+      `Existing worktree ${expected.worktreePath} is on ${currentBranch}, expected ${expected.branch}`,
+    );
+  }
+
+  return {
+    kind: "worktree",
+    branch: expected.branch,
+    worktreePath: expected.worktreePath,
+  };
 }
 
 async function pathExists(path: string): Promise<boolean> {

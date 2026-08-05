@@ -322,6 +322,134 @@ test("runOneIssue rejects approved published worktree conflicts before claiming"
   );
 });
 
+test("runOneIssue rejects an approved source conflicting with an unregistered issue branch before mutation", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const specPath = "docs/specs/branch-conflicting-approved-spec.md";
+  const selected = {
+    ...issue(
+      67,
+      ["spec-approved", "enhancement"],
+      "Branch conflicting worktree spec",
+    ),
+    comments: [
+      {
+        authorLogin: "patchmill-bot",
+        body: formatPublishedArtifactComment({
+          kind: "spec",
+          path: specPath,
+          content: "# Published spec\n",
+        }),
+      },
+    ],
+  };
+  const workspace = expectedIssueWorkspace(
+    selected.number,
+    selected.title,
+    configuredWorktreeStrategy(config),
+  );
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "cat-file") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "show") {
+      return { code: 0, stdout: "# Conflicting branch spec\n", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(
+        join(config.repoRoot, workspace.worktreePath, "docs", "specs"),
+        { recursive: true },
+      );
+      await writeFile(
+        join(config.repoRoot, workspace.worktreePath, specPath),
+        "# Conflicting branch spec\n",
+        "utf8",
+      );
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "logins") {
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /spec-approved.*would overwrite existing spec artifact/u,
+  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
+  );
+});
+
 test("runOneIssue uses deterministic published artifacts before filename discovery", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const specPath = "docs/specs/human-provided-design.md";
