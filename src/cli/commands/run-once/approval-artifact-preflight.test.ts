@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { createCommandRunner } from "../triage/command.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import {
   assertApprovedArtifactsResolvable,
@@ -421,10 +422,99 @@ test("approved branch-only resume rejects a missing saved plan even with a match
   assert.deepEqual(calls, [
     [
       "cat-file",
-      "-e",
-      "agent/issue-140-keep-approved-artifacts:docs/plans/saved-plan.md^{blob}",
+      "-t",
+      "agent/issue-140-keep-approved-artifacts:docs/plans/saved-plan.md",
     ],
   ]);
+});
+
+test("approved branch-only resume resolves an existing saved artifact from a real Git branch", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  const branch = "agent/issue-140-keep-approved-artifacts";
+  const specPath = "docs/specs/saved-spec.md";
+  const runner = createCommandRunner();
+
+  for (const args of [
+    ["init"],
+    ["config", "user.email", "patchmill@example.test"],
+    ["config", "user.name", "Patchmill Test"],
+  ]) {
+    const result = await runner.run("git", args, { cwd: config.repoRoot });
+    assert.equal(result.code, 0, result.stderr);
+  }
+  await mkdir(join(config.repoRoot, "docs", "specs"), { recursive: true });
+  await writeFile(join(config.repoRoot, specPath), "# Saved spec\n", "utf8");
+  for (const args of [
+    ["add", specPath],
+    ["commit", "-m", "Add saved spec"],
+    ["branch", "-M", branch],
+  ]) {
+    const result = await runner.run("git", args, { cwd: config.repoRoot });
+    assert.equal(result.code, 0, result.stderr);
+  }
+
+  const preflight = await assertApprovedArtifactsResolvable({
+    config,
+    issue,
+    existingState: {
+      issueNumber: issue.number,
+      title: issue.title,
+      status: "implementing",
+      branch,
+      specPath,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+    resolvedArtifacts: {},
+    now,
+    artifactWorkspace: { kind: "branch", branch },
+    runner,
+  });
+
+  assert.equal(preflight?.artifacts.spec.path, specPath);
+  assert.equal(preflight?.artifacts.spec.exists, true);
+});
+
+test("approved branch-only resume rejects a saved directory", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  const specPath = "docs/specs/saved-spec-directory";
+  const runner = {
+    async run(command: string, args: string[]) {
+      assert.equal(command, "git");
+      assert.deepEqual(args, [
+        "cat-file",
+        "-t",
+        "agent/issue-140-keep-approved-artifacts:docs/specs/saved-spec-directory",
+      ]);
+      return { code: 0, stdout: "tree\n", stderr: "" };
+    },
+  };
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "implementing",
+        branch: "agent/issue-140-keep-approved-artifacts",
+        specPath,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      resolvedArtifacts: {},
+      now,
+      artifactWorkspace: {
+        kind: "branch",
+        branch: "agent/issue-140-keep-approved-artifacts",
+      },
+      runner,
+    }),
+    /Saved spec docs\/specs\/saved-spec-directory is not a regular file/u,
+  );
 });
 
 test("approved branch-only resume rejects an explicit artifact that differs from saved identity", async () => {

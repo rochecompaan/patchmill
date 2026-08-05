@@ -148,18 +148,23 @@ async function branchSavedArtifact(input: {
     savedCommit: commit,
   });
 
-  const object = `${options.artifactWorkspace.branch}:${path}^{blob}`;
-  const exists = await options.runner.run("git", ["cat-file", "-e", object], {
+  const object = `${options.artifactWorkspace.branch}:${path}`;
+  const type = await options.runner.run("git", ["cat-file", "-t", object], {
     cwd: options.config.repoRoot,
   });
-  if (exists.code === 1 || exists.code === 128) {
+  if (type.code === 1 || type.code === 128) {
     throw new PlanningArtifactSafetyError(
       `Saved ${kind} ${path} does not exist on issue branch ${options.artifactWorkspace.branch}`,
     );
   }
-  if (exists.code !== 0) {
+  if (type.code !== 0) {
     throw new PlanningArtifactSafetyError(
       `git cat-file failed while resolving saved ${kind} ${path} from ${options.artifactWorkspace.branch}`,
+    );
+  }
+  if (type.stdout.trim() !== "blob") {
+    throw new PlanningArtifactSafetyError(
+      `Saved ${kind} ${path} is not a regular file on issue branch ${options.artifactWorkspace.branch}`,
     );
   }
   const content = await options.runner.run("git", ["show", object], {

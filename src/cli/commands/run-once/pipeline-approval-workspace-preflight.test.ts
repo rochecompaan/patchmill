@@ -275,7 +275,11 @@ test("runOneIssue resumes an approved branch-only saved plan", async () => {
       return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "cat-file") {
-      return { code: 0, stdout: "", stderr: "" };
+      return {
+        code: 0,
+        stdout: call.args[1] === "-t" ? "blob\n" : "",
+        stderr: "",
+      };
     }
     if (call.command === "git" && call.args[0] === "show") {
       return { code: 0, stdout: "# plan\n", stderr: "" };
