@@ -324,11 +324,15 @@ export async function advancePlanningStages({
     allowGeneratedPlan: true,
   });
 
-  if (artifactPolicy?.kind === "implementation-resume") {
+  if (artifactPolicy) {
     planningArtifactWorkspace = {
       repoRoot: artifactPolicy.primary.repoRoot,
-      ...(existingState?.branch ? { branch: existingState.branch } : {}),
-      ...(existingState?.worktreePath
+      ...(artifactPolicy.kind === "implementation-resume" &&
+      existingState?.branch
+        ? { branch: existingState.branch }
+        : {}),
+      ...(artifactPolicy.kind === "implementation-resume" &&
+      existingState?.worktreePath
         ? { worktreePath: existingState.worktreePath }
         : {}),
     };
@@ -337,7 +341,14 @@ export async function advancePlanningStages({
     planningPlansDir = artifactPolicy.primary.plansDir;
   }
 
-  let artifactPolicyForRun = artifactPolicy ?? freshArtifactPolicy();
+  let artifactPolicyForRun =
+    artifactPolicy?.kind === "fresh"
+      ? {
+          ...artifactPolicy,
+          allowGeneratedSpec: true,
+          allowGeneratedPlan: true,
+        }
+      : (artifactPolicy ?? freshArtifactPolicy());
   let planningArtifacts = await resolvePlanningArtifacts({
     policy: artifactPolicyForRun,
     issue,

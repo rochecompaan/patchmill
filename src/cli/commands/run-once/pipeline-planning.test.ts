@@ -4,6 +4,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
+import {
+  configuredWorktreeStrategy,
+  expectedIssueWorkspace,
+} from "./pipeline-workspace.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import {
   issue,
@@ -202,12 +206,11 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
   assert.doesNotMatch(commentBody(comments[0]), /Existing plan ready/);
 });
 
-test("runOneIssue rejects approved published artifact conflicts before claiming", async () => {
+test("runOneIssue rejects approved published worktree conflicts before claiming", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
-  const specPath = "docs/specs/conflicting-approved-spec.md";
-  await writeFile(join(config.repoRoot, specPath), "# Existing spec\n", "utf8");
+  const specPath = "docs/specs/conflicting-worktree-approved-spec.md";
   const selected = {
-    ...issue(65, ["spec-approved", "enhancement"], "Conflicting spec"),
+    ...issue(66, ["spec-approved", "enhancement"], "Conflicting worktree spec"),
     comments: [
       {
         authorLogin: "patchmill-bot",
@@ -219,6 +222,19 @@ test("runOneIssue rejects approved published artifact conflicts before claiming"
       },
     ],
   };
+  const workspace = expectedIssueWorkspace(
+    selected.number,
+    selected.title,
+    configuredWorktreeStrategy(config),
+  );
+  await mkdir(join(config.repoRoot, workspace.worktreePath, "docs", "specs"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(config.repoRoot, workspace.worktreePath, specPath),
+    "# Existing worktree spec\n",
+    "utf8",
+  );
   const runner = createMockRunner(async (call) => {
     if (
       call.command === "tea" &&
@@ -234,6 +250,26 @@ test("runOneIssue rejects approved published artifact conflicts before claiming"
     }
     if (call.command === "git" && call.args[0] === "show-ref") {
       return { code: 1, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "list"
+    ) {
+      return {
+        code: 0,
+        stdout: `worktree ${join(config.repoRoot, workspace.worktreePath)}\n`,
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "-C") {
+      return { code: 0, stdout: `${workspace.branch}\n`, stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "status") {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "log") {
+      return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "tea" && call.args[0] === "logins") {
       return {

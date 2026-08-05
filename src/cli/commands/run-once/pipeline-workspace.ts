@@ -95,10 +95,13 @@ export function freshPlanningArtifactPolicy(input: {
   resolvedArtifacts: ResolvedIssueArtifactSources;
   allowGeneratedSpec: boolean;
   allowGeneratedPlan: boolean;
+  workspaceRoot?: string;
 }): PlanningArtifactPolicy {
-  const worktreeRoot = input.existingState?.worktreePath
-    ? join(input.config.repoRoot, input.existingState.worktreePath)
-    : undefined;
+  const worktreeRoot =
+    input.workspaceRoot ??
+    (input.existingState?.worktreePath
+      ? join(input.config.repoRoot, input.existingState.worktreePath)
+      : undefined);
   const primaryRoot = worktreeRoot ?? input.config.repoRoot;
 
   return {

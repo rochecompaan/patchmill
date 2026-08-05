@@ -55,6 +55,7 @@ import {
   cleanStatusIgnoredPaths,
   configuredWorktreeStrategy,
   expectedIssueWorkspace,
+  freshPlanningArtifactPolicy,
   resumePlanningArtifactPolicy,
 } from "./pipeline-workspace.ts";
 import {
@@ -374,10 +375,29 @@ export async function runOneIssue(
     resolvedArtifacts,
     now: runOptions.now ?? new Date(),
     ensureArtifactWorkspace: async () => {
-      await ensureIssueWorkspace();
+      const workspace = await ensureIssueWorkspace();
+      const workspaceRoot = join(config.repoRoot, workspace.worktreePath);
+      if (
+        existingState?.worktreePath &&
+        (existingState.specPath || existingState.planPath)
+      ) {
+        return resumePlanningArtifactPolicy({
+          config,
+          worktreePath: workspace.worktreePath,
+          existingState,
+          resolvedArtifacts,
+        });
+      }
+      return freshPlanningArtifactPolicy({
+        config,
+        resolvedArtifacts,
+        allowGeneratedSpec: false,
+        allowGeneratedPlan: false,
+        workspaceRoot,
+      });
     },
   });
-  if (approvedArtifactPreflight?.policy.kind === "implementation-resume") {
+  if (approvedArtifactPreflight) {
     artifactPolicy = approvedArtifactPreflight.policy;
   }
   await progress(runOptions, "info", "git", "checking repository status", {

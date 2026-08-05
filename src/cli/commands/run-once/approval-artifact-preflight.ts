@@ -26,7 +26,7 @@ export type ApprovedArtifactPreflightOptions = {
   existingState?: AgentIssueRunState;
   resolvedArtifacts: ResolvedIssueArtifactSources;
   now: Date;
-  ensureArtifactWorkspace?: () => Promise<void>;
+  ensureArtifactWorkspace?: () => Promise<PlanningArtifactPolicy>;
 };
 
 export type ApprovedArtifactPreflight = {
@@ -38,11 +38,26 @@ function hasSavedArtifacts(state: AgentIssueRunState | undefined): boolean {
   return !!(state?.specPath || state?.planPath);
 }
 
-function approvedArtifactPolicy(
-  options: ApprovedArtifactPreflightOptions,
-): PlanningArtifactPolicy {
+async function approvedArtifactPolicy(input: {
+  options: ApprovedArtifactPreflightOptions;
+  requireSpec: boolean;
+  requirePlan: boolean;
+}): Promise<PlanningArtifactPolicy> {
+  const { options, requireSpec, requirePlan } = input;
   const { config, existingState, resolvedArtifacts } = options;
-  if (existingState?.worktreePath && hasSavedArtifacts(existingState)) {
+  const hasApprovedSource =
+    (requireSpec && !!resolvedArtifacts.spec) ||
+    (requirePlan && !!resolvedArtifacts.plan);
+  const needsSavedWorkspace =
+    !!existingState?.worktreePath && hasSavedArtifacts(existingState);
+
+  if (
+    options.ensureArtifactWorkspace &&
+    (needsSavedWorkspace || hasApprovedSource)
+  ) {
+    return await options.ensureArtifactWorkspace();
+  }
+  if (needsSavedWorkspace) {
     return resumePlanningArtifactPolicy({
       config,
       worktreePath: existingState.worktreePath,
@@ -128,16 +143,11 @@ export async function assertApprovedArtifactsResolvable(
   const requirePlan = options.issue.labels.includes(planLabel);
   if (!requireSpec && !requirePlan) return undefined;
 
-  if (
-    options.ensureArtifactWorkspace &&
-    options.existingState?.branch &&
-    options.existingState.worktreePath &&
-    hasSavedArtifacts(options.existingState)
-  ) {
-    await options.ensureArtifactWorkspace();
-  }
-
-  const policy = approvedArtifactPolicy(options);
+  const policy = await approvedArtifactPolicy({
+    options,
+    requireSpec,
+    requirePlan,
+  });
   let artifacts: ResolvedPlanningArtifacts;
   try {
     artifacts = await resolveApprovedPlanningArtifacts({
