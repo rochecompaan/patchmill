@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
@@ -332,13 +332,34 @@ export async function runOneIssue(
     }
     const worktreePath =
       existingState?.worktreePath ?? expectedWorkspace.worktreePath;
-    return result.stdout
+    const expectedWorktreeRoot = resolve(config.repoRoot, worktreePath);
+    const registered = result.stdout
       .split("\n")
-      .some(
-        (line) => line === `worktree ${join(config.repoRoot, worktreePath)}`,
-      )
-      ? { worktreePath }
-      : undefined;
+      .find(
+        (line) =>
+          line.startsWith("worktree ") &&
+          resolve(line.slice("worktree ".length)) === expectedWorktreeRoot,
+      );
+    if (!registered) return undefined;
+
+    const branchResult = await runner.run(
+      "git",
+      ["-C", worktreePath, "branch", "--show-current"],
+      { cwd: config.repoRoot },
+    );
+    if (branchResult.code !== 0) {
+      throw new AgentIssueSafetyError(
+        `git branch failed for ${worktreePath} before approval preflight with exit code ${branchResult.code}`,
+      );
+    }
+    const currentBranch = branchResult.stdout.trim();
+    if (currentBranch !== expectedWorkspace.branch) {
+      throw new AgentIssueSafetyError(
+        `Existing worktree ${worktreePath} is on ${currentBranch}, expected ${expectedWorkspace.branch}`,
+      );
+    }
+
+    return { worktreePath };
   };
   const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
     if (ensuredWorktree) return ensuredWorktree;

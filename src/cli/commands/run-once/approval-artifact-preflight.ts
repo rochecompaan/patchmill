@@ -50,17 +50,36 @@ async function approvedArtifactPolicy(input: {
   const needsSavedWorkspace = hasSavedPlanningArtifactWorkspace(existingState);
 
   if (needsSavedWorkspace || hasApprovedSource) {
-    const workspace = options.resolveArtifactWorkspace
-      ? await options.resolveArtifactWorkspace()
-      : existingState?.worktreePath
-        ? { worktreePath: existingState.worktreePath }
-        : undefined;
-    if (workspace) {
+    if (options.resolveArtifactWorkspace) {
+      const workspace = await options.resolveArtifactWorkspace();
+      if (workspace) {
+        return planningArtifactPolicyForWorkspace({
+          config,
+          existingState,
+          resolvedArtifacts,
+          worktreePath: workspace.worktreePath,
+          allowGeneratedSpec: false,
+          allowGeneratedPlan: false,
+        });
+      }
+
+      return freshPlanningArtifactPolicy({
+        config,
+        existingState: existingState
+          ? { ...existingState, worktreePath: undefined }
+          : undefined,
+        resolvedArtifacts,
+        allowGeneratedSpec: false,
+        allowGeneratedPlan: false,
+      });
+    }
+
+    if (existingState?.worktreePath) {
       return planningArtifactPolicyForWorkspace({
         config,
         existingState,
         resolvedArtifacts,
-        worktreePath: workspace.worktreePath,
+        worktreePath: existingState.worktreePath,
         allowGeneratedSpec: false,
         allowGeneratedPlan: false,
       });

@@ -502,7 +502,7 @@ test("runOneIssue retries worktree-only approved artifacts after development env
         call.args[0] === "-C" &&
         call.args[2] === "branch",
     ).length,
-    1,
+    2,
   );
   const finalEdit = runner.calls
     .filter(
