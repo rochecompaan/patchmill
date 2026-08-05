@@ -119,6 +119,8 @@ async function developmentEnvironmentNotReady(
       specCommit: options.specCommit,
       planPath: options.planPath,
       planCommit: options.planCommit,
+      branch: options.branch,
+      worktreePath: options.worktreePath,
       lastError: result.reason,
     },
     timestamp,
