@@ -47,24 +47,25 @@ async function existingContent(path: string): Promise<string | undefined> {
   }
 }
 
-export async function materializeIssueArtifactSources(
-  options: MaterializeIssueArtifactSourcesOptions,
-): Promise<ResolvedIssueArtifactSources> {
-  const entries = artifactEntries(options.sources);
-  if (entries.length === 0) return options.sources;
+type ArtifactWrite = {
+  entry: ArtifactEntry;
+  content: string;
+};
 
-  const writes: Array<{
-    entry: ArtifactEntry;
-    content: string;
-  }> = [];
-  for (const entry of entries) {
+async function materializationWrites(input: {
+  repoRoot: string;
+  issueNumber: number;
+  sources: ResolvedIssueArtifactSources;
+}): Promise<ArtifactWrite[]> {
+  const writes: ArtifactWrite[] = [];
+  for (const entry of artifactEntries(input.sources)) {
     const content = withTrailingNewline(entry.source.content);
-    const absolutePath = resolve(options.repoRoot, entry.source.path);
+    const absolutePath = resolve(input.repoRoot, entry.source.path);
     const existing = await existingContent(absolutePath);
     if (existing !== undefined) {
       if (existing !== content) {
         throw new Error(
-          `Issue #${options.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
+          `Issue #${input.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
         );
       }
       continue;
@@ -77,6 +78,24 @@ export async function materializeIssueArtifactSources(
       content,
     });
   }
+  return writes;
+}
+
+export async function assertIssueArtifactSourcesMaterializable(input: {
+  repoRoot: string;
+  issueNumber: number;
+  sources: ResolvedIssueArtifactSources;
+}): Promise<void> {
+  await materializationWrites(input);
+}
+
+export async function materializeIssueArtifactSources(
+  options: MaterializeIssueArtifactSourcesOptions,
+): Promise<ResolvedIssueArtifactSources> {
+  const entries = artifactEntries(options.sources);
+  if (entries.length === 0) return options.sources;
+
+  const writes = await materializationWrites(options);
 
   for (const { entry, content } of writes) {
     await mkdir(dirname(entry.source.absolutePath), { recursive: true });

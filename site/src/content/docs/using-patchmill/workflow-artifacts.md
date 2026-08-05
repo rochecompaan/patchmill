@@ -90,8 +90,10 @@ pre-existing artifacts.
 
 ## Updating an artifact
 
-Run `set-spec` or `set-plan` again when a developer revises an artifact before
-implementation:
+Before revising or replacing an approved spec, withdraw its `spec-approved`
+label and any downstream `plan-approved` label. Before revising or replacing an
+approved plan, withdraw its `plan-approved` label. Then run `set-spec` or
+`set-plan` again when a developer revises an artifact before implementation:
 
 ```sh
 patchmill set-plan --issue 99 docs/plans/log-entries-ui-v2.md

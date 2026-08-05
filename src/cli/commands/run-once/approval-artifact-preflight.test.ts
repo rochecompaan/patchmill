@@ -138,6 +138,56 @@ test("approved spec with multiple discovered specs fails as ambiguous", async ()
   );
 });
 
+test("stale saved approved spec does not bypass ambiguous discovery", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  await mkdir(config.specsDir, { recursive: true });
+  await writeFile(
+    join(config.specsDir, "2026-08-01-issue-140-first-design.md"),
+    "# First spec\n",
+    "utf8",
+  );
+  await writeFile(
+    join(config.specsDir, "2026-08-02-issue-140-second-design.md"),
+    "# Second spec\n",
+    "utf8",
+  );
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      existingState: {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "planning",
+        specPath: "docs/specs/stale-design.md",
+      },
+      resolvedArtifacts: {},
+      now,
+    }),
+    /spec-approved.*multiple spec artifacts/u,
+  );
+});
+
+test("approved published artifact rejects a conflicting local target", async () => {
+  const { config, issue } = await fixture();
+  issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
+  const resolved = source(config.repoRoot, "spec");
+  await mkdir(config.specsDir, { recursive: true });
+  await writeFile(resolved.absolutePath, "# Different local spec\n", "utf8");
+
+  await assert.rejects(
+    assertApprovedArtifactsResolvable({
+      config,
+      issue,
+      resolvedArtifacts: { spec: resolved },
+      now,
+    }),
+    /spec-approved.*would overwrite existing spec artifact/u,
+  );
+});
+
 test("preflight uses configured approval label names", async () => {
   const { config, issue } = await fixture();
   config.approvalPolicy = createWorkflowApprovalPolicy({

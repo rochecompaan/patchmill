@@ -202,6 +202,72 @@ test("runOneIssue reuses a saved created plan as plan-created in plan-only mode"
   assert.doesNotMatch(commentBody(comments[0]), /Existing plan ready/);
 });
 
+test("runOneIssue rejects approved published artifact conflicts before claiming", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const specPath = "docs/specs/conflicting-approved-spec.md";
+  await writeFile(join(config.repoRoot, specPath), "# Existing spec\n", "utf8");
+  const selected = {
+    ...issue(65, ["spec-approved", "enhancement"], "Conflicting spec"),
+    comments: [
+      {
+        authorLogin: "patchmill-bot",
+        body: formatPublishedArtifactComment({
+          kind: "spec",
+          path: specPath,
+          content: "# Published spec\n",
+        }),
+      },
+    ],
+  };
+  const runner = createMockRunner(async (call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "show-ref") {
+      return { code: 1, stdout: "", stderr: "" };
+    }
+    if (call.command === "tea" && call.args[0] === "logins") {
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { name: "default", user: "patchmill-bot", default: true },
+        ]),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW }),
+    /spec-approved.*would overwrite existing spec artifact/u,
+  );
+  assert.equal(
+    runner.calls.some((call) => call.command === "pi"),
+    false,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        ((call.args[0] === "issues" && call.args[1] === "edit") ||
+          call.args[0] === "comment"),
+    ),
+    false,
+  );
+});
+
 test("runOneIssue uses deterministic published artifacts before filename discovery", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const specPath = "docs/specs/human-provided-design.md";

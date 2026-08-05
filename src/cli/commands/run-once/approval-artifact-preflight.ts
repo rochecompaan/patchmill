@@ -1,4 +1,5 @@
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
+import { assertIssueArtifactSourcesMaterializable } from "./artifact-source-materialization.ts";
 import { findIssueArtifacts } from "./artifacts.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import {
@@ -7,6 +8,7 @@ import {
   type PlanningArtifactPolicy,
   type ResolvedPlanningArtifacts,
 } from "./planning-artifacts.ts";
+import { pathExists } from "./paths.ts";
 import { mirrorConfiguredPathInWorktree } from "./pipeline-workspace.ts";
 import type {
   AgentIssueConfig,
@@ -96,17 +98,35 @@ function artifactDirs(
   ];
 }
 
+async function savedArtifactExists(
+  options: ApprovedArtifactPreflightOptions,
+  kind: "spec" | "plan",
+): Promise<boolean> {
+  const savedPath =
+    kind === "spec"
+      ? options.existingState?.specPath
+      : options.existingState?.planPath;
+  if (!savedPath) return false;
+  if (isAbsolute(savedPath)) return pathExists(savedPath);
+
+  const roots = [options.config.repoRoot];
+  if (options.existingState?.worktreePath) {
+    roots.unshift(
+      join(options.config.repoRoot, options.existingState.worktreePath),
+    );
+  }
+  return (
+    await Promise.all(roots.map((root) => pathExists(join(root, savedPath))))
+  ).some(Boolean);
+}
+
 async function assertUnambiguousDiscovery(
   options: ApprovedArtifactPreflightOptions,
   kind: "spec" | "plan",
   label: string,
 ): Promise<void> {
   if (options.resolvedArtifacts[kind]) return;
-  const savedPath =
-    kind === "spec"
-      ? options.existingState?.specPath
-      : options.existingState?.planPath;
-  if (savedPath) return;
+  if (await savedArtifactExists(options, kind)) return;
 
   const candidates = (
     await Promise.all(
@@ -149,6 +169,31 @@ export async function assertApprovedArtifactsResolvable(
   }
   if (requiresPlan) {
     await assertUnambiguousDiscovery(options, "plan", planLabel);
+  }
+
+  const approvedSources = {
+    ...(requiresSpec && options.resolvedArtifacts.spec
+      ? { spec: options.resolvedArtifacts.spec }
+      : {}),
+    ...(requiresPlan && options.resolvedArtifacts.plan
+      ? { plan: options.resolvedArtifacts.plan }
+      : {}),
+  };
+  try {
+    await assertIssueArtifactSourcesMaterializable({
+      repoRoot: options.config.repoRoot,
+      issueNumber: options.issue.number,
+      sources: approvedSources,
+    });
+  } catch (error) {
+    const labels = [
+      ...(requiresSpec && approvedSources.spec ? [specLabel] : []),
+      ...(requiresPlan && approvedSources.plan ? [planLabel] : []),
+    ].join(", ");
+    const message = error instanceof Error ? error.message : String(error);
+    throw new PlanningArtifactSafetyError(
+      `Issue #${options.issue.number} has approval label ${labels}, but approved artifacts cannot be materialized: ${message}`,
+    );
   }
 
   let artifacts: ResolvedPlanningArtifacts;
