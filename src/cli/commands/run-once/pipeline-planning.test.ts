@@ -227,12 +227,9 @@ test("runOneIssue rejects approved published worktree conflicts before claiming"
     selected.title,
     configuredWorktreeStrategy(config),
   );
-  await mkdir(join(config.repoRoot, workspace.worktreePath, "docs", "specs"), {
-    recursive: true,
-  });
   await writeFile(
-    join(config.repoRoot, workspace.worktreePath, specPath),
-    "# Existing worktree spec\n",
+    join(config.repoRoot, specPath),
+    "# Existing primary spec\n",
     "utf8",
   );
   const runner = createMockRunner(async (call) => {
@@ -256,11 +253,23 @@ test("runOneIssue rejects approved published worktree conflicts before claiming"
       call.args[0] === "worktree" &&
       call.args[1] === "list"
     ) {
-      return {
-        code: 0,
-        stdout: `worktree ${join(config.repoRoot, workspace.worktreePath)}\n`,
-        stderr: "",
-      };
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(
+        join(config.repoRoot, workspace.worktreePath, "docs", "specs"),
+        { recursive: true },
+      );
+      await writeFile(
+        join(config.repoRoot, workspace.worktreePath, specPath),
+        "# Existing worktree spec\n",
+        "utf8",
+      );
+      return { code: 0, stdout: "", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "-C") {
       return { code: 0, stdout: `${workspace.branch}\n`, stderr: "" };
@@ -288,6 +297,15 @@ test("runOneIssue rejects approved published worktree conflicts before claiming"
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
     /spec-approved.*would overwrite existing spec artifact/u,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    false,
   );
   assert.equal(
     runner.calls.some((call) => call.command === "pi"),

@@ -309,7 +309,7 @@ test("saved approved spec directory fails preflight", async () => {
   );
 });
 
-test("approved branch-only resume resolves saved artifacts in the ensured workspace", async () => {
+test("approved branch-only resume resolves saved artifacts in the resolved workspace", async () => {
   const { config, issue } = await fixture();
   issue.labels = [config.approvalPolicy.specApproval.approvedLabel];
   const worktreePath = "worktrees/issue-140";
@@ -322,7 +322,7 @@ test("approved branch-only resume resolves saved artifacts in the ensured worksp
     "# Saved spec\n",
     "utf8",
   );
-  let ensured = false;
+  let resolvedWorkspace = false;
 
   const preflight = await assertApprovedArtifactsResolvable({
     config,
@@ -339,13 +339,13 @@ test("approved branch-only resume resolves saved artifacts in the ensured worksp
     },
     resolvedArtifacts: {},
     now,
-    ensureArtifactWorkspace: async () => {
-      ensured = true;
+    resolveArtifactWorkspace: async () => {
+      resolvedWorkspace = true;
       return { worktreePath };
     },
   });
 
-  assert.equal(ensured, true);
+  assert.equal(resolvedWorkspace, true);
   assert.equal(preflight?.policy.kind, "implementation-resume");
   assert.equal(preflight?.artifacts.spec.path, specPath);
   assert.equal(preflight?.artifacts.spec.exists, true);
@@ -400,7 +400,7 @@ test("approved branch-only resume rejects an explicit artifact that differs from
       },
       resolvedArtifacts: { plan: source(config.repoRoot, "plan") },
       now,
-      ensureArtifactWorkspace: async () => ({ worktreePath }),
+      resolveArtifactWorkspace: async () => ({ worktreePath }),
     }),
     /plan-approved.*Explicit plan artifact.*does not match saved plan/u,
   );

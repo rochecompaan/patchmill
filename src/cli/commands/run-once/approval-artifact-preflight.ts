@@ -27,7 +27,9 @@ export type ApprovedArtifactPreflightOptions = {
   existingState?: AgentIssueRunState;
   resolvedArtifacts: ResolvedIssueArtifactSources;
   now: Date;
-  ensureArtifactWorkspace?: () => Promise<{ worktreePath: string }>;
+  resolveArtifactWorkspace?: () => Promise<
+    { worktreePath: string } | undefined
+  >;
 };
 
 export type ApprovedArtifactPreflight = {
@@ -48,8 +50,8 @@ async function approvedArtifactPolicy(input: {
   const needsSavedWorkspace = hasSavedPlanningArtifactWorkspace(existingState);
 
   if (needsSavedWorkspace || hasApprovedSource) {
-    const workspace = options.ensureArtifactWorkspace
-      ? await options.ensureArtifactWorkspace()
+    const workspace = options.resolveArtifactWorkspace
+      ? await options.resolveArtifactWorkspace()
       : existingState?.worktreePath
         ? { worktreePath: existingState.worktreePath }
         : undefined;
@@ -62,11 +64,6 @@ async function approvedArtifactPolicy(input: {
         allowGeneratedSpec: false,
         allowGeneratedPlan: false,
       });
-    }
-    if (needsSavedWorkspace) {
-      throw new PlanningArtifactSafetyError(
-        `Saved planning artifacts require an ensured workspace before approval preflight`,
-      );
     }
   }
 

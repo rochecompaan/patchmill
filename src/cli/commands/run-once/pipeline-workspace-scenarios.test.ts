@@ -136,7 +136,7 @@ test("runOneIssue reuses existing implementation worktree on resume", async () =
   assert.ok(runner.calls.find((call) => call.command === "pi"));
 });
 
-test("runOneIssue recreates an approved implementing worktree before preflight", async () => {
+test("runOneIssue recreates an approved implementing worktree after preflight", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -145,6 +145,7 @@ test("runOneIssue recreates an approved implementing worktree before preflight",
   });
   const planPath = "docs/plans/2026-06-20-issue-45-recover-blocked-run.md";
   const worktreePath = ".worktrees/patchmill-issue-45-recover-blocked-run";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeBlockedRecoveryRunState(
     config,
     { issueNumber: 45, status: "implementing" },
@@ -190,16 +191,14 @@ test("runOneIssue recreates an approved implementing worktree before preflight",
       call.args[0] === "worktree" &&
       call.args[1] === "add",
   );
-  const firstHostMutation = runner.calls.findIndex(
-    (call) =>
-      call.command === "tea" &&
-      ((call.args[0] === "issues" && call.args[1] === "edit") ||
-        call.args[0] === "comment"),
+  const firstCleanStatus = runner.calls.findIndex(
+    (call) => call.command === "git" && call.args[0] === "status",
   );
   assert.ok(worktreeAdd >= 0, "expected saved worktree recreation");
+  assert.ok(firstCleanStatus >= 0, "expected primary clean-worktree check");
   assert.ok(
-    firstHostMutation < 0 || worktreeAdd < firstHostMutation,
-    "expected worktree recreation before host mutations",
+    firstCleanStatus < worktreeAdd,
+    "expected worktree recreation after the primary clean-worktree check",
   );
 });
 

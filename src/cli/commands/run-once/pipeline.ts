@@ -296,8 +296,7 @@ export async function runOneIssue(
     issue.title,
     worktreeStrategy,
   );
-  const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
-    if (ensuredWorktree) return ensuredWorktree;
+  const assertExpectedWorkspaceIdentity = (): void => {
     if (
       resumableState &&
       existingState?.branch &&
@@ -316,6 +315,34 @@ export async function runOneIssue(
         `Saved worktree ${existingState.worktreePath} does not match expected worktree path ${expectedWorkspace.worktreePath}`,
       );
     }
+  };
+  const resolveArtifactWorkspace = async (): Promise<
+    { worktreePath: string } | undefined
+  > => {
+    assertExpectedWorkspaceIdentity();
+    const result = await runner.run(
+      "git",
+      ["worktree", "list", "--porcelain"],
+      { cwd: config.repoRoot },
+    );
+    if (result.code !== 0) {
+      throw new AgentIssueSafetyError(
+        `git worktree list failed before approval preflight with exit code ${result.code}`,
+      );
+    }
+    const worktreePath =
+      existingState?.worktreePath ?? expectedWorkspace.worktreePath;
+    return result.stdout
+      .split("\n")
+      .some(
+        (line) => line === `worktree ${join(config.repoRoot, worktreePath)}`,
+      )
+      ? { worktreePath }
+      : undefined;
+  };
+  const ensureIssueWorkspace = async (): Promise<IssueWorktreeResult> => {
+    if (ensuredWorktree) return ensuredWorktree;
+    assertExpectedWorkspaceIdentity();
 
     const worktree = await ensureIssueWorktree(
       runner,
@@ -373,7 +400,7 @@ export async function runOneIssue(
     existingState,
     resolvedArtifacts,
     now: runOptions.now ?? new Date(),
-    ensureArtifactWorkspace: ensureIssueWorkspace,
+    resolveArtifactWorkspace,
   });
   if (approvedArtifactPreflight) {
     artifactPolicy = approvedArtifactPreflight.policy;
