@@ -1247,7 +1247,7 @@ test("runOneIssue rejects spec-approved when no spec can be resolved", async () 
   );
 });
 
-test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-review", async () => {
+test("runOneIssue writes a plan and preserves spec approval at plan review", async () => {
   const config = await makeConfig({
     execute: true,
     dryRun: false,
@@ -1328,8 +1328,11 @@ test("runOneIssue writes plan from spec-approved and cleans spec labels at plan-
     finalEdit.args[finalEdit.args.indexOf("--add-labels") + 1],
     "plan-review",
   );
-  assert.equal(finalEdit.args.includes("spec-review"), false);
-  assert.equal(finalEdit.args.includes("spec-approved"), false);
+  const removedLabels =
+    finalEdit.args[finalEdit.args.indexOf("--remove-labels") + 1]?.split(",") ??
+    [];
+  assert.deepEqual(removedLabels.sort(), ["in-progress", "spec-review"].sort());
+  assert.equal(removedLabels.includes("spec-approved"), false);
 });
 
 test("runOneIssue resumes approved spec review with saved planning worktree", async () => {
@@ -2186,13 +2189,15 @@ test("runOneIssue rejects plan-approved when no plan can be resolved", async () 
   );
 });
 
-test("runOneIssue proceeds when plan approval label is present and clears plan-review", async () => {
+test("runOneIssue preserves approvals while clearing review labels", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     approvalPolicy: approvalPolicy({ planRequired: true }),
   });
+  const specPath = "docs/specs/2026-05-14-issue-49-approved-spec-design.md";
   const planPath = "docs/plans/2026-05-14-issue-49-approved-plan.md";
+  await writeFile(join(config.repoRoot, specPath), "# spec\n", "utf8");
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   const selected = issue(
     49,
@@ -2292,10 +2297,15 @@ test("runOneIssue proceeds when plan approval label is present and clears plan-r
   );
   const finalEdit = editCalls.at(-1);
   assert.ok(finalEdit);
-  assert.equal(finalEdit.args.includes("spec-review"), false);
-  assert.equal(finalEdit.args.includes("spec-approved"), false);
-  assert.equal(finalEdit.args.includes("plan-review"), false);
-  assert.equal(finalEdit.args.includes("plan-approved"), false);
+  const removedLabels = editCalls.flatMap((call) => {
+    const index = call.args.indexOf("--remove-labels");
+    return index < 0 ? [] : (call.args[index + 1]?.split(",") ?? []);
+  });
+  assert.equal(removedLabels.includes("spec-approved"), false);
+  assert.equal(removedLabels.includes("plan-approved"), false);
+  assert.equal(removedLabels.includes("spec-review"), true);
+  assert.equal(removedLabels.includes("plan-review"), true);
+  assert.equal(removedLabels.includes("in-progress"), true);
 });
 
 test("runOneIssue claims the issue, comments automation start, writes run state, and exits plan-created for plan-only mode", async () => {

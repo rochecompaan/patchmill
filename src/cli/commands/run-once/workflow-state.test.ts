@@ -188,7 +188,7 @@ test("decidePlanApprovalGate stops for plan-only without workflow review labels"
   assert.deepEqual(decision, { action: "stop-for-plan-only" });
 });
 
-test("cleanupLabelsForSpecReview removes agent-ready and stale later approvals", () => {
+test("cleanupLabelsForSpecReview preserves approval labels", () => {
   assert.deepEqual(
     cleanupLabelsForSpecReview(
       [ready, "spec-approved", "plan-review", "plan-approved", "bug"],
@@ -197,11 +197,11 @@ test("cleanupLabelsForSpecReview removes agent-ready and stale later approvals",
         policy,
       },
     ),
-    ["bug", "spec-review"],
+    ["spec-approved", "plan-approved", "bug", "spec-review"],
   );
 });
 
-test("cleanupLabelsForPlanReview removes ready and all spec labels", () => {
+test("cleanupLabelsForPlanReview preserves approval labels", () => {
   assert.deepEqual(
     cleanupLabelsForPlanReview(
       [ready, "spec-review", "spec-approved", "plan-approved", "bug"],
@@ -210,11 +210,11 @@ test("cleanupLabelsForPlanReview removes ready and all spec labels", () => {
         policy,
       },
     ),
-    ["bug", "plan-review"],
+    ["spec-approved", "plan-approved", "bug", "plan-review"],
   );
 });
 
-test("cleanupLabelsForImplementation removes all workflow review and approval labels", () => {
+test("cleanupLabelsForImplementation preserves approval labels", () => {
   assert.deepEqual(
     cleanupLabelsForImplementation(
       [
@@ -227,7 +227,7 @@ test("cleanupLabelsForImplementation removes all workflow review and approval la
       ],
       { readyLabel: ready, policy },
     ),
-    ["bug"],
+    ["spec-approved", "plan-approved", "bug"],
   );
 });
 

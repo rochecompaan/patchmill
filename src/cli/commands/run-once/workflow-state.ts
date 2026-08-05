@@ -142,9 +142,7 @@ export function cleanupLabelsForSpecReview(
   return addLabel(
     removeLabels(labels, [
       options.readyLabel,
-      options.policy.specApproval.approvedLabel,
       options.policy.planApproval.reviewLabel,
-      options.policy.planApproval.approvedLabel,
     ]),
     options.policy.specApproval.reviewLabel,
   );
@@ -158,8 +156,6 @@ export function cleanupLabelsForPlanReview(
     removeLabels(labels, [
       options.readyLabel,
       options.policy.specApproval.reviewLabel,
-      options.policy.specApproval.approvedLabel,
-      options.policy.planApproval.approvedLabel,
     ]),
     options.policy.planApproval.reviewLabel,
   );
@@ -172,9 +168,7 @@ export function cleanupLabelsForImplementation(
   return removeLabels(labels, [
     options.readyLabel,
     options.policy.specApproval.reviewLabel,
-    options.policy.specApproval.approvedLabel,
     options.policy.planApproval.reviewLabel,
-    options.policy.planApproval.approvedLabel,
   ]);
 }
 
