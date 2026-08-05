@@ -71,20 +71,20 @@ export function resolveWorkflowState(
   const { specApproval, planApproval } = policy;
 
   if (has(labels, planApproval.approvedLabel)) return { kind: "plan-approved" };
-  if (has(labels, specApproval.approvedLabel)) return { kind: "spec-approved" };
-  if (has(labels, readyLabel)) return { kind: "agent-ready" };
-  if (has(labels, specApproval.reviewLabel)) {
-    return {
-      kind: "waiting-spec-review",
-      missingLabel: specApproval.approvedLabel,
-    };
-  }
   if (has(labels, planApproval.reviewLabel)) {
     return {
       kind: "waiting-plan-review",
       missingLabel: planApproval.approvedLabel,
     };
   }
+  if (has(labels, specApproval.approvedLabel)) return { kind: "spec-approved" };
+  if (has(labels, specApproval.reviewLabel)) {
+    return {
+      kind: "waiting-spec-review",
+      missingLabel: specApproval.approvedLabel,
+    };
+  }
+  if (has(labels, readyLabel)) return { kind: "agent-ready" };
 
   return { kind: "not-actionable" };
 }

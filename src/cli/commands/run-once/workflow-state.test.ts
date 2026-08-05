@@ -73,6 +73,26 @@ test("resolveWorkflowState treats plan-approved as stronger than other workflow 
   );
 });
 
+test("resolveWorkflowState treats plan review as later than durable spec approval", () => {
+  assert.deepEqual(
+    resolveWorkflowState(["spec-approved", "plan-review"], {
+      readyLabel: ready,
+      policy,
+    }),
+    { kind: "waiting-plan-review", missingLabel: "plan-approved" },
+  );
+});
+
+test("resolveWorkflowState treats spec review as later than agent-ready", () => {
+  assert.deepEqual(
+    resolveWorkflowState([ready, "spec-review"], {
+      readyLabel: ready,
+      policy,
+    }),
+    { kind: "waiting-spec-review", missingLabel: "spec-approved" },
+  );
+});
+
 test("resolveWorkflowState treats review-only labels as waiting", () => {
   assert.deepEqual(
     resolveWorkflowState(["spec-review"], { readyLabel: ready, policy }),
