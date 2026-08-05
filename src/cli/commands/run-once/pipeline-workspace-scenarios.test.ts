@@ -371,7 +371,13 @@ test("runOneIssue recovers blocked state overwritten by spec review stop", async
     issueNumber: 45,
     approvalPolicy: specAndPlanApprovalPolicy(),
   });
-  await writeBlockedRecoveryRunState(config);
+  await writeBlockedRecoveryRunState(
+    config,
+    {},
+    {
+      writeSpecInPrimaryRepo: true,
+    },
+  );
   await writeRunState(
     config.runStateDir,
     {
