@@ -373,11 +373,16 @@ test("reports rollback failures without replacing the original failure", async (
   }
 });
 
-test("validates explicit current targets as stable releases with matching packages", async () => {
+test("validates explicit current targets as stable releases with matching packages", async (t) => {
+  const fixture = await createFixture();
+  t.after(async () => rm(fixture, { recursive: true, force: true }));
   await assert.rejects(
     runSuperpowersUpgrade(
       ["--mode", "manual", "--superpowers-version", "6.0.3", "--validate-only"],
-      { rootDir, fetchImpl: async () => new Response(JSON.stringify([])) },
+      {
+        rootDir: fixture,
+        fetchImpl: async () => new Response(JSON.stringify([])),
+      },
     ),
     /Requested stable release v6\.0\.3 was not found/,
   );
@@ -385,7 +390,7 @@ test("validates explicit current targets as stable releases with matching packag
     runSuperpowersUpgrade(
       ["--mode", "manual", "--superpowers-version", "6.0.3", "--validate-only"],
       {
-        rootDir,
+        rootDir: fixture,
         fetchImpl: async (url) =>
           String(url).includes("/contents/package.json")
             ? new Response(
