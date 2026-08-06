@@ -12,7 +12,7 @@
         "@earendil-works/pi-coding-agent": "0.83.0",
         "@earendil-works/pi-tui": "0.83.0",
         "pi-subagents": "0.39.0",
-        "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz"
+        "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.2.0.tar.gz"
       },
       "bin": {
         "patchmill": "dist/bin/patchmill.js"
@@ -506,6 +506,7 @@
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-agent-core": {
       "version": "0.83.0",
       "resolved": "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-0.83.0.tgz",
+      "integrity": "sha512-RorGp9OH5l3ElpuC5a5ZQ2eWcchZGXflXRzVGkV99y3y6tT+LLNyxoYIdVKvTKWEObwhExeQbTH0fI2tE4iX4g==",
       "license": "MIT",
       "dependencies": {
         "@earendil-works/pi-ai": "^0.83.0",
@@ -516,12 +517,12 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      },
-      "integrity": "sha512-RorGp9OH5l3ElpuC5a5ZQ2eWcchZGXflXRzVGkV99y3y6tT+LLNyxoYIdVKvTKWEObwhExeQbTH0fI2tE4iX4g=="
+      }
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai": {
       "version": "0.83.0",
       "resolved": "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-0.83.0.tgz",
+      "integrity": "sha512-m3IZD4g3er0V8TC9+Vpgw/sjTKqcJlkcIBy/JvsgRubuuik3tAVzyugUg4rVrShIkkOT69mEd34NEqKUIsl6JQ==",
       "license": "MIT",
       "dependencies": {
         "@anthropic-ai/sdk": "0.91.1",
@@ -541,12 +542,12 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      },
-      "integrity": "sha512-m3IZD4g3er0V8TC9+Vpgw/sjTKqcJlkcIBy/JvsgRubuuik3tAVzyugUg4rVrShIkkOT69mEd34NEqKUIsl6JQ=="
+      }
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui": {
       "version": "0.83.0",
       "resolved": "https://registry.npmjs.org/@earendil-works/pi-tui/-/pi-tui-0.83.0.tgz",
+      "integrity": "sha512-IoYrb0rORjELmEpNtoCA/U8je3KopMkRAVJRdSzvXRvgb+Huo1gNh8Q5CSZvNOiYtDxJdj2tYZZHZ4B3+IN3hA==",
       "license": "MIT",
       "dependencies": {
         "get-east-asian-width": "1.6.0",
@@ -554,8 +555,7 @@
       },
       "engines": {
         "node": ">=22.19.0"
-      },
-      "integrity": "sha512-IoYrb0rORjELmEpNtoCA/U8je3KopMkRAVJRdSzvXRvgb+Huo1gNh8Q5CSZvNOiYtDxJdj2tYZZHZ4B3+IN3hA=="
+      }
     },
     "node_modules/@earendil-works/pi-coding-agent/node_modules/@google/genai": {
       "version": "1.52.0",
@@ -4659,9 +4659,9 @@
       }
     },
     "node_modules/superpowers": {
-      "version": "6.0.3",
-      "resolved": "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
-      "integrity": "sha512-Vr0Zf1OW0k1agb0u6pnW34BppBtVFeiYfpwse+ywTC9xlQjgDgwhn9gg9NkPPcbBnEIpSC+IfBb4CeKQNkjjvg=="
+      "version": "6.2.0",
+      "resolved": "https://github.com/obra/superpowers/archive/refs/tags/v6.2.0.tar.gz",
+      "integrity": "sha512-SEbkCgRbn8XNcyJlDr5cNTq8auF2UoE9ZJdPZcSqLVU34YpzXh5lEeVThMlrom8rECAehjKb8ja5YQNU9lD70w=="
     },
     "node_modules/tinyexec": {
       "version": "1.2.2",
