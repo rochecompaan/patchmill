@@ -68,9 +68,9 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   source: {
     type: "github-release",
     repository: "obra/superpowers",
-    tag: "v6.0.3",
+    tag: "v6.2.0",
     tarballUrl:
-      "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
+      "https://github.com/obra/superpowers/archive/refs/tags/v6.2.0.tar.gz",
   },
   skills: [
     { name: bundledTriageSkill.globalName, source: "patchmill" },
