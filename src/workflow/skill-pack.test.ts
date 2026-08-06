@@ -19,6 +19,21 @@ import {
 
 const unixNewline = "name: sample\n";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const packageJson = JSON.parse(
+  readFileSync(join(repoRoot, "package.json"), "utf8"),
+) as { dependencies?: Record<string, string> };
+const superpowersSpec = packageJson.dependencies?.superpowers ?? "";
+const superpowersMatch =
+  /^https:\/\/github\.com\/obra\/superpowers\/archive\/refs\/tags\/(v\d+\.\d+\.\d+)\.tar\.gz$/u.exec(
+    superpowersSpec,
+  );
+assert.ok(superpowersMatch, "package.json must pin a stable Superpowers tag");
+const expectedSuperpowersSource = {
+  type: "github-release" as const,
+  repository: "obra/superpowers",
+  tag: superpowersMatch[1],
+  tarballUrl: superpowersSpec,
+};
 
 function bundledSkillText(skillName: string): string {
   return bundledSkillFileText(skillName, "SKILL.md");
@@ -66,13 +81,10 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07.2");
-  assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.source, {
-    type: "github-release",
-    repository: "obra/superpowers",
-    tag: "v6.0.3",
-    tarballUrl:
-      "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
-  });
+  assert.deepEqual(
+    PATCHMILL_RECOMMENDED_SKILL_PACK.source,
+    expectedSuperpowersSource,
+  );
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
     {
@@ -155,13 +167,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
     pack: {
       name: "patchmill-recommended",
       version: "2026.07.2",
-      source: {
-        type: "github-release",
-        repository: "obra/superpowers",
-        tag: "v6.0.3",
-        tarballUrl:
-          "https://github.com/obra/superpowers/archive/refs/tags/v6.0.3.tar.gz",
-      },
+      source: expectedSuperpowersSource,
     },
     installedAt: "<generated-by-init>",
     skillDir: "custom/skills",
