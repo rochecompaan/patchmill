@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.19.0](https://github.com/rochecompaan/patchmill/compare/v0.18.0...v0.19.0) (2026-08-06)
+
+
+### Features
+
+* **deps:** Automate Superpowers upgrade pull requests ([#141](https://github.com/rochecompaan/patchmill/issues/141)) ([1ad3a44](https://github.com/rochecompaan/patchmill/commit/1ad3a441ccf22c4cc643de9d10ef25c6d96b6490))
+* **run-once:** Add deterministic abortable run-once Pi session streaming ([#131](https://github.com/rochecompaan/patchmill/issues/131)) ([d64f194](https://github.com/rochecompaan/patchmill/commit/d64f194196e660ddf3fa7ae0ddb2a5f5e0d84f23))
+* **run-once:** repair implementation sessions missing final JSON ([#138](https://github.com/rochecompaan/patchmill/issues/138)) ([e50aaea](https://github.com/rochecompaan/patchmill/commit/e50aaea80a8d6acf586fa63bdaf1801d9f7c089c))
+* **skills:** Split interactive planning into user-global Patchmill skills ([#132](https://github.com/rochecompaan/patchmill/issues/132)) ([0ce4337](https://github.com/rochecompaan/patchmill/commit/0ce4337355ab91d92a93de7ac0b6e72b3e9ca18f))
+* **skills:** support agent-neutral interactive skills ([#134](https://github.com/rochecompaan/patchmill/issues/134)) ([bb27b1a](https://github.com/rochecompaan/patchmill/commit/bb27b1a7b29fad2acad3d8c887f81e80b94c8b7b))
+
+
+### Bug Fixes
+
+* **ci:** repair Pi dependency upgrade workflow ([d75afac](https://github.com/rochecompaan/patchmill/commit/d75afac43f9959e2388ec6404c46c22dbcbc832e))
+* **cli:** sanitize inherited Pi package directory ([#120](https://github.com/rochecompaan/patchmill/issues/120)) ([4319009](https://github.com/rochecompaan/patchmill/commit/4319009899a96d5e2a58e86a14456f706f3b187f))
+* **deps:** isolate Superpowers validation fixture ([45cce32](https://github.com/rochecompaan/patchmill/commit/45cce3285b9d4b3c54747f1139e7463db3b31e37))
+* **pi:** Fix Pi extension package-root resolution ([#128](https://github.com/rochecompaan/patchmill/issues/128)) ([22c6b5a](https://github.com/rochecompaan/patchmill/commit/22c6b5a99a41b947f97372423b428f2361e0c937))
+* **run-once:** Fix run-once approval recovery ([#140](https://github.com/rochecompaan/patchmill/issues/140)) ([62f5351](https://github.com/rochecompaan/patchmill/commit/62f5351ede2221690db05d37a9d60802e2b07af4))
+
 ## [0.18.0](https://github.com/rochecompaan/patchmill/compare/v0.17.0...v0.18.0) (2026-07-24)
 
 
