@@ -6,9 +6,10 @@ import {
   matchesKey,
   ProcessTerminal,
   Text,
-  TUI,
+  TuiMainScreen,
   type Focusable,
   type Terminal,
+  type TUI,
 } from "@earendil-works/pi-tui";
 import type { OAuthLoginCallbacksLike } from "./pi-auth-flow.ts";
 
@@ -127,7 +128,7 @@ async function promptText(options: {
   signal?: AbortSignal;
 }): Promise<string | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
-  const tui = new TUI(terminal, true);
+  const tui = new TuiMainScreen(terminal, true);
 
   return new Promise((resolve) => {
     let finished = false;
@@ -171,7 +172,7 @@ async function selectOption(options: {
   terminal?: Terminal;
 }): Promise<string | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
-  const tui = new TUI(terminal, false);
+  const tui = new TuiMainScreen(terminal, false);
 
   return new Promise((resolve) => {
     let finished = false;

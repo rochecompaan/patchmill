@@ -4,7 +4,7 @@ import {
   ProcessTerminal,
   Text,
   TruncatedText,
-  TUI,
+  TuiMainScreen,
   getKeybindings,
   type Focusable,
   type Terminal,
@@ -127,7 +127,7 @@ export async function selectModelInteractively(options: {
   terminal?: Terminal;
 }): Promise<PiModelChoice | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
-  const tui = new TUI(terminal, true);
+  const tui = new TuiMainScreen(terminal, true);
 
   return new Promise((resolve) => {
     let finished = false;
