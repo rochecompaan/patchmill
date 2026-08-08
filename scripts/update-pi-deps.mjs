@@ -32,6 +32,7 @@ const validationCommands = [
   "npm run lint",
   "scripts/update-npm-deps-hash.sh",
   "nix build .#patchmill --print-build-logs",
+  "nix flake check --accept-flake-config --print-build-logs",
 ];
 
 function summaryPathFromArgs(args) {
