@@ -2,8 +2,7 @@
 
 **Issue:** [#124](https://github.com/rochecompaan/patchmill/issues/124)
 **Parent:** [#116](https://github.com/rochecompaan/patchmill/issues/116)
-**Dependencies:** #121 and #122, both complete
-**Status:** Approved design
+**Dependencies:** #121 and #122, both complete **Status:** Approved design
 
 ## Summary
 
@@ -24,8 +23,8 @@ Nix-installed layouts with one stable packaged sentinel fixture.
   completion when `pi-subagents` emits one.
 - Use the terminal tool result as a fallback and suppress exact tuples already
   persisted from partial updates.
-- Keep every child independent across sibling indexes and concurrent parent
-  tool calls.
+- Keep every child independent across sibling indexes and concurrent parent tool
+  calls.
 - Persist only parent tool-call identity, upstream child identity, agent name,
   and reported model/thinking fields.
 - Preserve unknown runtime fields as absent and allow a valid identity-only
@@ -68,17 +67,16 @@ The observer uses Pi's documented lifecycle and persistence APIs:
 
 - `tool_execution_update.partialResult` for near-live observations;
 - `tool_execution_end.result` for terminal fallback; and
-- `pi.appendEntry()` for custom entries that do not participate in LLM
-  context.
+- `pi.appendEntry()` for custom entries that do not participate in LLM context.
 
 The parent `toolCallId` scopes the upstream child index to one parent subagent
-invocation. The upstream `runId` is therefore unnecessary for this bridge and
-is not allowed in the persisted projection.
+invocation. The upstream `runId` is therefore unnecessary for this bridge and is
+not allowed in the persisted projection.
 
 `pi-subagents` is a trusted in-process dependency, but Pi exposes lifecycle
 result fields as runtime-unknown values. Patchmill guarantees that the observer
-copies no properties outside its five-field allowlist. It does not claim that
-an allowlisted `agent`, `model`, or `thinking` value is semantically free of
+copies no properties outside its five-field allowlist. It does not claim that an
+allowlisted `agent`, `model`, or `thinking` value is semantically free of
 secrets; that guarantee belongs to the trusted upstream producer. Patchmill
 still limits every accepted identifier so an upstream bug cannot create an
 unbounded projection.
@@ -156,8 +154,8 @@ package extension.
 For every candidate event and row:
 
 1. Require `toolName === "subagent"`.
-2. Require a nonblank string `toolCallId` no longer than 1,024 UTF-16 code
-   units from the Pi lifecycle event.
+2. Require a nonblank string `toolCallId` no longer than 1,024 UTF-16 code units
+   from the Pi lifecycle event.
 3. Require `result`, `result.details`, and each candidate row to be records.
 4. Require `result.details.results` to be an array with at most 1,024 rows. A
    larger batch throws `PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED` before any
@@ -242,19 +240,19 @@ throws, the observer rethrows an error whose stable message is
 its `cause`. Pi 0.83's `ExtensionRunner` catches that handler error and emits it
 to `onError`; it does not reject `emit()`. The failed key and counters remain
 unchanged, so an equivalent terminal update may retry. The handler stops
-processing the current event at the first persistence failure and never logs
-raw event data.
+processing the current event at the first persistence failure and never logs raw
+event data.
 
 `tool_execution_end` is parsed even when the tool reports an error because the
 result may still contain valid authoritative child metadata. Parent state is
-released only after terminal processing succeeds. If terminal persistence
-fails, state remains available for a later equivalent retry.
+released only after terminal processing succeeds. If terminal persistence fails,
+state remains available for a later equivalent retry.
 
 On `session_start`, the observer clears active deduplication state and counts
-existing custom entries with `customType === "patchmill-subagent-progress"`
-from `ctx.sessionManager.getEntries()`. Restoring that counter prevents a
-reload or resume from bypassing the per-session persistence ceiling. Pi does
-not replay completed lifecycle events into the new extension instance.
+existing custom entries with `customType === "patchmill-subagent-progress"` from
+`ctx.sessionManager.getEntries()`. Restoring that counter prevents a reload or
+resume from bypassing the per-session persistence ceiling. Pi does not replay
+completed lifecycle events into the new extension instance.
 
 ## Exact parent-session guarantee
 
@@ -263,8 +261,8 @@ The observer runs in the same Pi process and resource profile as the parent
 `SessionManager`, so no session discovery or file correlation is needed.
 
 The custom entry type is `custom`, not `custom_message`. Pi excludes custom
-entries from `buildSessionContext()`, which keeps the bounded projection and
-all discarded source fields outside the LLM conversation.
+entries from `buildSessionContext()`, which keeps the bounded projection and all
+discarded source fields outside the LLM conversation.
 
 ## Run-once resource profiles
 
@@ -287,15 +285,15 @@ will render all three paths as ordered `-e` arguments without special cases.
 
 ## Stable extension-load sentinel
 
-Create `fixtures/run-once-extension-load-sentinel.ts`. It is a test fixture,
-not an auto-discovered extension. Its factory will require the
-`PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL` environment variable and write the
-exact UTF-8 payload `patchmill-run-once-extensions-loaded\n`, including the
-final line feed, to that path.
+Create `fixtures/run-once-extension-load-sentinel.ts`. It is a test fixture, not
+an auto-discovered extension. Its factory will require the
+`PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL` environment variable and write the exact
+UTF-8 payload `patchmill-run-once-extensions-loaded\n`, including the final line
+feed, to that path.
 
 Every layout smoke test will pass the run-once profile's extension arguments
-first and the sentinel fixture last. Reaching the sentinel proves that Pi
-loaded `pi-subagents`, todos, the observer, and the observer's relative
+first and the sentinel fixture last. Reaching the sentinel proves that Pi loaded
+`pi-subagents`, todos, the observer, and the observer's relative
 `../subagent-progress.ts` import before the probe factory ran.
 
 The checks will use isolated home/config directories and offline RPC mode with
@@ -315,8 +313,8 @@ A focused Pi load test will resolve the bundled Pi command, load the actual
 run-once profile plus the packaged sentinel fixture, close one RPC request, and
 assert the exact sentinel payload. A second integration path will load the
 observer through Pi's `discoverAndLoadExtensions()`, assert that its default
-factory registers all three lifecycle handlers, and exercise append failure
-plus final retry through `ExtensionRunner.onError`.
+factory registers all three lifecycle handlers, and exercise append failure plus
+final retry through `ExtensionRunner.onError`.
 
 ### Compiled layout
 
@@ -427,8 +425,8 @@ Update existing profile, compiled-layout, and run-once Pi argument tests for the
 third ordered extension. Add the source load and runner-error tests. Extend the
 existing npm packed smoke and Nix install check with both installed
 handler-registration assertions and the stable sentinel protocol. The Nix
-JavaScript must execute from a single-quoted heredoc rather than an inline
-shell double-quoted `-e` payload.
+JavaScript must execute from a single-quoted heredoc rather than an inline shell
+double-quoted `-e` payload.
 
 ## Verification
 
@@ -455,16 +453,16 @@ planning. Those commands belong to implementation verification.
 
 ## Acceptance mapping
 
-| Acceptance criterion | Design response |
-| --- | --- |
-| First partial persists before completion | Update handler appends each first valid tuple immediately. |
-| Final fills when partial did not | End handler uses the same parser and exact-tuple state. |
-| Children remain independent | Keys include parent `toolCallId` and upstream child index. |
-| Unknown metadata stays absent | Optional fields are allowlisted only when valid; identity-only entries are allowed. |
-| Discarded source fields do not leak | Pure projection reads only five named fields; trusted allowlisted identifier values have an explicit semantic trust boundary. |
-| Memory and session growth are bounded | Generous identifier, batch, parent, child, key, transition, and session-entry ceilings fail loudly before mutation. |
+| Acceptance criterion                       | Design response                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| First partial persists before completion   | Update handler appends each first valid tuple immediately.                                                                    |
+| Final fills when partial did not           | End handler uses the same parser and exact-tuple state.                                                                       |
+| Children remain independent                | Keys include parent `toolCallId` and upstream child index.                                                                    |
+| Unknown metadata stays absent              | Optional fields are allowlisted only when valid; identity-only entries are allowed.                                           |
+| Discarded source fields do not leak        | Pure projection reads only five named fields; trusted allowlisted identifier values have an explicit semantic trust boundary. |
+| Memory and session growth are bounded      | Generous identifier, batch, parent, child, key, transition, and session-entry ceilings fail loudly before mutation.           |
 | Append failures stay visible and retryable | The append boundary rethrows a stable identifier with the original cause; Pi's runner reports it and a final event can retry. |
-| Production entry point registers behavior | Unit tests call the default factory and Pi loader checks assert its three handlers in source, npm, and Nix layouts. |
-| All run-once profiles load observer | Shared ordered extension list is used by all three run-once profiles. |
-| Triage does not load observer | Triage retains an empty extension list. |
-| Source/npm/Nix layouts load observer | Each layout runs Pi with the same packaged trailing sentinel fixture. |
+| Production entry point registers behavior  | Unit tests call the default factory and Pi loader checks assert its three handlers in source, npm, and Nix layouts.           |
+| All run-once profiles load observer        | Shared ordered extension list is used by all three run-once profiles.                                                         |
+| Triage does not load observer              | Triage retains an empty extension list.                                                                                       |
+| Source/npm/Nix layouts load observer       | Each layout runs Pi with the same packaged trailing sentinel fixture.                                                         |

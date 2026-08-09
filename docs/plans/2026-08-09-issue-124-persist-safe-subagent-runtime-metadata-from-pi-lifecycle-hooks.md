@@ -1,22 +1,41 @@
 # Persist Safe Subagent Runtime Metadata from Pi Lifecycle Hooks Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Persist a bounded, authoritative projection of `pi-subagents` child identity and reported runtime metadata in the active parent Pi session for every non-triage run-once profile.
+**Goal:** Persist a bounded, authoritative projection of `pi-subagents` child
+identity and reported runtime metadata in the active parent Pi session for every
+non-triage run-once profile.
 
-**Architecture:** A pure module validates and bounds unknown `result.details.results` values without retaining unrestricted input. The default Pi extension factory observes partial and terminal lifecycle events, appends unseen custom entries, and applies explicit parent, child, key, transition, and session-entry back-pressure. Source and installed-layout checks load the production entry point through Pi's loader and runner before proving full profile startup with a packaged sentinel fixture.
+**Architecture:** A pure module validates and bounds unknown
+`result.details.results` values without retaining unrestricted input. The
+default Pi extension factory observes partial and terminal lifecycle events,
+appends unseen custom entries, and applies explicit parent, child, key,
+transition, and session-entry back-pressure. Source and installed-layout checks
+load the production entry point through Pi's loader and runner before proving
+full profile startup with a packaged sentinel fixture.
 
-**Tech Stack:** TypeScript 6, Node.js 24 and `node:test`, `@earendil-works/pi-coding-agent` 0.83.0, `pi-subagents` 0.39.0, npm package smokes, and Nix install checks.
+**Tech Stack:** TypeScript 6, Node.js 24 and `node:test`,
+`@earendil-works/pi-coding-agent` 0.83.0, `pi-subagents` 0.39.0, npm package
+smokes, and Nix install checks.
 
 ## Global Constraints
 
 - Patchmill relies on the `pi-subagents` 0.39.0 contract adopted by issue #122:
 - Patchmill must not infer missing values from parent or agent configuration.
-- The upstream `runId` is therefore unnecessary for this bridge and is not allowed in the persisted projection.
-- Accepted strings remain verbatim after validation. Patchmill will not remove a provider prefix, split a model suffix, constrain thinking to a local enum, truncate a reported identifier, or backfill a missing value.
+- The upstream `runId` is therefore unnecessary for this bridge and is not
+  allowed in the persisted projection.
+- Accepted strings remain verbatim after validation. Patchmill will not remove a
+  provider prefix, split a model suffix, constrain thinking to a local enum,
+  truncate a reported identifier, or backfill a missing value.
 - A valid row with only `index` and `agent` produces an identity-only entry:
-- The projection never reads or copies task, output, prompt, credential, usage, cost, path, error, message, full-result, event-argument, or other incidental properties.
-- This structural guarantee does not inspect the meaning of an otherwise valid allowlisted identifier supplied by trusted `pi-subagents`.
+- The projection never reads or copies task, output, prompt, credential, usage,
+  cost, path, error, message, full-result, event-argument, or other incidental
+  properties.
+- This structural guarantee does not inspect the meaning of an otherwise valid
+  allowlisted identifier supplied by trusted `pi-subagents`.
 - The key is based on the upstream child index, never the row's array position.
 - Before allocating or appending state, the observer enforces these ceilings:
   - 256 active parent tool calls;
@@ -25,12 +44,21 @@
   - 16,384 active serialized tuple keys;
   - 32 persisted transitions for one `(toolCallId, childIndex)`; and
   - 65,536 `patchmill-subagent-progress` entries in one Pi session.
-- Any state or session-entry ceiling breach throws the stable `PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED` identifier before persistence or state mutation.
-- The observer calls `pi.appendEntry()` before recording the key or incrementing any counter.
-- The append call is the only local translation boundary: if it throws, the observer rethrows an error whose stable message is `PATCHMILL_SUBAGENT_PROGRESS_APPEND_FAILED` and retains the original error as its `cause`.
-- `tool_execution_end` is parsed even when the tool reports an error because the result may still contain valid authoritative child metadata.
+- Any state or session-entry ceiling breach throws the stable
+  `PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED` identifier before persistence or
+  state mutation.
+- The observer calls `pi.appendEntry()` before recording the key or incrementing
+  any counter.
+- The append call is the only local translation boundary: if it throws, the
+  observer rethrows an error whose stable message is
+  `PATCHMILL_SUBAGENT_PROGRESS_APPEND_FAILED` and retains the original error as
+  its `cause`.
+- `tool_execution_end` is parsed even when the tool reports an error because the
+  result may still contain valid authoritative child metadata.
 - Parent state is released only after terminal processing succeeds.
-- On `session_start`, the observer clears active deduplication state and counts existing custom entries with `customType === "patchmill-subagent-progress"` from `ctx.sessionManager.getEntries()`.
+- On `session_start`, the observer clears active deduplication state and counts
+  existing custom entries with `customType === "patchmill-subagent-progress"`
+  from `ctx.sessionManager.getEntries()`.
 - The shared run-once extension order will be:
   1. resolved `pi-subagents` package root;
   2. `extensions/todos.ts`; and
@@ -40,12 +68,21 @@
   - `run-once-development-environment`; and
   - `run-once-implementation`.
 - The `triage` profile retains an empty extension list.
-- Create `fixtures/run-once-extension-load-sentinel.ts`. It is a test fixture, not an auto-discovered extension.
-- Its factory will require the `PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL` environment variable and write the exact UTF-8 payload `patchmill-run-once-extensions-loaded\n`, including the final line feed, to that path.
-- The fixture will not register a command, append a session entry, alter production behavior, or expose a production test flag.
-- The fixture will be included in both distribution paths without changing their file lists because npm already includes `fixtures` and the Nix install already copies that directory.
-- A single-quoted shell heredoc will carry the JavaScript verification program without shell rewriting its imports, string literals, or RPC JSON.
-- No new test will merely restate Nix source text or package metadata. The Nix build itself is the direct installed-layout verification.
+- Create `fixtures/run-once-extension-load-sentinel.ts`. It is a test fixture,
+  not an auto-discovered extension.
+- Its factory will require the `PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL`
+  environment variable and write the exact UTF-8 payload
+  `patchmill-run-once-extensions-loaded\n`, including the final line feed, to
+  that path.
+- The fixture will not register a command, append a session entry, alter
+  production behavior, or expose a production test flag.
+- The fixture will be included in both distribution paths without changing their
+  file lists because npm already includes `fixtures` and the Nix install already
+  copies that directory.
+- A single-quoted shell heredoc will carry the JavaScript verification program
+  without shell rewriting its imports, string literals, or RPC JSON.
+- No new test will merely restate Nix source text or package metadata. The Nix
+  build itself is the direct installed-layout verification.
 
 ---
 
@@ -59,8 +96,13 @@
 **Interfaces:**
 
 - Consumes: unknown Pi tool result values, plus the parent `toolCallId: string`.
-- Produces: `SUBAGENT_PROGRESS_CUSTOM_TYPE`, `SUBAGENT_PROGRESS_LIMIT_ERROR`, `SUBAGENT_PROGRESS_LIMITS`, `SubagentProgress`, `parseSubagentProgressResults(result: unknown, toolCallId: string): SubagentProgress[]`, and `subagentProgressKey(progress: SubagentProgress): string`.
-- Privacy boundary: the returned value contains only `toolCallId`, `childIndex`, `agent`, optional `model`, and optional `thinking`; trusted allowlisted values are bounded but not semantically classified.
+- Produces: `SUBAGENT_PROGRESS_CUSTOM_TYPE`, `SUBAGENT_PROGRESS_LIMIT_ERROR`,
+  `SUBAGENT_PROGRESS_LIMITS`, `SubagentProgress`,
+  `parseSubagentProgressResults(result: unknown, toolCallId: string): SubagentProgress[]`,
+  and `subagentProgressKey(progress: SubagentProgress): string`.
+- Privacy boundary: the returned value contains only `toolCallId`, `childIndex`,
+  `agent`, optional `model`, and optional `thinking`; trusted allowlisted values
+  are bounded but not semantically classified.
 
 - [ ] **Step 1: Write the failing normalizer and privacy tests**
 
@@ -86,8 +128,7 @@ function resultWithRows(rows: unknown[]): unknown {
 
 function isLimitError(error: unknown): boolean {
   return (
-    error instanceof Error &&
-    error.message === SUBAGENT_PROGRESS_LIMIT_ERROR
+    error instanceof Error && error.message === SUBAGENT_PROGRESS_LIMIT_ERROR
   );
 }
 
@@ -129,7 +170,12 @@ test("keeps identity-only rows and preserves accepted strings verbatim", () => {
   assert.deepEqual(
     parseSubagentProgressResults(
       resultWithRows([
-        { index: 3, agent: " worker ", model: " provider/model:suffix ", thinking: " future-level " },
+        {
+          index: 3,
+          agent: " worker ",
+          model: " provider/model:suffix ",
+          thinking: " future-level ",
+        },
         { index: 9, agent: "scout" },
       ]),
       " call-with-spaces ",
@@ -163,11 +209,17 @@ test("fails closed for malformed containers and blank parent tool call IDs", () 
     assert.deepEqual(parseSubagentProgressResults(value, "call-1"), []);
   }
   assert.deepEqual(
-    parseSubagentProgressResults(resultWithRows([{ index: 0, agent: "worker" }]), ""),
+    parseSubagentProgressResults(
+      resultWithRows([{ index: 0, agent: "worker" }]),
+      "",
+    ),
     [],
   );
   assert.deepEqual(
-    parseSubagentProgressResults(resultWithRows([{ index: 0, agent: "worker" }]), "   "),
+    parseSubagentProgressResults(
+      resultWithRows([{ index: 0, agent: "worker" }]),
+      "   ",
+    ),
     [],
   );
   assert.deepEqual(
@@ -203,7 +255,10 @@ test("skips malformed rows without suppressing valid siblings", () => {
 test("never substitutes array position for upstream identity", () => {
   assert.deepEqual(
     parseSubagentProgressResults(
-      resultWithRows([{ agent: "missing-index" }, { index: 42, agent: "worker" }]),
+      resultWithRows([
+        { agent: "missing-index" },
+        { index: 42, agent: "worker" },
+      ]),
       "call-1",
     ),
     [{ toolCallId: "call-1", childIndex: 42, agent: "worker" }],
@@ -232,7 +287,18 @@ test("serialized projections do not copy discarded row properties", () => {
       "call-safe",
     ),
   );
-  assert.equal(serialized, JSON.stringify([{ toolCallId: "call-safe", childIndex: 1, agent: "worker", model: "reported-model", thinking: "reported-thinking" }]));
+  assert.equal(
+    serialized,
+    JSON.stringify([
+      {
+        toolCallId: "call-safe",
+        childIndex: 1,
+        agent: "worker",
+        model: "reported-model",
+        thinking: "reported-thinking",
+      },
+    ]),
+  );
   for (const forbidden of [
     "SECRET_TASK",
     "SECRET_OUTPUT",
@@ -507,9 +573,13 @@ git commit -m "feat(pi): normalize safe subagent progress metadata"
 
 **Interfaces:**
 
-- Consumes: `Pick<ExtensionAPI, "on" | "appendEntry">`, `ctx.sessionManager.getEntries()`, and the Task 1 normalizer exports.
-- Produces: the default Pi extension factory and stable `SUBAGENT_PROGRESS_APPEND_ERROR` identifier; there is no test-only registration entry point.
-- Event contract: `session_start`, `tool_execution_update.partialResult`, and `tool_execution_end.result`; only `toolName === "subagent"` is observed.
+- Consumes: `Pick<ExtensionAPI, "on" | "appendEntry">`,
+  `ctx.sessionManager.getEntries()`, and the Task 1 normalizer exports.
+- Produces: the default Pi extension factory and stable
+  `SUBAGENT_PROGRESS_APPEND_ERROR` identifier; there is no test-only
+  registration entry point.
+- Event contract: `session_start`, `tool_execution_update.partialResult`, and
+  `tool_execution_end.result`; only `toolName === "subagent"` is observed.
 
 - [ ] **Step 1: Write the failing observer tests with a narrow Pi harness**
 
@@ -536,8 +606,7 @@ type AppendedEntry = { customType: string; data: unknown };
 
 function isLimitError(error: unknown): boolean {
   return (
-    error instanceof Error &&
-    error.message === SUBAGENT_PROGRESS_LIMIT_ERROR
+    error instanceof Error && error.message === SUBAGENT_PROGRESS_LIMIT_ERROR
   );
 }
 
@@ -584,11 +653,10 @@ function createHarness() {
 
 test("registers only the required lifecycle handlers", () => {
   const harness = createHarness();
-  assert.deepEqual([...harness.handlers.keys()], [
-    "session_start",
-    "tool_execution_update",
-    "tool_execution_end",
-  ]);
+  assert.deepEqual(
+    [...harness.handlers.keys()],
+    ["session_start", "tool_execution_update", "tool_execution_end"],
+  );
 });
 
 test("persists the first valid partial projection immediately", async () => {
@@ -635,7 +703,9 @@ test("suppresses exact repeats and appends changed authoritative tuples", async 
   const partial = {
     toolName: "subagent",
     toolCallId: "call-1",
-    partialResult: subagentResult([{ index: 0, agent: "worker", model: "model-a" }]),
+    partialResult: subagentResult([
+      { index: 0, agent: "worker", model: "model-a" },
+    ]),
   };
   await harness.emit("tool_execution_update", partial);
   await harness.emit("tool_execution_update", partial);
@@ -656,7 +726,12 @@ test("suppresses exact repeats and appends changed authoritative tuples", async 
   assert.deepEqual(
     harness.entries.map((entry) => entry.data),
     [
-      { toolCallId: "call-1", childIndex: 0, agent: "worker", model: "model-a" },
+      {
+        toolCallId: "call-1",
+        childIndex: 0,
+        agent: "worker",
+        model: "model-a",
+      },
       {
         toolCallId: "call-1",
         childIndex: 0,
@@ -700,7 +775,10 @@ test("clears deduplication on session start", async () => {
     partialResult: subagentResult([{ index: 0, agent: "worker" }]),
   };
   await harness.emit("tool_execution_update", event);
-  await harness.emit("session_start", { type: "session_start", reason: "reload" });
+  await harness.emit("session_start", {
+    type: "session_start",
+    reason: "reload",
+  });
   await harness.emit("tool_execution_update", event);
   assert.equal(harness.entries.length, 2);
 });
@@ -974,7 +1052,10 @@ export default function runOnceSubagentProgressExtension(
   function appendProgress(progress: SubagentProgress): void {
     let parent = parents.get(progress.toolCallId);
     const needsParent = parent === undefined;
-    if (needsParent && parents.size >= SUBAGENT_PROGRESS_LIMITS.maxActiveParents) {
+    if (
+      needsParent &&
+      parents.size >= SUBAGENT_PROGRESS_LIMITS.maxActiveParents
+    ) {
       limitExceeded();
     }
     parent ??= new Map<number, ChildState>();
@@ -1081,9 +1162,7 @@ import {
   ExtensionRunner,
 } from "@earendil-works/pi-coding-agent";
 import { findPackageRoot } from "../../package-root.ts";
-import {
-  SUBAGENT_PROGRESS_APPEND_ERROR,
-} from "./run-once-subagent-progress.ts";
+import { SUBAGENT_PROGRESS_APPEND_ERROR } from "./run-once-subagent-progress.ts";
 
 const rootDir = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
 
@@ -1172,10 +1251,10 @@ test("Pi reports append failure and a terminal event retries the tuple", async (
 });
 ```
 
-The observer catches only `appendEntry()` to replace an unstable storage
-message with a stable public identifier while preserving the original error as
-`cause`. `ExtensionRunner.emit()` resolves after notifying `onError`; the test
-must not expect a rejection from Pi's host boundary.
+The observer catches only `appendEntry()` to replace an unstable storage message
+with a stable public identifier while preserving the original error as `cause`.
+`ExtensionRunner.emit()` resolves after notifying `onError`; the test must not
+expect a rejection from Pi's host boundary.
 
 - [ ] **Step 5: Run normalizer, observer, runner, and focused lint checks**
 
@@ -1221,11 +1300,17 @@ git commit -m "feat(pi): observe bounded subagent progress events"
 
 **Interfaces:**
 
-- Consumes: the default observer factory from Task 2, `findPackageRoot()`, `requireRegularFile()`, `profileExtensionArgs()`, and `resolveBundledPiCommand()`.
-- Produces: a third ordered run-once extension path and `fixtures/run-once-extension-load-sentinel.ts` using `PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL`.
-- Load contract: real Pi offline RPC startup receives every profile extension first and the sentinel fixture last.
+- Consumes: the default observer factory from Task 2, `findPackageRoot()`,
+  `requireRegularFile()`, `profileExtensionArgs()`, and
+  `resolveBundledPiCommand()`.
+- Produces: a third ordered run-once extension path and
+  `fixtures/run-once-extension-load-sentinel.ts` using
+  `PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL`.
+- Load contract: real Pi offline RPC startup receives every profile extension
+  first and the sentinel fixture last.
 
-- [ ] **Step 1: Add the sentinel fixture and write failing profile/load expectations**
+- [ ] **Step 1: Add the sentinel fixture and write failing profile/load
+      expectations**
 
 Create `fixtures/run-once-extension-load-sentinel.ts`:
 
@@ -1244,9 +1329,8 @@ export default function runOnceExtensionLoadSentinel(_pi: ExtensionAPI): void {
 }
 ```
 
-Update `assertRunOnceExtensionOrder()` in
-`src/pi/resource-profiles.test.ts` to require three paths and the observer in
-position 2:
+Update `assertRunOnceExtensionOrder()` in `src/pi/resource-profiles.test.ts` to
+require three paths and the observer in position 2:
 
 ```ts
 function assertRunOnceExtensionOrder(extensionPaths: string[]): void {
@@ -1269,8 +1353,8 @@ Make the doctor-profile test call this helper for each of its first three
 profiles, preserve the exact empty triage assertion, and update
 `profileExtensionArgs()` to expect six ordered `-e` arguments.
 
-Update `runOnceExtensionArgs` in
-`src/cli/commands/run-once/pi.test.ts` to include:
+Update `runOnceExtensionArgs` in `src/cli/commands/run-once/pi.test.ts` to
+include:
 
 ```ts
 "-e",
@@ -1299,8 +1383,8 @@ assert.equal(args[7]?.startsWith("@"), true);
 ```
 
 For the two-skill case, use `args.slice(0, 11)`, place the two `--skill` pairs
-after all six extension arguments, and assert that `args[11]` is the prompt
-file argument.
+after all six extension arguments, and assert that `args[11]` is the prompt file
+argument.
 
 Create `src/pi/extensions/run-once-subagent-progress.load.test.ts` as the real
 source-layout load proof:
@@ -1313,10 +1397,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-  piCommandArgs,
-  resolveBundledPiCommand,
-} from "../../cli/pi-cli.ts";
+import { piCommandArgs, resolveBundledPiCommand } from "../../cli/pi-cli.ts";
 import { findPackageRoot } from "../../package-root.ts";
 import type { PatchmillSkillsConfig } from "../../workflow/skills.ts";
 import {
@@ -1443,16 +1524,13 @@ const normalizer = join(packageRoot, "src", "pi", "subagent-progress.ts");
 
 await mkdir(dirname(observerExtension), { recursive: true });
 await copyFile(
-  join(
-    sourceRoot,
-    "src",
-    "pi",
-    "extensions",
-    "run-once-subagent-progress.ts",
-  ),
+  join(sourceRoot, "src", "pi", "extensions", "run-once-subagent-progress.ts"),
   observerExtension,
 );
-await copyFile(join(sourceRoot, "src", "pi", "subagent-progress.ts"), normalizer);
+await copyFile(
+  join(sourceRoot, "src", "pi", "subagent-progress.ts"),
+  normalizer,
+);
 ```
 
 Change the existence assertion to `[true, true, true]`, assert the observer is
@@ -1532,14 +1610,19 @@ git commit -m "feat(pi): load progress observer in run-once profiles"
 
 **Interfaces:**
 
-- Consumes: the Task 3 profile ordering and sentinel protocol from installed package roots.
-- Produces: executable npm-packed and Nix-installed checks that load the installed observer through Pi's loader, assert its three handlers, then start the installed Pi CLI offline with profile extensions followed by the installed sentinel.
-- Testing Value Gate: strengthen the existing executable package checks; do not add a test that parses package metadata or Nix source text.
+- Consumes: the Task 3 profile ordering and sentinel protocol from installed
+  package roots.
+- Produces: executable npm-packed and Nix-installed checks that load the
+  installed observer through Pi's loader, assert its three handlers, then start
+  the installed Pi CLI offline with profile extensions followed by the installed
+  sentinel.
+- Testing Value Gate: strengthen the existing executable package checks; do not
+  add a test that parses package metadata or Nix source text.
 
 - [ ] **Step 1: Extend the npm-packed smoke to start installed Pi**
 
-In `scripts/smoke-packed-artifact.mjs`, import `assert` and `spawnSync`, then add
-a synchronous RPC load helper that captures output without invoking a model:
+In `scripts/smoke-packed-artifact.mjs`, import `assert` and `spawnSync`, then
+add a synchronous RPC load helper that captures output without invoking a model:
 
 ```js
 import assert from "node:assert/strict";
@@ -1579,9 +1662,7 @@ if (
 }
 
 const installedPi = await import(
-  pathToFileURL(
-    projectRequire.resolve("@earendil-works/pi-coding-agent"),
-  ).href
+  pathToFileURL(projectRequire.resolve("@earendil-works/pi-coding-agent")).href
 );
 const installedAgentDir = join(smokeDir, "pi-agent");
 await mkdir(installedAgentDir, { recursive: true });
@@ -1775,9 +1856,9 @@ PATCHMILL_NODE
 ```
 
 Keep the heredoc terminator unindented in the rendered shell program. Avoid
-JavaScript template literals containing Nix `${...}` interpolation syntax.
-Keep the npm dependency pins, `npmDepsHash`, package file lists, and Nix copy
-layout unchanged.
+JavaScript template literals containing Nix `${...}` interpolation syntax. Keep
+the npm dependency pins, `npmDepsHash`, package file lists, and Nix copy layout
+unchanged.
 
 - [ ] **Step 3: Run direct installed-layout verification before committing**
 
@@ -1822,6 +1903,6 @@ git diff --check
 
 Expected: every command exits 0. Confirm that no dependency manifest or lockfile
 changed, `triage` still has no extensions, the runner test reports one stable
-append error before a successful terminal retry, both installed layouts load
-all three default-factory handlers and read the exact sentinel payload, and
+append error before a successful terminal retry, both installed layouts load all
+three default-factory handlers and read the exact sentinel payload, and
 `git status --short` is empty after all four task commits.
