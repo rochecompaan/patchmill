@@ -237,8 +237,8 @@ The observer calls `pi.appendEntry()` before recording the key or incrementing
 any counter. The append call is the only local translation boundary: if it
 throws, the observer rethrows an error whose stable message is
 `PATCHMILL_SUBAGENT_PROGRESS_APPEND_FAILED` and retains the original error as
-its `cause`. Pi 0.83's `ExtensionRunner` catches that handler error and emits it
-to `onError`; it does not reject `emit()`. The failed key and counters remain
+its `cause`. Pi 0.84.1's `ExtensionRunner` catches that handler error and emits
+it to `onError`; it does not reject `emit()`. The failed key and counters remain
 unchanged, so an equivalent terminal update may retry. The handler stops
 processing the current event at the first persistence failure and never logs raw
 event data.

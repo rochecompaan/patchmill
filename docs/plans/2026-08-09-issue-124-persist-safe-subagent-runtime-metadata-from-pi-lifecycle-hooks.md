@@ -18,7 +18,7 @@ load the production entry point through Pi's loader and runner before proving
 full profile startup with a packaged sentinel fixture.
 
 **Tech Stack:** TypeScript 6, Node.js 24 and `node:test`,
-`@earendil-works/pi-coding-agent` 0.83.0, `pi-subagents` 0.39.0, npm package
+`@earendil-works/pi-coding-agent` 0.84.1, `pi-subagents` 0.39.0, npm package
 smokes, and Nix install checks.
 
 ## Global Constraints
@@ -1147,7 +1147,7 @@ retained-state mutation.
 - [ ] **Step 4: Test the default export through Pi's real loader and runner**
 
 Create `src/pi/extensions/run-once-subagent-progress.runner.test.ts` so append
-failures follow Pi 0.83's production error path rather than a direct handler
+failures follow Pi 0.84.1's production error path rather than a direct handler
 rejection:
 
 ```ts
