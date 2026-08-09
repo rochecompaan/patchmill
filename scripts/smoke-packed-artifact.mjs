@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -24,6 +25,23 @@ function run(command, args, options = {}) {
     });
     child.on("error", reject);
   });
+}
+
+function runPiExtensionLoad(command, args, options) {
+  console.log(`$ ${[command, ...args].join(" ")}`);
+  const result = spawnSync(command, args, {
+    ...options,
+    encoding: "utf8",
+    input: '{"type":"get_commands"}\n',
+    timeout: 30_000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.doesNotMatch(
+    `${result.stdout}\n${result.stderr}`,
+    /Failed to load extension|Cannot find module|ERR_MODULE_NOT_FOUND/iu,
+  );
 }
 
 async function main() {
@@ -164,6 +182,85 @@ async function main() {
         "run-once profile does not load the Patchmill todos extension second",
       );
     }
+    if (
+      !profile.additionalExtensionPaths[2]
+        ?.replaceAll("\\", "/")
+        .endsWith("/src/pi/extensions/run-once-subagent-progress.ts")
+    ) {
+      throw new Error(
+        "run-once profile does not load the Patchmill subagent progress observer third",
+      );
+    }
+
+    const installedPi = await import(
+      pathToFileURL(
+        join(
+          nodeModulesDir,
+          "@earendil-works",
+          "pi-coding-agent",
+          "dist",
+          "index.js",
+        ),
+      ).href
+    );
+    const installedAgentDir = join(smokeDir, "pi-agent");
+    await mkdir(installedAgentDir, { recursive: true });
+    const loadedObserver = await installedPi.discoverAndLoadExtensions(
+      [profile.additionalExtensionPaths[2]],
+      patchmillPackageRoot,
+      installedAgentDir,
+    );
+    assert.deepEqual(loadedObserver.errors, []);
+    const observer = loadedObserver.extensions.find((extension) =>
+      extension.resolvedPath
+        .replaceAll("\\", "/")
+        .endsWith("/src/pi/extensions/run-once-subagent-progress.ts"),
+    );
+    assert.ok(observer);
+    for (const eventName of [
+      "session_start",
+      "tool_execution_update",
+      "tool_execution_end",
+    ]) {
+      assert.ok((observer.handlers.get(eventName)?.length ?? 0) > 0);
+    }
+
+    const sentinelFixture = join(
+      patchmillPackageRoot,
+      "fixtures",
+      "run-once-extension-load-sentinel.ts",
+    );
+    if (!existsSync(sentinelFixture)) {
+      throw new Error(
+        `Installed sentinel fixture is missing: ${sentinelFixture}`,
+      );
+    }
+    const sentinelOutput = join(smokeDir, "run-once-extensions-loaded.txt");
+    runPiExtensionLoad(
+      join(projectDir, "node_modules", ".bin", "pi"),
+      [
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--offline",
+        "-ne",
+        ...profile.additionalExtensionPaths.flatMap((path) => ["-e", path]),
+        "-e",
+        sentinelFixture,
+      ],
+      {
+        cwd: projectDir,
+        env: {
+          ...environment,
+          PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL: sentinelOutput,
+        },
+      },
+    );
+    assert.equal(
+      await readFile(sentinelOutput, "utf8"),
+      "patchmill-run-once-extensions-loaded\n",
+    );
+    console.log("packed run-once extensions loaded before sentinel");
   } finally {
     if (process.env.PATCHMILL_KEEP_SMOKE_ARTIFACTS !== "1") {
       await Promise.all([

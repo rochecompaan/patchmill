@@ -77,36 +77,120 @@ buildNpmPackageNode24 rec {
     )
     test -f "$out/share/${pname}/fixtures/patchmill-test-repo/README.md"
     test -f "$out/share/${pname}/extensions/todos.ts"
+    test -f "$out/share/${pname}/src/pi/subagent-progress.ts"
+    test -f "$out/share/${pname}/src/pi/extensions/run-once-subagent-progress.ts"
+    test -f "$out/share/${pname}/fixtures/run-once-extension-load-sentinel.ts"
     (
       cd "$out/share/${pname}"
-      ${nodejs_24}/bin/node --input-type=module -e "
-        import { realpathSync } from 'node:fs';
-        import assert from 'node:assert/strict';
-        import { runOncePlanningPiProfile } from './src/pi/resource-profiles.ts';
-        import {
-          assertInstalledPiSubagentsMatchesRootPin,
-          piSubagentsExtensionFiles,
-          resolvePiSubagentsPackageRoot,
-        } from './src/pi/pi-subagents-package.ts';
-        assertInstalledPiSubagentsMatchesRootPin('./package.json');
-        piSubagentsExtensionFiles();
-        const piSubagentsRoot = resolvePiSubagentsPackageRoot();
-        const skills = {
-          triage: 'triage', planning: 'planning', implementation: 'implementation',
-          developmentEnvironment: 'development-environment', toolchain: 'toolchain',
-          review: 'review', visualEvidence: 'visual-evidence', landing: 'landing',
-        };
-        const profile = runOncePlanningPiProfile(skills, process.cwd());
-        assert.equal(
-          realpathSync(profile.additionalExtensionPaths[0]),
-          realpathSync(piSubagentsRoot),
-        );
-        assert.equal(
-          profile.additionalExtensionPaths[1].replaceAll('\\\\', '/').endsWith('/extensions/todos.ts'),
-          true,
-        );
-        console.log('installed pi-subagents manifest and extension order verified');
-      "
+      PATCHMILL_INSTALL_CHECK_DIR="$install_check_dir" \
+        ${nodejs_24}/bin/node --input-type=module <<'PATCHMILL_NODE'
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
+import { runOncePlanningPiProfile } from "./src/pi/resource-profiles.ts";
+import {
+  assertInstalledPiSubagentsMatchesRootPin,
+  piSubagentsExtensionFiles,
+  resolvePiSubagentsPackageRoot,
+} from "./src/pi/pi-subagents-package.ts";
+
+assertInstalledPiSubagentsMatchesRootPin("./package.json");
+piSubagentsExtensionFiles();
+const piSubagentsRoot = resolvePiSubagentsPackageRoot();
+const skills = {
+  triage: "triage",
+  planning: "planning",
+  implementation: "implementation",
+  developmentEnvironment: "development-environment",
+  toolchain: "toolchain",
+  review: "review",
+  visualEvidence: "visual-evidence",
+  landing: "landing",
+};
+const profile = runOncePlanningPiProfile(skills, process.cwd());
+assert.equal(
+  realpathSync(profile.additionalExtensionPaths[0]),
+  realpathSync(piSubagentsRoot),
+);
+assert.equal(
+  profile.additionalExtensionPaths[1]
+    .replaceAll("\\", "/")
+    .endsWith("/extensions/todos.ts"),
+  true,
+);
+assert.equal(
+  profile.additionalExtensionPaths[2]
+    .replaceAll("\\", "/")
+    .endsWith("/src/pi/extensions/run-once-subagent-progress.ts"),
+  true,
+);
+
+const installCheckDir = process.env.PATCHMILL_INSTALL_CHECK_DIR;
+assert.ok(installCheckDir);
+const agentDir = join(installCheckDir, "pi-agent");
+mkdirSync(agentDir, { recursive: true });
+const loadedObserver = await discoverAndLoadExtensions(
+  [profile.additionalExtensionPaths[2]],
+  process.cwd(),
+  agentDir,
+);
+assert.deepEqual(loadedObserver.errors, []);
+const observer = loadedObserver.extensions.find((extension) =>
+  extension.resolvedPath
+    .replaceAll("\\", "/")
+    .endsWith("/src/pi/extensions/run-once-subagent-progress.ts"),
+);
+assert.ok(observer);
+for (const eventName of [
+  "session_start",
+  "tool_execution_update",
+  "tool_execution_end",
+]) {
+  assert.ok((observer.handlers.get(eventName)?.length ?? 0) > 0);
+}
+
+const sentinelPath = join(installCheckDir, "run-once-extensions-loaded.txt");
+const result = spawnSync(
+  process.execPath,
+  [
+    "./node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+    "--mode",
+    "rpc",
+    "--no-session",
+    "--offline",
+    "-ne",
+    ...profile.additionalExtensionPaths.flatMap((path) => ["-e", path]),
+    "-e",
+    "./fixtures/run-once-extension-load-sentinel.ts",
+  ],
+  {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    input: '{"type":"get_commands"}\n',
+    timeout: 30_000,
+    maxBuffer: 10 * 1024 * 1024,
+    env: {
+      ...process.env,
+      HOME: join(installCheckDir, "home"),
+      XDG_CONFIG_HOME: join(installCheckDir, "config"),
+      PATCHMILL_RUN_ONCE_EXTENSION_SENTINEL: sentinelPath,
+    },
+  },
+);
+assert.equal(result.error, undefined);
+assert.equal(result.status, 0, result.stderr || result.stdout);
+assert.doesNotMatch(
+  result.stdout + "\n" + result.stderr,
+  /Failed to load extension|Cannot find module|ERR_MODULE_NOT_FOUND/iu,
+);
+assert.equal(
+  readFileSync(sentinelPath, "utf8"),
+  "patchmill-run-once-extensions-loaded\n",
+);
+console.log("installed run-once extensions loaded before sentinel");
+PATCHMILL_NODE
     )
     runHook postInstallCheck
   '';
