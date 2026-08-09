@@ -66,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp
-          args=(--summary-json .tmp/pi-deps-summary.json)
+          args=(--summary-json .tmp/pi-deps-summary.json --skip-nix-hash)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             args+=(--mode manual)
             [[ -n "${TARGET_VERSION:-}" ]] && args+=(--target-version "$TARGET_VERSION")
@@ -106,6 +106,10 @@ jobs:
         if: steps.update.outputs.no_update != 'true'
         run: npm run lint
 
+      - name: Update Nix npm dependency hash
+        if: steps.update.outputs.no_update != 'true'
+        run: scripts/update-npm-deps-hash.sh
+
       - name: Verify Nix npm dependency hash
         if: steps.update.outputs.no_update != 'true'
         run: |
@@ -119,6 +123,10 @@ jobs:
       - name: Build Nix package
         if: steps.update.outputs.no_update != 'true'
         run: nix build .#patchmill --print-build-logs
+
+      - name: Run full flake check
+        if: steps.update.outputs.no_update != 'true'
+        run: nix flake check --accept-flake-config --print-build-logs
 
       - name: Render pull request body
         if: >-

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import * as piCodingAgent from "@earendil-works/pi-coding-agent";
+import * as piTui from "@earendil-works/pi-tui";
 
 const PI_PACKAGES = [
   "@earendil-works/pi-coding-agent",
@@ -20,6 +21,24 @@ const REQUIRED_INIT_RUNTIME_EXPORTS = [
   "ModelRegistry",
   "readStoredCredential",
   "getAgentDir",
+] as const;
+
+const REQUIRED_PI_TUI_RUNTIME_EXPORTS = [
+  "TuiMainScreen",
+  "Container",
+  "Input",
+  "Key",
+  "matchesKey",
+  "ProcessTerminal",
+  "Text",
+  "TruncatedText",
+  "getKeybindings",
+  "Markdown",
+  "SelectList",
+  "Spacer",
+  "fuzzyMatch",
+  "truncateToWidth",
+  "visibleWidth",
 ] as const;
 
 type PackageJson = {
@@ -102,6 +121,21 @@ test("resolved pi-coding-agent exports the runtime symbols used by patchmill ini
 
   assert.equal(typeof piCodingAgent.ModelRuntime.create, "function");
   assert.equal(typeof piCodingAgent.ModelRegistry, "function");
+});
+
+test("resolved pi-tui exports the runtime symbols used by patchmill", () => {
+  for (const exportName of REQUIRED_PI_TUI_RUNTIME_EXPORTS) {
+    assert.equal(
+      exportName in piTui,
+      true,
+      `@earendil-works/pi-tui must export ${exportName}`,
+    );
+    assert.notEqual(
+      piTui[exportName],
+      undefined,
+      `@earendil-works/pi-tui export ${exportName} must be defined`,
+    );
+  }
 });
 
 test("patchmill no longer requires the removed AuthStorage root export", () => {

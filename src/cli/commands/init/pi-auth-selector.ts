@@ -6,9 +6,10 @@ import {
   ProcessTerminal,
   Text,
   TruncatedText,
-  TUI,
+  TuiMainScreen,
   type Focusable,
   type Terminal,
+  type TUI,
 } from "@earendil-works/pi-tui";
 import {
   AUTH_METHOD_CHOICES,
@@ -160,7 +161,7 @@ export async function selectAuthMethodInteractively(
   } = {},
 ): Promise<AuthMode | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
-  const tui = new TUI(terminal, false);
+  const tui = new TuiMainScreen(terminal, false);
 
   return new Promise((resolve) => {
     let finished = false;
@@ -187,7 +188,7 @@ export async function selectProviderInteractively(options: {
   terminal?: Terminal;
 }): Promise<AuthProviderChoice | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
-  const tui = new TUI(terminal, true);
+  const tui = new TuiMainScreen(terminal, true);
   const title =
     options.mode === "oauth"
       ? "Select subscription provider to configure:"

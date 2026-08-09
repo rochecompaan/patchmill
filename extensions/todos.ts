@@ -56,7 +56,7 @@ import {
 	Spacer,
 	type SelectItem,
 	Text,
-	TUI,
+	type TUI,
 	fuzzyMatch,
 	matchesKey,
 	truncateToWidth,
