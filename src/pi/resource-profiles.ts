@@ -27,6 +27,15 @@ const PATCHMILL_PACKAGE_ROOT = findPackageRoot(
 const PATCHMILL_TODOS_EXTENSION = requireRegularFile(
   join(PATCHMILL_PACKAGE_ROOT, "extensions", "todos.ts"),
 );
+const PATCHMILL_SUBAGENT_PROGRESS_EXTENSION = requireRegularFile(
+  join(
+    PATCHMILL_PACKAGE_ROOT,
+    "src",
+    "pi",
+    "extensions",
+    "run-once-subagent-progress.ts",
+  ),
+);
 
 export type PatchmillPiResourceProfileId =
   | "run-once-planning"
@@ -44,7 +53,11 @@ export type PatchmillPiResourceProfile = {
 };
 
 function runOnceExtensionPaths(): string[] {
-  return [PI_SUBAGENTS_PACKAGE_ROOT, PATCHMILL_TODOS_EXTENSION];
+  return [
+    PI_SUBAGENTS_PACKAGE_ROOT,
+    PATCHMILL_TODOS_EXTENSION,
+    PATCHMILL_SUBAGENT_PROGRESS_EXTENSION,
+  ];
 }
 
 function profile(
