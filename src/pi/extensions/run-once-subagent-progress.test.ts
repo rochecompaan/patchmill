@@ -122,6 +122,16 @@ test("suppresses exact tuples while preserving changed metadata and isolation", 
   });
   await harness.emit("tool_execution_end", {
     toolName: "subagent",
+    toolCallId: "call-b",
+    isError: false,
+    result: subagentResult([
+      { index: 0, agent: "worker", model: "model-a" },
+      { index: 1, agent: "reviewer" },
+    ]),
+  });
+  assert.equal(harness.entries.length, 4);
+  await harness.emit("tool_execution_end", {
+    toolName: "subagent",
     toolCallId: "call-a",
     isError: false,
     result: subagentResult([
@@ -304,6 +314,128 @@ test("bounds active parents and releases state after successful terminal process
   await harness.emit("tool_execution_update", {
     toolName: "subagent",
     toolCallId: "parent-new",
+    partialResult: subagentResult([{ index: 0, agent: "worker" }]),
+  });
+});
+
+test("bounds children per parent and frees them after terminal processing", async () => {
+  const harness = createHarness();
+  const rows = Array.from(
+    { length: SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent },
+    (_, index) => ({ index, agent: "worker" }),
+  );
+  await harness.emit("tool_execution_update", {
+    toolName: "subagent",
+    toolCallId: "children",
+    partialResult: subagentResult(rows),
+  });
+  await assert.rejects(
+    harness.emit("tool_execution_update", {
+      toolName: "subagent",
+      toolCallId: "children",
+      partialResult: subagentResult([
+        {
+          index: SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent,
+          agent: "worker",
+        },
+      ]),
+    }),
+    isLimitError,
+  );
+  await harness.emit("tool_execution_end", {
+    toolName: "subagent",
+    toolCallId: "children",
+    result: subagentResult(rows),
+    isError: false,
+  });
+  await harness.emit("tool_execution_update", {
+    toolName: "subagent",
+    toolCallId: "children",
+    partialResult: subagentResult([
+      {
+        index: SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent,
+        agent: "worker",
+      },
+    ]),
+  });
+});
+
+test("bounds active children and frees them after terminal processing", async () => {
+  const harness = createHarness();
+  const rows = Array.from(
+    { length: SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent },
+    (_, index) => ({ index, agent: "worker" }),
+  );
+  const parentCount =
+    SUBAGENT_PROGRESS_LIMITS.maxActiveChildren /
+    SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent;
+  for (let parent = 0; parent < parentCount; parent += 1) {
+    await harness.emit("tool_execution_update", {
+      toolName: "subagent",
+      toolCallId: `active-${parent}`,
+      partialResult: subagentResult(rows),
+    });
+  }
+  await assert.rejects(
+    harness.emit("tool_execution_update", {
+      toolName: "subagent",
+      toolCallId: "active-over",
+      partialResult: subagentResult([{ index: 0, agent: "worker" }]),
+    }),
+    isLimitError,
+  );
+  await harness.emit("tool_execution_end", {
+    toolName: "subagent",
+    toolCallId: "active-0",
+    result: subagentResult(rows),
+    isError: false,
+  });
+  await harness.emit("tool_execution_update", {
+    toolName: "subagent",
+    toolCallId: "active-new",
+    partialResult: subagentResult([{ index: 0, agent: "worker" }]),
+  });
+});
+
+test("bounds active serialized keys and frees them after terminal processing", async () => {
+  const harness = createHarness();
+  const rows = Array.from(
+    { length: SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent },
+    (_, index) => ({ index, agent: "worker" }),
+  );
+  const transitionCount =
+    SUBAGENT_PROGRESS_LIMITS.maxActiveKeys /
+    SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent;
+  for (let transition = 0; transition < transitionCount; transition += 1) {
+    await harness.emit("tool_execution_update", {
+      toolName: "subagent",
+      toolCallId: "keys",
+      partialResult: subagentResult(
+        rows.map((row) => ({ ...row, model: `model-${transition}` })),
+      ),
+    });
+  }
+  await assert.rejects(
+    harness.emit("tool_execution_update", {
+      toolName: "subagent",
+      toolCallId: "keys",
+      partialResult: subagentResult([
+        { index: 0, agent: "worker", model: "one-key-too-many" },
+      ]),
+    }),
+    isLimitError,
+  );
+  await harness.emit("tool_execution_end", {
+    toolName: "subagent",
+    toolCallId: "keys",
+    result: subagentResult(
+      rows.map((row) => ({ ...row, model: `model-${transitionCount - 1}` })),
+    ),
+    isError: false,
+  });
+  await harness.emit("tool_execution_update", {
+    toolName: "subagent",
+    toolCallId: "keys-new",
     partialResult: subagentResult([{ index: 0, agent: "worker" }]),
   });
 });
