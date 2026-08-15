@@ -26,7 +26,7 @@ buildNpmPackageNode24 rec {
         || baseName == "result");
   };
 
-  npmDepsHash = "sha256-WXOrR2pvtwxfsagLptfXPcXlcoDMtrXpLcCBqVByjis=";
+  npmDepsHash = "sha256-UhW5Db+3qjMwloeGt8OrwgpEVQ6GTCFi5EWhLMwlVu4=";
   npmDepsFetcherVersion = 2;
 
   dontNpmBuild = true;
