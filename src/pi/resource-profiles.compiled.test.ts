@@ -40,9 +40,18 @@ test(
       "resource-profiles.js",
     );
     const todosExtension = join(packageRoot, "extensions", "todos.ts");
+    const observerExtension = join(
+      packageRoot,
+      "src",
+      "pi",
+      "extensions",
+      "run-once-subagent-progress.ts",
+    );
+    const normalizer = join(packageRoot, "src", "pi", "subagent-progress.ts");
 
     try {
       await mkdir(dirname(todosExtension), { recursive: true });
+      await mkdir(dirname(observerExtension), { recursive: true });
       await copyFile(
         join(sourceRoot, "package.json"),
         join(packageRoot, "package.json"),
@@ -50,6 +59,20 @@ test(
       await copyFile(
         join(sourceRoot, "extensions", "todos.ts"),
         todosExtension,
+      );
+      await copyFile(
+        join(
+          sourceRoot,
+          "src",
+          "pi",
+          "extensions",
+          "run-once-subagent-progress.ts",
+        ),
+        observerExtension,
+      );
+      await copyFile(
+        join(sourceRoot, "src", "pi", "subagent-progress.ts"),
+        normalizer,
       );
       await symlink(
         join(sourceRoot, "node_modules"),
@@ -88,7 +111,7 @@ test(
         profile.additionalExtensionPaths.map((path: string) =>
           existsSync(path),
         ),
-        [true, true],
+        [true, true, true],
       );
       const piSubagentsRoot = profile.additionalExtensionPaths[0];
       assert.equal(basename(piSubagentsRoot), "pi-subagents");
@@ -101,6 +124,12 @@ test(
         profile.additionalExtensionPaths[1]
           ?.replaceAll("\\", "/")
           .endsWith("/extensions/todos.ts"),
+        true,
+      );
+      assert.equal(
+        profile.additionalExtensionPaths[2]
+          ?.replaceAll("\\", "/")
+          .endsWith("/src/pi/extensions/run-once-subagent-progress.ts"),
         true,
       );
 
@@ -134,6 +163,38 @@ test(
           `Patchmill extension is not a regular file: .*extensions[\\\\/]todos\\.ts`,
           "u",
         ),
+      );
+
+      await rm(todosExtension, { recursive: true, force: true });
+      await copyFile(
+        join(sourceRoot, "extensions", "todos.ts"),
+        todosExtension,
+      );
+      const missingObserverProfile = join(
+        dirname(compiledProfile),
+        "resource-profiles-missing-observer.js",
+      );
+      await copyFile(compiledProfile, missingObserverProfile);
+      await rm(observerExtension);
+      await assert.rejects(
+        import(pathToFileURL(missingObserverProfile).href),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.equal((error as NodeJS.ErrnoException).code, "ENOENT");
+          assert.match(error.message, /run-once-subagent-progress\.ts/u);
+          return true;
+        },
+      );
+
+      await mkdir(observerExtension);
+      const directoryObserverProfile = join(
+        dirname(compiledProfile),
+        "resource-profiles-directory-observer.js",
+      );
+      await copyFile(compiledProfile, directoryObserverProfile);
+      await assert.rejects(
+        import(pathToFileURL(directoryObserverProfile).href),
+        /Patchmill extension is not a regular file: .*run-once-subagent-progress\.ts/u,
       );
     } finally {
       await rm(packageRoot, { recursive: true, force: true });

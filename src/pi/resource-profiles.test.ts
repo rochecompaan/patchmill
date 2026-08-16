@@ -13,6 +13,7 @@ import {
   profileContextArgs,
   profileExtensionArgs,
   profileSkillArgs,
+  runOnceDevelopmentEnvironmentPiProfile,
   runOnceImplementationPiProfile,
   runOncePlanningPiProfile,
   triagePiProfile,
@@ -29,10 +30,16 @@ async function withRepo<T>(fn: (repoRoot: string) => Promise<T>): Promise<T> {
 }
 
 function assertRunOnceExtensionOrder(extensionPaths: string[]): void {
-  assert.equal(extensionPaths.length, 2);
+  assert.equal(extensionPaths.length, 3);
   assert.equal(extensionPaths[0], resolvePiSubagentsPackageRoot());
   assert.equal(
     extensionPaths[1]?.replaceAll("\\", "/").endsWith("/extensions/todos.ts"),
+    true,
+  );
+  assert.equal(
+    extensionPaths[2]
+      ?.replaceAll("\\", "/")
+      .endsWith("/src/pi/extensions/run-once-subagent-progress.ts"),
     true,
   );
 }
@@ -76,15 +83,23 @@ test("run-once planning profile includes context and Patchmill run-once extensio
 
 test("run-once implementation profile includes every implementation-stage skill slot", async () => {
   await withRepo(async (repoRoot) => {
-    assert.deepEqual(
-      runOnceImplementationPiProfile(skills, repoRoot).additionalSkillPaths,
-      [
-        join(repoRoot, "skills", "toolchain", "SKILL.md"),
-        join(repoRoot, "skills", "implementation", "SKILL.md"),
-        join(repoRoot, "skills", "review", "SKILL.md"),
-        join(repoRoot, "skills", "visual-evidence", "SKILL.md"),
-        join(repoRoot, "skills", "landing", "SKILL.md"),
-      ],
+    const profile = runOnceImplementationPiProfile(skills, repoRoot);
+    assertRunOnceExtensionOrder(profile.additionalExtensionPaths);
+    assert.deepEqual(profile.additionalSkillPaths, [
+      join(repoRoot, "skills", "toolchain", "SKILL.md"),
+      join(repoRoot, "skills", "implementation", "SKILL.md"),
+      join(repoRoot, "skills", "review", "SKILL.md"),
+      join(repoRoot, "skills", "visual-evidence", "SKILL.md"),
+      join(repoRoot, "skills", "landing", "SKILL.md"),
+    ]);
+  });
+});
+
+test("run-once development environment profile has the shared extensions", async () => {
+  await withRepo(async (repoRoot) => {
+    assertRunOnceExtensionOrder(
+      runOnceDevelopmentEnvironmentPiProfile(skills, repoRoot)
+        .additionalExtensionPaths,
     );
   });
 });
@@ -113,6 +128,8 @@ test("profile argument helpers render extension and skill flags", async () => {
       profile.additionalExtensionPaths[0],
       "-e",
       profile.additionalExtensionPaths[1],
+      "-e",
+      profile.additionalExtensionPaths[2],
     ]);
     assert.deepEqual(profileSkillArgs(profile), [
       "--skill",

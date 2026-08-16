@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -147,23 +147,38 @@ async function main() {
       landing: "landing",
     };
     const profile = runOncePlanningPiProfile(skills, patchmillPackageRoot);
-    if (
-      realpathSync(profile.additionalExtensionPaths[0]) !==
-      realpathSync(piSubagentsRoot)
-    ) {
-      throw new Error(
-        "run-once profile does not load the installed pi-subagents package first",
-      );
-    }
-    if (
-      !profile.additionalExtensionPaths[1]
-        ?.replaceAll("\\", "/")
-        .endsWith("/extensions/todos.ts")
-    ) {
-      throw new Error(
-        "run-once profile does not load the Patchmill todos extension second",
-      );
-    }
+    const installedPi = await import(
+      pathToFileURL(
+        join(
+          nodeModulesDir,
+          "@earendil-works",
+          "pi-coding-agent",
+          "dist",
+          "index.js",
+        ),
+      ).href
+    );
+    const { verifyInstalledRunOnceExtensions } = await import(
+      pathToFileURL(
+        join(
+          patchmillPackageRoot,
+          "fixtures",
+          "run-once-installed-extension-load.mjs",
+        ),
+      ).href
+    );
+    await verifyInstalledRunOnceExtensions({
+      packageRoot: patchmillPackageRoot,
+      profile,
+      pi: installedPi,
+      piSubagentsRoot,
+      piCommand: join(projectDir, "node_modules", ".bin", "pi"),
+      cwd: projectDir,
+      agentDir: join(smokeDir, "pi-agent"),
+      sentinelPath: join(smokeDir, "run-once-extensions-loaded.txt"),
+      env: environment,
+    });
+    console.log("packed run-once extensions loaded before sentinel");
   } finally {
     if (process.env.PATCHMILL_KEEP_SMOKE_ARTIFACTS !== "1") {
       await Promise.all([
