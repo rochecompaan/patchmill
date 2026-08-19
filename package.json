@@ -83,7 +83,7 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@earendil-works/pi-tui": "0.84.2",
-    "pi-subagents": "0.39.0",
+    "pi-subagents": "0.51.0",
     "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.3.0.tar.gz"
   }
 }
