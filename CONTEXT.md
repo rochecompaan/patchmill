@@ -48,10 +48,6 @@ limits. _Avoid_: Billing period
 Patchmill cannot select another Issue run because a Budget window has reached a
 limit. _Avoid_: Pause, Drain
 
-**Budget grant**: An audited, finite increase to one token or estimated-cost
-limit for one Budget window. It does not remove or reset recorded usage.
-_Avoid_: Budget reset, Ignore switch
-
 **Operator control**: A maintainer instruction that changes coordinator intent,
 such as pause, resume, drain, or shutdown. _Avoid_: Workflow action
 
