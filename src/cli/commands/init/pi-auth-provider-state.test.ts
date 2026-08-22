@@ -5,6 +5,8 @@ import {
   authProviderChoiceRows,
   createAuthProviderChoices,
   createProviderSelectorState,
+  formatProviderSelectorCount,
+  moveProviderSelection,
   searchProviderSelector,
   visibleProviderRows,
   type AuthProviderChoice,
@@ -49,6 +51,19 @@ function runtime(
 
 function labels(choices: AuthProviderChoice[]): string[] {
   return choices.map((choice) => choice.label);
+}
+
+function providerChoices(
+  count: number,
+  idPrefix = "provider",
+): AuthProviderChoice[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${idPrefix}-${index + 1}`,
+    name: `Provider ${index + 1}`,
+    mode: "api_key" as const,
+    label: `Provider ${index + 1} • unconfigured`,
+    statusLabel: "• unconfigured",
+  }));
 }
 
 test("auth method choices match Patchmill init prompt order", () => {
@@ -230,4 +245,134 @@ test("visibleProviderRows limits to eight rows and reports row labels", () => {
     "→ Provider 1 • unconfigured",
     "  Provider 2 • unconfigured",
   ]);
+});
+
+test("visibleProviderRows keeps item 14 of 39 in view", () => {
+  const state = moveProviderSelection(
+    createProviderSelectorState(providerChoices(39)),
+    13,
+  );
+
+  const rows = visibleProviderRows(state);
+
+  assert.deepEqual(
+    rows.map((row) => row.choice.id),
+    [
+      "provider-7",
+      "provider-8",
+      "provider-9",
+      "provider-10",
+      "provider-11",
+      "provider-12",
+      "provider-13",
+      "provider-14",
+    ],
+  );
+  assert.equal(rows.length, 8);
+  assert.equal(rows.at(-1)?.selected, true);
+  assert.equal(rows.filter((row) => row.selected).length, 1);
+  assert.equal(formatProviderSelectorCount(state), "(14/39)");
+});
+
+test("visibleProviderRows follows selection across both wrap boundaries", () => {
+  let state = moveProviderSelection(
+    createProviderSelectorState(providerChoices(39)),
+    -1,
+  );
+
+  let rows = visibleProviderRows(state);
+  assert.deepEqual(
+    rows.map((row) => row.choice.id),
+    [
+      "provider-32",
+      "provider-33",
+      "provider-34",
+      "provider-35",
+      "provider-36",
+      "provider-37",
+      "provider-38",
+      "provider-39",
+    ],
+  );
+  assert.equal(rows.at(-1)?.selected, true);
+
+  state = moveProviderSelection(state, 1);
+  rows = visibleProviderRows(state);
+  assert.deepEqual(
+    rows.map((row) => row.choice.id),
+    [
+      "provider-1",
+      "provider-2",
+      "provider-3",
+      "provider-4",
+      "provider-5",
+      "provider-6",
+      "provider-7",
+      "provider-8",
+    ],
+  );
+  assert.equal(rows[0]?.selected, true);
+});
+
+test("visibleProviderRows follows selection within filtered results", () => {
+  const choices = [
+    ...providerChoices(12, "matching"),
+    ...providerChoices(4, "other"),
+  ];
+  let state = searchProviderSelector(
+    createProviderSelectorState(choices),
+    "matching",
+  );
+
+  assert.equal(state.selectedIndex, 0);
+  assert.equal(visibleProviderRows(state)[0]?.choice.id, "matching-1");
+
+  state = moveProviderSelection(state, 8);
+  const rows = visibleProviderRows(state);
+  assert.deepEqual(
+    rows.map((row) => row.choice.id),
+    [
+      "matching-2",
+      "matching-3",
+      "matching-4",
+      "matching-5",
+      "matching-6",
+      "matching-7",
+      "matching-8",
+      "matching-9",
+    ],
+  );
+  assert.equal(rows.at(-1)?.selected, true);
+  assert.equal(formatProviderSelectorCount(state), "(9/12)");
+});
+
+test("visibleProviderRows preserves lists of eight or fewer", () => {
+  const state = createProviderSelectorState(providerChoices(8));
+  const rows = visibleProviderRows(state);
+
+  assert.deepEqual(
+    rows.map((row) => row.choice.id),
+    [
+      "provider-1",
+      "provider-2",
+      "provider-3",
+      "provider-4",
+      "provider-5",
+      "provider-6",
+      "provider-7",
+      "provider-8",
+    ],
+  );
+  assert.equal(rows[0]?.selected, true);
+  assert.equal(formatProviderSelectorCount(state), "");
+});
+
+test("visibleProviderRows preserves empty search results", () => {
+  const state = searchProviderSelector(
+    createProviderSelectorState(providerChoices(8)),
+    "not-present",
+  );
+
+  assert.deepEqual(visibleProviderRows(state), []);
+  assert.equal(formatProviderSelectorCount(state), "");
 });

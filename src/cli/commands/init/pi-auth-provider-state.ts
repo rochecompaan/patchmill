@@ -186,11 +186,16 @@ export function selectedProvider(
 export function visibleProviderRows(
   state: ProviderSelectorState,
 ): VisibleProviderRow[] {
-  const visible = state.filtered.slice(0, MAX_VISIBLE_PROVIDER_ROWS);
-  return visible.map((choice, index) => ({
-    choice,
-    selected: index === state.selectedIndex,
-  }));
+  const start = Math.min(
+    Math.max(0, state.selectedIndex - MAX_VISIBLE_PROVIDER_ROWS + 1),
+    Math.max(0, state.filtered.length - MAX_VISIBLE_PROVIDER_ROWS),
+  );
+  return state.filtered
+    .slice(start, start + MAX_VISIBLE_PROVIDER_ROWS)
+    .map((choice, index) => ({
+      choice,
+      selected: start + index === state.selectedIndex,
+    }));
 }
 
 export function authProviderChoiceRows(rows: VisibleProviderRow[]): string[] {
