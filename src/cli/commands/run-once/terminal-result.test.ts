@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import { renderTerminalDocument } from "./terminal-result-layout.ts";
 import {
   formatTerminalResult,
   terminalResultSeverity,
@@ -265,6 +266,109 @@ test("keeps every line within every positive width and resets styled lines", () 
     }
     assert.equal(stripTerminalSequences(colored), plain);
   }
+});
+
+test("encodes individually too-wide graphemes only when necessary", () => {
+  const decodeUnicodeEscapes = (text: string) =>
+    text.replaceAll(/\\u\{([\da-f]+)\}/giu, (_, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    );
+  for (const literal of ["漢", "😀"]) {
+    const narrow = formatTerminalResult(
+      { status: "error", error: literal },
+      { width: 1, color: false },
+    );
+    for (const line of narrow.split("\n"))
+      assert.ok(visibleWidth(line) <= 1, `${visibleWidth(line)} > 1`);
+    assert.ok(
+      decodeUnicodeEscapes(narrow.replaceAll("\n", "")).includes(literal),
+    );
+
+    const wide = formatTerminalResult(
+      { status: "error", error: literal },
+      { width: 2, color: false },
+    );
+    assert.ok(wide.includes(literal));
+  }
+});
+
+test("preserves literal-role whitespace through narrow wrapping", () => {
+  const literals = {
+    url: "https://example.test/a  b",
+    path: "branch  name",
+    commit: "abc  def",
+  } as const;
+  for (const [role, literal] of Object.entries(literals)) {
+    const output = renderTerminalDocument({
+      label: "Result",
+      severity: "success",
+      width: 10,
+      color: false,
+      sections: [
+        {
+          heading: "Value",
+          blocks: [{ kind: "value", value: { text: literal, role } }],
+        },
+      ],
+    });
+    const rendered = output
+      .slice(output.indexOf("Value\n") + "Value\n".length)
+      .split("\n")
+      .map((line) => line.slice(2))
+      .join("");
+    assert.equal(rendered, literal);
+  }
+});
+
+test("counts only values that remain renderable after terminal sanitization", () => {
+  const summary: RunOnceResultSummary = {
+    status: "blocked",
+    issueNumber: 1,
+    reason: "blocked",
+    questions: ["\u001b[31m\u001b[0m", "question"],
+  };
+  const output = formatTerminalResult(summary, { width: 100, color: false });
+  assert.match(output, /Questions \(1\)/u);
+  assert.doesNotMatch(output, /Questions \(2\)/u);
+
+  const pr = formatTerminalResult(
+    {
+      status: "pr-created",
+      issueNumber: 1,
+      planPath: "plan.md",
+      branch: "branch",
+      prUrl: "https://example.test/pr/1",
+      worktreePath: "worktree",
+      commits: ["\u001b[31m\u001b[0m"],
+      validation: ["\u001b[31m\u001b[0m"],
+      visualEvidence: [
+        { screenshotPath: "\u001b[31m\u001b[0m", caption: "  " },
+      ],
+    },
+    { width: 100, color: false },
+  );
+  assert.doesNotMatch(pr, /Validation|Commits|Visual evidence/u);
+});
+
+test("uses a styled screenshot path when visual evidence caption is blank", () => {
+  const screenshotPath = "docs/screenshots/result.png";
+  const output = formatTerminalResult(
+    {
+      status: "pr-created",
+      issueNumber: 1,
+      planPath: "plan.md",
+      branch: "branch",
+      prUrl: "https://example.test/pr/1",
+      worktreePath: "worktree",
+      commits: [],
+      validation: [],
+      visualEvidence: [{ screenshotPath, caption: "  " }],
+    },
+    { width: 100, color: true },
+  );
+  assert.match(output, /Visual evidence \(1\)/u);
+  assert.match(output, new RegExp(`\\u001b\\[35m${screenshotPath}`, "u"));
+  assert.doesNotMatch(output, /Screenshot:/u);
 });
 
 test("omits optional empty sections", () => {

@@ -85,6 +85,35 @@ function fittingPrefix(prefix: string, width: number): string {
   return visibleWidth(compact) < width ? compact : "";
 }
 
+function encodeOversizeGraphemes(text: string, width: number): string {
+  return [
+    ...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text),
+  ]
+    .map(({ segment }) =>
+      visibleWidth(segment) > width
+        ? [...segment]
+            .map(
+              (codePoint) => `\\u{${codePoint.codePointAt(0)?.toString(16)}}`,
+            )
+            .join("")
+        : segment,
+    )
+    .join("");
+}
+
+function protectLiteralWhitespace(text: string, role: TerminalValue["role"]) {
+  if (role !== "url" && role !== "path" && role !== "commit")
+    return { text, restore: (value: string) => value };
+
+  let marker = "\uE000";
+  while (text.includes(marker))
+    marker = String.fromCodePoint(marker.codePointAt(0)! + 1);
+  return {
+    text: text.replaceAll(" ", marker),
+    restore: (value: string) => value.replaceAll(marker, " "),
+  };
+}
+
 function wrap(
   value: TerminalValue,
   firstPrefix: string,
@@ -101,8 +130,12 @@ function wrap(
       ? firstPrefix.replace(/^ +| +$/gu, "")
       : undefined;
   const prefixes = standalonePrefix ? [standalonePrefix] : [];
+  const protectedText = protectLiteralWhitespace(text, value.role);
   const lines = wrapTextWithAnsi(
-    text,
+    encodeOversizeGraphemes(
+      protectedText.text,
+      Math.max(1, width - visibleWidth(first)),
+    ),
     Math.max(1, width - visibleWidth(first)),
   );
   return [
@@ -110,8 +143,12 @@ function wrap(
     ...lines.flatMap((line, index) => {
       const prefix = index === 0 ? first : continuation;
       const available = Math.max(1, width - visibleWidth(prefix));
-      return wrapTextWithAnsi(line, available).map(
-        (part) => `${prefix}${style(part, value.role, color)}`,
+      return wrapTextWithAnsi(
+        encodeOversizeGraphemes(line, available),
+        available,
+      ).map(
+        (part) =>
+          `${prefix}${style(protectedText.restore(part), value.role, color)}`,
       );
     }),
   ];

@@ -2,7 +2,10 @@ import type {
   RunOnceResultStatus,
   RunOnceResultSummary,
 } from "./result-summary.ts";
-import { renderTerminalDocument } from "./terminal-result-layout.ts";
+import {
+  cleanValue,
+  renderTerminalDocument,
+} from "./terminal-result-layout.ts";
 import type {
   TerminalSection,
   TerminalValue,
@@ -37,8 +40,8 @@ const STATUS = {
   { label: string; severity: TerminalResultSeverity }
 >;
 
-const nonblank = (value: string | undefined): value is string =>
-  Boolean(value?.trim());
+const nonblank = (text: string | undefined): text is string =>
+  typeof text === "string" && Boolean(cleanValue(text));
 const value = (
   text: string,
   role: TerminalValue["role"] = "plain",
@@ -255,22 +258,23 @@ export function formatTerminalResult(
         },
       ],
     });
-  if ("visualEvidence" in summary && summary.visualEvidence?.length)
-    sections.push({
-      heading: "Visual evidence",
-      count: summary.visualEvidence.length,
-      blocks: [
-        {
-          kind: "list",
-          marker: "•",
-          items: summary.visualEvidence.map((item) => ({
-            value: value(item.caption || item.screenshotPath),
+  const visualEvidence =
+    ("visualEvidence" in summary ? summary.visualEvidence : undefined)?.flatMap(
+      (item) => {
+        const caption = nonblank(item.caption) ? item.caption : undefined;
+        const screenshotPath = nonblank(item.screenshotPath)
+          ? item.screenshotPath
+          : undefined;
+        if (!caption && !screenshotPath) return [];
+        return [
+          {
+            value: caption ? value(caption) : value(screenshotPath!, "path"),
             details: [
-              ...(item.caption
+              ...(caption && screenshotPath
                 ? [
                     {
                       label: "Screenshot",
-                      value: value(item.screenshotPath, "path"),
+                      value: value(screenshotPath, "path"),
                     },
                   ]
                 : []),
@@ -282,9 +286,15 @@ export function formatTerminalResult(
                 ? [{ label: "URL", value: value(item.url, "url") }]
                 : []),
             ],
-          })),
-        },
-      ],
+          },
+        ];
+      },
+    ) ?? [];
+  if (visualEvidence.length)
+    sections.push({
+      heading: "Visual evidence",
+      count: visualEvidence.length,
+      blocks: [{ kind: "list", marker: "•", items: visualEvidence }],
     });
   const files = [
     "logPath" in summary && nonblank(summary.logPath)
