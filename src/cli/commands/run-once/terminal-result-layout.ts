@@ -107,71 +107,31 @@ function isLiteralRole(role: TerminalValue["role"]): boolean {
   return role === "url" || role === "path" || role === "commit";
 }
 
-function literalWhitespacePlaceholder(
+function wrapLiteralValue(
   text: string,
-  used: Set<string>,
-  width: number,
-): string {
-  const ranges =
-    width === 0
-      ? [
-          [0x200b, 0x200f],
-          [0x2060, 0x2064],
-        ]
-      : width === 1
-        ? [[0xe000, 0xf8ff]]
-        : width === 2
-          ? [
-              [0x3001, 0x303f],
-              [0xff01, 0xff60],
-              [0x4e00, 0x9fff],
-            ]
-          : [];
-  for (const [start, end] of ranges)
-    for (let codePoint = start; codePoint <= end; codePoint += 1) {
-      const marker = String.fromCodePoint(codePoint);
-      if (
-        !text.includes(marker) &&
-        !used.has(marker) &&
-        !/[\p{White_Space}\uFEFF]/u.test(marker) &&
-        visibleWidth(marker) === width
-      )
-        return marker;
+  firstCapacity: number,
+  continuationCapacity: number,
+): string[] {
+  const lines: string[] = [];
+  let line = "";
+  let lineWidth = 0;
+  let capacity = firstCapacity;
+
+  for (const { segment } of new Intl.Segmenter(undefined, {
+    granularity: "grapheme",
+  }).segment(text)) {
+    const segmentWidth = visibleWidth(segment);
+    if (line && segmentWidth > 0 && lineWidth + segmentWidth > capacity) {
+      lines.push(line);
+      line = "";
+      lineWidth = 0;
+      capacity = continuationCapacity;
     }
-  throw new Error("no literal whitespace placeholder is available");
-}
-
-function protectLiteralWhitespace(text: string, role: TerminalValue["role"]) {
-  if (!isLiteralRole(role)) return { text, restore: (value: string) => value };
-
-  const replacements = new Map<string, string>();
-  const used = new Set<string>();
-  const protectedText = text.replace(
-    /[\p{White_Space}\uFEFF]/gu,
-    (whitespace) => {
-      const existing = [...replacements].find(
-        ([, original]) => original === whitespace,
-      )?.[0];
-      if (existing) return existing;
-      const marker = literalWhitespacePlaceholder(
-        text,
-        used,
-        visibleWidth(whitespace),
-      );
-      used.add(marker);
-      replacements.set(marker, whitespace);
-      return marker;
-    },
-  );
-  return {
-    text: protectedText,
-    restore: (value: string) =>
-      [...replacements].reduce(
-        (restored, [marker, whitespace]) =>
-          restored.replaceAll(marker, whitespace),
-        value,
-      ),
-  };
+    line += segment;
+    lineWidth += segmentWidth;
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 function wrap(
@@ -198,17 +158,19 @@ function wrap(
     text,
     Math.min(firstAvailable, continuationAvailable),
   );
-  const protectedText = protectLiteralWhitespace(encodedText, value.role);
-  const lines = wrapTextWithAnsi(protectedText.text, firstAvailable);
+  const lines = isLiteralRole(value.role)
+    ? wrapLiteralValue(encodedText, firstAvailable, continuationAvailable)
+    : wrapTextWithAnsi(encodedText, firstAvailable);
   return [
     ...prefixes,
     ...lines.flatMap((line, index) => {
       const prefix = index === 0 ? first : continuation;
       const available = index === 0 ? firstAvailable : continuationAvailable;
-      return wrapTextWithAnsi(line, available).map(
-        (part) =>
-          `${prefix}${style(protectedText.restore(part), value.role, color)}`,
-      );
+      return isLiteralRole(value.role)
+        ? [`${prefix}${style(line, value.role, color)}`]
+        : wrapTextWithAnsi(line, available).map(
+            (part) => `${prefix}${style(part, value.role, color)}`,
+          );
     }),
   ];
 }

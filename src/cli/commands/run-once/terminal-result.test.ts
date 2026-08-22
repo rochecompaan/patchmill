@@ -405,6 +405,40 @@ test("preserves significant literal whitespace across wrapping", () => {
   assert.doesNotMatch(normalized, /\t|\n|\r|\u001b|\u0007/u);
 });
 
+test("preserves literal path data when all former zero-width sentinels occur", () => {
+  const formerSentinels = [
+    ...Array.from({ length: 5 }, (_, index) =>
+      String.fromCodePoint(0x200b + index),
+    ),
+    ...Array.from({ length: 5 }, (_, index) =>
+      String.fromCodePoint(0x2060 + index),
+    ),
+  ].join("");
+  const branch = `agent/${formerSentinels}\uFEFF issue`;
+  const output = formatTerminalResult(
+    {
+      status: "pr-created",
+      issueNumber: 174,
+      planPath: "plan.md",
+      branch,
+      prUrl: "https://example.test/pulls/174",
+      worktreePath: "worktree",
+      commits: [],
+      validation: [],
+    },
+    { width: 12, color: false },
+  );
+  const branchStart = output.indexOf("Branch:\n") + "Branch:\n".length;
+  const branchLines = output
+    .slice(branchStart, output.indexOf("\n  Worktree:", branchStart))
+    .split("\n")
+    .map((line) => line.slice(4));
+
+  assert.equal(branchLines.join(""), branch);
+  for (const line of output.split("\n"))
+    assert.ok(visibleWidth(line) <= 12, `${visibleWidth(line)} > 12`);
+});
+
 test("preserves two-cell literal whitespace at narrow widths", () => {
   const decodeNarrowCodec = (text: string) =>
     text.replaceAll(
