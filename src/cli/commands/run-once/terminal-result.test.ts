@@ -85,6 +85,10 @@ test("sanitizes hostile strings and styles only renderer output", () => {
   assert.doesNotMatch(plain, /\u001b|\u0007|^Injected heading$/mu);
   assert.match(plain, /Injected heading/u);
   assert.equal(stripTerminalSequences(colored), plain);
+  assert.match(
+    colored,
+    /\u001b\[1m\u001b\[31mFinal result: ✗ Error\u001b\[0m/u,
+  );
   assert.match(colored, /\u001b\[31m✗/u);
   for (const line of colored.split("\n")) assert.ok(visibleWidth(line) <= 32);
 });

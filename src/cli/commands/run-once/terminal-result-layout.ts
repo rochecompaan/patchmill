@@ -169,13 +169,10 @@ export function renderTerminalDocument(input: TerminalDocument): string {
     input.stepNumber === undefined
       ? ""
       : `${String(input.stepNumber).padStart(2, "0")}  `;
-  const marker = styled(
-    markerFor(input.severity),
-    severityColor(input.severity),
-    color,
+  const header = `${headerPrefix}Final result: ${markerFor(input.severity)} ${input.label}`;
+  const lines = wrap({ text: header }, "", "", width, false).map((line) =>
+    styled(line, SGR.bold + severityColor(input.severity), color),
   );
-  const header = `${headerPrefix}Final result: ${marker} ${styled(input.label, SGR.bold + severityColor(input.severity), color)}`;
-  const lines = wrap({ text: header }, "", "", width, false);
   const metrics: string[] = [];
   if (
     input.totalOutputTokens !== undefined ||
@@ -192,12 +189,8 @@ export function renderTerminalDocument(input: TerminalDocument): string {
       .filter(Boolean)
       .join(" · ");
     metrics.push(
-      ...wrap(
-        { text: styled(parts, SGR.dim, color) },
-        "    ",
-        "    ",
-        width,
-        false,
+      ...wrap({ text: parts }, "    ", "    ", width, false).map((line) =>
+        styled(line, SGR.dim, color),
       ),
     );
   }
