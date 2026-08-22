@@ -166,6 +166,107 @@ test("maps every status to its visible severity marker and label", () => {
   assert.equal(terminalResultSeverity("blocked"), "failure");
 });
 
+test("renders each status with its relevant semantic sections", () => {
+  const cases: Array<[RunOnceResultSummary, string[]]> = [
+    [{ status: "no-issue" }, []],
+    [
+      { status: "dry-run", issueNumber: 1, title: "Issue", transition: "plan" },
+      ["Issue and workspace", "Transition"],
+    ],
+    [
+      { status: "spec-created", issueNumber: 1, specPath: "spec.md" },
+      ["Issue and workspace", "Artifacts"],
+    ],
+    [
+      { status: "spec-found", issueNumber: 1, specPath: "spec.md" },
+      ["Issue and workspace", "Artifacts"],
+    ],
+    [
+      { status: "plan-created", issueNumber: 1, planPath: "plan.md" },
+      ["Issue and workspace", "Artifacts"],
+    ],
+    [
+      { status: "plan-found", issueNumber: 1, planPath: "plan.md" },
+      ["Issue and workspace", "Artifacts"],
+    ],
+    [summary, ["Pull request", "Validation (2)", "Review", "Run files"]],
+    [
+      {
+        status: "merged",
+        issueNumber: 1,
+        planPath: "plan.md",
+        branch: "branch",
+        mergeCommit: "abc",
+        worktreePath: "worktree",
+        commits: [],
+        validation: [],
+        landingDecision: "landed",
+      },
+      ["Issue and workspace", "Artifacts", "Landing decision"],
+    ],
+    [
+      {
+        status: "approval-required",
+        issueNumber: 1,
+        approvalKind: "spec",
+        missingLabel: "spec-approved",
+      },
+      ["Issue and workspace", "Approval"],
+    ],
+    [
+      {
+        status: "development-environment-not-ready",
+        issueNumber: 1,
+        planPath: "plan.md",
+        reason: "not ready",
+        evidence: ["evidence"],
+        remediation: ["retry"],
+      },
+      ["Issue and workspace", "Artifacts", "Environment readiness"],
+    ],
+    [
+      {
+        status: "blocked",
+        issueNumber: 1,
+        reason: "blocked",
+        questions: ["what now?"],
+      },
+      ["Issue and workspace", "Failure", "Questions (1)"],
+    ],
+    [{ status: "error", error: "failed", causes: ["cause"] }, ["Failure"]],
+  ];
+  for (const [result, headings] of cases) {
+    const output = formatTerminalResult(result, { width: 100, color: false });
+    for (const heading of headings) assert.ok(output.includes(heading));
+    if (result.status === "no-issue") assert.doesNotMatch(output, /\n\n/u);
+  }
+});
+
+test("keeps every line within every positive width and resets styled lines", () => {
+  for (let width = 1; width <= 32; width += 1) {
+    const plain = formatTerminalResult(summary, { width, color: false });
+    const colored = formatTerminalResult(summary, { width, color: true });
+    for (const line of plain.split("\n"))
+      assert.ok(
+        visibleWidth(line) <= width,
+        `${visibleWidth(line)} > ${width}`,
+      );
+    assert.ok(
+      plain
+        .replaceAll(/\s+/gu, "")
+        .includes("https://example.test/patchmill/pulls/174"),
+    );
+    for (const line of colored.split("\n")) {
+      assert.ok(
+        visibleWidth(line) <= width,
+        `${visibleWidth(line)} > ${width}`,
+      );
+      if (line.includes("\u001b[")) assert.ok(line.endsWith("\u001b[0m"));
+    }
+    assert.equal(stripTerminalSequences(colored), plain);
+  }
+});
+
 test("omits optional empty sections", () => {
   const output = formatTerminalResult(
     { status: "no-issue" },

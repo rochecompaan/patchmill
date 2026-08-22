@@ -20,6 +20,7 @@ import {
   exitCodeForRunOnceResult,
   writeRunOnceResult,
 } from "./result-output.ts";
+import type { WriteRunOnceResultOptions } from "./result-output.ts";
 import type { AgentIssuePipelineResult, CommandRunner } from "./types.ts";
 
 export { summarizeResult } from "./result-summary.ts";
@@ -61,7 +62,7 @@ function issueNumberFromResult(
   return "issue" in result ? result.issue.number : undefined;
 }
 
-async function finalLogPath(
+export async function finalLogPath(
   preliminaryLogPath: string,
   runStateDir: string,
   timestamp: string,
@@ -74,8 +75,22 @@ async function finalLogPath(
   if (issueLogPath === preliminaryLogPath) return preliminaryLogPath;
 
   await mkdir(dirname(issueLogPath), { recursive: true });
-  await rename(preliminaryLogPath, issueLogPath).catch(() => undefined);
+  await rename(preliminaryLogPath, issueLogPath);
   return issueLogPath;
+}
+
+export async function writePipelineFailureResult(
+  error: unknown,
+  logPath: string,
+  options: Omit<WriteRunOnceResultOptions, "logPath">,
+): Promise<0 | 1> {
+  const summary = summarizeErrorResult(error, logPath);
+  try {
+    await writeRunOnceResult(summary, { ...options, logPath });
+  } catch (reportingError) {
+    throw appendPiErrorCause(error, "result reporting", reportingError);
+  }
+  return exitCodeForRunOnceResult(summary);
 }
 
 async function resolveRunOnceConfigBaseBranch(
@@ -177,17 +192,14 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
           reportingError,
         );
       }
-      const summary = summarizeErrorResult(terminalError, logPath);
-      await writeRunOnceResult(summary, {
+      return writePipelineFailureResult(terminalError, logPath, {
         stdout: process.stdout,
         env: process.env,
-        logPath,
         elapsedSeconds: Math.max(
           0,
           Math.round((Date.now() - startedAt.getTime()) / 1000),
         ),
       });
-      return exitCodeForRunOnceResult(summary);
     }
 
     const outputLogPath = await finalLogPath(

@@ -493,6 +493,34 @@ test("console reporter defers final result and captures its metrics", () => {
   );
 });
 
+test("console reporter has no deferred snapshot before completion or without a final step", () => {
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine() {},
+    startedAt: BASE,
+    deferFinalResult: true,
+  });
+  assert.equal(reporter.finalResultSnapshot(), undefined);
+  reporter.event(
+    event({ step: { type: "step-start", label: "final result pr-created" } }),
+  );
+  assert.equal(reporter.finalResultSnapshot(), undefined);
+  reporter.event(
+    event({
+      step: { type: "step-complete", label: "final result pr-created" },
+    }),
+  );
+  assert.deepEqual(reporter.finalResultSnapshot(), {
+    stepNumber: 1,
+    totalOutputTokens: 0,
+    elapsedSeconds: 0,
+  });
+
+  const ordinary = new AgentIssueConsoleProgressReporter({ writeLine() {} });
+  ordinary.event(event({ step: { type: "step-start", label: "task" } }));
+  ordinary.event(event({ step: { type: "step-complete", label: "task" } }));
+  assert.equal(ordinary.finalResultSnapshot(), undefined);
+});
+
 test("console reporter uses completion event accounting fields without synthesizing tool-call dots", () => {
   const lines: string[] = [];
   const reporter = new AgentIssueConsoleProgressReporter({

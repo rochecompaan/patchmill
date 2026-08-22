@@ -1,5 +1,6 @@
 import {
   stripTerminalSequences,
+  visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import type { TerminalResultSeverity } from "./terminal-result.ts";
@@ -69,11 +70,21 @@ export function cleanValue(value: string): string {
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, " ")
     .trim();
 }
+
 function normalizeWidth(width: number): number {
   return Number.isFinite(width) && width > 0
     ? Math.max(1, Math.floor(width))
     : 80;
 }
+
+function fittingPrefix(prefix: string, width: number): string {
+  if (visibleWidth(prefix) < width) return prefix;
+  const unindented = prefix.replace(/^ +/u, "");
+  if (visibleWidth(unindented) < width) return unindented;
+  const compact = unindented.replace(/ +$/u, "");
+  return visibleWidth(compact) < width ? compact : "";
+}
+
 function wrap(
   value: TerminalValue,
   firstPrefix: string,
@@ -83,22 +94,27 @@ function wrap(
 ): string[] {
   const text = cleanValue(value.text);
   if (!text) return [];
-  const first = Math.min(
-    stripTerminalSequences(firstPrefix).length,
-    Math.max(0, width - 1),
+  const first = fittingPrefix(firstPrefix, width);
+  const continuation = fittingPrefix(continuationPrefix, width);
+  const standalonePrefix =
+    !first && cleanValue(stripTerminalSequences(firstPrefix))
+      ? firstPrefix.replace(/^ +| +$/gu, "")
+      : undefined;
+  const prefixes = standalonePrefix ? [standalonePrefix] : [];
+  const lines = wrapTextWithAnsi(
+    text,
+    Math.max(1, width - visibleWidth(first)),
   );
-  const continuation = Math.min(
-    stripTerminalSequences(continuationPrefix).length,
-    Math.max(0, width - 1),
-  );
-  const lines = wrapTextWithAnsi(text, Math.max(1, width - first));
-  return lines.flatMap((line, index) => {
-    const prefix = index === 0 ? firstPrefix : continuationPrefix;
-    const available = Math.max(1, width - (index === 0 ? first : continuation));
-    return wrapTextWithAnsi(line, available).map(
-      (part) => `${prefix}${style(part, value.role, color)}`,
-    );
-  });
+  return [
+    ...prefixes,
+    ...lines.flatMap((line, index) => {
+      const prefix = index === 0 ? first : continuation;
+      const available = Math.max(1, width - visibleWidth(prefix));
+      return wrapTextWithAnsi(line, available).map(
+        (part) => `${prefix}${style(part, value.role, color)}`,
+      );
+    }),
+  ];
 }
 
 function renderFields(
@@ -120,7 +136,9 @@ function renderFields(
     if (!label) return wrap(field.value, pad, pad, width, color);
     if (!inline)
       return [
-        styled(`${pad}${label}`, SGR.dim, color),
+        ...wrap({ text: label }, pad, pad, width, false).map((line) =>
+          styled(line, SGR.dim, color),
+        ),
         ...wrap(field.value, `${pad}  `, `${pad}  `, width, color),
       ];
     const labelText = `${pad}${label.padEnd(maxLabel)} `;
@@ -160,6 +178,12 @@ function formatElapsed(seconds: number): string {
   const s = value % 60;
   if (m < 60) return `${m}m${String(s).padStart(2, "0")}s`;
   return `${Math.floor(m / 60)}h${m % 60}m${String(s).padStart(2, "0")}s`;
+}
+
+function resetLine(line: string, color: boolean): string {
+  return color && line.includes("\u001b[") && !line.endsWith(SGR.reset)
+    ? `${line}${SGR.reset}`
+    : line;
 }
 
 export function renderTerminalDocument(input: TerminalDocument): string {
@@ -203,14 +227,14 @@ export function renderTerminalDocument(input: TerminalDocument): string {
             ? renderFields(block.fields, width, color, 2)
             : renderList(block, width, color),
       );
+      const heading =
+        section.count === undefined
+          ? section.heading
+          : `${section.heading} (${section.count})`;
       return body.length
         ? [
-            styled(
-              section.count === undefined
-                ? section.heading
-                : `${section.heading} (${section.count})`,
-              SGR.bold,
-              color,
+            ...wrap({ text: heading }, "", "", width, false).map((line) =>
+              styled(line, SGR.bold, color),
             ),
             ...body,
           ].join("\n")
@@ -221,5 +245,9 @@ export function renderTerminalDocument(input: TerminalDocument): string {
     ...lines,
     ...metrics,
     ...(sections.length ? ["", sections.join("\n\n")] : []),
-  ].join("\n");
+  ]
+    .join("\n")
+    .split("\n")
+    .map((line) => resetLine(line, color))
+    .join("\n");
 }
