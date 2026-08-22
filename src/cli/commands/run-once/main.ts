@@ -15,11 +15,10 @@ import {
 import { createCommandRunner } from "../triage/command.ts";
 import { detectDefaultBaseBranch } from "./git.ts";
 import { appendPiErrorCause, formatErrorWithCauses } from "./pi-errors.ts";
-import type {
-  AgentIssuePipelineResult,
-  AgentIssueVisualEvidence,
-  CommandRunner,
-} from "./types.ts";
+import { summarizeResult } from "./result-summary.ts";
+import type { AgentIssuePipelineResult, CommandRunner } from "./types.ts";
+
+export { summarizeResult } from "./result-summary.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill run-once [options]
@@ -47,92 +46,8 @@ Environment:
 
 type Env = Record<string, string | undefined>;
 
-type JsonResultLog = { logPath?: string; piSessionPath?: string };
-
-type JsonResult = JsonResultLog &
-  (
-    | { status: "no-issue" }
-    | {
-        status: "dry-run";
-        issueNumber: number;
-        title: string;
-        transition: string;
-      }
-    | {
-        status: "spec-created" | "spec-found";
-        issueNumber: number;
-        specPath: string;
-      }
-    | {
-        status: "plan-created" | "plan-found";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-      }
-    | {
-        status: "pr-created";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-        branch: string;
-        prUrl: string;
-        worktreePath: string;
-        commits: string[];
-        validation: string[];
-        reviewSummary?: string;
-        landingDecision?: string;
-        visualEvidence?: AgentIssueVisualEvidence[];
-      }
-    | {
-        status: "merged";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-        branch: string;
-        mergeCommit: string;
-        worktreePath: string;
-        commits: string[];
-        validation: string[];
-        reviewSummary?: string;
-        landingDecision?: string;
-      }
-    | {
-        status: "approval-required";
-        issueNumber: number;
-        approvalKind: "spec" | "plan";
-        missingLabel: string;
-      }
-    | {
-        status: "development-environment-not-ready";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-        branch?: string;
-        worktreePath?: string;
-        reason: string;
-        evidence: string[];
-        remediation: string[];
-      }
-    | {
-        status: "blocked";
-        issueNumber: number;
-        reason: string;
-        questions: string[];
-      }
-  );
-
 function isHelpOnlyInvocation(args: string[]): boolean {
   return args.includes("--help") || args.includes("-h");
-}
-
-function questionText(
-  question: string | { question: string; recommendedAnswer?: string },
-): string {
-  return typeof question === "string"
-    ? question
-    : question.recommendedAnswer
-      ? `${question.question} (recommended: ${question.recommendedAnswer})`
-      : question.question;
 }
 
 function issueNumberFromResult(
@@ -156,105 +71,6 @@ async function finalLogPath(
   await mkdir(dirname(issueLogPath), { recursive: true });
   await rename(preliminaryLogPath, issueLogPath).catch(() => undefined);
   return issueLogPath;
-}
-
-export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
-  const withLogPath = {
-    ...(result.logPath ? { logPath: result.logPath } : {}),
-    ...(result.piSessionPath ? { piSessionPath: result.piSessionPath } : {}),
-  };
-
-  switch (result.status) {
-    case "no-issue":
-      return { status: result.status, ...withLogPath };
-    case "dry-run":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        title: result.issue.title,
-        transition: result.transition,
-        ...withLogPath,
-      };
-    case "spec-created":
-    case "spec-found":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        specPath: result.specPath,
-        ...withLogPath,
-      };
-    case "plan-created":
-    case "plan-found":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        ...withLogPath,
-      };
-    case "pr-created":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        branch: result.branch,
-        prUrl: result.prUrl,
-        worktreePath: result.worktreePath,
-        commits: result.commits,
-        validation: result.validation,
-        reviewSummary: result.reviewSummary,
-        landingDecision: result.landingDecision,
-        visualEvidence: result.visualEvidence,
-        ...withLogPath,
-      };
-    case "merged":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        branch: result.branch,
-        mergeCommit: result.mergeCommit,
-        worktreePath: result.worktreePath,
-        commits: result.commits,
-        validation: result.validation,
-        reviewSummary: result.reviewSummary,
-        landingDecision: result.landingDecision,
-        ...withLogPath,
-      };
-    case "approval-required":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        approvalKind: result.approvalKind,
-        missingLabel: result.missingLabel,
-        ...withLogPath,
-      };
-    case "development-environment-not-ready":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        ...(result.branch !== undefined ? { branch: result.branch } : {}),
-        ...(result.worktreePath !== undefined
-          ? { worktreePath: result.worktreePath }
-          : {}),
-        reason: result.reason,
-        evidence: result.evidence,
-        remediation: result.remediation,
-        ...withLogPath,
-      };
-    case "blocked":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        reason: result.reason,
-        questions: result.questions.map(questionText),
-        ...withLogPath,
-      };
-  }
 }
 
 async function resolveRunOnceConfigBaseBranch(
