@@ -64,11 +64,14 @@ const style = (value: string, role: string | undefined, color: boolean) =>
 const styled = (value: string, prefix: string, color: boolean) =>
   color ? `${prefix}${value}${SGR.reset}` : value;
 
-export function cleanValue(value: string): string {
+function sanitizeTerminalValue(value: string): string {
   return stripTerminalSequences(value)
     .replace(/\r\n?|\n/gu, " ")
-    .replace(/[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, " ")
-    .trim();
+    .replace(/[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, " ");
+}
+
+export function cleanValue(value: string): string {
+  return sanitizeTerminalValue(value).trim();
 }
 
 function normalizeWidth(width: number): number {
@@ -100,16 +103,44 @@ function encodeNarrowGraphemes(text: string, width: number): string {
     .join("");
 }
 
-function protectLiteralWhitespace(text: string, role: TerminalValue["role"]) {
-  if (role !== "url" && role !== "path" && role !== "commit")
-    return { text, restore: (value: string) => value };
+function isLiteralRole(role: TerminalValue["role"]): boolean {
+  return role === "url" || role === "path" || role === "commit";
+}
 
-  let marker = "\uE000";
-  while (text.includes(marker))
-    marker = String.fromCodePoint(marker.codePointAt(0)! + 1);
+function literalWhitespacePlaceholder(text: string, used: Set<string>): string {
+  for (let codePoint = 0xe000; codePoint <= 0xf8ff; codePoint += 1) {
+    const marker = String.fromCodePoint(codePoint);
+    if (!text.includes(marker) && !used.has(marker)) return marker;
+  }
+  throw new Error("no literal whitespace placeholder is available");
+}
+
+function protectLiteralWhitespace(text: string, role: TerminalValue["role"]) {
+  if (!isLiteralRole(role)) return { text, restore: (value: string) => value };
+
+  const replacements = new Map<string, string>();
+  const used = new Set<string>();
+  const protectedText = text.replace(
+    /[\p{White_Space}\uFEFF]/gu,
+    (whitespace) => {
+      const existing = [...replacements].find(
+        ([, original]) => original === whitespace,
+      )?.[0];
+      if (existing) return existing;
+      const marker = literalWhitespacePlaceholder(text, used);
+      used.add(marker);
+      replacements.set(marker, whitespace);
+      return marker;
+    },
+  );
   return {
-    text: text.replaceAll(" ", marker),
-    restore: (value: string) => value.replaceAll(marker, " "),
+    text: protectedText,
+    restore: (value: string) =>
+      [...replacements].reduce(
+        (restored, [marker, whitespace]) =>
+          restored.replaceAll(marker, whitespace),
+        value,
+      ),
   };
 }
 
@@ -120,8 +151,10 @@ function wrap(
   width: number,
   color: boolean,
 ): string[] {
-  const text = cleanValue(value.text);
-  if (!text) return [];
+  const text = isLiteralRole(value.role)
+    ? sanitizeTerminalValue(value.text)
+    : cleanValue(value.text);
+  if (!cleanValue(text)) return [];
   const first = fittingPrefix(firstPrefix, width);
   const continuation = fittingPrefix(continuationPrefix, width);
   const standalonePrefix =

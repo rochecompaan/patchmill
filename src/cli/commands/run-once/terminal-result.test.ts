@@ -361,6 +361,50 @@ test("preserves literal-role whitespace through narrow wrapping", () => {
   }
 });
 
+test("preserves significant literal whitespace across wrapping", () => {
+  const renderLiteral = (
+    text: string,
+    role: "path" | "url" | "commit",
+    width = 5,
+  ) => {
+    const output = renderTerminalDocument({
+      label: "Result",
+      severity: "success",
+      width,
+      color: false,
+      sections: [
+        {
+          heading: "Value",
+          blocks: [{ kind: "value", value: { text, role } }],
+        },
+      ],
+    });
+    return output
+      .slice(output.indexOf("Value\n") + "Value\n".length)
+      .split("\n")
+      .map((line) => line.slice(2))
+      .join("");
+  };
+
+  for (const role of ["path", "url", "commit"] as const)
+    for (const literal of [
+      "aa\u00a0bb",
+      "aa\u2003bb",
+      "a \u00a0\u2003  b",
+      "a\uE000 \u00a0b",
+      "  /tmp/path  ",
+    ])
+      assert.equal(renderLiteral(literal, role), literal);
+
+  const normalized = renderLiteral(
+    "left\tmiddle\nright\u001b[31mred\u001b[0m\u0007",
+    "path",
+    10,
+  );
+  assert.equal(normalized, "left middle rightred ");
+  assert.doesNotMatch(normalized, /\t|\n|\r|\u001b|\u0007/u);
+});
+
 test("counts only values that remain renderable after terminal sanitization", () => {
   const summary: RunOnceResultSummary = {
     status: "blocked",
