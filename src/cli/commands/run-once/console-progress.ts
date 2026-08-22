@@ -1,9 +1,16 @@
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 
+export type FinalResultProgressSnapshot = {
+  stepNumber: number;
+  totalOutputTokens: number;
+  elapsedSeconds: number;
+};
+
 export type AgentIssueConsoleProgressReporterOptions = {
   write?: (chunk: string) => void;
   writeLine?: (line: string) => void;
   startedAt?: Date;
+  deferFinalResult?: boolean;
 };
 
 type CurrentStep = {
@@ -87,11 +94,18 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
   private nextStepNumber = 1;
   private totalOutputTokens = 0;
   private currentStep: CurrentStep | undefined;
+  private readonly deferFinalResult: boolean;
+  private finalResult: FinalResultProgressSnapshot | undefined;
 
   constructor(options: AgentIssueConsoleProgressReporterOptions = {}) {
     this.write = options.write ?? ((chunk) => process.stderr.write(chunk));
     this.writeLine = options.writeLine ?? ((line) => this.write(`${line}\n`));
     this.startedAtMs = (options.startedAt ?? new Date()).getTime();
+    this.deferFinalResult = options.deferFinalResult ?? false;
+  }
+
+  finalResultSnapshot(): Readonly<FinalResultProgressSnapshot> | undefined {
+    return this.finalResult ? { ...this.finalResult } : undefined;
   }
 
   event(event: AgentIssueProgressEvent): void {
@@ -124,16 +138,19 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
     }
 
     if (event.step?.type === "step-start") {
-      if (this.nextStepNumber > 1) this.writeLine("");
+      const deferred =
+        this.deferFinalResult && /^final result \S.*$/u.test(event.step.label);
+      if (!deferred && this.nextStepNumber > 1) this.writeLine("");
       this.currentStep = {
         number: this.nextStepNumber,
         label: event.step.label,
         startOutputTokens: this.totalOutputTokens,
       };
       this.nextStepNumber += 1;
-      this.writeLine(
-        `${String(this.currentStep.number).padStart(2, "0")} ${event.step.label}`,
-      );
+      if (!deferred)
+        this.writeLine(
+          `${String(this.currentStep.number).padStart(2, "0")} ${event.step.label}`,
+        );
       return;
     }
 
@@ -166,9 +183,19 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
               (new Date(event.time).getTime() - this.startedAtMs) / 1000,
             ),
           );
-    this.writeLine(
-      `   tokens: task ${formatTokens(taskTokens)} total ${formatTokens(totalTokens)}   time elapsed: ${formatElapsed(elapsedSeconds)}`,
-    );
+    const deferred =
+      this.deferFinalResult && /^final result \S.*$/u.test(step.label);
+    if (deferred) {
+      this.finalResult = {
+        stepNumber: step.number,
+        totalOutputTokens: totalTokens,
+        elapsedSeconds,
+      };
+    } else {
+      this.writeLine(
+        `   tokens: task ${formatTokens(taskTokens)} total ${formatTokens(totalTokens)}   time elapsed: ${formatElapsed(elapsedSeconds)}`,
+      );
+    }
     this.currentStep = undefined;
   }
 }
