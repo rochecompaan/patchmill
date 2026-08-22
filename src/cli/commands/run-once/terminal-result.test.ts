@@ -93,8 +93,83 @@ test("sanitizes hostile strings and styles only renderer output", () => {
   for (const line of colored.split("\n")) assert.ok(visibleWidth(line) <= 32);
 });
 
-test("maps status severity", () => {
+test("maps every status to its visible severity marker and label", () => {
+  const cases: Array<[RunOnceResultSummary, string]> = [
+    [{ status: "no-issue" }, "✓ No eligible issue"],
+    [
+      { status: "dry-run", issueNumber: 1, title: "Issue", transition: "plan" },
+      "✓ Dry run",
+    ],
+    [
+      { status: "spec-created", issueNumber: 1, specPath: "spec.md" },
+      "✓ Specification created",
+    ],
+    [
+      { status: "spec-found", issueNumber: 1, specPath: "spec.md" },
+      "✓ Specification found",
+    ],
+    [
+      { status: "plan-created", issueNumber: 1, planPath: "plan.md" },
+      "✓ Implementation plan created",
+    ],
+    [
+      { status: "plan-found", issueNumber: 1, planPath: "plan.md" },
+      "✓ Implementation plan found",
+    ],
+    [summary, "✓ PR created"],
+    [
+      {
+        status: "merged",
+        issueNumber: 1,
+        planPath: "plan.md",
+        branch: "branch",
+        mergeCommit: "abc",
+        worktreePath: "worktree",
+        commits: [],
+        validation: [],
+      },
+      "✓ Merged",
+    ],
+    [
+      {
+        status: "approval-required",
+        issueNumber: 1,
+        approvalKind: "spec",
+        missingLabel: "spec-approved",
+      },
+      "! Approval required",
+    ],
+    [
+      {
+        status: "development-environment-not-ready",
+        issueNumber: 1,
+        planPath: "plan.md",
+        reason: "not ready",
+        evidence: [],
+        remediation: [],
+      },
+      "! Development environment not ready",
+    ],
+    [
+      { status: "blocked", issueNumber: 1, reason: "blocked", questions: [] },
+      "✗ Blocked",
+    ],
+    [{ status: "error", error: "failed" }, "✗ Error"],
+  ];
+  for (const [result, header] of cases)
+    assert.match(
+      formatTerminalResult(result, { width: 100, color: false }),
+      new RegExp(`Final result: ${header}`, "u"),
+    );
   assert.equal(terminalResultSeverity("pr-created"), "success");
   assert.equal(terminalResultSeverity("approval-required"), "warning");
   assert.equal(terminalResultSeverity("blocked"), "failure");
+});
+
+test("omits optional empty sections", () => {
+  const output = formatTerminalResult(
+    { status: "no-issue" },
+    { width: 80, color: false },
+  );
+  assert.doesNotMatch(output, /\n\n\n|\(0\)|Artifacts|Run files/u);
 });
