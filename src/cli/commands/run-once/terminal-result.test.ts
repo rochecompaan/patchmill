@@ -405,6 +405,48 @@ test("preserves significant literal whitespace across wrapping", () => {
   assert.doesNotMatch(normalized, /\t|\n|\r|\u001b|\u0007/u);
 });
 
+test("preserves two-cell literal whitespace at narrow widths", () => {
+  const decodeNarrowCodec = (text: string) =>
+    text.replaceAll(
+      /\\(?:\\|u\{([\da-f]+)\})/giu,
+      (match, hex: string | undefined) =>
+        hex === undefined
+          ? "\\"
+          : String.fromCodePoint(Number.parseInt(hex, 16)),
+    );
+  const literal = "a\u3000b";
+
+  for (const role of ["path", "url", "commit"] as const)
+    for (const width of [4, 1]) {
+      const output = renderTerminalDocument({
+        label: "",
+        severity: "success",
+        width,
+        color: false,
+        sections: [
+          {
+            heading: "",
+            blocks: [{ kind: "value", value: { text: literal, role } }],
+          },
+        ],
+      });
+      for (const line of output.split("\n"))
+        assert.ok(
+          visibleWidth(line) <= width,
+          `${visibleWidth(line)} > ${width}`,
+        );
+      const rendered = output
+        .slice(output.lastIndexOf("\n\n") + 2)
+        .split("\n")
+        .map((line) => line.replace(/^ {2}/u, ""))
+        .join("");
+      assert.equal(
+        width === 1 ? decodeNarrowCodec(rendered) : rendered,
+        literal,
+      );
+    }
+});
+
 test("counts only values that remain renderable after terminal sanitization", () => {
   const summary: RunOnceResultSummary = {
     status: "blocked",

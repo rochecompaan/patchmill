@@ -107,11 +107,37 @@ function isLiteralRole(role: TerminalValue["role"]): boolean {
   return role === "url" || role === "path" || role === "commit";
 }
 
-function literalWhitespacePlaceholder(text: string, used: Set<string>): string {
-  for (let codePoint = 0xe000; codePoint <= 0xf8ff; codePoint += 1) {
-    const marker = String.fromCodePoint(codePoint);
-    if (!text.includes(marker) && !used.has(marker)) return marker;
-  }
+function literalWhitespacePlaceholder(
+  text: string,
+  used: Set<string>,
+  width: number,
+): string {
+  const ranges =
+    width === 0
+      ? [
+          [0x200b, 0x200f],
+          [0x2060, 0x2064],
+        ]
+      : width === 1
+        ? [[0xe000, 0xf8ff]]
+        : width === 2
+          ? [
+              [0x3001, 0x303f],
+              [0xff01, 0xff60],
+              [0x4e00, 0x9fff],
+            ]
+          : [];
+  for (const [start, end] of ranges)
+    for (let codePoint = start; codePoint <= end; codePoint += 1) {
+      const marker = String.fromCodePoint(codePoint);
+      if (
+        !text.includes(marker) &&
+        !used.has(marker) &&
+        !/[\p{White_Space}\uFEFF]/u.test(marker) &&
+        visibleWidth(marker) === width
+      )
+        return marker;
+    }
   throw new Error("no literal whitespace placeholder is available");
 }
 
@@ -127,7 +153,11 @@ function protectLiteralWhitespace(text: string, role: TerminalValue["role"]) {
         ([, original]) => original === whitespace,
       )?.[0];
       if (existing) return existing;
-      const marker = literalWhitespacePlaceholder(text, used);
+      const marker = literalWhitespacePlaceholder(
+        text,
+        used,
+        visibleWidth(whitespace),
+      );
       used.add(marker);
       replacements.set(marker, whitespace);
       return marker;
@@ -162,14 +192,14 @@ function wrap(
       ? firstPrefix.replace(/^ +| +$/gu, "")
       : undefined;
   const prefixes = standalonePrefix ? [standalonePrefix] : [];
-  const protectedText = protectLiteralWhitespace(text, value.role);
   const firstAvailable = Math.max(1, width - visibleWidth(first));
   const continuationAvailable = Math.max(1, width - visibleWidth(continuation));
   const encodedText = encodeNarrowGraphemes(
-    protectedText.text,
+    text,
     Math.min(firstAvailable, continuationAvailable),
   );
-  const lines = wrapTextWithAnsi(encodedText, firstAvailable);
+  const protectedText = protectLiteralWhitespace(encodedText, value.role);
+  const lines = wrapTextWithAnsi(protectedText.text, firstAvailable);
   return [
     ...prefixes,
     ...lines.flatMap((line, index) => {
