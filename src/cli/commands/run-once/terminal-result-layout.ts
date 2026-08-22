@@ -201,30 +201,32 @@ export function renderTerminalDocument(input: TerminalDocument): string {
       ),
     );
   }
-  const sections = input.sections.flatMap((section) => {
-    const body = section.blocks.flatMap((block) =>
-      block.kind === "value"
-        ? wrap(block.value, "  ", "  ", width, color)
-        : block.kind === "fields"
-          ? renderFields(block.fields, width, color, 2)
-          : renderList(block, width, color),
-    );
-    return body.length
-      ? [
-          styled(
-            section.count === undefined
-              ? section.heading
-              : `${section.heading} (${section.count})`,
-            SGR.bold,
-            color,
-          ),
-          ...body,
-        ]
-      : [];
-  });
+  const sections = input.sections
+    .map((section) => {
+      const body = section.blocks.flatMap((block) =>
+        block.kind === "value"
+          ? wrap(block.value, "  ", "  ", width, color)
+          : block.kind === "fields"
+            ? renderFields(block.fields, width, color, 2)
+            : renderList(block, width, color),
+      );
+      return body.length
+        ? [
+            styled(
+              section.count === undefined
+                ? section.heading
+                : `${section.heading} (${section.count})`,
+              SGR.bold,
+              color,
+            ),
+            ...body,
+          ].join("\n")
+        : undefined;
+    })
+    .filter((section): section is string => section !== undefined);
   return [
     ...lines,
     ...metrics,
-    ...(sections.length ? ["", ...sections.join("\n").split("\n")] : []),
+    ...(sections.length ? ["", sections.join("\n\n")] : []),
   ].join("\n");
 }
