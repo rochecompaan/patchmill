@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.20.0](https://github.com/rochecompaan/patchmill/compare/v0.19.0...v0.20.0) (2026-08-22)
+
+
+### Features
+
+* **deps:** automate pi-subagents upgrade pull requests ([cc09ad1](https://github.com/rochecompaan/patchmill/commit/cc09ad172e053558ebfcabcd9ad4b1ea0df62092))
+* **pi:** persist safe subagent runtime metadata ([#146](https://github.com/rochecompaan/patchmill/issues/146)) ([9eaaac5](https://github.com/rochecompaan/patchmill/commit/9eaaac580ed4f03c662c87b2613cb87bb3ddf7d2))
+* **run-once:** format final results for terminals ([#181](https://github.com/rochecompaan/patchmill/issues/181)) ([521f074](https://github.com/rochecompaan/patchmill/commit/521f0747520d4535fded55148cd2878257df67d3))
+
+
+### Bug Fixes
+
+* **auth:** keep selected provider visible ([#176](https://github.com/rochecompaan/patchmill/issues/176)) ([1c05e3f](https://github.com/rochecompaan/patchmill/commit/1c05e3ffccefc9ea4357a282e19fa5f3f8d9ad12))
+
 ## [0.19.0](https://github.com/rochecompaan/patchmill/compare/v0.18.0...v0.19.0) (2026-08-06)
 
 
