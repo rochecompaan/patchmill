@@ -37,6 +37,23 @@ patchmill run-once --plan-only --issue 123
   implementation.
 - `--quiet` suppresses terminal progress while still writing the JSONL run log.
 
+## Final result output
+
+Progress remains on stderr. In an interactive terminal, stdout ends with a
+readable grouped report that wraps long values and renders arrays vertically.
+Literal paths and URLs stay visible and copyable even when they wrap.
+
+Redirect stdout to retain the compact one-line JSON result for scripts:
+
+```sh
+patchmill run-once > result.json
+jq . result.json
+```
+
+`--quiet` suppresses progress, not the final report or result. `NO_COLOR` or
+`TERM=dumb` removes ANSI styling while retaining the readable terminal text. The
+resolved JSONL run log always ends with the full structured `result` event.
+
 ## What execute mode does
 
 When `run-once` executes work, the high-level sequence is:

@@ -15,11 +15,15 @@ import {
 import { createCommandRunner } from "../triage/command.ts";
 import { detectDefaultBaseBranch } from "./git.ts";
 import { appendPiErrorCause, formatErrorWithCauses } from "./pi-errors.ts";
-import type {
-  AgentIssuePipelineResult,
-  AgentIssueVisualEvidence,
-  CommandRunner,
-} from "./types.ts";
+import { summarizeErrorResult, summarizeResult } from "./result-summary.ts";
+import {
+  exitCodeForRunOnceResult,
+  writeRunOnceResult,
+} from "./result-output.ts";
+import type { WriteRunOnceResultOptions } from "./result-output.ts";
+import type { AgentIssuePipelineResult, CommandRunner } from "./types.ts";
+
+export { summarizeResult } from "./result-summary.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill run-once [options]
@@ -28,8 +32,9 @@ export const HELP_TEXT = `Usage:
 Advance one actionable issue through spec, plan, or implementation workflow states.
 Claims and processes one eligible issue by default.
 Use --dry-run to preview the next eligible issue without mutating the configured issue host or git.
-Progress is written to stderr by default. Final JSON is written to stdout.
-Run logs are written under the configured run state directory (default: .patchmill/runs/).
+Progress is written to stderr by default. Interactive stdout ends with a readable formatted result; redirected stdout remains compact JSON.
+--quiet suppresses progress but not the final result. NO_COLOR disables result styling without changing output mode.
+Run logs are written under the configured run state directory (default: .patchmill/runs/) and end with a structured result event.
 
 Options:
   --help, -h          Show this help and exit.
@@ -47,92 +52,8 @@ Environment:
 
 type Env = Record<string, string | undefined>;
 
-type JsonResultLog = { logPath?: string; piSessionPath?: string };
-
-type JsonResult = JsonResultLog &
-  (
-    | { status: "no-issue" }
-    | {
-        status: "dry-run";
-        issueNumber: number;
-        title: string;
-        transition: string;
-      }
-    | {
-        status: "spec-created" | "spec-found";
-        issueNumber: number;
-        specPath: string;
-      }
-    | {
-        status: "plan-created" | "plan-found";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-      }
-    | {
-        status: "pr-created";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-        branch: string;
-        prUrl: string;
-        worktreePath: string;
-        commits: string[];
-        validation: string[];
-        reviewSummary?: string;
-        landingDecision?: string;
-        visualEvidence?: AgentIssueVisualEvidence[];
-      }
-    | {
-        status: "merged";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-        branch: string;
-        mergeCommit: string;
-        worktreePath: string;
-        commits: string[];
-        validation: string[];
-        reviewSummary?: string;
-        landingDecision?: string;
-      }
-    | {
-        status: "approval-required";
-        issueNumber: number;
-        approvalKind: "spec" | "plan";
-        missingLabel: string;
-      }
-    | {
-        status: "development-environment-not-ready";
-        issueNumber: number;
-        specPath?: string;
-        planPath: string;
-        branch?: string;
-        worktreePath?: string;
-        reason: string;
-        evidence: string[];
-        remediation: string[];
-      }
-    | {
-        status: "blocked";
-        issueNumber: number;
-        reason: string;
-        questions: string[];
-      }
-  );
-
 function isHelpOnlyInvocation(args: string[]): boolean {
   return args.includes("--help") || args.includes("-h");
-}
-
-function questionText(
-  question: string | { question: string; recommendedAnswer?: string },
-): string {
-  return typeof question === "string"
-    ? question
-    : question.recommendedAnswer
-      ? `${question.question} (recommended: ${question.recommendedAnswer})`
-      : question.question;
 }
 
 function issueNumberFromResult(
@@ -141,7 +62,7 @@ function issueNumberFromResult(
   return "issue" in result ? result.issue.number : undefined;
 }
 
-async function finalLogPath(
+export async function finalLogPath(
   preliminaryLogPath: string,
   runStateDir: string,
   timestamp: string,
@@ -154,107 +75,22 @@ async function finalLogPath(
   if (issueLogPath === preliminaryLogPath) return preliminaryLogPath;
 
   await mkdir(dirname(issueLogPath), { recursive: true });
-  await rename(preliminaryLogPath, issueLogPath).catch(() => undefined);
+  await rename(preliminaryLogPath, issueLogPath);
   return issueLogPath;
 }
 
-export function summarizeResult(result: AgentIssuePipelineResult): JsonResult {
-  const withLogPath = {
-    ...(result.logPath ? { logPath: result.logPath } : {}),
-    ...(result.piSessionPath ? { piSessionPath: result.piSessionPath } : {}),
-  };
-
-  switch (result.status) {
-    case "no-issue":
-      return { status: result.status, ...withLogPath };
-    case "dry-run":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        title: result.issue.title,
-        transition: result.transition,
-        ...withLogPath,
-      };
-    case "spec-created":
-    case "spec-found":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        specPath: result.specPath,
-        ...withLogPath,
-      };
-    case "plan-created":
-    case "plan-found":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        ...withLogPath,
-      };
-    case "pr-created":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        branch: result.branch,
-        prUrl: result.prUrl,
-        worktreePath: result.worktreePath,
-        commits: result.commits,
-        validation: result.validation,
-        reviewSummary: result.reviewSummary,
-        landingDecision: result.landingDecision,
-        visualEvidence: result.visualEvidence,
-        ...withLogPath,
-      };
-    case "merged":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        branch: result.branch,
-        mergeCommit: result.mergeCommit,
-        worktreePath: result.worktreePath,
-        commits: result.commits,
-        validation: result.validation,
-        reviewSummary: result.reviewSummary,
-        landingDecision: result.landingDecision,
-        ...withLogPath,
-      };
-    case "approval-required":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        approvalKind: result.approvalKind,
-        missingLabel: result.missingLabel,
-        ...withLogPath,
-      };
-    case "development-environment-not-ready":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
-        planPath: result.planPath,
-        ...(result.branch !== undefined ? { branch: result.branch } : {}),
-        ...(result.worktreePath !== undefined
-          ? { worktreePath: result.worktreePath }
-          : {}),
-        reason: result.reason,
-        evidence: result.evidence,
-        remediation: result.remediation,
-        ...withLogPath,
-      };
-    case "blocked":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        reason: result.reason,
-        questions: result.questions.map(questionText),
-        ...withLogPath,
-      };
+export async function writePipelineFailureResult(
+  error: unknown,
+  logPath: string,
+  options: Omit<WriteRunOnceResultOptions, "logPath">,
+): Promise<0 | 1> {
+  const summary = summarizeErrorResult(error, logPath);
+  try {
+    await writeRunOnceResult(summary, { ...options, logPath });
+  } catch (reportingError) {
+    throw appendPiErrorCause(error, "result reporting", reportingError);
   }
+  return exitCodeForRunOnceResult(summary);
 }
 
 async function resolveRunOnceConfigBaseBranch(
@@ -312,11 +148,16 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     }
 
     const logPath = runLogPath(config.runStateDir, timestamp);
+    const interactiveOutput = process.stdout.isTTY === true;
+    const consoleProgress = config.quiet
+      ? undefined
+      : new AgentIssueConsoleProgressReporter({
+          startedAt,
+          deferFinalResult: interactiveOutput,
+        });
     const progress = compositeProgressReporter([
       new JsonlProgressReporter(logPath),
-      ...(config.quiet
-        ? []
-        : [new AgentIssueConsoleProgressReporter({ startedAt })]),
+      ...(consoleProgress ? [consoleProgress] : []),
     ]);
 
     let result: AgentIssuePipelineResult;
@@ -351,18 +192,14 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
           reportingError,
         );
       }
-      const terminalFormatted = formatErrorWithCauses(terminalError);
-      console.log(
-        JSON.stringify({
-          status: "error",
-          error: terminalFormatted.message,
-          ...(terminalFormatted.causes
-            ? { causes: terminalFormatted.causes }
-            : {}),
-          logPath,
-        }),
-      );
-      return 1;
+      return writePipelineFailureResult(terminalError, logPath, {
+        stdout: process.stdout,
+        env: process.env,
+        elapsedSeconds: Math.max(
+          0,
+          Math.round((Date.now() - startedAt.getTime()) / 1000),
+        ),
+      });
     }
 
     const outputLogPath = await finalLogPath(
@@ -371,24 +208,25 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       timestamp,
       result,
     );
-    console.log(
-      JSON.stringify(summarizeResult({ ...result, logPath: outputLogPath })),
-    );
-    return result.status === "blocked" ||
-      result.status === "approval-required" ||
-      result.status === "development-environment-not-ready"
-      ? 1
-      : 0;
+    const summary = summarizeResult({ ...result, logPath: outputLogPath });
+    await writeRunOnceResult(summary, {
+      stdout: process.stdout,
+      env: process.env,
+      logPath: outputLogPath,
+      progress: consoleProgress?.finalResultSnapshot(),
+      elapsedSeconds: Math.max(
+        0,
+        Math.round((Date.now() - startedAt.getTime()) / 1000),
+      ),
+    });
+    return exitCodeForRunOnceResult(summary);
   } catch (error) {
-    const formatted = formatErrorWithCauses(error);
-    console.log(
-      JSON.stringify({
-        status: "error",
-        error: formatted.message,
-        ...(formatted.causes ? { causes: formatted.causes } : {}),
-      }),
-    );
-    return 1;
+    const summary = summarizeErrorResult(error);
+    await writeRunOnceResult(summary, {
+      stdout: process.stdout,
+      env: process.env,
+    });
+    return exitCodeForRunOnceResult(summary);
   }
 }
 

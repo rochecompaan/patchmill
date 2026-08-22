@@ -449,6 +449,78 @@ test("console reporter separates completed steps with a blank line", () => {
   ]);
 });
 
+test("console reporter defers final result and captures its metrics", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+    deferFinalResult: true,
+  });
+  reporter.event(event({ step: { type: "step-start", label: "task" } }));
+  reporter.event(
+    event({
+      level: "debug",
+      observation: { type: "assistant-usage", outputTokens: 56_000 },
+    }),
+  );
+  reporter.event(
+    event({
+      time: "2026-05-22T10:01:00.000Z",
+      step: { type: "step-complete", label: "task" },
+    }),
+  );
+  reporter.event(
+    event({ step: { type: "step-start", label: "final result pr-created" } }),
+  );
+  reporter.event(
+    event({
+      time: "2026-05-22T14:20:02.000Z",
+      step: {
+        type: "step-complete",
+        label: "final result pr-created",
+        elapsedSeconds: 15_602,
+      },
+    }),
+  );
+  assert.deepEqual(reporter.finalResultSnapshot(), {
+    stepNumber: 2,
+    totalOutputTokens: 56_000,
+    elapsedSeconds: 15_602,
+  });
+  assert.equal(
+    lines.some((line) => line.includes("final result")),
+    false,
+  );
+});
+
+test("console reporter has no deferred snapshot before completion or without a final step", () => {
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine() {},
+    startedAt: BASE,
+    deferFinalResult: true,
+  });
+  assert.equal(reporter.finalResultSnapshot(), undefined);
+  reporter.event(
+    event({ step: { type: "step-start", label: "final result pr-created" } }),
+  );
+  assert.equal(reporter.finalResultSnapshot(), undefined);
+  reporter.event(
+    event({
+      step: { type: "step-complete", label: "final result pr-created" },
+    }),
+  );
+  assert.deepEqual(reporter.finalResultSnapshot(), {
+    stepNumber: 1,
+    totalOutputTokens: 0,
+    elapsedSeconds: 0,
+  });
+
+  const ordinary = new AgentIssueConsoleProgressReporter({ writeLine() {} });
+  ordinary.event(event({ step: { type: "step-start", label: "task" } }));
+  ordinary.event(event({ step: { type: "step-complete", label: "task" } }));
+  assert.equal(ordinary.finalResultSnapshot(), undefined);
+});
+
 test("console reporter uses completion event accounting fields without synthesizing tool-call dots", () => {
   const lines: string[] = [];
   const reporter = new AgentIssueConsoleProgressReporter({
