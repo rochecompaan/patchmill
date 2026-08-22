@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
-import { renderTerminalDocument } from "./terminal-result-layout.ts";
+import {
+  cleanValue,
+  renderTerminalDocument,
+} from "./terminal-result-layout.ts";
 import {
   formatTerminalResult,
   terminalResultSeverity,
@@ -290,6 +293,44 @@ test("encodes individually too-wide graphemes only when necessary", () => {
     );
     assert.ok(wide.includes(literal));
   }
+});
+
+test("uses an unambiguous narrow codec for over-wide graphemes", () => {
+  const decodeNarrowCodec = (text: string) =>
+    text.replaceAll(
+      /\\(?:\\|u\{([\da-f]+)\})/giu,
+      (match, hex: string | undefined) =>
+        hex === undefined
+          ? "\\"
+          : String.fromCodePoint(Number.parseInt(hex, 16)),
+    );
+  const emoji = formatTerminalResult(
+    { status: "error", error: "😀" },
+    { width: 1, color: false },
+  );
+  const literalEscape = formatTerminalResult(
+    { status: "error", error: "\\u{1f600}" },
+    { width: 1, color: false },
+  );
+
+  assert.notEqual(emoji, literalEscape);
+  assert.ok(decodeNarrowCodec(emoji.replaceAll("\n", "")).includes("😀"));
+  assert.ok(
+    decodeNarrowCodec(literalEscape.replaceAll("\n", "")).includes(
+      "\\u{1f600}",
+    ),
+  );
+});
+
+test("replaces tabs in hostile terminal values before wrapping", () => {
+  assert.equal(cleanValue("first\tsecond\u0007"), "first second");
+  const output = formatTerminalResult(
+    { status: "error", error: "first\tsecond\u0007" },
+    { width: 12, color: false },
+  );
+  assert.doesNotMatch(output, /\t|\u0007/u);
+  for (const line of output.split("\n"))
+    assert.ok(visibleWidth(line) <= 12, `${visibleWidth(line)} > 12`);
 });
 
 test("preserves literal-role whitespace through narrow wrapping", () => {

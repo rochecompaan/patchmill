@@ -67,7 +67,7 @@ const styled = (value: string, prefix: string, color: boolean) =>
 export function cleanValue(value: string): string {
   return stripTerminalSequences(value)
     .replace(/\r\n?|\n/gu, " ")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, " ")
+    .replace(/[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, " ")
     .trim();
 }
 
@@ -85,19 +85,18 @@ function fittingPrefix(prefix: string, width: number): string {
   return visibleWidth(compact) < width ? compact : "";
 }
 
-function encodeOversizeGraphemes(text: string, width: number): string {
+function encodeNarrowGraphemes(text: string, width: number): string {
+  if (width >= 2) return text;
   return [
     ...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text),
   ]
-    .map(({ segment }) =>
-      visibleWidth(segment) > width
-        ? [...segment]
-            .map(
-              (codePoint) => `\\u{${codePoint.codePointAt(0)?.toString(16)}}`,
-            )
-            .join("")
-        : segment,
-    )
+    .map(({ segment }) => {
+      if (visibleWidth(segment) > width)
+        return [...segment]
+          .map((codePoint) => `\\u{${codePoint.codePointAt(0)?.toString(16)}}`)
+          .join("");
+      return segment.replaceAll("\\", "\\\\");
+    })
     .join("");
 }
 
@@ -131,22 +130,19 @@ function wrap(
       : undefined;
   const prefixes = standalonePrefix ? [standalonePrefix] : [];
   const protectedText = protectLiteralWhitespace(text, value.role);
-  const lines = wrapTextWithAnsi(
-    encodeOversizeGraphemes(
-      protectedText.text,
-      Math.max(1, width - visibleWidth(first)),
-    ),
-    Math.max(1, width - visibleWidth(first)),
+  const firstAvailable = Math.max(1, width - visibleWidth(first));
+  const continuationAvailable = Math.max(1, width - visibleWidth(continuation));
+  const encodedText = encodeNarrowGraphemes(
+    protectedText.text,
+    Math.min(firstAvailable, continuationAvailable),
   );
+  const lines = wrapTextWithAnsi(encodedText, firstAvailable);
   return [
     ...prefixes,
     ...lines.flatMap((line, index) => {
       const prefix = index === 0 ? first : continuation;
-      const available = Math.max(1, width - visibleWidth(prefix));
-      return wrapTextWithAnsi(
-        encodeOversizeGraphemes(line, available),
-        available,
-      ).map(
+      const available = index === 0 ? firstAvailable : continuationAvailable;
+      return wrapTextWithAnsi(line, available).map(
         (part) =>
           `${prefix}${style(protectedText.restore(part), value.role, color)}`,
       );
