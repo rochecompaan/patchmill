@@ -15,7 +15,11 @@ import {
 import { createCommandRunner } from "../triage/command.ts";
 import { detectDefaultBaseBranch } from "./git.ts";
 import { appendPiErrorCause, formatErrorWithCauses } from "./pi-errors.ts";
-import { summarizeResult } from "./result-summary.ts";
+import { summarizeErrorResult, summarizeResult } from "./result-summary.ts";
+import {
+  exitCodeForRunOnceResult,
+  writeRunOnceResult,
+} from "./result-output.ts";
 import type { AgentIssuePipelineResult, CommandRunner } from "./types.ts";
 
 export { summarizeResult } from "./result-summary.ts";
@@ -27,8 +31,9 @@ export const HELP_TEXT = `Usage:
 Advance one actionable issue through spec, plan, or implementation workflow states.
 Claims and processes one eligible issue by default.
 Use --dry-run to preview the next eligible issue without mutating the configured issue host or git.
-Progress is written to stderr by default. Final JSON is written to stdout.
-Run logs are written under the configured run state directory (default: .patchmill/runs/).
+Progress is written to stderr by default. Interactive stdout ends with a readable formatted result; redirected stdout remains compact JSON.
+--quiet suppresses progress but not the final result. NO_COLOR disables result styling without changing output mode.
+Run logs are written under the configured run state directory (default: .patchmill/runs/) and end with a structured result event.
 
 Options:
   --help, -h          Show this help and exit.
@@ -128,11 +133,16 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     }
 
     const logPath = runLogPath(config.runStateDir, timestamp);
+    const interactiveOutput = process.stdout.isTTY === true;
+    const consoleProgress = config.quiet
+      ? undefined
+      : new AgentIssueConsoleProgressReporter({
+          startedAt,
+          deferFinalResult: interactiveOutput,
+        });
     const progress = compositeProgressReporter([
       new JsonlProgressReporter(logPath),
-      ...(config.quiet
-        ? []
-        : [new AgentIssueConsoleProgressReporter({ startedAt })]),
+      ...(consoleProgress ? [consoleProgress] : []),
     ]);
 
     let result: AgentIssuePipelineResult;
@@ -167,18 +177,17 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
           reportingError,
         );
       }
-      const terminalFormatted = formatErrorWithCauses(terminalError);
-      console.log(
-        JSON.stringify({
-          status: "error",
-          error: terminalFormatted.message,
-          ...(terminalFormatted.causes
-            ? { causes: terminalFormatted.causes }
-            : {}),
-          logPath,
-        }),
-      );
-      return 1;
+      const summary = summarizeErrorResult(terminalError, logPath);
+      await writeRunOnceResult(summary, {
+        stdout: process.stdout,
+        env: process.env,
+        logPath,
+        elapsedSeconds: Math.max(
+          0,
+          Math.round((Date.now() - startedAt.getTime()) / 1000),
+        ),
+      });
+      return exitCodeForRunOnceResult(summary);
     }
 
     const outputLogPath = await finalLogPath(
@@ -187,24 +196,25 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       timestamp,
       result,
     );
-    console.log(
-      JSON.stringify(summarizeResult({ ...result, logPath: outputLogPath })),
-    );
-    return result.status === "blocked" ||
-      result.status === "approval-required" ||
-      result.status === "development-environment-not-ready"
-      ? 1
-      : 0;
+    const summary = summarizeResult({ ...result, logPath: outputLogPath });
+    await writeRunOnceResult(summary, {
+      stdout: process.stdout,
+      env: process.env,
+      logPath: outputLogPath,
+      progress: consoleProgress?.finalResultSnapshot(),
+      elapsedSeconds: Math.max(
+        0,
+        Math.round((Date.now() - startedAt.getTime()) / 1000),
+      ),
+    });
+    return exitCodeForRunOnceResult(summary);
   } catch (error) {
-    const formatted = formatErrorWithCauses(error);
-    console.log(
-      JSON.stringify({
-        status: "error",
-        error: formatted.message,
-        ...(formatted.causes ? { causes: formatted.causes } : {}),
-      }),
-    );
-    return 1;
+    const summary = summarizeErrorResult(error);
+    await writeRunOnceResult(summary, {
+      stdout: process.stdout,
+      env: process.env,
+    });
+    return exitCodeForRunOnceResult(summary);
   }
 }
 
