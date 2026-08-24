@@ -54,6 +54,15 @@
     "prepare": "husky",
     "test": "node --test \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\" \"scripts/*.test.mjs\"",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='bin/**/*.ts' --test-coverage-include='src/**/*.ts' --test-coverage-include='test-support/**/*.ts' --test-coverage-exclude='**/*.test.ts' \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
+    "check:architecture": "depcruise --config dependency-cruiser.config.mjs bin src extensions",
+    "check:coverage": "c8 node --test \"bin/*.test.ts\" \"src/**/*.test.ts\" \"test-support/*.test.ts\"",
+    "check:crap": "npm run check:coverage && crap-ts score --skip-coverage --report-only",
+    "check:crap:strict": "npm run check:coverage && crap-ts score --skip-coverage",
+    "check:mutation": "stryker run",
+    "check:property": "node --test \"quality/property/*.test.ts\"",
+    "test:mutation": "node --test src/policy/todo-statuses.test.ts quality/property/todo-statuses.property.test.ts",
+    "check:static": "eslint \"{bin,src,test-support,quality}/**/*.ts\" --max-warnings=0",
+    "check:types": "tsc -p tsconfig.quality.json",
     "test:cli": "node --test bin/*.test.ts src/cli/main.test.ts",
     "test:triage": "node --test src/cli/commands/triage/*.test.ts",
     "test:run-once": "node --test src/cli/commands/run-once/*.test.ts",
@@ -66,12 +75,22 @@
     "{bin,src,test-support}/**/*.ts": "eslint --max-warnings=0",
     "*.md": "markdownlint-cli2"
   },
+  "overrides": {
+    "typed-rest-client": {
+      "qs": "6.15.3"
+    }
+  },
   "engines": {
     "node": ">=22.19.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "c8": "^12.0.0",
+    "crap-ts": "^0.1.1",
+    "dependency-cruiser": "^18.2.0",
     "eslint": "^10.4.0",
+    "fast-check": "^4.9.0",
     "globals": "^17.6.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
