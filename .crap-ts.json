@@ -1,0 +1,7 @@
+{
+  "coverageFile": "coverage/coverage-final.json",
+  "include": ["/bin/", "/src/"],
+  "limit": 30,
+  "max": 30,
+  "minLines": 1
+}

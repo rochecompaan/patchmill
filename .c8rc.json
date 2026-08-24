@@ -1,0 +1,9 @@
+{
+  "all": true,
+  "clean": true,
+  "extension": [".ts"],
+  "include": ["bin/**/*.ts", "src/**/*.ts"],
+  "exclude": ["**/*.test.ts"],
+  "reporter": ["text", "json", "json-summary"],
+  "reports-dir": "coverage"
+}
