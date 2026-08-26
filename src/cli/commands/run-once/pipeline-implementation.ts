@@ -338,7 +338,10 @@ export async function runPipelineImplementationStage(
       const observeImplementation = async (
         observation: AgentIssueProgressEvent["observation"],
       ): Promise<void> => {
-        if (observation?.type === "tool-call") {
+        if (
+          observation?.type === "tool-call" ||
+          observation?.type === "subagent-progress"
+        ) {
           await refreshImplementationTask({ startFinalWhenComplete: true });
         }
         await observePi("pi-implementation")(observation);
