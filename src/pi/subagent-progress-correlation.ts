@@ -274,6 +274,11 @@ export function createSubagentProgressCorrelator(options: {
       )
         return;
       const existing = directRuns.get(key);
+      // A direct run's launch mode is immutable: async runs only resolve
+      // through their documented completion, while foreground runs end here.
+      // Reject contradictory snapshots before they can add children or release
+      // an active async run.
+      if (existing && existing.async !== snapshot.pendingAsyncSingle) return;
       const rows = snapshot.pendingAsyncSingle
         ? [{ childIndex: 0, state: "pending" as const }]
         : snapshot.children;

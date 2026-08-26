@@ -99,6 +99,63 @@ test("retains an async direct child under its launch parent until completion", (
   );
 });
 
+test("rejects foreground snapshots for an active async direct run", () => {
+  const state = harness();
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { mode: "single", asyncId: "async", results: [] } },
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: {
+        mode: "single",
+        runId: "async",
+        results: [{ index: 1, agent: "worker", exitCode: 0 }],
+      },
+    },
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [
+          {
+            runId: "async",
+            state: "complete",
+            results: [{ agent: "reviewer" }],
+          },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "async",
+      childIndex: 0,
+      state: "pending",
+    },
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "async",
+      childIndex: 0,
+      state: "completed",
+      agent: "reviewer",
+    },
+  ]);
+});
+
 test("keeps colliding workflow result indexes independently visible and delays fallback", () => {
   const state = harness();
   const summary = (complete: boolean, rows: unknown[]) => ({
@@ -395,14 +452,14 @@ test("restoration counts matching entries but deduplicates active tuple keys", (
   };
   state.correlator.restore([entry, entry]);
   state.correlator.observe({
-    phase: "update",
-    toolName: "subagent",
-    toolCallId: "open",
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
     result: {
       details: {
-        mode: "single",
-        runId: "run",
-        results: [{ index: 0, agent: "worker" }],
+        completions: [
+          { runId: "run", state: "complete", results: [{ agent: "worker" }] },
+        ],
       },
     },
   });
