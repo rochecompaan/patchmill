@@ -411,7 +411,8 @@ export function parsePersistedSubagentProgress(
     !isRecord(value) ||
     value.version !== 1 ||
     (value.unresolved !== undefined && value.unresolved !== true) ||
-    (value.inventoryClosed !== undefined && value.inventoryClosed !== true)
+    (value.inventoryClosed !== undefined && value.inventoryClosed !== true) ||
+    (value.unresolved === true && value.inventoryClosed === true)
   )
     return undefined;
   if (value.kind === "direct") {

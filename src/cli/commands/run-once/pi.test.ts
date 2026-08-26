@@ -14,9 +14,11 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
+import { SUBAGENT_PROGRESS_LIMITS } from "../../../pi/subagent-progress.ts";
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import {
   createExactPiSessionObservationStreamer,
+  createExactPiSessionProgressState,
   createPiSessionObservationStreamer,
   sessionEntryToObservations,
   sessionEntryToStreamText,
@@ -1660,6 +1662,81 @@ test("runPiPrompt reads planning task progress from the configured task contract
         progress.label === "dashboard wiring",
     ),
   );
+});
+
+test("exact session progress honors matching-entry ceilings before parsing", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-progress-limit-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const progress = {
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 0,
+      state: "running",
+    },
+  };
+  for (const {
+    label,
+    entries,
+    initialMatchingEntries,
+    expectedObservations,
+  } of [
+    {
+      label: "exact",
+      entries: [progress],
+      initialMatchingEntries: SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession - 1,
+      expectedObservations: ["run"],
+    },
+    {
+      label: "one-over",
+      entries: [progress],
+      initialMatchingEntries: SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession,
+      expectedObservations: [],
+    },
+    {
+      label: "malformed-consumes-capacity",
+      entries: [
+        {
+          type: "custom",
+          customType: "patchmill-subagent-progress",
+          data: { version: 1 },
+        },
+        progress,
+      ],
+      initialMatchingEntries: SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession - 1,
+      expectedObservations: [],
+    },
+  ]) {
+    const sessionPath = join(dir, `${label}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+      "utf8",
+    );
+    const progressState = createExactPiSessionProgressState();
+    progressState.matchingEntries = initialMatchingEntries;
+    const observed: string[] = [];
+    const streamer = createExactPiSessionObservationStreamer(
+      sessionPath,
+      (observation) => {
+        if (observation.type === "subagent-progress")
+          observed.push(observation.progress.runId);
+      },
+      { progressState },
+    );
+    streamer.start();
+    await streamer.stop();
+    assert.deepEqual(observed, expectedObservations, label);
+    assert.equal(
+      progressState.matchingEntries,
+      initialMatchingEntries + entries.length,
+      label,
+    );
+  }
 });
 
 test("createExactPiSessionObservationStreamer starts at a caller-provided byte offset", async (t) => {

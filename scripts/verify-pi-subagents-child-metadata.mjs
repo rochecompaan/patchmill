@@ -375,8 +375,7 @@ export function validateWorkflowShapeContract({
         );
     }
     for (const id of previousIds)
-      if (!ids.has(id) && summary.inventoryComplete !== true)
-        throw new Error(`${label}: open inventory removed ${id}`);
+      if (!ids.has(id)) throw new Error(`${label}: inventory removed ${id}`);
     previousIds = ids;
   }
   const final = summaries.at(-1)?.summary;

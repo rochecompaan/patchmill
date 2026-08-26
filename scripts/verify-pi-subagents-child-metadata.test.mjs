@@ -111,6 +111,45 @@ test("validateWorkflowShapeContract uses stable workflow child IDs rather than r
   );
 });
 
+test("validateWorkflowShapeContract rejects inventory shrinkage at closure", () => {
+  const summary = (inventoryComplete, children) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete,
+    workflowState: inventoryComplete ? "completed" : "running",
+    children,
+  });
+  assert.throws(
+    () =>
+      validateWorkflowShapeContract({
+        label: "inventory-shrink",
+        events: [
+          {
+            result: {
+              details: {
+                workflowChildren: summary(false, [
+                  { childId: "build", state: "running" },
+                  { childId: "review", state: "running" },
+                ]),
+              },
+            },
+          },
+          {
+            result: {
+              details: {
+                workflowChildren: summary(true, [
+                  { childId: "build", state: "completed", agent: "worker" },
+                ]),
+              },
+            },
+          },
+        ],
+      }),
+    /inventory removed review/u,
+  );
+});
+
 test("validateWorkflowShapeContract rejects completion workflow run drift and missing IDs", () => {
   const summary = {
     version: 1,

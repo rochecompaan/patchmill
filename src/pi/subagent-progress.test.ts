@@ -230,6 +230,19 @@ test("rebuilds persisted v1 allowlists and collision-safe keys", () => {
   assert.equal(
     parsePersistedSubagentProgress({
       version: 1,
+      kind: "workflow",
+      toolCallId: "call",
+      workflowRunId: "run",
+      childId: "child",
+      state: "paused",
+      unresolved: true,
+      inventoryClosed: true,
+    }),
+    undefined,
+  );
+  assert.equal(
+    parsePersistedSubagentProgress({
+      version: 1,
       kind: "direct",
       toolCallId: "call",
       runId: "run",
@@ -282,6 +295,74 @@ test("rejects duplicate direct result indexes without returning a partial snapsh
       },
     }),
     undefined,
+  );
+});
+
+test("enforces direct safe-integer and container boundaries", () => {
+  const snapshot = (index: number) =>
+    parseDirectSingleSnapshot({
+      details: { mode: "single", runId: "run", results: [{ index }] },
+    });
+  for (const [index, accepted] of [
+    [0, true],
+    [Number.MAX_SAFE_INTEGER, true],
+    [-1, false],
+    [1.5, false],
+    [Number.MAX_SAFE_INTEGER + 1, false],
+  ] as const) {
+    assert.equal(snapshot(index)?.children.length === 1, accepted);
+    assert.equal(
+      parsePersistedSubagentProgress({
+        version: 1,
+        kind: "direct",
+        toolCallId: "call",
+        runId: "run",
+        childIndex: index,
+      }) !== undefined,
+      accepted,
+    );
+  }
+  const rows = (length: number) =>
+    Array.from({ length }, (_, index) => ({ index }));
+  assert.equal(
+    parseDirectSingleSnapshot({
+      details: {
+        mode: "single",
+        runId: "run",
+        results: rows(SUBAGENT_PROGRESS_LIMITS.maxResultRows),
+      },
+    })?.children.length,
+    SUBAGENT_PROGRESS_LIMITS.maxResultRows,
+  );
+  assert.throws(
+    () =>
+      parseDirectSingleSnapshot({
+        details: {
+          mode: "single",
+          runId: "run",
+          results: rows(SUBAGENT_PROGRESS_LIMITS.maxResultRows + 1),
+        },
+      }),
+    new RegExp(SUBAGENT_PROGRESS_LIMIT_ERROR),
+  );
+  const completions = (length: number) =>
+    Array.from({ length }, (_, index) => ({ runId: `run-${index}` }));
+  assert.equal(
+    parseDirectCompletionSnapshots({
+      details: {
+        completions: completions(SUBAGENT_PROGRESS_LIMITS.maxResultRows),
+      },
+    }).length,
+    SUBAGENT_PROGRESS_LIMITS.maxResultRows,
+  );
+  assert.throws(
+    () =>
+      parseDirectCompletionSnapshots({
+        details: {
+          completions: completions(SUBAGENT_PROGRESS_LIMITS.maxResultRows + 1),
+        },
+      }),
+    new RegExp(SUBAGENT_PROGRESS_LIMIT_ERROR),
   );
 });
 
@@ -356,6 +437,14 @@ test("accepts exact direct and workflow parser boundaries and drops one-over met
       },
     });
   assert.equal(workflow().length, 1);
+  const utf8Boundary = (limit: number) => "é".repeat(limit / 2);
+  for (const [field, limit] of [
+    ["parentToolCallId", SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes],
+    ["workflowRunId", SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes],
+  ] as const) {
+    assert.equal(workflow({ [field]: utf8Boundary(limit) }).length, 1);
+    assert.deepEqual(workflow({ [field]: `${utf8Boundary(limit)}x` }), []);
+  }
   for (const field of ["parentToolCallId", "workflowRunId"] as const)
     assert.deepEqual(
       workflow({
@@ -385,6 +474,16 @@ test("accepts exact direct and workflow parser boundaries and drops one-over met
     );
     assert.equal(
       workflow({}, { [field]: "x".repeat(limit + 1) })[0]?.children[0]?.[field],
+      undefined,
+    );
+    assert.equal(
+      workflow({}, { [field]: utf8Boundary(limit) })[0]?.children[0]?.[field],
+      utf8Boundary(limit),
+    );
+    assert.equal(
+      workflow({}, { [field]: `${utf8Boundary(limit)}x` })[0]?.children[0]?.[
+        field
+      ],
       undefined,
     );
   }

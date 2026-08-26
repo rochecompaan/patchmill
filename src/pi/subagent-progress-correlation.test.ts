@@ -1341,6 +1341,108 @@ test("keeps malformed closed workflow groups open until their deterministic fall
   ]);
 });
 
+test("rejects a combined workflow fallback and closure seal during restore", () => {
+  const state = harness();
+  state.correlator.restore([
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "child",
+        state: "completed",
+        unresolved: true,
+        inventoryClosed: true,
+      },
+    },
+  ]);
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "launch",
+          workflowRunId: "workflow",
+          inventoryComplete: false,
+          workflowState: "running",
+          children: [{ childId: "child", state: "running" }],
+        },
+      },
+    },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "child",
+      state: "running",
+    },
+  ]);
+});
+
+test("validates oversized workflow siblings before mutating direct completions", () => {
+  const state = harness();
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { mode: "single", asyncId: "async", results: [] } },
+  });
+  assert.throws(
+    () =>
+      state.correlator.observe({
+        phase: "end",
+        toolName: "subagent_wait",
+        toolCallId: "wait",
+        result: {
+          details: {
+            completions: [
+              {
+                runId: "async",
+                state: "complete",
+                results: [{ agent: "worker" }],
+              },
+              {
+                runId: "workflow",
+                workflowChildren: {
+                  version: 1,
+                  parentToolCallId: "workflow-launch",
+                  workflowRunId: "workflow",
+                  inventoryComplete: false,
+                  workflowState: "running",
+                  children: Array.from({ length: 1025 }, (_, index) => ({
+                    childId: `child-${index}`,
+                    state: "running",
+                  })),
+                },
+              },
+            ],
+          },
+        },
+      }),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "async",
+      childIndex: 0,
+      state: "pending",
+    },
+  ]);
+});
+
 test("allows exactly 65536 matching restored entries and rejects one over without replacing initialized state", () => {
   const entries = (count: number) =>
     Array.from({ length: count }, (_, index) => ({

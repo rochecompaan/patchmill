@@ -8,6 +8,8 @@ import {
   SUBAGENT_PROGRESS_LIMITS,
   subagentProgressKey,
   type ChildLifecycleState,
+  type DirectCompletionSnapshot,
+  type DirectSingleSnapshot,
   type PersistedSubagentProgress,
   type WorkflowChildSummarySource,
 } from "./subagent-progress.ts";
@@ -257,8 +259,11 @@ export function createSubagentProgressCorrelator(options: {
     );
   };
 
-  const observeDirect = (event: SubagentProgressCorrelationEvent) => {
-    const snapshot = parseDirectSingleSnapshot(event.result);
+  const observeDirect = (
+    event: SubagentProgressCorrelationEvent,
+    snapshot: DirectSingleSnapshot | undefined,
+    completions: readonly DirectCompletionSnapshot[],
+  ) => {
     if (snapshot) {
       const key = directKey(event.toolCallId, snapshot.runId);
       const directOrigin = directOrigins.get(snapshot.runId);
@@ -344,7 +349,7 @@ export function createSubagentProgressCorrelator(options: {
         }
       }
     }
-    for (const completion of parseDirectCompletionSnapshots(event.result)) {
+    for (const completion of completions) {
       const origin = directOrigins.get(completion.runId);
       if (origin === undefined) continue;
       const key = directKey(origin, completion.runId);
@@ -804,6 +809,7 @@ export function createSubagentProgressCorrelator(options: {
         const closed =
           seals.length === 1 &&
           seals[0]?.childId === firstChildId &&
+          seals[0]?.unresolved !== true &&
           [...byChild.values()].every(
             (rows) =>
               rows.some((progress) => progress.agent !== undefined) ||
@@ -891,8 +897,12 @@ export function createSubagentProgressCorrelator(options: {
           SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits
       )
         return;
-      observeDirect(event);
+      // Parse every bounded projection before any append can mutate the
+      // correlator. A mixed direct/workflow completion must fail atomically.
+      const directSnapshot = parseDirectSingleSnapshot(event.result);
+      const directCompletions = parseDirectCompletionSnapshots(event.result);
       const sources = parseWorkflowChildSummarySources(event.result);
+      observeDirect(event, directSnapshot, directCompletions);
       const launchEvent =
         event.toolName === "subagent" &&
         typeof event.result === "object" &&
