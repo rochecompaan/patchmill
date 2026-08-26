@@ -38,20 +38,44 @@ type DirectRun = {
   children: Map<number, Child>;
   async: boolean;
 };
-type WorkflowRun = {
-  toolCallId: string;
-  children: Map<string, Child>;
-  closed: boolean;
-};
+type WorkflowRun = { toolCallId: string; children: Map<string, Child> };
+type ClosedWorkflow = Map<
+  string,
+  Pick<Child, "agentSeen" | "unresolved" | "lastState">
+>;
 
 function failLimit(): never {
   throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
 }
-function directKey(toolCallId: string, runId: string) {
+function directKey(toolCallId: string, runId: string): string {
   return JSON.stringify([toolCallId, runId]);
 }
-function workflowKey(toolCallId: string, runId: string) {
+function workflowKey(toolCallId: string, runId: string): string {
   return JSON.stringify([toolCallId, runId]);
+}
+function childKey(progress: PersistedSubagentProgress): string {
+  return progress.kind === "direct"
+    ? JSON.stringify([
+        "direct",
+        progress.toolCallId,
+        progress.runId,
+        progress.childIndex,
+      ])
+    : JSON.stringify([
+        "workflow",
+        progress.toolCallId,
+        progress.workflowRunId,
+        progress.childId,
+      ]);
+}
+function terminal(state: ChildLifecycleState | undefined): boolean {
+  return (
+    state === "completed" ||
+    state === "failed" ||
+    state === "stopped" ||
+    state === "rejected" ||
+    state === "detached"
+  );
 }
 function matchingEntry(
   entry: unknown,
@@ -66,20 +90,82 @@ function matchingEntry(
   );
 }
 
-/** Stateful bridge; it stores only the allowlisted persisted projection. */
+/** Correlates only the bounded persisted projection; raw upstream rows never escape this module. */
 export function createSubagentProgressCorrelator(options: {
   append(progress: PersistedSubagentProgress): void;
 }): SubagentProgressCorrelator {
   const directRuns = new Map<string, DirectRun>();
   const workflowRuns = new Map<string, WorkflowRun>();
-  const closedWorkflowChildren = new Map<
-    string,
-    Map<string, Pick<Child, "agentSeen" | "unresolved" | "lastState">>
-  >();
+  const closedWorkflows = new Map<string, ClosedWorkflow>();
+  const workflowOrigins = new Map<string, string>();
   const tupleKeys = new Set<string>();
+  const transitionCounts = new Map<string, number>();
   let activeChildren = 0;
   let activeKeys = 0;
   let sessionEntries = 0;
+
+  const newChild = (): Child => ({
+    keys: new Set(),
+    agentSeen: false,
+    unresolved: false,
+  });
+  const updateChild = (
+    child: Child,
+    progress: PersistedSubagentProgress,
+    key: string,
+    active: boolean,
+  ) => {
+    child.keys.add(key);
+    if (progress.agent) child.agentSeen = true;
+    if (progress.unresolved) child.unresolved = true;
+    if (progress.state) child.lastState = progress.state;
+    if (active) activeKeys += 1;
+  };
+
+  const preflight = (
+    progresses: readonly PersistedSubagentProgress[],
+    children: readonly Child[],
+    newParents: number,
+    newChildren: number,
+  ): void => {
+    const newKeys = new Set<string>();
+    const increments = new Map<string, number>();
+    for (const progress of progresses) {
+      const key = subagentProgressKey(progress);
+      if (tupleKeys.has(key) || newKeys.has(key)) continue;
+      newKeys.add(key);
+      const identity = childKey(progress);
+      increments.set(identity, (increments.get(identity) ?? 0) + 1);
+    }
+    if (
+      directRuns.size + workflowRuns.size + newParents >
+        SUBAGENT_PROGRESS_LIMITS.maxActiveParents ||
+      activeChildren + newChildren >
+        SUBAGENT_PROGRESS_LIMITS.maxActiveChildren ||
+      activeKeys + newKeys.size > SUBAGENT_PROGRESS_LIMITS.maxActiveKeys ||
+      sessionEntries + newKeys.size >
+        SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession
+    )
+      failLimit();
+    for (const child of children) {
+      const additions = progresses.reduce((count, progress) => {
+        const key = subagentProgressKey(progress);
+        return count + (!tupleKeys.has(key) && !child.keys.has(key) ? 1 : 0);
+      }, 0);
+      if (
+        child.keys.size + additions >
+        SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild
+      )
+        failLimit();
+    }
+    for (const [identity, additions] of increments) {
+      if (
+        (transitionCounts.get(identity) ?? 0) + additions >
+        SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild
+      )
+        failLimit();
+    }
+  };
 
   const append = (
     progress: PersistedSubagentProgress,
@@ -87,32 +173,21 @@ export function createSubagentProgressCorrelator(options: {
   ): boolean => {
     const key = subagentProgressKey(progress);
     if (tupleKeys.has(key)) return false;
-    if (
-      child.keys.size >= SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild ||
-      activeKeys >= SUBAGENT_PROGRESS_LIMITS.maxActiveKeys ||
-      sessionEntries >= SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession
-    )
-      failLimit();
     try {
       options.append(progress);
     } catch (cause) {
       throw new Error(SUBAGENT_PROGRESS_APPEND_ERROR, { cause });
     }
     tupleKeys.add(key);
-    child.keys.add(key);
-    activeKeys += 1;
     sessionEntries += 1;
-    if (progress.agent) child.agentSeen = true;
-    if (progress.unresolved) child.unresolved = true;
-    if (progress.state) child.lastState = progress.state;
+    transitionCounts.set(
+      childKey(progress),
+      (transitionCounts.get(childKey(progress)) ?? 0) + 1,
+    );
+    updateChild(child, progress, key, true);
     return true;
   };
 
-  const newChild = (): Child => ({
-    keys: new Set(),
-    agentSeen: false,
-    unresolved: false,
-  });
   const ensureDirect = (
     toolCallId: string,
     runId: string,
@@ -122,72 +197,13 @@ export function createSubagentProgressCorrelator(options: {
     const key = directKey(toolCallId, runId);
     let run = directRuns.get(key);
     if (!run) {
-      if (
-        directRuns.size + workflowRuns.size >=
-        SUBAGENT_PROGRESS_LIMITS.maxActiveParents
-      )
-        failLimit();
       run = { toolCallId, children: new Map(), async };
       directRuns.set(key, run);
     }
     let child = run.children.get(index);
     if (!child) {
-      if (
-        run.children.size >= SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent ||
-        activeChildren >= SUBAGENT_PROGRESS_LIMITS.maxActiveChildren
-      )
-        failLimit();
       child = newChild();
       run.children.set(index, child);
-      activeChildren += 1;
-    }
-    return { run, child };
-  };
-  const ensureWorkflow = (
-    summary: WorkflowChildSummaryV1,
-    childId: string,
-  ): { run: WorkflowRun; child: Child } | undefined => {
-    const key = workflowKey(summary.parentToolCallId, summary.workflowRunId);
-    const knownClosed = closedWorkflowChildren.get(key);
-    if (
-      knownClosed &&
-      (!knownClosed.has(childId) ||
-        knownClosed.size !== summary.children.length)
-    )
-      return undefined;
-    let run = workflowRuns.get(key);
-    if (!run) {
-      if (
-        workflowRuns.size + directRuns.size >=
-        SUBAGENT_PROGRESS_LIMITS.maxActiveParents
-      )
-        failLimit();
-      run = {
-        toolCallId: summary.parentToolCallId,
-        children: new Map(),
-        closed: false,
-      };
-      workflowRuns.set(key, run);
-    }
-    let child = run.children.get(childId);
-    if (!child) {
-      if (
-        run.children.size >= SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent ||
-        activeChildren >= SUBAGENT_PROGRESS_LIMITS.maxActiveChildren
-      )
-        failLimit();
-      const prior = knownClosed?.get(childId);
-      child = {
-        ...newChild(),
-        ...(prior
-          ? {
-              agentSeen: prior.agentSeen,
-              unresolved: prior.unresolved,
-              ...(prior.lastState ? { lastState: prior.lastState } : {}),
-            }
-          : {}),
-      };
-      run.children.set(childId, child);
       activeChildren += 1;
     }
     return { run, child };
@@ -200,11 +216,11 @@ export function createSubagentProgressCorrelator(options: {
     directRuns.delete(key);
   };
   const releaseWorkflow = (key: string, run: WorkflowRun) => {
-    closedWorkflowChildren.set(
+    closedWorkflows.set(
       key,
       new Map(
-        [...run.children].map(([childId, child]) => [
-          childId,
+        [...run.children].map(([id, child]) => [
+          id,
           {
             agentSeen: child.agentSeen,
             unresolved: child.unresolved,
@@ -243,53 +259,66 @@ export function createSubagentProgressCorrelator(options: {
   const observeDirect = (event: SubagentProgressCorrelationEvent) => {
     const snapshot = parseDirectSingleSnapshot(event.result);
     if (snapshot) {
-      if (snapshot.pendingAsyncSingle) {
+      const key = directKey(event.toolCallId, snapshot.runId);
+      const existing = directRuns.get(key);
+      const rows = snapshot.pendingAsyncSingle
+        ? [{ childIndex: 0, state: "pending" as const }]
+        : snapshot.children;
+      const newParent = existing ? 0 : 1;
+      const newChildren = rows.filter(
+        (row) => !existing?.children.has(row.childIndex),
+      ).length;
+      const previews = rows.map(
+        (row): PersistedSubagentProgress => ({
+          version: 1,
+          kind: "direct",
+          toolCallId: event.toolCallId,
+          runId: snapshot.runId,
+          childIndex: row.childIndex,
+          ...(row.state ? { state: row.state } : {}),
+          ...(row.agent ? { agent: row.agent } : {}),
+          ...(row.model ? { model: row.model } : {}),
+          ...(row.thinking ? { thinking: row.thinking } : {}),
+        }),
+      );
+      const children = rows.flatMap((row) =>
+        existing?.children.get(row.childIndex)
+          ? [existing.children.get(row.childIndex)!]
+          : [],
+      );
+      preflight(previews, children, newParent, newChildren);
+      for (const progress of previews) {
         const { child } = ensureDirect(
           event.toolCallId,
           snapshot.runId,
-          0,
-          true,
+          progress.childIndex,
+          snapshot.pendingAsyncSingle,
         );
-        append(
-          {
-            version: 1,
-            kind: "direct",
-            toolCallId: event.toolCallId,
-            runId: snapshot.runId,
-            childIndex: 0,
-            state: "pending",
-          },
-          child,
-        );
-      } else {
-        for (const row of snapshot.children) {
-          const { child } = ensureDirect(
-            event.toolCallId,
-            snapshot.runId,
-            row.childIndex,
-            false,
+        append(progress, child);
+      }
+      if (!snapshot.pendingAsyncSingle && event.phase === "end") {
+        const run = directRuns.get(key);
+        if (run) {
+          const fallbacks = [...run.children]
+            .filter(([, child]) => !child.agentSeen && !child.unresolved)
+            .map(([index, child]) => ({ index, child }));
+          preflight(
+            fallbacks.map(({ index, child }) => ({
+              version: 1,
+              kind: "direct",
+              toolCallId: event.toolCallId,
+              runId: snapshot.runId,
+              childIndex: index,
+              ...(child.lastState ? { state: child.lastState } : {}),
+              unresolved: true,
+            })),
+            fallbacks.map(({ child }) => child),
+            0,
+            0,
           );
-          const progress: PersistedSubagentProgress = {
-            version: 1,
-            kind: "direct",
-            toolCallId: event.toolCallId,
-            runId: snapshot.runId,
-            childIndex: row.childIndex,
-            ...(row.state ? { state: row.state } : {}),
-            ...(row.agent ? { agent: row.agent } : {}),
-            ...(row.model ? { model: row.model } : {}),
-            ...(row.thinking ? { thinking: row.thinking } : {}),
-          };
-          append(progress, child);
-        }
-        if (event.phase === "end") {
-          const key = directKey(event.toolCallId, snapshot.runId);
-          const run = directRuns.get(key);
-          if (run) {
-            for (const [index, child] of run.children)
-              fallbackDirect(event.toolCallId, snapshot.runId, index, child);
-            releaseDirect(key, run);
-          }
+          for (const { index, child } of fallbacks)
+            fallbackDirect(event.toolCallId, snapshot.runId, index, child);
+          releaseDirect(key, run);
         }
       }
     }
@@ -299,45 +328,93 @@ export function createSubagentProgressCorrelator(options: {
           continue;
         const child = run.children.get(0);
         if (!child) continue;
-        if (completion.state || completion.child) {
-          const progress: PersistedSubagentProgress = {
-            version: 1,
-            kind: "direct",
-            toolCallId: run.toolCallId,
-            runId: completion.runId,
-            childIndex: 0,
-            ...(completion.state ? { state: completion.state } : {}),
-            ...(completion.child?.agent
-              ? { agent: completion.child.agent }
-              : {}),
-            ...(completion.child?.model
-              ? { model: completion.child.model }
-              : {}),
-            ...(completion.child?.thinking
-              ? { thinking: completion.child.thinking }
-              : {}),
-          };
-          append(progress, child);
-        }
+        const progress: PersistedSubagentProgress | undefined =
+          completion.state || completion.child
+            ? {
+                version: 1,
+                kind: "direct",
+                toolCallId: run.toolCallId,
+                runId: completion.runId,
+                childIndex: 0,
+                ...(completion.state ? { state: completion.state } : {}),
+                ...(completion.child?.agent
+                  ? { agent: completion.child.agent }
+                  : {}),
+                ...(completion.child?.model
+                  ? { model: completion.child.model }
+                  : {}),
+                ...(completion.child?.thinking
+                  ? { thinking: completion.child.thinking }
+                  : {}),
+              }
+            : undefined;
+        const fallback = !child.agentSeen && !child.unresolved;
+        preflight(
+          [
+            ...(progress ? [progress] : []),
+            ...(fallback
+              ? [
+                  {
+                    version: 1,
+                    kind: "direct" as const,
+                    toolCallId: run.toolCallId,
+                    runId: completion.runId,
+                    childIndex: 0,
+                    ...(completion.state ? { state: completion.state } : {}),
+                    unresolved: true as const,
+                  },
+                ]
+              : []),
+          ],
+          [child],
+          0,
+          0,
+        );
+        if (progress) append(progress, child);
         fallbackDirect(run.toolCallId, completion.runId, 0, child);
         releaseDirect(key, run);
       }
     }
   };
 
-  const observeWorkflowSummary = (summary: WorkflowChildSummaryV1) => {
+  const observeWorkflow = (
+    summary: WorkflowChildSummaryV1,
+    event: SubagentProgressCorrelationEvent,
+  ) => {
     const key = workflowKey(summary.parentToolCallId, summary.workflowRunId);
-    const closedIds = closedWorkflowChildren.get(key);
-    if (
-      closedIds &&
-      (closedIds.size !== summary.children.length ||
-        summary.children.some((child) => !closedIds.has(child.childId)))
-    )
+    const origin = workflowOrigins.get(summary.workflowRunId);
+    if (event.toolName === "subagent") {
+      if (
+        summary.parentToolCallId !== event.toolCallId ||
+        (origin && origin !== event.toolCallId)
+      )
+        return;
+    } else if (origin !== summary.parentToolCallId) return;
+    const closed = closedWorkflows.get(key);
+    if (closed) {
+      const sameChildren =
+        closed.size === summary.children.length &&
+        summary.children.every((child) => closed.has(child.childId));
+      if (
+        !sameChildren ||
+        (!summary.inventoryComplete &&
+          !["completed", "failed", "stopped"].includes(summary.workflowState))
+      )
+        return;
       return;
-    for (const row of summary.children) {
-      const state = ensureWorkflow(summary, row.childId);
-      if (!state) return;
-      const progress: PersistedSubagentProgress = {
+    }
+    const existing = workflowRuns.get(key);
+    const newParent = existing ? 0 : 1;
+    const newRows = summary.children.filter(
+      (row) => !existing?.children.has(row.childId),
+    );
+    if (
+      (existing?.children.size ?? 0) + newRows.length >
+      SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent
+    )
+      failLimit();
+    const previews = summary.children.map(
+      (row): PersistedSubagentProgress => ({
         version: 1,
         kind: "workflow",
         toolCallId: summary.parentToolCallId,
@@ -347,31 +424,60 @@ export function createSubagentProgressCorrelator(options: {
         ...(row.agent ? { agent: row.agent } : {}),
         ...(row.model ? { model: row.model } : {}),
         ...(row.thinking ? { thinking: row.thinking } : {}),
-      };
-      append(progress, state.child);
-    }
+      }),
+    );
+    const knownChildren = summary.children.flatMap((row) =>
+      existing?.children.get(row.childId)
+        ? [existing.children.get(row.childId)!]
+        : [],
+    );
     const closes =
       summary.inventoryComplete ||
-      summary.workflowState === "completed" ||
-      summary.workflowState === "failed" ||
-      summary.workflowState === "stopped";
+      ["completed", "failed", "stopped"].includes(summary.workflowState);
+    const fallbackRows = closes
+      ? summary.children
+          .filter(
+            (row) =>
+              !(existing?.children.get(row.childId)?.agentSeen || row.agent),
+          )
+          .map(
+            (row): PersistedSubagentProgress => ({
+              version: 1,
+              kind: "workflow",
+              toolCallId: summary.parentToolCallId,
+              workflowRunId: summary.workflowRunId,
+              childId: row.childId,
+              state: row.state,
+              unresolved: true,
+            }),
+          )
+      : [];
+    preflight(
+      [...previews, ...fallbackRows],
+      knownChildren,
+      newParent,
+      newRows.length,
+    );
+    workflowOrigins.set(summary.workflowRunId, summary.parentToolCallId);
+    let run = existing;
+    if (!run) {
+      run = { toolCallId: summary.parentToolCallId, children: new Map() };
+      workflowRuns.set(key, run);
+    }
+    for (const progress of previews) {
+      let child = run.children.get(progress.childId);
+      if (!child) {
+        child = newChild();
+        run.children.set(progress.childId, child);
+        activeChildren += 1;
+      }
+      append(progress, child);
+    }
     if (!closes) return;
-    const run = workflowRuns.get(key);
-    if (!run) return;
-    for (const [childId, child] of run.children) {
-      if (child.agentSeen || child.unresolved) continue;
-      append(
-        {
-          version: 1,
-          kind: "workflow",
-          toolCallId: run.toolCallId,
-          workflowRunId: summary.workflowRunId,
-          childId,
-          state: child.lastState ?? "pending",
-          unresolved: true,
-        },
-        child,
-      );
+    for (const progress of fallbackRows) {
+      const child = run.children.get(progress.childId);
+      if (child && !child.agentSeen && !child.unresolved)
+        append(progress, child);
     }
     releaseWorkflow(key, run);
   };
@@ -380,11 +486,14 @@ export function createSubagentProgressCorrelator(options: {
     restore(entries) {
       directRuns.clear();
       workflowRuns.clear();
-      closedWorkflowChildren.clear();
+      closedWorkflows.clear();
+      workflowOrigins.clear();
       tupleKeys.clear();
+      transitionCounts.clear();
       activeChildren = 0;
       activeKeys = 0;
       sessionEntries = 0;
+      const valid: PersistedSubagentProgress[] = [];
       for (const entry of entries) {
         if (!matchingEntry(entry)) continue;
         sessionEntries += 1;
@@ -392,36 +501,135 @@ export function createSubagentProgressCorrelator(options: {
           failLimit();
         const progress = parsePersistedSubagentProgress(entry.data);
         if (!progress) continue;
-        const key = subagentProgressKey(progress);
-        tupleKeys.add(key);
-        if (progress.kind === "direct") {
-          const { child } = ensureDirect(
-            progress.toolCallId,
-            progress.runId,
-            progress.childIndex,
-            true,
+        const tuple = subagentProgressKey(progress);
+        if (tupleKeys.has(tuple)) continue;
+        tupleKeys.add(tuple);
+        transitionCounts.set(
+          childKey(progress),
+          (transitionCounts.get(childKey(progress)) ?? 0) + 1,
+        );
+        valid.push(progress);
+      }
+      const directGroups = new Map<string, PersistedSubagentProgress[]>();
+      const workflowGroups = new Map<string, PersistedSubagentProgress[]>();
+      for (const progress of valid) {
+        const groups =
+          progress.kind === "direct" ? directGroups : workflowGroups;
+        const key =
+          progress.kind === "direct"
+            ? directKey(progress.toolCallId, progress.runId)
+            : workflowKey(progress.toolCallId, progress.workflowRunId);
+        groups.set(key, [...(groups.get(key) ?? []), progress]);
+      }
+      for (const [key, group] of directGroups) {
+        if (
+          group.some(
+            (progress) => progress.unresolved || terminal(progress.state),
+          )
+        )
+          continue;
+        const first = group[0] as Extract<
+          PersistedSubagentProgress,
+          { kind: "direct" }
+        >;
+        if (
+          directRuns.size + workflowRuns.size >=
+          SUBAGENT_PROGRESS_LIMITS.maxActiveParents
+        )
+          failLimit();
+        const run: DirectRun = {
+          toolCallId: first.toolCallId,
+          children: new Map(),
+          async: true,
+        };
+        directRuns.set(key, run);
+        for (const progress of group as Extract<
+          PersistedSubagentProgress,
+          { kind: "direct" }
+        >[]) {
+          let child = run.children.get(progress.childIndex);
+          if (!child) {
+            if (
+              run.children.size >=
+                SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent ||
+              activeChildren >= SUBAGENT_PROGRESS_LIMITS.maxActiveChildren
+            )
+              failLimit();
+            child = newChild();
+            run.children.set(progress.childIndex, child);
+            activeChildren += 1;
+          }
+          updateChild(child, progress, subagentProgressKey(progress), true);
+        }
+      }
+      for (const [key, group] of workflowGroups) {
+        const first = group[0] as Extract<
+          PersistedSubagentProgress,
+          { kind: "workflow" }
+        >;
+        workflowOrigins.set(first.workflowRunId, first.toolCallId);
+        const byChild = new Map<
+          string,
+          Extract<PersistedSubagentProgress, { kind: "workflow" }>[]
+        >();
+        for (const progress of group as Extract<
+          PersistedSubagentProgress,
+          { kind: "workflow" }
+        >[])
+          byChild.set(progress.childId, [
+            ...(byChild.get(progress.childId) ?? []),
+            progress,
+          ]);
+        const closed =
+          group.some((progress) => progress.unresolved) ||
+          [...byChild.values()].every(
+            (rows) =>
+              rows.some((progress) => progress.agent) &&
+              terminal(rows.at(-1)?.state),
           );
-          child.keys.add(key);
-          child.agentSeen ||= progress.agent !== undefined;
-          child.unresolved ||= progress.unresolved === true;
-          child.lastState = progress.state ?? child.lastState;
-          activeKeys += 1;
-        } else {
-          const summary = {
-            version: 1 as const,
-            parentToolCallId: progress.toolCallId,
-            workflowRunId: progress.workflowRunId,
-            inventoryComplete: false,
-            workflowState: "running" as const,
-            children: [{ childId: progress.childId, state: progress.state }],
-          };
-          const state = ensureWorkflow(summary, progress.childId);
-          if (!state) continue;
-          state.child.keys.add(key);
-          state.child.agentSeen ||= progress.agent !== undefined;
-          state.child.unresolved ||= progress.unresolved === true;
-          state.child.lastState = progress.state;
-          activeKeys += 1;
+        if (closed) {
+          closedWorkflows.set(
+            key,
+            new Map(
+              [...byChild].map(([id, rows]) => {
+                const last = rows.at(-1)!;
+                return [
+                  id,
+                  {
+                    agentSeen: rows.some(
+                      (progress) => progress.agent !== undefined,
+                    ),
+                    unresolved: rows.some((progress) => progress.unresolved),
+                    ...(last.state ? { lastState: last.state } : {}),
+                  },
+                ];
+              }),
+            ),
+          );
+          continue;
+        }
+        if (
+          directRuns.size + workflowRuns.size >=
+          SUBAGENT_PROGRESS_LIMITS.maxActiveParents
+        )
+          failLimit();
+        const run: WorkflowRun = {
+          toolCallId: first.toolCallId,
+          children: new Map(),
+        };
+        workflowRuns.set(key, run);
+        for (const [id, rows] of byChild) {
+          if (
+            run.children.size >=
+              SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent ||
+            activeChildren >= SUBAGENT_PROGRESS_LIMITS.maxActiveChildren
+          )
+            failLimit();
+          const child = newChild();
+          run.children.set(id, child);
+          activeChildren += 1;
+          for (const progress of rows)
+            updateChild(child, progress, subagentProgressKey(progress), true);
         }
       }
     },
@@ -433,7 +641,7 @@ export function createSubagentProgressCorrelator(options: {
         return;
       observeDirect(event);
       for (const summary of parseWorkflowChildSummaries(event.result))
-        observeWorkflowSummary(summary);
+        observeWorkflow(summary, event);
     },
   };
 }

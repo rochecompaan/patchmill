@@ -247,6 +247,11 @@ export function parseDirectCompletionSnapshots(
       )
     )
       continue;
+    if (
+      Array.isArray(completion.results) &&
+      completion.results.length > SUBAGENT_PROGRESS_LIMITS.maxResultRows
+    )
+      throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
     const snapshot: DirectCompletionSnapshot = { runId: completion.runId };
     const state = completionState(completion);
     if (state) snapshot.state = state;

@@ -162,7 +162,7 @@ test("uses workflow stable child IDs through changed metadata and terminal repla
     state.correlator.observe({
       phase: complete ? "end" : "update",
       toolName: "subagent",
-      toolCallId: "call",
+      toolCallId: "launch",
       result: {
         details: {
           workflowChildren: {
@@ -228,4 +228,149 @@ test("suppresses exact tuples and retries failed appends", () => {
   state.correlator.observe(event);
   state.correlator.observe(event);
   assert.equal(state.entries.length, 1);
+});
+
+test("restores only open state while preserving tuple and transition history", () => {
+  const state = harness();
+  const closed = Array.from({ length: 257 }, (_, index) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "direct",
+      toolCallId: `closed-${index}`,
+      runId: `run-${index}`,
+      childIndex: 0,
+      state: "completed",
+      agent: "worker",
+    },
+  }));
+  state.correlator.restore(closed);
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "new",
+    result: {
+      details: {
+        mode: "single",
+        runId: "new-run",
+        results: [{ index: 0, agent: "worker", exitCode: 0 }],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
+test("restoration counts matching entries but deduplicates active tuple keys", () => {
+  const state = harness();
+  const entry = {
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "direct",
+      toolCallId: "open",
+      runId: "run",
+      childIndex: 0,
+      state: "pending",
+    },
+  };
+  state.correlator.restore([entry, entry]);
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "open",
+    result: {
+      details: {
+        mode: "single",
+        runId: "run",
+        results: [{ index: 0, agent: "worker" }],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
+test("rejects workflow launch-parent drift and stale closed replays", () => {
+  const state = harness();
+  const summary = (
+    complete: boolean,
+    workflowState = complete ? "completed" : "running",
+  ) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: complete,
+    workflowState,
+    children: [
+      {
+        childId: "child",
+        state: complete ? "completed" : "running",
+        agent: "worker",
+      },
+    ],
+  });
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "wrong",
+    result: { details: { workflowChildren: summary(false) } },
+  });
+  assert.equal(state.entries.length, 0);
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { workflowChildren: summary(true) } },
+  });
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: { details: { workflowChildren: summary(false) } },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
+test("preflights workflow batches before an over-limit append", () => {
+  const state = harness();
+  const entries = Array.from({ length: 65535 }, (_, index) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "direct",
+      toolCallId: `old-${index}`,
+      runId: `run-${index}`,
+      childIndex: 0,
+      state: "completed",
+      agent: "worker",
+    },
+  }));
+  state.correlator.restore(entries);
+  assert.throws(
+    () =>
+      state.correlator.observe({
+        phase: "update",
+        toolName: "subagent",
+        toolCallId: "launch",
+        result: {
+          details: {
+            workflowChildren: {
+              version: 1,
+              parentToolCallId: "launch",
+              workflowRunId: "workflow",
+              inventoryComplete: false,
+              workflowState: "running",
+              children: [
+                { childId: "one", state: "running" },
+                { childId: "two", state: "running" },
+              ],
+            },
+          },
+        },
+      }),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  assert.equal(state.entries.length, 0);
 });

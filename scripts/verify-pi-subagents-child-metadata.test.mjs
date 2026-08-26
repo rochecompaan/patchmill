@@ -60,12 +60,14 @@ test("validateWorkflowShapeContract uses stable workflow child IDs rather than r
                   {
                     childId: "build",
                     state: "completed",
+                    agent: "worker",
                     model: "provider/model",
                     thinking: "low",
                   },
                   {
                     childId: "review",
                     state: "completed",
+                    agent: "reviewer",
                     model: "provider/model",
                     thinking: "low",
                   },

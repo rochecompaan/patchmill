@@ -155,6 +155,26 @@ test("fails closed for invalid workflow summaries and limits containers", () => 
   );
 });
 
+test("bounds completion child rows before accepting a fallback", () => {
+  assert.throws(
+    () =>
+      parseDirectCompletionSnapshots({
+        details: {
+          completions: [
+            {
+              runId: "run",
+              results: Array.from(
+                { length: SUBAGENT_PROGRESS_LIMITS.maxResultRows + 1 },
+                () => ({}),
+              ),
+            },
+          ],
+        },
+      }),
+    new RegExp(SUBAGENT_PROGRESS_LIMIT_ERROR),
+  );
+});
+
 test("rebuilds persisted v1 allowlists and collision-safe keys", () => {
   const workflow = parsePersistedSubagentProgress({
     version: 1,

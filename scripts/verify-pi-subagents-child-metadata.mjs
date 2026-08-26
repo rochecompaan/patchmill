@@ -225,6 +225,9 @@ export function validateWorkflowShapeContract({
     if (!Array.isArray(summary.children))
       throw new Error(`${label}: workflow children missing`);
     const ids = new Set();
+    const closes =
+      summary.inventoryComplete === true ||
+      ["completed", "failed", "stopped"].includes(summary.workflowState);
     for (const child of summary.children) {
       if (
         typeof child?.childId !== "string" ||
@@ -235,11 +238,16 @@ export function validateWorkflowShapeContract({
       ids.add(child.childId);
       if (child.state === "failed")
         throw new Error(`${label}: child ${child.childId} failed`);
-      if (expectedModel && child.model !== expectedModel)
+      if (closes && typeof child.agent !== "string")
+        throw new Error(
+          `${label}: child ${child.childId} missing canonical agent`,
+        );
+      if (closes && expectedModel && child.model !== expectedModel)
         throw new Error(
           `${label}: child ${child.childId} missing model ${expectedModel}`,
         );
       if (
+        closes &&
         requireThinking &&
         expectedThinking &&
         child.thinking !== expectedThinking
@@ -247,7 +255,7 @@ export function validateWorkflowShapeContract({
         throw new Error(
           `${label}: child ${child.childId} missing thinking ${expectedThinking}`,
         );
-      if (!requireThinking && "thinking" in child)
+      if (closes && !requireThinking && "thinking" in child)
         throw new Error(
           `${label}: child ${child.childId} unexpectedly includes thinking`,
         );
