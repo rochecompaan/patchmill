@@ -1612,6 +1612,177 @@ test("repairs an out-of-order restored closure seal durably before releasing", (
   assert.deepEqual(reloaded.entries, []);
 });
 
+test("restores a replacement closure seal after a fallback on the second reload", () => {
+  const entry = (data: Record<string, unknown>) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data,
+  });
+  const persisted = [
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+      inventoryClosed: true,
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+      unresolved: true,
+    }),
+  ];
+  const summary = {
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: true,
+    workflowState: "completed",
+    children: [
+      { childId: "first", state: "completed", agent: "worker" },
+      { childId: "second", state: "completed" },
+    ],
+  };
+  const repaired = harness();
+  repaired.correlator.restore(persisted);
+  repaired.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: { details: { mode: "single", workflowChildren: summary } },
+  });
+  assert.equal(repaired.entries.length, 1);
+
+  const reloaded = harness();
+  reloaded.correlator.restore([
+    ...persisted,
+    ...repaired.entries.map((data) => entry(data)),
+  ]);
+  reloaded.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          ...summary,
+          inventoryComplete: false,
+          workflowState: "running",
+          children: [
+            ...summary.children,
+            { childId: "later", state: "pending", agent: "worker" },
+          ],
+        },
+      },
+    },
+  });
+  assert.deepEqual(reloaded.entries, []);
+});
+
+test("restores a closed workflow despite post-closure authoritative enrichment", () => {
+  const entry = (data: Record<string, unknown>) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data,
+  });
+  const state = harness();
+  state.correlator.restore([
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+      unresolved: true,
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+      inventoryClosed: true,
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+      agent: "worker",
+    }),
+  ]);
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "launch",
+          workflowRunId: "workflow",
+          inventoryComplete: false,
+          workflowState: "running",
+          children: [
+            { childId: "first", state: "completed", agent: "worker" },
+            { childId: "second", state: "completed", agent: "worker" },
+            { childId: "later", state: "pending", agent: "worker" },
+          ],
+        },
+      },
+    },
+  });
+  assert.deepEqual(state.entries, []);
+});
+
 test("preflights malformed mixed-sibling nested arrays before direct completion mutation", () => {
   const event = (length: number, kind: "direct" | "workflow") => ({
     phase: "end" as const,

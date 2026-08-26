@@ -49,6 +49,7 @@ test("registers exactly session/update/end handlers", () => {
 
 test("forwards subagent updates and waits as v1 custom projections", async () => {
   const state = harness();
+  await state.emit("session_start", { reason: "startup" });
   await state.emit("tool_execution_update", {
     toolName: "subagent",
     toolCallId: "launch",
@@ -134,6 +135,7 @@ test("forwards subagent updates and waits as v1 custom projections", async () =>
 
 test("retries append failure and ignores unrelated tools", async () => {
   const state = harness();
+  await state.emit("session_start", { reason: "startup" });
   const cause = new Error("disk");
   state.fail(cause);
   const event = {
@@ -159,5 +161,45 @@ test("retries append failure and ignores unrelated tools", async () => {
     result: event.partialResult,
   });
   await state.emit("tool_execution_update", { ...event, toolName: "bash" });
+  assert.equal(state.entries.length, 1);
+});
+
+test("does not observe tool events until session restoration succeeds", async () => {
+  const state = harness();
+  state.existing.push(
+    ...Array.from({ length: 65537 }, (_, index) => ({
+      type: "custom",
+      customType: SUBAGENT_PROGRESS_CUSTOM_TYPE,
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: `old-${index}`,
+        runId: `run-${index}`,
+        childIndex: 0,
+        state: "completed",
+      },
+    })),
+  );
+  await assert.rejects(
+    state.emit("session_start", { reason: "over-limit" }),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  const event = {
+    toolName: "subagent",
+    toolCallId: "launch",
+    partialResult: {
+      details: {
+        mode: "single",
+        runId: "run",
+        results: [{ index: 0, agent: "worker", exitCode: 0 }],
+      },
+    },
+  };
+  await state.emit("tool_execution_update", event);
+  assert.deepEqual(state.entries, []);
+
+  state.existing.splice(0);
+  await state.emit("session_start", { reason: "retry" });
+  await state.emit("tool_execution_update", event);
   assert.equal(state.entries.length, 1);
 });

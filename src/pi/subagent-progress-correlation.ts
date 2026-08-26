@@ -652,6 +652,11 @@ export function createSubagentProgressCorrelator(options: {
           failLimit();
         const progress = parsePersistedSubagentProgress(entry.data);
         if (!progress) continue;
+        // Preserve every safe persisted occurrence for closure-order recovery.
+        // Session-wide tuple deduplication and transition accounting remain
+        // unique-key based, so a replacement seal with the same tuple can be
+        // recognized in its later persisted position without double charging.
+        valid.push(progress);
         const tuple = subagentProgressKey(progress);
         if (restoredTupleKeys.has(tuple)) continue;
         restoredTupleKeys.add(tuple);
@@ -660,7 +665,6 @@ export function createSubagentProgressCorrelator(options: {
         if (count > SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild)
           failLimit();
         restoredTransitionCounts.set(identity, count);
-        valid.push(progress);
       }
       const directGroups = new Map<string, PersistedSubagentProgress[]>();
       const workflowGroups = new Map<string, PersistedSubagentProgress[]>();
@@ -816,28 +820,52 @@ export function createSubagentProgressCorrelator(options: {
         );
         const firstChildId = [...byChild.keys()].sort()[0];
         // Persisted closure writes are ordered atomically: authoritative rows,
-        // then recoverable fallbacks, then the one deterministic seal. A seal
-        // observed before a required fallback is an interrupted write, not a
-        // durable closure, even when all its tuples are eventually present.
+        // then recoverable fallbacks, then a deterministic seal. Earlier seals
+        // may be interrupted attempts. A fallback after a candidate invalidates
+        // it, but a later replacement seal repairs the sequence; later
+        // authoritative enrichment does not reopen an already closed inventory.
+        const lastSealIndex = group.findLastIndex(
+          (progress) => progress.inventoryClosed === true,
+        );
+        const candidateSealIndex =
+          lastSealIndex >= 0 &&
+          group[lastSealIndex]?.childId === firstChildId &&
+          group[lastSealIndex]?.unresolved !== true &&
+          !group.slice(lastSealIndex + 1).some((later) => later.unresolved)
+            ? lastSealIndex
+            : undefined;
+        const candidateRows =
+          candidateSealIndex === undefined
+            ? []
+            : group.slice(0, candidateSealIndex + 1);
         let sawFallback = false;
-        const orderedClosure = group.every((progress, index) => {
-          if (progress.inventoryClosed) return index === group.length - 1;
+        const orderedClosure = candidateRows.every((progress) => {
+          // Superseded seals do not alter the final-row/fallback ordering of a
+          // later replacement candidate.
+          if (progress.inventoryClosed) return true;
           if (progress.unresolved) {
             sawFallback = true;
             return true;
           }
           return !sawFallback;
         });
-        // A closed inventory is only durable after its one deterministic seal
-        // (on the lexicographically first child) and every agentless child has
-        // its recoverable unresolved fallback. Partial closure writes remain
-        // active so replay can append the missing fallback before releasing.
+        const candidateChildren = new Map<
+          string,
+          Extract<PersistedSubagentProgress, { kind: "workflow" }>[]
+        >();
+        for (const progress of candidateRows) {
+          const rows = candidateChildren.get(progress.childId);
+          if (rows) rows.push(progress);
+          else candidateChildren.set(progress.childId, [progress]);
+        }
+        // A closed inventory is only durable after its deterministic seal and
+        // every agentless child has its recoverable unresolved fallback before
+        // that seal. Partial closure writes remain active so replay can append
+        // the missing fallback before releasing.
         const closed =
+          candidateSealIndex !== undefined &&
           orderedClosure &&
-          seals.length === 1 &&
-          seals[0]?.childId === firstChildId &&
-          seals[0]?.unresolved !== true &&
-          [...byChild.values()].every(
+          [...candidateChildren.values()].every(
             (rows) =>
               rows.some((progress) => progress.agent !== undefined) ||
               rows.some((progress) => progress.unresolved),
