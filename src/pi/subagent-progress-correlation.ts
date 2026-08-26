@@ -7,12 +7,19 @@ import {
   SUBAGENT_PROGRESS_LIMIT_ERROR,
   SUBAGENT_PROGRESS_LIMITS,
   subagentProgressKey,
-  type ChildLifecycleState,
   type DirectCompletionSnapshot,
   type DirectSingleSnapshot,
   type PersistedSubagentProgress,
   type WorkflowChildSummarySource,
 } from "./subagent-progress.ts";
+import { recoverClosedWorkflow } from "./subagent-progress-workflow-restore.ts";
+import {
+  cloneCorrelationState,
+  type Child,
+  type CorrelationState,
+  type DirectRun,
+  type WorkflowRun,
+} from "./subagent-progress-correlation-state.ts";
 
 export const SUBAGENT_PROGRESS_APPEND_ERROR =
   "PATCHMILL_SUBAGENT_PROGRESS_APPEND_FAILED";
@@ -28,24 +35,6 @@ export type SubagentProgressCorrelator = {
   restore(entries: readonly unknown[]): void;
   observe(event: SubagentProgressCorrelationEvent): void;
 };
-
-type Child = {
-  keys: Set<string>;
-  agentSeen: boolean;
-  unresolved: boolean;
-  lastState?: ChildLifecycleState;
-};
-type DirectRun = {
-  toolCallId: string;
-  runId: string;
-  children: Map<number, Child>;
-  async: boolean;
-};
-type WorkflowRun = { toolCallId: string; children: Map<string, Child> };
-type ClosedWorkflow = Map<
-  string,
-  Pick<Child, "agentSeen" | "unresolved" | "lastState">
->;
 
 function failLimit(): never {
   throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
@@ -105,6 +94,8 @@ export function createSubagentProgressCorrelator(options: {
   let activeChildren = 0;
   let activeKeys = 0;
   let sessionEntries = 0;
+  let appendProgress: (progress: PersistedSubagentProgress) => void =
+    options.append;
 
   const newChild = (): Child => ({
     keys: new Set(),
@@ -171,7 +162,7 @@ export function createSubagentProgressCorrelator(options: {
     const key = subagentProgressKey(progress);
     if (tupleKeys.has(key)) return false;
     try {
-      options.append(progress);
+      appendProgress(progress);
     } catch (cause) {
       throw new Error(SUBAGENT_PROGRESS_APPEND_ERROR, { cause });
     }
@@ -238,6 +229,36 @@ export function createSubagentProgressCorrelator(options: {
     }
     workflowRuns.delete(key);
   };
+  const snapshotState = (): CorrelationState =>
+    cloneCorrelationState({
+      directRuns,
+      directOrigins,
+      directRunsByOrigin,
+      workflowRuns,
+      closedWorkflows,
+      workflowOrigins,
+      workflowRunsByOrigin,
+      tupleKeys,
+      transitionCounts,
+      activeChildren,
+      activeKeys,
+      sessionEntries,
+    });
+  const applyState = (state: CorrelationState) => {
+    directRuns = state.directRuns;
+    directOrigins = state.directOrigins;
+    directRunsByOrigin = state.directRunsByOrigin;
+    workflowRuns = state.workflowRuns;
+    closedWorkflows = state.closedWorkflows;
+    workflowOrigins = state.workflowOrigins;
+    workflowRunsByOrigin = state.workflowRunsByOrigin;
+    tupleKeys = state.tupleKeys;
+    transitionCounts = state.transitionCounts;
+    activeChildren = state.activeChildren;
+    activeKeys = state.activeKeys;
+    sessionEntries = state.sessionEntries;
+  };
+
   const fallbackDirect = (
     toolCallId: string,
     runId: string,
@@ -822,96 +843,30 @@ export function createSubagentProgressCorrelator(options: {
           if (rows) rows.push(progress);
           else byChild.set(progress.childId, [progress]);
         }
-        if (byChild.size > SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent)
+        const { closed, nonDurableSealKeys } = recoverClosedWorkflow(
+          group as Extract<PersistedSubagentProgress, { kind: "workflow" }>[],
+        );
+        // Contradictory IDs after a durable seal are not active inventory, so
+        // they cannot turn a sealed replay into a cardinality limit failure.
+        if (
+          !closed &&
+          byChild.size > SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent
+        )
           failLimit();
-        const seals = group.filter(
-          (progress) => progress.inventoryClosed === true,
-        );
-        const firstChildId = [...byChild.keys()].sort()[0];
-        // Persisted closure writes are ordered atomically: authoritative rows,
-        // then recoverable fallbacks, then a deterministic seal. Earlier seals
-        // may be interrupted attempts. A fallback after a candidate invalidates
-        // it, but a later replacement seal starts a repair attempt; an
-        // authoritative enrichment in that attempt must not reopen inventory.
-        const lastSealIndex = group.findLastIndex(
-          (progress) => progress.inventoryClosed === true,
-        );
-        const candidateSealIndex =
-          lastSealIndex >= 0 &&
-          group[lastSealIndex]?.childId === firstChildId &&
-          group[lastSealIndex]?.unresolved !== true &&
-          !group.slice(lastSealIndex + 1).some((later) => later.unresolved)
-            ? lastSealIndex
-            : undefined;
-        const candidateRows =
-          candidateSealIndex === undefined
-            ? []
-            : group.slice(0, candidateSealIndex + 1);
-        // An unresolved fallback records an interrupted closure attempt. The
-        // rows after its latest occurrence are the current repair attempt, so
-        // older fallback evidence cannot invalidate later authoritative
-        // enrichment and its replacement seal.
-        const latestFallbackIndex = candidateRows.findLastIndex(
-          (progress) => progress.unresolved,
-        );
-        const repairAttemptRows = candidateRows.slice(latestFallbackIndex + 1);
-        const orderedClosure = repairAttemptRows.every(
-          (progress) => progress.inventoryClosed || !progress.unresolved,
-        );
-        const candidateChildren = new Map<
-          string,
-          Extract<PersistedSubagentProgress, { kind: "workflow" }>[]
-        >();
-        for (const progress of candidateRows) {
-          const rows = candidateChildren.get(progress.childId);
-          if (rows) rows.push(progress);
-          else candidateChildren.set(progress.childId, [progress]);
-        }
-        // A closed inventory is only durable after its deterministic seal and
-        // every agentless child has its recoverable unresolved fallback before
-        // that seal. A child first seen after the seal was never a sealed
-        // candidate, so keep the group active for recoverable replay.
-        const closed =
-          candidateSealIndex !== undefined &&
-          orderedClosure &&
-          candidateChildren.size === byChild.size &&
-          [...candidateChildren.values()].every(
-            (rows) =>
-              rows.some((progress) => progress.agent !== undefined) ||
-              rows.some((progress) => progress.unresolved),
-          );
         // An out-of-order or otherwise invalid seal did not durably close the
         // inventory, so it must not suppress the ordered retry that repairs it.
-        const nonDurableSealKeys = new Set<string>();
-        if (!closed)
-          for (const seal of seals) {
-            const tuple = subagentProgressKey(seal);
-            nonDurableSealKeys.add(tuple);
-            if (!restoredTupleKeys.delete(tuple)) continue;
-            const identity = childKey(seal);
-            const count = restoredTransitionCounts.get(identity)!;
-            if (count === 1) restoredTransitionCounts.delete(identity);
-            else restoredTransitionCounts.set(identity, count - 1);
-          }
+        for (const tuple of nonDurableSealKeys) {
+          if (!restoredTupleKeys.delete(tuple)) continue;
+          const seal = group.find(
+            (progress) => subagentProgressKey(progress) === tuple,
+          )!;
+          const identity = childKey(seal);
+          const count = restoredTransitionCounts.get(identity)!;
+          if (count === 1) restoredTransitionCounts.delete(identity);
+          else restoredTransitionCounts.set(identity, count - 1);
+        }
         if (closed) {
-          restoredClosedWorkflows.set(
-            key,
-            new Map(
-              [...byChild].map(([id, rows]) => {
-                const last = rows.at(-1)!;
-                return [
-                  id,
-                  {
-                    agentSeen: rows.some(
-                      (progress) => progress.agent !== undefined,
-                    ),
-                    unresolved: rows.some((progress) => progress.unresolved),
-                    ...(last.state ? { lastState: last.state } : {}),
-                  },
-                ];
-              }),
-            ),
-          );
+          restoredClosedWorkflows.set(key, closed);
           continue;
         }
         if (
@@ -978,11 +933,12 @@ export function createSubagentProgressCorrelator(options: {
       )
         return;
       // Parse every bounded projection before any append can mutate the
-      // correlator. A mixed direct/workflow completion must fail atomically.
+      // correlator. Then simulate the full lifecycle event against a private
+      // snapshot so a later documented sibling cannot fail a state limit after
+      // an earlier direct completion has appended or released its run.
       const directSnapshot = parseDirectSingleSnapshot(event.result);
       const directCompletions = parseDirectCompletionSnapshots(event.result);
       const sources = parseWorkflowChildSummarySources(event.result);
-      observeDirect(event, directSnapshot, directCompletions);
       const launchEvent =
         event.toolName === "subagent" &&
         typeof event.result === "object" &&
@@ -991,7 +947,21 @@ export function createSubagentProgressCorrelator(options: {
         typeof (event.result as { details?: unknown }).details === "object" &&
         (event.result as { details?: { mode?: unknown } }).details?.mode ===
           "workflow";
-      for (const source of sources) observeWorkflow(source, event, launchEvent);
+      const observeParsed = () => {
+        observeDirect(event, directSnapshot, directCompletions);
+        for (const source of sources)
+          observeWorkflow(source, event, launchEvent);
+      };
+      const saved = snapshotState();
+      applyState(snapshotState());
+      appendProgress = () => {};
+      try {
+        observeParsed();
+      } finally {
+        applyState(saved);
+        appendProgress = options.append;
+      }
+      observeParsed();
     },
   };
 }

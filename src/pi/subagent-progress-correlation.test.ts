@@ -1959,7 +1959,7 @@ test("preserves every workflow child lifecycle state independently", () => {
   }
 });
 
-test("keeps a restored workflow open when a child first appears after its seal", () => {
+test("retains the pre-seal fingerprint despite a malformed post-seal child", () => {
   const entry = (data: Record<string, unknown>) => ({
     type: "custom",
     customType: "patchmill-subagent-progress",
@@ -2000,7 +2000,7 @@ test("keeps a restored workflow open when a child first appears after its seal",
       kind: "workflow",
       toolCallId: "launch",
       workflowRunId: "workflow",
-      childId: "later",
+      childId: "aardvark",
       state: "completed",
       agent: "worker",
     }),
@@ -2021,33 +2021,13 @@ test("keeps a restored workflow open when a child first appears after its seal",
           children: [
             { childId: "first", state: "failed", agent: "worker" },
             { childId: "second", state: "completed", agent: "worker" },
-            { childId: "later", state: "completed", agent: "worker" },
+            { childId: "aardvark", state: "completed", agent: "worker" },
           ],
         },
       },
     },
   });
-  assert.deepEqual(state.entries, [
-    {
-      version: 1,
-      kind: "workflow",
-      toolCallId: "launch",
-      workflowRunId: "workflow",
-      childId: "first",
-      state: "failed",
-      agent: "worker",
-    },
-    {
-      version: 1,
-      kind: "workflow",
-      toolCallId: "launch",
-      workflowRunId: "workflow",
-      childId: "first",
-      state: "failed",
-      agent: "worker",
-      inventoryClosed: true,
-    },
-  ]);
+  assert.deepEqual(state.entries, []);
 });
 
 test("restores a closed workflow despite post-closure authoritative enrichment", () => {
@@ -2127,6 +2107,79 @@ test("restores a closed workflow despite post-closure authoritative enrichment",
     },
   });
   assert.deepEqual(state.entries, []);
+});
+
+test("preflights mixed subagent_wait transitions before direct completion mutation", () => {
+  const entry = (data: Record<string, unknown>) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data,
+  });
+  const state = harness();
+  state.correlator.restore(
+    Array.from(
+      { length: SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild },
+      (_, index) =>
+        entry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "workflow-launch",
+          workflowRunId: "workflow",
+          childId: "child",
+          state: "running",
+          model: `history-${index}`,
+        }),
+    ),
+  );
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "direct-launch",
+    result: { details: { mode: "single", asyncId: "async", results: [] } },
+  });
+  assert.throws(
+    () =>
+      state.correlator.observe({
+        phase: "end",
+        toolName: "subagent_wait",
+        toolCallId: "wait",
+        result: {
+          details: {
+            completions: [
+              {
+                runId: "async",
+                state: "complete",
+                results: [{ agent: "worker" }],
+              },
+              {
+                runId: "workflow",
+                workflowChildren: {
+                  version: 1,
+                  parentToolCallId: "workflow-launch",
+                  workflowRunId: "workflow",
+                  inventoryComplete: false,
+                  workflowState: "running",
+                  children: [
+                    { childId: "child", state: "running", model: "new" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      }),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "direct-launch",
+      runId: "async",
+      childIndex: 0,
+      state: "pending",
+    },
+  ]);
 });
 
 test("preflights malformed mixed-sibling nested arrays before direct completion mutation", () => {
