@@ -114,9 +114,8 @@ test("validateDirectAsyncShapeContract matches launch identity to wait completio
                 runId: "run-async",
                 results: [
                   {
-                    index: 9,
+                    agent: "worker",
                     model: "provider/model-a",
-                    thinking: "low",
                     exitCode: 0,
                   },
                 ],
@@ -136,6 +135,35 @@ test("validateDirectAsyncShapeContract matches launch identity to wait completio
         requireThinking: true,
       }),
     /missing structured async launch/u,
+  );
+  assert.throws(
+    () =>
+      validateDirectAsyncShapeContract({
+        label: "agent",
+        expectedModel: "provider/model-a",
+        events: [
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: { details: { asyncId: "run" } },
+          },
+          {
+            type: "tool_execution_end",
+            toolName: "subagent_wait",
+            result: {
+              details: {
+                completions: [
+                  {
+                    runId: "run",
+                    results: [{ model: "provider/model-a", exitCode: 0 }],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    /missing canonical agent/u,
   );
 });
 
