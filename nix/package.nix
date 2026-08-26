@@ -78,6 +78,7 @@ buildNpmPackageNode24 rec {
     test -f "$out/share/${pname}/fixtures/patchmill-test-repo/README.md"
     test -f "$out/share/${pname}/extensions/todos.ts"
     test -f "$out/share/${pname}/src/pi/subagent-progress.ts"
+    test -f "$out/share/${pname}/src/pi/subagent-progress-correlation.ts"
     test -f "$out/share/${pname}/src/pi/extensions/run-once-subagent-progress.ts"
     test -f "$out/share/${pname}/fixtures/run-once-extension-load-sentinel.ts"
     test -f "$out/share/${pname}/fixtures/run-once-installed-extension-load.mjs"
