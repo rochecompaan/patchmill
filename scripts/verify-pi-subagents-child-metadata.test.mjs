@@ -204,6 +204,45 @@ test("validateWorkflowShapeContract rejects malformed v1 discriminants", () => {
     );
 });
 
+test("validateWorkflowShapeContract handles every workflow child lifecycle state", () => {
+  const childStates = [
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "paused",
+    "stopped",
+    "rejected",
+    "detached",
+  ];
+  for (const state of childStates) {
+    const validate = () =>
+      validateWorkflowShapeContract({
+        label: `child-${state}`,
+        parentToolCallId: "launch",
+        events: [
+          {
+            type: "tool_execution_end",
+            result: {
+              details: {
+                workflowChildren: {
+                  version: 1,
+                  parentToolCallId: "launch",
+                  workflowRunId: `workflow-${state}`,
+                  inventoryComplete: true,
+                  workflowState: "completed",
+                  children: [{ childId: "child", state, agent: "worker" }],
+                },
+              },
+            },
+          },
+        ],
+      });
+    if (state === "failed") assert.throws(validate, /child child failed/u);
+    else assert.doesNotThrow(validate);
+  }
+});
+
 test("validateWorkflowShapeContract rejects failed workflow tool events", () => {
   assert.throws(
     () =>

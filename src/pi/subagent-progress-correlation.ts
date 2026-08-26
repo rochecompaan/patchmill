@@ -822,8 +822,8 @@ export function createSubagentProgressCorrelator(options: {
         // Persisted closure writes are ordered atomically: authoritative rows,
         // then recoverable fallbacks, then a deterministic seal. Earlier seals
         // may be interrupted attempts. A fallback after a candidate invalidates
-        // it, but a later replacement seal repairs the sequence; later
-        // authoritative enrichment does not reopen an already closed inventory.
+        // it, but a later replacement seal starts a repair attempt; an
+        // authoritative enrichment in that attempt must not reopen inventory.
         const lastSealIndex = group.findLastIndex(
           (progress) => progress.inventoryClosed === true,
         );
@@ -838,17 +838,17 @@ export function createSubagentProgressCorrelator(options: {
           candidateSealIndex === undefined
             ? []
             : group.slice(0, candidateSealIndex + 1);
-        let sawFallback = false;
-        const orderedClosure = candidateRows.every((progress) => {
-          // Superseded seals do not alter the final-row/fallback ordering of a
-          // later replacement candidate.
-          if (progress.inventoryClosed) return true;
-          if (progress.unresolved) {
-            sawFallback = true;
-            return true;
-          }
-          return !sawFallback;
-        });
+        // An unresolved fallback records an interrupted closure attempt. The
+        // rows after its latest occurrence are the current repair attempt, so
+        // older fallback evidence cannot invalidate later authoritative
+        // enrichment and its replacement seal.
+        const latestFallbackIndex = candidateRows.findLastIndex(
+          (progress) => progress.unresolved,
+        );
+        const repairAttemptRows = candidateRows.slice(latestFallbackIndex + 1);
+        const orderedClosure = repairAttemptRows.every(
+          (progress) => progress.inventoryClosed || !progress.unresolved,
+        );
         const candidateChildren = new Map<
           string,
           Extract<PersistedSubagentProgress, { kind: "workflow" }>[]

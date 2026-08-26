@@ -1704,6 +1704,142 @@ test("restores a replacement closure seal after a fallback on the second reload"
   assert.deepEqual(reloaded.entries, []);
 });
 
+test("restores a repaired closure after fallback and authoritative enrichment", () => {
+  const entry = (data: Record<string, unknown>) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data,
+  });
+  const persisted = [
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+      inventoryClosed: true,
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+      unresolved: true,
+    }),
+  ];
+  const summary = {
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: true,
+    workflowState: "completed",
+    children: [
+      { childId: "first", state: "completed", agent: "worker" },
+      { childId: "second", state: "completed", agent: "worker" },
+    ],
+  };
+  const repaired = harness();
+  repaired.correlator.restore(persisted);
+  repaired.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: { details: { mode: "single", workflowChildren: summary } },
+  });
+  assert.equal(repaired.entries.length, 2);
+
+  const reloaded = harness();
+  reloaded.correlator.restore([
+    ...persisted,
+    ...repaired.entries.map((data) => entry(data)),
+  ]);
+  reloaded.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          ...summary,
+          inventoryComplete: false,
+          workflowState: "running",
+          children: [
+            ...summary.children,
+            { childId: "later", state: "pending", agent: "worker" },
+          ],
+        },
+      },
+    },
+  });
+  assert.deepEqual(reloaded.entries, []);
+});
+
+test("preserves every workflow child lifecycle state independently", () => {
+  const states = [
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "paused",
+    "stopped",
+    "rejected",
+    "detached",
+  ] as const;
+  for (const lifecycleState of states) {
+    const state = harness();
+    state.correlator.observe({
+      phase: "update",
+      toolName: "subagent",
+      toolCallId: "launch",
+      result: {
+        details: {
+          mode: "workflow",
+          workflowChildren: {
+            version: 1,
+            parentToolCallId: "launch",
+            workflowRunId: `workflow-${lifecycleState}`,
+            inventoryComplete: false,
+            workflowState: "running",
+            children: [{ childId: "child", state: lifecycleState }],
+          },
+        },
+      },
+    });
+    assert.deepEqual(state.entries, [
+      {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: `workflow-${lifecycleState}`,
+        childId: "child",
+        state: lifecycleState,
+      },
+    ]);
+  }
+});
+
 test("restores a closed workflow despite post-closure authoritative enrichment", () => {
   const entry = (data: Record<string, unknown>) => ({
     type: "custom",
