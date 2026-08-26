@@ -162,6 +162,7 @@ export function createSubagentProgressCorrelator(options: {
   const append = (
     progress: PersistedSubagentProgress,
     child: Child,
+    active = true,
   ): boolean => {
     const key = subagentProgressKey(progress);
     if (tupleKeys.has(key)) return false;
@@ -176,7 +177,7 @@ export function createSubagentProgressCorrelator(options: {
       childKey(progress),
       (transitionCounts.get(childKey(progress)) ?? 0) + 1,
     );
-    updateChild(child, progress, key, true);
+    updateChild(child, progress, key, active);
     return true;
   };
 
@@ -401,6 +402,34 @@ export function createSubagentProgressCorrelator(options: {
           !["completed", "failed", "stopped"].includes(summary.workflowState))
       )
         return;
+      for (const row of summary.children) {
+        const prior = closed.get(row.childId)!;
+        const child: Child = {
+          keys: new Set(),
+          agentSeen: prior.agentSeen,
+          unresolved: prior.unresolved,
+          ...(prior.lastState ? { lastState: prior.lastState } : {}),
+        };
+        const progress: PersistedSubagentProgress = {
+          version: 1,
+          kind: "workflow",
+          toolCallId: summary.parentToolCallId,
+          workflowRunId: summary.workflowRunId,
+          childId: row.childId,
+          state: row.state,
+          ...(row.agent ? { agent: row.agent } : {}),
+          ...(row.model ? { model: row.model } : {}),
+          ...(row.thinking ? { thinking: row.thinking } : {}),
+        };
+        preflight([progress], [], 0, 0);
+        if (append(progress, child, false)) {
+          closed.set(row.childId, {
+            agentSeen: child.agentSeen,
+            unresolved: child.unresolved,
+            ...(child.lastState ? { lastState: child.lastState } : {}),
+          });
+        }
+      }
       return;
     }
     const existing = workflowRuns.get(key);
