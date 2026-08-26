@@ -4,6 +4,7 @@ import {
   collectSubagentEvents,
   reportedThinkingModel,
   validateShapeContract,
+  validateDirectAsyncShapeContract,
   validateDirectShapeContract,
   validateWorkflowShapeContract,
 } from "./verify-pi-subagents-child-metadata.mjs";
@@ -87,6 +88,54 @@ test("validateWorkflowShapeContract uses stable workflow child IDs rather than r
         events: [{ result: { details: { workflowChildren: { version: 2 } } } }],
       }),
     /unsupported workflow summary version/u,
+  );
+});
+
+test("validateDirectAsyncShapeContract matches launch identity to wait completion", () => {
+  validateDirectAsyncShapeContract({
+    label: "async",
+    expectedModel: "provider/model-a",
+    expectedThinking: "low",
+    requireThinking: true,
+    events: [
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        result: { details: { asyncId: "run-async", results: [] } },
+        isError: false,
+      },
+      {
+        type: "tool_execution_end",
+        toolName: "subagent_wait",
+        result: {
+          details: {
+            completions: [
+              {
+                runId: "run-async",
+                results: [
+                  {
+                    index: 9,
+                    model: "provider/model-a",
+                    thinking: "low",
+                    exitCode: 0,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        isError: false,
+      },
+    ],
+  });
+  assert.throws(
+    () =>
+      validateDirectAsyncShapeContract({
+        label: "missing",
+        events: [],
+        requireThinking: true,
+      }),
+    /missing structured async launch/u,
   );
 });
 

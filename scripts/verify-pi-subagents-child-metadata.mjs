@@ -178,6 +178,50 @@ export function validateDirectShapeContract(options) {
   });
 }
 
+/** Validates a structured async launch and its documented wait completion. */
+export function validateDirectAsyncShapeContract({
+  label,
+  events,
+  expectedModel,
+  expectedThinking,
+  requireThinking,
+}) {
+  const launch = events.find(
+    (event) =>
+      event.type === "tool_execution_end" &&
+      event.toolName === "subagent" &&
+      typeof event.result?.details?.asyncId === "string",
+  );
+  if (!launch) throw new Error(`${label}: missing structured async launch`);
+  const asyncId = launch.result.details.asyncId;
+  const completion = events
+    .filter(
+      (event) =>
+        event.type === "tool_execution_end" &&
+        event.toolName === "subagent_wait",
+    )
+    .flatMap((event) => event.result?.details?.completions ?? [])
+    .find((row) => row?.runId === asyncId);
+  if (!completion)
+    throw new Error(`${label}: missing wait completion for ${asyncId}`);
+  const rows = completion.results;
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    !Number.isSafeInteger(rows[0]?.index)
+  )
+    throw new Error(`${label}: completion missing indexed direct child`);
+  validateChild({
+    child: rows[0],
+    id: rows[0].index,
+    label,
+    expectedModel,
+    expectedThinking,
+    requireThinking,
+    partial: false,
+  });
+}
+
 /**
  * Independently validates the released workflowChildren v1 contract. This
  * intentionally does not import Patchmill's production parser.
@@ -323,6 +367,7 @@ function runShape({
   packageRoot,
   parentModel,
   expectedChildIds,
+  asyncWait = false,
 }) {
   const args = [
     "--mode",
@@ -338,7 +383,9 @@ function runShape({
   ];
   if (parentModel) args.push("--model", parentModel);
   args.push(
-    `Call the subagent tool exactly once with this input and then stop:\n${JSON.stringify(input)}`,
+    asyncWait
+      ? `Launch this subagent input exactly once, capture its returned async run ID, then call subagent_wait exactly once with that ID and stop:\n${JSON.stringify(input)}`
+      : `Call the subagent tool exactly once with this input and then stop:\n${JSON.stringify(input)}`,
   );
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -362,7 +409,15 @@ function runShape({
   const events = parseJsonLines(result.stdout, label);
   const shape = collectSubagentEvents(events);
   try {
-    if (expectedChildIds) {
+    if (asyncWait && !expectedChildIds) {
+      validateDirectAsyncShapeContract({
+        label,
+        events,
+        expectedModel,
+        expectedThinking,
+        requireThinking,
+      });
+    } else if (expectedChildIds) {
       const launchEvent = events.find(
         (event) =>
           event.type === "tool_execution_update" &&
@@ -456,6 +511,18 @@ async function main() {
         context: "fresh",
       },
     });
+    runShape({
+      ...common,
+      label: "direct-async",
+      expectedFinalChildren: 1,
+      asyncWait: true,
+      input: {
+        agent: "contract-thinking",
+        task: "Return the word direct async.",
+        async: true,
+        context: "fresh",
+      },
+    });
     const workflows = [
       [
         "workflow-runs-run",
@@ -487,6 +554,19 @@ async function main() {
         input: { workflowScript, async: false, context: "fresh" },
       });
     }
+    runShape({
+      ...common,
+      label: "workflow-async",
+      expectedFinalChildren: 0,
+      expectedChildIds: ["parallel-a", "parallel-b"],
+      asyncWait: true,
+      input: {
+        workflowScript:
+          'return await runs.all([{key:"parallel-a",agent:"contract-thinking",task:"Return parallel a."},{key:"parallel-b",agent:"contract-thinking",task:"Return parallel b."}]);',
+        async: true,
+        context: "fresh",
+      },
+    });
     runShape({
       cwd,
       agentsDir,
