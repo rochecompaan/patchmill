@@ -1,261 +1,204 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  parseSubagentProgressResults,
+  parseDirectCompletionSnapshots,
+  parseDirectSingleSnapshot,
+  parsePersistedSubagentProgress,
+  parseWorkflowChildSummaries,
   SUBAGENT_PROGRESS_LIMIT_ERROR,
   SUBAGENT_PROGRESS_LIMITS,
   subagentProgressKey,
-  type SubagentProgress,
 } from "./subagent-progress.ts";
 
-function resultWithRows(rows: unknown[]): unknown {
-  return { details: { results: rows } };
-}
-
-function isLimitError(error: unknown): boolean {
-  return (
-    error instanceof Error && error.message === SUBAGENT_PROGRESS_LIMIT_ERROR
-  );
-}
-
-test("projects valid rows in upstream order and preserves upstream indexes", () => {
+test("parses direct children by run id and non-positional upstream index", () => {
   assert.deepEqual(
-    parseSubagentProgressResults(
-      resultWithRows([
-        { index: 7, agent: "worker", model: "openai/gpt-5", thinking: "high" },
-        { index: 2, agent: "reviewer", model: "anthropic/claude:beta" },
-        { index: 12, agent: "scout", thinking: "future-level" },
-      ]),
-      "call-parent",
-    ),
-    [
-      {
-        toolCallId: "call-parent",
-        childIndex: 7,
-        agent: "worker",
-        model: "openai/gpt-5",
-        thinking: "high",
+    parseDirectSingleSnapshot({
+      details: {
+        mode: "single",
+        runId: "run",
+        results: [
+          {
+            index: 7,
+            agent: "worker",
+            model: "provider/model",
+            thinking: "high",
+            exitCode: 0,
+            task: "SECRET",
+          },
+        ],
       },
-      {
-        toolCallId: "call-parent",
-        childIndex: 2,
-        agent: "reviewer",
-        model: "anthropic/claude:beta",
-      },
-      {
-        toolCallId: "call-parent",
-        childIndex: 12,
-        agent: "scout",
-        thinking: "future-level",
-      },
-    ],
-  );
-});
-
-test("keeps identity-only rows and accepted strings verbatim", () => {
-  assert.deepEqual(
-    parseSubagentProgressResults(
-      resultWithRows([
-        {
-          index: 3,
-          agent: " worker ",
-          model: " provider/model:suffix ",
-          thinking: " future-level ",
-        },
-        { index: 9, agent: "scout" },
-      ]),
-      " call-with-spaces ",
-    ),
-    [
-      {
-        toolCallId: " call-with-spaces ",
-        childIndex: 3,
-        agent: " worker ",
-        model: " provider/model:suffix ",
-        thinking: " future-level ",
-      },
-      { toolCallId: " call-with-spaces ", childIndex: 9, agent: "scout" },
-    ],
-  );
-});
-
-test("fails closed for malformed containers, parent IDs, and malformed siblings", () => {
-  for (const value of [
-    undefined,
-    null,
-    [],
-    {},
-    { details: null },
-    { details: [] },
-    { details: {} },
-    { details: { results: null } },
-    { details: { results: {} } },
-  ]) {
-    assert.deepEqual(parseSubagentProgressResults(value, "call-1"), []);
-  }
-  assert.deepEqual(
-    parseSubagentProgressResults(
-      resultWithRows([{ index: 0, agent: "worker" }]),
-      " ",
-    ),
-    [],
-  );
-  assert.deepEqual(
-    parseSubagentProgressResults(
-      resultWithRows([
-        null,
-        [],
-        { agent: "missing" },
-        { index: -1, agent: "negative" },
-        { index: 1.5, agent: "fraction" },
-        { index: Number.MAX_SAFE_INTEGER + 1, agent: "unsafe" },
-        { index: 4 },
-        { index: 5, agent: "" },
-        { index: 6, agent: "   " },
-        { index: 11, agent: "valid", model: 42, thinking: { level: "high" } },
-      ]),
-      "call-1",
-    ),
-    [{ toolCallId: "call-1", childIndex: 11, agent: "valid" }],
-  );
-});
-
-test("never substitutes array position and never copies discarded properties", () => {
-  const projection = parseSubagentProgressResults(
-    resultWithRows([
-      { agent: "missing-index", task: "SECRET_TASK" },
-      {
-        index: 42,
-        agent: "worker",
-        model: "reported-model",
-        thinking: "reported-thinking",
-        task: "SECRET_TASK",
-        output: "SECRET_OUTPUT",
-        prompt: "SECRET_PROMPT",
-        credentials: "SECRET_CREDENTIAL",
-        path: "/secret/session.jsonl",
-        usage: { cost: "SECRET_COST" },
-        error: "SECRET_ERROR",
-        args: { token: "SECRET_TOKEN" },
-      },
-    ]),
-    "call-safe",
-  );
-  assert.deepEqual(projection, [
+    }),
     {
-      toolCallId: "call-safe",
-      childIndex: 42,
-      agent: "worker",
-      model: "reported-model",
-      thinking: "reported-thinking",
+      runId: "run",
+      pendingAsyncSingle: false,
+      children: [
+        {
+          childIndex: 7,
+          state: "completed",
+          agent: "worker",
+          model: "provider/model",
+          thinking: "high",
+        },
+      ],
     },
-  ]);
-  const serialized = JSON.stringify(projection);
-  for (const forbidden of [
-    "SECRET_TASK",
-    "SECRET_OUTPUT",
-    "SECRET_PROMPT",
-    "SECRET_CREDENTIAL",
-    "/secret/session.jsonl",
-    "SECRET_COST",
-    "SECRET_ERROR",
-    "SECRET_TOKEN",
-  ]) {
-    assert.equal(serialized.includes(forbidden), false);
-  }
+  );
+  assert.deepEqual(
+    parseDirectSingleSnapshot({
+      details: { mode: "single", asyncId: "async", results: [] },
+    }),
+    { runId: "async", children: [], pendingAsyncSingle: true },
+  );
 });
 
-test("enforces identifier and result-row ceilings without truncation", () => {
-  const limits = SUBAGENT_PROGRESS_LIMITS;
-  const toolCallId = "t".repeat(limits.maxToolCallIdCodeUnits);
-  const agent = "a".repeat(limits.maxAgentCodeUnits);
-  assert.deepEqual(
-    parseSubagentProgressResults(
-      resultWithRows([
-        {
-          index: 0,
-          agent,
-          model: "m".repeat(limits.maxModelCodeUnits),
-          thinking: "h".repeat(limits.maxThinkingCodeUnits),
+test("normalizes documented direct lifecycle precedence and completion slots", () => {
+  const states = [
+    [{ detached: true, stopped: true }, "detached"],
+    [{ stopped: true }, "stopped"],
+    [{ interrupted: true }, "paused"],
+    [{ acceptance: { status: "rejected" } }, "rejected"],
+    [{ exitCode: 0 }, "completed"],
+    [{ exitCode: 1 }, "failed"],
+  ] as const;
+  for (const [row, state] of states) {
+    assert.equal(
+      parseDirectSingleSnapshot({
+        details: {
+          mode: "single",
+          runId: "r",
+          results: [{ index: 1, ...row }],
         },
-      ]),
-      toolCallId,
-    ),
-    [
-      {
-        toolCallId,
-        childIndex: 0,
-        agent,
-        model: "m".repeat(limits.maxModelCodeUnits),
-        thinking: "h".repeat(limits.maxThinkingCodeUnits),
+      })?.children[0]?.state,
+      state,
+    );
+  }
+  assert.deepEqual(
+    parseDirectCompletionSnapshots({
+      details: {
+        completions: [
+          { runId: "r", state: "complete", results: [{ agent: "reviewer" }] },
+        ],
       },
+    }),
+    [{ runId: "r", state: "completed", child: { agent: "reviewer" } }],
+  );
+});
+
+test("reads workflow summaries only from documented slots and excludes secrets", () => {
+  const summary = {
+    version: 1,
+    parentToolCallId: "call",
+    workflowRunId: "workflow",
+    inventoryComplete: false,
+    workflowState: "running",
+    children: [
+      { childId: "build", state: "running", agent: "worker", task: "SECRET" },
     ],
-  );
-  assert.deepEqual(
-    parseSubagentProgressResults(
-      resultWithRows([
-        { index: 0, agent: `${agent}x` },
+  };
+  const found = parseWorkflowChildSummaries({
+    details: {
+      workflowChildren: summary,
+      results: [{ index: 0, task: "SECRET_RESULT" }],
+      completions: [
         {
-          index: 1,
-          agent: "worker",
-          model: "m".repeat(limits.maxModelCodeUnits + 1),
-          thinking: "h".repeat(limits.maxThinkingCodeUnits + 1),
+          workflowChildren: {
+            ...summary,
+            inventoryComplete: true,
+            workflowState: "completed",
+          },
         },
-      ]),
-      toolCallId,
-    ),
-    [{ toolCallId, childIndex: 1, agent: "worker" }],
-  );
-  assert.deepEqual(
-    parseSubagentProgressResults(
-      resultWithRows([{ index: 0, agent: "worker" }]),
-      `${toolCallId}x`,
-    ),
-    [],
-  );
-  assert.equal(
-    parseSubagentProgressResults(
-      resultWithRows(
-        Array.from({ length: limits.maxResultRows }, (_, index) => ({
-          index,
-          agent: "worker",
-        })),
-      ),
-      "call-max",
-    ).length,
-    limits.maxResultRows,
-  );
+      ],
+    },
+    hidden: { workflowChildren: { ...summary, workflowRunId: "bad" } },
+  });
+  assert.equal(found.length, 2);
+  assert.equal(JSON.stringify(found).includes("SECRET"), false);
+});
+
+test("fails closed for invalid workflow summaries and limits containers", () => {
+  const base = {
+    version: 1,
+    parentToolCallId: "call",
+    workflowRunId: "workflow",
+    inventoryComplete: false,
+    workflowState: "running",
+    children: [{ childId: "one", state: "running" }],
+  };
+  for (const summary of [
+    { ...base, version: 2 },
+    {
+      ...base,
+      children: [
+        { childId: "one", state: "running" },
+        { childId: "one", state: "running" },
+      ],
+    },
+    { ...base, children: [{ childId: "bad id", state: "running" }] },
+  ])
+    assert.deepEqual(
+      parseWorkflowChildSummaries({ details: { workflowChildren: summary } }),
+      [],
+    );
   assert.throws(
     () =>
-      parseSubagentProgressResults(
-        resultWithRows(
-          Array.from({ length: limits.maxResultRows + 1 }, (_, index) => ({
-            index,
-            agent: "worker",
-          })),
-        ),
-        "call-over",
-      ),
-    isLimitError,
+      parseWorkflowChildSummaries({
+        details: {
+          workflowChildren: {
+            ...base,
+            children: Array.from(
+              { length: SUBAGENT_PROGRESS_LIMITS.maxResultRows + 1 },
+              (_, index) => ({ childId: `x${index}`, state: "running" }),
+            ),
+          },
+        },
+      }),
+    new RegExp(SUBAGENT_PROGRESS_LIMIT_ERROR),
   );
 });
 
-test("serializes fixed-position collision-safe keys", () => {
-  const identity: SubagentProgress = {
-    toolCallId: "call|1",
-    childIndex: 3,
-    agent: "worker,reviewer",
-  };
+test("rebuilds persisted v1 allowlists and collision-safe keys", () => {
+  const workflow = parsePersistedSubagentProgress({
+    version: 1,
+    kind: "workflow",
+    toolCallId: "call",
+    workflowRunId: "run",
+    childId: "child",
+    state: "failed",
+    agent: "worker",
+    task: "SECRET",
+    unresolved: true,
+  });
+  assert.deepEqual(workflow, {
+    version: 1,
+    kind: "workflow",
+    toolCallId: "call",
+    workflowRunId: "run",
+    childId: "child",
+    state: "failed",
+    agent: "worker",
+    unresolved: true,
+  });
   assert.equal(
-    subagentProgressKey(identity),
-    '["call|1",3,"worker,reviewer",null,null]',
+    parsePersistedSubagentProgress({
+      toolCallId: "call",
+      childIndex: 0,
+      agent: "worker",
+    }),
+    undefined,
+  );
+  const direct = parsePersistedSubagentProgress({
+    version: 1,
+    kind: "direct",
+    toolCallId: "call",
+    runId: "run",
+    childIndex: 0,
+  });
+  assert.ok(direct);
+  assert.notEqual(
+    subagentProgressKey(direct),
+    subagentProgressKey({ ...direct, state: "pending" }),
   );
   assert.notEqual(
-    subagentProgressKey(identity),
-    subagentProgressKey({ ...identity, model: "" }),
-  );
-  assert.notEqual(
-    subagentProgressKey({ ...identity, model: "model", thinking: "high" }),
-    subagentProgressKey({ ...identity, model: "model:high" }),
+    subagentProgressKey(direct),
+    subagentProgressKey({ ...direct, unresolved: true }),
   );
 });
