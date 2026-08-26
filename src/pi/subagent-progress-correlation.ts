@@ -657,9 +657,27 @@ export function createSubagentProgressCorrelator(options: {
             : workflowKey(progress.toolCallId, progress.workflowRunId);
         groups.set(key, [...(groups.get(key) ?? []), progress]);
       }
+      const resumableDirectGroups = new Set<string>();
+      for (const [key, group] of directGroups) {
+        // Only the structured async-single launch identity can be resumed:
+        // it always has child index zero and its launch transition is pending.
+        // Other valid historical tuples stay in session deduplication history,
+        // but cannot claim an active parent or completion ownership.
+        if (
+          group.every(
+            (progress) =>
+              progress.childIndex === 0 &&
+              !progress.unresolved &&
+              progress.agent === undefined,
+          ) &&
+          group.some((progress) => progress.state === "pending")
+        )
+          resumableDirectGroups.add(key);
+      }
       const conflictedDirectRunIds = new Set<string>();
       const conflictedDirectOrigins = new Set<string>();
-      for (const group of directGroups.values()) {
+      for (const [key, group] of directGroups) {
+        if (!resumableDirectGroups.has(key)) continue;
         const first = group[0] as Extract<
           PersistedSubagentProgress,
           { kind: "direct" }
@@ -711,28 +729,10 @@ export function createSubagentProgressCorrelator(options: {
           PersistedSubagentProgress,
           { kind: "direct" }
         >;
-        // Persisted direct history has no surface marker. Pending async rows
-        // are resumable. So is the narrowly recognizable interrupted state
-        // where terminal metadata was stored before its unresolved fallback.
-        const pendingOnly = group.every(
-          (progress) =>
-            progress.state === "pending" &&
-            !progress.unresolved &&
-            progress.agent === undefined,
-        );
-        const interruptedFallback =
-          !pendingOnly &&
-          group.some((progress) => progress.state === "pending") &&
-          group.every(
-            (progress) =>
-              progress.childIndex === 0 &&
-              !progress.unresolved &&
-              progress.agent === undefined,
-          );
         if (
+          !resumableDirectGroups.has(key) ||
           conflictedDirectRunIds.has(first.runId) ||
-          conflictedDirectOrigins.has(first.toolCallId) ||
-          (!pendingOnly && !interruptedFallback)
+          conflictedDirectOrigins.has(first.toolCallId)
         )
           continue;
         if (
@@ -793,9 +793,22 @@ export function createSubagentProgressCorrelator(options: {
           ]);
         if (byChild.size > SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent)
           failLimit();
-        const closed = group.some(
+        const seals = group.filter(
           (progress) => progress.inventoryClosed === true,
         );
+        const firstChildId = [...byChild.keys()].sort()[0];
+        // A closed inventory is only durable after its one deterministic seal
+        // (on the lexicographically first child) and every agentless child has
+        // its recoverable unresolved fallback. Partial closure writes remain
+        // active so replay can append the missing fallback before releasing.
+        const closed =
+          seals.length === 1 &&
+          seals[0]?.childId === firstChildId &&
+          [...byChild.values()].every(
+            (rows) =>
+              rows.some((progress) => progress.agent !== undefined) ||
+              rows.some((progress) => progress.unresolved),
+          );
         if (closed) {
           restoredClosedWorkflows.set(
             key,

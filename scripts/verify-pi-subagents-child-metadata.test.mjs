@@ -76,6 +76,7 @@ test("validateWorkflowShapeContract uses stable workflow child IDs rather than r
           details: {
             completions: [
               {
+                runId: "workflow",
                 workflowChildren: summary(true, [
                   {
                     childId: "build",
@@ -108,6 +109,37 @@ test("validateWorkflowShapeContract uses stable workflow child IDs rather than r
       }),
     /unsupported workflow summary version/u,
   );
+});
+
+test("validateWorkflowShapeContract rejects completion workflow run drift and missing IDs", () => {
+  const summary = {
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: true,
+    workflowState: "completed",
+    children: [{ childId: "child", state: "completed", agent: "worker" }],
+  };
+  for (const completionRunId of [undefined, " ", "other"]) {
+    assert.throws(
+      () =>
+        validateWorkflowShapeContract({
+          label: "completion-run",
+          events: [
+            {
+              result: {
+                details: {
+                  completions: [
+                    { runId: completionRunId, workflowChildren: summary },
+                  ],
+                },
+              },
+            },
+          ],
+        }),
+      /completion workflow run drift/u,
+    );
+  }
 });
 
 test("validateWorkflowShapeContract rejects malformed v1 discriminants", () => {

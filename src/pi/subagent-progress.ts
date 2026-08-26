@@ -220,13 +220,19 @@ export function parseDirectSingleSnapshot(
   }
   if (!bounded(details.runId, SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits))
     return undefined;
-  const children = details.results.flatMap((row) =>
-    isRecord(row)
-      ? [directChild(row)].filter(
-          (child): child is NonNullable<typeof child> => child !== undefined,
-        )
-      : [],
-  );
+  const children: DirectSingleSnapshot["children"] = [];
+  const childIndexes = new Set<number>();
+  for (const row of details.results) {
+    if (!isRecord(row)) continue;
+    const child = directChild(row);
+    if (!child) continue;
+    // A result row's documented index is its identity, not its position.
+    // Reject the entire bounded container so no caller can append a
+    // contradictory partial transition set.
+    if (childIndexes.has(child.childIndex)) return undefined;
+    childIndexes.add(child.childIndex);
+    children.push(child);
+  }
   return { runId: details.runId, children, pendingAsyncSingle: false };
 }
 

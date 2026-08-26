@@ -279,11 +279,19 @@ export function validateWorkflowShapeContract({
     if (event?.isError === true || event?.result?.isError === true)
       throw new Error(`${label}: workflow tool failed`);
     const details = event?.partialResult?.details ?? event?.result?.details;
-    if (details?.workflowChildren) summaries.push(details.workflowChildren);
+    if (details?.workflowChildren)
+      summaries.push({
+        summary: details.workflowChildren,
+        fromCompletion: false,
+      });
     if (Array.isArray(details?.completions)) {
       for (const completion of details.completions) {
         if (completion?.workflowChildren)
-          summaries.push(completion.workflowChildren);
+          summaries.push({
+            summary: completion.workflowChildren,
+            fromCompletion: true,
+            completionRunId: completion.runId,
+          });
       }
     }
   }
@@ -291,7 +299,7 @@ export function validateWorkflowShapeContract({
     throw new Error(`${label}: missing workflowChildren summary`);
   let runId;
   let previousIds = new Set();
-  for (const summary of summaries) {
+  for (const { summary, fromCompletion, completionRunId } of summaries) {
     if (summary?.version !== 1)
       throw new Error(`${label}: unsupported workflow summary version`);
     if (
@@ -318,6 +326,13 @@ export function validateWorkflowShapeContract({
       throw new Error(`${label}: missing workflow run id`);
     if (runId && runId !== summary.workflowRunId)
       throw new Error(`${label}: workflow run drift`);
+    if (
+      fromCompletion &&
+      (typeof completionRunId !== "string" ||
+        !completionRunId.trim() ||
+        completionRunId !== summary.workflowRunId)
+    )
+      throw new Error(`${label}: completion workflow run drift`);
     runId = summary.workflowRunId;
     if (!Array.isArray(summary.children))
       throw new Error(`${label}: workflow children missing`);
@@ -364,10 +379,10 @@ export function validateWorkflowShapeContract({
         throw new Error(`${label}: open inventory removed ${id}`);
     previousIds = ids;
   }
-  const final = summaries.at(-1);
+  const final = summaries.at(-1)?.summary;
   if (
-    !final.inventoryComplete &&
-    !["completed", "failed", "stopped"].includes(final.workflowState)
+    !final?.inventoryComplete &&
+    !["completed", "failed", "stopped"].includes(final?.workflowState)
   )
     throw new Error(`${label}: workflow inventory never closed`);
   if (expectedChildIds) {

@@ -774,11 +774,11 @@ test("preflights restored active tuple keys without retaining partial state", ()
         customType: "patchmill-subagent-progress",
         data: {
           version: 1,
-          kind: "direct",
+          kind: "workflow",
           toolCallId: `launch-${parent}`,
-          runId: `run-${parent}`,
-          childIndex,
-          state: "pending",
+          workflowRunId: `run-${parent}`,
+          childId: `child-${childIndex}`,
+          state: "running",
           model: `model-${transition}`,
         },
       })),
@@ -994,6 +994,7 @@ test("replays closed workflow batches without charging active keys or partially 
         workflowRunId: "closed-run",
         childId: "child",
         state: "completed",
+        agent: "worker",
         inventoryClosed: true,
       },
     },
@@ -1195,4 +1196,190 @@ test("accepts 32 workflow children with a second transition and rejects accumula
       }),
     /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
   );
+});
+
+test("restores only child zero async direct histories while retaining invalid tuples for deduplication", () => {
+  const state = harness();
+  state.correlator.restore(
+    Array.from({ length: 256 }, (_, index) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: `invalid-launch-${index}`,
+        runId: `invalid-async-${index}`,
+        childIndex: 1,
+        state: "pending",
+      },
+    })),
+  );
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [{ runId: "invalid-async-0", state: "complete" }],
+      },
+    },
+  });
+  assert.deepEqual(state.entries, []);
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { mode: "single", asyncId: "async", results: [] } },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "async",
+      childIndex: 0,
+      state: "pending",
+    },
+  ]);
+});
+
+test("keeps malformed closed workflow groups open until their deterministic fallback closure is recoverable", () => {
+  for (const seals of [["second"], ["first", "second"]]) {
+    const state = harness();
+    state.correlator.restore(
+      ["first", "second"].map((childId) => ({
+        type: "custom",
+        customType: "patchmill-subagent-progress",
+        data: {
+          version: 1,
+          kind: "workflow",
+          toolCallId: "launch",
+          workflowRunId: "workflow",
+          childId,
+          state: "completed",
+          agent: "worker",
+          ...(seals.includes(childId) ? { inventoryClosed: true } : {}),
+        },
+      })),
+    );
+    state.correlator.observe({
+      phase: "update",
+      toolName: "subagent",
+      toolCallId: "status",
+      result: {
+        details: {
+          mode: "single",
+          workflowChildren: {
+            version: 1,
+            parentToolCallId: "launch",
+            workflowRunId: "workflow",
+            inventoryComplete: false,
+            workflowState: "running",
+            children: [
+              { childId: "first", state: "running", agent: "worker" },
+              { childId: "second", state: "running", agent: "worker" },
+            ],
+          },
+        },
+      },
+    });
+    assert.equal(state.entries.length, 2);
+  }
+
+  const fallback = harness();
+  fallback.correlator.restore([
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "child",
+        state: "completed",
+        inventoryClosed: true,
+      },
+    },
+  ]);
+  fallback.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: {
+        mode: "workflow",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "launch",
+          workflowRunId: "workflow",
+          inventoryComplete: true,
+          workflowState: "completed",
+          children: [{ childId: "child", state: "completed" }],
+        },
+      },
+    },
+  });
+  assert.deepEqual(fallback.entries, [
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "child",
+      state: "completed",
+    },
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "child",
+      state: "completed",
+      unresolved: true,
+    },
+  ]);
+});
+
+test("allows exactly 65536 matching restored entries and rejects one over without replacing initialized state", () => {
+  const entries = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: `old-${index}`,
+        runId: `run-${index}`,
+        childIndex: 0,
+        state: "completed",
+      },
+    }));
+  const exact = harness();
+  exact.correlator.restore(entries(65536));
+
+  const initialized = harness();
+  initialized.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { mode: "single", asyncId: "async", results: [] } },
+  });
+  assert.throws(
+    () => initialized.correlator.restore(entries(65537)),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  initialized.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [
+          { runId: "async", state: "complete", results: [{ agent: "worker" }] },
+        ],
+      },
+    },
+  });
+  assert.equal(initialized.entries.length, 2);
 });

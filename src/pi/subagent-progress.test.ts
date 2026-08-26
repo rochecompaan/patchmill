@@ -268,3 +268,124 @@ test("rebuilds persisted v1 allowlists and collision-safe keys", () => {
     subagentProgressKey({ ...closure, inventoryClosed: undefined }),
   );
 });
+
+test("rejects duplicate direct result indexes without returning a partial snapshot", () => {
+  assert.equal(
+    parseDirectSingleSnapshot({
+      details: {
+        mode: "single",
+        runId: "run",
+        results: [
+          { index: 0, agent: "first" },
+          { index: 0, agent: "second" },
+        ],
+      },
+    }),
+    undefined,
+  );
+});
+
+test("accepts exact direct and workflow parser boundaries and drops one-over metadata", () => {
+  const direct = (field: "agent" | "model" | "thinking", value: string) =>
+    parseDirectSingleSnapshot({
+      details: {
+        mode: "single",
+        runId: "r".repeat(SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits),
+        results: [{ index: 0, [field]: value }],
+      },
+    });
+  for (const [field, limit] of [
+    ["agent", SUBAGENT_PROGRESS_LIMITS.maxAgentCodeUnits],
+    ["model", SUBAGENT_PROGRESS_LIMITS.maxModelCodeUnits],
+    ["thinking", SUBAGENT_PROGRESS_LIMITS.maxThinkingCodeUnits],
+  ] as const) {
+    assert.equal(
+      direct(field, "x".repeat(limit))?.children[0]?.[field],
+      "x".repeat(limit),
+    );
+    assert.equal(
+      direct(field, "x".repeat(limit + 1))?.children[0]?.[field],
+      undefined,
+    );
+  }
+  for (const field of ["runId", "asyncId"] as const) {
+    const exact = "r".repeat(SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits);
+    const details =
+      field === "runId"
+        ? { mode: "single", runId: exact, results: [{ index: 0 }] }
+        : { mode: "single", asyncId: exact, results: [] };
+    assert.ok(parseDirectSingleSnapshot({ details }));
+    const tooLong = "r".repeat(
+      SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits + 1,
+    );
+    const overDetails =
+      field === "runId"
+        ? { mode: "single", runId: tooLong, results: [{ index: 0 }] }
+        : { mode: "single", asyncId: tooLong, results: [] };
+    assert.equal(
+      parseDirectSingleSnapshot({ details: overDetails }),
+      undefined,
+    );
+  }
+
+  const workflow = (
+    overrides: Record<string, unknown> = {},
+    childOverrides: Record<string, unknown> = {},
+  ) =>
+    parseWorkflowChildSummaries({
+      details: {
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "p".repeat(
+            SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes,
+          ),
+          workflowRunId: "r".repeat(SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes),
+          inventoryComplete: false,
+          workflowState: "running",
+          children: [
+            {
+              childId: "c".repeat(
+                SUBAGENT_PROGRESS_LIMITS.maxWorkflowChildIdBytes,
+              ),
+              state: "running",
+              ...childOverrides,
+            },
+          ],
+          ...overrides,
+        },
+      },
+    });
+  assert.equal(workflow().length, 1);
+  for (const field of ["parentToolCallId", "workflowRunId"] as const)
+    assert.deepEqual(
+      workflow({
+        [field]: "x".repeat(SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes + 1),
+      }),
+      [],
+    );
+  assert.deepEqual(
+    workflow(
+      {},
+      {
+        childId: "c".repeat(
+          SUBAGENT_PROGRESS_LIMITS.maxWorkflowChildIdBytes + 1,
+        ),
+      },
+    ),
+    [],
+  );
+  for (const [field, limit] of [
+    ["agent", SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes],
+    ["model", SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes],
+    ["thinking", SUBAGENT_PROGRESS_LIMITS.maxWorkflowThinkingBytes],
+  ] as const) {
+    assert.equal(
+      workflow({}, { [field]: "x".repeat(limit) })[0]?.children[0]?.[field],
+      "x".repeat(limit),
+    );
+    assert.equal(
+      workflow({}, { [field]: "x".repeat(limit + 1) })[0]?.children[0]?.[field],
+      undefined,
+    );
+  }
+});
