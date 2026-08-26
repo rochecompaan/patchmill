@@ -965,6 +965,188 @@ test("restoration rejects 33 unique child transitions", () => {
   assert.equal(state.entries.length, 1);
 });
 
+test("replays closed workflow batches without charging active keys or partially appending", () => {
+  const inactive = harness();
+  const activeRows = Array.from({ length: 512 }, (_, childIndex) =>
+    Array.from({ length: 32 }, (_, transition) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: "active",
+        runId: "active-run",
+        childIndex,
+        state: "pending",
+        model: `model-${transition}`,
+      },
+    })),
+  ).flat();
+  inactive.correlator.restore([
+    ...activeRows,
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "closed-launch",
+        workflowRunId: "closed-run",
+        childId: "child",
+        state: "completed",
+        inventoryClosed: true,
+      },
+    },
+  ]);
+  inactive.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "closed-launch",
+    result: {
+      details: {
+        mode: "workflow",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "closed-launch",
+          workflowRunId: "closed-run",
+          inventoryComplete: true,
+          workflowState: "completed",
+          children: [{ childId: "child", state: "completed", agent: "worker" }],
+        },
+      },
+    },
+  });
+  assert.equal(inactive.entries.length, 1);
+
+  const atomic = harness();
+  atomic.correlator.restore([
+    ...Array.from({ length: 65533 }, (_, index) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: `old-${index}`,
+        runId: `old-run-${index}`,
+        childIndex: 0,
+        state: "completed",
+      },
+    })),
+    ...["one", "two"].map((childId, index) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "closed-launch",
+        workflowRunId: "closed-run",
+        childId,
+        state: "completed",
+        ...(index === 0 ? { inventoryClosed: true } : {}),
+      },
+    })),
+  ]);
+  assert.throws(
+    () =>
+      atomic.correlator.observe({
+        phase: "end",
+        toolName: "subagent",
+        toolCallId: "closed-launch",
+        result: {
+          details: {
+            mode: "workflow",
+            workflowChildren: {
+              version: 1,
+              parentToolCallId: "closed-launch",
+              workflowRunId: "closed-run",
+              inventoryComplete: true,
+              workflowState: "completed",
+              children: [
+                { childId: "one", state: "completed", agent: "worker" },
+                { childId: "two", state: "completed", agent: "worker" },
+              ],
+            },
+          },
+        },
+      }),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  assert.equal(atomic.entries.length, 0);
+});
+
+test("excludes every workflow group participating in ownership conflicts", () => {
+  const state = harness();
+  const row = (toolCallId: string, workflowRunId: string) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "workflow",
+      toolCallId,
+      workflowRunId,
+      childId: "child",
+      state: "running",
+    },
+  });
+  state.correlator.restore(
+    Array.from({ length: 128 }, (_, index) => [
+      row(`run-parent-${index}-a`, `shared-run-${index}`),
+      row(`run-parent-${index}-b`, `shared-run-${index}`),
+      row(`shared-parent-${index}`, `parent-run-${index}-a`),
+      row(`shared-parent-${index}`, `parent-run-${index}-b`),
+    ]).flat(),
+  );
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "new-launch",
+    result: {
+      details: {
+        mode: "single",
+        runId: "new-run",
+        results: [{ index: 0, agent: "worker", exitCode: 0 }],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
+test("enforces closed workflow child cardinality before restoring state", () => {
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "closed-launch",
+        workflowRunId: "closed-run",
+        childId: `child-${index}`,
+        state: "completed",
+        ...(index === 0 ? { inventoryClosed: true } : {}),
+      },
+    }));
+  const state = harness();
+  state.correlator.restore(rows(1024));
+  assert.throws(
+    () => state.correlator.restore(rows(1025)),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "new-launch",
+    result: {
+      details: {
+        mode: "single",
+        runId: "new-run",
+        results: [{ index: 0, agent: "worker", exitCode: 0 }],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
 test("accepts 32 workflow children with a second transition and rejects accumulated direct children", () => {
   const state = harness();
   const rows = (state: "pending" | "running") =>

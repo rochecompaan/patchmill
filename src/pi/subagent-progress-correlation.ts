@@ -127,6 +127,7 @@ export function createSubagentProgressCorrelator(options: {
     children: readonly Child[],
     newParents: number,
     newChildren: number,
+    chargeActiveKeys = true,
   ): void => {
     const newKeys = new Set<string>();
     const increments = new Map<string, number>();
@@ -142,7 +143,8 @@ export function createSubagentProgressCorrelator(options: {
         SUBAGENT_PROGRESS_LIMITS.maxActiveParents ||
       activeChildren + newChildren >
         SUBAGENT_PROGRESS_LIMITS.maxActiveChildren ||
-      activeKeys + newKeys.size > SUBAGENT_PROGRESS_LIMITS.maxActiveKeys ||
+      (chargeActiveKeys &&
+        activeKeys + newKeys.size > SUBAGENT_PROGRESS_LIMITS.maxActiveKeys) ||
       sessionEntries + newKeys.size >
         SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession
     )
@@ -454,7 +456,7 @@ export function createSubagentProgressCorrelator(options: {
           !["completed", "failed", "stopped"].includes(summary.workflowState))
       )
         return;
-      for (const row of summary.children) {
+      const replays = summary.children.map((row) => {
         const prior = closed.get(row.childId)!;
         const child: Child = {
           keys: new Set(),
@@ -473,15 +475,26 @@ export function createSubagentProgressCorrelator(options: {
           ...(row.model ? { model: row.model } : {}),
           ...(row.thinking ? { thinking: row.thinking } : {}),
         };
-        preflight([progress], [], 0, 0);
+        return { child, progress };
+      });
+      // Closed inventories retain no active tuple keys. Preflight the whole
+      // replay batch before appending any row, without charging those rows
+      // against the active-key ceiling.
+      preflight(
+        replays.map(({ progress }) => progress),
+        [],
+        0,
+        0,
+        false,
+      );
+      for (const { child, progress } of replays)
         if (append(progress, child, false)) {
-          closed.set(row.childId, {
+          closed.set(progress.childId, {
             agentSeen: child.agentSeen,
             unresolved: child.unresolved,
             ...(child.lastState ? { lastState: child.lastState } : {}),
           });
         }
-      }
       return;
     }
     const existing = workflowRuns.get(key);
@@ -660,6 +673,31 @@ export function createSubagentProgressCorrelator(options: {
         restoredDirectOrigins.set(first.runId, first.toolCallId);
         restoredDirectRunsByOrigin.set(first.toolCallId, first.runId);
       }
+      const workflowGroupsByRun = new Map<string, Set<string>>();
+      const workflowGroupsByParent = new Map<string, Set<string>>();
+      for (const [key, group] of workflowGroups) {
+        const first = group[0] as Extract<
+          PersistedSubagentProgress,
+          { kind: "workflow" }
+        >;
+        const add = (groups: Map<string, Set<string>>, id: string) => {
+          const keys = groups.get(id) ?? new Set<string>();
+          keys.add(key);
+          groups.set(id, keys);
+        };
+        add(workflowGroupsByRun, first.workflowRunId);
+        add(workflowGroupsByParent, first.toolCallId);
+      }
+      // Ownership is bijective. A conflict poisons every group on either
+      // side, rather than accepting the first row encountered during replay.
+      const conflictedWorkflowGroups = new Set<string>();
+      for (const groups of [
+        ...workflowGroupsByRun.values(),
+        ...workflowGroupsByParent.values(),
+      ])
+        if (groups.size > 1)
+          for (const key of groups) conflictedWorkflowGroups.add(key);
+
       let restoredChildren = 0;
       let restoredKeys = 0;
       const hydrate = (child: Child, progress: PersistedSubagentProgress) => {
@@ -738,13 +776,7 @@ export function createSubagentProgressCorrelator(options: {
         // A corrupt persisted parent/run pair is not made active or eligible
         // for management adoption, while its valid immutable tuples stay
         // deduplicated for the session.
-        if (
-          (restoredOrigins.has(first.workflowRunId) &&
-            restoredOrigins.get(first.workflowRunId) !== first.toolCallId) ||
-          (restoredRunsByOrigin.has(first.toolCallId) &&
-            restoredRunsByOrigin.get(first.toolCallId) !== first.workflowRunId)
-        )
-          continue;
+        if (conflictedWorkflowGroups.has(key)) continue;
         restoredOrigins.set(first.workflowRunId, first.toolCallId);
         restoredRunsByOrigin.set(first.toolCallId, first.workflowRunId);
         const byChild = new Map<
@@ -759,6 +791,8 @@ export function createSubagentProgressCorrelator(options: {
             ...(byChild.get(progress.childId) ?? []),
             progress,
           ]);
+        if (byChild.size > SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent)
+          failLimit();
         const closed = group.some(
           (progress) => progress.inventoryClosed === true,
         );

@@ -91,6 +91,29 @@ test("validateWorkflowShapeContract uses stable workflow child IDs rather than r
   );
 });
 
+test("validateWorkflowShapeContract rejects malformed v1 discriminants", () => {
+  const base = {
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: true,
+    workflowState: "completed",
+    children: [{ childId: "child", state: "completed", agent: "worker" }],
+  };
+  for (const summary of [
+    { ...base, parentToolCallId: "" },
+    { ...base, inventoryComplete: "true" },
+    { ...base, workflowState: "unknown" },
+    { ...base, children: [{ ...base.children[0], state: "unknown" }] },
+  ])
+    assert.throws(() =>
+      validateWorkflowShapeContract({
+        label: "malformed",
+        events: [{ result: { details: { workflowChildren: summary } } }],
+      }),
+    );
+});
+
 test("validateWorkflowShapeContract rejects failed workflow tool events", () => {
   assert.throws(
     () =>

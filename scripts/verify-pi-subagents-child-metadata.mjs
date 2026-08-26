@@ -233,6 +233,25 @@ export function validateDirectAsyncShapeContract({
  * Independently validates the released workflowChildren v1 contract. This
  * intentionally does not import Patchmill's production parser.
  */
+const workflowStates = new Set([
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "paused",
+  "stopped",
+]);
+const childStates = new Set([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "paused",
+  "stopped",
+  "rejected",
+  "detached",
+]);
+
 export function validateWorkflowShapeContract({
   label,
   events,
@@ -263,10 +282,22 @@ export function validateWorkflowShapeContract({
     if (summary?.version !== 1)
       throw new Error(`${label}: unsupported workflow summary version`);
     if (
+      typeof summary.parentToolCallId !== "string" ||
+      !summary.parentToolCallId.trim()
+    )
+      throw new Error(`${label}: missing workflow parent id`);
+    if (
       parentToolCallId !== undefined &&
       summary.parentToolCallId !== parentToolCallId
     )
       throw new Error(`${label}: workflow parent drift`);
+    if (typeof summary.inventoryComplete !== "boolean")
+      throw new Error(`${label}: invalid workflow inventory completion`);
+    if (
+      typeof summary.workflowState !== "string" ||
+      !workflowStates.has(summary.workflowState)
+    )
+      throw new Error(`${label}: invalid workflow state`);
     if (
       typeof summary.workflowRunId !== "string" ||
       !summary.workflowRunId.trim()
@@ -288,6 +319,8 @@ export function validateWorkflowShapeContract({
         ids.has(child.childId)
       )
         throw new Error(`${label}: invalid or duplicate workflow child id`);
+      if (typeof child.state !== "string" || !childStates.has(child.state))
+        throw new Error(`${label}: invalid workflow child state`);
       ids.add(child.childId);
       if (child.state === "failed")
         throw new Error(`${label}: child ${child.childId} failed`);
