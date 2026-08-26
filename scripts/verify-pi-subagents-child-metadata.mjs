@@ -170,6 +170,108 @@ export function validateShapeContract(options) {
   }
 }
 
+/** Validate the structured single-child contract without inferring identity from row order. */
+export function validateDirectShapeContract(options) {
+  return validateShapeContract({
+    ...options,
+    requireUniqueSiblingIds: options.requireUniqueSiblingIds ?? false,
+  });
+}
+
+/**
+ * Independently validates the released workflowChildren v1 contract. This
+ * intentionally does not import Patchmill's production parser.
+ */
+export function validateWorkflowShapeContract({
+  label,
+  events,
+  parentToolCallId,
+  expectedChildIds,
+  expectedModel,
+  expectedThinking,
+  requireThinking = true,
+}) {
+  const summaries = [];
+  for (const event of events) {
+    const details = event?.partialResult?.details ?? event?.result?.details;
+    if (details?.workflowChildren) summaries.push(details.workflowChildren);
+    if (Array.isArray(details?.completions)) {
+      for (const completion of details.completions) {
+        if (completion?.workflowChildren)
+          summaries.push(completion.workflowChildren);
+      }
+    }
+  }
+  if (summaries.length === 0)
+    throw new Error(`${label}: missing workflowChildren summary`);
+  let runId;
+  let previousIds = new Set();
+  for (const summary of summaries) {
+    if (summary?.version !== 1)
+      throw new Error(`${label}: unsupported workflow summary version`);
+    if (
+      parentToolCallId !== undefined &&
+      summary.parentToolCallId !== parentToolCallId
+    )
+      throw new Error(`${label}: workflow parent drift`);
+    if (
+      typeof summary.workflowRunId !== "string" ||
+      !summary.workflowRunId.trim()
+    )
+      throw new Error(`${label}: missing workflow run id`);
+    if (runId && runId !== summary.workflowRunId)
+      throw new Error(`${label}: workflow run drift`);
+    runId = summary.workflowRunId;
+    if (!Array.isArray(summary.children))
+      throw new Error(`${label}: workflow children missing`);
+    const ids = new Set();
+    for (const child of summary.children) {
+      if (
+        typeof child?.childId !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(child.childId) ||
+        ids.has(child.childId)
+      )
+        throw new Error(`${label}: invalid or duplicate workflow child id`);
+      ids.add(child.childId);
+      if (child.state === "failed")
+        throw new Error(`${label}: child ${child.childId} failed`);
+      if (expectedModel && child.model !== expectedModel)
+        throw new Error(
+          `${label}: child ${child.childId} missing model ${expectedModel}`,
+        );
+      if (
+        requireThinking &&
+        expectedThinking &&
+        child.thinking !== expectedThinking
+      )
+        throw new Error(
+          `${label}: child ${child.childId} missing thinking ${expectedThinking}`,
+        );
+      if (!requireThinking && "thinking" in child)
+        throw new Error(
+          `${label}: child ${child.childId} unexpectedly includes thinking`,
+        );
+    }
+    for (const id of previousIds)
+      if (!ids.has(id) && summary.inventoryComplete !== true)
+        throw new Error(`${label}: open inventory removed ${id}`);
+    previousIds = ids;
+  }
+  const final = summaries.at(-1);
+  if (
+    !final.inventoryComplete &&
+    !["completed", "failed", "stopped"].includes(final.workflowState)
+  )
+    throw new Error(`${label}: workflow inventory never closed`);
+  if (expectedChildIds) {
+    assert.deepEqual(
+      [...previousIds].sort(),
+      [...expectedChildIds].sort(),
+      `${label}: stable child ID mismatch`,
+    );
+  }
+}
+
 function requiredEnvironment(name) {
   const value = process.env[name];
   if (!value)
@@ -212,6 +314,7 @@ function runShape({
   agentsDir,
   packageRoot,
   parentModel,
+  expectedChildIds,
 }) {
   const args = [
     "--mode",
@@ -250,15 +353,27 @@ function runShape({
   }
   const shape = collectSubagentEvents(parseJsonLines(result.stdout, label));
   try {
-    validateShapeContract({
-      label,
-      expectedModel,
-      expectedThinking,
-      expectedFinalChildren,
-      requireUniqueSiblingIds: expectedFinalChildren > 1,
-      requireThinking,
-      shape,
-    });
+    if (expectedChildIds) {
+      validateWorkflowShapeContract({
+        label,
+        events: parseJsonLines(result.stdout, label),
+        parentToolCallId: undefined,
+        expectedChildIds,
+        expectedModel,
+        expectedThinking,
+        requireThinking,
+      });
+    } else {
+      validateDirectShapeContract({
+        label,
+        expectedModel,
+        expectedThinking,
+        expectedFinalChildren,
+        requireUniqueSiblingIds: expectedFinalChildren > 1,
+        requireThinking,
+        shape,
+      });
+    }
   } catch (error) {
     throw new Error(
       `${label}: ${error instanceof Error ? error.message : String(error)}\nRaw Pi output:\n${rawOutput}`,
@@ -326,57 +441,37 @@ async function main() {
         context: "fresh",
       },
     });
-    runShape({
-      ...common,
-      label: "counted",
-      expectedFinalChildren: 2,
-      input: {
-        tasks: [
-          {
-            agent: "contract-thinking",
-            task: "Return the word counted.",
-            count: 2,
-          },
-        ],
-        concurrency: 2,
-        context: "fresh",
-      },
-    });
-    runShape({
-      ...common,
-      label: "parallel",
-      expectedFinalChildren: 3,
-      input: {
-        tasks: [
-          { agent: "contract-thinking", task: "Return parallel a." },
-          {
-            agent: "contract-thinking",
-            task: "Return repeated parallel.",
-            count: 2,
-          },
-        ],
-        concurrency: 2,
-        context: "fresh",
-      },
-    });
-    runShape({
-      ...common,
-      label: "chain",
-      expectedFinalChildren: 3,
-      input: {
-        chain: [
-          { agent: "contract-thinking", task: "Return chain step one." },
-          {
-            parallel: [
-              { agent: "contract-thinking", task: "Return chain fanout a." },
-              { agent: "contract-thinking", task: "Return chain fanout b." },
-            ],
-          },
-        ],
-        context: "fresh",
-        clarify: false,
-      },
-    });
+    const workflows = [
+      [
+        "workflow-runs-run",
+        ["single"],
+        'return await runs.run("single", {agent:"contract-thinking", task:"Return workflow single."});',
+      ],
+      [
+        "workflow-runs-all",
+        ["parallel-a", "parallel-b"],
+        'return await runs.all([{key:"parallel-a",agent:"contract-thinking",task:"Return parallel a."},{key:"parallel-b",agent:"contract-thinking",task:"Return parallel b."}]);',
+      ],
+      [
+        "workflow-sequential",
+        ["first", "second"],
+        'await runs.run("first",{agent:"contract-thinking",task:"Return first."}); return await runs.run("second",{agent:"contract-thinking",task:"Return second."});',
+      ],
+      [
+        "workflow-dynamic",
+        ["dynamic-a", "dynamic-b"],
+        'const keys=["dynamic-a","dynamic-b"]; for(const key of keys){await runs.run(key,{agent:"contract-thinking",task:`Return ${key}.`});} return keys;',
+      ],
+    ];
+    for (const [label, expectedChildIds, workflowScript] of workflows) {
+      runShape({
+        ...common,
+        label,
+        expectedFinalChildren: 0,
+        expectedChildIds,
+        input: { workflowScript, async: false, context: "fresh" },
+      });
+    }
     runShape({
       cwd,
       agentsDir,

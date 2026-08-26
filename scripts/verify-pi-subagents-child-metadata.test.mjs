@@ -4,6 +4,8 @@ import {
   collectSubagentEvents,
   reportedThinkingModel,
   validateShapeContract,
+  validateDirectShapeContract,
+  validateWorkflowShapeContract,
 } from "./verify-pi-subagents-child-metadata.mjs";
 
 const finalResult = {
@@ -15,6 +17,95 @@ const finalResult = {
     ],
   },
 };
+
+test("validateWorkflowShapeContract uses stable workflow child IDs rather than result indexes", () => {
+  const summary = (complete, children) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: complete,
+    workflowState: complete ? "completed" : "running",
+    children,
+  });
+  validateWorkflowShapeContract({
+    label: "workflow",
+    parentToolCallId: "launch",
+    expectedChildIds: ["build", "review"],
+    expectedModel: "provider/model",
+    expectedThinking: "low",
+    events: [
+      {
+        type: "tool_execution_update",
+        partialResult: {
+          details: {
+            results: [{ index: 0 }, { index: 0 }],
+            workflowChildren: summary(false, [
+              {
+                childId: "build",
+                state: "running",
+                model: "provider/model",
+                thinking: "low",
+              },
+            ]),
+          },
+        },
+      },
+      {
+        type: "tool_execution_end",
+        result: {
+          details: {
+            completions: [
+              {
+                workflowChildren: summary(true, [
+                  {
+                    childId: "build",
+                    state: "completed",
+                    model: "provider/model",
+                    thinking: "low",
+                  },
+                  {
+                    childId: "review",
+                    state: "completed",
+                    model: "provider/model",
+                    thinking: "low",
+                  },
+                ]),
+              },
+            ],
+          },
+        },
+      },
+    ],
+  });
+  assert.throws(
+    () =>
+      validateWorkflowShapeContract({
+        label: "bad",
+        parentToolCallId: "launch",
+        events: [{ result: { details: { workflowChildren: { version: 2 } } } }],
+      }),
+    /unsupported workflow summary version/u,
+  );
+});
+
+test("validateDirectShapeContract matches the structured direct surface", () => {
+  validateDirectShapeContract({
+    label: "direct",
+    expectedModel: "provider/model-a",
+    expectedThinking: "low",
+    expectedFinalChildren: 2,
+    requireUniqueSiblingIds: true,
+    requireThinking: true,
+    shape: collectSubagentEvents([
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        isError: false,
+        result: finalResult,
+      },
+    ]),
+  });
+});
 
 test("reportedThinkingModel matches the Pi model argument emitted for an explicit fixture thinking level", () => {
   assert.equal(
