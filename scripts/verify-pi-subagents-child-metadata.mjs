@@ -194,21 +194,28 @@ export function validateDirectAsyncShapeContract({
   );
   if (!launch) throw new Error(`${label}: missing structured async launch`);
   const asyncId = launch.result.details.asyncId;
-  const completion = events
-    .filter(
-      (event) =>
-        event.type === "tool_execution_end" &&
-        event.toolName === "subagent_wait",
+  const waitEvents = events.filter(
+    (event) =>
+      event.type === "tool_execution_end" && event.toolName === "subagent_wait",
+  );
+  if (
+    waitEvents.some(
+      (event) => event.isError === true || event.result?.isError === true,
     )
+  )
+    throw new Error(`${label}: async wait tool failed`);
+  const completion = waitEvents
     .flatMap((event) => event.result?.details?.completions ?? [])
     .find((row) => row?.runId === asyncId);
   if (!completion)
     throw new Error(`${label}: missing wait completion for ${asyncId}`);
+  if (completion.success === false || completion.state === "failed")
+    throw new Error(`${label}: async completion failed`);
   const rows = completion.results;
   if (!Array.isArray(rows) || rows.length !== 1)
     throw new Error(`${label}: completion missing direct child`);
   const child = rows[0];
-  if (child?.exitCode !== undefined && child.exitCode !== 0)
+  if (child?.success === false)
     throw new Error(`${label}: completion child failed`);
   if (typeof child?.agent !== "string")
     throw new Error(`${label}: completion child missing canonical agent`);
