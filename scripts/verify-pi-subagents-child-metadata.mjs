@@ -351,13 +351,20 @@ function runShape({
       `${label}: Pi command failed: ${result.error?.message ?? `exit ${result.status}`}\n${rawOutput}`,
     );
   }
-  const shape = collectSubagentEvents(parseJsonLines(result.stdout, label));
+  const events = parseJsonLines(result.stdout, label);
+  const shape = collectSubagentEvents(events);
   try {
     if (expectedChildIds) {
+      const launchEvent = events.find(
+        (event) =>
+          event.type === "tool_execution_update" &&
+          event.toolName === "subagent" &&
+          typeof event.toolCallId === "string",
+      );
       validateWorkflowShapeContract({
         label,
-        events: parseJsonLines(result.stdout, label),
-        parentToolCallId: undefined,
+        events,
+        parentToolCallId: launchEvent?.toolCallId,
         expectedChildIds,
         expectedModel,
         expectedThinking,
