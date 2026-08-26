@@ -523,6 +523,175 @@ test("adopts known status IDs and a reloaded empty workflow completion", () => {
   );
 });
 
+test("restores an empty workflow launch for later async status children", () => {
+  const state = harness();
+  const summary = (children: unknown[]) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: false,
+    workflowState: "running",
+    children,
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: { mode: "workflow", workflowChildren: summary([]) },
+    },
+  });
+  assert.deepEqual(state.entries, []);
+
+  const reloaded = harness();
+  reloaded.correlator.restore([]);
+  reloaded.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status-event-id",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: summary([
+          { childId: "child", state: "running", agent: "worker" },
+        ]),
+      },
+    },
+  });
+  assert.deepEqual(reloaded.entries, [
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "child",
+      state: "running",
+      agent: "worker",
+    },
+  ]);
+});
+
+test("restores an interrupted direct completion until its fallback persists", () => {
+  const state = harness();
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { mode: "single", asyncId: "async", results: [] } },
+  });
+  const completion = {
+    phase: "end" as const,
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [{ runId: "async", state: "complete", results: [{}] }],
+      },
+    },
+  };
+  state.failAfter(new Error("append"), 1);
+  assert.throws(
+    () => state.correlator.observe(completion),
+    new RegExp(SUBAGENT_PROGRESS_APPEND_ERROR),
+  );
+  assert.deepEqual(
+    state.entries.map((entry) => [entry.state, entry.unresolved]),
+    [
+      ["pending", undefined],
+      ["completed", undefined],
+    ],
+  );
+
+  const reloaded = harness();
+  reloaded.correlator.restore(
+    state.entries.map((data) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data,
+    })),
+  );
+  reloaded.correlator.observe(completion);
+  assert.deepEqual(reloaded.entries, [
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "async",
+      childIndex: 0,
+      state: "completed",
+      unresolved: true,
+    },
+  ]);
+});
+
+test("rejects contradictory direct async run ownership on launch and restore", () => {
+  const state = harness();
+  const launch = (toolCallId: string) =>
+    state.correlator.observe({
+      phase: "end",
+      toolName: "subagent",
+      toolCallId,
+      result: {
+        details: { mode: "single", asyncId: "async", results: [] },
+      },
+    });
+  launch("first");
+  launch("second");
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [
+          {
+            runId: "async",
+            state: "complete",
+            results: [{ agent: "worker" }],
+          },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(
+    state.entries.map((entry) => entry.toolCallId),
+    ["first", "first"],
+  );
+
+  const reloaded = harness();
+  reloaded.correlator.restore(
+    ["first", "second"].map((toolCallId) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId,
+        runId: "conflicted",
+        childIndex: 0,
+        state: "pending",
+      },
+    })),
+  );
+  reloaded.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [
+          {
+            runId: "conflicted",
+            state: "complete",
+            results: [{ agent: "worker" }],
+          },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(reloaded.entries, []);
+});
+
 test("rejects workflow parent/run drift and completion sibling corruption", () => {
   const state = harness();
   const summary = (parentToolCallId: string, workflowRunId: string) => ({

@@ -244,6 +244,8 @@ export function validateWorkflowShapeContract({
 }) {
   const summaries = [];
   for (const event of events) {
+    if (event?.isError === true || event?.result?.isError === true)
+      throw new Error(`${label}: workflow tool failed`);
     const details = event?.partialResult?.details ?? event?.result?.details;
     if (details?.workflowChildren) summaries.push(details.workflowChildren);
     if (Array.isArray(details?.completions)) {

@@ -35,6 +35,7 @@ type Child = {
 };
 type DirectRun = {
   toolCallId: string;
+  runId: string;
   children: Map<number, Child>;
   async: boolean;
 };
@@ -86,6 +87,11 @@ export function createSubagentProgressCorrelator(options: {
   append(progress: PersistedSubagentProgress): void;
 }): SubagentProgressCorrelator {
   let directRuns = new Map<string, DirectRun>();
+  // Async completions carry only a run ID, so retain both directions while a
+  // direct run is active. This prevents a contradictory launch from assigning
+  // one completion to more than one parent.
+  let directOrigins = new Map<string, string>();
+  let directRunsByOrigin = new Map<string, string>();
   let workflowRuns = new Map<string, WorkflowRun>();
   let closedWorkflows = new Map<string, ClosedWorkflow>();
   // Retain both directions so one originating parent cannot be silently
@@ -184,8 +190,10 @@ export function createSubagentProgressCorrelator(options: {
     const key = directKey(toolCallId, runId);
     let run = directRuns.get(key);
     if (!run) {
-      run = { toolCallId, children: new Map(), async };
+      run = { toolCallId, runId, children: new Map(), async };
       directRuns.set(key, run);
+      directOrigins.set(runId, toolCallId);
+      directRunsByOrigin.set(toolCallId, runId);
     }
     let child = run.children.get(index);
     if (!child) {
@@ -201,6 +209,10 @@ export function createSubagentProgressCorrelator(options: {
       activeKeys -= child.keys.size;
     }
     directRuns.delete(key);
+    if (directOrigins.get(run.runId) === run.toolCallId)
+      directOrigins.delete(run.runId);
+    if (directRunsByOrigin.get(run.toolCallId) === run.runId)
+      directRunsByOrigin.delete(run.toolCallId);
   };
   const releaseWorkflow = (key: string, run: WorkflowRun) => {
     closedWorkflows.set(
@@ -247,6 +259,13 @@ export function createSubagentProgressCorrelator(options: {
     const snapshot = parseDirectSingleSnapshot(event.result);
     if (snapshot) {
       const key = directKey(event.toolCallId, snapshot.runId);
+      const directOrigin = directOrigins.get(snapshot.runId);
+      const directRun = directRunsByOrigin.get(event.toolCallId);
+      if (
+        (directOrigin !== undefined && directOrigin !== event.toolCallId) ||
+        (directRun !== undefined && directRun !== snapshot.runId)
+      )
+        return;
       const existing = directRuns.get(key);
       const rows = snapshot.pendingAsyncSingle
         ? [{ childIndex: 0, state: "pending" as const }]
@@ -324,9 +343,12 @@ export function createSubagentProgressCorrelator(options: {
       }
     }
     for (const completion of parseDirectCompletionSnapshots(event.result)) {
-      for (const [key, run] of directRuns) {
-        if (!run.async || key !== directKey(run.toolCallId, completion.runId))
-          continue;
+      const origin = directOrigins.get(completion.runId);
+      if (origin === undefined) continue;
+      const key = directKey(origin, completion.runId);
+      const run = directRuns.get(key);
+      if (!run?.async) continue;
+      {
         const child = run.children.get(0);
         if (!child) continue;
         const progress: PersistedSubagentProgress | undefined =
@@ -393,10 +415,20 @@ export function createSubagentProgressCorrelator(options: {
     const sourceCloses =
       summary.inventoryComplete ||
       ["completed", "failed", "stopped"].includes(summary.workflowState);
-    // A current status/wait call has a new Pi event ID. Its only durable
-    // identity is the parent ID carried by the v1 summary. A cold-reload
-    // adoption is restricted to a terminal completion whose documented runId
-    // independently agrees with that summary.
+    const statusSummary =
+      !source.fromCompletion &&
+      event.toolName === "subagent" &&
+      typeof event.result === "object" &&
+      event.result !== null &&
+      !Array.isArray(event.result) &&
+      typeof (event.result as { details?: { mode?: unknown } }).details
+        ?.mode === "string" &&
+      (event.result as { details?: { mode?: unknown } }).details?.mode ===
+        "single";
+    // A current status call has a new Pi event ID. Its v1 summary preserves
+    // the originating parent ID, including when the initial empty workflow
+    // left no persisted child entry to restore. Other cold adoption remains
+    // restricted to a terminal completion whose documented runId agrees.
     if (
       (launchEvent && summary.parentToolCallId !== event.toolCallId) ||
       (origin !== undefined && origin !== summary.parentToolCallId) ||
@@ -405,6 +437,7 @@ export function createSubagentProgressCorrelator(options: {
         source.completionRunId !== summary.workflowRunId) ||
       (!launchEvent &&
         origin === undefined &&
+        !statusSummary &&
         (!source.fromCompletion ||
           source.completionRunId !== summary.workflowRunId ||
           !sourceCloses))
@@ -573,6 +606,8 @@ export function createSubagentProgressCorrelator(options: {
       // Build an entirely separate snapshot. A limit failure must not leave a
       // partially restored inventory that can evade a later preflight.
       const restoredDirectRuns = new Map<string, DirectRun>();
+      const restoredDirectOrigins = new Map<string, string>();
+      const restoredDirectRunsByOrigin = new Map<string, string>();
       const restoredWorkflowRuns = new Map<string, WorkflowRun>();
       const restoredClosedWorkflows = new Map<string, ClosedWorkflow>();
       const restoredOrigins = new Map<string, string>();
@@ -609,6 +644,22 @@ export function createSubagentProgressCorrelator(options: {
             : workflowKey(progress.toolCallId, progress.workflowRunId);
         groups.set(key, [...(groups.get(key) ?? []), progress]);
       }
+      const conflictedDirectRunIds = new Set<string>();
+      const conflictedDirectOrigins = new Set<string>();
+      for (const group of directGroups.values()) {
+        const first = group[0] as Extract<
+          PersistedSubagentProgress,
+          { kind: "direct" }
+        >;
+        const origin = restoredDirectOrigins.get(first.runId);
+        const runId = restoredDirectRunsByOrigin.get(first.toolCallId);
+        if (origin !== undefined && origin !== first.toolCallId)
+          conflictedDirectRunIds.add(first.runId);
+        if (runId !== undefined && runId !== first.runId)
+          conflictedDirectOrigins.add(first.toolCallId);
+        restoredDirectOrigins.set(first.runId, first.toolCallId);
+        restoredDirectRunsByOrigin.set(first.toolCallId, first.runId);
+      }
       let restoredChildren = 0;
       let restoredKeys = 0;
       const hydrate = (child: Child, progress: PersistedSubagentProgress) => {
@@ -618,15 +669,32 @@ export function createSubagentProgressCorrelator(options: {
         if (progress.state) child.lastState = progress.state;
       };
       for (const [key, group] of directGroups) {
-        // Persisted direct history has no surface marker. Only the documented
-        // pending async identity is safely resumable; terminal rows are history.
-        if (
-          group.some(
+        const first = group[0] as Extract<
+          PersistedSubagentProgress,
+          { kind: "direct" }
+        >;
+        // Persisted direct history has no surface marker. Pending async rows
+        // are resumable. So is the narrowly recognizable interrupted state
+        // where terminal metadata was stored before its unresolved fallback.
+        const pendingOnly = group.every(
+          (progress) =>
+            progress.state === "pending" &&
+            !progress.unresolved &&
+            progress.agent === undefined,
+        );
+        const interruptedFallback =
+          !pendingOnly &&
+          group.some((progress) => progress.state === "pending") &&
+          group.every(
             (progress) =>
-              progress.unresolved ||
-              progress.state !== "pending" ||
-              progress.agent !== undefined,
-          )
+              progress.childIndex === 0 &&
+              !progress.unresolved &&
+              progress.agent === undefined,
+          );
+        if (
+          conflictedDirectRunIds.has(first.runId) ||
+          conflictedDirectOrigins.has(first.toolCallId) ||
+          (!pendingOnly && !interruptedFallback)
         )
           continue;
         if (
@@ -634,16 +702,15 @@ export function createSubagentProgressCorrelator(options: {
           SUBAGENT_PROGRESS_LIMITS.maxActiveParents
         )
           failLimit();
-        const first = group[0] as Extract<
-          PersistedSubagentProgress,
-          { kind: "direct" }
-        >;
         const run: DirectRun = {
           toolCallId: first.toolCallId,
+          runId: first.runId,
           children: new Map(),
           async: true,
         };
         restoredDirectRuns.set(key, run);
+        restoredDirectOrigins.set(first.runId, first.toolCallId);
+        restoredDirectRunsByOrigin.set(first.toolCallId, first.runId);
         for (const progress of group as Extract<
           PersistedSubagentProgress,
           { kind: "direct" }
@@ -748,6 +815,16 @@ export function createSubagentProgressCorrelator(options: {
       if (restoredKeys > SUBAGENT_PROGRESS_LIMITS.maxActiveKeys) failLimit();
 
       directRuns = restoredDirectRuns;
+      directOrigins = new Map(
+        [...restoredDirectOrigins].filter(([runId, toolCallId]) =>
+          restoredDirectRuns.has(directKey(toolCallId, runId)),
+        ),
+      );
+      directRunsByOrigin = new Map(
+        [...restoredDirectRunsByOrigin].filter(([toolCallId, runId]) =>
+          restoredDirectRuns.has(directKey(toolCallId, runId)),
+        ),
+      );
       workflowRuns = restoredWorkflowRuns;
       closedWorkflows = restoredClosedWorkflows;
       workflowOrigins = restoredOrigins;

@@ -91,6 +91,41 @@ test("validateWorkflowShapeContract uses stable workflow child IDs rather than r
   );
 });
 
+test("validateWorkflowShapeContract rejects failed workflow tool events", () => {
+  assert.throws(
+    () =>
+      validateWorkflowShapeContract({
+        label: "failed-workflow",
+        parentToolCallId: "launch",
+        events: [
+          {
+            type: "tool_execution_end",
+            isError: true,
+            result: {
+              details: {
+                workflowChildren: {
+                  version: 1,
+                  parentToolCallId: "launch",
+                  workflowRunId: "workflow",
+                  inventoryComplete: true,
+                  workflowState: "completed",
+                  children: [
+                    {
+                      childId: "child",
+                      state: "completed",
+                      agent: "worker",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      }),
+    /workflow tool failed/u,
+  );
+});
+
 test("validateDirectAsyncShapeContract matches launch identity to wait completion", () => {
   validateDirectAsyncShapeContract({
     label: "async",
