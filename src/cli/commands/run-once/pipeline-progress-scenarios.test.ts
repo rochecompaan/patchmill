@@ -12,6 +12,7 @@ import {
   appendPiSessionEntry,
   assistantToolCall,
   createMockRunner,
+  subagentProgressEntry,
   initializePiSession,
   promptPath,
   waitForCondition,
@@ -399,12 +400,80 @@ test("runOneIssue moves streamed tool calls under the active implementation task
       );
       await appendPiSessionEntry(
         call,
-        assistantToolCall("call-2", "subagent", { agent: "worker" }),
+        subagentProgressEntry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "call-1",
+          workflowRunId: "workflow",
+          childId: "build",
+          state: "running",
+          agent: "worker",
+        }),
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "call-1",
+          workflowRunId: "workflow",
+          childId: "review",
+          state: "pending",
+          agent: "reviewer",
+        }),
+      );
+      await waitForCondition(
+        () =>
+          events.some(
+            (event) =>
+              event.step?.type === "step-start" &&
+              event.step.label === "implement task 2/3 second cycle",
+          ),
+        () => "waiting for task 2 start before Pi returns",
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "call-1",
+          workflowRunId: "workflow",
+          childId: "build",
+          state: "completed",
+          agent: "worker",
+        }),
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "call-1",
+          workflowRunId: "workflow",
+          childId: "review",
+          state: "failed",
+          agent: "reviewer",
+        }),
+      );
+      await appendPiSessionEntry(
+        call,
+        assistantToolCall("call-2", "subagent_wait", { id: "workflow" }),
       );
       await waitForCondition(
         () =>
           events.some((event) => event.observation?.toolCallId === "call-2"),
         () => "waiting for call-2 observation",
+      );
+      await appendPiSessionEntry(
+        call,
+        assistantToolCall("call-status", "subagent_wait", { id: "workflow" }),
+      );
+      await waitForCondition(
+        () =>
+          events.some(
+            (event) => event.observation?.toolCallId === "call-status",
+          ),
+        () => "waiting for call-status observation",
       );
 
       await writeTodo(
@@ -480,6 +549,33 @@ test("runOneIssue moves streamed tool calls under the active implementation task
     .filter((line): line is string => line !== undefined);
 
   assert.deepEqual(
+    events
+      .filter((event) => event.observation?.type === "subagent-progress")
+      .map((event) =>
+        event.observation?.type === "subagent-progress" &&
+        event.observation.progress.kind === "workflow"
+          ? event.observation.progress.childId
+          : "",
+      ),
+    ["build", "review", "build", "review"],
+  );
+  assert.equal(
+    events.find(
+      (event) =>
+        event.step?.type === "step-complete" &&
+        event.step.label === "implement task 1/3 first cycle",
+    )?.step?.toolCalls,
+    1,
+  );
+  assert.equal(
+    events.find(
+      (event) =>
+        event.step?.type === "step-complete" &&
+        event.step.label === "implement task 2/3 second cycle",
+    )?.step?.toolCalls,
+    2,
+  );
+  assert.deepEqual(
     rendered.filter(
       (line) =>
         line.startsWith("start:implement task") ||
@@ -493,7 +589,6 @@ test("runOneIssue moves streamed tool calls under the active implementation task
       "tool:call-1",
       "complete:implement task 1/3 first cycle",
       "start:implement task 2/3 second cycle",
-      "tool:call-2",
       "complete:implement task 2/3 second cycle",
       "start:implement task 3/3 third cycle",
       "tool:call-3",
