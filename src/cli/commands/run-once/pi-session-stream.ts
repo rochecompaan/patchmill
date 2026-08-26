@@ -40,13 +40,23 @@ type ExactSessionReadRange = (
   end: number,
 ) => Promise<Uint8Array>;
 
+export type ExactPiSessionProgressState = {
+  observedKeys: Set<string>;
+  matchingEntries: number;
+};
+
 export type ExactPiSessionObservationStreamerOptions = {
   pollMs?: number;
   verboseOutput?: (chunk: string) => void;
   statFile?: typeof stat;
   readRange?: ExactSessionReadRange;
   startOffset?: number;
+  progressState?: ExactPiSessionProgressState;
 };
+
+export function createExactPiSessionProgressState(): ExactPiSessionProgressState {
+  return { observedKeys: new Set<string>(), matchingEntries: 0 };
+}
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -370,18 +380,18 @@ export function createExactPiSessionObservationStreamer(
   };
 
   const observedToolCallIds = new Set<string>();
-  const observedSubagentProgressKeys = new Set<string>();
-  let matchingSubagentProgressEntries = 0;
+  const progressState =
+    options.progressState ?? createExactPiSessionProgressState();
   const processLine = async (line: string) => {
     const entry = parseStrictSessionLine(line);
     if (!entry) return;
     const matchingProgress =
       entry.type === "custom" &&
       entry.customType === SUBAGENT_PROGRESS_CUSTOM_TYPE;
-    if (matchingProgress) matchingSubagentProgressEntries += 1;
+    if (matchingProgress) progressState.matchingEntries += 1;
     if (
       matchingProgress &&
-      matchingSubagentProgressEntries >
+      progressState.matchingEntries >
         SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession
     )
       return;
@@ -392,8 +402,8 @@ export function createExactPiSessionObservationStreamer(
       }
       if (observation.type === "subagent-progress") {
         const key = subagentProgressKey(observation.progress);
-        if (observedSubagentProgressKeys.has(key)) continue;
-        observedSubagentProgressKeys.add(key);
+        if (progressState.observedKeys.has(key)) continue;
+        progressState.observedKeys.add(key);
       }
       await onObservation(observation);
     }
@@ -556,6 +566,7 @@ export function createPiSessionObservationStreamer(
     const entry = parseSessionLine(line);
     if (!entry) return;
     for (const observation of sessionEntryToObservations(entry)) {
+      if (observation.type === "subagent-progress") continue;
       if (observation.type === "tool-call" && observation.toolCallId) {
         if (observedToolCallIds.has(observation.toolCallId)) continue;
         observedToolCallIds.add(observation.toolCallId);

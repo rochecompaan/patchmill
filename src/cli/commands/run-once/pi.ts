@@ -20,6 +20,7 @@ import { finalJsonCandidates } from "./final-json.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   createExactPiSessionObservationStreamer,
+  createExactPiSessionProgressState,
   createPiSessionMessageStreamer,
   type PiSessionObservation,
 } from "./pi-session-stream.ts";
@@ -468,6 +469,9 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
     }
 
     const parseResult = options?.parseResult ?? parsePiResult;
+    const exactSessionProgressState = session?.sessionPath
+      ? createExactPiSessionProgressState()
+      : undefined;
     const runPiProcessAttempt = async (
       attemptPromptPath: string,
       startOffset?: number,
@@ -488,6 +492,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
             },
             {
               startOffset,
+              progressState: exactSessionProgressState,
               verboseOutput: options?.verbosePiOutput
                 ? options.streamOutput
                 : undefined,

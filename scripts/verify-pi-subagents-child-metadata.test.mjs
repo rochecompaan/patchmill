@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   collectSubagentEvents,
+  workflowLaunchToolCallId,
   reportedThinkingModel,
   validateShapeContract,
   validateDirectAsyncShapeContract,
@@ -18,6 +19,24 @@ const finalResult = {
     ],
   },
 };
+
+test("workflowLaunchToolCallId accepts a terminal-only workflow launch", () => {
+  assert.equal(
+    workflowLaunchToolCallId([
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        toolCallId: "terminal-launch",
+        result: { details: { workflowChildren: {} } },
+      },
+    ]),
+    "terminal-launch",
+  );
+  assert.throws(
+    () => workflowLaunchToolCallId([]),
+    /missing launch tool call ID/u,
+  );
+});
 
 test("validateWorkflowShapeContract uses stable workflow child IDs rather than result indexes", () => {
   const summary = (complete, children) => ({

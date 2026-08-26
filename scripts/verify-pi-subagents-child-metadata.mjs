@@ -233,6 +233,19 @@ export function validateDirectAsyncShapeContract({
  * Independently validates the released workflowChildren v1 contract. This
  * intentionally does not import Patchmill's production parser.
  */
+export function workflowLaunchToolCallId(events) {
+  const launch = events.find(
+    (event) =>
+      (event.type === "tool_execution_update" ||
+        event.type === "tool_execution_end") &&
+      event.toolName === "subagent" &&
+      typeof event.toolCallId === "string" &&
+      event.toolCallId.trim(),
+  );
+  if (!launch) throw new Error("missing launch tool call ID");
+  return launch.toolCallId;
+}
+
 const workflowStates = new Set([
   "queued",
   "running",
@@ -460,16 +473,10 @@ function runShape({
         requireThinking,
       });
     } else if (expectedChildIds) {
-      const launchEvent = events.find(
-        (event) =>
-          event.type === "tool_execution_update" &&
-          event.toolName === "subagent" &&
-          typeof event.toolCallId === "string",
-      );
       validateWorkflowShapeContract({
         label,
         events,
-        parentToolCallId: launchEvent?.toolCallId,
+        parentToolCallId: workflowLaunchToolCallId(events),
         expectedChildIds,
         expectedModel,
         expectedThinking,
