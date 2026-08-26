@@ -48,6 +48,12 @@ test("parses direct children by run id and non-positional upstream index", () =>
     }),
     { runId: "async", children: [], pendingAsyncSingle: true },
   );
+  assert.deepEqual(
+    parseDirectSingleSnapshot({
+      details: { mode: "single", runId: "run", results: [] },
+    }),
+    { runId: "run", children: [], pendingAsyncSingle: false },
+  );
 });
 
 test("normalizes documented direct lifecycle precedence and completion slots", () => {

@@ -213,10 +213,14 @@ export function parseDirectSingleSnapshot(
     throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
   if (details.results.length === 0) {
     if (
-      !bounded(details.asyncId, SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits)
+      bounded(details.asyncId, SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits)
+    )
+      return { runId: details.asyncId, children: [], pendingAsyncSingle: true };
+    if (
+      !bounded(details.runId, SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits)
     )
       return undefined;
-    return { runId: details.asyncId, children: [], pendingAsyncSingle: true };
+    return { runId: details.runId, children: [], pendingAsyncSingle: false };
   }
   if (!bounded(details.runId, SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits))
     return undefined;

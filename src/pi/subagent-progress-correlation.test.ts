@@ -1341,6 +1341,15 @@ test("keeps malformed closed workflow groups open until their deterministic fall
       state: "completed",
       unresolved: true,
     },
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "child",
+      state: "completed",
+      inventoryClosed: true,
+    },
   ]);
 });
 
@@ -1489,9 +1498,8 @@ test("allows exactly 65536 matching restored entries and rejects one over withou
   assert.equal(initialized.entries.length, 2);
 });
 
-test("keeps a reloaded workflow active when its closure seal precedes a required fallback", () => {
-  const state = harness();
-  state.correlator.restore([
+test("repairs an out-of-order restored closure seal durably before releasing", () => {
+  const persisted = [
     {
       type: "custom",
       customType: "patchmill-subagent-progress",
@@ -1544,8 +1552,49 @@ test("keeps a reloaded workflow active when its closure seal precedes a required
         unresolved: true,
       },
     },
-  ]);
+  ];
+  const summary = {
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: true,
+    workflowState: "completed",
+    children: [
+      { childId: "first", state: "completed", agent: "worker" },
+      { childId: "second", state: "completed" },
+    ],
+  };
+  const state = harness();
+  state.correlator.restore(persisted);
   state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: { details: { mode: "single", workflowChildren: summary } },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+      inventoryClosed: true,
+    },
+  ]);
+
+  const reloaded = harness();
+  reloaded.correlator.restore([
+    ...persisted,
+    ...state.entries.map((data) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data,
+    })),
+  ]);
+  reloaded.correlator.observe({
     phase: "update",
     toolName: "subagent",
     toolCallId: "status",
@@ -1553,26 +1602,14 @@ test("keeps a reloaded workflow active when its closure seal precedes a required
       details: {
         mode: "single",
         workflowChildren: {
-          version: 1,
-          parentToolCallId: "launch",
-          workflowRunId: "workflow",
+          ...summary,
           inventoryComplete: false,
           workflowState: "running",
-          children: [
-            { childId: "first", state: "running", agent: "worker" },
-            { childId: "second", state: "running" },
-          ],
         },
       },
     },
   });
-  assert.deepEqual(
-    state.entries.map((entry) => [entry.childId, entry.state]),
-    [
-      ["first", "running"],
-      ["second", "running"],
-    ],
-  );
+  assert.deepEqual(reloaded.entries, []);
 });
 
 test("preflights malformed mixed-sibling nested arrays before direct completion mutation", () => {
@@ -1645,6 +1682,47 @@ test("preflights malformed mixed-sibling nested arrays before direct completion 
       },
     ]);
   }
+});
+
+test("emits unresolved direct fallbacks when a terminal result omits every active row", () => {
+  const state = harness();
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: {
+        mode: "single",
+        runId: "run",
+        results: [{ index: 0, stopped: true }],
+      },
+    },
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { mode: "single", runId: "run", results: [] } },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 0,
+      state: "stopped",
+    },
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 0,
+      state: "stopped",
+      unresolved: true,
+    },
+  ]);
 });
 
 test("emits unresolved direct fallbacks for terminal rows omitted from a shrinking result", () => {

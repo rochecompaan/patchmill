@@ -621,11 +621,13 @@ export function createSubagentProgressCorrelator(options: {
       if (child && !child.agentSeen && !child.unresolved)
         append(progress, child);
     }
+    let durablySealed = false;
     for (const progress of seal) {
       const child = run.children.get(progress.childId);
-      if (child) append(progress, child);
+      if (child) durablySealed = append(progress, child) || durablySealed;
     }
-    releaseWorkflow(key, run);
+    // A nonempty inventory releases only after its ordered seal persisted.
+    if (durablySealed || seal.length === 0) releaseWorkflow(key, run);
   };
 
   return {
@@ -669,7 +671,9 @@ export function createSubagentProgressCorrelator(options: {
           progress.kind === "direct"
             ? directKey(progress.toolCallId, progress.runId)
             : workflowKey(progress.toolCallId, progress.workflowRunId);
-        groups.set(key, [...(groups.get(key) ?? []), progress]);
+        const group = groups.get(key);
+        if (group) group.push(progress);
+        else groups.set(key, [progress]);
       }
       const resumableDirectGroups = new Set<string>();
       for (const [key, group] of directGroups) {
@@ -800,11 +804,11 @@ export function createSubagentProgressCorrelator(options: {
         for (const progress of group as Extract<
           PersistedSubagentProgress,
           { kind: "workflow" }
-        >[])
-          byChild.set(progress.childId, [
-            ...(byChild.get(progress.childId) ?? []),
-            progress,
-          ]);
+        >[]) {
+          const rows = byChild.get(progress.childId);
+          if (rows) rows.push(progress);
+          else byChild.set(progress.childId, [progress]);
+        }
         if (byChild.size > SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent)
           failLimit();
         const seals = group.filter(
@@ -838,6 +842,19 @@ export function createSubagentProgressCorrelator(options: {
               rows.some((progress) => progress.agent !== undefined) ||
               rows.some((progress) => progress.unresolved),
           );
+        // An out-of-order or otherwise invalid seal did not durably close the
+        // inventory, so it must not suppress the ordered retry that repairs it.
+        const nonDurableSealKeys = new Set<string>();
+        if (!closed)
+          for (const seal of seals) {
+            const tuple = subagentProgressKey(seal);
+            nonDurableSealKeys.add(tuple);
+            if (!restoredTupleKeys.delete(tuple)) continue;
+            const identity = childKey(seal);
+            const count = restoredTransitionCounts.get(identity)!;
+            if (count === 1) restoredTransitionCounts.delete(identity);
+            else restoredTransitionCounts.set(identity, count - 1);
+          }
         if (closed) {
           restoredClosedWorkflows.set(
             key,
@@ -879,7 +896,9 @@ export function createSubagentProgressCorrelator(options: {
           const child = newChild();
           run.children.set(id, child);
           restoredChildren += 1;
-          for (const progress of rows) hydrate(child, progress);
+          for (const progress of rows)
+            if (!nonDurableSealKeys.has(subagentProgressKey(progress)))
+              hydrate(child, progress);
         }
       }
       for (const run of [
