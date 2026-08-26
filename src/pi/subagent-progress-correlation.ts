@@ -299,20 +299,26 @@ export function createSubagentProgressCorrelator(options: {
           continue;
         const child = run.children.get(0);
         if (!child) continue;
-        const progress: PersistedSubagentProgress = {
-          version: 1,
-          kind: "direct",
-          toolCallId: run.toolCallId,
-          runId: completion.runId,
-          childIndex: 0,
-          ...(completion.state ? { state: completion.state } : {}),
-          ...(completion.child?.agent ? { agent: completion.child.agent } : {}),
-          ...(completion.child?.model ? { model: completion.child.model } : {}),
-          ...(completion.child?.thinking
-            ? { thinking: completion.child.thinking }
-            : {}),
-        };
-        append(progress, child);
+        if (completion.state || completion.child) {
+          const progress: PersistedSubagentProgress = {
+            version: 1,
+            kind: "direct",
+            toolCallId: run.toolCallId,
+            runId: completion.runId,
+            childIndex: 0,
+            ...(completion.state ? { state: completion.state } : {}),
+            ...(completion.child?.agent
+              ? { agent: completion.child.agent }
+              : {}),
+            ...(completion.child?.model
+              ? { model: completion.child.model }
+              : {}),
+            ...(completion.child?.thinking
+              ? { thinking: completion.child.thinking }
+              : {}),
+          };
+          append(progress, child);
+        }
         fallbackDirect(run.toolCallId, completion.runId, 0, child);
         releaseDirect(key, run);
       }
