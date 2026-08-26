@@ -72,7 +72,10 @@ export function createSubagentProgressCorrelator(options: {
 }): SubagentProgressCorrelator {
   const directRuns = new Map<string, DirectRun>();
   const workflowRuns = new Map<string, WorkflowRun>();
-  const closedWorkflowChildren = new Map<string, Set<string>>();
+  const closedWorkflowChildren = new Map<
+    string,
+    Map<string, Pick<Child, "agentSeen" | "unresolved" | "lastState">>
+  >();
   const tupleKeys = new Set<string>();
   let activeChildren = 0;
   let activeKeys = 0;
@@ -173,7 +176,17 @@ export function createSubagentProgressCorrelator(options: {
         activeChildren >= SUBAGENT_PROGRESS_LIMITS.maxActiveChildren
       )
         failLimit();
-      child = newChild();
+      const prior = knownClosed?.get(childId);
+      child = {
+        ...newChild(),
+        ...(prior
+          ? {
+              agentSeen: prior.agentSeen,
+              unresolved: prior.unresolved,
+              ...(prior.lastState ? { lastState: prior.lastState } : {}),
+            }
+          : {}),
+      };
       run.children.set(childId, child);
       activeChildren += 1;
     }
@@ -187,7 +200,19 @@ export function createSubagentProgressCorrelator(options: {
     directRuns.delete(key);
   };
   const releaseWorkflow = (key: string, run: WorkflowRun) => {
-    closedWorkflowChildren.set(key, new Set(run.children.keys()));
+    closedWorkflowChildren.set(
+      key,
+      new Map(
+        [...run.children].map(([childId, child]) => [
+          childId,
+          {
+            agentSeen: child.agentSeen,
+            unresolved: child.unresolved,
+            ...(child.lastState ? { lastState: child.lastState } : {}),
+          },
+        ]),
+      ),
+    );
     for (const child of run.children.values()) {
       activeChildren -= 1;
       activeKeys -= child.keys.size;

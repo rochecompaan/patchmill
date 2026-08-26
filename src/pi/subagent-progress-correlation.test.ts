@@ -153,6 +153,55 @@ test("keeps colliding workflow result indexes independently visible and delays f
   );
 });
 
+test("uses workflow stable child IDs through changed metadata and terminal replay", () => {
+  const state = harness();
+  const emit = (
+    stateName: "pending" | "running" | "completed",
+    complete = false,
+  ) =>
+    state.correlator.observe({
+      phase: complete ? "end" : "update",
+      toolName: "subagent",
+      toolCallId: "call",
+      result: {
+        details: {
+          workflowChildren: {
+            version: 1,
+            parentToolCallId: "launch",
+            workflowRunId: "workflow",
+            inventoryComplete: complete,
+            workflowState: complete ? "completed" : "running",
+            children: [
+              {
+                childId: "dynamic",
+                state: stateName,
+                ...(stateName === "completed"
+                  ? { agent: "worker", model: "provider/model" }
+                  : {}),
+              },
+            ],
+          },
+        },
+      },
+    });
+  emit("pending");
+  emit("running");
+  emit("completed", true);
+  emit("completed", true);
+  assert.deepEqual(
+    state.entries.map((entry) =>
+      entry.kind === "workflow"
+        ? [entry.childId, entry.state, entry.agent]
+        : [],
+    ),
+    [
+      ["dynamic", "pending", undefined],
+      ["dynamic", "running", undefined],
+      ["dynamic", "completed", "worker"],
+    ],
+  );
+});
+
 test("suppresses exact tuples and retries failed appends", () => {
   const state = harness();
   const cause = new Error("append");
