@@ -73,6 +73,7 @@ test("forwards subagent updates and waits as v1 custom projections", async () =>
       details: {
         completions: [
           {
+            runId: "workflow",
             workflowChildren: {
               version: 1,
               parentToolCallId: "launch",
@@ -90,7 +91,11 @@ test("forwards subagent updates and waits as v1 custom projections", async () =>
   });
   assert.deepEqual(
     state.entries.map((entry) => entry.customType),
-    [SUBAGENT_PROGRESS_CUSTOM_TYPE, SUBAGENT_PROGRESS_CUSTOM_TYPE],
+    [
+      SUBAGENT_PROGRESS_CUSTOM_TYPE,
+      SUBAGENT_PROGRESS_CUSTOM_TYPE,
+      SUBAGENT_PROGRESS_CUSTOM_TYPE,
+    ],
   );
   assert.deepEqual(
     state.entries.map((entry) => entry.data),
@@ -112,6 +117,16 @@ test("forwards subagent updates and waits as v1 custom projections", async () =>
         childId: "build",
         state: "completed",
         agent: "worker",
+      },
+      {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "build",
+        state: "completed",
+        agent: "worker",
+        inventoryClosed: true,
       },
     ],
   );

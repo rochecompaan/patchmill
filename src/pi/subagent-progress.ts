@@ -81,6 +81,12 @@ type WorkflowState =
   | "paused"
   | "stopped";
 
+export type WorkflowChildSummarySource = {
+  summary: WorkflowChildSummaryV1;
+  fromCompletion: boolean;
+  completionRunId?: string;
+};
+
 export type WorkflowChildSummaryV1 = {
   version: 1;
   parentToolCallId: string;
@@ -355,13 +361,13 @@ function parseWorkflowSummary(
 }
 
 /** Reads exactly details.workflowChildren and completion workflowChildren slots. */
-export function parseWorkflowChildSummaries(
+export function parseWorkflowChildSummarySources(
   result: unknown,
-): WorkflowChildSummaryV1[] {
+): WorkflowChildSummarySource[] {
   if (!isRecord(result) || !isRecord(result.details)) return [];
-  const summaries: WorkflowChildSummaryV1[] = [];
+  const summaries: WorkflowChildSummarySource[] = [];
   const top = parseWorkflowSummary(result.details.workflowChildren);
-  if (top) summaries.push(top);
+  if (top) summaries.push({ summary: top, fromCompletion: false });
   if (!Array.isArray(result.details.completions)) return summaries;
   if (
     result.details.completions.length > SUBAGENT_PROGRESS_LIMITS.maxResultRows
@@ -370,9 +376,26 @@ export function parseWorkflowChildSummaries(
   for (const completion of result.details.completions) {
     if (!isRecord(completion)) continue;
     const summary = parseWorkflowSummary(completion.workflowChildren);
-    if (summary) summaries.push(summary);
+    if (!summary) continue;
+    const completionRunId = boundedBytes(
+      completion.runId,
+      SUBAGENT_PROGRESS_LIMITS.maxWorkflowBytes,
+    )
+      ? completion.runId
+      : undefined;
+    summaries.push({
+      summary,
+      fromCompletion: true,
+      ...(completionRunId ? { completionRunId } : {}),
+    });
   }
   return summaries;
+}
+
+export function parseWorkflowChildSummaries(
+  result: unknown,
+): WorkflowChildSummaryV1[] {
+  return parseWorkflowChildSummarySources(result).map(({ summary }) => summary);
 }
 
 export function parsePersistedSubagentProgress(

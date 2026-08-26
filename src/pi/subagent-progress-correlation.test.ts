@@ -112,6 +112,7 @@ test("keeps colliding workflow result indexes independently visible and delays f
     toolCallId: "launch",
     result: {
       details: {
+        mode: "workflow",
         results: [
           { index: 0, task: "SECRET" },
           { index: 0, task: "SECRET2" },
@@ -132,6 +133,7 @@ test("keeps colliding workflow result indexes independently visible and delays f
       details: {
         completions: [
           {
+            runId: "workflow",
             workflowChildren: summary(true, [
               { childId: "build", state: "completed" },
               { childId: "review", state: "failed", agent: "reviewer" },
@@ -172,6 +174,7 @@ test("uses workflow stable child IDs through changed metadata and terminal repla
       toolCallId: "launch",
       result: {
         details: {
+          mode: "workflow",
           workflowChildren: {
             version: 1,
             parentToolCallId: "launch",
@@ -227,7 +230,7 @@ test("seals workflow inventory after recoverable fallback appends", () => {
     phase: "update",
     toolName: "subagent",
     toolCallId: "launch",
-    result: { details: { workflowChildren: summary(false) } },
+    result: { details: { mode: "workflow", workflowChildren: summary(false) } },
   });
   state.failAfter(new Error("append"), 1);
   assert.throws(
@@ -236,7 +239,9 @@ test("seals workflow inventory after recoverable fallback appends", () => {
         phase: "end",
         toolName: "subagent",
         toolCallId: "launch",
-        result: { details: { workflowChildren: summary(true) } },
+        result: {
+          details: { mode: "workflow", workflowChildren: summary(true) },
+        },
       }),
     new RegExp(SUBAGENT_PROGRESS_APPEND_ERROR),
   );
@@ -257,7 +262,7 @@ test("seals workflow inventory after recoverable fallback appends", () => {
     phase: "end",
     toolName: "subagent_wait",
     toolCallId: "wait",
-    result: { details: { workflowChildren: summary(true) } },
+    result: { details: { mode: "workflow", workflowChildren: summary(true) } },
   });
   assert.deepEqual(
     recovered.entries.map((entry) => [
@@ -424,22 +429,210 @@ test("rejects workflow launch-parent drift and stale closed replays", () => {
     phase: "update",
     toolName: "subagent",
     toolCallId: "wrong",
-    result: { details: { workflowChildren: summary(false) } },
+    result: { details: { mode: "workflow", workflowChildren: summary(false) } },
   });
   assert.equal(state.entries.length, 0);
   state.correlator.observe({
     phase: "end",
     toolName: "subagent",
     toolCallId: "launch",
-    result: { details: { workflowChildren: summary(true) } },
+    result: { details: { mode: "workflow", workflowChildren: summary(true) } },
   });
   state.correlator.observe({
     phase: "update",
     toolName: "subagent_wait",
     toolCallId: "wait",
-    result: { details: { workflowChildren: summary(false) } },
+    result: { details: { mode: "workflow", workflowChildren: summary(false) } },
   });
   assert.equal(state.entries.length, 2);
+});
+
+test("adopts known status IDs and a reloaded empty workflow completion", () => {
+  const state = harness();
+  const summary = (complete: boolean, children: unknown[]) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: complete,
+    workflowState: complete ? "completed" : "running",
+    children,
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: {
+        mode: "workflow",
+        workflowChildren: summary(false, [
+          { childId: "child", state: "running", agent: "worker" },
+        ]),
+      },
+    },
+  });
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status-event-id",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: summary(false, [
+          { childId: "child", state: "running", agent: "worker" },
+        ]),
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+
+  const reloaded = harness();
+  reloaded.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: { mode: "workflow", workflowChildren: summary(false, []) },
+    },
+  });
+  assert.equal(reloaded.entries.length, 0);
+  reloaded.correlator.restore([]);
+  reloaded.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait-event-id",
+    result: {
+      details: {
+        completions: [
+          {
+            runId: "workflow",
+            workflowChildren: summary(true, [
+              { childId: "child", state: "completed" },
+            ]),
+          },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(
+    reloaded.entries.map((entry) => [entry.childId, entry.inventoryClosed]),
+    [
+      ["child", undefined],
+      ["child", undefined],
+      ["child", true],
+    ],
+  );
+});
+
+test("rejects workflow parent/run drift and completion sibling corruption", () => {
+  const state = harness();
+  const summary = (parentToolCallId: string, workflowRunId: string) => ({
+    version: 1,
+    parentToolCallId,
+    workflowRunId,
+    inventoryComplete: false,
+    workflowState: "running" as const,
+    children: [
+      { childId: "child", state: "running" as const, agent: "worker" },
+    ],
+  });
+  const launch = (workflowRunId: string) =>
+    state.correlator.observe({
+      phase: "update",
+      toolName: "subagent",
+      toolCallId: "launch",
+      result: {
+        details: {
+          mode: "workflow",
+          workflowChildren: summary("launch", workflowRunId),
+        },
+      },
+    });
+  launch("workflow-one");
+  launch("workflow-two");
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status-event-id",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: summary("sibling", "workflow-one"),
+      },
+    },
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait-event-id",
+    result: {
+      details: {
+        completions: [
+          {
+            runId: "different-run",
+            workflowChildren: summary("launch", "workflow-one"),
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
+test("rejects blank and oversized direct event identifiers", () => {
+  const state = harness();
+  for (const toolCallId of ["", " ", "x".repeat(1025)])
+    state.correlator.observe({
+      phase: "end",
+      toolName: "subagent",
+      toolCallId,
+      result: {
+        details: {
+          mode: "single",
+          runId: "run",
+          results: [{ index: 0, agent: "worker", exitCode: 0 }],
+        },
+      },
+    });
+  assert.equal(state.entries.length, 0);
+});
+
+test("preflights restored active tuple keys without retaining partial state", () => {
+  const state = harness();
+  const entries = Array.from({ length: 256 }, (_, parent) =>
+    Array.from({ length: parent === 0 ? 3 : 2 }, (_, childIndex) =>
+      Array.from({ length: 32 }, (_, transition) => ({
+        type: "custom",
+        customType: "patchmill-subagent-progress",
+        data: {
+          version: 1,
+          kind: "direct",
+          toolCallId: `launch-${parent}`,
+          runId: `run-${parent}`,
+          childIndex,
+          state: "pending",
+          model: `model-${transition}`,
+        },
+      })),
+    ).flat(),
+  ).flat();
+  assert.equal(entries.length, 16416);
+  assert.throws(
+    () => state.correlator.restore(entries),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "new-launch",
+    result: {
+      details: {
+        mode: "single",
+        runId: "new-run",
+        results: [{ index: 0, agent: "worker", exitCode: 0 }],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
 });
 
 test("preflights workflow batches before an over-limit append", () => {
@@ -466,6 +659,7 @@ test("preflights workflow batches before an over-limit append", () => {
         toolCallId: "launch",
         result: {
           details: {
+            mode: "workflow",
             workflowChildren: {
               version: 1,
               parentToolCallId: "launch",
@@ -617,6 +811,7 @@ test("accepts 32 workflow children with a second transition and rejects accumula
       toolCallId: "launch",
       result: {
         details: {
+          mode: "workflow",
           workflowChildren: {
             version: 1,
             parentToolCallId: "launch",
