@@ -1832,3 +1832,44 @@ test("runPiPrompt accepts a terminal result on the second repair attempt", async
   assert.equal(result.status, "plan-created");
   assert.equal(calls, 3);
 });
+
+test("sessionEntryToObservations emits only bounded v1 child progress", () => {
+  const observations = sessionEntryToObservations({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "call-launch",
+      workflowRunId: "workflow-1",
+      childId: "review",
+      state: "running",
+      agent: "reviewer",
+      task: "SECRET_TASK",
+      output: "SECRET_OUTPUT",
+    },
+  });
+  assert.deepEqual(observations, [
+    {
+      type: "subagent-progress",
+      progress: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "call-launch",
+        workflowRunId: "workflow-1",
+        childId: "review",
+        state: "running",
+        agent: "reviewer",
+      },
+    },
+  ]);
+  assert.equal(JSON.stringify(observations).includes("SECRET"), false);
+  assert.deepEqual(
+    sessionEntryToObservations({
+      type: "custom_message",
+      customType: "patchmill-subagent-progress",
+      data: { version: 1 },
+    }),
+    [],
+  );
+});

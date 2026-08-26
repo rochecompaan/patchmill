@@ -1,6 +1,13 @@
 import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  parsePersistedSubagentProgress,
+  SUBAGENT_PROGRESS_CUSTOM_TYPE,
+  SUBAGENT_PROGRESS_LIMITS,
+  subagentProgressKey,
+  type PersistedSubagentProgress,
+} from "../../../pi/subagent-progress.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -18,6 +25,7 @@ export type PiSessionObservation =
       toolCallId?: string;
       arguments?: JsonObject;
     }
+  | { type: "subagent-progress"; progress: PersistedSubagentProgress }
   | { type: "text"; text: string };
 
 type SessionStreamerOptions = {
@@ -154,6 +162,14 @@ function tokenUsageText(
 export function sessionEntryToObservations(
   entry: JsonObject,
 ): PiSessionObservation[] {
+  if (
+    entry.type === "custom" &&
+    entry.customType === SUBAGENT_PROGRESS_CUSTOM_TYPE
+  ) {
+    const progress = parsePersistedSubagentProgress(entry.data);
+    return progress ? [{ type: "subagent-progress", progress }] : [];
+  }
+
   if (entry.type === "custom_message" && entry.display === true) {
     const text = textContent(entry.content);
     return text === undefined ? [] : [{ type: "text", text }];
@@ -354,13 +370,30 @@ export function createExactPiSessionObservationStreamer(
   };
 
   const observedToolCallIds = new Set<string>();
+  const observedSubagentProgressKeys = new Set<string>();
+  let matchingSubagentProgressEntries = 0;
   const processLine = async (line: string) => {
     const entry = parseStrictSessionLine(line);
     if (!entry) return;
+    const matchingProgress =
+      entry.type === "custom" &&
+      entry.customType === SUBAGENT_PROGRESS_CUSTOM_TYPE;
+    if (matchingProgress) matchingSubagentProgressEntries += 1;
+    if (
+      matchingProgress &&
+      matchingSubagentProgressEntries >
+        SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession
+    )
+      return;
     for (const observation of sessionEntryToObservations(entry)) {
       if (observation.type === "tool-call" && observation.toolCallId) {
         if (observedToolCallIds.has(observation.toolCallId)) continue;
         observedToolCallIds.add(observation.toolCallId);
+      }
+      if (observation.type === "subagent-progress") {
+        const key = subagentProgressKey(observation.progress);
+        if (observedSubagentProgressKeys.has(key)) continue;
+        observedSubagentProgressKeys.add(key);
       }
       await onObservation(observation);
     }
