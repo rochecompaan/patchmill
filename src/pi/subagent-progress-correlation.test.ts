@@ -374,3 +374,169 @@ test("preflights workflow batches before an over-limit append", () => {
   );
   assert.equal(state.entries.length, 0);
 });
+
+test("preflights direct terminal tuple and fallback atomically", () => {
+  const state = harness();
+  state.correlator.restore(
+    Array.from({ length: 65535 }, (_, i) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: `old${i}`,
+        runId: `r${i}`,
+        childIndex: 0,
+        state: "completed",
+        agent: "worker",
+      },
+    })),
+  );
+  assert.throws(
+    () =>
+      state.correlator.observe({
+        phase: "end",
+        toolName: "subagent",
+        toolCallId: "launch",
+        result: {
+          details: {
+            mode: "single",
+            runId: "direct",
+            results: [{ index: 0, exitCode: 0 }],
+          },
+        },
+      }),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  assert.equal(state.entries.length, 0);
+});
+
+test("does not restore paused direct histories as active parents but restores pending async", () => {
+  const state = harness();
+  state.correlator.restore(
+    Array.from({ length: 257 }, (_, i) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: `paused${i}`,
+        runId: `r${i}`,
+        childIndex: 0,
+        state: "paused",
+      },
+    })),
+  );
+  state.correlator.restore([
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "direct",
+        toolCallId: "launch",
+        runId: "async",
+        childIndex: 0,
+        state: "pending",
+      },
+    },
+  ]);
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [
+          { runId: "async", state: "complete", results: [{ agent: "worker" }] },
+        ],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
+test("restoration rejects 33 unique child transitions", () => {
+  const state = harness();
+  assert.throws(
+    () =>
+      state.correlator.restore(
+        Array.from({ length: 33 }, (_, i) => ({
+          type: "custom",
+          customType: "patchmill-subagent-progress",
+          data: {
+            version: 1,
+            kind: "workflow",
+            toolCallId: "launch",
+            workflowRunId: "workflow",
+            childId: "child",
+            state: "running",
+            agent: `worker-${i}`,
+          },
+        })),
+      ),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "new",
+    result: {
+      details: {
+        mode: "single",
+        runId: "new",
+        results: [{ index: 0, agent: "worker", exitCode: 0 }],
+      },
+    },
+  });
+  assert.equal(state.entries.length, 1);
+});
+
+test("accepts 32 workflow children with a second transition and rejects accumulated direct children", () => {
+  const state = harness();
+  const rows = (state: "pending" | "running") =>
+    Array.from({ length: 32 }, (_, i) => ({
+      childId: `child-${i}`,
+      state,
+      agent: "worker",
+    }));
+  for (const stateName of ["pending", "running"] as const)
+    state.correlator.observe({
+      phase: "update",
+      toolName: "subagent",
+      toolCallId: "launch",
+      result: {
+        details: {
+          workflowChildren: {
+            version: 1,
+            parentToolCallId: "launch",
+            workflowRunId: "workflow",
+            inventoryComplete: false,
+            workflowState: "running",
+            children: rows(stateName),
+          },
+        },
+      },
+    });
+  assert.equal(state.entries.length, 64);
+  const direct = harness();
+  assert.throws(
+    () =>
+      direct.correlator.observe({
+        phase: "update",
+        toolName: "subagent",
+        toolCallId: "launch",
+        result: {
+          details: {
+            mode: "single",
+            runId: "direct",
+            results: Array.from({ length: 1025 }, (_, i) => ({
+              index: i,
+              agent: "worker",
+            })),
+          },
+        },
+      }),
+    /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+  );
+});

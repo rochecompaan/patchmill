@@ -284,7 +284,31 @@ export function createSubagentProgressCorrelator(options: {
           ? [existing.children.get(row.childIndex)!]
           : [],
       );
-      preflight(previews, children, newParent, newChildren);
+      const terminalFallbacks =
+        !snapshot.pendingAsyncSingle && event.phase === "end"
+          ? rows
+              .filter((row) => {
+                const child = existing?.children.get(row.childIndex);
+                return !row.agent && !child?.agentSeen && !child?.unresolved;
+              })
+              .map(
+                (row): PersistedSubagentProgress => ({
+                  version: 1,
+                  kind: "direct",
+                  toolCallId: event.toolCallId,
+                  runId: snapshot.runId,
+                  childIndex: row.childIndex,
+                  ...(row.state ? { state: row.state } : {}),
+                  unresolved: true,
+                }),
+              )
+          : [];
+      preflight(
+        [...previews, ...terminalFallbacks],
+        children,
+        newParent,
+        newChildren,
+      );
       for (const progress of previews) {
         const { child } = ensureDirect(
           event.toolCallId,
@@ -297,25 +321,10 @@ export function createSubagentProgressCorrelator(options: {
       if (!snapshot.pendingAsyncSingle && event.phase === "end") {
         const run = directRuns.get(key);
         if (run) {
-          const fallbacks = [...run.children]
-            .filter(([, child]) => !child.agentSeen && !child.unresolved)
-            .map(([index, child]) => ({ index, child }));
-          preflight(
-            fallbacks.map(({ index, child }) => ({
-              version: 1,
-              kind: "direct",
-              toolCallId: event.toolCallId,
-              runId: snapshot.runId,
-              childIndex: index,
-              ...(child.lastState ? { state: child.lastState } : {}),
-              unresolved: true,
-            })),
-            fallbacks.map(({ child }) => child),
-            0,
-            0,
-          );
-          for (const { index, child } of fallbacks)
-            fallbackDirect(event.toolCallId, snapshot.runId, index, child);
+          for (const progress of terminalFallbacks) {
+            const child = run.children.get(progress.childIndex);
+            if (child) append(progress, child);
+          }
           releaseDirect(key, run);
         }
       }
@@ -541,10 +550,11 @@ export function createSubagentProgressCorrelator(options: {
         const tuple = subagentProgressKey(progress);
         if (tupleKeys.has(tuple)) continue;
         tupleKeys.add(tuple);
-        transitionCounts.set(
-          childKey(progress),
-          (transitionCounts.get(childKey(progress)) ?? 0) + 1,
-        );
+        const identity = childKey(progress);
+        const count = (transitionCounts.get(identity) ?? 0) + 1;
+        if (count > SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild)
+          failLimit();
+        transitionCounts.set(identity, count);
         valid.push(progress);
       }
       const directGroups = new Map<string, PersistedSubagentProgress[]>();
