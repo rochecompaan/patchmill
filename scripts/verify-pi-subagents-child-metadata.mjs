@@ -205,21 +205,21 @@ export function validateDirectAsyncShapeContract({
   if (!completion)
     throw new Error(`${label}: missing wait completion for ${asyncId}`);
   const rows = completion.results;
-  if (
-    !Array.isArray(rows) ||
-    rows.length !== 1 ||
-    !Number.isSafeInteger(rows[0]?.index)
-  )
-    throw new Error(`${label}: completion missing indexed direct child`);
-  validateChild({
-    child: rows[0],
-    id: rows[0].index,
-    label,
-    expectedModel,
-    expectedThinking,
-    requireThinking,
-    partial: false,
-  });
+  if (!Array.isArray(rows) || rows.length !== 1)
+    throw new Error(`${label}: completion missing direct child`);
+  const child = rows[0];
+  if (child?.exitCode !== undefined && child.exitCode !== 0)
+    throw new Error(`${label}: completion child failed`);
+  if (typeof child?.agent !== "string")
+    throw new Error(`${label}: completion child missing canonical agent`);
+  if (expectedModel && child.model !== expectedModel)
+    throw new Error(
+      `${label}: completion child missing model ${expectedModel}`,
+    );
+  // WaitCompletionChild deliberately omits index and thinking in v0.57.0;
+  // correlation retains the launch (asyncId, index 0) identity instead.
+  void expectedThinking;
+  void requireThinking;
 }
 
 /**
