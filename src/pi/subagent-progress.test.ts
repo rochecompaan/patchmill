@@ -4,11 +4,28 @@ import {
   parseDirectCompletionSnapshots,
   parseDirectSingleSnapshot,
   parsePersistedSubagentProgress,
+  parseSubagentResultMode,
   parseWorkflowChildSummaries,
   SUBAGENT_PROGRESS_LIMIT_ERROR,
   SUBAGENT_PROGRESS_LIMITS,
   subagentProgressKey,
 } from "./subagent-progress.ts";
+
+test("normalizes documented subagent result modes", () => {
+  assert.equal(
+    parseSubagentResultMode({ details: { mode: "single" } }),
+    "single",
+  );
+  assert.equal(
+    parseSubagentResultMode({ details: { mode: "workflow" } }),
+    "workflow",
+  );
+  assert.equal(
+    parseSubagentResultMode({ details: { mode: "other" } }),
+    undefined,
+  );
+  assert.equal(parseSubagentResultMode({ details: "untrusted" }), undefined);
+});
 
 test("parses direct children by run id and non-positional upstream index", () => {
   assert.deepEqual(

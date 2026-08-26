@@ -86,6 +86,7 @@ export type WorkflowChildSummarySource = {
   fromCompletion: boolean;
   completionRunId?: string;
 };
+export type SubagentResultMode = "single" | "workflow";
 
 export type WorkflowChildSummaryV1 = {
   version: 1;
@@ -195,6 +196,16 @@ function directChild(
   if (model) child.model = model;
   if (thinking) child.thinking = thinking;
   return child;
+}
+
+/** Returns the normalized documented mode without exposing raw result fields. */
+export function parseSubagentResultMode(
+  result: unknown,
+): SubagentResultMode | undefined {
+  if (!isRecord(result) || !isRecord(result.details)) return undefined;
+  return result.details.mode === "single" || result.details.mode === "workflow"
+    ? result.details.mode
+    : undefined;
 }
 
 /** Parses only the documented structured single result surface. */
