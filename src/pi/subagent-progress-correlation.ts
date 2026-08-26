@@ -177,20 +177,34 @@ export function createSubagentProgressCorrelator(options: {
     if (directRunsByOrigin.get(run.toolCallId) === run.runId)
       directRunsByOrigin.delete(run.toolCallId);
   };
-  const releaseWorkflow = (key: string, run: WorkflowRun) => {
-    closedWorkflows.set(
-      key,
-      new Map(
-        [...run.children].map(([id, child]) => [
-          id,
-          {
-            agentSeen: child.agentSeen,
-            unresolved: child.unresolved,
-            ...(child.lastState ? { lastState: child.lastState } : {}),
-          },
-        ]),
-      ),
-    );
+  const releaseWorkflow = (
+    key: string,
+    workflowRunId: string,
+    run: WorkflowRun,
+  ) => {
+    if (run.children.size === 0) {
+      // An empty terminal inventory has no durable seal or child identity.
+      // Keep neither side of its active-only ownership relation.
+      closedWorkflows.delete(key);
+      if (workflowOrigins.get(workflowRunId) === run.toolCallId)
+        workflowOrigins.delete(workflowRunId);
+      if (workflowRunsByOrigin.get(run.toolCallId) === workflowRunId)
+        workflowRunsByOrigin.delete(run.toolCallId);
+    } else {
+      closedWorkflows.set(
+        key,
+        new Map(
+          [...run.children].map(([id, child]) => [
+            id,
+            {
+              agentSeen: child.agentSeen,
+              unresolved: child.unresolved,
+              ...(child.lastState ? { lastState: child.lastState } : {}),
+            },
+          ]),
+        ),
+      );
+    }
     for (const child of run.children.values()) {
       activeChildren -= 1;
       activeKeys -= child.keys.size;
@@ -630,7 +644,8 @@ export function createSubagentProgressCorrelator(options: {
           append(progress, child, true, appendEffect) || durablySealed;
     }
     // A nonempty inventory releases only after its ordered seal persisted.
-    if (durablySealed || seal.length === 0) releaseWorkflow(key, run);
+    if (durablySealed || seal.length === 0)
+      releaseWorkflow(key, summary.workflowRunId, run);
   };
 
   return {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SUBAGENT_PROGRESS_APPEND_ERROR } from "./subagent-progress-correlation.ts";
+import { SUBAGENT_PROGRESS_LIMITS } from "./subagent-progress.ts";
 import { harness } from "./subagent-progress-correlation-test-support.ts";
 
 test("keeps colliding workflow result indexes independently visible and delays fallback", () => {
@@ -297,6 +298,102 @@ test("adopts known status IDs and a reloaded empty workflow completion", () => {
       ["child", undefined],
       ["child", undefined],
       ["child", true],
+    ],
+  );
+});
+
+test("releases repeated terminal empty workflows before later valid correlation", () => {
+  const state = harness();
+  const empty = (
+    parentToolCallId: string,
+    workflowRunId: string,
+    complete = true,
+  ) => ({
+    version: 1,
+    parentToolCallId,
+    workflowRunId,
+    inventoryComplete: complete,
+    workflowState: complete ? ("completed" as const) : ("running" as const),
+    children: [],
+  });
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "active-empty-launch",
+    result: {
+      details: {
+        mode: "workflow",
+        workflowChildren: empty(
+          "active-empty-launch",
+          "active-empty-run",
+          false,
+        ),
+      },
+    },
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "active-empty-launch",
+    result: {
+      details: {
+        mode: "workflow",
+        workflowChildren: empty("active-empty-launch", "active-empty-run"),
+      },
+    },
+  });
+  const repeated = SUBAGENT_PROGRESS_LIMITS.maxActiveParents;
+  for (let index = 0; index <= repeated; index += 1)
+    state.correlator.observe({
+      phase: "end",
+      toolName: "subagent",
+      toolCallId: `empty-launch-${index}`,
+      result: {
+        details: {
+          mode: "workflow",
+          workflowChildren: empty(
+            `empty-launch-${index}`,
+            `empty-run-${index}`,
+          ),
+        },
+      },
+    });
+
+  for (const [toolCallId, workflowRunId] of [
+    ["later-launch", `empty-run-${repeated}`],
+    [`empty-launch-${repeated - 1}`, "later-run"],
+    ["active-empty-launch", "active-later-run"],
+  ])
+    state.correlator.observe({
+      phase: "end",
+      toolName: "subagent",
+      toolCallId,
+      result: {
+        details: {
+          mode: "workflow",
+          workflowChildren: {
+            ...empty(toolCallId, workflowRunId),
+            children: [
+              { childId: "child", state: "completed", agent: "worker" },
+            ],
+          },
+        },
+      },
+    });
+
+  assert.deepEqual(
+    state.entries.map((entry) => [
+      entry.toolCallId,
+      entry.workflowRunId,
+      entry.inventoryClosed,
+    ]),
+    [
+      ["later-launch", `empty-run-${repeated}`, undefined],
+      ["later-launch", `empty-run-${repeated}`, true],
+      [`empty-launch-${repeated - 1}`, "later-run", undefined],
+      [`empty-launch-${repeated - 1}`, "later-run", true],
+      ["active-empty-launch", "active-later-run", undefined],
+      ["active-empty-launch", "active-later-run", true],
     ],
   );
 });

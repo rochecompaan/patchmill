@@ -1161,6 +1161,47 @@ test("legacy directory observation streamer excludes child progress", async (t) 
   assert.deepEqual(observed, ["text"]);
 });
 
+test("legacy directory streamer reserves exact progress custom entries for parent streaming", async (t) => {
+  const dir = await mkdtemp(
+    join(tmpdir(), "patchmill-legacy-progress-boundary-"),
+  );
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  await writeFile(
+    join(dir, "session.jsonl"),
+    [
+      {
+        type: "custom",
+        customType: "patchmill-subagent-progress",
+        data: {
+          version: 1,
+          kind: "workflow",
+          toolCallId: "parent-call",
+          workflowRunId: "workflow",
+          childId: "child",
+          state: "running",
+        },
+      },
+      {
+        type: "custom_message",
+        display: true,
+        content: [{ type: "text", text: "legacy display" }],
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+    "utf8",
+  );
+  const observed: string[] = [];
+  const streamer = createPiSessionObservationStreamer(dir, (observation) => {
+    observed.push(observation.type);
+  });
+
+  streamer.start();
+  await streamer.stop();
+
+  assert.deepEqual(observed, ["text"]);
+});
+
 test("exact session observation preserves UTF-8 split across byte-range polls", async () => {
   const line = `${JSON.stringify({
     type: "message",

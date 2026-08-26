@@ -565,6 +565,13 @@ export function createPiSessionObservationStreamer(
   const processLine = (line: string) => {
     const entry = parseSessionLine(line);
     if (!entry) return;
+    // Progress belongs exclusively to the exact parent-session streamer.
+    // Do not invoke the shared parser merely to discard its projection here.
+    if (
+      entry.type === "custom" &&
+      entry.customType === SUBAGENT_PROGRESS_CUSTOM_TYPE
+    )
+      return;
     for (const observation of sessionEntryToObservations(entry)) {
       if (observation.type === "subagent-progress") continue;
       if (observation.type === "tool-call" && observation.toolCallId) {
