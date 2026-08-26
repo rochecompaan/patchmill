@@ -39,16 +39,10 @@ export function recoverClosedWorkflow(group: readonly WorkflowProgress[]): {
       deterministicSeals.set(index, progress.childId === firstChildId);
   }
   const hasUnresolvedAfter = new Map<number, boolean>();
-  const hasMalformedSealAfter = new Map<number, boolean>();
   let unresolvedAfter = false;
-  let malformedSealAfter = false;
   for (let index = group.length - 1; index >= 0; index -= 1) {
     const progress = group[index]!;
     hasUnresolvedAfter.set(index, unresolvedAfter);
-    if (progress.inventoryClosed) {
-      hasMalformedSealAfter.set(index, malformedSealAfter);
-      if (!deterministicSeals.get(index)) malformedSealAfter = true;
-    }
     if (progress.unresolved) unresolvedAfter = true;
   }
 
@@ -57,7 +51,8 @@ export function recoverClosedWorkflow(group: readonly WorkflowProgress[]): {
   const children = new Map<string, WorkflowProgress[]>();
   const childrenWithEvidence = new Set<string>();
   // The first durable seal locks the fingerprint. Later seals can repair an
-  // earlier non-durable attempt, but cannot replace a durable inventory.
+  // earlier non-durable attempt, but cannot replace or invalidate a durable
+  // inventory.
   for (const [index, progress] of group.entries()) {
     const rows = children.get(progress.childId);
     if (rows) rows.push(progress);
@@ -67,7 +62,6 @@ export function recoverClosedWorkflow(group: readonly WorkflowProgress[]): {
     if (
       !progress.inventoryClosed ||
       !deterministicSeals.get(index) ||
-      hasMalformedSealAfter.get(index) ||
       progress.unresolved ||
       hasUnresolvedAfter.get(index) ||
       childrenWithEvidence.size !== children.size

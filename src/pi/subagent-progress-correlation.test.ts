@@ -1318,8 +1318,8 @@ test("restores only child zero async direct histories while retaining invalid tu
   ]);
 });
 
-test("keeps malformed closed workflow groups open until their deterministic fallback closure is recoverable", () => {
-  for (const seals of [["second"], ["first", "second"]]) {
+test("keeps workflow groups without a deterministic seal open until their fallback closure is recoverable", () => {
+  for (const seals of [["second"]]) {
     const state = harness();
     state.correlator.restore(
       ["first", "second"].map((childId) => ({
@@ -2045,7 +2045,7 @@ test("retains the pre-seal fingerprint despite a malformed post-seal child", () 
   assert.deepEqual(state.entries, []);
 });
 
-test("locks the first durable workflow seal despite a later contradictory seal", () => {
+test("restores the first durable seal despite a later malformed seal on an existing child", () => {
   const entry = (data: Record<string, unknown>) => ({
     type: "custom",
     customType: "patchmill-subagent-progress",
@@ -2086,23 +2086,14 @@ test("locks the first durable workflow seal despite a later contradictory seal",
       kind: "workflow",
       toolCallId: "launch",
       workflowRunId: "workflow",
-      childId: "aardvark",
-      state: "completed",
-      agent: "worker",
-    }),
-    entry({
-      version: 1,
-      kind: "workflow",
-      toolCallId: "launch",
-      workflowRunId: "workflow",
-      childId: "aardvark",
+      childId: "second",
       state: "completed",
       agent: "worker",
       inventoryClosed: true,
     }),
   ]);
   state.correlator.observe({
-    phase: "end",
+    phase: "update",
     toolName: "subagent",
     toolCallId: "status",
     result: {
@@ -2112,27 +2103,18 @@ test("locks the first durable workflow seal despite a later contradictory seal",
           version: 1,
           parentToolCallId: "launch",
           workflowRunId: "workflow",
-          inventoryComplete: true,
-          workflowState: "completed",
+          inventoryComplete: false,
+          workflowState: "running",
           children: [
-            { childId: "first", state: "failed", agent: "worker" },
+            { childId: "first", state: "completed", agent: "worker" },
             { childId: "second", state: "completed", agent: "worker" },
+            { childId: "later", state: "pending", agent: "worker" },
           ],
         },
       },
     },
   });
-  assert.deepEqual(state.entries, [
-    {
-      version: 1,
-      kind: "workflow",
-      toolCallId: "launch",
-      workflowRunId: "workflow",
-      childId: "first",
-      state: "failed",
-      agent: "worker",
-    },
-  ]);
+  assert.deepEqual(state.entries, []);
 });
 
 test("restores a closed workflow despite post-closure authoritative enrichment", () => {
