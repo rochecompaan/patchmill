@@ -554,7 +554,11 @@ export function createSubagentProgressCorrelator(options: {
       ? summary.children
           .filter(
             (row) =>
-              !(existing?.children.get(row.childId)?.agentSeen || row.agent),
+              !(
+                existing?.children.get(row.childId)?.agentSeen ||
+                existing?.children.get(row.childId)?.unresolved ||
+                row.agent
+              ),
           )
           .map(
             (row): PersistedSubagentProgress => ({
@@ -860,11 +864,12 @@ export function createSubagentProgressCorrelator(options: {
         }
         // A closed inventory is only durable after its deterministic seal and
         // every agentless child has its recoverable unresolved fallback before
-        // that seal. Partial closure writes remain active so replay can append
-        // the missing fallback before releasing.
+        // that seal. A child first seen after the seal was never a sealed
+        // candidate, so keep the group active for recoverable replay.
         const closed =
           candidateSealIndex !== undefined &&
           orderedClosure &&
+          candidateChildren.size === byChild.size &&
           [...candidateChildren.values()].every(
             (rows) =>
               rows.some((progress) => progress.agent !== undefined) ||

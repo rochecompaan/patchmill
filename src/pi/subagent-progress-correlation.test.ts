@@ -1353,6 +1353,68 @@ test("keeps malformed closed workflow groups open until their deterministic fall
   ]);
 });
 
+test("allows an exact 32-transition workflow closure retry without charging a skipped fallback", () => {
+  const state = harness();
+  state.correlator.restore(
+    Array.from(
+      { length: SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild - 2 },
+      (_, index) => ({
+        type: "custom",
+        customType: "patchmill-subagent-progress",
+        data: {
+          version: 1,
+          kind: "workflow",
+          toolCallId: "launch",
+          workflowRunId: "workflow",
+          childId: "child",
+          state: "pending",
+          model: `history-${index}`,
+          ...(index === SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild - 3
+            ? { unresolved: true }
+            : {}),
+        },
+      }),
+    ),
+  );
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "launch",
+          workflowRunId: "workflow",
+          inventoryComplete: true,
+          workflowState: "completed",
+          children: [{ childId: "child", state: "completed" }],
+        },
+      },
+    },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "child",
+      state: "completed",
+    },
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "child",
+      state: "completed",
+      inventoryClosed: true,
+    },
+  ]);
+});
+
 test("rejects a combined workflow fallback and closure seal during restore", () => {
   const state = harness();
   state.correlator.restore([
@@ -1838,6 +1900,97 @@ test("preserves every workflow child lifecycle state independently", () => {
       },
     ]);
   }
+});
+
+test("keeps a restored workflow open when a child first appears after its seal", () => {
+  const entry = (data: Record<string, unknown>) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data,
+  });
+  const state = harness();
+  state.correlator.restore([
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+      inventoryClosed: true,
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "later",
+      state: "completed",
+      agent: "worker",
+    }),
+  ]);
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "launch",
+          workflowRunId: "workflow",
+          inventoryComplete: true,
+          workflowState: "completed",
+          children: [
+            { childId: "first", state: "failed", agent: "worker" },
+            { childId: "second", state: "completed", agent: "worker" },
+            { childId: "later", state: "completed", agent: "worker" },
+          ],
+        },
+      },
+    },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "failed",
+      agent: "worker",
+    },
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "failed",
+      agent: "worker",
+      inventoryClosed: true,
+    },
+  ]);
 });
 
 test("restores a closed workflow despite post-closure authoritative enrichment", () => {
