@@ -1873,3 +1873,71 @@ test("sessionEntryToObservations emits only bounded v1 child progress", () => {
     [],
   );
 });
+
+test("runPiPrompt streams exact parent child progress before Pi returns", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-progress-parent-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const observed: AgentIssueProgressEvent[] = [];
+  const streamed: string[] = [];
+  let resolveRunner!: () => void;
+  const runner = createMockRunner(async (call) => {
+    const args = assertBundledPiCall(call);
+    const path = args[args.indexOf("--session") + 1] ?? "";
+    const parent = {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "parent-child",
+        state: "running",
+        agent: "worker",
+      },
+    };
+    await appendFile(
+      path,
+      `${JSON.stringify(parent)}\n${JSON.stringify(parent)}\n${JSON.stringify({ ...parent, data: { ...parent.data, state: "completed" } })}\n`,
+    );
+    await mkdir(join(dirname(path), "sibling", "nested"), { recursive: true });
+    await writeFile(
+      join(dirname(path), "sibling", "other.jsonl"),
+      `${JSON.stringify({ ...parent, data: { ...parent.data, childId: "sibling" } })}\n`,
+    );
+    await writeFile(
+      join(dirname(path), "sibling", "nested", "child.jsonl"),
+      `${JSON.stringify({ ...parent, data: { ...parent.data, childId: "nested" } })}\n`,
+    );
+    await new Promise<void>((resolve) => {
+      resolveRunner = resolve;
+    });
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+  const result = runPiPrompt(runner, "/repo", "prompt", {
+    observeSession: true,
+    sessionRoot: root,
+    pollMs: 1,
+    onObservation: async (observation) => {
+      if (
+        observation.type === "subagent-progress" &&
+        observation.progress.kind === "workflow"
+      )
+        streamed.push(observation.progress.childId);
+      if (
+        observation.type === "subagent-progress" &&
+        observation.progress.kind === "workflow" &&
+        observation.progress.state === "completed"
+      )
+        resolveRunner();
+    },
+    progress: { event: (event) => observed.push(event) },
+    stage: "pi-plan",
+  });
+  await result;
+  assert.deepEqual(streamed, ["parent-child", "parent-child"]);
+});
