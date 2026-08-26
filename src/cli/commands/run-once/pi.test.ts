@@ -14,9 +14,12 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
+import { SUBAGENT_PROGRESS_LIMITS } from "../../../pi/subagent-progress.ts";
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import {
   createExactPiSessionObservationStreamer,
+  createExactPiSessionProgressState,
+  createPiSessionObservationStreamer,
   sessionEntryToObservations,
   sessionEntryToStreamText,
 } from "./pi-session-stream.ts";
@@ -1118,6 +1121,87 @@ test("exact session observation de-duplicates matching tool call IDs", async (t)
   ]);
 });
 
+test("legacy directory observation streamer excludes child progress", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-legacy-observation-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  await writeFile(
+    join(dir, "session.jsonl"),
+    [
+      {
+        type: "custom",
+        customType: "patchmill-subagent-progress",
+        data: {
+          version: 1,
+          kind: "direct",
+          toolCallId: "call-parent",
+          runId: "run-child",
+          childIndex: 0,
+        },
+      },
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "ordinary observation" }],
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+    "utf8",
+  );
+  const observed: string[] = [];
+  const streamer = createPiSessionObservationStreamer(dir, (observation) => {
+    observed.push(observation.type);
+  });
+
+  streamer.start();
+  await streamer.stop();
+
+  assert.deepEqual(observed, ["text"]);
+});
+
+test("legacy directory streamer reserves exact progress custom entries for parent streaming", async (t) => {
+  const dir = await mkdtemp(
+    join(tmpdir(), "patchmill-legacy-progress-boundary-"),
+  );
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  await writeFile(
+    join(dir, "session.jsonl"),
+    [
+      {
+        type: "custom",
+        customType: "patchmill-subagent-progress",
+        data: {
+          version: 1,
+          kind: "workflow",
+          toolCallId: "parent-call",
+          workflowRunId: "workflow",
+          childId: "child",
+          state: "running",
+        },
+      },
+      {
+        type: "custom_message",
+        display: true,
+        content: [{ type: "text", text: "legacy display" }],
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+    "utf8",
+  );
+  const observed: string[] = [];
+  const streamer = createPiSessionObservationStreamer(dir, (observation) => {
+    observed.push(observation.type);
+  });
+
+  streamer.start();
+  await streamer.stop();
+
+  assert.deepEqual(observed, ["text"]);
+});
+
 test("exact session observation preserves UTF-8 split across byte-range polls", async () => {
   const line = `${JSON.stringify({
     type: "message",
@@ -1621,6 +1705,81 @@ test("runPiPrompt reads planning task progress from the configured task contract
   );
 });
 
+test("exact session progress honors matching-entry ceilings before parsing", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-progress-limit-"));
+  t.after(async () => rm(dir, { recursive: true, force: true }));
+  const progress = {
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 0,
+      state: "running",
+    },
+  };
+  for (const {
+    label,
+    entries,
+    initialMatchingEntries,
+    expectedObservations,
+  } of [
+    {
+      label: "exact",
+      entries: [progress],
+      initialMatchingEntries: SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession - 1,
+      expectedObservations: ["run"],
+    },
+    {
+      label: "one-over",
+      entries: [progress],
+      initialMatchingEntries: SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession,
+      expectedObservations: [],
+    },
+    {
+      label: "malformed-consumes-capacity",
+      entries: [
+        {
+          type: "custom",
+          customType: "patchmill-subagent-progress",
+          data: { version: 1 },
+        },
+        progress,
+      ],
+      initialMatchingEntries: SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession - 1,
+      expectedObservations: [],
+    },
+  ]) {
+    const sessionPath = join(dir, `${label}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+      "utf8",
+    );
+    const progressState = createExactPiSessionProgressState();
+    progressState.matchingEntries = initialMatchingEntries;
+    const observed: string[] = [];
+    const streamer = createExactPiSessionObservationStreamer(
+      sessionPath,
+      (observation) => {
+        if (observation.type === "subagent-progress")
+          observed.push(observation.progress.runId);
+      },
+      { progressState },
+    );
+    streamer.start();
+    await streamer.stop();
+    assert.deepEqual(observed, expectedObservations, label);
+    assert.equal(
+      progressState.matchingEntries,
+      initialMatchingEntries + entries.length,
+      label,
+    );
+  }
+});
+
 test("createExactPiSessionObservationStreamer starts at a caller-provided byte offset", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-exact-offset-"));
   t.after(async () => rm(dir, { recursive: true, force: true }));
@@ -1649,6 +1808,19 @@ test("runPiPrompt repairs a parse failure by resuming the same exact session", a
   const prompts: string[] = [];
   const sessions: string[] = [];
   const observations: string[] = [];
+  const childProgress: unknown[] = [];
+  const progressEntry = {
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "direct",
+      toolCallId: "review",
+      runId: "run-review",
+      childIndex: 0,
+      state: "running",
+    },
+  };
   const runner = createMockRunner(async (call) => {
     const args = assertBundledPiCall(call);
     prompts.push(await readFile(promptPath(args), "utf8"));
@@ -1686,6 +1858,7 @@ test("runPiPrompt repairs a parse failure by resuming the same exact session", a
               ],
             },
           },
+          progressEntry,
           {
             type: "message",
             message: {
@@ -1711,7 +1884,18 @@ test("runPiPrompt repairs a parse failure by resuming the same exact session", a
     }
     await appendFile(
       sessionPath,
-      `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "repair progress" }] } })}\n`,
+      [
+        progressEntry,
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "repair progress" }],
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
       "utf8",
     );
     return {
@@ -1728,6 +1912,8 @@ test("runPiPrompt repairs a parse failure by resuming the same exact session", a
     extensionArgs: runOnceExtensionArgs,
     onObservation: (observation) => {
       if (observation.type === "text") observations.push(observation.text);
+      if (observation.type === "subagent-progress")
+        childProgress.push(observation.progress);
     },
     repair: {
       maxAttempts: 2,
@@ -1747,6 +1933,7 @@ test("runPiPrompt repairs a parse failure by resuming the same exact session", a
     "Final review is running: pm-subagents-abc123.",
     "repair progress",
   ]);
+  assert.deepEqual(childProgress, [progressEntry.data]);
 });
 
 test("runPiPrompt does not repair a nonzero Pi exit or an unobserved parse failure", async () => {
@@ -1831,4 +2018,115 @@ test("runPiPrompt accepts a terminal result on the second repair attempt", async
   });
   assert.equal(result.status, "plan-created");
   assert.equal(calls, 3);
+});
+
+test("sessionEntryToObservations emits only bounded v1 child progress", () => {
+  const observations = sessionEntryToObservations({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data: {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "call-launch",
+      workflowRunId: "workflow-1",
+      childId: "review",
+      state: "running",
+      agent: "reviewer",
+      inventoryClosed: true,
+      task: "SECRET_TASK",
+      output: "SECRET_OUTPUT",
+    },
+  });
+  assert.deepEqual(observations, [
+    {
+      type: "subagent-progress",
+      progress: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "call-launch",
+        workflowRunId: "workflow-1",
+        childId: "review",
+        state: "running",
+        agent: "reviewer",
+        inventoryClosed: true,
+      },
+    },
+  ]);
+  assert.equal(JSON.stringify(observations).includes("SECRET"), false);
+  assert.deepEqual(
+    sessionEntryToObservations({
+      type: "custom_message",
+      customType: "patchmill-subagent-progress",
+      data: { version: 1 },
+    }),
+    [],
+  );
+});
+
+test("runPiPrompt streams exact parent child progress before Pi returns", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-progress-parent-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const observed: AgentIssueProgressEvent[] = [];
+  const streamed: string[] = [];
+  let resolveRunner!: () => void;
+  const runner = createMockRunner(async (call) => {
+    const args = assertBundledPiCall(call);
+    const path = args[args.indexOf("--session") + 1] ?? "";
+    const parent = {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "parent-child",
+        state: "running",
+        agent: "worker",
+      },
+    };
+    await appendFile(
+      path,
+      `${JSON.stringify(parent)}\n${JSON.stringify(parent)}\n${JSON.stringify({ ...parent, data: { ...parent.data, state: "completed" } })}\n`,
+    );
+    await mkdir(join(dirname(path), "sibling", "nested"), { recursive: true });
+    await writeFile(
+      join(dirname(path), "sibling", "other.jsonl"),
+      `${JSON.stringify({ ...parent, data: { ...parent.data, childId: "sibling" } })}\n`,
+    );
+    await writeFile(
+      join(dirname(path), "sibling", "nested", "child.jsonl"),
+      `${JSON.stringify({ ...parent, data: { ...parent.data, childId: "nested" } })}\n`,
+    );
+    await new Promise<void>((resolve) => {
+      resolveRunner = resolve;
+    });
+    return {
+      code: 0,
+      stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
+      stderr: "",
+    };
+  });
+  const result = runPiPrompt(runner, "/repo", "prompt", {
+    observeSession: true,
+    sessionRoot: root,
+    pollMs: 1,
+    onObservation: async (observation) => {
+      if (
+        observation.type === "subagent-progress" &&
+        observation.progress.kind === "workflow"
+      )
+        streamed.push(observation.progress.childId);
+      if (
+        observation.type === "subagent-progress" &&
+        observation.progress.kind === "workflow" &&
+        observation.progress.state === "completed"
+      )
+        resolveRunner();
+    },
+    progress: { event: (event) => observed.push(event) },
+    stage: "pi-plan",
+  });
+  await result;
+  assert.deepEqual(streamed, ["parent-child", "parent-child"]);
 });

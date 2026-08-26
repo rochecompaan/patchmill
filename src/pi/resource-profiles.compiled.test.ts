@@ -48,6 +48,24 @@ test(
       "run-once-subagent-progress.ts",
     );
     const normalizer = join(packageRoot, "src", "pi", "subagent-progress.ts");
+    const correlator = join(
+      packageRoot,
+      "src",
+      "pi",
+      "subagent-progress-correlation.ts",
+    );
+    const correlationState = join(
+      packageRoot,
+      "src",
+      "pi",
+      "subagent-progress-correlation-state.ts",
+    );
+    const workflowRestore = join(
+      packageRoot,
+      "src",
+      "pi",
+      "subagent-progress-workflow-restore.ts",
+    );
 
     try {
       await mkdir(dirname(todosExtension), { recursive: true });
@@ -73,6 +91,18 @@ test(
       await copyFile(
         join(sourceRoot, "src", "pi", "subagent-progress.ts"),
         normalizer,
+      );
+      await copyFile(
+        join(sourceRoot, "src", "pi", "subagent-progress-correlation.ts"),
+        correlator,
+      );
+      await copyFile(
+        join(sourceRoot, "src", "pi", "subagent-progress-correlation-state.ts"),
+        correlationState,
+      );
+      await copyFile(
+        join(sourceRoot, "src", "pi", "subagent-progress-workflow-restore.ts"),
+        workflowRestore,
       );
       await symlink(
         join(sourceRoot, "node_modules"),

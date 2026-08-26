@@ -286,6 +286,14 @@ export async function initializePiSession(call: Call): Promise<void> {
   );
 }
 
+export function subagentProgressEntry(data: unknown): unknown {
+  return {
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data,
+  };
+}
+
 export function assistantToolCall(
   toolCallId: string,
   toolName: string,

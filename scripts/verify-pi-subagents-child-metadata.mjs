@@ -170,6 +170,229 @@ export function validateShapeContract(options) {
   }
 }
 
+/** Validate the structured single-child contract without inferring identity from row order. */
+export function validateDirectShapeContract(options) {
+  return validateShapeContract({
+    ...options,
+    requireUniqueSiblingIds: options.requireUniqueSiblingIds ?? false,
+  });
+}
+
+/** Validates a structured async launch and its documented wait completion. */
+export function validateDirectAsyncShapeContract({
+  label,
+  events,
+  expectedModel,
+  expectedThinking,
+  requireThinking,
+}) {
+  const launch = events.find(
+    (event) =>
+      event.type === "tool_execution_end" &&
+      event.toolName === "subagent" &&
+      typeof event.result?.details?.asyncId === "string",
+  );
+  if (!launch) throw new Error(`${label}: missing structured async launch`);
+  const asyncId = launch.result.details.asyncId;
+  const waitEvents = events.filter(
+    (event) =>
+      event.type === "tool_execution_end" && event.toolName === "subagent_wait",
+  );
+  if (
+    waitEvents.some(
+      (event) => event.isError === true || event.result?.isError === true,
+    )
+  )
+    throw new Error(`${label}: async wait tool failed`);
+  const completion = waitEvents
+    .flatMap((event) => event.result?.details?.completions ?? [])
+    .find((row) => row?.runId === asyncId);
+  if (!completion)
+    throw new Error(`${label}: missing wait completion for ${asyncId}`);
+  if (completion.success === false || completion.state === "failed")
+    throw new Error(`${label}: async completion failed`);
+  const rows = completion.results;
+  if (!Array.isArray(rows) || rows.length !== 1)
+    throw new Error(`${label}: completion missing direct child`);
+  const child = rows[0];
+  if (child?.success === false)
+    throw new Error(`${label}: completion child failed`);
+  if (typeof child?.agent !== "string")
+    throw new Error(`${label}: completion child missing canonical agent`);
+  if (expectedModel && child.model !== expectedModel)
+    throw new Error(
+      `${label}: completion child missing model ${expectedModel}`,
+    );
+  // WaitCompletionChild deliberately omits index and thinking in v0.57.0;
+  // correlation retains the launch (asyncId, index 0) identity instead.
+  void expectedThinking;
+  void requireThinking;
+}
+
+/**
+ * Independently validates the released workflowChildren v1 contract. This
+ * intentionally does not import Patchmill's production parser.
+ */
+export function workflowLaunchToolCallId(events) {
+  const launch = events.find(
+    (event) =>
+      (event.type === "tool_execution_update" ||
+        event.type === "tool_execution_end") &&
+      event.toolName === "subagent" &&
+      typeof event.toolCallId === "string" &&
+      event.toolCallId.trim(),
+  );
+  if (!launch) throw new Error("missing launch tool call ID");
+  return launch.toolCallId;
+}
+
+const workflowStates = new Set([
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "paused",
+  "stopped",
+]);
+const childStates = new Set([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "paused",
+  "stopped",
+  "rejected",
+  "detached",
+]);
+
+export function validateWorkflowShapeContract({
+  label,
+  events,
+  parentToolCallId,
+  expectedChildIds,
+  expectedModel,
+  expectedThinking,
+  requireThinking = true,
+}) {
+  const summaries = [];
+  for (const event of events) {
+    if (event?.isError === true || event?.result?.isError === true)
+      throw new Error(`${label}: workflow tool failed`);
+    const details = event?.partialResult?.details ?? event?.result?.details;
+    if (details?.workflowChildren)
+      summaries.push({
+        summary: details.workflowChildren,
+        fromCompletion: false,
+      });
+    if (Array.isArray(details?.completions)) {
+      for (const completion of details.completions) {
+        if (completion?.workflowChildren)
+          summaries.push({
+            summary: completion.workflowChildren,
+            fromCompletion: true,
+            completionRunId: completion.runId,
+          });
+      }
+    }
+  }
+  if (summaries.length === 0)
+    throw new Error(`${label}: missing workflowChildren summary`);
+  let runId;
+  let previousIds = new Set();
+  for (const { summary, fromCompletion, completionRunId } of summaries) {
+    if (summary?.version !== 1)
+      throw new Error(`${label}: unsupported workflow summary version`);
+    if (
+      typeof summary.parentToolCallId !== "string" ||
+      !summary.parentToolCallId.trim()
+    )
+      throw new Error(`${label}: missing workflow parent id`);
+    if (
+      parentToolCallId !== undefined &&
+      summary.parentToolCallId !== parentToolCallId
+    )
+      throw new Error(`${label}: workflow parent drift`);
+    if (typeof summary.inventoryComplete !== "boolean")
+      throw new Error(`${label}: invalid workflow inventory completion`);
+    if (
+      typeof summary.workflowState !== "string" ||
+      !workflowStates.has(summary.workflowState)
+    )
+      throw new Error(`${label}: invalid workflow state`);
+    if (
+      typeof summary.workflowRunId !== "string" ||
+      !summary.workflowRunId.trim()
+    )
+      throw new Error(`${label}: missing workflow run id`);
+    if (runId && runId !== summary.workflowRunId)
+      throw new Error(`${label}: workflow run drift`);
+    if (
+      fromCompletion &&
+      (typeof completionRunId !== "string" ||
+        !completionRunId.trim() ||
+        completionRunId !== summary.workflowRunId)
+    )
+      throw new Error(`${label}: completion workflow run drift`);
+    runId = summary.workflowRunId;
+    if (!Array.isArray(summary.children))
+      throw new Error(`${label}: workflow children missing`);
+    const ids = new Set();
+    const closes =
+      summary.inventoryComplete === true ||
+      ["completed", "failed", "stopped"].includes(summary.workflowState);
+    for (const child of summary.children) {
+      if (
+        typeof child?.childId !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(child.childId) ||
+        ids.has(child.childId)
+      )
+        throw new Error(`${label}: invalid or duplicate workflow child id`);
+      if (typeof child.state !== "string" || !childStates.has(child.state))
+        throw new Error(`${label}: invalid workflow child state`);
+      ids.add(child.childId);
+      if (child.state === "failed")
+        throw new Error(`${label}: child ${child.childId} failed`);
+      if (closes && typeof child.agent !== "string")
+        throw new Error(
+          `${label}: child ${child.childId} missing canonical agent`,
+        );
+      if (closes && expectedModel && child.model !== expectedModel)
+        throw new Error(
+          `${label}: child ${child.childId} missing model ${expectedModel}`,
+        );
+      if (
+        closes &&
+        requireThinking &&
+        expectedThinking &&
+        child.thinking !== expectedThinking
+      )
+        throw new Error(
+          `${label}: child ${child.childId} missing thinking ${expectedThinking}`,
+        );
+      if (closes && !requireThinking && "thinking" in child)
+        throw new Error(
+          `${label}: child ${child.childId} unexpectedly includes thinking`,
+        );
+    }
+    for (const id of previousIds)
+      if (!ids.has(id)) throw new Error(`${label}: inventory removed ${id}`);
+    previousIds = ids;
+  }
+  const final = summaries.at(-1)?.summary;
+  if (
+    !final?.inventoryComplete &&
+    !["completed", "failed", "stopped"].includes(final?.workflowState)
+  )
+    throw new Error(`${label}: workflow inventory never closed`);
+  if (expectedChildIds) {
+    assert.deepEqual(
+      [...previousIds].sort(),
+      [...expectedChildIds].sort(),
+      `${label}: stable child ID mismatch`,
+    );
+  }
+}
+
 function requiredEnvironment(name) {
   const value = process.env[name];
   if (!value)
@@ -212,6 +435,8 @@ function runShape({
   agentsDir,
   packageRoot,
   parentModel,
+  expectedChildIds,
+  asyncWait = false,
 }) {
   const args = [
     "--mode",
@@ -227,7 +452,9 @@ function runShape({
   ];
   if (parentModel) args.push("--model", parentModel);
   args.push(
-    `Call the subagent tool exactly once with this input and then stop:\n${JSON.stringify(input)}`,
+    asyncWait
+      ? `Launch this subagent input exactly once, capture its returned async run ID, then call subagent_wait exactly once with that ID and stop:\n${JSON.stringify(input)}`
+      : `Call the subagent tool exactly once with this input and then stop:\n${JSON.stringify(input)}`,
   );
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -248,17 +475,38 @@ function runShape({
       `${label}: Pi command failed: ${result.error?.message ?? `exit ${result.status}`}\n${rawOutput}`,
     );
   }
-  const shape = collectSubagentEvents(parseJsonLines(result.stdout, label));
+  const events = parseJsonLines(result.stdout, label);
+  const shape = collectSubagentEvents(events);
   try {
-    validateShapeContract({
-      label,
-      expectedModel,
-      expectedThinking,
-      expectedFinalChildren,
-      requireUniqueSiblingIds: expectedFinalChildren > 1,
-      requireThinking,
-      shape,
-    });
+    if (asyncWait && !expectedChildIds) {
+      validateDirectAsyncShapeContract({
+        label,
+        events,
+        expectedModel,
+        expectedThinking,
+        requireThinking,
+      });
+    } else if (expectedChildIds) {
+      validateWorkflowShapeContract({
+        label,
+        events,
+        parentToolCallId: workflowLaunchToolCallId(events),
+        expectedChildIds,
+        expectedModel,
+        expectedThinking,
+        requireThinking,
+      });
+    } else {
+      validateDirectShapeContract({
+        label,
+        expectedModel,
+        expectedThinking,
+        expectedFinalChildren,
+        requireUniqueSiblingIds: expectedFinalChildren > 1,
+        requireThinking,
+        shape,
+      });
+    }
   } catch (error) {
     throw new Error(
       `${label}: ${error instanceof Error ? error.message : String(error)}\nRaw Pi output:\n${rawOutput}`,
@@ -328,53 +576,58 @@ async function main() {
     });
     runShape({
       ...common,
-      label: "counted",
-      expectedFinalChildren: 2,
+      label: "direct-async",
+      expectedFinalChildren: 1,
+      asyncWait: true,
       input: {
-        tasks: [
-          {
-            agent: "contract-thinking",
-            task: "Return the word counted.",
-            count: 2,
-          },
-        ],
-        concurrency: 2,
+        agent: "contract-thinking",
+        task: "Return the word direct async.",
+        async: true,
         context: "fresh",
       },
     });
+    const workflows = [
+      [
+        "workflow-runs-run",
+        ["single"],
+        'return await runs.run("single", {agent:"contract-thinking", task:"Return workflow single."});',
+      ],
+      [
+        "workflow-runs-all",
+        ["parallel-a", "parallel-b"],
+        'return await runs.all([{key:"parallel-a",agent:"contract-thinking",task:"Return parallel a."},{key:"parallel-b",agent:"contract-thinking",task:"Return parallel b."}]);',
+      ],
+      [
+        "workflow-sequential",
+        ["first", "second"],
+        'await runs.run("first",{agent:"contract-thinking",task:"Return first."}); return await runs.run("second",{agent:"contract-thinking",task:"Return second."});',
+      ],
+      [
+        "workflow-dynamic",
+        ["dynamic-a", "dynamic-b"],
+        'const keys=["dynamic-a","dynamic-b"]; for(const key of keys){await runs.run(key,{agent:"contract-thinking",task:`Return ${key}.`});} return keys;',
+      ],
+    ];
+    for (const [label, expectedChildIds, workflowScript] of workflows) {
+      runShape({
+        ...common,
+        label,
+        expectedFinalChildren: 0,
+        expectedChildIds,
+        input: { workflowScript, async: false, context: "fresh" },
+      });
+    }
     runShape({
       ...common,
-      label: "parallel",
-      expectedFinalChildren: 3,
+      label: "workflow-async",
+      expectedFinalChildren: 0,
+      expectedChildIds: ["parallel-a", "parallel-b"],
+      asyncWait: true,
       input: {
-        tasks: [
-          { agent: "contract-thinking", task: "Return parallel a." },
-          {
-            agent: "contract-thinking",
-            task: "Return repeated parallel.",
-            count: 2,
-          },
-        ],
-        concurrency: 2,
+        workflowScript:
+          'return await runs.all([{key:"parallel-a",agent:"contract-thinking",task:"Return parallel a."},{key:"parallel-b",agent:"contract-thinking",task:"Return parallel b."}]);',
+        async: true,
         context: "fresh",
-      },
-    });
-    runShape({
-      ...common,
-      label: "chain",
-      expectedFinalChildren: 3,
-      input: {
-        chain: [
-          { agent: "contract-thinking", task: "Return chain step one." },
-          {
-            parallel: [
-              { agent: "contract-thinking", task: "Return chain fanout a." },
-              { agent: "contract-thinking", task: "Return chain fanout b." },
-            ],
-          },
-        ],
-        context: "fresh",
-        clarify: false,
       },
     });
     runShape({

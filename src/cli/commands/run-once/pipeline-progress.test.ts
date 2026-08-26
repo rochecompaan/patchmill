@@ -84,3 +84,37 @@ test("recordPiObservation emits debug observation data", async () => {
   });
   assert.equal(events[0]?.message, "pi observation");
 });
+
+test("child transitions never increment parent tool-call accounting", async () => {
+  const { events, progress: reporter } = collectProgressEvents();
+  const accounting = createStepAccounting({
+    progress: reporter,
+    issueNumber: 125,
+  });
+  await accounting.start("implement correlation");
+  await accounting.observe("pi", {
+    type: "tool-call",
+    toolName: "subagent",
+    toolCallId: "launch",
+  });
+  for (const state of ["pending", "running", "completed"] as const) {
+    await accounting.observe("pi", {
+      type: "subagent-progress",
+      progress: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "worker",
+        state,
+        agent: "worker",
+      },
+    });
+  }
+  await accounting.complete();
+  assert.equal(
+    events.find((event) => event.step?.type === "step-complete")?.step
+      ?.toolCalls,
+    1,
+  );
+});

@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   collectSubagentEvents,
+  workflowLaunchToolCallId,
   reportedThinkingModel,
   validateShapeContract,
+  validateDirectAsyncShapeContract,
+  validateDirectShapeContract,
+  validateWorkflowShapeContract,
 } from "./verify-pi-subagents-child-metadata.mjs";
 
 const finalResult = {
@@ -15,6 +19,359 @@ const finalResult = {
     ],
   },
 };
+
+test("workflowLaunchToolCallId accepts a terminal-only workflow launch", () => {
+  assert.equal(
+    workflowLaunchToolCallId([
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        toolCallId: "terminal-launch",
+        result: { details: { workflowChildren: {} } },
+      },
+    ]),
+    "terminal-launch",
+  );
+  assert.throws(
+    () => workflowLaunchToolCallId([]),
+    /missing launch tool call ID/u,
+  );
+});
+
+test("validateWorkflowShapeContract uses stable workflow child IDs rather than result indexes", () => {
+  const summary = (complete, children) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: complete,
+    workflowState: complete ? "completed" : "running",
+    children,
+  });
+  validateWorkflowShapeContract({
+    label: "workflow",
+    parentToolCallId: "launch",
+    expectedChildIds: ["build", "review"],
+    expectedModel: "provider/model",
+    expectedThinking: "low",
+    events: [
+      {
+        type: "tool_execution_update",
+        partialResult: {
+          details: {
+            results: [{ index: 0 }, { index: 0 }],
+            workflowChildren: summary(false, [
+              {
+                childId: "build",
+                state: "running",
+                model: "provider/model",
+                thinking: "low",
+              },
+            ]),
+          },
+        },
+      },
+      {
+        type: "tool_execution_end",
+        result: {
+          details: {
+            completions: [
+              {
+                runId: "workflow",
+                workflowChildren: summary(true, [
+                  {
+                    childId: "build",
+                    state: "completed",
+                    agent: "worker",
+                    model: "provider/model",
+                    thinking: "low",
+                  },
+                  {
+                    childId: "review",
+                    state: "completed",
+                    agent: "reviewer",
+                    model: "provider/model",
+                    thinking: "low",
+                  },
+                ]),
+              },
+            ],
+          },
+        },
+      },
+    ],
+  });
+  assert.throws(
+    () =>
+      validateWorkflowShapeContract({
+        label: "bad",
+        parentToolCallId: "launch",
+        events: [{ result: { details: { workflowChildren: { version: 2 } } } }],
+      }),
+    /unsupported workflow summary version/u,
+  );
+});
+
+test("validateWorkflowShapeContract rejects inventory shrinkage at closure", () => {
+  const summary = (inventoryComplete, children) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete,
+    workflowState: inventoryComplete ? "completed" : "running",
+    children,
+  });
+  assert.throws(
+    () =>
+      validateWorkflowShapeContract({
+        label: "inventory-shrink",
+        events: [
+          {
+            result: {
+              details: {
+                workflowChildren: summary(false, [
+                  { childId: "build", state: "running" },
+                  { childId: "review", state: "running" },
+                ]),
+              },
+            },
+          },
+          {
+            result: {
+              details: {
+                workflowChildren: summary(true, [
+                  { childId: "build", state: "completed", agent: "worker" },
+                ]),
+              },
+            },
+          },
+        ],
+      }),
+    /inventory removed review/u,
+  );
+});
+
+test("validateWorkflowShapeContract rejects completion workflow run drift and missing IDs", () => {
+  const summary = {
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: true,
+    workflowState: "completed",
+    children: [{ childId: "child", state: "completed", agent: "worker" }],
+  };
+  for (const completionRunId of [undefined, " ", "other"]) {
+    assert.throws(
+      () =>
+        validateWorkflowShapeContract({
+          label: "completion-run",
+          events: [
+            {
+              result: {
+                details: {
+                  completions: [
+                    { runId: completionRunId, workflowChildren: summary },
+                  ],
+                },
+              },
+            },
+          ],
+        }),
+      /completion workflow run drift/u,
+    );
+  }
+});
+
+test("validateWorkflowShapeContract rejects malformed v1 discriminants", () => {
+  const base = {
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: true,
+    workflowState: "completed",
+    children: [{ childId: "child", state: "completed", agent: "worker" }],
+  };
+  for (const summary of [
+    { ...base, parentToolCallId: "" },
+    { ...base, inventoryComplete: "true" },
+    { ...base, workflowState: "unknown" },
+    { ...base, children: [{ ...base.children[0], state: "unknown" }] },
+  ])
+    assert.throws(() =>
+      validateWorkflowShapeContract({
+        label: "malformed",
+        events: [{ result: { details: { workflowChildren: summary } } }],
+      }),
+    );
+});
+
+test("validateWorkflowShapeContract handles every workflow child lifecycle state", () => {
+  const childStates = [
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "paused",
+    "stopped",
+    "rejected",
+    "detached",
+  ];
+  for (const state of childStates) {
+    const validate = () =>
+      validateWorkflowShapeContract({
+        label: `child-${state}`,
+        parentToolCallId: "launch",
+        events: [
+          {
+            type: "tool_execution_end",
+            result: {
+              details: {
+                workflowChildren: {
+                  version: 1,
+                  parentToolCallId: "launch",
+                  workflowRunId: `workflow-${state}`,
+                  inventoryComplete: true,
+                  workflowState: "completed",
+                  children: [{ childId: "child", state, agent: "worker" }],
+                },
+              },
+            },
+          },
+        ],
+      });
+    if (state === "failed") assert.throws(validate, /child child failed/u);
+    else assert.doesNotThrow(validate);
+  }
+});
+
+test("validateWorkflowShapeContract rejects failed workflow tool events", () => {
+  assert.throws(
+    () =>
+      validateWorkflowShapeContract({
+        label: "failed-workflow",
+        parentToolCallId: "launch",
+        events: [
+          {
+            type: "tool_execution_end",
+            isError: true,
+            result: {
+              details: {
+                workflowChildren: {
+                  version: 1,
+                  parentToolCallId: "launch",
+                  workflowRunId: "workflow",
+                  inventoryComplete: true,
+                  workflowState: "completed",
+                  children: [
+                    {
+                      childId: "child",
+                      state: "completed",
+                      agent: "worker",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      }),
+    /workflow tool failed/u,
+  );
+});
+
+test("validateDirectAsyncShapeContract matches launch identity to wait completion", () => {
+  validateDirectAsyncShapeContract({
+    label: "async",
+    expectedModel: "provider/model-a",
+    expectedThinking: "low",
+    requireThinking: true,
+    events: [
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        result: { details: { asyncId: "run-async", results: [] } },
+        isError: false,
+      },
+      {
+        type: "tool_execution_end",
+        toolName: "subagent_wait",
+        result: {
+          details: {
+            completions: [
+              {
+                runId: "run-async",
+                results: [
+                  {
+                    agent: "worker",
+                    model: "provider/model-a",
+                    exitCode: 0,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        isError: false,
+      },
+    ],
+  });
+  assert.throws(
+    () =>
+      validateDirectAsyncShapeContract({
+        label: "missing",
+        events: [],
+        requireThinking: true,
+      }),
+    /missing structured async launch/u,
+  );
+  assert.throws(
+    () =>
+      validateDirectAsyncShapeContract({
+        label: "agent",
+        expectedModel: "provider/model-a",
+        events: [
+          {
+            type: "tool_execution_end",
+            toolName: "subagent",
+            result: { details: { asyncId: "run" } },
+          },
+          {
+            type: "tool_execution_end",
+            toolName: "subagent_wait",
+            result: {
+              details: {
+                completions: [
+                  {
+                    runId: "run",
+                    results: [{ model: "provider/model-a", exitCode: 0 }],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    /missing canonical agent/u,
+  );
+});
+
+test("validateDirectShapeContract matches the structured direct surface", () => {
+  validateDirectShapeContract({
+    label: "direct",
+    expectedModel: "provider/model-a",
+    expectedThinking: "low",
+    expectedFinalChildren: 2,
+    requireUniqueSiblingIds: true,
+    requireThinking: true,
+    shape: collectSubagentEvents([
+      {
+        type: "tool_execution_end",
+        toolName: "subagent",
+        isError: false,
+        result: finalResult,
+      },
+    ]),
+  });
+});
 
 test("reportedThinkingModel matches the Pi model argument emitted for an explicit fixture thinking level", () => {
   assert.equal(

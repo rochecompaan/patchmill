@@ -1,6 +1,13 @@
 import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  parsePersistedSubagentProgress,
+  SUBAGENT_PROGRESS_CUSTOM_TYPE,
+  SUBAGENT_PROGRESS_LIMITS,
+  subagentProgressKey,
+  type PersistedSubagentProgress,
+} from "../../../pi/subagent-progress.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -18,6 +25,7 @@ export type PiSessionObservation =
       toolCallId?: string;
       arguments?: JsonObject;
     }
+  | { type: "subagent-progress"; progress: PersistedSubagentProgress }
   | { type: "text"; text: string };
 
 type SessionStreamerOptions = {
@@ -32,13 +40,23 @@ type ExactSessionReadRange = (
   end: number,
 ) => Promise<Uint8Array>;
 
+export type ExactPiSessionProgressState = {
+  observedKeys: Set<string>;
+  matchingEntries: number;
+};
+
 export type ExactPiSessionObservationStreamerOptions = {
   pollMs?: number;
   verboseOutput?: (chunk: string) => void;
   statFile?: typeof stat;
   readRange?: ExactSessionReadRange;
   startOffset?: number;
+  progressState?: ExactPiSessionProgressState;
 };
+
+export function createExactPiSessionProgressState(): ExactPiSessionProgressState {
+  return { observedKeys: new Set<string>(), matchingEntries: 0 };
+}
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -154,6 +172,14 @@ function tokenUsageText(
 export function sessionEntryToObservations(
   entry: JsonObject,
 ): PiSessionObservation[] {
+  if (
+    entry.type === "custom" &&
+    entry.customType === SUBAGENT_PROGRESS_CUSTOM_TYPE
+  ) {
+    const progress = parsePersistedSubagentProgress(entry.data);
+    return progress ? [{ type: "subagent-progress", progress }] : [];
+  }
+
   if (entry.type === "custom_message" && entry.display === true) {
     const text = textContent(entry.content);
     return text === undefined ? [] : [{ type: "text", text }];
@@ -354,13 +380,30 @@ export function createExactPiSessionObservationStreamer(
   };
 
   const observedToolCallIds = new Set<string>();
+  const progressState =
+    options.progressState ?? createExactPiSessionProgressState();
   const processLine = async (line: string) => {
     const entry = parseStrictSessionLine(line);
     if (!entry) return;
+    const matchingProgress =
+      entry.type === "custom" &&
+      entry.customType === SUBAGENT_PROGRESS_CUSTOM_TYPE;
+    if (matchingProgress) progressState.matchingEntries += 1;
+    if (
+      matchingProgress &&
+      progressState.matchingEntries >
+        SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession
+    )
+      return;
     for (const observation of sessionEntryToObservations(entry)) {
       if (observation.type === "tool-call" && observation.toolCallId) {
         if (observedToolCallIds.has(observation.toolCallId)) continue;
         observedToolCallIds.add(observation.toolCallId);
+      }
+      if (observation.type === "subagent-progress") {
+        const key = subagentProgressKey(observation.progress);
+        if (progressState.observedKeys.has(key)) continue;
+        progressState.observedKeys.add(key);
       }
       await onObservation(observation);
     }
@@ -522,7 +565,15 @@ export function createPiSessionObservationStreamer(
   const processLine = (line: string) => {
     const entry = parseSessionLine(line);
     if (!entry) return;
+    // Progress belongs exclusively to the exact parent-session streamer.
+    // Do not invoke the shared parser merely to discard its projection here.
+    if (
+      entry.type === "custom" &&
+      entry.customType === SUBAGENT_PROGRESS_CUSTOM_TYPE
+    )
+      return;
     for (const observation of sessionEntryToObservations(entry)) {
+      if (observation.type === "subagent-progress") continue;
       if (observation.type === "tool-call" && observation.toolCallId) {
         if (observedToolCallIds.has(observation.toolCallId)) continue;
         observedToolCallIds.add(observation.toolCallId);
