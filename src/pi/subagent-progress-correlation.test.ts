@@ -4,7 +4,10 @@ import {
   createSubagentProgressCorrelator,
   SUBAGENT_PROGRESS_APPEND_ERROR,
 } from "./subagent-progress-correlation.ts";
-import type { PersistedSubagentProgress } from "./subagent-progress.ts";
+import {
+  SUBAGENT_PROGRESS_LIMITS,
+  type PersistedSubagentProgress,
+} from "./subagent-progress.ts";
 
 function harness() {
   const entries: PersistedSubagentProgress[] = [];
@@ -1484,4 +1487,225 @@ test("allows exactly 65536 matching restored entries and rejects one over withou
     },
   });
   assert.equal(initialized.entries.length, 2);
+});
+
+test("keeps a reloaded workflow active when its closure seal precedes a required fallback", () => {
+  const state = harness();
+  state.correlator.restore([
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "first",
+        state: "completed",
+        agent: "worker",
+      },
+    },
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "second",
+        state: "completed",
+      },
+    },
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "first",
+        state: "completed",
+        agent: "worker",
+        inventoryClosed: true,
+      },
+    },
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "launch",
+        workflowRunId: "workflow",
+        childId: "second",
+        state: "completed",
+        unresolved: true,
+      },
+    },
+  ]);
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "launch",
+          workflowRunId: "workflow",
+          inventoryComplete: false,
+          workflowState: "running",
+          children: [
+            { childId: "first", state: "running", agent: "worker" },
+            { childId: "second", state: "running" },
+          ],
+        },
+      },
+    },
+  });
+  assert.deepEqual(
+    state.entries.map((entry) => [entry.childId, entry.state]),
+    [
+      ["first", "running"],
+      ["second", "running"],
+    ],
+  );
+});
+
+test("preflights malformed mixed-sibling nested arrays before direct completion mutation", () => {
+  const event = (length: number, kind: "direct" | "workflow") => ({
+    phase: "end" as const,
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: {
+      details: {
+        completions: [
+          {
+            runId: "async",
+            state: "complete",
+            results: [{ agent: "worker" }],
+          },
+          kind === "direct"
+            ? { runId: "", results: Array.from({ length }, () => ({})) }
+            : {
+                workflowChildren: {
+                  version: 1,
+                  parentToolCallId: "",
+                  workflowRunId: "workflow",
+                  inventoryComplete: false,
+                  workflowState: "running",
+                  children: Array.from({ length }, (_, index) => ({
+                    childId: `child-${index}`,
+                    state: "running",
+                  })),
+                },
+              },
+        ],
+      },
+    },
+  });
+  for (const kind of ["direct", "workflow"] as const) {
+    const exact = harness();
+    exact.correlator.observe({
+      phase: "end",
+      toolName: "subagent",
+      toolCallId: "launch",
+      result: { details: { mode: "single", asyncId: "async", results: [] } },
+    });
+    exact.correlator.observe(
+      event(SUBAGENT_PROGRESS_LIMITS.maxResultRows, kind),
+    );
+    assert.equal(exact.entries.length, 2);
+
+    const over = harness();
+    over.correlator.observe({
+      phase: "end",
+      toolName: "subagent",
+      toolCallId: "launch",
+      result: { details: { mode: "single", asyncId: "async", results: [] } },
+    });
+    assert.throws(
+      () =>
+        over.correlator.observe(
+          event(SUBAGENT_PROGRESS_LIMITS.maxResultRows + 1, kind),
+        ),
+      /PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED/u,
+    );
+    assert.deepEqual(over.entries, [
+      {
+        version: 1,
+        kind: "direct",
+        toolCallId: "launch",
+        runId: "async",
+        childIndex: 0,
+        state: "pending",
+      },
+    ]);
+  }
+});
+
+test("emits unresolved direct fallbacks for terminal rows omitted from a shrinking result", () => {
+  const state = harness();
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: {
+        mode: "single",
+        runId: "run",
+        results: [{ index: 0 }, { index: 1, stopped: true }],
+      },
+    },
+  });
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: {
+      details: {
+        mode: "single",
+        runId: "run",
+        results: [{ index: 0, agent: "worker", exitCode: 0 }],
+      },
+    },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 0,
+    },
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 1,
+      state: "stopped",
+    },
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 0,
+      state: "completed",
+      agent: "worker",
+    },
+    {
+      version: 1,
+      kind: "direct",
+      toolCallId: "launch",
+      runId: "run",
+      childIndex: 1,
+      state: "stopped",
+      unresolved: true,
+    },
+  ]);
 });

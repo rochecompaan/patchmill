@@ -252,19 +252,21 @@ export function parseDirectCompletionSnapshots(
     throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
   const snapshots: DirectCompletionSnapshot[] = [];
   for (const completion of result.details.completions) {
+    // Bound a recognized nested container before validating its sibling
+    // identity fields, so a malformed sibling cannot hide a limit breach.
+    if (!isRecord(completion)) continue;
     if (
-      !isRecord(completion) ||
+      Array.isArray(completion.results) &&
+      completion.results.length > SUBAGENT_PROGRESS_LIMITS.maxResultRows
+    )
+      throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
+    if (
       !bounded(
         completion.runId,
         SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits,
       )
     )
       continue;
-    if (
-      Array.isArray(completion.results) &&
-      completion.results.length > SUBAGENT_PROGRESS_LIMITS.maxResultRows
-    )
-      throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
     const snapshot: DirectCompletionSnapshot = { runId: completion.runId };
     const state = completionState(completion);
     if (state) snapshot.state = state;
@@ -300,8 +302,15 @@ export function parseDirectCompletionSnapshots(
 function parseWorkflowSummary(
   value: unknown,
 ): WorkflowChildSummaryV1 | undefined {
+  if (!isRecord(value)) return undefined;
+  // Bound the recognized nested child container before semantic identity
+  // validation, so invalid parent fields cannot bypass the stable limit error.
   if (
-    !isRecord(value) ||
+    Array.isArray(value.children) &&
+    value.children.length > SUBAGENT_PROGRESS_LIMITS.maxResultRows
+  )
+    throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
+  if (
     value.version !== 1 ||
     !boundedBytes(
       value.parentToolCallId,
@@ -317,8 +326,6 @@ function parseWorkflowSummary(
     !Array.isArray(value.children)
   )
     return undefined;
-  if (value.children.length > SUBAGENT_PROGRESS_LIMITS.maxResultRows)
-    throw new Error(SUBAGENT_PROGRESS_LIMIT_ERROR);
   const children: WorkflowChildSummaryV1["children"] = [];
   const ids = new Set<string>();
   for (const row of value.children) {

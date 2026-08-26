@@ -306,22 +306,31 @@ export function createSubagentProgressCorrelator(options: {
       );
       const terminalFallbacks =
         !snapshot.pendingAsyncSingle && event.phase === "end"
-          ? rows
-              .filter((row) => {
-                const child = existing?.children.get(row.childIndex);
-                return !row.agent && !child?.agentSeen && !child?.unresolved;
+          ? [
+              ...new Set([
+                ...(existing ? [...existing.children.keys()] : []),
+                ...rows.map((row) => row.childIndex),
+              ]),
+            ]
+              .filter((childIndex) => {
+                const row = rows.find((item) => item.childIndex === childIndex);
+                const child = existing?.children.get(childIndex);
+                return !row?.agent && !child?.agentSeen && !child?.unresolved;
               })
-              .map(
-                (row): PersistedSubagentProgress => ({
+              .map((childIndex): PersistedSubagentProgress => {
+                const row = rows.find((item) => item.childIndex === childIndex);
+                const child = existing?.children.get(childIndex);
+                const state = row?.state ?? child?.lastState;
+                return {
                   version: 1,
                   kind: "direct",
                   toolCallId: event.toolCallId,
                   runId: snapshot.runId,
-                  childIndex: row.childIndex,
-                  ...(row.state ? { state: row.state } : {}),
+                  childIndex,
+                  ...(state ? { state } : {}),
                   unresolved: true,
-                }),
-              )
+                };
+              })
           : [];
       preflight(
         [...previews, ...terminalFallbacks],
@@ -802,11 +811,25 @@ export function createSubagentProgressCorrelator(options: {
           (progress) => progress.inventoryClosed === true,
         );
         const firstChildId = [...byChild.keys()].sort()[0];
+        // Persisted closure writes are ordered atomically: authoritative rows,
+        // then recoverable fallbacks, then the one deterministic seal. A seal
+        // observed before a required fallback is an interrupted write, not a
+        // durable closure, even when all its tuples are eventually present.
+        let sawFallback = false;
+        const orderedClosure = group.every((progress, index) => {
+          if (progress.inventoryClosed) return index === group.length - 1;
+          if (progress.unresolved) {
+            sawFallback = true;
+            return true;
+          }
+          return !sawFallback;
+        });
         // A closed inventory is only durable after its one deterministic seal
         // (on the lexicographically first child) and every agentless child has
         // its recoverable unresolved fallback. Partial closure writes remain
         // active so replay can append the missing fallback before releasing.
         const closed =
+          orderedClosure &&
           seals.length === 1 &&
           seals[0]?.childId === firstChildId &&
           seals[0]?.unresolved !== true &&
