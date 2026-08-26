@@ -67,7 +67,13 @@ test("Pi reports append failure and a terminal event retries the tuple", async (
       toolName: "subagent",
       toolCallId: "call-1",
       args: {},
-      partialResult: { details: { results: [{ index: 0, agent: "worker" }] } },
+      partialResult: {
+        details: {
+          mode: "single",
+          runId: "run-1",
+          results: [{ index: 0, agent: "worker", exitCode: 0 }],
+        },
+      },
     });
     assert.equal(appended.length, 0);
     assert.equal(errors.length, 1);
@@ -82,13 +88,27 @@ test("Pi reports append failure and a terminal event retries the tuple", async (
       type: "tool_execution_end",
       toolName: "subagent",
       toolCallId: "call-1",
-      result: { details: { results: [{ index: 0, agent: "worker" }] } },
+      result: {
+        details: {
+          mode: "single",
+          runId: "run-1",
+          results: [{ index: 0, agent: "worker", exitCode: 0 }],
+        },
+      },
       isError: false,
     });
     assert.deepEqual(appended, [
       {
         customType: "patchmill-subagent-progress",
-        data: { toolCallId: "call-1", childIndex: 0, agent: "worker" },
+        data: {
+          version: 1,
+          kind: "direct",
+          toolCallId: "call-1",
+          runId: "run-1",
+          childIndex: 0,
+          state: "completed",
+          agent: "worker",
+        },
       },
     ]);
     assert.equal(errors.length, 1);
