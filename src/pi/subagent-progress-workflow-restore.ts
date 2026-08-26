@@ -30,52 +30,56 @@ export function recoverClosedWorkflow(group: readonly WorkflowProgress[]): {
     else byChild.set(progress.childId, [progress]);
   }
   const seals = group.filter((progress) => progress.inventoryClosed === true);
-  const lastSealIndex = group.findLastIndex(
-    (progress) => progress.inventoryClosed === true,
-  );
-  // The seal's deterministic child is selected from its pre-seal inventory.
-  // A later contradictory ID must not retroactively change that fingerprint.
-  const firstChildId =
-    lastSealIndex < 0
-      ? undefined
-      : [
-          ...new Set(
-            group.slice(0, lastSealIndex + 1).map((row) => row.childId),
-          ),
-        ].sort()[0];
-  const candidateSealIndex =
-    lastSealIndex >= 0 &&
-    group[lastSealIndex]?.childId === firstChildId &&
-    group[lastSealIndex]?.unresolved !== true &&
-    !group.slice(lastSealIndex + 1).some((later) => later.unresolved)
-      ? lastSealIndex
-      : undefined;
-  const candidateRows =
-    candidateSealIndex === undefined
-      ? []
-      : group.slice(0, candidateSealIndex + 1);
-  const latestFallbackIndex = candidateRows.findLastIndex(
-    (progress) => progress.unresolved,
-  );
-  const repairAttemptRows = candidateRows.slice(latestFallbackIndex + 1);
-  const orderedClosure = repairAttemptRows.every(
-    (progress) => progress.inventoryClosed || !progress.unresolved,
-  );
-  const sealedChildren = new Map<string, WorkflowProgress[]>();
-  for (const progress of candidateRows) {
-    const rows = sealedChildren.get(progress.childId);
-    if (rows) rows.push(progress);
-    else sealedChildren.set(progress.childId, [progress]);
+  const deterministicSeals = new Map<number, boolean>();
+  let firstChildId: string | undefined;
+  for (const [index, progress] of group.entries()) {
+    if (firstChildId === undefined || progress.childId < firstChildId)
+      firstChildId = progress.childId;
+    if (progress.inventoryClosed)
+      deterministicSeals.set(index, progress.childId === firstChildId);
   }
-  const durable =
-    candidateSealIndex !== undefined &&
-    orderedClosure &&
-    [...sealedChildren.values()].every(
-      (rows) =>
-        rows.some((progress) => progress.agent !== undefined) ||
-        rows.some((progress) => progress.unresolved),
+  const hasUnresolvedAfter = new Map<number, boolean>();
+  const hasMalformedSealAfter = new Map<number, boolean>();
+  let unresolvedAfter = false;
+  let malformedSealAfter = false;
+  for (let index = group.length - 1; index >= 0; index -= 1) {
+    const progress = group[index]!;
+    hasUnresolvedAfter.set(index, unresolvedAfter);
+    if (progress.inventoryClosed) {
+      hasMalformedSealAfter.set(index, malformedSealAfter);
+      if (!deterministicSeals.get(index)) malformedSealAfter = true;
+    }
+    if (progress.unresolved) unresolvedAfter = true;
+  }
+
+  let candidateSealIndex: number | undefined;
+  let sealedChildren: Map<string, WorkflowProgress[]> | undefined;
+  const children = new Map<string, WorkflowProgress[]>();
+  const childrenWithEvidence = new Set<string>();
+  // The first durable seal locks the fingerprint. Later seals can repair an
+  // earlier non-durable attempt, but cannot replace a durable inventory.
+  for (const [index, progress] of group.entries()) {
+    const rows = children.get(progress.childId);
+    if (rows) rows.push(progress);
+    else children.set(progress.childId, [progress]);
+    if (progress.agent !== undefined || progress.unresolved)
+      childrenWithEvidence.add(progress.childId);
+    if (
+      !progress.inventoryClosed ||
+      !deterministicSeals.get(index) ||
+      hasMalformedSealAfter.get(index) ||
+      progress.unresolved ||
+      hasUnresolvedAfter.get(index) ||
+      childrenWithEvidence.size !== children.size
+    )
+      continue;
+    candidateSealIndex = index;
+    sealedChildren = new Map(
+      [...children].map(([id, childRows]) => [id, [...childRows]]),
     );
-  if (!durable) {
+    break;
+  }
+  if (candidateSealIndex === undefined || !sealedChildren) {
     return {
       nonDurableSealKeys: new Set(seals.map(subagentProgressKey)),
     };

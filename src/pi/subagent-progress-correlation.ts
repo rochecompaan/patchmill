@@ -12,7 +12,10 @@ import {
   type PersistedSubagentProgress,
   type WorkflowChildSummarySource,
 } from "./subagent-progress.ts";
-import { recoverClosedWorkflow } from "./subagent-progress-workflow-restore.ts";
+import {
+  recoverClosedWorkflow,
+  type RestoredClosedWorkflow,
+} from "./subagent-progress-workflow-restore.ts";
 import {
   cloneCorrelationState,
   type Child,
@@ -84,7 +87,7 @@ export function createSubagentProgressCorrelator(options: {
   let directOrigins = new Map<string, string>();
   let directRunsByOrigin = new Map<string, string>();
   let workflowRuns = new Map<string, WorkflowRun>();
-  let closedWorkflows = new Map<string, ClosedWorkflow>();
+  let closedWorkflows = new Map<string, RestoredClosedWorkflow>();
   // Retain both directions so one originating parent cannot be silently
   // rebound to a contradictory workflow run by status or management output.
   let workflowOrigins = new Map<string, string>();
@@ -668,7 +671,7 @@ export function createSubagentProgressCorrelator(options: {
       const restoredDirectOrigins = new Map<string, string>();
       const restoredDirectRunsByOrigin = new Map<string, string>();
       const restoredWorkflowRuns = new Map<string, WorkflowRun>();
-      const restoredClosedWorkflows = new Map<string, ClosedWorkflow>();
+      const restoredClosedWorkflows = new Map<string, RestoredClosedWorkflow>();
       const restoredOrigins = new Map<string, string>();
       const restoredRunsByOrigin = new Map<string, string>();
       const restoredTupleKeys = new Set<string>();
@@ -846,11 +849,12 @@ export function createSubagentProgressCorrelator(options: {
         const { closed, nonDurableSealKeys } = recoverClosedWorkflow(
           group as Extract<PersistedSubagentProgress, { kind: "workflow" }>[],
         );
-        // Contradictory IDs after a durable seal are not active inventory, so
-        // they cannot turn a sealed replay into a cardinality limit failure.
+        // A durable inventory is bounded by its sealed fingerprint; an open
+        // inventory is bounded by every child observed during restoration.
+        // Post-seal contradictory IDs remain excluded from the former.
         if (
-          !closed &&
-          byChild.size > SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent
+          (closed?.size ?? byChild.size) >
+          SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent
         )
           failLimit();
         // An out-of-order or otherwise invalid seal did not durably close the

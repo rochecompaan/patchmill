@@ -1173,8 +1173,8 @@ test("excludes every workflow group participating in ownership conflicts", () =>
 });
 
 test("enforces closed workflow child cardinality before restoring state", () => {
-  const rows = (count: number) =>
-    Array.from({ length: count }, (_, index) => ({
+  const rows = (count: number) => [
+    ...Array.from({ length: count }, (_, index) => ({
       type: "custom",
       customType: "patchmill-subagent-progress",
       data: {
@@ -1184,9 +1184,24 @@ test("enforces closed workflow child cardinality before restoring state", () => 
         workflowRunId: "closed-run",
         childId: `child-${index}`,
         state: "completed",
-        ...(index === 0 ? { inventoryClosed: true } : {}),
+        agent: "worker",
       },
-    }));
+    })),
+    {
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: "closed-launch",
+        workflowRunId: "closed-run",
+        childId: "child-0",
+        state: "completed",
+        agent: "worker",
+        inventoryClosed: true,
+      },
+    },
+  ];
   const state = harness();
   state.correlator.restore(rows(1024));
   assert.throws(
@@ -2028,6 +2043,96 @@ test("retains the pre-seal fingerprint despite a malformed post-seal child", () 
     },
   });
   assert.deepEqual(state.entries, []);
+});
+
+test("locks the first durable workflow seal despite a later contradictory seal", () => {
+  const entry = (data: Record<string, unknown>) => ({
+    type: "custom",
+    customType: "patchmill-subagent-progress",
+    data,
+  });
+  const state = harness();
+  state.correlator.restore([
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "second",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "completed",
+      agent: "worker",
+      inventoryClosed: true,
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "aardvark",
+      state: "completed",
+      agent: "worker",
+    }),
+    entry({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "aardvark",
+      state: "completed",
+      agent: "worker",
+      inventoryClosed: true,
+    }),
+  ]);
+  state.correlator.observe({
+    phase: "end",
+    toolName: "subagent",
+    toolCallId: "status",
+    result: {
+      details: {
+        mode: "single",
+        workflowChildren: {
+          version: 1,
+          parentToolCallId: "launch",
+          workflowRunId: "workflow",
+          inventoryComplete: true,
+          workflowState: "completed",
+          children: [
+            { childId: "first", state: "failed", agent: "worker" },
+            { childId: "second", state: "completed", agent: "worker" },
+          ],
+        },
+      },
+    },
+  });
+  assert.deepEqual(state.entries, [
+    {
+      version: 1,
+      kind: "workflow",
+      toolCallId: "launch",
+      workflowRunId: "workflow",
+      childId: "first",
+      state: "failed",
+      agent: "worker",
+    },
+  ]);
 });
 
 test("restores a closed workflow despite post-closure authoritative enrichment", () => {
