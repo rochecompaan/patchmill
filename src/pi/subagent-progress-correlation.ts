@@ -147,17 +147,9 @@ export function createSubagentProgressCorrelator(options: {
         SUBAGENT_PROGRESS_LIMITS.maxEntriesPerSession
     )
       failLimit();
-    for (const child of children) {
-      const additions = progresses.reduce((count, progress) => {
-        const key = subagentProgressKey(progress);
-        return count + (!tupleKeys.has(key) && !child.keys.has(key) ? 1 : 0);
-      }, 0);
-      if (
-        child.keys.size + additions >
-        SUBAGENT_PROGRESS_LIMITS.maxTransitionsPerChild
-      )
-        failLimit();
-    }
+    // Per-child ceilings are keyed by the persisted identity below. Do not
+    // charge every summary row to every existing child.
+    void children;
     for (const [identity, additions] of increments) {
       if (
         (transitionCounts.get(identity) ?? 0) + additions >
@@ -268,6 +260,11 @@ export function createSubagentProgressCorrelator(options: {
       const newChildren = rows.filter(
         (row) => !existing?.children.has(row.childIndex),
       ).length;
+      if (
+        (existing?.children.size ?? 0) + newChildren >
+        SUBAGENT_PROGRESS_LIMITS.maxChildrenPerParent
+      )
+        failLimit();
       const previews = rows.map(
         (row): PersistedSubagentProgress => ({
           version: 1,
@@ -348,7 +345,10 @@ export function createSubagentProgressCorrelator(options: {
                   : {}),
               }
             : undefined;
-        const fallback = !child.agentSeen && !child.unresolved;
+        const fallback =
+          !child.agentSeen &&
+          !child.unresolved &&
+          completion.child?.agent === undefined;
         preflight(
           [
             ...(progress ? [progress] : []),
@@ -405,6 +405,14 @@ export function createSubagentProgressCorrelator(options: {
     }
     const existing = workflowRuns.get(key);
     const newParent = existing ? 0 : 1;
+    if (
+      existing &&
+      [...existing.children.keys()].some(
+        (childId) =>
+          !summary.children.some((child) => child.childId === childId),
+      )
+    )
+      return;
     const newRows = summary.children.filter(
       (row) => !existing?.children.has(row.childId),
     );
@@ -522,9 +530,15 @@ export function createSubagentProgressCorrelator(options: {
         groups.set(key, [...(groups.get(key) ?? []), progress]);
       }
       for (const [key, group] of directGroups) {
+        // Persisted direct history has no surface marker. Only the documented
+        // pending async identity is safely resumable; paused/end snapshots are
+        // historical terminal observations.
         if (
           group.some(
-            (progress) => progress.unresolved || terminal(progress.state),
+            (progress) =>
+              progress.unresolved ||
+              progress.state !== "pending" ||
+              progress.agent !== undefined,
           )
         )
           continue;
