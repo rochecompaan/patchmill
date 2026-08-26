@@ -52,6 +52,7 @@ export type PersistedSubagentProgress =
       model?: string;
       thinking?: string;
       unresolved?: true;
+      inventoryClosed?: true;
     };
 
 export type DirectSingleSnapshot = {
@@ -380,11 +381,13 @@ export function parsePersistedSubagentProgress(
   if (
     !isRecord(value) ||
     value.version !== 1 ||
-    (value.unresolved !== undefined && value.unresolved !== true)
+    (value.unresolved !== undefined && value.unresolved !== true) ||
+    (value.inventoryClosed !== undefined && value.inventoryClosed !== true)
   )
     return undefined;
   if (value.kind === "direct") {
     if (
+      value.inventoryClosed !== undefined ||
       !bounded(
         value.toolCallId,
         SUBAGENT_PROGRESS_LIMITS.maxToolCallIdCodeUnits,
@@ -470,6 +473,7 @@ export function parsePersistedSubagentProgress(
   if (model) progress.model = model;
   if (thinking) progress.thinking = thinking;
   if (value.unresolved) progress.unresolved = true;
+  if (value.inventoryClosed) progress.inventoryClosed = true;
   return progress;
 }
 
@@ -499,5 +503,6 @@ export function subagentProgressKey(
         progress.model ?? null,
         progress.thinking ?? null,
         progress.unresolved === true,
+        progress.inventoryClosed === true,
       ]);
 }

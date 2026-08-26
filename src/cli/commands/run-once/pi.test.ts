@@ -1845,6 +1845,7 @@ test("sessionEntryToObservations emits only bounded v1 child progress", () => {
       childId: "review",
       state: "running",
       agent: "reviewer",
+      inventoryClosed: true,
       task: "SECRET_TASK",
       output: "SECRET_OUTPUT",
     },
@@ -1860,6 +1861,7 @@ test("sessionEntryToObservations emits only bounded v1 child progress", () => {
         childId: "review",
         state: "running",
         agent: "reviewer",
+        inventoryClosed: true,
       },
     },
   ]);

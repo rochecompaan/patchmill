@@ -9,13 +9,15 @@ import type { PersistedSubagentProgress } from "./subagent-progress.ts";
 function harness() {
   const entries: PersistedSubagentProgress[] = [];
   let nextError: Error | undefined;
+  let successfulAppendsBeforeError = 0;
   const correlator = createSubagentProgressCorrelator({
     append(progress) {
-      if (nextError) {
+      if (nextError && successfulAppendsBeforeError === 0) {
         const error = nextError;
         nextError = undefined;
         throw error;
       }
+      if (nextError) successfulAppendsBeforeError -= 1;
       entries.push(progress);
     },
   });
@@ -24,6 +26,11 @@ function harness() {
     correlator,
     fail(error: Error) {
       nextError = error;
+      successfulAppendsBeforeError = 0;
+    },
+    failAfter(error: Error, successfulAppends: number) {
+      nextError = error;
+      successfulAppendsBeforeError = successfulAppends;
     },
   };
 }
@@ -191,15 +198,118 @@ test("uses workflow stable child IDs through changed metadata and terminal repla
   assert.deepEqual(
     state.entries.map((entry) =>
       entry.kind === "workflow"
-        ? [entry.childId, entry.state, entry.agent]
+        ? [entry.childId, entry.state, entry.agent, entry.inventoryClosed]
         : [],
     ),
     [
-      ["dynamic", "pending", undefined],
-      ["dynamic", "running", undefined],
-      ["dynamic", "completed", "worker"],
+      ["dynamic", "pending", undefined, undefined],
+      ["dynamic", "running", undefined, undefined],
+      ["dynamic", "completed", "worker", undefined],
+      ["dynamic", "completed", "worker", true],
     ],
   );
+});
+
+test("seals workflow inventory after recoverable fallback appends", () => {
+  const state = harness();
+  const summary = (complete: boolean) => ({
+    version: 1,
+    parentToolCallId: "launch",
+    workflowRunId: "workflow",
+    inventoryComplete: complete,
+    workflowState: complete ? "paused" : "running",
+    children: [
+      { childId: "first", state: "running" },
+      { childId: "second", state: "running" },
+    ],
+  });
+  state.correlator.observe({
+    phase: "update",
+    toolName: "subagent",
+    toolCallId: "launch",
+    result: { details: { workflowChildren: summary(false) } },
+  });
+  state.failAfter(new Error("append"), 1);
+  assert.throws(
+    () =>
+      state.correlator.observe({
+        phase: "end",
+        toolName: "subagent",
+        toolCallId: "launch",
+        result: { details: { workflowChildren: summary(true) } },
+      }),
+    new RegExp(SUBAGENT_PROGRESS_APPEND_ERROR),
+  );
+  assert.equal(
+    state.entries.some((entry) => entry.inventoryClosed === true),
+    false,
+  );
+
+  const recovered = harness();
+  recovered.correlator.restore(
+    state.entries.map((data) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data,
+    })),
+  );
+  recovered.correlator.observe({
+    phase: "end",
+    toolName: "subagent_wait",
+    toolCallId: "wait",
+    result: { details: { workflowChildren: summary(true) } },
+  });
+  assert.deepEqual(
+    recovered.entries.map((entry) => [
+      entry.childId,
+      entry.unresolved,
+      entry.inventoryClosed,
+    ]),
+    [
+      ["second", true, undefined],
+      ["first", undefined, true],
+    ],
+  );
+});
+
+test("restores workflow closure seals but leaves open paused inventories active", () => {
+  const state = harness();
+  const entries = (inventoryClosed: boolean) =>
+    Array.from({ length: 256 }, (_, index) => ({
+      type: "custom",
+      customType: "patchmill-subagent-progress",
+      data: {
+        version: 1,
+        kind: "workflow",
+        toolCallId: `launch-${index}`,
+        workflowRunId: `workflow-${index}`,
+        childId: "child",
+        state: "paused",
+        agent: "worker",
+        ...(inventoryClosed ? { inventoryClosed: true } : {}),
+      },
+    }));
+  const direct = () =>
+    state.correlator.observe({
+      phase: "end",
+      toolName: "subagent",
+      toolCallId: "new",
+      result: {
+        details: {
+          mode: "single",
+          runId: "new-run",
+          results: [{ index: 0, agent: "worker", exitCode: 0 }],
+        },
+      },
+    });
+  state.correlator.restore(entries(false));
+  assert.throws(
+    direct,
+    new RegExp("PATCHMILL_SUBAGENT_PROGRESS_LIMIT_EXCEEDED"),
+  );
+  state.correlator.restore(entries(true));
+  direct();
+  assert.equal(state.entries.length, 1);
 });
 
 test("suppresses exact tuples and retries failed appends", () => {
@@ -329,7 +439,7 @@ test("rejects workflow launch-parent drift and stale closed replays", () => {
     toolCallId: "wait",
     result: { details: { workflowChildren: summary(false) } },
   });
-  assert.equal(state.entries.length, 1);
+  assert.equal(state.entries.length, 2);
 });
 
 test("preflights workflow batches before an over-limit append", () => {

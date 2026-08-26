@@ -60,8 +60,9 @@ flake verification.
   no unresolved fallback while inventory is open.
 - On closure, append exactly one `unresolved: true` fallback for each
   inventoried child that never had canonical agent metadata. Process final
-  authoritative rows before fallbacks and do not release state until every
-  required append succeeds.
+  authoritative rows before fallbacks, then append one deterministic
+  workflow-only `inventoryClosed: true` closure seal; do not release state until
+  every required append succeeds.
 - Preserve one accounting unit for each ordinary parent Pi `toolCallId`.
   `subagent-progress` observations never increment `toolCalls`; later status and
   wait calls remain independent ordinary parent tool units.
@@ -347,6 +348,7 @@ flake verification.
         model?: string;
         thinking?: string;
         unresolved?: true;
+        inventoryClosed?: true;
       };
 
   export type DirectSingleSnapshot = {
@@ -806,17 +808,22 @@ flake verification.
   ```
 
   Omit model and thinking from fallbacks; omit agent when none was resolved.
-  Retain a compact closed fingerprint of child IDs plus session-wide tuple keys
-  after releasing active counters. A later summary for the same closed workflow
-  may repeat or enrich the same child set, but an added, removed, or renamed
-  child invalidates that whole summary without mutation or logging raw values.
+  After all final rows and fallbacks append, append a single
+  `inventoryClosed: true` seal on the lexicographically first child ID; this
+  workflow-only marker is part of the tuple key. Retain a compact closed
+  fingerprint of child IDs plus session-wide tuple keys after releasing active
+  counters. A later summary for the same closed workflow may repeat or enrich
+  the same child set, but an added, removed, or renamed child invalidates that
+  whole summary without mutation or logging raw values.
 
 - [ ] **Step 4: Cover restoration, closure retries, contradictions, and workflow
       limits**
 
   Add tests that:
   - restore workflow parent/run/child identity, tuple keys, agent-seen flags,
-    and unresolved markers from valid v1 entries;
+    and unresolved markers from valid v1 entries; use the workflow-only
+    `inventoryClosed: true` seal rather than unresolved fallbacks to reconstruct
+    closed fingerprints;
   - restore malformed matching custom entries only into the session entry count;
   - retry an interrupted fallback batch after append failure without duplicating
     fallbacks that already persisted and without releasing inventory early;

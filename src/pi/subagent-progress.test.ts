@@ -197,6 +197,47 @@ test("rebuilds persisted v1 allowlists and collision-safe keys", () => {
     agent: "worker",
     unresolved: true,
   });
+  const closure = parsePersistedSubagentProgress({
+    version: 1,
+    kind: "workflow",
+    toolCallId: "call",
+    workflowRunId: "run",
+    childId: "child",
+    state: "paused",
+    inventoryClosed: true,
+  });
+  assert.deepEqual(closure, {
+    version: 1,
+    kind: "workflow",
+    toolCallId: "call",
+    workflowRunId: "run",
+    childId: "child",
+    state: "paused",
+    inventoryClosed: true,
+  });
+  assert.equal(
+    parsePersistedSubagentProgress({
+      version: 1,
+      kind: "workflow",
+      toolCallId: "call",
+      workflowRunId: "run",
+      childId: "child",
+      state: "paused",
+      inventoryClosed: false,
+    }),
+    undefined,
+  );
+  assert.equal(
+    parsePersistedSubagentProgress({
+      version: 1,
+      kind: "direct",
+      toolCallId: "call",
+      runId: "run",
+      childIndex: 0,
+      inventoryClosed: true,
+    }),
+    undefined,
+  );
   assert.equal(
     parsePersistedSubagentProgress({
       toolCallId: "call",
@@ -220,5 +261,10 @@ test("rebuilds persisted v1 allowlists and collision-safe keys", () => {
   assert.notEqual(
     subagentProgressKey(direct),
     subagentProgressKey({ ...direct, unresolved: true }),
+  );
+  assert.ok(closure);
+  assert.notEqual(
+    subagentProgressKey(closure),
+    subagentProgressKey({ ...closure, inventoryClosed: undefined }),
   );
 });

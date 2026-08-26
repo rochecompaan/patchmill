@@ -68,15 +68,6 @@ function childKey(progress: PersistedSubagentProgress): string {
         progress.childId,
       ]);
 }
-function terminal(state: ChildLifecycleState | undefined): boolean {
-  return (
-    state === "completed" ||
-    state === "failed" ||
-    state === "stopped" ||
-    state === "rejected" ||
-    state === "detached"
-  );
-}
 function matchingEntry(
   entry: unknown,
 ): entry is { type: string; customType: string; data: unknown } {
@@ -498,8 +489,33 @@ export function createSubagentProgressCorrelator(options: {
             }),
           )
       : [];
+    const seal = closes
+      ? [...summary.children]
+          .sort((left, right) =>
+            left.childId < right.childId
+              ? -1
+              : left.childId > right.childId
+                ? 1
+                : 0,
+          )
+          .slice(0, 1)
+          .map(
+            (row): PersistedSubagentProgress => ({
+              version: 1,
+              kind: "workflow",
+              toolCallId: summary.parentToolCallId,
+              workflowRunId: summary.workflowRunId,
+              childId: row.childId,
+              state: row.state,
+              ...(row.agent ? { agent: row.agent } : {}),
+              ...(row.model ? { model: row.model } : {}),
+              ...(row.thinking ? { thinking: row.thinking } : {}),
+              inventoryClosed: true,
+            }),
+          )
+      : [];
     preflight(
-      [...previews, ...fallbackRows],
+      [...previews, ...fallbackRows, ...seal],
       knownChildren,
       newParent,
       newRows.length,
@@ -524,6 +540,10 @@ export function createSubagentProgressCorrelator(options: {
       const child = run.children.get(progress.childId);
       if (child && !child.agentSeen && !child.unresolved)
         append(progress, child);
+    }
+    for (const progress of seal) {
+      const child = run.children.get(progress.childId);
+      if (child) append(progress, child);
     }
     releaseWorkflow(key, run);
   };
@@ -633,13 +653,9 @@ export function createSubagentProgressCorrelator(options: {
             ...(byChild.get(progress.childId) ?? []),
             progress,
           ]);
-        const closed =
-          group.some((progress) => progress.unresolved) ||
-          [...byChild.values()].every(
-            (rows) =>
-              rows.some((progress) => progress.agent) &&
-              terminal(rows.at(-1)?.state),
-          );
+        const closed = group.some(
+          (progress) => progress.inventoryClosed === true,
+        );
         if (closed) {
           closedWorkflows.set(
             key,

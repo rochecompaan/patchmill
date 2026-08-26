@@ -183,12 +183,16 @@ type PersistedSubagentProgress =
       model?: string;
       thinking?: string;
       unresolved?: true;
+      inventoryClosed?: true;
     };
 ```
 
-`toolCallId` always means the originating launch tool call. A later status or
-`subagent_wait` call has its own Pi tool-call ID for accounting, but its
-workflow summary still points progress back to the original launch.
+`inventoryClosed` is workflow-only and accepts only literal `true`. It is a
+single deterministic closure seal attached to the lexicographically first child
+in an authoritative closing summary, never a direct entry. `toolCallId` always
+means the originating launch tool call. A later status or `subagent_wait` call
+has its own Pi tool-call ID for accounting, but its workflow summary still
+points progress back to the original launch.
 
 Accepted entries contain only the fields above. Missing metadata stays absent;
 Patchmill will not insert placeholder agents or derive values from agent files,
@@ -196,13 +200,15 @@ settings, parent arguments, or models. A synthetic fallback sets
 `unresolved: true`, carries the last authoritative lifecycle state, and omits
 model/thinking. If upstream never resolved an agent, `agent` also remains absent
 rather than becoming a placeholder. The fallback contains no task or result
-content.
+content. After final authoritative rows and all required fallbacks append
+successfully, the closure seal appends; an append failure leaves the seal absent
+and the inventory recoverably open on reload.
 
 The key for exact-tuple deduplication is a fixed-position serialization of:
 
 ```text
 kind + originating toolCallId + run/workflow identity + child identity
-+ state? + agent? + model? + thinking? + unresolved?
++ state? + agent? + model? + thinking? + unresolved? + inventoryClosed?
 ```
 
 Earlier entries are immutable. A changed metadata or lifecycle tuple appends a
@@ -247,7 +253,9 @@ new entry rather than replacing prior output.
    history.
 6. When inventory closes, process the final rows first. For every inventoried
    child that never had canonical agent metadata, append one unresolved
-   fallback. Then release volatile parent state.
+   fallback. After every required fallback succeeds, append the deterministic
+   workflow-only `inventoryClosed: true` seal, then release volatile parent
+   state.
 7. A closed inventory cannot add or remove a previously observed child. A
    contradictory later summary fails closed rather than reopening inventory or
    guessing identity.
@@ -261,15 +269,17 @@ terminal state whose v1 contract guarantees closure.
 
 On `session_start`, the extension will validate existing
 `patchmill-subagent-progress` entries from the active session to restore tuple
-deduplication, unresolved-fallback markers, run-to-parent mappings, and the
-session entry count. Invalid legacy or malformed entries do not become
-correlation state, but all matching custom entries still count toward the
-session ceiling so reload cannot bypass it.
+deduplication, run-to-parent mappings, and the session entry count. A persisted
+`inventoryClosed: true` seal reconstructs closed workflow fingerprints; without
+that seal, including when only some unresolved fallbacks persisted, workflow
+inventory remains active and recoverable. Invalid legacy or malformed entries do
+not become correlation state, but all matching custom entries still count toward
+the session ceiling so reload cannot bypass it.
 
 As today, `appendEntry()` happens before in-memory state records a tuple. A
 failed append retains the original cause behind the stable Patchmill append
 error, leaves the tuple retryable, and does not release terminal state before
-all required fallbacks persist.
+all required fallbacks and the closure seal persist.
 
 ## Exact-session observation and pipeline behavior
 
