@@ -1,4 +1,5 @@
 import type { PersistedSubagentProgress } from "../../../pi/subagent-progress.ts";
+import { childProgressIdentity } from "../../../pi/subagent-progress-correlation-state.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 
 export type FinalResultProgressSnapshot = {
@@ -72,22 +73,6 @@ function formatSubagentCall(
   if (agents.length === 1) return `🤖 subagent (agent=${agents[0]})`;
   if (agents.length > 1) return `🤖 subagent (agents=${agents.join(", ")})`;
   return undefined;
-}
-
-function childProgressKey(progress: PersistedSubagentProgress): string {
-  return progress.kind === "direct"
-    ? JSON.stringify([
-        "direct",
-        progress.toolCallId,
-        progress.runId,
-        progress.childIndex,
-      ])
-    : JSON.stringify([
-        "workflow",
-        progress.toolCallId,
-        progress.workflowRunId,
-        progress.childId,
-      ]);
 }
 
 function metadataTupleKey(progress: PersistedSubagentProgress): string {
@@ -212,7 +197,7 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
   private writeSubagentProgress(progress: PersistedSubagentProgress): void {
     const authoritativeLine = formatAuthoritativeSubagentProgress(progress);
     if (authoritativeLine) {
-      const childKey = childProgressKey(progress);
+      const childKey = childProgressIdentity(progress);
       const tupleKey = metadataTupleKey(progress);
       const seen = this.subagentMetadataKeysByChild.get(childKey);
       if (seen?.has(tupleKey)) return;
@@ -225,7 +210,7 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
     }
     if (!progress.unresolved) return;
 
-    const childKey = childProgressKey(progress);
+    const childKey = childProgressIdentity(progress);
     if (
       this.subagentMetadataKeysByChild.has(childKey) ||
       this.unresolvedSubagentChildren.has(childKey)
