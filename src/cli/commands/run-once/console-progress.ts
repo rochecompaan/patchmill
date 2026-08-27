@@ -1,3 +1,4 @@
+import type { PersistedSubagentProgress } from "../../../pi/subagent-progress.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 
 export type FinalResultProgressSnapshot = {
@@ -73,6 +74,40 @@ function formatSubagentCall(
   return undefined;
 }
 
+function childProgressKey(progress: PersistedSubagentProgress): string {
+  return progress.kind === "direct"
+    ? JSON.stringify([
+        "direct",
+        progress.toolCallId,
+        progress.runId,
+        progress.childIndex,
+      ])
+    : JSON.stringify([
+        "workflow",
+        progress.toolCallId,
+        progress.workflowRunId,
+        progress.childId,
+      ]);
+}
+
+function metadataTupleKey(progress: PersistedSubagentProgress): string {
+  return JSON.stringify([
+    progress.agent ?? null,
+    progress.model ?? null,
+    progress.thinking ?? null,
+  ]);
+}
+
+function formatAuthoritativeSubagentProgress(
+  progress: PersistedSubagentProgress,
+): string | undefined {
+  if (!progress.agent) return undefined;
+  const fields = [`agent=${progress.agent}`];
+  if (progress.model) fields.push(`model=${progress.model}`);
+  if (progress.thinking) fields.push(`thinking=${progress.thinking}`);
+  return `🤖 subagent (${fields.join(", ")})`;
+}
+
 function formatToolCall(
   toolName: string | undefined,
   args: Record<string, unknown> | undefined,
@@ -96,6 +131,7 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
   private currentStep: CurrentStep | undefined;
   private readonly deferFinalResult: boolean;
   private finalResult: FinalResultProgressSnapshot | undefined;
+  private readonly subagentMetadataKeysByChild = new Map<string, Set<string>>();
 
   constructor(options: AgentIssueConsoleProgressReporterOptions = {}) {
     this.write = options.write ?? ((chunk) => process.stderr.write(chunk));
@@ -128,6 +164,11 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
       return;
     }
 
+    if (event.observation?.type === "subagent-progress") {
+      this.writeSubagentProgress(event.observation.progress);
+      return;
+    }
+
     if (event.observation?.type === "tool-call") {
       if (this.currentStep) {
         this.writeLine(
@@ -157,6 +198,20 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
     if (event.step?.type === "step-complete") {
       this.completeCurrentStep(event);
     }
+  }
+
+  private writeSubagentProgress(progress: PersistedSubagentProgress): void {
+    const line = formatAuthoritativeSubagentProgress(progress);
+    if (!line) return;
+
+    const childKey = childProgressKey(progress);
+    const tupleKey = metadataTupleKey(progress);
+    const seen = this.subagentMetadataKeysByChild.get(childKey);
+    if (seen?.has(tupleKey)) return;
+    if (seen) seen.add(tupleKey);
+    else this.subagentMetadataKeysByChild.set(childKey, new Set([tupleKey]));
+
+    this.writeLine(this.currentStep ? `   ${line}` : line);
   }
 
   private completeCurrentStep(event: AgentIssueProgressEvent): void {
