@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { AgentIssueConsoleProgressReporter } from "./console-progress.ts";
 import { runOneIssue } from "./pipeline.ts";
+import { compositeProgressReporter } from "./progress.ts";
+import { writeRunOnceResult } from "./result-output.ts";
+import { summarizeResult } from "./result-summary.ts";
 import {
   issue,
   issueListPayload,
@@ -14,6 +18,7 @@ import {
   createMockRunner,
   subagentProgressEntry,
   initializePiSession,
+  piSessionPath,
   promptPath,
   waitForCondition,
   workflowPiCalls,
@@ -286,7 +291,7 @@ test("runOneIssue emits visible implementation subtask step labels", async () =>
   assert.equal(labels.includes("implement issue"), false);
 });
 
-test("runOneIssue moves streamed tool calls under the active implementation task", async () => {
+test("runOneIssue renders streamed child outcomes under the active implementation task", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -398,6 +403,11 @@ test("runOneIssue moves streamed tool calls under the active implementation task
         "issue-77-task-02-second-cycle",
         "in-progress",
       );
+      const runtime = {
+        agent: "worker",
+        model: "openai/team/models/gpt-5.6-sol",
+        thinking: "high",
+      } as const;
       await appendPiSessionEntry(
         call,
         subagentProgressEntry({
@@ -407,7 +417,19 @@ test("runOneIssue moves streamed tool calls under the active implementation task
           workflowRunId: "workflow",
           childId: "build",
           state: "running",
-          agent: "worker",
+          ...runtime,
+        }),
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "call-1",
+          workflowRunId: "workflow",
+          childId: "shadow-build",
+          state: "running",
+          ...runtime,
         }),
       );
       await appendPiSessionEntry(
@@ -419,7 +441,6 @@ test("runOneIssue moves streamed tool calls under the active implementation task
           workflowRunId: "workflow",
           childId: "review",
           state: "pending",
-          agent: "reviewer",
         }),
       );
       await waitForCondition(
@@ -440,7 +461,20 @@ test("runOneIssue moves streamed tool calls under the active implementation task
           workflowRunId: "workflow",
           childId: "build",
           state: "completed",
-          agent: "worker",
+          ...runtime,
+        }),
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "call-1",
+          workflowRunId: "workflow",
+          childId: "build",
+          state: "completed",
+          ...runtime,
+          thinking: "xhigh",
         }),
       );
       await appendPiSessionEntry(
@@ -453,6 +487,19 @@ test("runOneIssue moves streamed tool calls under the active implementation task
           childId: "review",
           state: "failed",
           agent: "reviewer",
+          model: "gpt-5.6-sol",
+        }),
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "workflow",
+          toolCallId: "call-1",
+          workflowRunId: "workflow",
+          childId: "unresolved-review",
+          state: "failed",
+          unresolved: true,
         }),
       );
       await appendPiSessionEntry(
@@ -475,6 +522,64 @@ test("runOneIssue moves streamed tool calls under the active implementation task
           ),
         () => "waiting for call-status observation",
       );
+
+      await appendPiSessionEntry(
+        call,
+        assistantToolCall("call-direct", "subagent", {}),
+      );
+      await waitForCondition(
+        () =>
+          events.some(
+            (event) => event.observation?.toolCallId === "call-direct",
+          ),
+        () => "waiting for call-direct observation",
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "direct",
+          toolCallId: "call-direct",
+          runId: "run-direct",
+          childIndex: 0,
+          state: "running",
+        }),
+      );
+      await appendPiSessionEntry(
+        call,
+        subagentProgressEntry({
+          version: 1,
+          kind: "direct",
+          toolCallId: "call-direct",
+          runId: "run-direct",
+          childIndex: 0,
+          state: "failed",
+          unresolved: true,
+        }),
+      );
+      const parentSessionPath = await piSessionPath(call);
+      const invocationDir = dirname(parentSessionPath);
+      await mkdir(join(invocationDir, "nested"), { recursive: true });
+      for (const [path, childId] of [
+        [join(invocationDir, "sibling.jsonl"), "foreign-sibling"],
+        [join(invocationDir, "nested", "child.jsonl"), "foreign-nested"],
+      ] as const) {
+        await writeFile(
+          path,
+          `${JSON.stringify(
+            subagentProgressEntry({
+              version: 1,
+              kind: "workflow",
+              toolCallId: "foreign-call",
+              workflowRunId: "foreign-workflow",
+              childId,
+              state: "failed",
+              unresolved: true,
+            }),
+          )}\n`,
+          "utf8",
+        );
+      }
 
       await writeTodo(
         worktreeRoot,
@@ -526,7 +631,17 @@ test("runOneIssue moves streamed tool calls under the active implementation task
     );
   });
 
-  const { events, progress } = collectProgressEvents();
+  const collected = collectProgressEvents();
+  const stderrLines: string[] = [];
+  const consoleProgress = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => stderrLines.push(line),
+    startedAt: NOW,
+  });
+  const progress = compositeProgressReporter([
+    collected.progress,
+    consoleProgress,
+  ]);
+  const events = collected.events;
   const result = await runOneIssue(runner, config, {
     now: NOW,
     progress,
@@ -548,16 +663,67 @@ test("runOneIssue moves streamed tool calls under the active implementation task
     })
     .filter((line): line is string => line !== undefined);
 
-  assert.deepEqual(
-    events
-      .filter((event) => event.observation?.type === "subagent-progress")
-      .map((event) =>
-        event.observation?.type === "subagent-progress" &&
-        event.observation.progress.kind === "workflow"
-          ? event.observation.progress.childId
-          : "",
-      ),
-    ["build", "review", "build", "review"],
+  const robotLines = stderrLines
+    .map((line) => (line.startsWith("   ") ? line.slice(3) : line))
+    .filter((line) => line.startsWith("🤖 subagent"));
+  const stableRuntime =
+    "🤖 subagent (agent=worker, model=openai/team/models/gpt-5.6-sol, thinking=high)";
+  assert.equal(robotLines.filter((line) => line === stableRuntime).length, 2);
+  assert.equal(
+    robotLines.filter(
+      (line) =>
+        line ===
+        "🤖 subagent (agent=worker, model=openai/team/models/gpt-5.6-sol, thinking=xhigh)",
+    ).length,
+    1,
+  );
+  assert.equal(
+    robotLines.filter(
+      (line) => line === "🤖 subagent (agent=reviewer, model=gpt-5.6-sol)",
+    ).length,
+    1,
+  );
+  assert.ok(
+    robotLines.includes(
+      "🤖 subagent (child=unresolved-review, unresolved=true)",
+    ),
+  );
+  assert.ok(
+    robotLines.includes(
+      "🤖 subagent (runId=run-direct, childIndex=0, unresolved=true)",
+    ),
+  );
+  assert.equal(
+    stderrLines.some((line) => line.includes("foreign-sibling")),
+    false,
+  );
+  assert.equal(
+    stderrLines.some((line) => line.includes("foreign-nested")),
+    false,
+  );
+
+  const childProgressEvents = events.flatMap((event) =>
+    event.observation?.type === "subagent-progress"
+      ? [event.observation.progress]
+      : [],
+  );
+  assert.ok(
+    childProgressEvents.some(
+      (progress) =>
+        progress.kind === "workflow" &&
+        progress.childId === "review" &&
+        progress.state === "failed" &&
+        progress.agent === "reviewer",
+    ),
+  );
+  assert.ok(
+    childProgressEvents.some(
+      (progress) =>
+        progress.kind === "direct" &&
+        progress.runId === "run-direct" &&
+        progress.childIndex === 0 &&
+        progress.unresolved === true,
+    ),
   );
   assert.equal(
     events.find(
@@ -573,7 +739,7 @@ test("runOneIssue moves streamed tool calls under the active implementation task
         event.step?.type === "step-complete" &&
         event.step.label === "implement task 2/3 second cycle",
     )?.step?.toolCalls,
-    2,
+    3,
   );
   assert.deepEqual(
     rendered.filter(
@@ -589,6 +755,7 @@ test("runOneIssue moves streamed tool calls under the active implementation task
       "tool:call-1",
       "complete:implement task 1/3 first cycle",
       "start:implement task 2/3 second cycle",
+      "tool:call-direct",
       "complete:implement task 2/3 second cycle",
       "start:implement task 3/3 third cycle",
       "tool:call-3",
@@ -597,6 +764,22 @@ test("runOneIssue moves streamed tool calls under the active implementation task
       "tool:call-4",
       "complete:final review and landing",
     ],
+  );
+
+  const summary = summarizeResult(result);
+  const stdoutChunks: string[] = [];
+  await writeRunOnceResult(summary, {
+    stdout: {
+      isTTY: false,
+      write: (chunk) => stdoutChunks.push(String(chunk)),
+    },
+    env: {},
+  });
+  assert.equal(stdoutChunks.join(""), `${JSON.stringify(summary)}\n`);
+  assert.doesNotMatch(stdoutChunks.join(""), /🤖 subagent|unresolved=true/u);
+  assert.deepEqual(
+    JSON.parse(stdoutChunks.join("")),
+    JSON.parse(JSON.stringify(summary)),
   );
 });
 
