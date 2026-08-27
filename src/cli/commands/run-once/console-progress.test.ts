@@ -146,6 +146,103 @@ test("console reporter omits unavailable child metadata outside a step", () => {
   ]);
 });
 
+test("console reporter renders unresolved child fallbacks once", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+  const workflow = {
+    version: 1,
+    kind: "workflow",
+    toolCallId: "call-workflow",
+    workflowRunId: "workflow-1",
+    childId: "review-step",
+  } as const;
+
+  reporter.event(
+    event({ step: { type: "step-start", label: "final review" } }),
+  );
+  reporter.event(
+    childProgress({
+      ...workflow,
+      state: "pending",
+      model: "not-authoritative",
+    }),
+  );
+  const unresolved = {
+    ...workflow,
+    state: "failed",
+    model: "must-not-render",
+    thinking: "must-not-render",
+    unresolved: true,
+  } as const;
+  reporter.event(childProgress(unresolved));
+  reporter.event(childProgress(unresolved));
+  reporter.event(childProgress({ ...unresolved, state: "stopped" }));
+
+  const authoritative = { ...workflow, childId: "known-child" } as const;
+  reporter.event(
+    childProgress({ ...authoritative, state: "running", agent: "reviewer" }),
+  );
+  reporter.event(
+    childProgress({ ...authoritative, state: "failed", unresolved: true }),
+  );
+  reporter.event(
+    childProgress({
+      version: 1,
+      kind: "direct",
+      toolCallId: "call-direct",
+      runId: "run-123",
+      childIndex: 0,
+      state: "failed",
+      unresolved: true,
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "01 final review",
+    "   🤖 subagent (child=review-step, unresolved=true)",
+    "   🤖 subagent (agent=reviewer)",
+    "   🤖 subagent (runId=run-123, childIndex=0, unresolved=true)",
+  ]);
+  assert.equal(
+    lines.some((line) => line.includes("model=must-not-render")),
+    false,
+  );
+  assert.equal(
+    lines.some((line) => line.includes("thinking=must-not-render")),
+    false,
+  );
+});
+
+test("console reporter keeps unresolved fallback identities scoped outside a step", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+
+  for (const suffix of ["a", "b"]) {
+    reporter.event(
+      childProgress({
+        version: 1,
+        kind: "workflow",
+        toolCallId: `call-${suffix}`,
+        workflowRunId: `workflow-${suffix}`,
+        childId: "review-step",
+        state: "failed",
+        unresolved: true,
+      }),
+    );
+  }
+
+  assert.deepEqual(lines, [
+    "🤖 subagent (child=review-step, unresolved=true)",
+    "🤖 subagent (child=review-step, unresolved=true)",
+  ]);
+});
+
 test("console reporter renders numbered steps with tool-call summaries and output token summaries", () => {
   const lines: string[] = [];
   const reporter = new AgentIssueConsoleProgressReporter({

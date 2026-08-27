@@ -108,6 +108,14 @@ function formatAuthoritativeSubagentProgress(
   return `🤖 subagent (${fields.join(", ")})`;
 }
 
+function formatUnresolvedSubagentProgress(
+  progress: PersistedSubagentProgress,
+): string {
+  return progress.kind === "workflow"
+    ? `🤖 subagent (child=${progress.childId}, unresolved=true)`
+    : `🤖 subagent (runId=${progress.runId}, childIndex=${progress.childIndex}, unresolved=true)`;
+}
+
 function formatToolCall(
   toolName: string | undefined,
   args: Record<string, unknown> | undefined,
@@ -132,6 +140,7 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
   private readonly deferFinalResult: boolean;
   private finalResult: FinalResultProgressSnapshot | undefined;
   private readonly subagentMetadataKeysByChild = new Map<string, Set<string>>();
+  private readonly unresolvedSubagentChildren = new Set<string>();
 
   constructor(options: AgentIssueConsoleProgressReporterOptions = {}) {
     this.write = options.write ?? ((chunk) => process.stderr.write(chunk));
@@ -201,17 +210,31 @@ export class AgentIssueConsoleProgressReporter implements ProgressReporter {
   }
 
   private writeSubagentProgress(progress: PersistedSubagentProgress): void {
-    const line = formatAuthoritativeSubagentProgress(progress);
-    if (!line) return;
+    const authoritativeLine = formatAuthoritativeSubagentProgress(progress);
+    if (authoritativeLine) {
+      const childKey = childProgressKey(progress);
+      const tupleKey = metadataTupleKey(progress);
+      const seen = this.subagentMetadataKeysByChild.get(childKey);
+      if (seen?.has(tupleKey)) return;
+      if (seen) seen.add(tupleKey);
+      else this.subagentMetadataKeysByChild.set(childKey, new Set([tupleKey]));
+      this.writeLine(
+        this.currentStep ? `   ${authoritativeLine}` : authoritativeLine,
+      );
+      return;
+    }
+    if (!progress.unresolved) return;
 
     const childKey = childProgressKey(progress);
-    const tupleKey = metadataTupleKey(progress);
-    const seen = this.subagentMetadataKeysByChild.get(childKey);
-    if (seen?.has(tupleKey)) return;
-    if (seen) seen.add(tupleKey);
-    else this.subagentMetadataKeysByChild.set(childKey, new Set([tupleKey]));
-
-    this.writeLine(this.currentStep ? `   ${line}` : line);
+    if (
+      this.subagentMetadataKeysByChild.has(childKey) ||
+      this.unresolvedSubagentChildren.has(childKey)
+    ) {
+      return;
+    }
+    this.unresolvedSubagentChildren.add(childKey);
+    const fallbackLine = formatUnresolvedSubagentProgress(progress);
+    this.writeLine(this.currentStep ? `   ${fallbackLine}` : fallbackLine);
   }
 
   private completeCurrentStep(event: AgentIssueProgressEvent): void {
