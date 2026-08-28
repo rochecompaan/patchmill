@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AgentIssueConsoleProgressReporter } from "./console-progress.ts";
 import type { AgentIssueProgressEvent } from "./progress.ts";
+import type { PersistedSubagentProgress } from "../../../pi/subagent-progress.ts";
 
 const BASE = new Date("2026-05-22T10:00:00.000Z");
 
@@ -16,6 +17,231 @@ function event(
     ...partial,
   };
 }
+
+function childProgress(
+  progress: PersistedSubagentProgress,
+): AgentIssueProgressEvent {
+  return event({
+    level: "debug",
+    stage: "pi-implementation",
+    message: "subagent-progress",
+    observation: { type: "subagent-progress", progress },
+  });
+}
+
+test("console reporter renders each authoritative child metadata tuple once", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+  const identity = {
+    version: 1,
+    kind: "workflow",
+    toolCallId: "call-launch",
+    workflowRunId: "workflow-1",
+    childId: "review",
+  } as const;
+  const metadata = {
+    agent: "reviewer",
+    model: "openai/team/models/gpt-5.6-sol",
+    thinking: "xhigh",
+  } as const;
+
+  reporter.event(
+    event({ step: { type: "step-start", label: "implement task" } }),
+  );
+  for (const state of ["pending", "running", "completed"] as const) {
+    reporter.event(childProgress({ ...identity, state, ...metadata }));
+  }
+  reporter.event(
+    childProgress({ ...identity, state: "completed", ...metadata }),
+  );
+  reporter.event(
+    childProgress({
+      ...identity,
+      state: "completed",
+      inventoryClosed: true,
+      ...metadata,
+    }),
+  );
+  reporter.event(
+    childProgress({
+      ...identity,
+      state: "completed",
+      ...metadata,
+      thinking: "high",
+    }),
+  );
+  reporter.event(
+    childProgress({
+      ...identity,
+      state: "completed",
+      ...metadata,
+      model: "openai/team/models/gpt-5.6-pro",
+    }),
+  );
+  reporter.event(
+    childProgress({
+      ...identity,
+      state: "completed",
+      ...metadata,
+      agent: "auditor",
+    }),
+  );
+  reporter.event(
+    childProgress({
+      ...identity,
+      childId: "audit",
+      state: "failed",
+      ...metadata,
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "01 implement task",
+    "   🤖 subagent (agent=reviewer, model=openai/team/models/gpt-5.6-sol, thinking=xhigh)",
+    "   🤖 subagent (agent=reviewer, model=openai/team/models/gpt-5.6-sol, thinking=high)",
+    "   🤖 subagent (agent=reviewer, model=openai/team/models/gpt-5.6-pro, thinking=xhigh)",
+    "   🤖 subagent (agent=auditor, model=openai/team/models/gpt-5.6-sol, thinking=xhigh)",
+    "   🤖 subagent (agent=reviewer, model=openai/team/models/gpt-5.6-sol, thinking=xhigh)",
+  ]);
+});
+
+test("console reporter omits unavailable child metadata outside a step", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+  const direct = {
+    version: 1,
+    kind: "direct",
+    toolCallId: "call-direct",
+    runId: "run-1",
+  } as const;
+
+  reporter.event(childProgress({ ...direct, childIndex: 0, agent: "worker" }));
+  reporter.event(
+    childProgress({
+      ...direct,
+      childIndex: 1,
+      agent: "worker",
+      model: "provider/team/models/gpt-5.6-sol",
+    }),
+  );
+  reporter.event(
+    childProgress({
+      ...direct,
+      childIndex: 2,
+      agent: "worker",
+      thinking: "xhigh",
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "🤖 subagent (agent=worker)",
+    "🤖 subagent (agent=worker, model=provider/team/models/gpt-5.6-sol)",
+    "🤖 subagent (agent=worker, thinking=xhigh)",
+  ]);
+});
+
+test("console reporter renders unresolved child fallbacks once", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+  const workflow = {
+    version: 1,
+    kind: "workflow",
+    toolCallId: "call-workflow",
+    workflowRunId: "workflow-1",
+    childId: "review-step",
+  } as const;
+
+  reporter.event(
+    event({ step: { type: "step-start", label: "final review" } }),
+  );
+  reporter.event(
+    childProgress({
+      ...workflow,
+      state: "pending",
+      model: "not-authoritative",
+    }),
+  );
+  const unresolved = {
+    ...workflow,
+    state: "failed",
+    model: "must-not-render",
+    thinking: "must-not-render",
+    unresolved: true,
+  } as const;
+  reporter.event(childProgress(unresolved));
+  reporter.event(childProgress(unresolved));
+  reporter.event(childProgress({ ...unresolved, state: "stopped" }));
+
+  const authoritative = { ...workflow, childId: "known-child" } as const;
+  reporter.event(
+    childProgress({ ...authoritative, state: "running", agent: "reviewer" }),
+  );
+  reporter.event(
+    childProgress({ ...authoritative, state: "failed", unresolved: true }),
+  );
+  reporter.event(
+    childProgress({
+      version: 1,
+      kind: "direct",
+      toolCallId: "call-direct",
+      runId: "run-123",
+      childIndex: 0,
+      state: "failed",
+      unresolved: true,
+    }),
+  );
+
+  assert.deepEqual(lines, [
+    "01 final review",
+    "   🤖 subagent (child=review-step, unresolved=true)",
+    "   🤖 subagent (agent=reviewer)",
+    "   🤖 subagent (runId=run-123, childIndex=0, unresolved=true)",
+  ]);
+  assert.equal(
+    lines.some((line) => line.includes("model=must-not-render")),
+    false,
+  );
+  assert.equal(
+    lines.some((line) => line.includes("thinking=must-not-render")),
+    false,
+  );
+});
+
+test("console reporter keeps unresolved fallback identities scoped outside a step", () => {
+  const lines: string[] = [];
+  const reporter = new AgentIssueConsoleProgressReporter({
+    writeLine: (line) => lines.push(line),
+    startedAt: BASE,
+  });
+
+  for (const suffix of ["a", "b"]) {
+    reporter.event(
+      childProgress({
+        version: 1,
+        kind: "workflow",
+        toolCallId: `call-${suffix}`,
+        workflowRunId: `workflow-${suffix}`,
+        childId: "review-step",
+        state: "failed",
+        unresolved: true,
+      }),
+    );
+  }
+
+  assert.deepEqual(lines, [
+    "🤖 subagent (child=review-step, unresolved=true)",
+    "🤖 subagent (child=review-step, unresolved=true)",
+  ]);
+});
 
 test("console reporter renders numbered steps with tool-call summaries and output token summaries", () => {
   const lines: string[] = [];
