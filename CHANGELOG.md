@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.20.0](https://github.com/rochecompaan/patchmill/compare/v0.19.0...v0.20.0) (2026-08-28)
+
+
+### Features
+
+* **deps:** automate pi-subagents upgrade pull requests ([cc09ad1](https://github.com/rochecompaan/patchmill/commit/cc09ad172e053558ebfcabcd9ad4b1ea0df62092))
+* **pi:** persist safe subagent runtime metadata ([#146](https://github.com/rochecompaan/patchmill/issues/146)) ([9eaaac5](https://github.com/rochecompaan/patchmill/commit/9eaaac580ed4f03c662c87b2613cb87bb3ddf7d2))
+* **quality:** add standalone code quality checks ([#192](https://github.com/rochecompaan/patchmill/issues/192)) ([34cb8de](https://github.com/rochecompaan/patchmill/commit/34cb8dece03f0910e204870851d25330b07252c7))
+* **run-once:** Correlate per-child subagent progress and preserve pipeline accounting ([#196](https://github.com/rochecompaan/patchmill/issues/196)) ([f85b1e0](https://github.com/rochecompaan/patchmill/commit/f85b1e09eb9cf05c5026c1bf31dd7c9f8f524e74))
+* **run-once:** format final results for terminals ([#181](https://github.com/rochecompaan/patchmill/issues/181)) ([521f074](https://github.com/rochecompaan/patchmill/commit/521f0747520d4535fded55148cd2878257df67d3))
+* **run-once:** Render enriched subagent progress in the run-once console ([#198](https://github.com/rochecompaan/patchmill/issues/198)) ([d940d1c](https://github.com/rochecompaan/patchmill/commit/d940d1ccd92fccbd1731f259aa49a8cbc6d4f888))
+
+
+### Bug Fixes
+
+* **auth:** keep selected provider visible ([#176](https://github.com/rochecompaan/patchmill/issues/176)) ([1c05e3f](https://github.com/rochecompaan/patchmill/commit/1c05e3ffccefc9ea4357a282e19fa5f3f8d9ad12))
+
 ## [0.19.0](https://github.com/rochecompaan/patchmill/compare/v0.18.0...v0.19.0) (2026-08-06)
 
 
