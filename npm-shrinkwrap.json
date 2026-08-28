@@ -11,7 +11,7 @@
       "dependencies": {
         "@earendil-works/pi-coding-agent": "0.84.2",
         "@earendil-works/pi-tui": "0.84.2",
-        "pi-subagents": "0.57.0",
+        "pi-subagents": "0.58.0",
         "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.3.0.tar.gz"
       },
       "bin": {
@@ -6726,9 +6726,9 @@
       }
     },
     "node_modules/pi-subagents": {
-      "version": "0.57.0",
-      "resolved": "https://registry.npmjs.org/pi-subagents/-/pi-subagents-0.57.0.tgz",
-      "integrity": "sha512-CvsOBp61dZU+HV3kHdfFc+iBuO9DOI5nvTiGrSaFVpH7XK5/22QbBAdjcrhOjcSzA5Ev3l0Qr/JC1I8VLES9Bw==",
+      "version": "0.58.0",
+      "resolved": "https://registry.npmjs.org/pi-subagents/-/pi-subagents-0.58.0.tgz",
+      "integrity": "sha512-o0rm91Vo+N1QrLN+nWdnzM9M96IuUUpo43eo9PhefR9iHX1bFgwaW9ttdg2VGtF+Q0nwgexf2/+sApYdWNGJyw==",
       "license": "MIT",
       "dependencies": {
         "acorn": "8.18.0",
