@@ -99,7 +99,9 @@ export function assertInstalledPiSubagentsMatchesRootPin(
   const manifest = readInstalledPiSubagentsManifest();
   if (manifest.version !== expected) {
     throw new Error(
-      `${PI_SUBAGENTS_PACKAGE_NAME} resolved ${manifest.version} but package.json pins ${expected}`,
+      `${PI_SUBAGENTS_PACKAGE_NAME} resolved ${manifest.version} but package.json pins ${expected}. ` +
+        `Run \`npm install\` in ${dirname(rootPackageJsonPath)} to synchronize node_modules, ` +
+        "or reinstall Patchmill if this is a packaged installation.",
     );
   }
 }
