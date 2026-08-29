@@ -51,6 +51,7 @@ jobs:
       - name: Update pi-subagents dependency metadata
         id: update
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PI_SUBAGENTS_VERSION: ${{ inputs.pi-subagents-version }}
           VALIDATE_ONLY: ${{ inputs.validate-only || false }}
         run: |
@@ -147,6 +148,25 @@ jobs:
           app-id: ${{ secrets.RELEASE_PLEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_BOT_PRIVATE_KEY }}
 
+      - name: Reuse open pi-subagents upgrade PR branch
+        id: pr-branch
+        if: >-
+          steps.update.outputs.no_update != 'true' &&
+          steps.update.outputs.validate_only != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          branch="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --state open \
+              --limit 100 \
+              --json headRefName \
+              --jq '[.[] | select(.headRefName | startswith("automation/pi-subagents-"))][0].headRefName // ""'
+          )"
+          echo "branch=${branch:-automation/pi-subagents-upgrade}" >> "$GITHUB_OUTPUT"
+
       - name: Create or update pi-subagents upgrade PR
         if: >-
           steps.update.outputs.no_update != 'true' &&
@@ -159,8 +179,7 @@ jobs:
             package-lock.json
             npm-shrinkwrap.json
             nix/package.nix
-          branch:
-            automation/pi-subagents-${{ steps.update.outputs.target_version }}
+          branch: ${{ steps.pr-branch.outputs.branch }}
           delete-branch: true
           title: >-
             chore(deps): update pi-subagents to ${{
