@@ -16,6 +16,7 @@ import {
   PI_SUBAGENTS_PACKAGE,
   assertLockfilesMatchPiSubagentsTarget,
   fetchLatestPiSubagentsVersion,
+  fetchPiSubagentsReleaseNotes,
   getCurrentPiSubagentsVersion,
   resolvePiSubagentsUpgrade,
 } from "./pi-subagents-upgrade-lib.mjs";
@@ -226,6 +227,7 @@ async function main() {
     noUpdate: false,
     validateOnly: false,
     changedFiles: [],
+    releaseNotes: [],
     validationCommands,
   };
   let metadataSnapshot;
@@ -262,6 +264,11 @@ async function main() {
     );
 
     if (!resolved.noUpdate) {
+      summary.releaseNotes = await fetchPiSubagentsReleaseNotes({
+        currentVersion: resolved.currentVersion,
+        targetVersion: resolved.targetVersion,
+        token: process.env.GITHUB_TOKEN,
+      });
       await updatePackageMetadata(packageJson, resolved.targetVersion);
       const [updatedPackageJson, updatedPackageLock, updatedShrinkwrap] =
         await Promise.all([
