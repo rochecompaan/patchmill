@@ -14,6 +14,19 @@ function isMainModule(metaUrl: string, argv1 = process.argv[1]): boolean {
 
 if (isMainModule(import.meta.url)) {
   delete process.env.PI_PACKAGE_DIR;
-  const { main } = await import("../src/cli/main.ts");
-  process.exitCode = await main();
+  let dependenciesReady = false;
+  try {
+    const { assertPatchmillRuntimeDependencyPins } =
+      await import("../src/runtime-dependency-preflight.ts");
+    assertPatchmillRuntimeDependencyPins();
+    dependenciesReady = true;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+
+  if (dependenciesReady) {
+    const { main } = await import("../src/cli/main.ts");
+    process.exitCode = await main();
+  }
 }
