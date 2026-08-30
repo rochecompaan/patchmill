@@ -5,14 +5,13 @@ import {
   adoptRunStateLeaseProtocol,
 } from "./run-state.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
-import {
-  formatRunRecoveryDecision,
-  hasBlockedRunRecoveryState,
-  planRunRecovery,
-} from "./recovery.ts";
+import { formatRunRecoveryDecision, planRunRecovery } from "./recovery.ts";
 import { readRunLegacyMigrationFence } from "./recovery-lease-repair.ts";
 import { executeRunRecoveryMutation } from "./recovery-mutation.ts";
-import { AgentIssueSafetyError } from "./pipeline-lifecycle.ts";
+import {
+  AgentIssueSafetyError,
+  hasBlockedRunRecoveryState,
+} from "./pipeline-lifecycle.ts";
 import type {
   AgentIssueConfig,
   AgentIssueRunState,

@@ -655,6 +655,43 @@ test("runOneIssue recreates a missing worktree with an existing blocked branch",
   );
 });
 
+test("runOneIssue clears blocker state and safely recreates a blocked attempt without saved workspace", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(
+    config,
+    {
+      branch: undefined,
+      worktreePath: undefined,
+      blockerQuestions: [{ question: "Can this run continue?" }],
+    },
+    { createWorktreePath: false },
+  );
+  const runner = blockedRecoveryRunner(config, {
+    branchExists: false,
+    worktreeRegistered: false,
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args.join(" ").includes("--remove-labels agent-ready,needs-info"),
+    ),
+    true,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  );
+  assert.equal(state.lastError, undefined);
+  assert.equal(state.blockerQuestions, undefined);
+});
+
 test("runOneIssue recreates missing branch and worktree for a blocked retry", async () => {
   const config = await makeConfig({
     dryRun: false,

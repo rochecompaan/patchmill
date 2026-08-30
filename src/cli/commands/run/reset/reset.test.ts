@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { resetIssueRun, validateResetIssueEligibility } from "./reset.ts";
+import { DEFAULT_TRIAGE_POLICY } from "../../triage/labels.ts";
 import {
   configuredWorktreeStrategy,
   expectedIssueWorkspace,
@@ -33,14 +34,7 @@ const config = {
       approvedLabel: "plan-approved",
     },
   },
-  triagePolicy: {
-    labels: {
-      ready: "agent-ready",
-      inProgress: "in-progress",
-      done: "agent-done",
-      needsInfo: "needs-info",
-    },
-  },
+  triagePolicy: DEFAULT_TRIAGE_POLICY,
 } as AgentIssueConfig;
 const issue = (labels: string[], state: "open" | "closed" = "open") =>
   ({ number: 45, title: "Recover", state, labels }) as IssueSummary;
@@ -149,6 +143,37 @@ test("rejects closed issues and wrong active labels before mutation", () => {
         config,
       }),
     /not eligible/,
+  );
+});
+test("allows only documented lifecycle exclusions for each reset status under the full triage policy", () => {
+  for (const [state, labels] of [
+    [run("claimed"), ["in-progress"]],
+    [run("planning"), ["in-progress"]],
+    [run("implementing"), ["in-progress"]],
+    [run("blocked"), ["agent-ready", "needs-info"]],
+    [
+      run("finished", { blockedAt: "x", lastError: "x" }),
+      ["agent-ready", "needs-info"],
+    ],
+    [run("finished"), ["agent-ready"]],
+    [run("finished"), ["in-progress"]],
+  ] as const) {
+    assert.doesNotThrow(() =>
+      validateResetIssueEligibility({
+        issue: issue([...labels]),
+        state,
+        config,
+      }),
+    );
+  }
+  assert.throws(
+    () =>
+      validateResetIssueEligibility({
+        issue: issue(["agent-ready", "agent-unsuitable"]),
+        state: run("blocked"),
+        config,
+      }),
+    /triage blocking labels/,
   );
 });
 test("rejects configured triage exclusions before reset mutation", () => {

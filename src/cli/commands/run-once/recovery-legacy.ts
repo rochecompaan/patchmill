@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { blockingStatusOutput } from "./git.ts";
+import { hasBlockedRunRecoveryState } from "./pipeline-lifecycle.ts";
 import type {
   AgentIssueRunState,
   CommandResult,
@@ -36,13 +37,7 @@ export type BlockedRunRecoveryReport = {
   recommendedActions: string[];
 };
 
-export function hasBlockedRunRecoveryState(
-  state: AgentIssueRunState | undefined,
-): state is AgentIssueRunState {
-  if (!state || (!state.branch && !state.worktreePath)) return false;
-  if (state.status === "blocked") return true;
-  return state.status === "finished" && !!state.blockedAt && !!state.lastError;
-}
+export { hasBlockedRunRecoveryState } from "./pipeline-lifecycle.ts";
 
 function commandFailure(message: string, result: CommandResult): Error {
   const output =

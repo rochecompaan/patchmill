@@ -32,7 +32,6 @@ import {
   replaceRunStateAfterReset,
   writeRunState,
 } from "./run-state.ts";
-import { hasBlockedRunRecoveryState } from "./recovery.ts";
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import {
   createStepAccounting,
@@ -42,6 +41,7 @@ import {
 } from "./pipeline-progress.ts";
 import {
   AgentIssueSafetyError,
+  hasBlockedRunRecoveryState,
   effectiveCheckpoints,
   lifecycleLabels,
   recoveryClaimLabels,

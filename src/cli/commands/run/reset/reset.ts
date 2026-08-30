@@ -73,7 +73,28 @@ export function validateResetIssueEligibility(input: {
   const labels = input.issue.labels;
   const excluded =
     input.config.triagePolicy?.runOnceSelection?.excludedLabels ?? [];
-  const blocking = labels.filter((label) => excluded.includes(label));
+  const lifecycle = lifecycleLabels(input.config);
+  const blockedRecovery =
+    input.state?.status === "blocked" ||
+    (input.state?.status === "finished" &&
+      input.state.blockedAt &&
+      input.state.lastError);
+  // Triage lifecycle labels are required evidence for reset eligibility. They
+  // are exceptions only for the saved state that documents them; every other
+  // configured exclusion remains a reset blocker.
+  const allowedLifecycleExclusions = new Set(
+    !input.state
+      ? []
+      : blockedRecovery
+        ? [lifecycle.ready, lifecycle.needsInfo]
+        : input.state.status === "finished"
+          ? [lifecycle.ready, lifecycle.inProgress]
+          : [lifecycle.inProgress],
+  );
+  const blocking = labels.filter(
+    (label) =>
+      excluded.includes(label) && !allowedLifecycleExclusions.has(label),
+  );
   if (blocking.length)
     throw new Error(
       `Issue #${input.issue.number} has triage blocking labels for reset: ${blocking.join(", ")}`,
@@ -89,17 +110,12 @@ export function validateResetIssueEligibility(input: {
       `Issue #${input.issue.number} is missing required approval labels for reset`,
     );
   if (!input.state) return;
-  const lifecycle = lifecycleLabels(input.config);
-  const allowed =
-    input.state.status === "blocked" ||
-    (input.state.status === "finished" &&
-      input.state.blockedAt &&
-      input.state.lastError)
-      ? labels.includes(lifecycle.ready)
-      : input.state.status === "finished"
-        ? labels.includes(lifecycle.ready) ||
-          labels.includes(lifecycle.inProgress)
-        : labels.includes(lifecycle.inProgress);
+  const allowed = blockedRecovery
+    ? labels.includes(lifecycle.ready)
+    : input.state.status === "finished"
+      ? labels.includes(lifecycle.ready) ||
+        labels.includes(lifecycle.inProgress)
+      : labels.includes(lifecycle.inProgress);
   if (!allowed)
     throw new Error(
       `Issue #${input.issue.number} labels are not eligible for reset recovery`,

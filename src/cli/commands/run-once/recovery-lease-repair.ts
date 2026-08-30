@@ -164,7 +164,11 @@ export async function repairIssueRunLease(input: {
     await handle.writeFile("repair\n");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST")
-      throw new IssueRunLeaseConflictError(repair, "repair-lock");
+      throw new IssueRunLeaseConflictError(
+        repair,
+        "repair-lock",
+        input.issueNumber,
+      );
     throw error;
   }
   try {
@@ -186,7 +190,11 @@ export async function repairIssueRunLease(input: {
         await guard.close();
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EEXIST")
-          throw new IssueRunLeaseConflictError(guardPath, "lease-guard");
+          throw new IssueRunLeaseConflictError(
+            guardPath,
+            "lease-guard",
+            input.issueNumber,
+          );
         throw error;
       }
     }

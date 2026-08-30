@@ -22,22 +22,25 @@ export class IssueRunLeaseConflictError extends Error {
   readonly classification = "active-run" as const;
   readonly leasePath: string;
   readonly resource: "lease" | "lease-guard" | "repair-lock";
+  readonly issueNumber: number;
   readonly owner?: IssueRunLeaseRecord;
   constructor(
     leasePath: string,
     resource: "lease" | "lease-guard" | "repair-lock",
+    issueNumber: number,
     owner?: IssueRunLeaseRecord,
   ) {
     const ownerDetail = owner
       ? ` (owned by ${owner.hostname} process ${owner.pid})`
       : "";
-    const repairIssue = owner?.issueNumber ?? "<issue>";
+    const repairIssue = issueNumber;
     super(
       `Issue run ${resource} is active: ${leasePath}${ownerDetail}. ` +
         `Inspect only after affected runners stop: patchmill run lease repair --issue ${repairIssue}`,
     );
     this.leasePath = leasePath;
     this.resource = resource;
+    this.issueNumber = issueNumber;
     this.owner = owner;
   }
 }
@@ -116,7 +119,7 @@ async function guard(
     await exclusive(p.guard, record);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST")
-      throw new IssueRunLeaseConflictError(p.guard, "lease-guard");
+      throw new IssueRunLeaseConflictError(p.guard, "lease-guard", issue);
     throw error;
   }
   return async () => {
@@ -156,12 +159,16 @@ export async function acquireIssueRunLease(
   const mine = record(issueNumber, options);
   const p = paths(runStateDir, issueNumber);
   if (await present(p.repair))
-    throw new IssueRunLeaseConflictError(p.repair, "repair-lock");
+    throw new IssueRunLeaseConflictError(p.repair, "repair-lock", issueNumber);
   const releaseGuard = await guard(runStateDir, issueNumber, mine);
   try {
     await options.afterObserveLease?.();
     if (await present(p.repair))
-      throw new IssueRunLeaseConflictError(p.repair, "repair-lock");
+      throw new IssueRunLeaseConflictError(
+        p.repair,
+        "repair-lock",
+        issueNumber,
+      );
     try {
       await exclusive(p.lease, mine);
       return { path: p.lease, record: mine };
@@ -170,12 +177,17 @@ export async function acquireIssueRunLease(
       const raw = await readFile(p.lease, "utf8");
       const owner = parse(raw);
       if (!owner || owner.issueNumber !== issueNumber)
-        throw new IssueRunLeaseConflictError(p.lease, "lease");
+        throw new IssueRunLeaseConflictError(p.lease, "lease", issueNumber);
       if (
         owner.hostname !== mine.hostname ||
         (options.processState ?? processState)(owner.pid) !== "dead"
       )
-        throw new IssueRunLeaseConflictError(p.lease, "lease", owner);
+        throw new IssueRunLeaseConflictError(
+          p.lease,
+          "lease",
+          issueNumber,
+          owner,
+        );
       // Never derive archive paths from lease contents: corrupt lease metadata
       // is untrusted, while this name is entirely controlled by Patchmill.
       const stale = join(
@@ -242,7 +254,7 @@ export function activeRunRecoveryDecision(
     leasePath: error.leasePath,
     ...(error.owner ? { owner: error.owner } : {}),
     guidance: [
-      `Wait for the active Run attempt or inspect with: patchmill run lease repair --issue ${error.owner?.issueNumber ?? "<issue>"}`,
+      `Wait for the active Run attempt or inspect with: patchmill run lease repair --issue ${error.issueNumber}`,
     ],
   };
 }

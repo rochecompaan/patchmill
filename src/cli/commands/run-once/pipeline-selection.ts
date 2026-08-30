@@ -11,7 +11,7 @@ import type {
 } from "./types.ts";
 import {
   lifecycleLabels,
-  hasBlockedSavedWorkspaceState,
+  hasBlockedRunRecoveryState,
 } from "./pipeline-lifecycle.ts";
 import { progress, type PipelineProgressOptions } from "./pipeline-progress.ts";
 import { rejectionMessage } from "./pipeline-comments.ts";
@@ -115,7 +115,7 @@ export async function selectResumableIssue(
       const explicitState = explicitIssue
         ? await readRunState(config.runStateDir, explicitIssue.number)
         : undefined;
-      if (explicitIssue && hasBlockedSavedWorkspaceState(explicitState)) {
+      if (explicitIssue && hasBlockedRunRecoveryState(explicitState)) {
         if (
           resumable.length === 1 &&
           resumable[0]?.number !== explicitIssue.number

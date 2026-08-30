@@ -44,7 +44,7 @@ export function workflowTransition(
 }
 
 /** A blocked attempt may fail before its workspace is created. */
-export function hasBlockedSavedWorkspaceState(
+export function hasBlockedRunRecoveryState(
   state: Awaited<ReturnType<typeof readRunState>>,
 ): boolean {
   return !!(
