@@ -93,12 +93,17 @@ export function validateResetIssueEligibility(input: {
       `Issue #${input.issue.number} labels are not eligible for reset recovery`,
     );
 }
+export type ResetIssueRunDependencies = {
+  createHost: typeof createRunOnceHostProvider;
+  runPipeline: typeof runOneIssue;
+};
 export async function resetIssueRun(
   runner: CommandRunner,
   config: AgentIssueConfig & { issueNumber: number },
   options: RunOneIssueOptions = {},
+  dependencies: Partial<ResetIssueRunDependencies> = {},
 ): Promise<ResetIssueRunResult> {
-  const host = createRunOnceHostProvider({
+  const host = (dependencies.createHost ?? createRunOnceHostProvider)({
     runner,
     repoRoot: config.repoRoot,
     host: config.host,
@@ -205,16 +210,20 @@ export async function resetIssueRun(
       }
       let pipelineResult;
       try {
-        pipelineResult = await runOneIssue(runner, config, {
-          ...options,
-          lease,
-          reset: {
+        pipelineResult = await (dependencies.runPipeline ?? runOneIssue)(
+          runner,
+          config,
+          {
+            ...options,
             lease,
-            archivePath: archive.path,
-            quarantinePaths: mutation.quarantinePaths,
-            seed: decision.seed,
+            reset: {
+              lease,
+              archivePath: archive.path,
+              quarantinePaths: mutation.quarantinePaths,
+              seed: decision.seed,
+            },
           },
-        });
+        );
       } catch (error) {
         throw new ResetIssueRunRecoveryError(
           error,

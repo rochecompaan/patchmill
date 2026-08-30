@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { CommandRunner, RunRecoveryDecision } from "./types.ts";
 export class RunRecoveryMutationError extends Error {
   readonly action: Exclude<RunRecoveryDecision["action"], "refuse">;
@@ -55,6 +56,9 @@ async function command(
     throw new Error(
       `Recovery git mutation failed: git ${args.join(" ")}\n${result.stderr || result.stdout}`,
     );
+}
+function worktreePath(repoRoot: string, path: string): string {
+  return resolve(repoRoot, path);
 }
 async function assertExpectedPathAbsent(path: string): Promise<void> {
   try {
@@ -171,16 +175,20 @@ export async function executeRunRecoveryMutation(input: {
       });
       await assertWorkspaceUnchanged(
         input.runner,
-        p.quarantinePath,
+        worktreePath(input.repoRoot, p.quarantinePath),
         "quarantine",
       );
-      await command(input.runner, p.quarantinePath, [
-        "update-ref",
-        "--no-deref",
-        "HEAD",
-        p.expectedBranchOid,
-        p.expectedBranchOid,
-      ]);
+      await command(
+        input.runner,
+        worktreePath(input.repoRoot, p.quarantinePath),
+        [
+          "update-ref",
+          "--no-deref",
+          "HEAD",
+          p.expectedBranchOid,
+          p.expectedBranchOid,
+        ],
+      );
       completed.push({
         kind: "detach-quarantine",
         path: p.quarantinePath,
@@ -198,8 +206,12 @@ export async function executeRunRecoveryMutation(input: {
         from: p.expectedBranchOid,
         to: p.baseOid,
       });
-      await assertWorkspaceUnchanged(input.runner, p.stagingPath, "staging");
-      await command(input.runner, p.stagingPath, [
+      await assertWorkspaceUnchanged(
+        input.runner,
+        worktreePath(input.repoRoot, p.stagingPath),
+        "staging",
+      );
+      await command(input.runner, worktreePath(input.repoRoot, p.stagingPath), [
         "symbolic-ref",
         "HEAD",
         `refs/heads/${p.branch}`,
@@ -272,8 +284,14 @@ export async function executeRunRecoveryMutation(input: {
         p.branch,
         p.targetOid,
       );
-      await assertExpectedPathAbsent(p.expectedWorktreePath);
-      await assertWorkspaceUnchanged(input.runner, p.stagingPath, "staging");
+      await assertExpectedPathAbsent(
+        worktreePath(input.repoRoot, p.expectedWorktreePath),
+      );
+      await assertWorkspaceUnchanged(
+        input.runner,
+        worktreePath(input.repoRoot, p.stagingPath),
+        "staging",
+      );
       await command(input.runner, input.repoRoot, [
         "worktree",
         "move",
@@ -325,14 +343,14 @@ export async function executeRunRecoveryMutation(input: {
       });
       const ordinary = await input.runner.run("git", [
         "-C",
-        p.quarantinePath,
+        worktreePath(input.repoRoot, p.quarantinePath),
         "status",
         "--porcelain=v1",
         "--untracked-files=all",
       ]);
       const ignored = await input.runner.run("git", [
         "-C",
-        p.quarantinePath,
+        worktreePath(input.repoRoot, p.quarantinePath),
         "status",
         "--porcelain=v1",
         "--untracked-files=all",
@@ -348,13 +366,17 @@ export async function executeRunRecoveryMutation(input: {
           "Recovery workspace changed after quarantine; preserved without ref deletion",
         );
       if (p.expectedBranchOid) {
-        await command(input.runner, p.quarantinePath, [
-          "update-ref",
-          "--no-deref",
-          "HEAD",
-          p.expectedBranchOid,
-          p.expectedBranchOid,
-        ]);
+        await command(
+          input.runner,
+          worktreePath(input.repoRoot, p.quarantinePath),
+          [
+            "update-ref",
+            "--no-deref",
+            "HEAD",
+            p.expectedBranchOid,
+            p.expectedBranchOid,
+          ],
+        );
         completed.push({
           kind: "detach-quarantine",
           path: p.quarantinePath,
