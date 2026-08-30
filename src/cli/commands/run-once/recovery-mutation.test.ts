@@ -4,7 +4,10 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { executeRunRecoveryMutation } from "./recovery-mutation.ts";
+import {
+  executeRunRecoveryMutation,
+  RunRecoveryMutationError,
+} from "./recovery-mutation.ts";
 import type { RunRecoveryAssessment, RunRecoveryDecision } from "./types.ts";
 const assessment = {
   runStatePath: "state",
@@ -206,6 +209,42 @@ test("real Git refresh quarantines stale checkout and advances branch by expecte
   assert.equal(await readFile(join(expected, "value"), "utf8"), "base\n");
   assert.equal(await readFile(join(quarantine, "value"), "utf8"), "old\n");
   assert.equal(git("rev-parse", branch), base);
+});
+test("refresh CAS failure retains staged and quarantined paths", async () => {
+  const decision: RunRecoveryDecision = {
+    action: "refresh-and-resume",
+    assessment,
+    refresh: {
+      branch: "issue",
+      expectedWorktreePath: "work",
+      expectedBranchOid: assessment.branch.oid!,
+      baseOid: assessment.baseOid,
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    },
+  };
+  const runner = {
+    run: async (_command: string, args: string[]) => ({
+      code: args[0] === "update-ref" && args[1] === "refs/heads/issue" ? 1 : 0,
+      stdout: "",
+      stderr: "CAS changed",
+    }),
+  };
+  await assert.rejects(
+    executeRunRecoveryMutation({
+      decision,
+      repoRoot: ".",
+      runner,
+      reassess: async () => decision,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof RunRecoveryMutationError);
+      const failure = error as RunRecoveryMutationError;
+      assert.deepEqual(failure.quarantinePaths, ["quarantine"]);
+      assert.deepEqual(failure.stagingPaths, ["staging"]);
+      return true;
+    },
+  );
 });
 test("refusal is never accepted as a reassessment result", async () => {
   const decision: RunRecoveryDecision = {
