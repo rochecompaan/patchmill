@@ -136,6 +136,77 @@ test("real Git creates a missing branch worktree from its pinned base", async ()
   assert.equal(await readFile(join(expected, "base.txt"), "utf8"), "pinned\n");
   assert.equal(git("rev-parse", "agent/recovered"), base);
 });
+test("real Git refresh quarantines stale checkout and advances branch by expected OID", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-refresh-git-"));
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  git("init");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Test");
+  await writeFile(join(root, "value"), "old\n");
+  git("add", ".");
+  git("commit", "-m", "old");
+  const old = git("rev-parse", "HEAD");
+  const branch = "agent/refresh";
+  const expected = join(root, "expected"),
+    quarantine = join(root, "quarantine"),
+    staging = join(root, "staging");
+  git("worktree", "add", "-b", branch, expected, old);
+  await writeFile(join(root, "value"), "base\n");
+  git("add", ".");
+  git("commit", "-m", "base");
+  const base = git("rev-parse", "HEAD");
+  const decision: RunRecoveryDecision = {
+    action: "refresh-and-resume",
+    assessment,
+    refresh: {
+      branch,
+      expectedWorktreePath: expected,
+      expectedBranchOid: old,
+      baseOid: base,
+      quarantinePath: quarantine,
+      stagingPath: staging,
+    },
+  };
+  const runner = {
+    run: async (
+      _command: string,
+      args: string[],
+      options?: { cwd?: string },
+    ) => {
+      try {
+        return {
+          code: 0,
+          stdout: execFileSync("git", args, {
+            cwd: options?.cwd ?? root,
+            encoding: "utf8",
+          }),
+          stderr: "",
+        };
+      } catch (error) {
+        const e = error as {
+          status?: number;
+          stdout?: string;
+          stderr?: string;
+        };
+        return {
+          code: e.status ?? 1,
+          stdout: e.stdout ?? "",
+          stderr: e.stderr ?? "",
+        };
+      }
+    },
+  };
+  await executeRunRecoveryMutation({
+    decision,
+    repoRoot: root,
+    runner,
+    reassess: async () => decision,
+  });
+  assert.equal(await readFile(join(expected, "value"), "utf8"), "base\n");
+  assert.equal(await readFile(join(quarantine, "value"), "utf8"), "old\n");
+  assert.equal(git("rev-parse", branch), base);
+});
 test("refusal is never accepted as a reassessment result", async () => {
   const decision: RunRecoveryDecision = {
     action: "recreate-and-resume",
