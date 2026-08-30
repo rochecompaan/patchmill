@@ -315,3 +315,21 @@ test("createCliMain reports unknown commands with help", async () => {
   assert.deepEqual(stdout, []);
   assert.deepEqual(stderr, ["Unknown command: queue", HELP_TEXT]);
 });
+
+test("top-level dispatch forwards run reset arguments", async () => {
+  let argumentsSeen: string[] = [];
+  const main = createCliMain(
+    new Map([
+      [
+        "run",
+        async (args) => {
+          argumentsSeen = args;
+          return 0;
+        },
+      ],
+    ]),
+    { stdout: () => undefined, stderr: () => undefined },
+  );
+  assert.equal(await main(["run", "reset", "--issue", "45"]), 0);
+  assert.deepEqual(argumentsSeen, ["reset", "--issue", "45"]);
+});
