@@ -29,6 +29,28 @@ test("acquires and releases an Issue run lease", async () => {
   await releaseIssueRunLease(lease);
   await assert.rejects(readFile(lease.path, "utf8"));
 });
+
+test("acquires and releases a lease with a valid OS underscore hostname", async () => {
+  const runStateDir = await dir();
+  const lease = await acquireIssueRunLease(runStateDir, 45, {
+    ...owner,
+    hostname: "build_host",
+  });
+  assert.equal(lease.record.hostname, "build_host");
+  await releaseIssueRunLease(lease);
+  await assert.rejects(readFile(lease.path, "utf8"));
+});
+test("refuses to emit lease records with hostname separators or control text", async () => {
+  const runStateDir = await dir();
+  for (const hostname of ["build/host", "build\\host", "build\nhost"]) {
+    await assert.rejects(
+      acquireIssueRunLease(runStateDir, 45, { ...owner, hostname }),
+      /invalid hostname/,
+    );
+  }
+  await assert.rejects(readFile(join(runStateDir, "locks", "issue-45.lock")));
+});
+
 test("refuses a live owner and preserves its lease", async () => {
   const runStateDir = await dir();
   const lease = await acquireIssueRunLease(runStateDir, 45, owner);
@@ -87,10 +109,8 @@ test("refuses corrupt path-shaped stale lease fields without archiving them", as
     await import("node:fs/promises")
   ).mkdir(join(runStateDir, "locks"), { recursive: true });
   for (const corrupt of ["../escape", "owner/escape"]) {
-    await writeFile(
-      leasePath,
-      `${JSON.stringify({ version: 1, issueNumber: 45, pid: 101, hostname: "test-host", ownerToken: corrupt, acquiredAt: corrupt })}\n`,
-    );
+    const raw = `${JSON.stringify({ version: 1, issueNumber: 45, pid: 101, hostname: "test-host", ownerToken: corrupt, acquiredAt: corrupt })}\n`;
+    await writeFile(leasePath, raw);
     await assert.rejects(
       acquireIssueRunLease(runStateDir, 45, {
         ...owner,
@@ -98,10 +118,27 @@ test("refuses corrupt path-shaped stale lease fields without archiving them", as
       }),
       IssueRunLeaseConflictError,
     );
-    assert.equal(
-      await readFile(leasePath, "utf8"),
-      `${JSON.stringify({ version: 1, issueNumber: 45, pid: 101, hostname: "test-host", ownerToken: corrupt, acquiredAt: corrupt })}\n`,
+    assert.equal(await readFile(leasePath, "utf8"), raw);
+  }
+});
+
+test("refuses lease hostnames with separators or control text without archiving", async () => {
+  const runStateDir = await dir();
+  const leasePath = join(runStateDir, "locks", "issue-45.lock");
+  await (
+    await import("node:fs/promises")
+  ).mkdir(join(runStateDir, "locks"), { recursive: true });
+  for (const hostname of ["build/host", "build\\host", "build\nhost"]) {
+    const raw = `${JSON.stringify({ version: 1, issueNumber: 45, pid: 101, hostname, ownerToken: "owner", acquiredAt: "2026-08-28T12:00:00.000Z" })}\n`;
+    await writeFile(leasePath, raw);
+    await assert.rejects(
+      acquireIssueRunLease(runStateDir, 45, {
+        ...owner,
+        processState: () => "dead",
+      }),
+      IssueRunLeaseConflictError,
     );
+    assert.equal(await readFile(leasePath, "utf8"), raw);
   }
 });
 test("does not release a borrowed lease", async () => {

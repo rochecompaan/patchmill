@@ -72,6 +72,10 @@ function processState(pid: number): "alive" | "dead" | "unverifiable" {
       : "unverifiable";
   }
 }
+function validHostname(hostname: string): boolean {
+  return /^[A-Za-z0-9_][A-Za-z0-9._-]{0,252}$/u.test(hostname);
+}
+
 function parse(raw: string): IssueRunLeaseRecord | undefined {
   try {
     const value = JSON.parse(raw) as Partial<IssueRunLeaseRecord>;
@@ -87,7 +91,7 @@ function parse(raw: string): IssueRunLeaseRecord | undefined {
       Number.isSafeInteger(value.pid) &&
       value.pid > 0 &&
       typeof value.hostname === "string" &&
-      /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/u.test(value.hostname) &&
+      validHostname(value.hostname) &&
       typeof value.ownerToken === "string" &&
       /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value.ownerToken) &&
       acquiredAt
@@ -142,11 +146,16 @@ function record(
   issueNumber: number,
   options: IssueRunLeaseOptions,
 ): IssueRunLeaseRecord {
+  const hostname = options.hostname ?? systemHostname();
+  if (!validHostname(hostname))
+    throw new Error(
+      `Cannot create Issue run lease with invalid hostname: ${JSON.stringify(hostname)}`,
+    );
   return {
     version: 1,
     issueNumber,
     pid: options.pid ?? process.pid,
-    hostname: options.hostname ?? systemHostname(),
+    hostname,
     ownerToken: options.ownerToken ?? randomUUID(),
     acquiredAt: (options.now?.() ?? new Date()).toISOString(),
   };

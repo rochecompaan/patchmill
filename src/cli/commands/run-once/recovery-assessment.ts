@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { blockingStatusOutput } from "./git.ts";
 import type {
   CommandResult,
@@ -19,10 +19,11 @@ async function git(
   input: PlanRunRecoveryInput,
   args: string[],
   label: string,
+  options: { trim?: boolean } = {},
 ): Promise<string> {
   const result = await input.runner.run("git", args, { cwd: input.repoRoot });
   if (result.code !== 0) throw failure(label, result);
-  return result.stdout.trim();
+  return options.trim === false ? result.stdout : result.stdout.trim();
 }
 async function oid(input: PlanRunRecoveryInput, ref: string): Promise<string> {
   const result = await input.runner.run(
@@ -73,24 +74,36 @@ type Registered = {
   malformed: boolean;
   seen: boolean;
 };
-/** Parse the documented porcelain fields; unknown fields are preserved as
- * malformed rather than being used to authorize a destructive repair. */
+
+function validBranchName(branch: string): boolean {
+  return (
+    branch.length > 0 &&
+    !/[\x00-\x20\x7f~^:?*\\[\\\\]/u.test(branch) &&
+    !branch.includes("..") &&
+    !branch.includes("@{") &&
+    !branch.endsWith(".") &&
+    !branch.endsWith("/") &&
+    !branch.startsWith("/") &&
+    !branch.includes("//")
+  );
+}
+
+/** Parse the complete documented porcelain grammar. Any malformed record is
+ * global evidence that Git's registration state cannot safely authorize a
+ * destructive recovery, even when it is unrelated to this issue's path. */
 function registrations(output: string): {
   entries: Registered[];
   malformed: boolean;
 } {
   const entries: Registered[] = [];
   let malformed = false;
-  let entry: Registered = {
-    path: "",
-    locked: false,
-    prunable: false,
-    malformed: false,
-    seen: false,
-  };
-  const finish = () => {
-    if (entry.path) entries.push(entry);
-    else if (entry.seen) malformed = true;
+  let entry: Registered;
+  let heads: number;
+  let branchFields: number;
+  let detached: number;
+  let locks: number;
+  let prunables: number;
+  const reset = () => {
     entry = {
       path: "",
       locked: false,
@@ -98,40 +111,61 @@ function registrations(output: string): {
       malformed: false,
       seen: false,
     };
+    heads = 0;
+    branchFields = 0;
+    detached = 0;
+    locks = 0;
+    prunables = 0;
+  };
+  reset();
+  const finish = () => {
+    if (!entry.seen) return;
+    if (!entry.path || heads !== 1 || branchFields + detached > 1)
+      entry.malformed = true;
+    if (entry.path) entries.push(entry);
+    if (entry.malformed) malformed = true;
+    reset();
   };
   for (const line of output.split("\n")) {
-    if (!line) {
+    if (line === "") {
       finish();
-    } else if (line.startsWith("worktree ")) {
-      entry.seen = true;
-      if (entry.path || !line.slice(9)) entry.malformed = true;
-      else entry.path = resolve(line.slice(9));
+      continue;
+    }
+    entry.seen = true;
+    if (line.startsWith("worktree ")) {
+      const path = line.slice("worktree ".length);
+      if (entry.path || !path || !isAbsolute(path)) entry.malformed = true;
+      else entry.path = resolve(path);
+    } else if (line.startsWith("HEAD ")) {
+      const head = line.slice("HEAD ".length);
+      heads += 1;
+      if (heads > 1 || !/^[0-9a-f]{7,64}$/iu.test(head)) entry.malformed = true;
     } else if (line.startsWith("branch refs/heads/")) {
-      entry.seen = true;
-      if (entry.branch || !line.slice("branch refs/heads/".length))
+      const branch = line.slice("branch refs/heads/".length);
+      branchFields += 1;
+      if (branchFields > 1 || detached > 0 || !validBranchName(branch))
         entry.malformed = true;
-      else entry.branch = line.slice("branch refs/heads/".length);
-    } else if (line === "locked" || line.startsWith("locked ")) {
-      entry.seen = true;
-      entry.locked = true;
-    } else if (line === "prunable" || line.startsWith("prunable ")) {
-      entry.seen = true;
-      entry.prunable = true;
+      else entry.branch = branch;
+    } else if (line === "detached") {
+      detached += 1;
+      if (detached > 1 || branchFields > 0) entry.malformed = true;
+    } else if (line === "locked" || /^locked [^\r\n]+$/u.test(line)) {
+      locks += 1;
+      if (locks > 1) entry.malformed = true;
+      else entry.locked = true;
+    } else if (line === "prunable" || /^prunable [^\r\n]+$/u.test(line)) {
+      prunables += 1;
+      if (prunables > 1) entry.malformed = true;
+      else entry.prunable = true;
     } else {
-      entry.seen = true;
-      if (!line.startsWith("HEAD ") && !line.startsWith("detached"))
-        entry.malformed = true;
+      entry.malformed = true;
     }
   }
   finish();
   const paths = new Set<string>();
   const branches = new Set<string>();
   for (const item of entries) {
-    if (
-      item.malformed ||
-      paths.has(item.path) ||
-      (item.branch && branches.has(item.branch))
-    )
+    if (paths.has(item.path) || (item.branch && branches.has(item.branch)))
       malformed = true;
     paths.add(item.path);
     if (item.branch) branches.add(item.branch);
@@ -262,6 +296,7 @@ export async function assessRunRecovery(
       input,
       ["-C", worktreePath, "status", "--porcelain=v1", "--untracked-files=all"],
       "cannot inspect worktree status",
+      { trim: false },
     );
     dirtyStatus =
       blockingStatusOutput(
@@ -280,6 +315,7 @@ export async function assessRunRecovery(
         "--ignored=matching",
       ],
       "cannot inspect ignored worktree status",
+      { trim: false },
     );
     ignored = ignoredEntries(all);
     ignoredStatus = ignored.length ? all : undefined;

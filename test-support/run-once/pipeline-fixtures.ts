@@ -373,7 +373,7 @@ export function blockedRecoveryRunner(
         stdout:
           options.worktreeRegistered === false
             ? ""
-            : `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-recover-blocked-run")}\nbranch refs/heads/agent/issue-45-recover-blocked-run\n\n`,
+            : `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-recover-blocked-run")}\nHEAD abcdefabcdefabcdefabcdefabcdefabcdefabcd\nbranch refs/heads/agent/issue-45-recover-blocked-run\n\n`,
         stderr: "",
       };
     }

@@ -76,7 +76,7 @@ function cleanRunner(
         stdout:
           overrides.worktreeRegistered === false
             ? ""
-            : `worktree ${join(call.cwd ?? "/repo", baseState.worktreePath)}\nbranch refs/heads/agent/issue-45-recover-blocked-run\n`,
+            : `worktree ${join(call.cwd ?? "/repo", baseState.worktreePath)}\nHEAD 0123456789abcdef0123456789abcdef01234567\nbranch refs/heads/agent/issue-45-recover-blocked-run\n`,
         stderr: "",
       };
     }
@@ -145,6 +145,17 @@ test("inspectBlockedRunRecovery ignores configured clean-status paths in saved w
   assert.equal(report.kind, "recoverable-clean");
   assert.equal(report.worktree.clean, true);
   assert.equal(report.worktree.dirtyStatus, undefined);
+});
+
+test("inspectBlockedRunRecovery preserves leading porcelain status spaces before ignored-path filtering", async () => {
+  const report = await inspect(
+    { dirtyStatus: " M x.pi/todos/file\n" },
+    { ignoredPaths: [".pi/todos/"] },
+  );
+
+  assert.equal(report.kind, "dirty-worktree");
+  assert.equal(report.worktree.clean, false);
+  assert.match(report.worktree.dirtyStatus ?? "", /x\.pi\/todos\/file/);
 });
 
 test("inspectBlockedRunRecovery still blocks non-ignored dirty status with ignored paths configured", async () => {
@@ -409,7 +420,7 @@ test("malformed existing worktree registration is unverifiable", async () => {
       if (call.args.join(" ") === "worktree list --porcelain")
         return {
           code: 0,
-          stdout: `worktree ${worktree}\nbranch refs/heads/${baseState.branch}\nunknown evidence\n`,
+          stdout: `worktree ${worktree}\nHEAD ${oid}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\n`,
           stderr: "",
         };
       if (call.args[0] === "rev-list")
@@ -474,6 +485,11 @@ test("malformed or duplicate porcelain records anywhere are globally unverifiabl
     "HEAD detached-without-worktree\n",
     "HEAD malformed-without-worktree\nunknown evidence\n",
     `worktree ${join(root, "other")}\nbranch refs/heads/other\n\nworktree ${join(root, "other")}\nbranch refs/heads/other-again\n`,
+    `worktree ${join(root, "other")}\nHEAD not-a-hex-oid\nbranch refs/heads/other\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\nHEAD ${oid}\nbranch refs/heads/other\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\nbranch refs/heads/other\ndetached\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\ndetached garbage\n`,
+    `worktree relative-path\nHEAD ${oid}\nbranch refs/heads/other\n`,
   ]) {
     const decision = await planRunRecovery({
       intent: "retry",
