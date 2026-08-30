@@ -48,7 +48,7 @@ export async function runResetCommand(
     if (error instanceof ResetIssueRunRecoveryError) {
       const mutation = error.cause;
       stderr.write(
-        `Reset recovery failed: ${mutation instanceof Error ? mutation.message : String(mutation)}\nArchive: ${error.archivePath}\n${mutation instanceof Error && "quarantinePaths" in mutation ? (mutation.quarantinePaths as string[]).map((path) => `Preserved: ${path}`).join("\n") : ""}\n`,
+        `Reset recovery failed: ${mutation instanceof Error ? mutation.message : String(mutation)}\nArchive: ${error.archivePath}\n${error.preservedPaths.map((path) => `Preserved: ${path}`).join("\n")}\n`,
       );
       return 1;
     }

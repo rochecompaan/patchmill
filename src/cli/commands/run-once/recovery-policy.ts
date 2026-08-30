@@ -25,6 +25,21 @@ function refusal(
               .concat(assessment.savedCommits)
               .join(", ")
           : undefined;
+  const preserveGuidance = {
+    "dirty-worktree":
+      "Commit, stash, or clean local modifications before retrying recovery.",
+    "ignored-worktree-content":
+      "Inspect and preserve ignored workspace content before retrying recovery.",
+    "unmerged-commits":
+      "Merge or preserve the unique branch commits before retrying recovery.",
+    "workspace-unverifiable":
+      "Repair the workspace registration or inspect it manually before retrying recovery.",
+    "legacy-active-unfenced":
+      "Repair the legacy Run lease fence before retrying recovery.",
+    "not-blocked":
+      "Use normal run-once execution; this Run state is not blocked.",
+    "active-run": "Wait for the active Run attempt before retrying recovery.",
+  } as const;
   return {
     action: "refuse",
     assessment,
@@ -33,7 +48,7 @@ function refusal(
       detail
         ? `Recovery is unsafe: ${detail}`
         : `Recovery is unsafe: ${reason}.`,
-      `Inspect the preserved workspace, then retry with: patchmill run reset --issue ${assessment.issueNumber}`,
+      preserveGuidance[reason],
     ],
   };
 }

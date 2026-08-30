@@ -82,6 +82,15 @@ test("rejects mismatched and confirmation-only repair confirmations", async () =
     /requires a repair fingerprint/,
   );
 });
+test("rejects unknown, duplicate, pipeline, and force-like options", async () => {
+  for (const args of [
+    ["--issue", "45", "--force"],
+    ["--issue", "45", "--dry-run"],
+    ["--issue", "45", "--issue", "46"],
+    ["--issue", "45", "--unknown"],
+  ])
+    await assert.rejects(runLeaseRepairCommand(args), /Unsupported|duplicate/);
+});
 test("rejects invalid issue and mixed fingerprints", async () => {
   await assert.rejects(
     runLeaseRepairCommand(["--issue", "0"]),

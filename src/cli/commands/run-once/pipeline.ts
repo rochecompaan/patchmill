@@ -30,14 +30,9 @@ import {
   isResumableRunState,
   readRunState,
   replaceRunStateAfterReset,
-  runStatePath,
   writeRunState,
 } from "./run-state.ts";
-import {
-  formatBlockedRunRecoveryReport,
-  hasBlockedRunRecoveryState,
-  inspectBlockedRunRecovery,
-} from "./recovery.ts";
+import { hasBlockedRunRecoveryState } from "./recovery.ts";
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import {
   createStepAccounting,
@@ -192,8 +187,28 @@ export async function runOneIssue(
 
   // A reset has already archived and validated the prior attempt.  Its seed is
   // authoritative; do not let pre-reset checkpoints re-enter resume policy.
-  let existingState = options.reset
-    ? undefined
+  let existingState: AgentIssueRunState | undefined = options.reset
+    ? {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "claimed",
+        ...(options.reset.seed.specPath
+          ? { specPath: options.reset.seed.specPath }
+          : {}),
+        ...(options.reset.seed.specCommit
+          ? { specCommit: options.reset.seed.specCommit }
+          : {}),
+        ...(options.reset.seed.planPath
+          ? { planPath: options.reset.seed.planPath }
+          : {}),
+        ...(options.reset.seed.planCommit
+          ? { planCommit: options.reset.seed.planCommit }
+          : {}),
+        checkpoints: resetReceiptCheckpoints(options.reset.seed),
+        leaseProtocolVersion: 1,
+        createdAt: (options.now ?? new Date()).toISOString(),
+        updatedAt: (options.now ?? new Date()).toISOString(),
+      }
     : await readRunState(config.runStateDir, issue.number);
   // Every real attempt is serialized from selection through its final effect.
   // A caller-supplied lease (reset) is borrowed and is therefore not released.
@@ -260,18 +275,9 @@ export async function runOneIssue(
   }
 
   const ignoredPaths = cleanStatusIgnoredPaths(config, runOptions);
-  const blockedRecoveryReport = hasBlockedRunRecoveryState(existingState)
-    ? await inspectBlockedRunRecovery({
-        runner,
-        repoRoot: config.repoRoot,
-        runStatePath: runStatePath(config.runStateDir, issue.number),
-        state: existingState,
-        baseRef: config.baseRef,
-        ignoredPaths,
-      })
-    : undefined;
-  const blockedRecoveryResumable =
-    blockedRecoveryReport?.kind === "recoverable-clean";
+  // Typed recovery owns every blocked-state classification, including safely
+  // recreatable missing worktrees and branches.  Do not pre-gate it here.
+  const blockedRecoveryResumable = hasBlockedRunRecoveryState(existingState);
   const planningWorkspaceResumable =
     hasFinishedPlanningWorkspaceState(existingState);
   const resumableState =
@@ -285,12 +291,6 @@ export async function runOneIssue(
       : (effectiveCheckpoints(existingState?.checkpoints, resumableState) ??
         {})),
   };
-
-  if (blockedRecoveryReport && !blockedRecoveryResumable) {
-    throw new AgentIssueSafetyError(
-      formatBlockedRunRecoveryReport(blockedRecoveryReport),
-    );
-  }
 
   if (
     resetStaleCheckpoints &&

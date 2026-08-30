@@ -631,7 +631,7 @@ test("runOneIssue rejects mismatched blocked resume artifact comments before mat
   );
 });
 
-test("runOneIssue reports missing worktree with existing branch blocked recovery before mutations", async () => {
+test("runOneIssue recreates a missing worktree with an existing blocked branch", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -642,14 +642,20 @@ test("runOneIssue reports missing worktree with existing branch blocked recovery
   });
   const runner = blockedRecoveryRunner(config, { worktreeRegistered: false });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /git worktree add \.worktrees\/patchmill-issue-45-recover-blocked-run agent\/issue-45-recover-blocked-run/,
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    true,
   );
-  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
-test("runOneIssue reports missing branch and worktree blocked recovery before mutations", async () => {
+test("runOneIssue recreates missing branch and worktree for a blocked retry", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -663,9 +669,16 @@ test("runOneIssue reports missing branch and worktree blocked recovery before mu
     worktreeRegistered: false,
   });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /Archive or remove stale run state/,
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args
+          .join(" ")
+          .includes("worktree add -b agent/issue-45-recover-blocked-run"),
+    ),
+    true,
   );
-  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });

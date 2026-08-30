@@ -55,6 +55,30 @@ test("takes over a dead same-host owner under its transaction guard", async () =
   });
   assert.equal(lease.record.ownerToken, "owner-b");
 });
+test("refuses corrupt path-shaped stale lease fields without archiving them", async () => {
+  const runStateDir = await dir();
+  const leasePath = join(runStateDir, "locks", "issue-45.lock");
+  await (
+    await import("node:fs/promises")
+  ).mkdir(join(runStateDir, "locks"), { recursive: true });
+  for (const corrupt of ["../escape", "owner/escape"]) {
+    await writeFile(
+      leasePath,
+      `${JSON.stringify({ version: 1, issueNumber: 45, pid: 101, hostname: "test-host", ownerToken: corrupt, acquiredAt: corrupt })}\n`,
+    );
+    await assert.rejects(
+      acquireIssueRunLease(runStateDir, 45, {
+        ...owner,
+        processState: () => "dead",
+      }),
+      IssueRunLeaseConflictError,
+    );
+    assert.equal(
+      await readFile(leasePath, "utf8"),
+      `${JSON.stringify({ version: 1, issueNumber: 45, pid: 101, hostname: "test-host", ownerToken: corrupt, acquiredAt: corrupt })}\n`,
+    );
+  }
+});
 test("does not release a borrowed lease", async () => {
   const runStateDir = await dir();
   const lease = await acquireIssueRunLease(runStateDir, 45, owner);

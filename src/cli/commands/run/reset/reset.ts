@@ -30,6 +30,7 @@ import type {
 } from "../../run-once/types.ts";
 export class ResetIssueRunRecoveryError extends Error {
   readonly archivePath: string;
+  readonly preservedPaths: string[];
   constructor(
     cause: unknown,
     archivePath: string,
@@ -37,7 +38,7 @@ export class ResetIssueRunRecoveryError extends Error {
   ) {
     const mutation =
       cause instanceof RunRecoveryMutationError
-        ? [...cause.quarantinePaths, ...cause.stagingPaths]
+        ? cause.preservedPaths
         : preservedPaths;
     super(
       `${cause instanceof Error ? cause.message : String(cause)}\nArchive: ${archivePath}\nPreserved paths: ${mutation.join(", ") || "none"}`,
@@ -45,6 +46,7 @@ export class ResetIssueRunRecoveryError extends Error {
     this.name = "ResetIssueRunRecoveryError";
     this.cause = cause;
     this.archivePath = archivePath;
+    this.preservedPaths = mutation;
   }
 }
 export type ResetIssueRunResult =
@@ -66,6 +68,13 @@ export function validateResetIssueEligibility(input: {
     throw new Error(`Issue #${input.issue.number} is not open`);
   const approval = input.config.approvalPolicy;
   const labels = input.issue.labels;
+  const excluded =
+    input.config.triagePolicy?.runOnceSelection?.excludedLabels ?? [];
+  const blocking = labels.filter((label) => excluded.includes(label));
+  if (blocking.length)
+    throw new Error(
+      `Issue #${input.issue.number} has triage blocking labels for reset: ${blocking.join(", ")}`,
+    );
   if (
     (approval.planApproval.required &&
       !labels.includes(approval.planApproval.approvedLabel)) ||

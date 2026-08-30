@@ -21,10 +21,35 @@ export async function runLeaseRepairCommand(
     );
     return 0;
   }
-  const value = (flag: string) => {
-    const index = args.indexOf(flag);
-    return index < 0 ? undefined : args[index + 1];
-  };
+  const values = new Map<string, string>();
+  const confirmations = new Set<string>();
+  const valueFlags = new Set([
+    "--issue",
+    "--expect-lease-sha256",
+    "--expect-guard-sha256",
+    "--expect-state-sha256",
+  ]);
+  const confirmationFlags = new Set([
+    "--confirm-owner-stopped",
+    "--confirm-all-runners-stopped",
+  ]);
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (valueFlags.has(arg)) {
+      const next = args[index + 1];
+      if (!next || next.startsWith("-") || values.has(arg))
+        throw new Error(`Invalid or duplicate lease repair option: ${arg}`);
+      values.set(arg, next);
+      index += 1;
+    } else if (confirmationFlags.has(arg)) {
+      if (confirmations.has(arg))
+        throw new Error(`Duplicate lease repair option: ${arg}`);
+      confirmations.add(arg);
+    } else {
+      throw new Error(`Unsupported lease repair option: ${arg}`);
+    }
+  }
+  const value = (flag: string) => values.get(flag);
   const rawIssue = value("--issue");
   const issue = rawIssue && /^\d+$/u.test(rawIssue) ? Number(rawIssue) : 0;
   if (!issue)
@@ -38,8 +63,8 @@ export async function runLeaseRepairCommand(
   );
   if (!count) {
     if (
-      args.includes("--confirm-owner-stopped") ||
-      args.includes("--confirm-all-runners-stopped")
+      confirmations.has("--confirm-owner-stopped") ||
+      confirmations.has("--confirm-all-runners-stopped")
     )
       throw new Error("Repair confirmation requires a repair fingerprint");
     const inspection = await (
@@ -65,8 +90,8 @@ export async function runLeaseRepairCommand(
     return 0;
   }
   if (count !== 1) throw new Error("Specify exactly one repair fingerprint");
-  const ownerStopped = args.includes("--confirm-owner-stopped");
-  const allStopped = args.includes("--confirm-all-runners-stopped");
+  const ownerStopped = confirmations.has("--confirm-owner-stopped");
+  const allStopped = confirmations.has("--confirm-all-runners-stopped");
   const matchingConfirmation =
     (lease && ownerStopped && !allStopped) ||
     ((guard || state) && allStopped && !ownerStopped);

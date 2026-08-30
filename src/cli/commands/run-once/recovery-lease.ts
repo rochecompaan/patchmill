@@ -65,12 +65,22 @@ function processState(pid: number): "alive" | "dead" | "unverifiable" {
 function parse(raw: string): IssueRunLeaseRecord | undefined {
   try {
     const value = JSON.parse(raw) as Partial<IssueRunLeaseRecord>;
+    const acquiredAt =
+      typeof value.acquiredAt === "string" &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(
+        value.acquiredAt,
+      ) &&
+      !Number.isNaN(Date.parse(value.acquiredAt));
     return value.version === 1 &&
-      typeof value.issueNumber === "number" &&
-      typeof value.pid === "number" &&
+      Number.isSafeInteger(value.issueNumber) &&
+      value.issueNumber > 0 &&
+      Number.isSafeInteger(value.pid) &&
+      value.pid > 0 &&
       typeof value.hostname === "string" &&
+      /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/u.test(value.hostname) &&
       typeof value.ownerToken === "string" &&
-      typeof value.acquiredAt === "string"
+      /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value.ownerToken) &&
+      acquiredAt
       ? (value as IssueRunLeaseRecord)
       : undefined;
   } catch {
@@ -159,12 +169,14 @@ export async function acquireIssueRunLease(
         (options.processState ?? processState)(owner.pid) !== "dead"
       )
         throw new IssueRunLeaseConflictError(p.lease, "lease", owner);
+      // Never derive archive paths from lease contents: corrupt lease metadata
+      // is untrusted, while this name is entirely controlled by Patchmill.
       const stale = join(
         runStateDir,
         "archive",
         "leases",
         `issue-${issueNumber}`,
-        `${owner.acquiredAt.replaceAll(/[:.]/gu, "-")}-${owner.ownerToken}.json`,
+        `${Date.now()}-${randomUUID()}.json`,
       );
       await mkdir(dirname(stale), { recursive: true });
       await rename(p.lease, stale);

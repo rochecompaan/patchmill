@@ -119,6 +119,23 @@ test("rejects closed issues and wrong active labels before mutation", () => {
     /not eligible/,
   );
 });
+test("rejects configured triage exclusions before reset mutation", () => {
+  assert.throws(
+    () =>
+      validateResetIssueEligibility({
+        issue: issue(["agent-ready", "unsuitable"]),
+        state: run("blocked"),
+        config: {
+          ...config,
+          triagePolicy: {
+            ...config.triagePolicy!,
+            runOnceSelection: { excludedLabels: ["unsuitable"] },
+          },
+        },
+      }),
+    /triage blocking labels/,
+  );
+});
 test("allows absent state so reset can provide guidance", () =>
   assert.doesNotThrow(() =>
     validateResetIssueEligibility({ issue: issue([]), config }),

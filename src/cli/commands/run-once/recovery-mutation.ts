@@ -6,6 +6,7 @@ export class RunRecoveryMutationError extends Error {
   readonly completed: RunRecoveryMutationResult["completed"];
   readonly quarantinePaths: string[];
   readonly stagingPaths: string[];
+  readonly preservedPaths: string[];
   constructor(
     cause: unknown,
     action: Exclude<RunRecoveryDecision["action"], "refuse">,
@@ -14,7 +15,7 @@ export class RunRecoveryMutationError extends Error {
     stagingPaths: string[],
   ) {
     super(
-      `Recovery mutation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `Recovery mutation failed during ${action}: ${cause instanceof Error ? cause.message : String(cause)}\nCompleted actions: ${completed.map((entry) => entry.kind).join(", ") || "none"}\nPreserved paths: ${[...new Set([...quarantinePaths, ...stagingPaths, ...completed.flatMap((entry) => (entry.kind === "publish-worktree" ? [entry.to] : []))])].join(", ") || "none"}`,
     );
     this.name = "RunRecoveryMutationError";
     this.cause = cause;
@@ -22,6 +23,15 @@ export class RunRecoveryMutationError extends Error {
     this.completed = completed;
     this.quarantinePaths = quarantinePaths;
     this.stagingPaths = stagingPaths;
+    this.preservedPaths = [
+      ...new Set([
+        ...quarantinePaths,
+        ...stagingPaths,
+        ...completed.flatMap((entry) =>
+          entry.kind === "publish-worktree" ? [entry.to] : [],
+        ),
+      ]),
+    ];
   }
 }
 export type RunRecoveryMutationResult = {
@@ -328,7 +338,10 @@ export async function executeRunRecoveryMutation(input: {
         p.pruneStaleRegistration
     )
       throw new Error("Recovery evidence changed before workspace quarantine");
-    if (p.expectedWorktreePath && p.quarantinePath) {
+    if (p.pruneStaleRegistration) {
+      await command(input.runner, input.repoRoot, ["worktree", "prune"]);
+      completed.push({ kind: "prune-stale-registration" });
+    } else if (p.expectedWorktreePath && p.quarantinePath) {
       await command(input.runner, input.repoRoot, [
         "worktree",
         "move",
