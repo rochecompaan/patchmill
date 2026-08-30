@@ -155,9 +155,17 @@ automatically.
 to `.patchmill/runs/`. If a retryable run is already in progress, a later
 execute run resumes it before selecting new work.
 
-Use `run-once` as the supported operational loop. The continuous `patchmill run`
-factory loop is still development testing and should not replace `run-once` for
-normal usage yet.
+Use the explicit operational commands below. `patchmill run` is a command
+family, not a continuous factory loop:
+
+```sh
+patchmill run-once --issue 123
+patchmill run reset --issue 123
+patchmill run lease repair --issue 123
+```
+
+Use `run-once` for normal execution; use reset or lease repair only for their
+explicit recovery workflows.
 
 ## Recovering a blocked Issue run
 
