@@ -11,17 +11,17 @@ free-form comments as a control signal.
 
 An explicit `patchmill run-once --issue N` command will inspect blocked Run
 recovery state. Patchmill will resume a verified clean workspace, including a
-workspace with committed partial work. It will refresh only a clean,
-zero-ahead branch with no ignored content. The refresh will pin the base commit
-and preserve the old checkout in a quarantine.
+workspace with committed partial work. It will refresh only a clean, zero-ahead
+branch with no ignored content. The refresh will pin the base commit and
+preserve the old checkout in a quarantine.
 
 A new `patchmill run reset --issue N` command will support safe reset for any
-saved Run recovery state. The command will archive diagnostics, evacuate the
-old workspace into a quarantine, and immediately start a normal Run attempt.
+saved Run recovery state. The command will archive diagnostics, evacuate the old
+workspace into a quarantine, and immediately start a normal Run attempt.
 
-Dirty or ignored worktree content will block recovery. Unique issue commits
-will block destructive reset, but retry will preserve and resume them.
-Patchmill will not provide a force option that bypasses these protections.
+Dirty or ignored worktree content will block recovery. Unique issue commits will
+block destructive reset, but retry will preserve and resume them. Patchmill will
+not provide a force option that bypasses these protections.
 
 ## Context
 
@@ -33,11 +33,11 @@ pipeline accepts only the `recoverable-clean` recovery classification.
 
 `inspectBlockedRunRecovery()` also classifies every ancestor branch as
 `already-merged`. This result includes a stale branch with `ahead = 0` and no
-issue commits. The report can therefore describe empty workspace state as
-landed work.
+issue commits. The report can therefore describe empty workspace state as landed
+work.
 
-Patchmill has no supported reset command. Current guidance tells the operator
-to clean or finalize state manually under `.patchmill/runs`.
+Patchmill has no supported reset command. Current guidance tells the operator to
+clean or finalize state manually under `.patchmill/runs`.
 
 ## Domain terms
 
@@ -59,7 +59,8 @@ Run recovery state before the normal pipeline writes fresh Run recovery state.
 - Preserve the old checkout before a refresh or reset detaches its branch.
 - Inventory ignored content before any refresh or reset cleanup.
 - Use current-base content only after a safe zero-ahead refresh.
-- Resume commit-bearing branches at their existing commit without an automatic base update.
+- Resume commit-bearing branches at their existing commit without an automatic
+  base update.
 - Clear the old blocker reason and obsolete blocker questions.
 - Preserve valid checkpoints and artifact references during retry.
 - Prevent duplicate start and blocker comments.
@@ -105,8 +106,8 @@ keeps recovery changes out of the already large pipeline module.
 
 ### Extend the existing blocked-recovery path
 
-This approach would add more classifications to `recovery.ts` and add a
-separate reset implementation. It has a smaller initial diff.
+This approach would add more classifications to `recovery.ts` and add a separate
+reset implementation. It has a smaller initial diff.
 
 The existing interfaces are specific to blocked state. General reset would
 spread policy across the CLI, recovery code, and pipeline. This approach is
@@ -179,8 +180,8 @@ locks/issue-N.lease-guard
 
 The guard will use exclusive creation and an owner token. Patchmill will hold it
 from before the first lease observation until the lease transition is complete.
-A competing process cannot observe and rename the canonical lease while
-another transition is in progress.
+A competing process cannot observe and rename the canonical lease while another
+transition is in progress.
 
 A guard conflict will refuse the transition. Patchmill will not automatically
 replace a guard, even when its recorded local process is dead. This rule avoids
@@ -188,12 +189,12 @@ recursive stale-lock takeover races. Operator-assisted repair can quarantine an
 abandoned guard by exact fingerprint.
 
 A process on the same host is active when its process ID is alive. A dead
-process ID makes the lease stale. While it owns the transaction guard,
-Patchmill can archive the observed stale lease and create a replacement.
+process ID makes the lease stale. While it owns the transaction guard, Patchmill
+can archive the observed stale lease and create a replacement.
 
-Patchmill will treat a lease from another host as active. It cannot prove
-remote process death from local process information. Age alone will never make
-a lease stale.
+Patchmill will treat a lease from another host as active. It cannot prove remote
+process death from local process information. Age alone will never make a lease
+stale.
 
 Only the process with the matching owner token can remove a lease or guard.
 Patchmill will hold the Issue run lease through recovery and the complete Run
@@ -204,8 +205,8 @@ selection will acquire the lease after selection and re-read state before
 mutation.
 
 Each state write from a leased Run attempt will set `leaseProtocolVersion = 1`.
-This marker proves that the writer participates in the lease protocol. It is
-not a persisted status or a substitute for the live lease.
+This marker proves that the writer participates in the lease protocol. It is not
+a persisted status or a substitute for the live lease.
 
 Saved `claimed`, `planning`, or `implementing` state without this marker is
 legacy active state. Automatic retry, resume, and reset will refuse that state
@@ -225,8 +226,8 @@ Patchmill will provide this inspection command:
 patchmill run lease repair --issue N
 ```
 
-The command will not repair anything without a confirmation fingerprint. It
-will print one of these commands after it reads the exact lease or state bytes:
+The command will not repair anything without a confirmation fingerprint. It will
+print one of these commands after it reads the exact lease or state bytes:
 
 ```text
 patchmill run lease repair --issue N --expect-lease-sha256 HASH --confirm-owner-stopped
@@ -272,23 +273,23 @@ git status --porcelain=v1 --untracked-files=all
 git status --porcelain=v1 --untracked-files=all --ignored=matching
 ```
 
-The second result will inventory every `!!` file or directory. Configured
-status exclusions will not hide ignored content from recovery safety checks.
+The second result will inventory every `!!` file or directory. Configured status
+exclusions will not hide ignored content from recovery safety checks.
 
 The main classifications are:
 
-| Classification | Evidence | Retry policy | Reset policy |
-| --- | --- | --- | --- |
-| `resumable-current` | Clean worktree, no ignored content, `ahead = 0`, `behind = 0` | Resume | Reset |
-| `resumable-stale-base` | Clean worktree, no ignored content, `ahead = 0`, `behind > 0` | Refresh to pinned base and resume | Reset |
-| `resumable-with-commits` | Clean verified branch with actual unique commits | Resume without rewriting commits | Refuse deletion |
-| `recreatable-clean` | Expected path is absent and an existing branch can be preserved, or a missing branch has no loss evidence | Recreate and resume | Reset only with zero unique commits |
-| `dirty-worktree` | Blocking tracked or untracked Git status exists | Refuse | Refuse |
-| `ignored-worktree-content` | One or more ignored files or directories exist | Refuse | Refuse |
-| `unmerged-commits` | The branch is missing and saved state records commits | Refuse | Refuse |
-| `workspace-unverifiable` | Workspace identity or safety cannot be proved | Refuse | Refuse |
-| `legacy-active-unfenced` | Active state predates the lease protocol and has no matching migration fence | Refuse | Refuse |
-| `active-run` | Another live or unverifiable owner holds the lease | Refuse | Refuse |
+| Classification             | Evidence                                                                                                  | Retry policy                      | Reset policy                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------- | ----------------------------------- |
+| `resumable-current`        | Clean worktree, no ignored content, `ahead = 0`, `behind = 0`                                             | Resume                            | Reset                               |
+| `resumable-stale-base`     | Clean worktree, no ignored content, `ahead = 0`, `behind > 0`                                             | Refresh to pinned base and resume | Reset                               |
+| `resumable-with-commits`   | Clean verified branch with actual unique commits                                                          | Resume without rewriting commits  | Refuse deletion                     |
+| `recreatable-clean`        | Expected path is absent and an existing branch can be preserved, or a missing branch has no loss evidence | Recreate and resume               | Reset only with zero unique commits |
+| `dirty-worktree`           | Blocking tracked or untracked Git status exists                                                           | Refuse                            | Refuse                              |
+| `ignored-worktree-content` | One or more ignored files or directories exist                                                            | Refuse                            | Refuse                              |
+| `unmerged-commits`         | The branch is missing and saved state records commits                                                     | Refuse                            | Refuse                              |
+| `workspace-unverifiable`   | Workspace identity or safety cannot be proved                                                             | Refuse                            | Refuse                              |
+| `legacy-active-unfenced`   | Active state predates the lease protocol and has no matching migration fence                              | Refuse                            | Refuse                              |
+| `active-run`               | Another live or unverifiable owner holds the lease                                                        | Refuse                            | Refuse                              |
 
 A branch with `ahead = 0` is stale or empty when it is an ancestor of the base.
 Reports must not call this branch landed issue work.
@@ -297,13 +298,12 @@ Retry will not fast-forward a branch that has unique commits. It will resume the
 verified branch at its current commit, even when the current base has advanced.
 This rule preserves committed partial work without a merge or rewrite.
 
-A physical path that exists without valid worktree registration is
-unverifiable. Patchmill will not remove or reuse that path automatically.
+A physical path that exists without valid worktree registration is unverifiable.
+Patchmill will not remove or reuse that path automatically.
 
-If the expected path is absent, retry can recreate a worktree around an
-existing verified branch, including a branch with unique commits. Patchmill can
-create a missing branch from the base only when saved state has no loss
-evidence.
+If the expected path is absent, retry can recreate a worktree around an existing
+verified branch, including a branch with unique commits. Patchmill can create a
+missing branch from the base only when saved state has no loss evidence.
 
 Reset will continue to refuse every branch with actual unique commits. It will
 also refuse a missing branch when saved state records commits.
@@ -337,8 +337,8 @@ refuse rather than replace a non-empty path. A failed refresh will report every
 quarantine and staging path.
 
 Reset will move the complete registered checkout to quarantine, recheck it,
-detach its `HEAD` with compare-and-swap, and delete the zero-unique-commit branch
-with `git update-ref -d` plus the expected branch OID. It will retain the
+detach its `HEAD` with compare-and-swap, and delete the zero-unique-commit
+branch with `git update-ref -d` plus the expected branch OID. It will retain the
 detached quarantined worktree. Reset will never recursively erase it.
 
 If the expected path is absent, recreation will update a zero-ahead branch by
@@ -373,9 +373,9 @@ For `resumable-current`, Patchmill will reuse the saved workspace. For
 to advance the branch to the pinned base OID.
 
 For `resumable-with-commits`, Patchmill will reuse the branch without a merge,
-reset, or rewrite. For `recreatable-clean`, Patchmill will recreate the
-expected worktree around an existing branch when one exists. Patchmill will
-not recreate a missing branch when saved state contains loss evidence.
+reset, or rewrite. For `recreatable-clean`, Patchmill will recreate the expected
+worktree around an existing branch when one exists. Patchmill will not recreate
+a missing branch when saved state contains loss evidence.
 
 Before execution, Patchmill will clear `lastError` and `blockerQuestions`. The
 historical `blockedAt` timestamp can remain for diagnostics.
@@ -391,25 +391,25 @@ Retry preserves monotonic checkpoints because it continues the same Issue run.
 Existing artifact resolution will make sure that saved specification and plan
 references remain valid.
 
-Effect receipts have an explicit scope. The start-comment receipt applies to
-the issue. Failure-comment and blocker-comment receipts apply only to one Issue
-run. Retry preserves both scopes because it continues the same Issue run.
+Effect receipts have an explicit scope. The start-comment receipt applies to the
+issue. Failure-comment and blocker-comment receipts apply only to one Issue run.
+Retry preserves both scopes because it continues the same Issue run.
 
 `blockerCommentKeys` will contain `blocker-comment:v1:<sha256-hex>` keys for the
 exact canonical blocker-comment body. `blockIssue()` will check the key before
 it posts. It will persist the key only after the host accepts the comment.
 
-Legacy blocked state has no blocker-comment receipt. Before retry changes
-state, Patchmill will compare the canonical comment for the saved reason and
-questions with the issue's existing comment bodies. An exact match will create
-the corresponding receipt. If no exact match exists, Patchmill will not create
-a receipt.
+Legacy blocked state has no blocker-comment receipt. Before retry changes state,
+Patchmill will compare the canonical comment for the saved reason and questions
+with the issue's existing comment bodies. An exact match will create the
+corresponding receipt. If no exact match exists, Patchmill will not create a
+receipt.
 
 Comment text remains effect evidence only. It will not acknowledge recovery or
 change eligibility.
 
-A repaired worktree will complete `worktreeReady` only after repair succeeds.
-No comment or label effect will repeat while a valid same-scope receipt exists.
+A repaired worktree will complete `worktreeReady` only after repair succeeds. No
+comment or label effect will repeat while a valid same-scope receipt exists.
 
 ## Reset and immediate Run attempt
 
@@ -468,9 +468,9 @@ fresh `claimed` Run recovery state through its existing lifecycle transition.
 ## Reset field preservation
 
 The fresh state will retain only validated durable inputs and the issue-scoped
-start-comment receipt. An artifact reference is valid only when it resolves
-from the pinned current base or an authoritative external source after the
-expected workspace path is evacuated.
+start-comment receipt. An artifact reference is valid only when it resolves from
+the pinned current base or an authoritative external source after the expected
+workspace path is evacuated.
 
 - `issueNumber` and `title`
 - valid `specPath` and `specCommit`
@@ -533,8 +533,8 @@ and each quarantine or staging path.
 
 ## CLI behavior
 
-`src/cli/main.ts` will add the `run` command family. This issue adds `reset`
-and the focused `lease repair` operator command.
+`src/cli/main.ts` will add the `run` command family. This issue adds `reset` and
+the focused `lease repair` operator command.
 
 The command help will show:
 
@@ -544,8 +544,8 @@ patchmill run lease repair --issue <number>
 ```
 
 `--issue` must contain a positive integer. Reset will not support a force
-option. Reset will reject `--dry-run` with a direct no-preview message before
-it acquires a lease or mutates state.
+option. Reset will reject `--dry-run` with a direct no-preview message before it
+acquires a lease or mutates state.
 
 If no saved state exists, the command will report that there is nothing to
 reset. It will suggest this command:
@@ -571,13 +571,13 @@ Patchmill will refuse retry and reset without mutation for these conditions:
 - a missing branch has saved commit-loss evidence
 - workspace identity cannot be proved
 
-Reset will also refuse when the existing branch has unique issue commits.
-Retry will preserve and resume those commits.
+Reset will also refuse when the existing branch has unique issue commits. Retry
+will preserve and resume those commits.
 
 Dirty-worktree guidance will identify ordinary and ignored status separately.
-The operator must preserve or remove preexisting content before another
-recovery command. Content that appears during mutation will remain at a
-reported quarantine, staging, or target path.
+The operator must preserve or remove preexisting content before another recovery
+command. Content that appears during mutation will remain at a reported
+quarantine, staging, or target path.
 
 Unmerged-commit guidance will list the commits. The operator must preserve or
 land that work before reset.
@@ -601,9 +601,12 @@ states will receive a specific repair command or action.
 ### CLI dispatch and parsing
 
 - `src/cli/main.ts` will dispatch the `patchmill run` command family.
-- A focused `src/cli/commands/run/reset/` module will own reset parsing and output.
-- A focused `src/cli/commands/run/lease/` module will own repair inspection and confirmation.
-- A filesystem-only run-state configuration loader will avoid Git and provider access for lease repair.
+- A focused `src/cli/commands/run/reset/` module will own reset parsing and
+  output.
+- A focused `src/cli/commands/run/lease/` module will own repair inspection and
+  confirmation.
+- A filesystem-only run-state configuration loader will avoid Git and provider
+  access for lease repair.
 - The reset command will delegate normal execution to the run-once pipeline.
 
 ### Recovery facade and policy
@@ -622,8 +625,8 @@ states will receive a specific repair command or action.
   workspace identity and configured ordinary-status exclusions.
 - `src/cli/commands/run-once/pipeline-lifecycle.ts` will preserve valid effects
   and clear obsolete blocker data.
-- `src/cli/commands/run-once/pipeline-failures.ts` will persist
-  blocker-comment receipts.
+- `src/cli/commands/run-once/pipeline-failures.ts` will persist blocker-comment
+  receipts.
 - `src/cli/commands/run-once/run-state.ts` will support exact reset replacement,
   lease-protocol markers, blocker receipts, and seed preservation.
 - `src/cli/commands/run-once/types.ts` will define recovery decisions and reset
@@ -634,11 +637,13 @@ states will receive a specific repair command or action.
 - `src/cli/commands/run-once/recovery.test.ts` will cover the decision table.
 - `src/cli/commands/run-once/pipeline-workspace-scenarios.test.ts` will cover
   retry and reset integration.
-- Focused lease, repair, and reset-command tests will cover ownership and CLI behavior.
-- `test-support/run-once/pipeline-fixtures.ts` will expose the required fixtures.
+- Focused lease, repair, and reset-command tests will cover ownership and CLI
+  behavior.
+- `test-support/run-once/pipeline-fixtures.ts` will expose the required
+  fixtures.
 
-The implementation can add focused files when one listed module would exceed
-one clear responsibility. It will not add an npm dependency for the lease.
+The implementation can add focused files when one listed module would exceed one
+clear responsibility. It will not add an npm dependency for the lease.
 
 ## Verification strategy
 
@@ -704,11 +709,13 @@ recover.
 
 Run safe reset from every existing saved status. Prove these results:
 
-- reset-aware eligibility occurs before mutation for each saved-status label matrix
+- reset-aware eligibility occurs before mutation for each saved-status label
+  matrix
 - an existing `in-progress` claim remains idempotent
 - archive files exist before quarantine or ref updates
 - original state bytes remain exact
-- the expected worktree path is evacuated and the branch is deleted by expected OID
+- the expected worktree path is evacuated and the branch is deleted by expected
+  OID
 - ignored content injected before movement survives in the detached quarantine
 - reset never calls recursive worktree removal
 - normal pipeline execution starts immediately
@@ -718,7 +725,8 @@ Run safe reset from every existing saved status. Prove these results:
 - dirty, ignored, or unmerged work blocks all mutation
 - active legacy state requires an exact migration fence
 - `--dry-run` stops before every mutation
-- archive and later mutation errors preserve active diagnostics and all moved paths
+- archive and later mutation errors preserve active diagnostics and all moved
+  paths
 - absent state returns the ordinary run-once guidance
 
 ### CLI tests
@@ -736,30 +744,30 @@ unless implementation changes an npm dependency file.
 
 ## Acceptance mapping
 
-| Acceptance criterion | Design response |
-| --- | --- |
-| Human acknowledgment is explicit | Blocked retry requires `agent-ready` and explicit `run-once --issue N`. |
-| Comments are not control input | Comment bodies can prove a posted effect, but they never acknowledge recovery. |
-| Clean blocked state resumes | The shared assessment permits current, stale-base, and commit-bearing recovery. |
-| Committed partial work survives retry | Retry resumes a verified unique-commit branch without merge, reset, or deletion. |
-| Stale empty branch uses current base | Patchmill refreshes only a zero-ahead branch to one pinned base OID. |
-| Commit-bearing retry keeps its base | Retry does not promise current-base content without a safe zero-ahead refresh. |
-| Ignored work remains protected | Preexisting ignored content refuses mutation. Late content moves into quarantine or blocks publication. |
-| Blocker data becomes obsolete | Retry clears `lastError` and `blockerQuestions`. |
-| Lifecycle transition is correct | The normal claim path changes `agent-ready` to `in-progress`. |
-| Valid progress survives retry | Retry retains valid checkpoints, artifacts, and same-Issue-run receipts. |
-| Blocker comments do not duplicate | Exact legacy comments bootstrap versioned body receipts. Future posts persist receipts. |
-| Fresh reset comments remain valid | Reset clears Issue-run-scoped failure and blocker receipts. |
-| Reset is supported | `patchmill run reset --issue N` archives, cleans, and runs normally. |
-| Reset dry-run is unambiguous | `patchmill run reset --dry-run` is rejected before mutation. |
-| Reset applies to all saved statuses | Reset-aware label matrices support active, blocked, and finished state. Legacy active state also requires a fence. |
-| Diagnostic state survives reset | Exact state bytes and the assessment enter a timestamped archive. |
-| Dirty work remains protected | Dirty status refuses retry and reset without force cleanup. |
-| Unmerged commits remain protected from deletion | Actual or saved unique commit evidence refuses reset. |
-| Empty branches are not called landed | `ahead = 0` ancestor branches are stale or empty. |
-| Crashed local runs can recover | A transaction guard serializes dead same-host lease replacement. Abandoned guards require fingerprinted repair. |
-| Pre-lease active runs cannot race recovery | Unmarked active state refuses until an exact-state migration fence exists. |
-| Abandoned remote leases can recover | Fingerprinted repair quarantines an owner-stopped lease under an exclusive repair lock. |
-| Live runs cannot race reset | A live lease owner, lease transaction guard, or active repair lock blocks retry and reset. |
-| Recovery never recursively deletes a checkout | Refresh and reset detach a preserved quarantine, then update refs by expected OID. |
-| Lease repair is filesystem-only | A focused configuration loader avoids Git and provider initialization. |
+| Acceptance criterion                            | Design response                                                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Human acknowledgment is explicit                | Blocked retry requires `agent-ready` and explicit `run-once --issue N`.                                            |
+| Comments are not control input                  | Comment bodies can prove a posted effect, but they never acknowledge recovery.                                     |
+| Clean blocked state resumes                     | The shared assessment permits current, stale-base, and commit-bearing recovery.                                    |
+| Committed partial work survives retry           | Retry resumes a verified unique-commit branch without merge, reset, or deletion.                                   |
+| Stale empty branch uses current base            | Patchmill refreshes only a zero-ahead branch to one pinned base OID.                                               |
+| Commit-bearing retry keeps its base             | Retry does not promise current-base content without a safe zero-ahead refresh.                                     |
+| Ignored work remains protected                  | Preexisting ignored content refuses mutation. Late content moves into quarantine or blocks publication.            |
+| Blocker data becomes obsolete                   | Retry clears `lastError` and `blockerQuestions`.                                                                   |
+| Lifecycle transition is correct                 | The normal claim path changes `agent-ready` to `in-progress`.                                                      |
+| Valid progress survives retry                   | Retry retains valid checkpoints, artifacts, and same-Issue-run receipts.                                           |
+| Blocker comments do not duplicate               | Exact legacy comments bootstrap versioned body receipts. Future posts persist receipts.                            |
+| Fresh reset comments remain valid               | Reset clears Issue-run-scoped failure and blocker receipts.                                                        |
+| Reset is supported                              | `patchmill run reset --issue N` archives, cleans, and runs normally.                                               |
+| Reset dry-run is unambiguous                    | `patchmill run reset --dry-run` is rejected before mutation.                                                       |
+| Reset applies to all saved statuses             | Reset-aware label matrices support active, blocked, and finished state. Legacy active state also requires a fence. |
+| Diagnostic state survives reset                 | Exact state bytes and the assessment enter a timestamped archive.                                                  |
+| Dirty work remains protected                    | Dirty status refuses retry and reset without force cleanup.                                                        |
+| Unmerged commits remain protected from deletion | Actual or saved unique commit evidence refuses reset.                                                              |
+| Empty branches are not called landed            | `ahead = 0` ancestor branches are stale or empty.                                                                  |
+| Crashed local runs can recover                  | A transaction guard serializes dead same-host lease replacement. Abandoned guards require fingerprinted repair.    |
+| Pre-lease active runs cannot race recovery      | Unmarked active state refuses until an exact-state migration fence exists.                                         |
+| Abandoned remote leases can recover             | Fingerprinted repair quarantines an owner-stopped lease under an exclusive repair lock.                            |
+| Live runs cannot race reset                     | A live lease owner, lease transaction guard, or active repair lock blocks retry and reset.                         |
+| Recovery never recursively deletes a checkout   | Refresh and reset detach a preserved quarantine, then update refs by expected OID.                                 |
+| Lease repair is filesystem-only                 | A focused configuration loader avoids Git and provider initialization.                                             |

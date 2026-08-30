@@ -161,9 +161,9 @@ normal usage yet.
 
 ## Recovering a blocked Issue run
 
-A blocked Issue run retains its Run recovery state. After answering the blocker outside
-Patchmill, restore `agent-ready` and explicitly retry the same issue; comments provide
-context and are never a control signal:
+A blocked Issue run retains its Run recovery state. After answering the blocker
+outside Patchmill, restore `agent-ready` and explicitly retry the same issue;
+comments provide context and are never a control signal:
 
 ```sh
 patchmill run-once --issue 123
@@ -171,15 +171,16 @@ patchmill run reset --issue 123
 patchmill run lease repair --issue 123
 ```
 
-A clean current workspace, stale zero-ahead branch, clean branch with unique commits,
-or safely recreatable workspace can resume. Unique commits are preserved at their
-existing base without a merge or rewrite. Only an empty stale branch refreshes to a
-pinned current base. Dirty or ignored content, unmerged/lost commits, unverifiable
-paths, live leases, and unfenced legacy active state refuse automatic recovery.
+A clean current workspace, stale zero-ahead branch, clean branch with unique
+commits, or safely recreatable workspace can resume. Unique commits are
+preserved at their existing base without a merge or rewrite. Only an empty stale
+branch refreshes to a pinned current base. Dirty or ignored content,
+unmerged/lost commits, unverifiable paths, live leases, and unfenced legacy
+active state refuse automatic recovery.
 
-`patchmill run reset --issue N` archives the exact state, moves the expected checkout
-to retained quarantine before ref updates, deletes only a zero-unique-commit branch by
-expected OID, and starts a normal Run attempt. It rejects `--dry-run`, has no force
-option, and changes labels only during the normal claim. Lease repair prints a
-fingerprinted, operator-confirmed command for abandoned remote leases, guards, or
-legacy active state.
+`patchmill run reset --issue N` archives the exact state, moves the expected
+checkout to retained quarantine before ref updates, deletes only a
+zero-unique-commit branch by expected OID, and starts a normal Run attempt. It
+rejects `--dry-run`, has no force option, and changes labels only during the
+normal claim. Lease repair prints a fingerprinted, operator-confirmed command
+for abandoned remote leases, guards, or legacy active state.
