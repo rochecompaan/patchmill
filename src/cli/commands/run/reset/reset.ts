@@ -8,7 +8,10 @@ import {
   runOneIssue,
   type RunOneIssueOptions,
 } from "../../run-once/pipeline.ts";
-import { readRunStateSnapshot } from "../../run-once/run-state.ts";
+import {
+  readRunStateSnapshot,
+  validateRecoveryRunState,
+} from "../../run-once/run-state.ts";
 import { archiveRunRecovery } from "../../run-once/recovery-archive.ts";
 import { withIssueRunLease } from "../../run-once/recovery-lease.ts";
 import { readRunLegacyMigrationFence } from "../../run-once/recovery-lease-repair.ts";
@@ -124,6 +127,7 @@ export async function resetIssueRun(
     config.runStateDir,
     config.issueNumber,
   );
+  if (initial) validateRecoveryRunState(initial.state, config.issueNumber);
   validateResetIssueEligibility({
     issue: initialIssue,
     state: initial?.state,
@@ -137,6 +141,8 @@ export async function resetIssueRun(
         config.runStateDir,
         config.issueNumber,
       );
+      if (snapshot)
+        validateRecoveryRunState(snapshot.state, config.issueNumber);
       validateResetIssueEligibility({ issue, state: snapshot?.state, config });
       if (!snapshot)
         return {
@@ -195,6 +201,7 @@ export async function resetIssueRun(
         dependencies.archiveRecovery ?? archiveRunRecovery
       )({
         runStateDir: config.runStateDir,
+        issueNumber: config.issueNumber,
         snapshot,
         assessment: decision.assessment,
         decision,

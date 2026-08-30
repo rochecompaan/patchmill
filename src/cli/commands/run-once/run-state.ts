@@ -283,6 +283,87 @@ export async function writeRunState(
   return next;
 }
 
+const RUN_STATUSES = new Set([
+  "claimed",
+  "planning",
+  "implementing",
+  "blocked",
+  "finished",
+]);
+const RECOVERY_STRING_FIELDS = [
+  "branch",
+  "worktreePath",
+  "specPath",
+  "specCommit",
+  "planPath",
+  "planCommit",
+  "implementationStatus",
+  "prUrl",
+  "mergeCommit",
+  "reviewSummary",
+  "landingDecision",
+  "createdAt",
+  "updatedAt",
+  "claimedAt",
+  "planningAt",
+  "implementingAt",
+  "blockedAt",
+  "finishedAt",
+  "lastError",
+] as const;
+function isStringArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
+}
+
+/** Validate persisted recovery input before it can select archive or Git paths. */
+export function validateRecoveryRunState(
+  state: unknown,
+  expectedIssueNumber: number,
+): asserts state is AgentIssueRunState {
+  if (!state || typeof state !== "object" || Array.isArray(state))
+    throw new Error("Run recovery state is not an object");
+  const value = state as Record<string, unknown>;
+  if (
+    value.issueNumber !== expectedIssueNumber ||
+    !Number.isSafeInteger(value.issueNumber) ||
+    value.issueNumber <= 0
+  )
+    throw new Error(
+      `Run recovery state issue number does not match requested issue #${expectedIssueNumber}`,
+    );
+  if (
+    typeof value.title !== "string" ||
+    !RUN_STATUSES.has(value.status as string) ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  )
+    throw new Error("Run recovery state has an invalid required schema");
+  for (const key of RECOVERY_STRING_FIELDS)
+    if (value[key] !== undefined && typeof value[key] !== "string")
+      throw new Error(`Run recovery state has invalid ${key}`);
+  for (const key of [
+    "commits",
+    "validation",
+    "failureCommentKeys",
+    "blockerCommentKeys",
+  ])
+    if (value[key] !== undefined && !isStringArray(value[key]))
+      throw new Error(`Run recovery state has invalid ${key}`);
+  if (
+    value.leaseProtocolVersion !== undefined &&
+    value.leaseProtocolVersion !== 1
+  )
+    throw new Error("Run recovery state has an unsupported lease protocol");
+  if (value.checkpoints !== undefined) {
+    if (!value.checkpoints || typeof value.checkpoints !== "object")
+      throw new Error("Run recovery state has invalid checkpoints");
+    if (Object.values(value.checkpoints).some((entry) => entry !== true))
+      throw new Error("Run recovery state has invalid checkpoints");
+  }
+}
+
 export async function readRunStateSnapshot(
   runStateDir: string,
   issueNumber: number,

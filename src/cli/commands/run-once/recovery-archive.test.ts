@@ -32,6 +32,7 @@ test("archives exact state bytes before reset mutation", async () => {
   } satisfies RunRecoveryAssessment;
   const archived = await archiveRunRecovery({
     runStateDir: dir,
+    issueNumber: 45,
     snapshot,
     assessment,
     decision: {
@@ -55,4 +56,49 @@ test("archives exact state bytes before reset mutation", async () => {
     "resumable-current",
   );
   assert.doesNotMatch(archived.path, /:/);
+});
+
+test("archives under the trusted leased issue rather than state data", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-archive-trusted-"));
+  const raw = '{"issueNumber":"../escape","title":"x","status":"blocked"}';
+  const path = join(dir, "issue-45.json");
+  const snapshot: RunStateSnapshot = {
+    path,
+    raw,
+    state: JSON.parse(raw) as RunStateSnapshot["state"],
+  };
+  const assessment = {
+    runStatePath: path,
+    issueNumber: 45,
+    title: "x",
+    status: "blocked",
+    lease: { status: "owned", ownerToken: "x" },
+    legacyMigrationFenceValid: true,
+    blocked: true,
+    expectedWorkspace: { branch: "issue", worktreePath: "work" },
+    savedWorkspace: {},
+    baseOid: "0123456789abcdef0123456789abcdef01234567",
+    branch: { exists: false },
+    worktree: { exists: false, registered: false, ignoredEntries: [] },
+    actualUniqueCommits: [],
+    savedCommits: [],
+    artifacts: { spec: { valid: false }, plan: { valid: false } },
+    classification: "recreatable-clean",
+  } satisfies RunRecoveryAssessment;
+  const archived = await archiveRunRecovery({
+    runStateDir: dir,
+    issueNumber: 45,
+    snapshot,
+    assessment,
+    decision: {
+      action: "archive-reset-and-start",
+      assessment,
+      seed: { issueNumber: 45, title: "x" },
+      cleanup: { pruneStaleRegistration: false },
+    },
+    command: "patchmill run reset",
+    baseRef: "HEAD",
+    now: new Date("2026-08-28T12:00:00.000Z"),
+  });
+  assert.match(archived.path, /archive\/issue-45\//);
 });

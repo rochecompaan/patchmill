@@ -28,7 +28,14 @@ export class IssueRunLeaseConflictError extends Error {
     resource: "lease" | "lease-guard" | "repair-lock",
     owner?: IssueRunLeaseRecord,
   ) {
-    super(`Issue run ${resource} is active: ${leasePath}`);
+    const ownerDetail = owner
+      ? ` (owned by ${owner.hostname} process ${owner.pid})`
+      : "";
+    const repairIssue = owner?.issueNumber ?? "<issue>";
+    super(
+      `Issue run ${resource} is active: ${leasePath}${ownerDetail}. ` +
+        `Inspect only after affected runners stop: patchmill run lease repair --issue ${repairIssue}`,
+    );
     this.leasePath = leasePath;
     this.resource = resource;
     this.owner = owner;

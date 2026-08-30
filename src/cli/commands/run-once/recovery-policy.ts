@@ -32,8 +32,11 @@ function refusal(
       "Inspect and preserve ignored workspace content before retrying recovery.",
     "unmerged-commits":
       "Merge or preserve the unique branch commits before retrying recovery.",
-    "workspace-unverifiable":
+    "workspace-unverifiable": [
       "Repair the workspace registration or inspect it manually before retrying recovery.",
+      `Saved workspace: branch ${assessment.savedWorkspace.branch ?? "(none)"}, path ${assessment.savedWorkspace.worktreePath ?? "(none)"}.`,
+      `Expected workspace: branch ${assessment.expectedWorkspace.branch}, path ${assessment.expectedWorkspace.worktreePath}.`,
+    ],
     "legacy-active-unfenced":
       "Repair the legacy Run lease fence before retrying recovery.",
     "not-blocked":
@@ -48,7 +51,9 @@ function refusal(
       detail
         ? `Recovery is unsafe: ${detail}`
         : `Recovery is unsafe: ${reason}.`,
-      preserveGuidance[reason],
+      ...(Array.isArray(preserveGuidance[reason])
+        ? preserveGuidance[reason]
+        : [preserveGuidance[reason]]),
     ],
   };
 }

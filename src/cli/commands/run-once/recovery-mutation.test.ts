@@ -271,6 +271,47 @@ test("refresh CAS failure retains staged and quarantined paths", async () => {
     },
   );
 });
+test("stale registration must disappear before recreation changes a branch ref", async () => {
+  const decision: RunRecoveryDecision = {
+    action: "recreate-and-resume",
+    assessment,
+    recreation: {
+      branch: "issue",
+      expectedWorktreePath: "missing-worktree",
+      mode: "advance-to-base",
+      targetOid: assessment.baseOid,
+      expectedBranchOid: assessment.branch.oid,
+      pruneStaleRegistration: true,
+      stagingPath: "staging",
+    },
+  };
+  const calls: string[][] = [];
+  await assert.rejects(
+    executeRunRecoveryMutation({
+      decision,
+      repoRoot: ".",
+      runner: {
+        run: async (_command, args) => {
+          calls.push(args);
+          if (args.join(" ") === "worktree list --porcelain")
+            return {
+              code: 0,
+              stdout: "worktree missing-worktree\nbranch refs/heads/issue\n",
+              stderr: "",
+            };
+          return { code: 0, stdout: "", stderr: "" };
+        },
+      },
+      reassess: async () => decision,
+    }),
+    /registration remains after prune/,
+  );
+  assert.equal(
+    calls.some((args) => args[0] === "update-ref"),
+    false,
+  );
+});
+
 test("cleanup rejects a reassessment with a changed quarantine plan before move", async () => {
   const decision: RunRecoveryDecision = {
     action: "archive-reset-and-start",

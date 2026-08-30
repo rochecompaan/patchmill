@@ -4,6 +4,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runStatePath, writeRunState } from "./run-state.ts";
 import { runOneIssue } from "./pipeline.ts";
+import { selectResumableIssue } from "./pipeline-selection.ts";
+import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { JsonlProgressReporter } from "./progress.ts";
 import {
   issue,
@@ -28,6 +30,48 @@ import {
 } from "../../../../test-support/run-once/assertions.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
+
+test("explicit blocked retry applies normal exclusions and required approvals", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+    approvalPolicy: approvalPolicy({ specRequired: true, planRequired: true }),
+  });
+  config.triagePolicy = {
+    ...DEFAULT_TRIAGE_POLICY,
+    runOnceSelection: {
+      ...DEFAULT_TRIAGE_POLICY.runOnceSelection,
+      excludedLabels: [
+        ...DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels,
+        "unsuitable",
+      ],
+    },
+  };
+  await writeRunState(config.runStateDir, {
+    issueNumber: 45,
+    title: "Blocked before workspace",
+    status: "blocked",
+    lastError: "blocked",
+  });
+  const blocked = issue(45, ["agent-ready", "unsuitable"]);
+  await assert.rejects(
+    selectResumableIssue([blocked], config),
+    /not eligible because it has unsuitable/,
+  );
+  await assert.rejects(
+    selectResumableIssue([issue(45, ["agent-ready", "spec-review"])], config),
+    /requires spec approval label/,
+  );
+  const selected = await selectResumableIssue(
+    [issue(45, ["agent-ready"])],
+    config,
+  );
+  assert.deepEqual(selected, {
+    issue: issue(45, ["agent-ready"]),
+    resumed: true,
+  });
+});
 
 test("runOneIssue dry-run lists open issues and returns the selected agent-ready issue without mutations", async () => {
   const config = await makeConfig();

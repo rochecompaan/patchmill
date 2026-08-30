@@ -6,9 +6,15 @@ import { join } from "node:path";
 import {
   formatBlockedRunRecoveryReport,
   inspectBlockedRunRecovery,
+  planRunRecovery,
   type BlockedRunRecoveryReport,
 } from "./recovery.ts";
-import type { CommandResult, CommandRunner } from "./types.ts";
+import { decideRunRecovery } from "./recovery-policy.ts";
+import type {
+  CommandResult,
+  CommandRunner,
+  RunRecoveryAssessment,
+} from "./types.ts";
 
 type Call = { command: string; args: string[]; cwd?: string };
 
@@ -294,6 +300,117 @@ function report(
   };
   return { ...common, recommendedActions: actions[kind] };
 }
+
+test("typed recovery decision table selects only conservative actions", () => {
+  const assessment = (
+    classification: RunRecoveryAssessment["classification"],
+  ): RunRecoveryAssessment => ({
+    runStatePath: "state",
+    issueNumber: 45,
+    title: "Recover",
+    status: "blocked",
+    lease: { status: "owned", ownerToken: "owner" },
+    legacyMigrationFenceValid: true,
+    blocked: true,
+    expectedWorkspace: { branch: "agent/recover", worktreePath: "work" },
+    savedWorkspace: {},
+    baseOid: "0123456789abcdef0123456789abcdef01234567",
+    branch: { exists: false },
+    worktree: { exists: false, registered: false, ignoredEntries: [] },
+    actualUniqueCommits: [],
+    savedCommits: [],
+    artifacts: { spec: { valid: false }, plan: { valid: false } },
+    classification,
+  });
+  assert.equal(
+    decideRunRecovery("retry", assessment("recreatable-clean")).action,
+    "recreate-and-resume",
+  );
+  assert.equal(
+    decideRunRecovery("retry", assessment("resumable-current")).action,
+    "resume",
+  );
+  assert.equal(
+    decideRunRecovery("retry", assessment("dirty-worktree")).action,
+    "refuse",
+  );
+  assert.equal(
+    decideRunRecovery("reset", assessment("resumable-current")).action,
+    "archive-reset-and-start",
+  );
+  assert.equal(
+    decideRunRecovery("reset", assessment("resumable-with-commits")).action,
+    "refuse",
+  );
+});
+
+test("locked absent registration is unverifiable rather than pruneable", async () => {
+  const root = await tempRepo({ worktreeExists: false });
+  const worktree = join(root, "missing-worktree");
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: {
+      issueNumber: 45,
+      title: "Recover",
+      status: "blocked",
+      branch: "agent/recover",
+      worktreePath: worktree,
+      createdAt: "x",
+      updatedAt: "x",
+    },
+    baseRef: "HEAD",
+    expectedWorkspace: { branch: "agent/recover", worktreePath: worktree },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout: `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/agent/recover\nlocked unavailable\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+  assert.equal(decision.action, "refuse");
+  if (decision.action === "refuse")
+    assert.equal(decision.reason, "workspace-unverifiable");
+});
+
+test("unverifiable workspace guidance identifies saved and expected workspaces", () => {
+  const decision = decideRunRecovery("retry", {
+    runStatePath: "state",
+    issueNumber: 45,
+    title: "Recover",
+    status: "blocked",
+    lease: { status: "owned", ownerToken: "owner" },
+    legacyMigrationFenceValid: true,
+    blocked: true,
+    expectedWorkspace: { branch: "agent/expected", worktreePath: "expected" },
+    savedWorkspace: { branch: "agent/saved", worktreePath: "saved" },
+    baseOid: "0123456789abcdef0123456789abcdef01234567",
+    branch: { exists: true },
+    worktree: { exists: false, registered: false, ignoredEntries: [] },
+    actualUniqueCommits: [],
+    savedCommits: [],
+    artifacts: { spec: { valid: false }, plan: { valid: false } },
+    classification: "workspace-unverifiable",
+  });
+  assert.equal(decision.action, "refuse");
+  if (decision.action !== "refuse") return;
+  assert.match(decision.guidance.join("\n"), /agent\/saved/);
+  assert.match(decision.guidance.join("\n"), /agent\/expected/);
+});
 
 test("formatBlockedRunRecoveryReport includes clean recovery details", () => {
   const message = formatBlockedRunRecoveryReport(report("recoverable-clean"));

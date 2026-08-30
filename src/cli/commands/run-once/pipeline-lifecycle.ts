@@ -43,14 +43,14 @@ export function workflowTransition(
   return `${state.kind} -> no-issue`;
 }
 
+/** A blocked attempt may fail before its workspace is created. */
 export function hasBlockedSavedWorkspaceState(
   state: Awaited<ReturnType<typeof readRunState>>,
 ): boolean {
   return !!(
     state &&
     (state.status === "blocked" ||
-      (state.status === "finished" && state.blockedAt && state.lastError)) &&
-    (state.branch !== undefined || state.worktreePath !== undefined)
+      (state.status === "finished" && state.blockedAt && state.lastError))
   );
 }
 

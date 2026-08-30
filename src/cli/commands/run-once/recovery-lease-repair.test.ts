@@ -49,6 +49,18 @@ test("refuses a changed lease fingerprint without moving it", async () => {
   );
   assert.equal(await readFile(source, "utf8"), "second\n");
 });
+test("rejects malformed and unsupported legacy migration fences", async () => {
+  const root = await fixture();
+  const fence = join(root, "locks", "issue-45.legacy-fence.json");
+  for (const raw of [
+    "not json",
+    '{"version":2,"issueNumber":45,"status":"planning","stateSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","repairedAt":"2026-08-28T12:00:00.000Z"}',
+    '{"version":1,"issueNumber":45,"status":"blocked","stateSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","repairedAt":"2026-08-28T12:00:00.000Z"}',
+  ]) {
+    await writeFile(fence, raw);
+    assert.equal(await readRunLegacyMigrationFence(root, 45), undefined);
+  }
+});
 test("writes an exact legacy-active migration fence", async () => {
   const root = await fixture();
   const raw =

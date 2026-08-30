@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { resetIssueRun, validateResetIssueEligibility } from "./reset.ts";
@@ -56,6 +56,38 @@ const run = (
     updatedAt: "x",
     ...extra,
   }) as AgentIssueRunState;
+test("refuses a persisted state whose issue identity differs before reset operations", async () => {
+  const runConfig = await makeConfig({
+    issueNumber: 45,
+    dryRun: false,
+    execute: true,
+  });
+  await mkdir(runConfig.runStateDir, { recursive: true });
+  await writeFile(
+    runStatePath(runConfig.runStateDir, 45),
+    JSON.stringify({
+      issueNumber: 46,
+      title: "Wrong issue",
+      status: "blocked",
+      createdAt: "x",
+      updatedAt: "x",
+    }),
+  );
+  await assert.rejects(
+    resetIssueRun(
+      { run: async () => ({ code: 0, stdout: "", stderr: "" }) },
+      runConfig,
+      {},
+      {
+        createHost: (() => ({
+          viewIssue: async () => issue(["agent-ready"]),
+        })) as never,
+      },
+    ),
+    /issue number does not match requested issue #45/,
+  );
+});
+
 test("allows active saved statuses only with in-progress", () => {
   for (const status of ["claimed", "planning", "implementing"] as const)
     assert.doesNotThrow(() =>
@@ -141,9 +173,17 @@ test("allows absent state so reset can provide guidance", () =>
     validateResetIssueEligibility({ issue: issue([]), config }),
   ));
 test("reset archives a registered checkout then enters the pipeline with its borrowed lease", async () => {
-  for (const [status, labels] of [
-    ["blocked", ["agent-ready", "needs-info"]],
-    ["finished", ["in-progress"]],
+  for (const [status, labels, extra] of [
+    ["claimed", ["in-progress"], {}],
+    ["planning", ["in-progress"], {}],
+    ["implementing", ["in-progress"], {}],
+    ["blocked", ["agent-ready", "needs-info"], { lastError: "blocked" }],
+    ["finished", ["in-progress"], {}],
+    [
+      "finished",
+      ["agent-ready", "needs-info"],
+      { blockedAt: "x", lastError: "blocked" },
+    ],
   ] as const) {
     const runConfig = await makeConfig({
       dryRun: false,
@@ -172,7 +212,7 @@ test("reset archives a registered checkout then enters the pipeline with its bor
       status,
       branch: workspace.branch,
       worktreePath: workspace.worktreePath,
-      ...(status === "blocked" ? { lastError: "blocked" } : {}),
+      ...extra,
     });
     const issue = {
       number: 45,
@@ -240,7 +280,10 @@ test("reset archives a registered checkout then enters the pipeline with its bor
       ).readFile(join(result.archivePath, "run-state.json"), "utf8"),
       /"status"/,
     );
-    assert.equal(issue.labels.includes("needs-info"), status === "blocked");
+    assert.equal(
+      issue.labels.includes("needs-info"),
+      status === "blocked" || "blockedAt" in extra,
+    );
   }
 });
 async function resetFixture(fail?: (args: string[]) => boolean) {

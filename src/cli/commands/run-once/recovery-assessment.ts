@@ -65,18 +65,39 @@ async function exists(path: string): Promise<boolean> {
     throw error;
   }
 }
-type Registered = { path: string; branch?: string };
+type Registered = {
+  path: string;
+  branch?: string;
+  locked: boolean;
+  prunable: boolean;
+  malformed: boolean;
+};
+/** Parse the documented porcelain fields; unknown fields are preserved as
+ * malformed rather than being used to authorize a destructive repair. */
 function registrations(output: string): Registered[] {
   const entries: Registered[] = [];
-  let entry: Registered = { path: "" };
+  let entry: Registered = {
+    path: "",
+    locked: false,
+    prunable: false,
+    malformed: false,
+  };
   for (const line of output.split("\n")) {
     if (!line) {
       if (entry.path) entries.push(entry);
-      entry = { path: "" };
-    } else if (line.startsWith("worktree "))
-      entry.path = resolve(line.slice(9));
-    else if (line.startsWith("branch refs/heads/"))
-      entry.branch = line.slice("branch refs/heads/".length);
+      entry = { path: "", locked: false, prunable: false, malformed: false };
+    } else if (line.startsWith("worktree ")) {
+      if (entry.path || !line.slice(9)) entry.malformed = true;
+      else entry.path = resolve(line.slice(9));
+    } else if (line.startsWith("branch refs/heads/")) {
+      if (entry.branch) entry.malformed = true;
+      else entry.branch = line.slice("branch refs/heads/".length);
+    } else if (line === "locked" || line.startsWith("locked "))
+      entry.locked = true;
+    else if (line === "prunable" || line.startsWith("prunable "))
+      entry.prunable = true;
+    else if (!line.startsWith("HEAD ") && !line.startsWith("detached"))
+      entry.malformed = true;
   }
   if (entry.path) entries.push(entry);
   return entries;
@@ -89,9 +110,8 @@ function ignoredEntries(status: string): string[] {
 }
 function blocked(state: PlanRunRecoveryInput["state"]): boolean {
   return !!(
-    (state.status === "blocked" ||
-      (state.status === "finished" && state.blockedAt && state.lastError)) &&
-    (state.branch || state.worktreePath)
+    state.status === "blocked" ||
+    (state.status === "finished" && state.blockedAt && state.lastError)
   );
 }
 function isActive(
@@ -145,6 +165,8 @@ function classify(input: {
   savedBranch?: string;
   savedWorktreePath?: string;
   expectedWorktreePath: string;
+  registrationLocked?: boolean;
+  registrationMalformed?: boolean;
 }): RunRecoveryClassification {
   if (
     (input.savedBranch && input.savedBranch !== input.expectedBranch) ||
@@ -154,7 +176,10 @@ function classify(input: {
     (input.worktreeExists && !input.registered) ||
     input.expectedBranchElsewhere ||
     (input.registered && input.registeredBranch !== input.expectedBranch) ||
-    (input.worktreeExists && input.registered && !input.registeredBranch)
+    (input.worktreeExists && input.registered && !input.registeredBranch) ||
+    (!input.worktreeExists &&
+      input.registered &&
+      (input.registrationLocked || input.registrationMalformed))
   )
     return "workspace-unverifiable";
   if (input.dirty) return "dirty-worktree";
@@ -249,7 +274,16 @@ export async function assessRunRecovery(
     input.state.leaseProtocolVersion === 1 ||
     (!!input.legacyMigrationFence &&
       active &&
+      input.legacyMigrationFence.version === 1 &&
+      Number.isSafeInteger(input.legacyMigrationFence.issueNumber) &&
       input.legacyMigrationFence.issueNumber === input.state.issueNumber &&
+      ["claimed", "planning", "implementing"].includes(
+        input.legacyMigrationFence.status,
+      ) &&
+      typeof input.legacyMigrationFence.stateSha256 === "string" &&
+      /^[a-f0-9]{64}$/u.test(input.legacyMigrationFence.stateSha256) &&
+      typeof input.legacyMigrationFence.repairedAt === "string" &&
+      !Number.isNaN(Date.parse(input.legacyMigrationFence.repairedAt)) &&
       input.legacyMigrationFence.status === input.state.status &&
       input.legacyMigrationFence.stateSha256 === hash);
   const artifacts = {
@@ -286,6 +320,8 @@ export async function assessRunRecovery(
     savedBranch: input.state.branch,
     savedWorktreePath: input.state.worktreePath,
     expectedWorktreePath: input.expectedWorkspace.worktreePath,
+    registrationLocked: registered?.locked,
+    registrationMalformed: registered?.malformed,
   });
   return {
     runStatePath: input.runStatePath,

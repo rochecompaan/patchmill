@@ -65,6 +65,25 @@ function active(
     state.status === "implementing"
   );
 }
+function migrationFence(value: unknown): RunLegacyMigrationFence | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const fence = value as Record<string, unknown>;
+  if (
+    fence.version !== 1 ||
+    !Number.isSafeInteger(fence.issueNumber) ||
+    fence.issueNumber <= 0 ||
+    !["claimed", "planning", "implementing"].includes(fence.status as string) ||
+    typeof fence.stateSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(fence.stateSha256) ||
+    typeof fence.repairedAt !== "string" ||
+    Number.isNaN(Date.parse(fence.repairedAt))
+  )
+    return undefined;
+  return fence as RunLegacyMigrationFence;
+}
+
+/** A corrupt or future fence never authorizes legacy-state adoption. */
 export async function readRunLegacyMigrationFence(
   runStateDir: string,
   issueNumber: number,
@@ -73,7 +92,11 @@ export async function readRunLegacyMigrationFence(
     file(runStateDir, issueNumber, ".legacy-fence.json"),
   );
   if (!raw) return undefined;
-  return JSON.parse(raw) as RunLegacyMigrationFence;
+  try {
+    return migrationFence(JSON.parse(raw));
+  } catch {
+    return undefined;
+  }
 }
 export async function inspectIssueRunLeaseRepair(
   runStateDir: string,

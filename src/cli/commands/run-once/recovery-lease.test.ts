@@ -45,6 +45,18 @@ test("refuses a live owner and preserves its lease", async () => {
     "owner-a",
   );
 });
+test("active lease conflicts identify the known owner and repair inspection command", async () => {
+  const error = new IssueRunLeaseConflictError("/tmp/issue-45.lock", "lease", {
+    version: 1,
+    issueNumber: 45,
+    pid: 101,
+    hostname: "test-host",
+    ownerToken: "owner-a",
+    acquiredAt: "2026-08-28T12:00:00.000Z",
+  });
+  assert.match(error.message, /test-host process 101/);
+  assert.match(error.message, /patchmill run lease repair --issue 45/);
+});
 test("takes over a dead same-host owner under its transaction guard", async () => {
   const runStateDir = await dir();
   await acquireIssueRunLease(runStateDir, 45, owner);

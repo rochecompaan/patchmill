@@ -9,6 +9,8 @@ import type {
 
 export async function archiveRunRecovery(input: {
   runStateDir: string;
+  /** The leased CLI issue, validated before this archive is created. */
+  issueNumber: number;
   snapshot: RunStateSnapshot;
   assessment: RunRecoveryAssessment;
   decision: Extract<RunRecoveryDecision, { action: "archive-reset-and-start" }>;
@@ -16,11 +18,7 @@ export async function archiveRunRecovery(input: {
   baseRef: string;
   now: Date;
 }): Promise<{ path: string }> {
-  const root = join(
-    input.runStateDir,
-    "archive",
-    `issue-${input.snapshot.state.issueNumber}`,
-  );
+  const root = join(input.runStateDir, "archive", `issue-${input.issueNumber}`);
   await mkdir(root, { recursive: true });
   const stamp = input.now.toISOString().replaceAll(/[:.]/gu, "-");
   let target = join(root, stamp);
@@ -37,7 +35,7 @@ export async function archiveRunRecovery(input: {
       version: 1,
       archivedAt: input.now.toISOString(),
       command: input.command,
-      issueNumber: input.snapshot.state.issueNumber,
+      issueNumber: input.issueNumber,
       baseRef: input.baseRef,
       baseOid: input.assessment.baseOid,
       branchOid: input.assessment.branch.oid,

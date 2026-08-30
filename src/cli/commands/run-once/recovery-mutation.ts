@@ -70,6 +70,32 @@ async function command(
 function worktreePath(repoRoot: string, path: string): string {
   return resolve(repoRoot, path);
 }
+async function pruneStaleRegistration(
+  runner: CommandRunner,
+  repoRoot: string,
+  expectedPath: string,
+): Promise<void> {
+  await command(runner, repoRoot, ["worktree", "prune"]);
+  const listed = await runner.run("git", ["worktree", "list", "--porcelain"], {
+    cwd: repoRoot,
+  });
+  if (listed.code !== 0)
+    throw new Error(
+      `Cannot verify stale worktree registration: ${listed.stderr || listed.stdout}`,
+    );
+  const resolved = worktreePath(repoRoot, expectedPath);
+  if (
+    listed.stdout
+      .split("\n")
+      .some(
+        (line) =>
+          line.startsWith("worktree ") && resolve(line.slice(9)) === resolved,
+      )
+  )
+    throw new Error(
+      `Stale worktree registration remains after prune: ${resolved}; preserved without branch mutation`,
+    );
+}
 async function assertExpectedPathAbsent(path: string): Promise<void> {
   try {
     await stat(path);
@@ -257,7 +283,11 @@ export async function executeRunRecoveryMutation(input: {
           "Recovery evidence changed before workspace recreation",
         );
       if (p.pruneStaleRegistration) {
-        await command(input.runner, input.repoRoot, ["worktree", "prune"]);
+        await pruneStaleRegistration(
+          input.runner,
+          input.repoRoot,
+          p.expectedWorktreePath,
+        );
         completed.push({ kind: "prune-stale-registration" });
       }
       if (p.mode === "advance-to-base" && p.expectedBranchOid) {
@@ -339,7 +369,15 @@ export async function executeRunRecoveryMutation(input: {
     )
       throw new Error("Recovery evidence changed before workspace quarantine");
     if (p.pruneStaleRegistration) {
-      await command(input.runner, input.repoRoot, ["worktree", "prune"]);
+      if (!p.expectedWorktreePath)
+        throw new Error(
+          "Stale registration cleanup requires an expected worktree path",
+        );
+      await pruneStaleRegistration(
+        input.runner,
+        input.repoRoot,
+        p.expectedWorktreePath,
+      );
       completed.push({ kind: "prune-stale-registration" });
     } else if (p.expectedWorktreePath && p.quarantinePath) {
       await command(input.runner, input.repoRoot, [
