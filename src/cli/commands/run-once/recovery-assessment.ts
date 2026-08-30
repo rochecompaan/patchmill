@@ -113,6 +113,7 @@ function classify(input: {
   worktreeExists: boolean;
   registered: boolean;
   registeredBranch?: string;
+  expectedBranchElsewhere: boolean;
   expectedBranch: string;
   dirty?: string;
   ignored: string[];
@@ -124,6 +125,7 @@ function classify(input: {
 }): RunRecoveryClassification {
   if (
     (input.worktreeExists && !input.registered) ||
+    input.expectedBranchElsewhere ||
     (input.registered && input.registeredBranch !== input.expectedBranch) ||
     (input.worktreeExists && input.registered && !input.registeredBranch)
   )
@@ -132,10 +134,10 @@ function classify(input: {
   if (input.ignored.length) return "ignored-worktree-content";
   if (!input.branchExists && input.savedCommits.length)
     return "unmerged-commits";
-  if (input.active && !input.fenced) return "legacy-active-unfenced";
-  if (!input.branchExists || !input.worktreeExists) return "recreatable-clean";
   if (input.commits.length || (input.divergence?.ahead ?? 0) > 0)
     return "resumable-with-commits";
+  if (input.active && !input.fenced) return "legacy-active-unfenced";
+  if (!input.branchExists || !input.worktreeExists) return "recreatable-clean";
   if ((input.divergence?.behind ?? 0) > 0) return "resumable-stale-base";
   return "resumable-current";
 }
@@ -162,6 +164,11 @@ export async function assessRunRecovery(
     ),
   );
   const registered = listed.find((entry) => entry.path === worktreePath);
+  const expectedBranchElsewhere = listed.some(
+    (entry) =>
+      entry.path !== worktreePath &&
+      entry.branch === input.expectedWorkspace.branch,
+  );
   const worktreeExists = await exists(worktreePath);
   let dirtyStatus: string | undefined;
   let ignoredStatus: string | undefined;
@@ -245,6 +252,7 @@ export async function assessRunRecovery(
     worktreeExists,
     registered: !!registered,
     registeredBranch: registered?.branch,
+    expectedBranchElsewhere,
     expectedBranch: input.expectedWorkspace.branch,
     dirty: dirtyStatus,
     ignored,
