@@ -90,6 +90,11 @@ export async function selectResumableIssue(
         ? await readRunState(config.runStateDir, explicitIssue.number)
         : undefined;
       if (explicitIssue && hasBlockedSavedWorkspaceState(explicitState)) {
+        if (!explicitIssue.labels.includes(ready)) {
+          throw new Error(
+            `Issue #${explicitIssue.number} has a blocked Run recovery state but is not labeled ${ready}`,
+          );
+        }
         if (
           resumable.length === 1 &&
           resumable[0]?.number !== explicitIssue.number

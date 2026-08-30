@@ -11,6 +11,7 @@ import type {
 } from "./types.ts";
 import {
   blockerComment,
+  blockerCommentKey,
   errorMessage,
   unexpectedFailureComment,
   unexpectedFailureCommentKey,
@@ -155,9 +156,25 @@ export async function blockIssue(
     },
     timestamp,
   );
-  await host
-    .commentIssue(issue.number, blockerComment(result))
-    .catch(() => undefined);
+  const commentKey = blockerCommentKey(result);
+  const persisted = await readRunState(config.runStateDir, issue.number);
+  if (!persisted?.blockerCommentKeys?.includes(commentKey)) {
+    const commented = await host
+      .commentIssue(issue.number, blockerComment(result))
+      .then(() => true)
+      .catch(() => false);
+    if (commented)
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issue.number,
+          title: issue.title,
+          status: "blocked",
+          blockerCommentKeys: [commentKey],
+        },
+        timestamp,
+      );
+  }
   await emitSimpleStep(options, issue.number, "final result blocked");
   return withLogPath({ ...result, ...details, issue }, options);
 }
