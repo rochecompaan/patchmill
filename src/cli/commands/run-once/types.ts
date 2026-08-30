@@ -474,6 +474,8 @@ export type PlanRunRecoveryInput = {
   leaseOwnerToken: string;
   snapshotRaw: string;
   legacyMigrationFence?: RunLegacyMigrationFence;
+  /** Reused across reassessment so one Run attempt never changes mutation paths. */
+  recoveryPaths?: { quarantinePath: string; stagingPath: string };
 };
 export type IssueRunLease = { path: string; record: RunRecoveryLeaseOwner };
 export type RunStateSnapshot = {

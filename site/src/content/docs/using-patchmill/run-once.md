@@ -190,5 +190,21 @@ active state refuse automatic recovery.
 checkout to retained quarantine before ref updates, deletes only a
 zero-unique-commit branch by expected OID, and starts a normal Run attempt. It
 rejects `--dry-run`, has no force option, and changes labels only during the
-normal claim. Lease repair prints a fingerprinted, operator-confirmed command
-for abandoned remote leases, guards, or legacy active state.
+normal claim. Reset accepts active `in-progress` state, blocked `agent-ready`
+state (with optional `needs-info`), and finished `agent-ready` or `in-progress`
+state after normal approval checks. It preserves only validated
+specification/plan references and the issue-scoped start-comment receipt; a new
+Issue run may therefore post legitimate failure and blocker comments.
+
+Retry keeps same-Issue-run receipts. A legacy blocker comment is deduplicated
+only after its exact canonical body is found on the issue, never from a comment
+that merely says the issue is ready. Refresh and reset move the complete
+checkout into retained quarantine before ref updates. Content that arrives late,
+including ignored files, remains quarantined or stops publication rather than
+being overwritten.
+
+Lease repair prints a fingerprinted, operator-confirmed command for abandoned
+remote leases, guards, or legacy active state. Remote lease repair requires
+`--confirm-owner-stopped`; guard and legacy-state repair require
+`--confirm-all-runners-stopped`. There is no automatic remote liveness guess or
+force cleanup.

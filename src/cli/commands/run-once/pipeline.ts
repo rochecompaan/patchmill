@@ -55,6 +55,7 @@ import {
   effectiveCheckpoints,
   lifecycleLabels,
   recoveryClaimLabels,
+  resetReceiptCheckpoints,
   nextLabels,
   workflowTransition,
 } from "./pipeline-lifecycle.ts";
@@ -144,7 +145,18 @@ export async function runOneIssue(
       : loadedIssues;
   let selected: { issue: IssueSummary; resumed: boolean } | undefined;
   try {
-    selected = await selectResumableIssue(issues, config);
+    selected = options.reset
+      ? (() => {
+          const resetIssue = issues.find(
+            (candidate) => candidate.number === config.issueNumber,
+          );
+          if (!resetIssue)
+            throw new Error(
+              `Reset issue #${config.issueNumber ?? "?"} disappeared before pipeline entry`,
+            );
+          return { issue: resetIssue, resumed: false };
+        })()
+      : await selectResumableIssue(issues, config);
   } catch (error) {
     if (error instanceof ApprovalRequiredError) {
       return withLogPath(
@@ -198,7 +210,7 @@ export async function runOneIssue(
     !config.dryRun &&
     options.lease &&
     existingState &&
-    !existingState.leaseProtocolVersion &&
+    existingState.leaseProtocolVersion !== 1 &&
     ["claimed", "planning", "implementing"].includes(existingState.status)
   ) {
     const snapshot = await readRunStateSnapshot(
@@ -297,7 +309,10 @@ export async function runOneIssue(
     planningWorkspaceResumable;
   const resetStaleCheckpoints = !!existingState && !resumableState;
   const checkpoints = {
-    ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
+    ...(options.reset
+      ? resetReceiptCheckpoints(options.reset.seed)
+      : (effectiveCheckpoints(existingState?.checkpoints, resumableState) ??
+        {})),
   };
 
   if (blockedRecoveryReport && !blockedRecoveryResumable) {
@@ -382,27 +397,50 @@ export async function runOneIssue(
       throw new AgentIssueSafetyError(
         `Blocked Run recovery state for issue #${issue.number} disappeared`,
       );
-    const recoveryInput = async () =>
-      planRunRecovery({
+    let recoveryPaths:
+      | { quarantinePath: string; stagingPath: string }
+      | undefined;
+    const recoveryInput = async () => {
+      const current = await readRunStateSnapshot(
+        config.runStateDir,
+        issue.number,
+      );
+      if (!current || current.raw !== snapshot.raw)
+        throw new AgentIssueSafetyError(
+          "Run recovery state changed before mutation",
+        );
+      return planRunRecovery({
         intent: "retry",
         runner,
         repoRoot: config.repoRoot,
-        runStatePath: snapshot.path,
-        state: snapshot.state,
+        runStatePath: current.path,
+        state: current.state,
         baseRef: config.baseRef,
         expectedWorkspace,
         ignoredPaths,
         resolvedArtifacts,
         leaseOwnerToken: options.lease!.record.ownerToken,
-        snapshotRaw: snapshot.raw,
+        snapshotRaw: current.raw,
         legacyMigrationFence: await readRunLegacyMigrationFence(
           config.runStateDir,
           issue.number,
         ),
+        recoveryPaths,
       });
+    };
     const decision = await recoveryInput();
     if (decision.action === "refuse")
       throw new AgentIssueSafetyError(formatRunRecoveryDecision(decision));
+    if (decision.action === "refresh-and-resume")
+      recoveryPaths = {
+        quarantinePath: decision.refresh.quarantinePath,
+        stagingPath: decision.refresh.stagingPath,
+      };
+    else if (decision.action === "recreate-and-resume")
+      recoveryPaths = {
+        quarantinePath: `${decision.recreation.stagingPath}.quarantine`,
+        stagingPath: decision.recreation.stagingPath,
+      };
     if (decision.action !== "resume")
       await executeRunRecoveryMutation({
         decision,
@@ -526,7 +564,8 @@ export async function runOneIssue(
     artifactPolicy = approvedArtifactPreflight.policy;
   }
 
-  const recoveringBlocked = hasBlockedRunRecoveryState(existingState);
+  const recoveringBlocked =
+    hasBlockedRunRecoveryState(existingState) || !!options.reset;
   let labels = recoveryClaimLabels(issue.labels, {
     ready,
     inProgress,

@@ -17,7 +17,11 @@ export type {
 export async function planRunRecovery(
   input: PlanRunRecoveryInput,
 ): Promise<RunRecoveryDecision> {
-  return decideRunRecovery(input.intent, await assessRunRecovery(input));
+  return decideRunRecovery(
+    input.intent,
+    await assessRunRecovery(input),
+    input.recoveryPaths,
+  );
 }
 
 export function formatRunRecoveryDecision(

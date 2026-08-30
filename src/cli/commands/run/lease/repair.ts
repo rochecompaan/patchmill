@@ -80,7 +80,7 @@ export async function runLeaseRepairCommand(
     expectedLeaseSha256: lease,
     expectedGuardSha256: guard,
     expectedStateSha256: state,
-    confirmedProcessesStopped: confirmed,
+    confirmedProcessesStopped: matchingConfirmation,
   });
   stderr.write(`${result.kind}: ${result.path}\n`);
   return 0;

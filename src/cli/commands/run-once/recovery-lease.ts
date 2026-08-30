@@ -103,9 +103,19 @@ async function guard(
     throw error;
   }
   return async () => {
-    const current = await readFile(p.guard, "utf8").catch(() => undefined);
-    if (current && parse(current)?.ownerToken === record.ownerToken)
-      await unlink(p.guard);
+    let current: string | undefined;
+    try {
+      current = await readFile(p.guard, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (current && parse(current)?.ownerToken === record.ownerToken) {
+      try {
+        await unlink(p.guard);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
   };
 }
 function record(

@@ -30,9 +30,17 @@ import type {
 } from "../../run-once/types.ts";
 export class ResetIssueRunRecoveryError extends Error {
   readonly archivePath: string;
-  constructor(cause: RunRecoveryMutationError, archivePath: string) {
+  constructor(
+    cause: unknown,
+    archivePath: string,
+    preservedPaths: string[] = [],
+  ) {
+    const mutation =
+      cause instanceof RunRecoveryMutationError
+        ? [...cause.quarantinePaths, ...cause.stagingPaths]
+        : preservedPaths;
     super(
-      `${cause.message}\nArchive: ${archivePath}\nPreserved paths: ${[...cause.quarantinePaths, ...cause.stagingPaths].join(", ") || "none"}`,
+      `${cause instanceof Error ? cause.message : String(cause)}\nArchive: ${archivePath}\nPreserved paths: ${mutation.join(", ") || "none"}`,
     );
     this.name = "ResetIssueRunRecoveryError";
     this.cause = cause;
@@ -133,6 +141,9 @@ export async function resetIssueRun(
         issue.title,
         configuredWorktreeStrategy(config),
       );
+      let recoveryPaths:
+        | { quarantinePath: string; stagingPath: string }
+        | undefined;
       const recoveryInput = async () =>
         planRunRecovery({
           intent: "reset",
@@ -149,8 +160,17 @@ export async function resetIssueRun(
             config.runStateDir,
             issue.number,
           ),
+          recoveryPaths,
         });
       const decision = await recoveryInput();
+      if (
+        decision.action === "archive-reset-and-start" &&
+        decision.cleanup.quarantinePath
+      )
+        recoveryPaths = {
+          quarantinePath: decision.cleanup.quarantinePath,
+          stagingPath: `${decision.cleanup.quarantinePath}.staging`,
+        };
       if (decision.action === "refuse")
         throw new Error(formatRunRecoveryDecision(decision));
       if (decision.action !== "archive-reset-and-start")
@@ -181,20 +201,27 @@ export async function resetIssueRun(
           },
         });
       } catch (error) {
-        if (error instanceof RunRecoveryMutationError)
-          throw new ResetIssueRunRecoveryError(error, archive.path);
-        throw error;
+        throw new ResetIssueRunRecoveryError(error, archive.path);
       }
-      const pipelineResult = await runOneIssue(runner, config, {
-        ...options,
-        lease,
-        reset: {
+      let pipelineResult;
+      try {
+        pipelineResult = await runOneIssue(runner, config, {
+          ...options,
           lease,
-          archivePath: archive.path,
-          quarantinePaths: mutation.quarantinePaths,
-          seed: decision.seed,
-        },
-      });
+          reset: {
+            lease,
+            archivePath: archive.path,
+            quarantinePaths: mutation.quarantinePaths,
+            seed: decision.seed,
+          },
+        });
+      } catch (error) {
+        throw new ResetIssueRunRecoveryError(
+          error,
+          archive.path,
+          mutation.quarantinePaths,
+        );
+      }
       return {
         status: "reset-started",
         issueNumber: issue.number,

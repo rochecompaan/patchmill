@@ -58,10 +58,11 @@ function seed(assessment: RunRecoveryAssessment): RunResetSeed {
       : {}),
   };
 }
-function paths(assessment: RunRecoveryAssessment): {
-  quarantinePath: string;
-  stagingPath: string;
-} {
+function paths(
+  assessment: RunRecoveryAssessment,
+  planned?: { quarantinePath: string; stagingPath: string },
+): { quarantinePath: string; stagingPath: string } {
+  if (planned) return planned;
   const base = `${assessment.expectedWorkspace.worktreePath}.recovery-${Date.now()}`;
   return {
     quarantinePath: `${base}-quarantine`,
@@ -71,6 +72,7 @@ function paths(assessment: RunRecoveryAssessment): {
 export function decideRunRecovery(
   intent: RunRecoveryIntent,
   assessment: RunRecoveryAssessment,
+  plannedPaths?: { quarantinePath: string; stagingPath: string },
 ): RunRecoveryDecision {
   if (intent === "retry" && !assessment.blocked)
     return refusal(assessment, "not-blocked");
@@ -89,7 +91,7 @@ export function decideRunRecovery(
     assessment.classification === "resumable-with-commits"
   )
     return refusal(assessment, "unmerged-commits");
-  const { quarantinePath, stagingPath } = paths(assessment);
+  const { quarantinePath, stagingPath } = paths(assessment, plannedPaths);
   if (intent === "reset")
     return {
       action: "archive-reset-and-start",
@@ -130,9 +132,19 @@ export function decideRunRecovery(
       recreation: {
         branch: assessment.expectedWorkspace.branch,
         expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
-        mode: assessment.branch.exists ? "reuse-existing" : "create-from-base",
+        mode: !assessment.branch.exists
+          ? "create-from-base"
+          : assessment.divergence?.ahead === 0 &&
+              (assessment.divergence.behind ?? 0) > 0
+            ? "advance-to-base"
+            : "reuse-existing",
         expectedBranchOid: assessment.branch.oid,
-        targetOid: assessment.branch.oid ?? assessment.baseOid,
+        targetOid:
+          assessment.branch.exists &&
+          assessment.divergence?.ahead === 0 &&
+          (assessment.divergence.behind ?? 0) > 0
+            ? assessment.baseOid
+            : (assessment.branch.oid ?? assessment.baseOid),
         pruneStaleRegistration:
           assessment.worktree.registered && !assessment.worktree.exists,
         stagingPath,

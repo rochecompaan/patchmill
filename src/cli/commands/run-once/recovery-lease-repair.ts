@@ -99,7 +99,7 @@ export async function inspectIssueRunLeaseRepair(
   );
   if (stateRaw) {
     const state = JSON.parse(stateRaw) as AgentIssueRunState;
-    if (active(state) && !state.leaseProtocolVersion)
+    if (active(state) && state.leaseProtocolVersion !== 1)
       return {
         kind: "legacy-active-state",
         sha256: hash(stateRaw),
@@ -207,10 +207,15 @@ export async function repairIssueRunLease(input: {
   } finally {
     if (guardPath && guardToken) {
       const raw = await content(guardPath);
-      if (raw && owner(raw)?.ownerToken === guardToken)
-        await unlink(guardPath).catch(() => undefined);
+      if (raw && owner(raw)?.ownerToken === guardToken) {
+        await unlink(guardPath).catch((error: NodeJS.ErrnoException) =>
+          error.code === "ENOENT" ? undefined : Promise.reject(error),
+        );
+      }
     }
     await handle.close();
-    await unlink(repair).catch(() => undefined);
+    await unlink(repair).catch((error: NodeJS.ErrnoException) =>
+      error.code === "ENOENT" ? undefined : Promise.reject(error),
+    );
   }
 }

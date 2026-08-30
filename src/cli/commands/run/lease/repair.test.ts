@@ -36,6 +36,36 @@ test("inspection prints a fingerprinted follow-up command", async () => {
   assert.equal(code, 0);
   assert.match(err.text, /--expect-lease-sha256 abc --confirm-owner-stopped/);
 });
+test("delegates every confirmed repair mode with its matching confirmation", async () => {
+  for (const [flag, confirmation, result] of [
+    ["--expect-lease-sha256", "--confirm-owner-stopped", "lease-quarantined"],
+    [
+      "--expect-guard-sha256",
+      "--confirm-all-runners-stopped",
+      "guard-quarantined",
+    ],
+    [
+      "--expect-state-sha256",
+      "--confirm-all-runners-stopped",
+      "legacy-fence-written",
+    ],
+  ] as const) {
+    let input: { confirmedProcessesStopped: boolean } | undefined;
+    const code = await runLeaseRepairCommand(
+      ["--issue", "45", flag, "abc", confirmation],
+      {
+        loadConfig: async () => ({ repoRoot: ".", runStateDir: "runs" }),
+        repair: async (value) => {
+          input = value;
+          return { kind: result, path: "runs/archive" };
+        },
+        stderr: stream() as never,
+      },
+    );
+    assert.equal(code, 0);
+    assert.equal(input?.confirmedProcessesStopped, true);
+  }
+});
 test("rejects mismatched and confirmation-only repair confirmations", async () => {
   await assert.rejects(
     runLeaseRepairCommand([

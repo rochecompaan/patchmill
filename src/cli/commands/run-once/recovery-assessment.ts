@@ -25,11 +25,31 @@ async function git(
   return result.stdout.trim();
 }
 async function oid(input: PlanRunRecoveryInput, ref: string): Promise<string> {
-  const value = await git(
-    input,
+  const result = await input.runner.run(
+    "git",
     ["rev-parse", "--verify", `${ref}^{commit}`],
-    `cannot resolve ${ref}`,
+    { cwd: input.repoRoot },
   );
+  if (result.code !== 0) throw failure(`cannot resolve ${ref}`, result);
+  const value = result.stdout.trim();
+  if (!/^[0-9a-f]{7,64}$/iu.test(value))
+    throw new Error(
+      `git returned invalid object id for ${ref}: ${value || "(empty)"}`,
+    );
+  return value;
+}
+async function optionalOid(
+  input: PlanRunRecoveryInput,
+  ref: string,
+): Promise<string | undefined> {
+  const result = await input.runner.run(
+    "git",
+    ["rev-parse", "--verify", `${ref}^{commit}`],
+    { cwd: input.repoRoot },
+  );
+  if (result.code === 128) return undefined;
+  if (result.code !== 0) throw failure(`cannot resolve ${ref}`, result);
+  const value = result.stdout.trim();
   if (!/^[0-9a-f]{7,64}$/iu.test(value))
     throw new Error(
       `git returned invalid object id for ${ref}: ${value || "(empty)"}`,
@@ -122,8 +142,15 @@ function classify(input: {
   active: boolean;
   divergence?: { ahead: number; behind: number };
   commits: string[];
+  savedBranch?: string;
+  savedWorktreePath?: string;
+  expectedWorktreePath: string;
 }): RunRecoveryClassification {
   if (
+    (input.savedBranch && input.savedBranch !== input.expectedBranch) ||
+    (input.savedWorktreePath &&
+      resolve(input.savedWorktreePath) !==
+        resolve(input.expectedWorktreePath)) ||
     (input.worktreeExists && !input.registered) ||
     input.expectedBranchElsewhere ||
     (input.registered && input.registeredBranch !== input.expectedBranch) ||
@@ -146,14 +173,7 @@ export async function assessRunRecovery(
   input: PlanRunRecoveryInput,
 ): Promise<RunRecoveryAssessment> {
   const baseOid = await oid(input, input.baseRef);
-  let branchOid: string | undefined;
-  try {
-    branchOid = await oid(input, input.expectedWorkspace.branch);
-  } catch (error) {
-    // `rev-parse --verify` reports a missing ref as 128 on common Git builds.
-    // Do not treat any other failed verification as a missing branch.
-    if (!/exit (1|128)\b/u.test(String(error))) throw error;
-  }
+  const branchOid = await optionalOid(input, input.expectedWorkspace.branch);
   const worktreePath = resolve(
     input.repoRoot,
     input.expectedWorkspace.worktreePath,
@@ -226,7 +246,7 @@ export async function assessRunRecovery(
   const active = isActive(input.state.status);
   const hash = createHash("sha256").update(input.snapshotRaw).digest("hex");
   const legacyMigrationFenceValid =
-    !!input.state.leaseProtocolVersion ||
+    input.state.leaseProtocolVersion === 1 ||
     (!!input.legacyMigrationFence &&
       active &&
       input.legacyMigrationFence.issueNumber === input.state.issueNumber &&
@@ -263,6 +283,9 @@ export async function assessRunRecovery(
     active,
     divergence,
     commits: actualUniqueCommits,
+    savedBranch: input.state.branch,
+    savedWorktreePath: input.state.worktreePath,
+    expectedWorktreePath: input.expectedWorkspace.worktreePath,
   });
   return {
     runStatePath: input.runStatePath,
@@ -270,7 +293,7 @@ export async function assessRunRecovery(
     title: input.state.title,
     status: input.state.status,
     lease: { status: "owned", ownerToken: input.leaseOwnerToken },
-    ...(input.state.leaseProtocolVersion
+    ...(input.state.leaseProtocolVersion === 1
       ? { leaseProtocolVersion: 1 as const }
       : {}),
     legacyMigrationFenceValid,

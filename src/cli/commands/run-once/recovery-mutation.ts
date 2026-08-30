@@ -55,6 +55,54 @@ async function command(
       `Recovery git mutation failed: git ${args.join(" ")}\n${result.stderr || result.stdout}`,
     );
 }
+async function assertWorkspaceUnchanged(
+  runner: CommandRunner,
+  path: string,
+  label: string,
+): Promise<void> {
+  const ordinary = await runner.run("git", [
+    "-C",
+    path,
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+  ]);
+  const ignored = await runner.run("git", [
+    "-C",
+    path,
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--ignored=matching",
+  ]);
+  if (
+    ordinary.code !== 0 ||
+    ignored.code !== 0 ||
+    ordinary.stdout.trim() ||
+    ignored.stdout.trim()
+  )
+    throw new Error(
+      `Recovery workspace changed at ${label}; preserved without publishing or ref update`,
+    );
+}
+function sameRefresh(
+  next: Exclude<RunRecoveryDecision, { action: "refuse" }>,
+  current: Extract<RunRecoveryDecision, { action: "refresh-and-resume" }>,
+): boolean {
+  return (
+    next.action === "refresh-and-resume" &&
+    JSON.stringify(next.refresh) === JSON.stringify(current.refresh)
+  );
+}
+function sameRecreation(
+  next: Exclude<RunRecoveryDecision, { action: "refuse" }>,
+  current: Extract<RunRecoveryDecision, { action: "recreate-and-resume" }>,
+): boolean {
+  return (
+    next.action === "recreate-and-resume" &&
+    JSON.stringify(next.recreation) === JSON.stringify(current.recreation)
+  );
+}
 export async function executeRunRecoveryMutation(input: {
   decision: Exclude<RunRecoveryDecision, { action: "refuse" }>;
   runner: CommandRunner;
@@ -83,11 +131,7 @@ export async function executeRunRecoveryMutation(input: {
         oid: p.baseOid,
       });
       const next = nonRefusal(await input.reassess());
-      if (
-        next.action !== "refresh-and-resume" ||
-        next.refresh.expectedBranchOid !== p.expectedBranchOid ||
-        next.refresh.baseOid !== p.baseOid
-      )
+      if (!sameRefresh(next, input.decision))
         throw new Error("Recovery evidence changed before workspace refresh");
       await command(input.runner, input.repoRoot, [
         "worktree",
@@ -101,6 +145,11 @@ export async function executeRunRecoveryMutation(input: {
         from: p.expectedWorktreePath,
         to: p.quarantinePath,
       });
+      await assertWorkspaceUnchanged(
+        input.runner,
+        p.quarantinePath,
+        "quarantine",
+      );
       await command(input.runner, p.quarantinePath, [
         "update-ref",
         "--no-deref",
@@ -125,6 +174,7 @@ export async function executeRunRecoveryMutation(input: {
         from: p.expectedBranchOid,
         to: p.baseOid,
       });
+      await assertWorkspaceUnchanged(input.runner, p.stagingPath, "staging");
       await command(input.runner, p.stagingPath, [
         "symbolic-ref",
         "HEAD",
@@ -141,6 +191,11 @@ export async function executeRunRecoveryMutation(input: {
         from: p.stagingPath,
         to: p.expectedWorktreePath,
       });
+      await assertWorkspaceUnchanged(
+        input.runner,
+        p.expectedWorktreePath,
+        "published workspace",
+      );
       return {
         action: input.decision.action,
         completed,
@@ -182,7 +237,12 @@ export async function executeRunRecoveryMutation(input: {
         worktreePath: p.stagingPath,
         oid: p.targetOid,
       });
-      nonRefusal(await input.reassess());
+      const afterCreate = nonRefusal(await input.reassess());
+      if (!sameRecreation(afterCreate, input.decision))
+        throw new Error(
+          "Recovery evidence changed before workspace recreation",
+        );
+      await assertWorkspaceUnchanged(input.runner, p.stagingPath, "staging");
       await command(input.runner, input.repoRoot, [
         "worktree",
         "move",
@@ -194,6 +254,11 @@ export async function executeRunRecoveryMutation(input: {
         from: p.stagingPath,
         to: p.expectedWorktreePath,
       });
+      await assertWorkspaceUnchanged(
+        input.runner,
+        p.expectedWorktreePath,
+        "published workspace",
+      );
       return {
         action: input.decision.action,
         completed,
@@ -286,14 +351,12 @@ export async function executeRunRecoveryMutation(input: {
       stagingPaths,
     };
   } catch (error) {
-    if (completed.length || quarantinePaths.length || stagingPaths.length)
-      throw new RunRecoveryMutationError(
-        error,
-        input.decision.action,
-        completed,
-        quarantinePaths,
-        stagingPaths,
-      );
-    throw error;
+    throw new RunRecoveryMutationError(
+      error,
+      input.decision.action,
+      completed,
+      quarantinePaths,
+      stagingPaths,
+    );
   }
 }
