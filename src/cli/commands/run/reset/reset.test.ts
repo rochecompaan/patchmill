@@ -8,7 +8,7 @@ import {
   configuredWorktreeStrategy,
   expectedIssueWorkspace,
 } from "../../run-once/pipeline-workspace.ts";
-import { writeRunState } from "../../run-once/run-state.ts";
+import { runStatePath, writeRunState } from "../../run-once/run-state.ts";
 import {
   blockedRecoveryRunner,
   makeConfig,
@@ -226,6 +226,233 @@ test("reset archives a registered checkout then enters the pipeline with its bor
     assert.equal(issue.labels.includes("needs-info"), status === "blocked");
   }
 });
+async function resetFixture(fail?: (args: string[]) => boolean) {
+  const runConfig = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+    baseRef: "HEAD",
+  });
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd: runConfig.repoRoot, encoding: "utf8" });
+  git("init");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Test");
+  await writeFile(join(runConfig.repoRoot, "base"), "base\n");
+  git("add", ".");
+  git("commit", "-m", "base");
+  const workspace = expectedIssueWorkspace(
+    45,
+    "Recover",
+    configuredWorktreeStrategy(runConfig),
+  );
+  const worktreePath = join(runConfig.repoRoot, workspace.worktreePath);
+  git("worktree", "add", "-b", workspace.branch, worktreePath, "HEAD");
+  await writeRunState(runConfig.runStateDir, {
+    issueNumber: 45,
+    title: "Recover",
+    status: "blocked",
+    branch: workspace.branch,
+    worktreePath: workspace.worktreePath,
+    lastError: "blocked",
+  });
+  const issue = {
+    number: 45,
+    title: "Recover",
+    state: "open" as const,
+    labels: ["agent-ready", "needs-info"],
+    comments: [],
+  };
+  const calls: unknown[] = [];
+  const runner = {
+    async run(_command: string, args: string[], options?: { cwd?: string }) {
+      if (fail?.(args))
+        return { code: 1, stdout: "", stderr: "injected failure" };
+      try {
+        return {
+          code: 0,
+          stdout: execFileSync("git", args, {
+            cwd: options?.cwd ?? runConfig.repoRoot,
+            encoding: "utf8",
+          }),
+          stderr: "",
+        };
+      } catch (error) {
+        const e = error as {
+          status?: number;
+          stdout?: string;
+          stderr?: string;
+        };
+        return {
+          code: e.status ?? 1,
+          stdout: e.stdout ?? "",
+          stderr: e.stderr ?? "",
+        };
+      }
+    },
+  };
+  const dependencies = {
+    createHost: (() => ({
+      viewIssue: async () => issue,
+      hydrateIssueComments: async () => [issue],
+      trustedTriageCommentAuthors: async () => [],
+    })) as never,
+    runPipeline: async (
+      _runner: unknown,
+      _config: unknown,
+      options: unknown,
+    ) => {
+      calls.push(options);
+      return { status: "no-issue" } as never;
+    },
+  };
+  return {
+    runConfig,
+    git,
+    workspace,
+    worktreePath,
+    issue,
+    runner,
+    calls,
+    dependencies,
+  };
+}
+
+test("archive failure leaves the active state and workspace untouched without pipeline entry", async () => {
+  const fixture = await resetFixture();
+  await assert.rejects(
+    resetIssueRun(
+      fixture.runner,
+      fixture.runConfig,
+      { now: NOW },
+      {
+        ...fixture.dependencies,
+        archiveRecovery: async () => {
+          throw new Error("archive injected");
+        },
+      },
+    ),
+    /archive injected/,
+  );
+  assert.equal(fixture.calls.length, 0);
+  assert.equal(
+    fixture.git("rev-parse", fixture.workspace.branch).trim().length,
+    40,
+  );
+  assert.match(
+    await (
+      await import("node:fs/promises")
+    ).readFile(runStatePath(fixture.runConfig.runStateDir, 45), "utf8"),
+    /"blocked"/,
+  );
+  assert.match(
+    await (
+      await import("node:fs/promises")
+    ).readFile(join(fixture.worktreePath, "base"), "utf8"),
+    /base/,
+  );
+});
+
+test("worktree move failure preserves finalized archive and active state without pipeline entry", async () => {
+  const fixture = await resetFixture(
+    (args) => args[0] === "worktree" && args[1] === "move",
+  );
+  await assert.rejects(
+    resetIssueRun(
+      fixture.runner,
+      fixture.runConfig,
+      { now: NOW },
+      fixture.dependencies,
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Archive: .*archive/);
+      assert.match(error.message, /Preserved paths: none/);
+      return true;
+    },
+  );
+  assert.equal(fixture.calls.length, 0);
+  assert.match(
+    await (
+      await import("node:fs/promises")
+    ).readFile(runStatePath(fixture.runConfig.runStateDir, 45), "utf8"),
+    /"blocked"/,
+  );
+  assert.match(
+    await (
+      await import("node:fs/promises")
+    ).readFile(join(fixture.worktreePath, "base"), "utf8"),
+    /base/,
+  );
+});
+
+test("detach and ref deletion failures preserve archive/quarantine diagnostics without pipeline entry", async () => {
+  for (const fail of [
+    (args: string[]) => args[0] === "update-ref" && args[1] === "--no-deref",
+    (args: string[]) => args[0] === "update-ref" && args[1] === "-d",
+  ]) {
+    const fixture = await resetFixture(fail);
+    await assert.rejects(
+      resetIssueRun(
+        fixture.runner,
+        fixture.runConfig,
+        { now: NOW },
+        fixture.dependencies,
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /Archive: .*archive/);
+        assert.match(error.message, /Preserved paths: .*quarantine/);
+        return true;
+      },
+    );
+    assert.equal(fixture.calls.length, 0);
+    assert.match(
+      await (
+        await import("node:fs/promises")
+      ).readFile(runStatePath(fixture.runConfig.runStateDir, 45), "utf8"),
+      /"blocked"/,
+    );
+  }
+});
+
+test("pipeline failure retains archive and quarantine diagnostics and releases the reset lease", async () => {
+  const fixture = await resetFixture();
+  await assert.rejects(
+    resetIssueRun(
+      fixture.runner,
+      fixture.runConfig,
+      { now: NOW },
+      {
+        ...fixture.dependencies,
+        runPipeline: async () => {
+          throw new Error("pipeline injected");
+        },
+      },
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Archive: .*archive/);
+      assert.match(error.message, /Preserved paths: .*quarantine/);
+      return true;
+    },
+  );
+  assert.throws(() =>
+    fixture.git(
+      "rev-parse",
+      "--verify",
+      `refs/heads/${fixture.workspace.branch}`,
+    ),
+  );
+  await assert.rejects(
+    (await import("node:fs/promises")).readFile(
+      join(fixture.runConfig.runStateDir, "locks", "issue-45.lock"),
+      "utf8",
+    ),
+    /ENOENT/,
+  );
+});
+
 test("returns absent-state guidance without recovery mutation", async () => {
   const runConfig = await makeConfig({
     dryRun: false,

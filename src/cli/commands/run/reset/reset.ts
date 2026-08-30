@@ -95,6 +95,8 @@ export function validateResetIssueEligibility(input: {
 }
 export type ResetIssueRunDependencies = {
   createHost: typeof createRunOnceHostProvider;
+  archiveRecovery: typeof archiveRunRecovery;
+  executeMutation: typeof executeRunRecoveryMutation;
   runPipeline: typeof runOneIssue;
 };
 export async function resetIssueRun(
@@ -180,7 +182,9 @@ export async function resetIssueRun(
         throw new Error(formatRunRecoveryDecision(decision));
       if (decision.action !== "archive-reset-and-start")
         throw new Error("Recovery policy did not produce a reset action");
-      const archive = await archiveRunRecovery({
+      const archive = await (
+        dependencies.archiveRecovery ?? archiveRunRecovery
+      )({
         runStateDir: config.runStateDir,
         snapshot,
         assessment: decision.assessment,
@@ -191,7 +195,9 @@ export async function resetIssueRun(
       });
       let mutation;
       try {
-        mutation = await executeRunRecoveryMutation({
+        mutation = await (
+          dependencies.executeMutation ?? executeRunRecoveryMutation
+        )({
           decision,
           runner,
           repoRoot: config.repoRoot,

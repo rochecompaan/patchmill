@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
@@ -30,18 +29,14 @@ import {
 import {
   isResumableRunState,
   readRunState,
-  readRunStateSnapshot,
-  adoptRunStateLeaseProtocol,
   replaceRunStateAfterReset,
   runStatePath,
   writeRunState,
 } from "./run-state.ts";
 import {
   formatBlockedRunRecoveryReport,
-  formatRunRecoveryDecision,
   hasBlockedRunRecoveryState,
   inspectBlockedRunRecovery,
-  planRunRecovery,
 } from "./recovery.ts";
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import {
@@ -77,8 +72,10 @@ import {
 } from "./pipeline-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { withIssueRunLease } from "./recovery-lease.ts";
-import { readRunLegacyMigrationFence } from "./recovery-lease-repair.ts";
-import { executeRunRecoveryMutation } from "./recovery-mutation.ts";
+import {
+  adoptLegacyRecoveryLease,
+  recoverBlockedWorkspace,
+} from "./pipeline-recovery.ts";
 import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
@@ -206,39 +203,13 @@ export async function runOneIssue(
       (lease) => runOneIssue(runner, config, { ...options, lease }),
     );
   }
-  if (
-    !config.dryRun &&
-    options.lease &&
-    existingState &&
-    existingState.leaseProtocolVersion !== 1 &&
-    ["claimed", "planning", "implementing"].includes(existingState.status)
-  ) {
-    const snapshot = await readRunStateSnapshot(
-      config.runStateDir,
-      issue.number,
-    );
-    const fence = await readRunLegacyMigrationFence(
-      config.runStateDir,
-      issue.number,
-    );
-    const hash =
-      snapshot && createHash("sha256").update(snapshot.raw).digest("hex");
-    if (
-      !snapshot ||
-      !fence ||
-      fence.issueNumber !== issue.number ||
-      fence.status !== snapshot.state.status ||
-      fence.stateSha256 !== hash
-    )
-      throw new AgentIssueSafetyError(
-        "Legacy active Run state is unfenced; repair its lease before continuing",
-      );
-    existingState = await adoptRunStateLeaseProtocol({
-      snapshot,
-      expectedStateSha256: hash,
+  if (!config.dryRun && options.lease)
+    existingState = await adoptLegacyRecoveryLease({
+      config,
+      issueNumber: issue.number,
+      state: existingState,
       lease: options.lease,
     });
-  }
   const piAgentDir = localPiAgentDir(config.repoRoot);
   const resumed = selected?.resumed ?? false;
   const ordinaryResumableState =
@@ -388,67 +359,16 @@ export async function runOneIssue(
     issue.title,
     worktreeStrategy,
   );
-  if (hasBlockedRunRecoveryState(existingState) && options.lease) {
-    const snapshot = await readRunStateSnapshot(
-      config.runStateDir,
-      issue.number,
-    );
-    if (!snapshot)
-      throw new AgentIssueSafetyError(
-        `Blocked Run recovery state for issue #${issue.number} disappeared`,
-      );
-    let recoveryPaths:
-      | { quarantinePath: string; stagingPath: string }
-      | undefined;
-    const recoveryInput = async () => {
-      const current = await readRunStateSnapshot(
-        config.runStateDir,
-        issue.number,
-      );
-      if (!current || current.raw !== snapshot.raw)
-        throw new AgentIssueSafetyError(
-          "Run recovery state changed before mutation",
-        );
-      return planRunRecovery({
-        intent: "retry",
-        runner,
-        repoRoot: config.repoRoot,
-        runStatePath: current.path,
-        state: current.state,
-        baseRef: config.baseRef,
-        expectedWorkspace,
-        ignoredPaths,
-        resolvedArtifacts,
-        leaseOwnerToken: options.lease!.record.ownerToken,
-        snapshotRaw: current.raw,
-        legacyMigrationFence: await readRunLegacyMigrationFence(
-          config.runStateDir,
-          issue.number,
-        ),
-        recoveryPaths,
-      });
-    };
-    const decision = await recoveryInput();
-    if (decision.action === "refuse")
-      throw new AgentIssueSafetyError(formatRunRecoveryDecision(decision));
-    if (decision.action === "refresh-and-resume")
-      recoveryPaths = {
-        quarantinePath: decision.refresh.quarantinePath,
-        stagingPath: decision.refresh.stagingPath,
-      };
-    else if (decision.action === "recreate-and-resume")
-      recoveryPaths = {
-        quarantinePath: `${decision.recreation.stagingPath}.quarantine`,
-        stagingPath: decision.recreation.stagingPath,
-      };
-    if (decision.action !== "resume")
-      await executeRunRecoveryMutation({
-        decision,
-        runner,
-        repoRoot: config.repoRoot,
-        reassess: recoveryInput,
-      });
-  }
+  await recoverBlockedWorkspace({
+    runner,
+    config,
+    issueNumber: issue.number,
+    existingState,
+    expectedWorkspace,
+    ignoredPaths,
+    resolvedArtifacts,
+    lease: options.lease,
+  });
   const assertExpectedWorkspaceIdentity = (): void => {
     if (
       resumableState &&

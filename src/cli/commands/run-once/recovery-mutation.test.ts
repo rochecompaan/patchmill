@@ -446,6 +446,201 @@ test("late ignored quarantine content prevents reset ref deletion", async () => 
   assert.equal(await readFile(join(quarantine, ".env"), "utf8"), "secret\n");
   assert.equal(git("rev-parse", branch), oid);
 });
+async function planRealRecreation(input: {
+  root: string;
+  branch: string;
+  expected: string;
+  state: {
+    issueNumber: number;
+    title: string;
+    status: "blocked";
+    branch: string;
+    worktreePath: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  runner: {
+    run: (
+      command: string,
+      args: string[],
+      options?: { cwd?: string },
+    ) => Promise<{ code: number; stdout: string; stderr: string }>;
+  };
+}) {
+  const recoveryPaths: {
+    current?: { quarantinePath: string; stagingPath: string };
+  } = {};
+  const reassess = () =>
+    planRunRecovery({
+      intent: "retry",
+      runner: input.runner,
+      repoRoot: input.root,
+      runStatePath: join(input.root, "state.json"),
+      state: input.state,
+      baseRef: "HEAD",
+      expectedWorkspace: { branch: input.branch, worktreePath: input.expected },
+      leaseOwnerToken: "owner",
+      snapshotRaw: JSON.stringify(input.state),
+      recoveryPaths: recoveryPaths.current,
+    });
+  const decision = await reassess();
+  assert.equal(decision.action, "recreate-and-resume");
+  recoveryPaths.current = {
+    quarantinePath: `${decision.recreation.stagingPath}.quarantine`,
+    stagingPath: decision.recreation.stagingPath,
+  };
+  return { decision, reassess };
+}
+
+test("real plan reassessment reuses an existing clean branch without changing its head", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-reuse-branch-"));
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  git("init");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Test");
+  await writeFile(join(root, "exact"), "base\n");
+  git("add", ".");
+  git("commit", "-m", "base");
+  const branch = "agent/reuse",
+    head = git("rev-parse", "HEAD"),
+    expected = join(root, "expected");
+  git("branch", branch, head);
+  const runner = {
+    async run(_command: string, args: string[], options?: { cwd?: string }) {
+      try {
+        return {
+          code: 0,
+          stdout: execFileSync("git", args, {
+            cwd: options?.cwd ?? root,
+            encoding: "utf8",
+          }),
+          stderr: "",
+        };
+      } catch (error) {
+        const e = error as {
+          status?: number;
+          stdout?: string;
+          stderr?: string;
+        };
+        return {
+          code: e.status ?? 1,
+          stdout: e.stdout ?? "",
+          stderr: e.stderr ?? "",
+        };
+      }
+    },
+  };
+  const state = {
+    issueNumber: 45,
+    title: "Recover",
+    status: "blocked" as const,
+    branch,
+    worktreePath: expected,
+    createdAt: "now",
+    updatedAt: "now",
+  };
+  const { decision, reassess } = await planRealRecreation({
+    root,
+    branch,
+    expected,
+    state,
+    runner,
+  });
+  assert.equal(decision.recreation.mode, "reuse-existing");
+  await executeRunRecoveryMutation({
+    decision,
+    repoRoot: root,
+    runner,
+    reassess,
+  });
+  assert.equal(git("rev-parse", branch), head);
+  assert.equal(git("-C", expected, "rev-parse", "HEAD"), head);
+  assert.equal(await readFile(join(expected, "exact"), "utf8"), "base\n");
+});
+
+test("real plan reassessment CAS-advances a stale zero-ahead branch to pinned base before staging", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-advance-branch-"));
+  const git = (...args: string[]) =>
+    execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  git("init");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Test");
+  await writeFile(join(root, "exact"), "old\n");
+  git("add", ".");
+  git("commit", "-m", "old");
+  const branch = "agent/advance",
+    old = git("rev-parse", "HEAD"),
+    expected = join(root, "expected");
+  git("branch", branch, old);
+  await writeFile(join(root, "exact"), "pinned\n");
+  git("add", ".");
+  git("commit", "-m", "base");
+  const base = git("rev-parse", "HEAD");
+  const calls: string[][] = [];
+  const runner = {
+    async run(_command: string, args: string[], options?: { cwd?: string }) {
+      calls.push(args);
+      try {
+        return {
+          code: 0,
+          stdout: execFileSync("git", args, {
+            cwd: options?.cwd ?? root,
+            encoding: "utf8",
+          }),
+          stderr: "",
+        };
+      } catch (error) {
+        const e = error as {
+          status?: number;
+          stdout?: string;
+          stderr?: string;
+        };
+        return {
+          code: e.status ?? 1,
+          stdout: e.stdout ?? "",
+          stderr: e.stderr ?? "",
+        };
+      }
+    },
+  };
+  const state = {
+    issueNumber: 45,
+    title: "Recover",
+    status: "blocked" as const,
+    branch,
+    worktreePath: expected,
+    createdAt: "now",
+    updatedAt: "now",
+  };
+  const { decision, reassess } = await planRealRecreation({
+    root,
+    branch,
+    expected,
+    state,
+    runner,
+  });
+  assert.equal(decision.recreation.mode, "advance-to-base");
+  assert.equal(decision.recreation.expectedBranchOid, old);
+  await executeRunRecoveryMutation({
+    decision,
+    repoRoot: root,
+    runner,
+    reassess,
+  });
+  const update = calls.find(
+    (args) => args[0] === "update-ref" && args[1] === `refs/heads/${branch}`,
+  );
+  const add = calls.findIndex(
+    (args) => args[0] === "worktree" && args[1] === "add",
+  );
+  assert.ok(update && calls.indexOf(update) < add);
+  assert.deepEqual(update, ["update-ref", `refs/heads/${branch}`, base, old]);
+  assert.equal(git("rev-parse", branch), base);
+  assert.equal(git("-C", expected, "rev-parse", "HEAD"), base);
+  assert.equal(await readFile(join(expected, "exact"), "utf8"), "pinned\n");
+});
+
 test("refusal is never accepted as a reassessment result", async () => {
   const decision: RunRecoveryDecision = {
     action: "recreate-and-resume",
