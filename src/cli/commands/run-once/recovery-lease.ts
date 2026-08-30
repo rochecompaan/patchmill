@@ -16,6 +16,7 @@ export type IssueRunLeaseOptions = {
   ownerToken?: string;
   now?: () => Date;
   processState?: (pid: number) => "alive" | "dead" | "unverifiable";
+  afterObserveLease?: () => Promise<void> | void;
 };
 export class IssueRunLeaseConflictError extends Error {
   readonly classification = "active-run" as const;
@@ -131,6 +132,7 @@ export async function acquireIssueRunLease(
     throw new IssueRunLeaseConflictError(p.repair, "repair-lock");
   const releaseGuard = await guard(runStateDir, issueNumber, mine);
   try {
+    await options.afterObserveLease?.();
     if (await present(p.repair))
       throw new IssueRunLeaseConflictError(p.repair, "repair-lock");
     try {

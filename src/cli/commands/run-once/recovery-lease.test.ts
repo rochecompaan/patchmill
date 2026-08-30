@@ -67,6 +67,39 @@ test("does not release a borrowed lease", async () => {
     "owner-a",
   );
 });
+test("serializes contenders behind a dead-owner takeover guard", async () => {
+  const runStateDir = await dir();
+  await acquireIssueRunLease(runStateDir, 45, owner);
+  let release!: () => void;
+  let observed!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    observed = resolve;
+  });
+  const first = acquireIssueRunLease(runStateDir, 45, {
+    ...owner,
+    ownerToken: "a",
+    processState: () => "dead",
+    afterObserveLease: async () => {
+      observed();
+      await paused;
+    },
+  });
+  await ready;
+  await assert.rejects(
+    acquireIssueRunLease(runStateDir, 45, {
+      ...owner,
+      ownerToken: "b",
+      processState: () => "dead",
+    }),
+    IssueRunLeaseConflictError,
+  );
+  release();
+  const lease = await first;
+  assert.equal(lease.record.ownerToken, "a");
+});
 test("refuses an abandoned guard and a repair lock", async () => {
   const runStateDir = await dir();
   await writeFile(join(runStateDir, "locks", "issue-45.lease-guard"), "{}\n", {
