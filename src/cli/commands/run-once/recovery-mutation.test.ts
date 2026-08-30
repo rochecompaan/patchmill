@@ -38,6 +38,37 @@ test("resume mutation performs no Git commands", async () => {
   assert.deepEqual(calls, []);
   assert.deepEqual(result.quarantinePaths, []);
 });
+test("recreates an existing branch without creating it again", async () => {
+  const calls: string[][] = [];
+  const decision: RunRecoveryDecision = {
+    action: "recreate-and-resume",
+    assessment,
+    recreation: {
+      branch: "issue",
+      expectedWorktreePath: "work",
+      mode: "advance-to-base",
+      targetOid: assessment.baseOid,
+      expectedBranchOid: assessment.branch.oid,
+      pruneStaleRegistration: false,
+      stagingPath: "stage",
+    },
+  };
+  await executeRunRecoveryMutation({
+    decision,
+    repoRoot: ".",
+    runner: {
+      run: async (_command, args) => {
+        calls.push(args);
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    },
+    reassess: async () => decision,
+  });
+  assert.deepEqual(
+    calls.find((args) => args[0] === "worktree" && args[1] === "add"),
+    ["worktree", "add", "stage", "issue"],
+  );
+});
 test("refusal is never accepted as a reassessment result", async () => {
   const decision: RunRecoveryDecision = {
     action: "recreate-and-resume",

@@ -150,7 +150,9 @@ export async function assessRunRecovery(
   try {
     branchOid = await oid(input, input.expectedWorkspace.branch);
   } catch (error) {
-    if (!String(error).includes("exit 1")) throw error;
+    // `rev-parse --verify` reports a missing ref as 128 on common Git builds.
+    // Do not treat any other failed verification as a missing branch.
+    if (!/exit (1|128)\b/u.test(String(error))) throw error;
   }
   const worktreePath = resolve(
     input.repoRoot,

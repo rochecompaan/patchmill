@@ -148,14 +148,9 @@ export async function executeRunRecoveryMutation(input: {
     await command(
       input.runner,
       input.repoRoot,
-      [
-        "worktree",
-        "add",
-        "-b",
-        ...(p.mode === "create-from-base" ? [p.branch] : []),
-        p.stagingPath,
-        ref,
-      ].filter(Boolean),
+      p.mode === "create-from-base"
+        ? ["worktree", "add", "-b", p.branch, p.stagingPath, ref]
+        : ["worktree", "add", p.stagingPath, ref],
     );
     stagingPaths.push(p.stagingPath);
     completed.push({
