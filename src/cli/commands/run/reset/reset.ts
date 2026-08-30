@@ -12,7 +12,10 @@ import { readRunStateSnapshot } from "../../run-once/run-state.ts";
 import { archiveRunRecovery } from "../../run-once/recovery-archive.ts";
 import { withIssueRunLease } from "../../run-once/recovery-lease.ts";
 import { readRunLegacyMigrationFence } from "../../run-once/recovery-lease-repair.ts";
-import { executeRunRecoveryMutation } from "../../run-once/recovery-mutation.ts";
+import {
+  executeRunRecoveryMutation,
+  RunRecoveryMutationError,
+} from "../../run-once/recovery-mutation.ts";
 import {
   formatRunRecoveryDecision,
   planRunRecovery,
@@ -25,6 +28,18 @@ import type {
   CommandRunner,
   IssueSummary,
 } from "../../run-once/types.ts";
+export class ResetIssueRunRecoveryError extends Error {
+  constructor(
+    cause: RunRecoveryMutationError,
+    readonly archivePath: string,
+  ) {
+    super(
+      `${cause.message}\nArchive: ${archivePath}\nPreserved paths: ${[...cause.quarantinePaths, ...cause.stagingPaths].join(", ") || "none"}`,
+    );
+    this.name = "ResetIssueRunRecoveryError";
+    this.cause = cause;
+  }
+}
 export type ResetIssueRunResult =
   | { status: "nothing-to-reset"; issueNumber: number; guidance: string }
   | {
@@ -150,20 +165,27 @@ export async function resetIssueRun(
         baseRef: config.baseRef,
         now: options.now ?? new Date(),
       });
-      const mutation = await executeRunRecoveryMutation({
-        decision,
-        runner,
-        repoRoot: config.repoRoot,
-        reassess: async () => {
-          const current = await readRunStateSnapshot(
-            config.runStateDir,
-            issue.number,
-          );
-          if (!current || current.raw !== snapshot.raw)
-            throw new Error("Run recovery state changed after archival");
-          return recoveryInput();
-        },
-      });
+      let mutation;
+      try {
+        mutation = await executeRunRecoveryMutation({
+          decision,
+          runner,
+          repoRoot: config.repoRoot,
+          reassess: async () => {
+            const current = await readRunStateSnapshot(
+              config.runStateDir,
+              issue.number,
+            );
+            if (!current || current.raw !== snapshot.raw)
+              throw new Error("Run recovery state changed after archival");
+            return recoveryInput();
+          },
+        });
+      } catch (error) {
+        if (error instanceof RunRecoveryMutationError)
+          throw new ResetIssueRunRecoveryError(error, archive.path);
+        throw error;
+      }
       const pipelineResult = await runOneIssue(runner, config, {
         ...options,
         lease,
