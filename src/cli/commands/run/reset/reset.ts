@@ -29,15 +29,14 @@ import type {
   IssueSummary,
 } from "../../run-once/types.ts";
 export class ResetIssueRunRecoveryError extends Error {
-  constructor(
-    cause: RunRecoveryMutationError,
-    readonly archivePath: string,
-  ) {
+  readonly archivePath: string;
+  constructor(cause: RunRecoveryMutationError, archivePath: string) {
     super(
       `${cause.message}\nArchive: ${archivePath}\nPreserved paths: ${[...cause.quarantinePaths, ...cause.stagingPaths].join(", ") || "none"}`,
     );
     this.name = "ResetIssueRunRecoveryError";
     this.cause = cause;
+    this.archivePath = archivePath;
   }
 }
 export type ResetIssueRunResult =

@@ -5,7 +5,7 @@ import {
   exitCodeForRunOnceResult,
   writeRunOnceResult,
 } from "../../run-once/result-output.ts";
-import { resetIssueRun } from "./reset.ts";
+import { ResetIssueRunRecoveryError, resetIssueRun } from "./reset.ts";
 export async function runResetCommand(
   args: string[],
   dependencies: Partial<{
@@ -36,12 +36,24 @@ export async function runResetCommand(
     throw new Error(
       "patchmill run reset rejects --dry-run: no reset preview contract exists",
     );
-  const result = await (dependencies.executeReset ?? resetIssueRun)(
-    dependencies.runner ?? createCommandRunner(),
-    config as typeof config & { issueNumber: number },
-    { now: dependencies.now?.() ?? new Date() },
-  );
   const stderr = dependencies.stderr ?? process.stderr;
+  let result;
+  try {
+    result = await (dependencies.executeReset ?? resetIssueRun)(
+      dependencies.runner ?? createCommandRunner(),
+      config as typeof config & { issueNumber: number },
+      { now: dependencies.now?.() ?? new Date() },
+    );
+  } catch (error) {
+    if (error instanceof ResetIssueRunRecoveryError) {
+      const mutation = error.cause;
+      stderr.write(
+        `Reset recovery failed: ${mutation instanceof Error ? mutation.message : String(mutation)}\nArchive: ${error.archivePath}\n${mutation instanceof Error && "quarantinePaths" in mutation ? (mutation.quarantinePaths as string[]).map((path) => `Preserved: ${path}`).join("\n") : ""}\n`,
+      );
+      return 1;
+    }
+    throw error;
+  }
   if (result.status === "nothing-to-reset") {
     stderr.write(`${result.guidance}\n`);
     return 1;
