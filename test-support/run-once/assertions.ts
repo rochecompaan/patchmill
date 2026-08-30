@@ -29,7 +29,11 @@ export function gitBaseContainmentResult(
 ): CommandResult | undefined {
   if (call.command !== "git") return undefined;
   if (call.args[0] === "rev-parse" && call.args[1] === "--verify") {
-    return { code: 0, stdout: "commit-sha\n", stderr: "" };
+    return {
+      code: 0,
+      stdout: "0123456789abcdef0123456789abcdef01234567\n",
+      stderr: "",
+    };
   }
   if (
     call.args[0] === "log" &&
@@ -46,7 +50,11 @@ export function gitBaseContainmentFailure(
 ): CommandResult | undefined {
   if (call.command !== "git") return undefined;
   if (call.args[0] === "rev-parse" && call.args[1] === "--verify") {
-    return { code: 0, stdout: "commit-sha\n", stderr: "" };
+    return {
+      code: 0,
+      stdout: "0123456789abcdef0123456789abcdef01234567\n",
+      stderr: "",
+    };
   }
   if (
     call.args[0] === "log" &&

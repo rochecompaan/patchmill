@@ -31,7 +31,9 @@ async function oid(input: PlanRunRecoveryInput, ref: string): Promise<string> {
     `cannot resolve ${ref}`,
   );
   if (!/^[0-9a-f]{7,64}$/iu.test(value))
-    throw new Error(`git returned invalid object id for ${ref}`);
+    throw new Error(
+      `git returned invalid object id for ${ref}: ${value || "(empty)"}`,
+    );
   return value;
 }
 async function exists(path: string): Promise<boolean> {

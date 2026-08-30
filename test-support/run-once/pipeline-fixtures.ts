@@ -349,13 +349,13 @@ export function blockedRecoveryRunner(
       return {
         code: 0,
         stdout: call.args.at(-1)?.includes("agent/issue")
-          ? "abcdef1234567\n"
-          : "0123456789abcdef\n",
+          ? "abcdefabcdefabcdefabcdefabcdefabcdefabcd\n"
+          : "0123456789abcdef0123456789abcdef01234567\n",
         stderr: "",
       };
     }
     if (call.command === "git" && call.args[0] === "cat-file")
-      return { code: 1, stdout: "", stderr: "" };
+      return { code: 0, stdout: "blob\n", stderr: "" };
     if (call.command === "git" && call.args[0] === "show-ref") {
       return {
         code: options.branchExists === false ? 1 : 0,
