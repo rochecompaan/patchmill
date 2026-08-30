@@ -399,7 +399,7 @@ export function blockedRecoveryRunner(
       return { code: options.merged ? 0 : 1, stdout: "", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "rev-list") {
-      return { code: 0, stdout: options.revList ?? "0\t0\n", stderr: "" };
+      return { code: 0, stdout: options.revList ?? "0\t2\n", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "status") {
       return { code: 0, stdout: "", stderr: "" };
@@ -407,7 +407,8 @@ export function blockedRecoveryRunner(
     if (call.command === "git" && call.args[0] === "log") {
       return {
         code: 0,
-        stdout: options.log ?? "",
+        stdout:
+          options.log ?? "def456 add verification\nabc123 implement feature\n",
         stderr: "",
       };
     }
