@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import {
   mkdir,
   open,
@@ -133,6 +134,8 @@ export async function repairIssueRunLease(input: {
   const repair = file(input.runStateDir, input.issueNumber, ".repair.lock");
   await mkdir(dirname(repair), { recursive: true });
   let handle;
+  let guardPath: string | undefined;
+  let guardToken: string | undefined;
   try {
     handle = await open(repair, "wx", 0o600);
     await handle.writeFile("repair\n");
@@ -149,6 +152,21 @@ export async function repairIssueRunLease(input: {
         : kind === "guard"
           ? file(input.runStateDir, input.issueNumber, ".lease-guard")
           : join(input.runStateDir, `issue-${input.issueNumber}.json`);
+    if (kind === "lease") {
+      guardPath = file(input.runStateDir, input.issueNumber, ".lease-guard");
+      guardToken = randomUUID();
+      try {
+        const guard = await open(guardPath, "wx", 0o600);
+        await guard.writeFile(
+          `${JSON.stringify({ version: 1, issueNumber: input.issueNumber, pid: process.pid, hostname: hostname(), ownerToken: guardToken, acquiredAt: (input.now?.() ?? new Date()).toISOString() })}\n`,
+        );
+        await guard.close();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST")
+          throw new IssueRunLeaseConflictError(guardPath, "lease-guard");
+        throw error;
+      }
+    }
     const raw = await content(source);
     if (!raw || hash(raw) !== expected)
       throw new Error(
@@ -187,6 +205,11 @@ export async function repairIssueRunLease(input: {
       path: target,
     };
   } finally {
+    if (guardPath && guardToken) {
+      const raw = await content(guardPath);
+      if (raw && owner(raw)?.ownerToken === guardToken)
+        await unlink(guardPath).catch(() => undefined);
+    }
     await handle.close();
     await unlink(repair).catch(() => undefined);
   }
