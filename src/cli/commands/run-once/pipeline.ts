@@ -160,7 +160,11 @@ export async function runOneIssue(
     return withLogPath({ status: "no-issue" }, options);
   }
 
-  const existingState = await readRunState(config.runStateDir, issue.number);
+  // A reset has already archived and validated the prior attempt.  Its seed is
+  // authoritative; do not let pre-reset checkpoints re-enter resume policy.
+  const existingState = options.reset
+    ? undefined
+    : await readRunState(config.runStateDir, issue.number);
   if (!config.dryRun && !options.lease && existingState) {
     return withIssueRunLease(
       { runStateDir: config.runStateDir, issueNumber: issue.number },
