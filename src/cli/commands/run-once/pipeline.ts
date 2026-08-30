@@ -58,7 +58,11 @@ import {
   nextLabels,
   workflowTransition,
 } from "./pipeline-lifecycle.ts";
-import { startedComment } from "./pipeline-comments.ts";
+import {
+  blockerComment,
+  blockerCommentKey,
+  startedComment,
+} from "./pipeline-comments.ts";
 import {
   cleanStatusIgnoredPaths,
   configuredWorktreeStrategy,
@@ -564,6 +568,25 @@ export async function runOneIssue(
           timestamp,
         );
       } else {
+        if (recoveringBlocked && existingState?.lastError) {
+          const blocked = {
+            status: "blocked" as const,
+            reason: existingState.lastError,
+            questions: existingState.blockerQuestions ?? [],
+          };
+          const body = blockerComment(blocked);
+          if (issue.comments?.some((comment) => comment.body === body))
+            await writeRunState(
+              config.runStateDir,
+              {
+                issueNumber: issue.number,
+                title: issue.title,
+                status: existingState.status,
+                blockerCommentKeys: [blockerCommentKey(blocked)],
+              },
+              timestamp,
+            );
+        }
         await writeRunState(
           config.runStateDir,
           {
