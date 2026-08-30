@@ -2,6 +2,7 @@ import { main as authMain } from "./commands/auth/main.ts";
 import { main as doctorMain } from "./commands/doctor/main.ts";
 import { main as initMain } from "./commands/init/main.ts";
 import { main as runOnceMain } from "./commands/run-once/main.ts";
+import { main as runMain } from "./commands/run/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import {
   planMain as setPlanMain,
@@ -20,6 +21,7 @@ Commands:
   doctor      Run read-only readiness checks.
   triage      Classify repository issues for agent readiness.
   run-once    Claim and process one agent-ready issue.
+  run         Recovery commands (reset and lease repair).
   skills      Manage Patchmill project-local skills.
   set-spec    Set the authoritative spec for an issue.
   set-plan    Set the authoritative implementation plan for an issue.
@@ -106,6 +108,7 @@ const COMMANDS = new Map<string, CommandHandler>([
   ["doctor", doctorMain],
   ["triage", triageMain],
   ["run-once", runOnceMain],
+  ["run", runMain],
   ["skills", skillsMain],
   ["set-spec", setSpecMain],
   ["set-plan", setPlanMain],
