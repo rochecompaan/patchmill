@@ -348,6 +348,79 @@ test("real Git reset cleanup retains clean checkout as detached quarantine", asy
   );
   assert.ok(result.quarantinePaths.includes(quarantine));
 });
+test("late ignored quarantine content prevents reset ref deletion", async () => {
+  const root = await mkdtemp(join(tmpdir(), "patchmill-reset-late-"));
+  const git = (...a: string[]) =>
+    execFileSync("git", a, { cwd: root, encoding: "utf8" }).trim();
+  git("init");
+  git("config", "user.email", "t@e");
+  git("config", "user.name", "T");
+  await writeFile(join(root, ".gitignore"), ".env\n");
+  await writeFile(join(root, "file"), "safe\n");
+  git("add", ".");
+  git("commit", "-m", "base");
+  const oid = git("rev-parse", "HEAD"),
+    branch = "agent/reset",
+    expected = join(root, "expected"),
+    quarantine = join(root, "quarantine");
+  git("worktree", "add", "-b", branch, expected, oid);
+  const decision: RunRecoveryDecision = {
+    action: "archive-reset-and-start",
+    assessment,
+    seed: { issueNumber: 45, title: "Recover" },
+    cleanup: {
+      branch,
+      expectedWorktreePath: expected,
+      expectedBranchOid: oid,
+      quarantinePath: quarantine,
+      pruneStaleRegistration: false,
+    },
+  };
+  let injected = false;
+  const runner = {
+    run: async (_c: string, args: string[], o?: { cwd?: string }) => {
+      try {
+        const stdout = execFileSync("git", args, {
+          cwd: o?.cwd ?? root,
+          encoding: "utf8",
+        });
+        if (args[0] === "worktree" && args[1] === "move" && !injected) {
+          injected = true;
+          await writeFile(join(quarantine, ".env"), "secret\n");
+        }
+        return { code: 0, stdout, stderr: "" };
+      } catch (error) {
+        const e = error as {
+          status?: number;
+          stdout?: string;
+          stderr?: string;
+        };
+        return {
+          code: e.status ?? 1,
+          stdout: e.stdout ?? "",
+          stderr: e.stderr ?? "",
+        };
+      }
+    },
+  };
+  await assert.rejects(
+    executeRunRecoveryMutation({
+      decision,
+      repoRoot: root,
+      runner,
+      reassess: async () => decision,
+    }),
+    (e: unknown) => {
+      assert.ok(e instanceof RunRecoveryMutationError);
+      assert.deepEqual((e as RunRecoveryMutationError).quarantinePaths, [
+        quarantine,
+      ]);
+      return true;
+    },
+  );
+  assert.equal(await readFile(join(quarantine, ".env"), "utf8"), "secret\n");
+  assert.equal(git("rev-parse", branch), oid);
+});
 test("refusal is never accepted as a reassessment result", async () => {
   const decision: RunRecoveryDecision = {
     action: "recreate-and-resume",
