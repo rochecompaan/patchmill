@@ -92,7 +92,6 @@ test("real plan reassessment recreates a missing branch without treating staging
   git("add", ".");
   git("commit", "-m", "base");
   const base = git("rev-parse", "HEAD");
-  const staging = join(root, "stage");
   const expected = join(root, "expected");
   const runner = {
     run: async (
