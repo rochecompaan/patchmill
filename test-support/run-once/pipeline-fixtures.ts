@@ -333,7 +333,7 @@ export function blockedRecoveryRunner(
                 {
                   ...issue(
                     45,
-                    options.selectedLabels ?? ["needs-info"],
+                    options.selectedLabels ?? ["agent-ready", "needs-info"],
                     "Recover blocked run",
                   ),
                   ...(options.selectedComments
@@ -345,6 +345,17 @@ export function blockedRecoveryRunner(
         stderr: "",
       };
     }
+    if (call.command === "git" && call.args[0] === "rev-parse") {
+      return {
+        code: 0,
+        stdout: call.args.at(-1)?.includes("agent/issue")
+          ? "abcdef1234567\n"
+          : "0123456789abcdef\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "cat-file")
+      return { code: 1, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "show-ref") {
       return {
         code: options.branchExists === false ? 1 : 0,
@@ -362,7 +373,7 @@ export function blockedRecoveryRunner(
         stdout:
           options.worktreeRegistered === false
             ? ""
-            : `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-recover-blocked-run")}\n`,
+            : `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-recover-blocked-run")}\nbranch refs/heads/agent/issue-45-recover-blocked-run\n\n`,
         stderr: "",
       };
     }
@@ -388,7 +399,7 @@ export function blockedRecoveryRunner(
       return { code: options.merged ? 0 : 1, stdout: "", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "rev-list") {
-      return { code: 0, stdout: options.revList ?? "0\t2\n", stderr: "" };
+      return { code: 0, stdout: options.revList ?? "0\t0\n", stderr: "" };
     }
     if (call.command === "git" && call.args[0] === "status") {
       return { code: 0, stdout: "", stderr: "" };
@@ -396,8 +407,7 @@ export function blockedRecoveryRunner(
     if (call.command === "git" && call.args[0] === "log") {
       return {
         code: 0,
-        stdout:
-          options.log ?? "def456 add verification\nabc123 implement feature\n",
+        stdout: options.log ?? "",
         stderr: "",
       };
     }

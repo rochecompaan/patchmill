@@ -29,17 +29,14 @@ import {
 import {
   isResumableRunState,
   readRunState,
-  readRunStateSnapshot,
   replaceRunStateAfterReset,
   runStatePath,
   writeRunState,
 } from "./run-state.ts";
 import {
   formatBlockedRunRecoveryReport,
-  formatRunRecoveryDecision,
   hasBlockedRunRecoveryState,
   inspectBlockedRunRecovery,
-  planRunRecovery,
 } from "./recovery.ts";
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import {
@@ -70,8 +67,6 @@ import {
 } from "./pipeline-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { withIssueRunLease } from "./recovery-lease.ts";
-import { readRunLegacyMigrationFence } from "./recovery-lease-repair.ts";
-import { executeRunRecoveryMutation } from "./recovery-mutation.ts";
 import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
@@ -160,13 +155,13 @@ export async function runOneIssue(
     return withLogPath({ status: "no-issue" }, options);
   }
 
-  if (!config.dryRun && !options.lease) {
+  const existingState = await readRunState(config.runStateDir, issue.number);
+  if (!config.dryRun && !options.lease && existingState) {
     return withIssueRunLease(
       { runStateDir: config.runStateDir, issueNumber: issue.number },
       (lease) => runOneIssue(runner, config, { ...options, lease }),
     );
   }
-  const existingState = await readRunState(config.runStateDir, issue.number);
   const piAgentDir = localPiAgentDir(config.repoRoot);
   const resumed = selected?.resumed ?? false;
   const ordinaryResumableState =
@@ -313,44 +308,6 @@ export async function runOneIssue(
     issue.title,
     worktreeStrategy,
   );
-  if (hasBlockedRunRecoveryState(existingState) && options.lease) {
-    const snapshot = await readRunStateSnapshot(
-      config.runStateDir,
-      issue.number,
-    );
-    if (!snapshot)
-      throw new AgentIssueSafetyError(
-        `Blocked Run recovery state for issue #${issue.number} disappeared`,
-      );
-    const recoveryInput = async () =>
-      planRunRecovery({
-        intent: "retry",
-        runner,
-        repoRoot: config.repoRoot,
-        runStatePath: snapshot.path,
-        state: snapshot.state,
-        baseRef: config.baseRef,
-        expectedWorkspace,
-        ignoredPaths,
-        resolvedArtifacts,
-        leaseOwnerToken: options.lease!.record.ownerToken,
-        snapshotRaw: snapshot.raw,
-        legacyMigrationFence: await readRunLegacyMigrationFence(
-          config.runStateDir,
-          issue.number,
-        ),
-      });
-    const decision = await recoveryInput();
-    if (decision.action === "refuse")
-      throw new AgentIssueSafetyError(formatRunRecoveryDecision(decision));
-    if (decision.action !== "resume")
-      await executeRunRecoveryMutation({
-        decision,
-        runner,
-        repoRoot: config.repoRoot,
-        reassess: recoveryInput,
-      });
-  }
   const assertExpectedWorkspaceIdentity = (): void => {
     if (
       resumableState &&
