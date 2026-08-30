@@ -13,6 +13,18 @@ import type {
 } from "../../run-once/types.ts";
 const config = {
   readyLabel: "agent-ready",
+  approvalPolicy: {
+    specApproval: {
+      required: false,
+      reviewLabel: "spec-review",
+      approvedLabel: "spec-approved",
+    },
+    planApproval: {
+      required: false,
+      reviewLabel: "plan-review",
+      approvedLabel: "plan-approved",
+    },
+  },
   triagePolicy: {
     labels: {
       ready: "agent-ready",

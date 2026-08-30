@@ -42,18 +42,30 @@ export function validateResetIssueEligibility(input: {
 }): void {
   if (input.issue.state !== "open")
     throw new Error(`Issue #${input.issue.number} is not open`);
+  const approval = input.config.approvalPolicy;
+  const labels = input.issue.labels;
+  if (
+    (approval.planApproval.required &&
+      !labels.includes(approval.planApproval.approvedLabel)) ||
+    (approval.specApproval.required &&
+      !labels.includes(approval.specApproval.approvedLabel) &&
+      !labels.includes(approval.planApproval.approvedLabel))
+  )
+    throw new Error(
+      `Issue #${input.issue.number} is missing required approval labels for reset`,
+    );
   if (!input.state) return;
-  const labels = lifecycleLabels(input.config);
+  const lifecycle = lifecycleLabels(input.config);
   const allowed =
     input.state.status === "blocked" ||
     (input.state.status === "finished" &&
       input.state.blockedAt &&
       input.state.lastError)
-      ? input.issue.labels.includes(labels.ready)
+      ? labels.includes(lifecycle.ready)
       : input.state.status === "finished"
-        ? input.issue.labels.includes(labels.ready) ||
-          input.issue.labels.includes(labels.inProgress)
-        : input.issue.labels.includes(labels.inProgress);
+        ? labels.includes(lifecycle.ready) ||
+          labels.includes(lifecycle.inProgress)
+        : labels.includes(lifecycle.inProgress);
   if (!allowed)
     throw new Error(
       `Issue #${input.issue.number} labels are not eligible for reset recovery`,
