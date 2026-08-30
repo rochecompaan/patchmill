@@ -120,7 +120,22 @@ export async function runOneIssue(
     repoRoot: config.repoRoot,
     host: config.host,
   });
-  const issues = await loadSelectionIssues(host, config, options);
+  const loadedIssues = await loadSelectionIssues(host, config, options);
+  // A blocked saved attempt is never an implicit retry target.  It needs an
+  // explicit issue acknowledgement and the normal recovery gate below.
+  const issues =
+    config.issueNumber === undefined
+      ? (
+          await Promise.all(
+            loadedIssues.map(async (candidate) => ({
+              candidate,
+              state: await readRunState(config.runStateDir, candidate.number),
+            })),
+          )
+        )
+          .filter(({ state }) => !hasBlockedRunRecoveryState(state))
+          .map(({ candidate }) => candidate)
+      : loadedIssues;
   let selected: { issue: IssueSummary; resumed: boolean } | undefined;
   try {
     selected = await selectResumableIssue(issues, config);
