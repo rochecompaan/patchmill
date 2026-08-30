@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   readRunStateSnapshot,
   adoptRunStateLeaseProtocol,
+  validateRecoveryRunState,
 } from "./run-state.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { formatRunRecoveryDecision, planRunRecovery } from "./recovery.ts";
@@ -80,6 +81,13 @@ export async function recoverBlockedWorkspace(input: {
     throw new AgentIssueSafetyError(
       `Blocked Run recovery state for issue #${input.issueNumber} disappeared`,
     );
+  try {
+    validateRecoveryRunState(snapshot.state, input.issueNumber);
+  } catch (error) {
+    throw new AgentIssueSafetyError(
+      `Blocked Run recovery state is unsafe: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   let recoveryPaths:
     | { quarantinePath: string; stagingPath: string }
     | undefined;
@@ -92,6 +100,13 @@ export async function recoverBlockedWorkspace(input: {
       throw new AgentIssueSafetyError(
         "Run recovery state changed before mutation",
       );
+    try {
+      validateRecoveryRunState(current.state, input.issueNumber);
+    } catch (error) {
+      throw new AgentIssueSafetyError(
+        `Blocked Run recovery state is unsafe: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     return planRunRecovery({
       intent: "retry",
       runner: input.runner,

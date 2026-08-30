@@ -73,6 +73,53 @@ test("explicit blocked retry applies normal exclusions and required approvals", 
   });
 });
 
+test("post-lease revalidation never selects a newly higher-priority issue under another issue lease", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args.includes("45")
+    )
+      // Issue 45 was selected before locking, but became ineligible while the
+      // lease was acquired. A fresh full selection would choose issue 3 here.
+      return {
+        code: 0,
+        stdout: issueListPayload([issue(45, ["needs-info"])]),
+        stderr: "",
+      };
+    if (call.command === "tea" && call.args[0] === "issues")
+      throw new Error(
+        "post-lease revalidation must not list or select issue 3",
+      );
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const result = await runOneIssue(runner, config, {
+    now: NOW,
+    leasedIssueNumber: 45,
+    lease: {
+      path: "lease",
+      record: {
+        version: 1,
+        issueNumber: 45,
+        ownerToken: "owner",
+        pid: 1,
+        hostname: "host",
+        startedAt: NOW.toISOString(),
+      },
+    },
+  });
+  assert.deepEqual(result, { status: "no-issue" });
+  assert.equal(
+    runner.calls.some(
+      (call) => call.command === "git" || call.args.includes("3"),
+    ),
+    false,
+  );
+});
+
 test("runOneIssue dry-run lists open issues and returns the selected agent-ready issue without mutations", async () => {
   const config = await makeConfig();
   const runner = createMockRunner((call) => {

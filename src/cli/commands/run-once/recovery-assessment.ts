@@ -177,8 +177,7 @@ function classify(input: {
     input.expectedBranchElsewhere ||
     (input.registered && input.registeredBranch !== input.expectedBranch) ||
     (input.worktreeExists && input.registered && !input.registeredBranch) ||
-    (!input.worktreeExists &&
-      input.registered &&
+    (input.registered &&
       (input.registrationLocked || input.registrationMalformed))
   )
     return "workspace-unverifiable";

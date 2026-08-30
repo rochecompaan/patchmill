@@ -95,6 +95,8 @@ export type RunOneIssueOptions = {
   verbosePiOutput?: boolean;
   heartbeatMs?: number;
   lease?: import("./types.ts").IssueRunLease;
+  /** Internal: pins a post-lease retry to the issue selected before locking. */
+  leasedIssueNumber?: number;
   reset?: import("./types.ts").RunResetContext;
 };
 
@@ -119,7 +121,13 @@ export async function runOneIssue(
     repoRoot: config.repoRoot,
     host: config.host,
   });
-  const loadedIssues = await loadSelectionIssues(host, config, options);
+  // Once an automatic selection has acquired its lease, re-read only that
+  // issue. Never perform another priority selection while holding a lease for
+  // a different issue.
+  const loadedIssues =
+    options.leasedIssueNumber === undefined
+      ? await loadSelectionIssues(host, config, options)
+      : [await host.viewIssue(options.leasedIssueNumber)];
   // A blocked saved attempt is never an implicit retry target.  It needs an
   // explicit issue acknowledgement and the normal recovery gate below.
   const issues =
@@ -187,6 +195,18 @@ export async function runOneIssue(
 
   // A reset has already archived and validated the prior attempt.  Its seed is
   // authoritative; do not let pre-reset checkpoints re-enter resume policy.
+  if (options.lease && options.lease.record.issueNumber !== issue.number)
+    throw new AgentIssueSafetyError(
+      `Run lease for issue #${options.lease.record.issueNumber} cannot process issue #${issue.number}`,
+    );
+  if (
+    options.leasedIssueNumber !== undefined &&
+    options.leasedIssueNumber !== issue.number
+  )
+    throw new AgentIssueSafetyError(
+      `Leased selection changed from issue #${options.leasedIssueNumber} to issue #${issue.number}`,
+    );
+
   let existingState: AgentIssueRunState | undefined = options.reset
     ? {
         issueNumber: issue.number,
@@ -215,7 +235,12 @@ export async function runOneIssue(
   if (!config.dryRun && !options.lease) {
     return withIssueRunLease(
       { runStateDir: config.runStateDir, issueNumber: issue.number },
-      (lease) => runOneIssue(runner, config, { ...options, lease }),
+      (lease) =>
+        runOneIssue(runner, config, {
+          ...options,
+          lease,
+          leasedIssueNumber: issue.number,
+        }),
     );
   }
   if (!config.dryRun && options.lease)

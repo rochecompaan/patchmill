@@ -387,6 +387,45 @@ test("locked absent registration is unverifiable rather than pruneable", async (
     assert.equal(decision.reason, "workspace-unverifiable");
 });
 
+test("malformed existing worktree registration is unverifiable", async () => {
+  const root = await tempRepo();
+  const worktree = join(root, baseState.worktreePath);
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: { ...baseState, worktreePath: worktree },
+    baseRef: "HEAD",
+    expectedWorkspace: {
+      branch: baseState.branch,
+      worktreePath: worktree,
+    },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout: `worktree ${worktree}\nbranch refs/heads/${baseState.branch}\nunknown evidence\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      if (call.args[0] === "-C") return { code: 0, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+  assert.equal(decision.action, "refuse");
+  if (decision.action === "refuse")
+    assert.equal(decision.reason, "workspace-unverifiable");
+});
+
 test("unverifiable workspace guidance identifies saved and expected workspaces", () => {
   const decision = decideRunRecovery("retry", {
     runStatePath: "state",

@@ -1,11 +1,29 @@
 import { createCommandRunner } from "../../triage/command.ts";
-import { loadCliConfig } from "../../run-once/main.ts";
-import { summarizeResult } from "../../run-once/result-summary.ts";
+import {
+  finalLogPath,
+  loadCliConfig,
+  writePipelineFailureResult,
+} from "../../run-once/main.ts";
+import { AgentIssueConsoleProgressReporter } from "../../run-once/console-progress.ts";
+import {
+  JsonlProgressReporter,
+  compositeProgressReporter,
+  runLogPath,
+} from "../../run-once/progress.ts";
+import {
+  appendPiErrorCause,
+  formatErrorWithCauses,
+} from "../../run-once/pi-errors.ts";
+import {
+  summarizeErrorResult,
+  summarizeResult,
+} from "../../run-once/result-summary.ts";
 import {
   exitCodeForRunOnceResult,
   writeRunOnceResult,
 } from "../../run-once/result-output.ts";
-import { ResetIssueRunRecoveryError, resetIssueRun } from "./reset.ts";
+import { resetIssueRun } from "./reset.ts";
+
 export async function runResetCommand(
   args: string[],
   dependencies: Partial<{
@@ -24,48 +42,117 @@ export async function runResetCommand(
     );
     return 0;
   }
-  const config = await (dependencies.loadConfig ?? loadCliConfig)(
-    args,
-    undefined,
-    dependencies.env ?? process.env,
-    dependencies.runner ?? createCommandRunner(),
-  );
-  if (!config.issueNumber)
-    throw new Error("patchmill run reset requires --issue <number>");
-  if (config.dryRun)
-    throw new Error(
-      "patchmill run reset rejects --dry-run: no reset preview contract exists",
-    );
+  const startedAt = dependencies.now?.() ?? new Date();
+  const timestamp = startedAt.toISOString();
+  const stdout = dependencies.stdout ?? process.stdout;
   const stderr = dependencies.stderr ?? process.stderr;
-  let result;
+  const env = dependencies.env ?? process.env;
   try {
-    result = await (dependencies.executeReset ?? resetIssueRun)(
-      dependencies.runner ?? createCommandRunner(),
-      config as typeof config & { issueNumber: number },
-      { now: dependencies.now?.() ?? new Date() },
+    const runner = dependencies.runner ?? createCommandRunner();
+    const config = await (dependencies.loadConfig ?? loadCliConfig)(
+      args,
+      undefined,
+      env,
+      runner,
     );
-  } catch (error) {
-    if (error instanceof ResetIssueRunRecoveryError) {
-      const mutation = error.cause;
-      stderr.write(
-        `Reset recovery failed: ${mutation instanceof Error ? mutation.message : String(mutation)}\nArchive: ${error.archivePath}\n${error.preservedPaths.map((path) => `Preserved: ${path}`).join("\n")}\n`,
+    if (!config.issueNumber)
+      throw new Error("patchmill run reset requires --issue <number>");
+    if (config.dryRun)
+      throw new Error(
+        "patchmill run reset rejects --dry-run: no reset preview contract exists",
       );
-      return 1;
+
+    const logPath = runLogPath(config.runStateDir, timestamp);
+    const interactiveOutput = stdout.isTTY === true;
+    const consoleProgress = config.quiet
+      ? undefined
+      : new AgentIssueConsoleProgressReporter({
+          startedAt,
+          deferFinalResult: interactiveOutput,
+          write: (chunk) => stderr.write(chunk),
+        });
+    const progress = compositeProgressReporter([
+      new JsonlProgressReporter(logPath),
+      ...(consoleProgress ? [consoleProgress] : []),
+    ]);
+    let result;
+    try {
+      result = await (dependencies.executeReset ?? resetIssueRun)(
+        runner,
+        config as typeof config & { issueNumber: number },
+        {
+          now: startedAt,
+          progress,
+          logPath,
+          verbosePiOutput: config.verbosePiOutput,
+          streamPiOutput:
+            !config.quiet && config.verbosePiOutput
+              ? (chunk) => stderr.write(chunk)
+              : undefined,
+        },
+      );
+      if (result.status === "nothing-to-reset")
+        throw new Error(result.guidance);
+    } catch (error) {
+      const formatted = formatErrorWithCauses(error);
+      let terminalError = error;
+      try {
+        await progress.event({
+          time: new Date().toISOString(),
+          level: "error",
+          stage: "error",
+          message: `blocked: ${formatted.message}`,
+          data: { error: formatted.message, causes: formatted.causes },
+        });
+      } catch (reportingError) {
+        terminalError = appendPiErrorCause(
+          error,
+          "error reporting",
+          reportingError,
+        );
+      }
+      return writePipelineFailureResult(terminalError, logPath, {
+        stdout,
+        env,
+        elapsedSeconds: Math.max(
+          0,
+          Math.round((Date.now() - startedAt.getTime()) / 1000),
+        ),
+      });
     }
-    throw error;
+
+    await progress.event({
+      time: new Date().toISOString(),
+      level: "info",
+      stage: "recovery",
+      message: `Recovery action: ${result.recoveryAction}`,
+      data: { archivePath: result.archivePath },
+    });
+    const outputLogPath = await finalLogPath(
+      logPath,
+      config.runStateDir,
+      timestamp,
+      result.pipelineResult,
+    );
+    const summary = summarizeResult({
+      ...result.pipelineResult,
+      logPath: outputLogPath,
+    });
+    await writeRunOnceResult(summary, {
+      stdout,
+      env,
+      logPath: outputLogPath,
+      progress: consoleProgress?.finalResultSnapshot(),
+      elapsedSeconds: Math.max(
+        0,
+        Math.round((Date.now() - startedAt.getTime()) / 1000),
+      ),
+    });
+    return exitCodeForRunOnceResult(summary);
+  } catch (error) {
+    const summary = summarizeErrorResult(error);
+    await writeRunOnceResult(summary, { stdout, env });
+    return exitCodeForRunOnceResult(summary);
   }
-  if (result.status === "nothing-to-reset") {
-    stderr.write(`${result.guidance}\n`);
-    return 1;
-  }
-  stderr.write(
-    `Recovery action: ${result.recoveryAction}\nArchive: ${result.archivePath}\n${result.quarantinePaths.map((path) => `Quarantine: ${path}`).join("\n")}\n`,
-  );
-  const summary = summarizeResult(result.pipelineResult);
-  await writeRunOnceResult(summary, {
-    stdout: dependencies.stdout ?? process.stdout,
-    env: dependencies.env ?? process.env,
-  });
-  return exitCodeForRunOnceResult(summary);
 }
 export const main = runResetCommand;
