@@ -1,0 +1,217 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { hostname as systemHostname } from "node:os";
+import { dirname, join } from "node:path";
+import type {
+  IssueRunLease,
+  RunRecoveryDecision,
+  RunRecoveryLeaseOwner,
+} from "./types.ts";
+
+export type IssueRunLeaseRecord = RunRecoveryLeaseOwner;
+export type IssueRunLeaseGuardRecord = RunRecoveryLeaseOwner;
+export type IssueRunLeaseOptions = {
+  pid?: number;
+  hostname?: string;
+  ownerToken?: string;
+  now?: () => Date;
+  processState?: (pid: number) => "alive" | "dead" | "unverifiable";
+};
+export class IssueRunLeaseConflictError extends Error {
+  readonly classification = "active-run" as const;
+  readonly leasePath: string;
+  readonly resource: "lease" | "lease-guard" | "repair-lock";
+  readonly owner?: IssueRunLeaseRecord;
+  constructor(
+    leasePath: string,
+    resource: "lease" | "lease-guard" | "repair-lock",
+    owner?: IssueRunLeaseRecord,
+  ) {
+    super(`Issue run ${resource} is active: ${leasePath}`);
+    this.leasePath = leasePath;
+    this.resource = resource;
+    this.owner = owner;
+  }
+}
+function paths(dir: string, issue: number) {
+  const locks = join(dir, "locks");
+  return {
+    locks,
+    lease: join(locks, `issue-${issue}.lock`),
+    guard: join(locks, `issue-${issue}.lease-guard`),
+    repair: join(locks, `issue-${issue}.repair.lock`),
+  };
+}
+async function present(path: string): Promise<boolean> {
+  try {
+    await readFile(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+function processState(pid: number): "alive" | "dead" | "unverifiable" {
+  try {
+    process.kill(pid, 0);
+    return "alive";
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ESRCH"
+      ? "dead"
+      : "unverifiable";
+  }
+}
+function parse(raw: string): IssueRunLeaseRecord | undefined {
+  try {
+    const value = JSON.parse(raw) as Partial<IssueRunLeaseRecord>;
+    return value.version === 1 &&
+      typeof value.issueNumber === "number" &&
+      typeof value.pid === "number" &&
+      typeof value.hostname === "string" &&
+      typeof value.ownerToken === "string" &&
+      typeof value.acquiredAt === "string"
+      ? (value as IssueRunLeaseRecord)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+async function exclusive(
+  path: string,
+  record: IssueRunLeaseRecord,
+): Promise<void> {
+  const handle = await open(path, "wx", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(record)}\n`);
+  } finally {
+    await handle.close();
+  }
+}
+async function guard(
+  dir: string,
+  issue: number,
+  record: IssueRunLeaseRecord,
+): Promise<() => Promise<void>> {
+  const p = paths(dir, issue);
+  await mkdir(p.locks, { recursive: true });
+  try {
+    await exclusive(p.guard, record);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST")
+      throw new IssueRunLeaseConflictError(p.guard, "lease-guard");
+    throw error;
+  }
+  return async () => {
+    const current = await readFile(p.guard, "utf8").catch(() => undefined);
+    if (current && parse(current)?.ownerToken === record.ownerToken)
+      await unlink(p.guard);
+  };
+}
+function record(
+  issueNumber: number,
+  options: IssueRunLeaseOptions,
+): IssueRunLeaseRecord {
+  return {
+    version: 1,
+    issueNumber,
+    pid: options.pid ?? process.pid,
+    hostname: options.hostname ?? systemHostname(),
+    ownerToken: options.ownerToken ?? randomUUID(),
+    acquiredAt: (options.now?.() ?? new Date()).toISOString(),
+  };
+}
+export async function acquireIssueRunLease(
+  runStateDir: string,
+  issueNumber: number,
+  options: IssueRunLeaseOptions = {},
+): Promise<IssueRunLease> {
+  const mine = record(issueNumber, options);
+  const p = paths(runStateDir, issueNumber);
+  if (await present(p.repair))
+    throw new IssueRunLeaseConflictError(p.repair, "repair-lock");
+  const releaseGuard = await guard(runStateDir, issueNumber, mine);
+  try {
+    if (await present(p.repair))
+      throw new IssueRunLeaseConflictError(p.repair, "repair-lock");
+    try {
+      await exclusive(p.lease, mine);
+      return { path: p.lease, record: mine };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const raw = await readFile(p.lease, "utf8");
+      const owner = parse(raw);
+      if (!owner || owner.issueNumber !== issueNumber)
+        throw new IssueRunLeaseConflictError(p.lease, "lease");
+      if (
+        owner.hostname !== mine.hostname ||
+        (options.processState ?? processState)(owner.pid) !== "dead"
+      )
+        throw new IssueRunLeaseConflictError(p.lease, "lease", owner);
+      const stale = join(
+        runStateDir,
+        "archive",
+        "leases",
+        `issue-${issueNumber}`,
+        `${owner.acquiredAt.replaceAll(/[:.]/gu, "-")}-${owner.ownerToken}.json`,
+      );
+      await mkdir(dirname(stale), { recursive: true });
+      await rename(p.lease, stale);
+      await exclusive(p.lease, mine);
+      return { path: p.lease, record: mine };
+    }
+  } finally {
+    await releaseGuard();
+  }
+}
+export async function releaseIssueRunLease(
+  lease: IssueRunLease,
+): Promise<void> {
+  const dir = dirname(dirname(lease.path));
+  const releaseGuard = await guard(dir, lease.record.issueNumber, {
+    ...lease.record,
+    ownerToken: randomUUID(),
+  });
+  try {
+    const raw = await readFile(lease.path, "utf8");
+    if (parse(raw)?.ownerToken !== lease.record.ownerToken)
+      throw new Error(
+        `Issue run lease is not owned by this Run attempt: ${lease.path}`,
+      );
+    await unlink(lease.path);
+  } finally {
+    await releaseGuard();
+  }
+}
+export async function withIssueRunLease<T>(
+  input: { runStateDir: string; issueNumber: number; lease?: IssueRunLease },
+  action: (lease: IssueRunLease) => Promise<T>,
+): Promise<T> {
+  if (input.lease) {
+    if (input.lease.record.issueNumber !== input.issueNumber)
+      throw new Error("Borrowed Issue run lease belongs to another issue");
+    return action(input.lease);
+  }
+  const lease = await acquireIssueRunLease(
+    input.runStateDir,
+    input.issueNumber,
+  );
+  try {
+    return await action(lease);
+  } finally {
+    await releaseIssueRunLease(lease);
+  }
+}
+export function activeRunRecoveryDecision(
+  error: IssueRunLeaseConflictError,
+): Extract<RunRecoveryDecision, { action: "refuse"; reason: "active-run" }> {
+  return {
+    action: "refuse",
+    reason: "active-run",
+    resource: error.resource,
+    leasePath: error.leasePath,
+    ...(error.owner ? { owner: error.owner } : {}),
+    guidance: [
+      `Wait for the active Run attempt or inspect with: patchmill run lease repair --issue ${error.owner?.issueNumber ?? "<issue>"}`,
+    ],
+  };
+}
