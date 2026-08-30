@@ -139,6 +139,8 @@ export type AgentIssueRunState = {
   visualEvidence?: AgentIssueVisualEvidence[];
   handoffCommentPosted?: boolean;
   failureCommentKeys?: string[];
+  blockerCommentKeys?: string[];
+  leaseProtocolVersion?: 1;
   blockerQuestions?: AgentIssueBlockerQuestion[];
   createdAt: string;
   updatedAt: string;
@@ -173,9 +175,12 @@ export type AgentIssueRunStateUpdate = {
   visualEvidence?: AgentIssueVisualEvidence[];
   handoffCommentPosted?: boolean;
   failureCommentKeys?: string[];
+  blockerCommentKeys?: string[];
+  leaseProtocolVersion?: 1;
   blockerQuestions?: AgentIssueBlockerQuestion[];
   lastError?: string;
   clearLastError?: boolean;
+  clearBlockerQuestions?: boolean;
 };
 
 export type AgentIssueImplementationResumeContext = {
@@ -322,3 +327,163 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         branch?: string;
       } & AgentIssueBlockedResult)
   );
+
+// Recovery is deliberately modelled separately from persisted run status. A Run
+// attempt can recover any existing status without inventing a transient status.
+export type RunRecoveryIntent = "retry" | "reset";
+export type RunRecoveryClassification =
+  | "resumable-current"
+  | "resumable-stale-base"
+  | "resumable-with-commits"
+  | "recreatable-clean"
+  | "dirty-worktree"
+  | "ignored-worktree-content"
+  | "unmerged-commits"
+  | "workspace-unverifiable"
+  | "legacy-active-unfenced";
+export type RunRecoveryLeaseOwner = {
+  version: 1;
+  issueNumber: number;
+  pid: number;
+  hostname: string;
+  ownerToken: string;
+  acquiredAt: string;
+};
+export type RunLegacyMigrationFence = {
+  version: 1;
+  issueNumber: number;
+  status: "claimed" | "planning" | "implementing";
+  stateSha256: string;
+  repairedAt: string;
+};
+export type RunResetSeed = {
+  issueNumber: number;
+  title: string;
+  specPath?: string;
+  specCommit?: string;
+  planPath?: string;
+  planCommit?: string;
+  startedCommentPosted?: true;
+};
+export type RunRecoveryArtifactAssessment = {
+  path?: string;
+  commit?: string;
+  valid: boolean;
+  source?: "base" | "published";
+};
+export type RunRecoveryAssessment = {
+  runStatePath: string;
+  issueNumber: number;
+  title: string;
+  status: AgentIssueRunStateStatus;
+  lease: { status: "owned"; ownerToken: string };
+  leaseProtocolVersion?: 1;
+  legacyMigrationFenceValid: boolean;
+  blocked: boolean;
+  startedCommentPosted?: true;
+  blockerReason?: string;
+  blockerQuestions?: AgentIssueBlockerQuestion[];
+  expectedWorkspace: { branch: string; worktreePath: string };
+  savedWorkspace: { branch?: string; worktreePath?: string };
+  baseOid: string;
+  branch: { exists: boolean; oid?: string; checkedOutAt?: string };
+  worktree: {
+    exists: boolean;
+    registered: boolean;
+    registeredBranch?: string;
+    clean?: boolean;
+    dirtyStatus?: string;
+    ignoredStatus?: string;
+    ignoredEntries: string[];
+  };
+  divergence?: { ahead: number; behind: number };
+  actualUniqueCommits: string[];
+  savedCommits: string[];
+  artifacts: {
+    spec: RunRecoveryArtifactAssessment;
+    plan: RunRecoveryArtifactAssessment;
+  };
+  classification: RunRecoveryClassification;
+};
+export type RunRecoveryRefreshPlan = {
+  branch: string;
+  expectedWorktreePath: string;
+  expectedBranchOid: string;
+  baseOid: string;
+  quarantinePath: string;
+  stagingPath: string;
+};
+export type RunRecoveryRecreationPlan = {
+  branch: string;
+  expectedWorktreePath: string;
+  mode: "reuse-existing" | "create-from-base" | "advance-to-base";
+  expectedBranchOid?: string;
+  targetOid: string;
+  pruneStaleRegistration: boolean;
+  stagingPath: string;
+};
+export type RunRecoveryCleanupPlan = {
+  branch?: string;
+  expectedWorktreePath?: string;
+  expectedBranchOid?: string;
+  quarantinePath?: string;
+  pruneStaleRegistration: boolean;
+};
+export type RunRecoveryDecision =
+  | { action: "resume"; assessment: RunRecoveryAssessment }
+  | {
+      action: "refresh-and-resume";
+      assessment: RunRecoveryAssessment;
+      refresh: RunRecoveryRefreshPlan;
+    }
+  | {
+      action: "recreate-and-resume";
+      assessment: RunRecoveryAssessment;
+      recreation: RunRecoveryRecreationPlan;
+    }
+  | {
+      action: "archive-reset-and-start";
+      assessment: RunRecoveryAssessment;
+      seed: RunResetSeed;
+      cleanup: RunRecoveryCleanupPlan;
+    }
+  | {
+      action: "refuse";
+      assessment: RunRecoveryAssessment;
+      reason: RunRecoveryClassification | "not-blocked";
+      guidance: string[];
+    }
+  | {
+      action: "refuse";
+      reason: "active-run";
+      resource: "lease" | "lease-guard" | "repair-lock";
+      leasePath: string;
+      owner?: RunRecoveryLeaseOwner;
+      guidance: string[];
+    };
+export type PlanRunRecoveryInput = {
+  intent: RunRecoveryIntent;
+  runner: CommandRunner;
+  repoRoot: string;
+  runStatePath: string;
+  state: AgentIssueRunState;
+  baseRef: string;
+  expectedWorkspace: { branch: string; worktreePath: string };
+  ignoredPaths?: string[];
+  resolvedArtifacts?: import("./artifact-sources.ts").ResolvedIssueArtifactSources;
+  leaseOwnerToken: string;
+  snapshotRaw: string;
+  legacyMigrationFence?: RunLegacyMigrationFence;
+};
+export type IssueRunLease = { path: string; record: RunRecoveryLeaseOwner };
+export type RunStateSnapshot = {
+  path: string;
+  raw: string;
+  state: AgentIssueRunState;
+};
+export type RunResetContext = {
+  lease: IssueRunLease;
+  archivePath: string;
+  quarantinePaths: string[];
+  seed: RunResetSeed;
+};
