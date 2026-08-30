@@ -8,6 +8,7 @@ import {
   executeRunRecoveryMutation,
   RunRecoveryMutationError,
 } from "./recovery-mutation.ts";
+import { planRunRecovery } from "./recovery.ts";
 import type { RunRecoveryAssessment, RunRecoveryDecision } from "./types.ts";
 const assessment = {
   runStatePath: "state",
@@ -66,7 +67,11 @@ test("recreates an existing branch without creating it again", async () => {
     runner: {
       run: async (_command, args) => {
         calls.push(args);
-        return { code: 0, stdout: "", stderr: "" };
+        return {
+          code: 0,
+          stdout: args[0] === "rev-parse" ? assessment.baseOid : "",
+          stderr: "",
+        };
       },
     },
     reassess: async () => decision,
@@ -76,7 +81,7 @@ test("recreates an existing branch without creating it again", async () => {
     ["worktree", "add", "stage", "issue"],
   );
 });
-test("real Git creates a missing branch worktree from its pinned base", async () => {
+test("real plan reassessment recreates a missing branch without treating staging as the expected worktree", async () => {
   const root = await mkdtemp(join(tmpdir(), "patchmill-real-git-"));
   const git = (...args: string[]) =>
     execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -89,18 +94,6 @@ test("real Git creates a missing branch worktree from its pinned base", async ()
   const base = git("rev-parse", "HEAD");
   const staging = join(root, "stage");
   const expected = join(root, "expected");
-  const decision: RunRecoveryDecision = {
-    action: "recreate-and-resume",
-    assessment,
-    recreation: {
-      branch: "agent/recovered",
-      expectedWorktreePath: expected,
-      mode: "create-from-base",
-      targetOid: base,
-      pruneStaleRegistration: false,
-      stagingPath: staging,
-    },
-  };
   const runner = {
     run: async (
       _command: string,
@@ -130,11 +123,44 @@ test("real Git creates a missing branch worktree from its pinned base", async ()
       }
     },
   };
+  const state = {
+    issueNumber: 45,
+    title: "Recover",
+    status: "blocked" as const,
+    branch: "agent/recovered",
+    worktreePath: expected,
+    createdAt: "now",
+    updatedAt: "now",
+  };
+  const raw = JSON.stringify(state);
+  let recoveryPaths:
+    | { quarantinePath: string; stagingPath: string }
+    | undefined;
+  const recoveryInput = () =>
+    planRunRecovery({
+      intent: "retry",
+      runner,
+      repoRoot: root,
+      runStatePath: join(root, "state.json"),
+      state,
+      baseRef: "HEAD",
+      expectedWorkspace: { branch: "agent/recovered", worktreePath: expected },
+      leaseOwnerToken: "owner",
+      snapshotRaw: raw,
+      recoveryPaths,
+    });
+  const decision = await recoveryInput();
+  if (decision.action === "recreate-and-resume")
+    recoveryPaths = {
+      quarantinePath: `${decision.recreation.stagingPath}.quarantine`,
+      stagingPath: decision.recreation.stagingPath,
+    };
+  assert.equal(decision.action, "recreate-and-resume");
   await executeRunRecoveryMutation({
     decision,
     repoRoot: root,
     runner,
-    reassess: async () => decision,
+    reassess: recoveryInput,
   });
   assert.equal(await readFile(join(expected, "base.txt"), "utf8"), "pinned\n");
   assert.equal(git("rev-parse", "agent/recovered"), base);

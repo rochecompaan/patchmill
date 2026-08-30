@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import type { CommandRunner, RunRecoveryDecision } from "./types.ts";
 export class RunRecoveryMutationError extends Error {
   readonly action: Exclude<RunRecoveryDecision["action"], "refuse">;
@@ -54,6 +55,29 @@ async function command(
     throw new Error(
       `Recovery git mutation failed: git ${args.join(" ")}\n${result.stderr || result.stdout}`,
     );
+}
+async function assertExpectedPathAbsent(path: string): Promise<void> {
+  try {
+    await stat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  throw new Error(`Recovery target path appeared: ${path}`);
+}
+async function assertBranchOid(
+  runner: CommandRunner,
+  repoRoot: string,
+  branch: string,
+  expectedOid: string,
+): Promise<void> {
+  const result = await runner.run(
+    "git",
+    ["rev-parse", "--verify", `${branch}^{commit}`],
+    { cwd: repoRoot },
+  );
+  if (result.code !== 0 || result.stdout.trim() !== expectedOid)
+    throw new Error(`Recovery branch changed before publication: ${branch}`);
 }
 async function assertWorkspaceUnchanged(
   runner: CommandRunner,
@@ -205,6 +229,11 @@ export async function executeRunRecoveryMutation(input: {
     }
     if (input.decision.action === "recreate-and-resume") {
       const p = input.decision.recreation;
+      const beforeCreation = nonRefusal(await input.reassess());
+      if (!sameRecreation(beforeCreation, input.decision))
+        throw new Error(
+          "Recovery evidence changed before workspace recreation",
+        );
       if (p.pruneStaleRegistration) {
         await command(input.runner, input.repoRoot, ["worktree", "prune"]);
         completed.push({ kind: "prune-stale-registration" });
@@ -237,11 +266,13 @@ export async function executeRunRecoveryMutation(input: {
         worktreePath: p.stagingPath,
         oid: p.targetOid,
       });
-      const afterCreate = nonRefusal(await input.reassess());
-      if (!sameRecreation(afterCreate, input.decision))
-        throw new Error(
-          "Recovery evidence changed before workspace recreation",
-        );
+      await assertBranchOid(
+        input.runner,
+        input.repoRoot,
+        p.branch,
+        p.targetOid,
+      );
+      await assertExpectedPathAbsent(p.expectedWorktreePath);
       await assertWorkspaceUnchanged(input.runner, p.stagingPath, "staging");
       await command(input.runner, input.repoRoot, [
         "worktree",
