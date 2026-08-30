@@ -202,6 +202,9 @@ export async function executeRunRecoveryMutation(input: {
       };
     }
     const p = input.decision.cleanup;
+    const beforeQuarantine = nonRefusal(await input.reassess());
+    if (beforeQuarantine.action !== "archive-reset-and-start")
+      throw new Error("Recovery evidence changed before workspace quarantine");
     if (p.expectedWorktreePath && p.quarantinePath) {
       await command(input.runner, input.repoRoot, [
         "worktree",
@@ -215,13 +218,30 @@ export async function executeRunRecoveryMutation(input: {
         from: p.expectedWorktreePath,
         to: p.quarantinePath,
       });
-      const afterQuarantine = nonRefusal(await input.reassess());
+      const ordinary = await input.runner.run("git", [
+        "-C",
+        p.quarantinePath,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+      ]);
+      const ignored = await input.runner.run("git", [
+        "-C",
+        p.quarantinePath,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--ignored=matching",
+      ]);
       if (
-        afterQuarantine.action !== "archive-reset-and-start" ||
-        afterQuarantine.cleanup.expectedBranchOid !== p.expectedBranchOid ||
-        afterQuarantine.cleanup.branch !== p.branch
+        ordinary.code !== 0 ||
+        ignored.code !== 0 ||
+        ordinary.stdout.trim() ||
+        ignored.stdout.trim()
       )
-        throw new Error("Recovery evidence changed after workspace quarantine");
+        throw new Error(
+          "Recovery workspace changed after quarantine; preserved without ref deletion",
+        );
       if (p.expectedBranchOid) {
         await command(input.runner, p.quarantinePath, [
           "update-ref",
