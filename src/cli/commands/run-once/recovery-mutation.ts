@@ -196,6 +196,13 @@ export async function executeRunRecoveryMutation(input: {
       from: p.expectedWorktreePath,
       to: p.quarantinePath,
     });
+    const afterQuarantine = nonRefusal(await input.reassess());
+    if (
+      afterQuarantine.action !== "archive-reset-and-start" ||
+      afterQuarantine.cleanup.expectedBranchOid !== p.expectedBranchOid ||
+      afterQuarantine.cleanup.branch !== p.branch
+    )
+      throw new Error("Recovery evidence changed after workspace quarantine");
     if (p.expectedBranchOid) {
       await command(input.runner, p.quarantinePath, [
         "update-ref",
