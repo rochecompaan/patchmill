@@ -241,6 +241,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       .map((event) => event.message),
     [
       "listing open issues",
+      "listing open issues",
       "selected #15 Ship automation pipeline",
       "checking issue branch base containment",
       "hydrating issue artifact content",

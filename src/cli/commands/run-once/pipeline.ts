@@ -165,7 +165,9 @@ export async function runOneIssue(
   const existingState = options.reset
     ? undefined
     : await readRunState(config.runStateDir, issue.number);
-  if (!config.dryRun && !options.lease && existingState) {
+  // Every real attempt is serialized from selection through its final effect.
+  // A caller-supplied lease (reset) is borrowed and is therefore not released.
+  if (!config.dryRun && !options.lease) {
     return withIssueRunLease(
       { runStateDir: config.runStateDir, issueNumber: issue.number },
       (lease) => runOneIssue(runner, config, { ...options, lease }),
