@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
@@ -30,6 +31,7 @@ import {
   isResumableRunState,
   readRunState,
   readRunStateSnapshot,
+  adoptRunStateLeaseProtocol,
   replaceRunStateAfterReset,
   runStatePath,
   writeRunState,
@@ -177,7 +179,7 @@ export async function runOneIssue(
 
   // A reset has already archived and validated the prior attempt.  Its seed is
   // authoritative; do not let pre-reset checkpoints re-enter resume policy.
-  const existingState = options.reset
+  let existingState = options.reset
     ? undefined
     : await readRunState(config.runStateDir, issue.number);
   // Every real attempt is serialized from selection through its final effect.
@@ -187,6 +189,39 @@ export async function runOneIssue(
       { runStateDir: config.runStateDir, issueNumber: issue.number },
       (lease) => runOneIssue(runner, config, { ...options, lease }),
     );
+  }
+  if (
+    !config.dryRun &&
+    options.lease &&
+    existingState &&
+    !existingState.leaseProtocolVersion &&
+    ["claimed", "planning", "implementing"].includes(existingState.status)
+  ) {
+    const snapshot = await readRunStateSnapshot(
+      config.runStateDir,
+      issue.number,
+    );
+    const fence = await readRunLegacyMigrationFence(
+      config.runStateDir,
+      issue.number,
+    );
+    const hash =
+      snapshot && createHash("sha256").update(snapshot.raw).digest("hex");
+    if (
+      !snapshot ||
+      !fence ||
+      fence.issueNumber !== issue.number ||
+      fence.status !== snapshot.state.status ||
+      fence.stateSha256 !== hash
+    )
+      throw new AgentIssueSafetyError(
+        "Legacy active Run state is unfenced; repair its lease before continuing",
+      );
+    existingState = await adoptRunStateLeaseProtocol({
+      snapshot,
+      expectedStateSha256: hash,
+      lease: options.lease,
+    });
   }
   const piAgentDir = localPiAgentDir(config.repoRoot);
   const resumed = selected?.resumed ?? false;

@@ -188,7 +188,7 @@ function mergeRunState(
     failureCommentKeys,
     blockerCommentKeys,
     leaseProtocolVersion:
-      update.leaseProtocolVersion ?? existing?.leaseProtocolVersion,
+      update.leaseProtocolVersion ?? existing?.leaseProtocolVersion ?? 1,
     blockerQuestions,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
