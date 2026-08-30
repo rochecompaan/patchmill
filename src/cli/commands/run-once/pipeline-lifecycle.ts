@@ -5,6 +5,7 @@ import type {
   AgentIssuePiResult,
   AgentIssueRunCheckpoints,
   AgentIssueVisualEvidence,
+  RunResetSeed,
 } from "./types.ts";
 import type { readRunState } from "./run-state.ts";
 
@@ -45,8 +46,10 @@ export function workflowTransition(
 export function hasBlockedSavedWorkspaceState(
   state: Awaited<ReturnType<typeof readRunState>>,
 ): boolean {
-  return (
-    state?.status === "blocked" &&
+  return !!(
+    state &&
+    (state.status === "blocked" ||
+      (state.status === "finished" && state.blockedAt && state.lastError)) &&
     (state.branch !== undefined || state.worktreePath !== undefined)
   );
 }
@@ -130,6 +133,26 @@ function visualEvidenceArray(
     ];
   });
   return entries.length > 0 ? entries : undefined;
+}
+
+export function recoveryClaimLabels(
+  labels: string[],
+  input: {
+    ready: string;
+    inProgress: string;
+    needsInfo: string;
+    recoveringBlocked: boolean;
+  },
+): string[] {
+  return input.recoveringBlocked
+    ? nextLabels(labels, [input.ready, input.needsInfo], [input.inProgress])
+    : nextLabels(labels, [input.ready], [input.inProgress]);
+}
+
+export function resetReceiptCheckpoints(
+  seed: RunResetSeed,
+): AgentIssueRunCheckpoints {
+  return seed.startedCommentPosted ? { startedCommentPosted: true } : {};
 }
 
 export function successfulImplementationFromState(

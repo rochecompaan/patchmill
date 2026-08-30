@@ -1,10 +1,14 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AgentIssueRunState,
   AgentIssueRunStateStatus,
   AgentIssueRunStateUpdate,
+  IssueRunLease,
+  RunResetSeed,
+  RunStateSnapshot,
 } from "./types.ts";
+import { createHash, randomUUID } from "node:crypto";
 
 const STATUS_TIMESTAMPS: Record<
   AgentIssueRunStateStatus,
@@ -25,18 +29,7 @@ export async function readRunState(
   runStateDir: string,
   issueNumber: number,
 ): Promise<AgentIssueRunState | undefined> {
-  try {
-    const content = await readFile(
-      runStatePath(runStateDir, issueNumber),
-      "utf8",
-    );
-    return JSON.parse(content) as AgentIssueRunState;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return undefined;
-    }
-    throw error;
-  }
+  return (await readRunStateSnapshot(runStateDir, issueNumber))?.state;
 }
 
 function mergeCheckpoints(
@@ -69,8 +62,9 @@ function mergeUniqueKeys(
 function blockerQuestionsUpdate(
   existing: AgentIssueRunState["blockerQuestions"],
   update: AgentIssueRunStateUpdate["blockerQuestions"],
+  clear: boolean | undefined,
 ): AgentIssueRunState["blockerQuestions"] {
-  return update ?? existing;
+  return clear ? undefined : (update ?? existing);
 }
 
 function mergeRunState(
@@ -152,6 +146,11 @@ function mergeRunState(
   const blockerQuestions = blockerQuestionsUpdate(
     update.resetCheckpoints ? undefined : existing?.blockerQuestions,
     update.blockerQuestions,
+    update.clearBlockerQuestions,
+  );
+  const blockerCommentKeys = mergeUniqueKeys(
+    update.resetCheckpoints ? undefined : existing?.blockerCommentKeys,
+    update.blockerCommentKeys,
   );
 
   if (handoffCommentPosted) {
@@ -187,6 +186,9 @@ function mergeRunState(
     visualEvidence,
     handoffCommentPosted: handoffCommentPosted ? true : undefined,
     failureCommentKeys,
+    blockerCommentKeys,
+    leaseProtocolVersion:
+      update.leaseProtocolVersion ?? existing?.leaseProtocolVersion,
     blockerQuestions,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -246,6 +248,8 @@ function mergeRunState(
   if (blockerQuestions === undefined) {
     delete next.blockerQuestions;
   }
+  if (blockerCommentKeys === undefined) delete next.blockerCommentKeys;
+  if (next.leaseProtocolVersion === undefined) delete next.leaseProtocolVersion;
   if (next.lastError === undefined) {
     delete next.lastError;
   }
@@ -277,4 +281,91 @@ export async function writeRunState(
   const next = mergeRunState(existing, update, now);
   await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   return next;
+}
+
+export async function readRunStateSnapshot(
+  runStateDir: string,
+  issueNumber: number,
+): Promise<RunStateSnapshot | undefined> {
+  const path = runStatePath(runStateDir, issueNumber);
+  try {
+    const raw = await readFile(path, "utf8");
+    return { path, raw, state: JSON.parse(raw) as AgentIssueRunState };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function atomicStateWrite(
+  path: string,
+  state: AgentIssueRunState,
+): Promise<void> {
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await rename(temporary, path);
+}
+
+export async function replaceRunStateAfterReset(
+  runStateDir: string,
+  input: { issueNumber: number; title: string; seed: RunResetSeed },
+  now = new Date().toISOString(),
+): Promise<AgentIssueRunState> {
+  await mkdir(runStateDir, { recursive: true });
+  const state: AgentIssueRunState = {
+    issueNumber: input.issueNumber,
+    title: input.title,
+    status: "claimed",
+    ...(input.seed.specPath ? { specPath: input.seed.specPath } : {}),
+    ...(input.seed.specCommit ? { specCommit: input.seed.specCommit } : {}),
+    ...(input.seed.planPath ? { planPath: input.seed.planPath } : {}),
+    ...(input.seed.planCommit ? { planCommit: input.seed.planCommit } : {}),
+    checkpoints: {
+      claimed: true,
+      ...(input.seed.startedCommentPosted
+        ? { startedCommentPosted: true }
+        : {}),
+    },
+    leaseProtocolVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+    claimedAt: now,
+  };
+  await atomicStateWrite(runStatePath(runStateDir, input.issueNumber), state);
+  return state;
+}
+
+export async function adoptRunStateLeaseProtocol(input: {
+  snapshot: RunStateSnapshot;
+  expectedStateSha256: string;
+  lease: IssueRunLease;
+  now?: string;
+}): Promise<AgentIssueRunState> {
+  if (input.lease.record.issueNumber !== input.snapshot.state.issueNumber)
+    throw new Error("Issue run lease does not match recovery state");
+  if (
+    !["claimed", "planning", "implementing"].includes(
+      input.snapshot.state.status,
+    )
+  )
+    throw new Error(
+      "Only active legacy Run recovery state may adopt the lease protocol",
+    );
+  if (
+    createHash("sha256").update(input.snapshot.raw).digest("hex") !==
+    input.expectedStateSha256
+  )
+    throw new Error("Run recovery state fingerprint does not match");
+  const current = await readFile(input.snapshot.path, "utf8");
+  if (current !== input.snapshot.raw)
+    throw new Error(
+      "Run recovery state changed before lease protocol adoption",
+    );
+  const state: AgentIssueRunState = {
+    ...input.snapshot.state,
+    leaseProtocolVersion: 1,
+    updatedAt: input.now ?? new Date().toISOString(),
+  };
+  await atomicStateWrite(input.snapshot.path, state);
+  return state;
 }
