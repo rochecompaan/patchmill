@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { blockingStatusOutput } from "./git.ts";
-import { hasBlockedRunRecoveryState } from "./recovery.ts";
 import type {
   CommandResult,
   PlanRunRecoveryInput,
@@ -65,6 +64,13 @@ function ignoredEntries(status: string): string[] {
     .split("\n")
     .filter((line) => line.startsWith("!! "))
     .map((line) => line.slice(3));
+}
+function blocked(state: PlanRunRecoveryInput["state"]): boolean {
+  return !!(
+    (state.status === "blocked" ||
+      (state.status === "finished" && state.blockedAt && state.lastError)) &&
+    (state.branch || state.worktreePath)
+  );
 }
 function isActive(
   status: RunRecoveryAssessment["status"],
@@ -256,7 +262,7 @@ export async function assessRunRecovery(
       ? { leaseProtocolVersion: 1 as const }
       : {}),
     legacyMigrationFenceValid,
-    blocked: hasBlockedRunRecoveryState(input.state),
+    blocked: blocked(input.state),
     ...(input.state.checkpoints?.startedCommentPosted
       ? { startedCommentPosted: true as const }
       : {}),
