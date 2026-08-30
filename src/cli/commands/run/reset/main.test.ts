@@ -5,14 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RunRecoveryMutationError } from "../../run-once/recovery-mutation.ts";
 import { ResetIssueRunRecoveryError } from "./reset.ts";
+import { runLogPath } from "../../run-once/progress.ts";
 import { runResetCommand } from "./main.ts";
 
-function output() {
+function output(isTTY = false) {
   let stdout = "";
   let stderr = "";
   return {
     streams: {
       stdout: {
+        isTTY,
         write: (value: string) => {
           stdout += value;
           return true;
@@ -106,6 +108,86 @@ test("reset forwards normal run-once output options and persists a redirected re
   assert.equal(typeof received?.logPath, "string");
   assert.equal(typeof received?.streamPiOutput, "undefined");
   assert.match(captured.read().stdout, /"status":"no-issue"/);
+});
+
+test("successful reset reports action, archive, and quarantines on stderr without changing redirected stdout", async () => {
+  const captured = output();
+  const runStateDir = await mkdtemp(join(tmpdir(), "patchmill-reset-main-"));
+  const code = await runResetCommand(["--issue", "45"], {
+    loadConfig: async () => ({ ...config(runStateDir), quiet: false }) as never,
+    executeReset: async () =>
+      ({
+        status: "reset-started",
+        issueNumber: 45,
+        archivePath: "archive-path",
+        recoveryAction: "archive-reset-and-start",
+        quarantinePaths: ["quarantine-one", "quarantine-two"],
+        pipelineResult: { status: "no-issue" },
+      }) as never,
+    ...captured.streams,
+    now: () => NOW,
+  });
+  assert.equal(code, 0);
+  assert.match(
+    captured.read().stderr,
+    /Recovery action: archive-reset-and-start/,
+  );
+  assert.match(captured.read().stderr, /Archive: archive-path/);
+  assert.match(captured.read().stderr, /Quarantine: quarantine-one/);
+  assert.match(captured.read().stderr, /Quarantine: quarantine-two/);
+  assert.match(captured.read().stdout, /^\{"status":"no-issue"/);
+  assert.doesNotMatch(captured.read().stdout, /archive-path|quarantine-one/);
+  const log = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(runLogPath(runStateDir, NOW.toISOString()), "utf8"),
+  );
+  assert.match(log, /"archivePath":"archive-path"/);
+  assert.match(log, /"quarantinePaths":\["quarantine-one","quarantine-two"\]/);
+});
+
+test("successful reset writes recovery diagnostics for TTY output", async () => {
+  const captured = output(true);
+  const runStateDir = await mkdtemp(join(tmpdir(), "patchmill-reset-main-"));
+  const code = await runResetCommand(["--issue", "45"], {
+    loadConfig: async () => ({ ...config(runStateDir), quiet: false }) as never,
+    executeReset: async () =>
+      ({
+        status: "reset-started",
+        issueNumber: 45,
+        archivePath: "tty-archive",
+        recoveryAction: "archive-reset-and-start",
+        quarantinePaths: ["tty-quarantine"],
+        pipelineResult: { status: "no-issue" },
+      }) as never,
+    ...captured.streams,
+    now: () => NOW,
+  });
+  assert.equal(code, 0);
+  assert.match(
+    captured.read().stderr,
+    /Recovery action: archive-reset-and-start/,
+  );
+  assert.match(captured.read().stderr, /Archive: tty-archive/);
+  assert.match(captured.read().stderr, /Quarantine: tty-quarantine/);
+  assert.doesNotMatch(captured.read().stdout, /^\{"status"/);
+});
+
+test("nothing-to-reset writes direct stderr guidance and no stdout", async () => {
+  const captured = output();
+  const runStateDir = await mkdtemp(join(tmpdir(), "patchmill-reset-main-"));
+  const code = await runResetCommand(["--issue", "45"], {
+    loadConfig: async () => config(runStateDir) as never,
+    executeReset: async () =>
+      ({
+        status: "nothing-to-reset",
+        issueNumber: 45,
+        guidance: "No saved Run recovery state exists for issue #45.",
+      }) as never,
+    ...captured.streams,
+    now: () => NOW,
+  });
+  assert.equal(code, 1);
+  assert.equal(captured.read().stdout, "");
+  assert.match(captured.read().stderr, /No saved Run recovery state exists/);
 });
 
 test("reset rejects dry-run before execution through the redirected result contract", async () => {

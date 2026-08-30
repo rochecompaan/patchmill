@@ -91,8 +91,10 @@ export async function runResetCommand(
               : undefined,
         },
       );
-      if (result.status === "nothing-to-reset")
-        throw new Error(result.guidance);
+      if (result.status === "nothing-to-reset") {
+        stderr.write(`${result.guidance}\n`);
+        return 1;
+      }
     } catch (error) {
       const formatted = formatErrorWithCauses(error);
       let terminalError = error;
@@ -126,7 +128,16 @@ export async function runResetCommand(
       level: "info",
       stage: "recovery",
       message: `Recovery action: ${result.recoveryAction}`,
-      data: { archivePath: result.archivePath },
+      consoleMessage: [
+        `Recovery action: ${result.recoveryAction}`,
+        `Archive: ${result.archivePath}`,
+        ...result.quarantinePaths.map((path) => `Quarantine: ${path}`),
+      ].join("\n"),
+      data: {
+        recoveryAction: result.recoveryAction,
+        archivePath: result.archivePath,
+        quarantinePaths: result.quarantinePaths,
+      },
     });
     const outputLogPath = await finalLogPath(
       logPath,

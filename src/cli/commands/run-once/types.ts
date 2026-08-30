@@ -419,7 +419,6 @@ export type RunRecoveryRecreationPlan = {
   mode: "reuse-existing" | "create-from-base" | "advance-to-base";
   expectedBranchOid?: string;
   targetOid: string;
-  pruneStaleRegistration: boolean;
   stagingPath: string;
 };
 export type RunRecoveryCleanupPlan = {
@@ -427,7 +426,6 @@ export type RunRecoveryCleanupPlan = {
   expectedWorktreePath?: string;
   expectedBranchOid?: string;
   quarantinePath?: string;
-  pruneStaleRegistration: boolean;
 };
 export type RunRecoveryDecision =
   | { action: "resume"; assessment: RunRecoveryAssessment }

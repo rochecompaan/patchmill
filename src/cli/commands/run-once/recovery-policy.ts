@@ -128,8 +128,6 @@ export function decideRunRecovery(
         quarantinePath: assessment.worktree.registered
           ? quarantinePath
           : undefined,
-        pruneStaleRegistration:
-          assessment.worktree.registered && !assessment.worktree.exists,
       },
     };
   if (assessment.classification === "resumable-stale-base")
@@ -165,8 +163,6 @@ export function decideRunRecovery(
           (assessment.divergence.behind ?? 0) > 0
             ? assessment.baseOid
             : (assessment.branch.oid ?? assessment.baseOid),
-        pruneStaleRegistration:
-          assessment.worktree.registered && !assessment.worktree.exists,
         stagingPath,
       },
     };

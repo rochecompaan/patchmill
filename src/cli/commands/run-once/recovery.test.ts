@@ -426,6 +426,91 @@ test("malformed existing worktree registration is unverifiable", async () => {
     assert.equal(decision.reason, "workspace-unverifiable");
 });
 
+test("registered absent worktree is unverifiable and requires manual repair", async () => {
+  const root = await tempRepo({ worktreeExists: false });
+  const worktree = join(root, baseState.worktreePath);
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: { ...baseState, worktreePath: worktree },
+    baseRef: "HEAD",
+    expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout: `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\nprunable missing\n\nworktree ${join(root, "unrelated")}\nHEAD ${oid}\nbranch refs/heads/unrelated\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+  assert.equal(decision.action, "refuse");
+  if (decision.action === "refuse") {
+    assert.equal(decision.reason, "workspace-unverifiable");
+    assert.match(
+      decision.guidance.join("\n"),
+      /Repair the workspace registration/,
+    );
+  }
+});
+
+test("malformed or duplicate porcelain records anywhere are globally unverifiable", async () => {
+  const root = await tempRepo();
+  const worktree = join(root, baseState.worktreePath);
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  for (const extra of [
+    "HEAD detached-without-worktree\n",
+    "HEAD malformed-without-worktree\nunknown evidence\n",
+    `worktree ${join(root, "other")}\nbranch refs/heads/other\n\nworktree ${join(root, "other")}\nbranch refs/heads/other-again\n`,
+  ]) {
+    const decision = await planRunRecovery({
+      intent: "retry",
+      repoRoot: root,
+      runStatePath: join(root, "state.json"),
+      state: { ...baseState, worktreePath: worktree },
+      baseRef: "HEAD",
+      expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
+      leaseOwnerToken: "owner",
+      snapshotRaw: "state",
+      runner: runnerFor((call) => {
+        if (call.args[0] === "rev-parse")
+          return { code: 0, stdout: `${oid}\n`, stderr: "" };
+        if (call.args.join(" ") === "worktree list --porcelain")
+          return {
+            code: 0,
+            stdout: `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\n\n${extra}`,
+            stderr: "",
+          };
+        if (call.args[0] === "rev-list")
+          return { code: 0, stdout: "0 0\n", stderr: "" };
+        if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+        if (call.args[0] === "cat-file" || call.args[0] === "-C")
+          return {
+            code: call.args[0] === "-C" ? 0 : 1,
+            stdout: "",
+            stderr: "",
+          };
+        throw new Error(`unexpected git ${call.args.join(" ")}`);
+      }),
+    });
+    assert.equal(decision.action, "refuse");
+    if (decision.action === "refuse")
+      assert.equal(decision.reason, "workspace-unverifiable");
+  }
+});
+
 test("unverifiable workspace guidance identifies saved and expected workspaces", () => {
   const decision = decideRunRecovery("retry", {
     runStatePath: "state",

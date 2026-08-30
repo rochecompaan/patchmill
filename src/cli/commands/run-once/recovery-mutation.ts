@@ -42,7 +42,6 @@ export type RunRecoveryMutationResult = {
     | { kind: "restore-worktree"; from: string; to: string }
     | { kind: "detach-quarantine"; path: string; oid: string }
     | { kind: "update-branch"; branch: string; from?: string; to?: string }
-    | { kind: "prune-stale-registration" }
     | { kind: "publish-worktree"; from: string; to: string }
     | { kind: "recreate-worktree"; worktreePath: string; oid: string }
   >;
@@ -69,101 +68,6 @@ async function command(
 }
 function worktreePath(repoRoot: string, path: string): string {
   return resolve(repoRoot, path);
-}
-function listedWorktreePaths(repoRoot: string, output: string): string[] {
-  return output
-    .split("\n")
-    .filter((line) => line.startsWith("worktree "))
-    .map((line) => resolve(line.slice("worktree ".length)));
-}
-
-function registeredPrunable(
-  repoRoot: string,
-  output: string,
-  expected: string,
-): boolean {
-  return output.split("\n\n").some((entry) => {
-    const path = entry
-      .split("\n")
-      .find((line) => line.startsWith("worktree "))
-      ?.slice("worktree ".length);
-    return (
-      path !== undefined &&
-      resolve(repoRoot, path) === expected &&
-      entry
-        .split("\n")
-        .some((line) => line === "prunable" || line.startsWith("prunable "))
-    );
-  });
-}
-/**
- * Git only exposes stale-registration deletion through repository-wide prune.
- * Its dry-run reports internal administrative paths rather than worktree paths,
- * so require a verified prunable expected registration and exactly one planned
- * removal. Any other candidate is an unrelated repository-side effect.
- */
-function pruneDryRunCandidates(output: string): string[] {
-  const lines = output.split("\n").filter(Boolean);
-  const candidates: string[] = [];
-  for (const line of lines) {
-    const match = /^Removing (.+?): /u.exec(line);
-    if (!match?.[1])
-      throw new Error(
-        `Cannot prove worktree prune target from: ${line}; repair the expected registration manually`,
-      );
-    candidates.push(match[1]);
-  }
-  return candidates;
-}
-async function pruneStaleRegistration(
-  runner: CommandRunner,
-  repoRoot: string,
-  expectedPath: string,
-): Promise<void> {
-  const expected = worktreePath(repoRoot, expectedPath);
-  const before = await runner.run("git", ["worktree", "list", "--porcelain"], {
-    cwd: repoRoot,
-  });
-  if (before.code !== 0)
-    throw new Error(
-      `Cannot inspect stale worktree registration: ${before.stderr || before.stdout}`,
-    );
-  if (!listedWorktreePaths(repoRoot, before.stdout).includes(expected))
-    throw new Error(
-      `Expected stale worktree registration is absent: ${expected}; repair manually before recovery`,
-    );
-  if (!registeredPrunable(repoRoot, before.stdout, expected))
-    throw new Error(
-      `Expected worktree registration is not proven stale: ${expected}; repair manually before recovery`,
-    );
-  const dryRun = await runner.run(
-    "git",
-    ["worktree", "prune", "--dry-run", "--verbose", "--expire=now"],
-    { cwd: repoRoot },
-  );
-  if (dryRun.code !== 0)
-    throw new Error(
-      `Cannot preflight stale worktree registration cleanup: ${dryRun.stderr || dryRun.stdout}`,
-    );
-  const candidates = pruneDryRunCandidates(
-    [dryRun.stdout, dryRun.stderr].filter(Boolean).join("\n"),
-  );
-  if (candidates.length !== 1)
-    throw new Error(
-      `Refusing repository-wide worktree prune; expected only ${expected}, found ${candidates.join(", ") || "no removable registration"}. Repair manually before recovery`,
-    );
-  await command(runner, repoRoot, ["worktree", "prune", "--expire=now"]);
-  const listed = await runner.run("git", ["worktree", "list", "--porcelain"], {
-    cwd: repoRoot,
-  });
-  if (listed.code !== 0)
-    throw new Error(
-      `Cannot verify stale worktree registration: ${listed.stderr || listed.stdout}`,
-    );
-  if (listedWorktreePaths(repoRoot, listed.stdout).includes(expected))
-    throw new Error(
-      `Stale worktree registration remains after prune: ${expected}; preserved without branch mutation`,
-    );
 }
 async function assertExpectedPathAbsent(path: string): Promise<void> {
   try {
@@ -351,14 +255,6 @@ export async function executeRunRecoveryMutation(input: {
         throw new Error(
           "Recovery evidence changed before workspace recreation",
         );
-      if (p.pruneStaleRegistration) {
-        await pruneStaleRegistration(
-          input.runner,
-          input.repoRoot,
-          p.expectedWorktreePath,
-        );
-        completed.push({ kind: "prune-stale-registration" });
-      }
       if (p.mode === "advance-to-base" && p.expectedBranchOid) {
         await command(input.runner, input.repoRoot, [
           "update-ref",
@@ -432,23 +328,10 @@ export async function executeRunRecoveryMutation(input: {
       beforeQuarantine.cleanup.expectedWorktreePath !==
         p.expectedWorktreePath ||
       beforeQuarantine.cleanup.expectedBranchOid !== p.expectedBranchOid ||
-      beforeQuarantine.cleanup.quarantinePath !== p.quarantinePath ||
-      beforeQuarantine.cleanup.pruneStaleRegistration !==
-        p.pruneStaleRegistration
+      beforeQuarantine.cleanup.quarantinePath !== p.quarantinePath
     )
       throw new Error("Recovery evidence changed before workspace quarantine");
-    if (p.pruneStaleRegistration) {
-      if (!p.expectedWorktreePath)
-        throw new Error(
-          "Stale registration cleanup requires an expected worktree path",
-        );
-      await pruneStaleRegistration(
-        input.runner,
-        input.repoRoot,
-        p.expectedWorktreePath,
-      );
-      completed.push({ kind: "prune-stale-registration" });
-    } else if (p.expectedWorktreePath && p.quarantinePath) {
+    if (p.expectedWorktreePath && p.quarantinePath) {
       await command(input.runner, input.repoRoot, [
         "worktree",
         "move",

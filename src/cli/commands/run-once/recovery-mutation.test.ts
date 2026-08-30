@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -57,7 +57,6 @@ test("recreates an existing branch without creating it again", async () => {
       mode: "advance-to-base",
       targetOid: assessment.baseOid,
       expectedBranchOid: assessment.branch.oid,
-      pruneStaleRegistration: false,
       stagingPath: "stage",
     },
   };
@@ -271,7 +270,7 @@ test("refresh CAS failure retains staged and quarantined paths", async () => {
     },
   );
 });
-test("stale registration must disappear before recreation changes a branch ref", async () => {
+test("automatic recovery never invokes repository-wide worktree prune", async () => {
   const decision: RunRecoveryDecision = {
     action: "recreate-and-resume",
     assessment,
@@ -281,257 +280,27 @@ test("stale registration must disappear before recreation changes a branch ref",
       mode: "advance-to-base",
       targetOid: assessment.baseOid,
       expectedBranchOid: assessment.branch.oid,
-      pruneStaleRegistration: true,
       stagingPath: "staging",
     },
   };
   const calls: string[][] = [];
-  await assert.rejects(
-    executeRunRecoveryMutation({
-      decision,
-      repoRoot: ".",
-      runner: {
-        run: async (_command, args) => {
-          calls.push(args);
-          if (args.join(" ") === "worktree list --porcelain") {
-            return {
-              code: 0,
-              stdout:
-                "worktree missing-worktree\nbranch refs/heads/issue\nprunable gone\n",
-              stderr: "",
-            };
-          }
-          if (
-            args.join(" ") === "worktree prune --dry-run --verbose --expire=now"
-          )
-            return {
-              code: 0,
-              stdout: "Removing worktrees/missing-worktree: gone\n",
-              stderr: "",
-            };
-          return { code: 0, stdout: "", stderr: "" };
-        },
-      },
-      reassess: async () => decision,
-    }),
-    /registration remains after prune/,
-  );
-  assert.equal(
-    calls.some((args) => args[0] === "update-ref"),
-    false,
-  );
-});
-
-test("real Git stale registration cleanup removes only the verified expected registration", async () => {
-  const root = await mkdtemp(join(tmpdir(), "patchmill-prune-git-"));
-  const git = (...args: string[]) =>
-    execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-  git("init");
-  git("config", "user.email", "test@example.com");
-  git("config", "user.name", "Test");
-  await writeFile(join(root, "base.txt"), "base\n");
-  git("add", "base.txt");
-  git("commit", "-m", "base");
-  const baseOid = git("rev-parse", "HEAD");
-  git("worktree", "add", "-b", "agent/stale", "expected", "HEAD");
-  await rm(join(root, "expected"), { recursive: true });
-  const runner = {
-    run: async (
-      _command: string,
-      args: string[],
-      options?: { cwd?: string },
-    ) => {
-      if (args.join(" ") === "worktree prune --dry-run --verbose --expire=now")
-        return {
-          code: 0,
-          stdout: "",
-          stderr:
-            "Removing worktrees/expected: gitdir file points to non-existent location\n",
-        };
-      try {
-        return {
-          code: 0,
-          stdout: execFileSync("git", args, {
-            cwd: options?.cwd ?? root,
-            encoding: "utf8",
-          }),
-          stderr: "",
-        };
-      } catch (error) {
-        const result = error as {
-          status?: number;
-          stdout?: string;
-          stderr?: string;
-        };
-        return {
-          code: result.status ?? 1,
-          stdout: result.stdout ?? "",
-          stderr: result.stderr ?? "",
-        };
-      }
-    },
-  };
-  const realAssessment = {
-    ...assessment,
-    baseOid,
-    branch: { exists: true, oid: baseOid },
-    expectedWorkspace: {
-      branch: "agent/stale",
-      worktreePath: "expected",
-    },
-  };
-  const decision: RunRecoveryDecision = {
-    action: "recreate-and-resume",
-    assessment: realAssessment,
-    recreation: {
-      branch: "agent/stale",
-      expectedWorktreePath: "expected",
-      mode: "advance-to-base",
-      targetOid: baseOid,
-      expectedBranchOid: baseOid,
-      pruneStaleRegistration: true,
-      stagingPath: "stage",
-    },
-  };
   await executeRunRecoveryMutation({
     decision,
-    repoRoot: root,
-    runner,
-    reassess: async () => decision,
-  });
-  assert.equal(git("rev-parse", "agent/stale"), baseOid);
-  assert.match(git("worktree", "list", "--porcelain"), /worktree .*expected/);
-});
-
-test("real Git stale cleanup refuses when an unrelated registration would also be pruned", async () => {
-  const root = await mkdtemp(join(tmpdir(), "patchmill-prune-unrelated-"));
-  const git = (...args: string[]) =>
-    execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-  git("init");
-  git("config", "user.email", "test@example.com");
-  git("config", "user.name", "Test");
-  await writeFile(join(root, "base.txt"), "base\n");
-  git("add", "base.txt");
-  git("commit", "-m", "base");
-  const baseOid = git("rev-parse", "HEAD");
-  git("worktree", "add", "-b", "agent/expected", "expected", "HEAD");
-  git("worktree", "add", "-b", "agent/unrelated", "unrelated", "HEAD");
-  await rm(join(root, "expected"), { recursive: true });
-  await rm(join(root, "unrelated"), { recursive: true });
-  const runner = {
-    run: async (
-      _command: string,
-      args: string[],
-      options?: { cwd?: string },
-    ) => {
-      try {
+    repoRoot: ".",
+    runner: {
+      run: async (_command, args) => {
+        calls.push(args);
         return {
           code: 0,
-          stdout: execFileSync("git", args, {
-            cwd: options?.cwd ?? root,
-            encoding: "utf8",
-          }),
+          stdout: args[0] === "rev-parse" ? assessment.baseOid : "",
           stderr: "",
         };
-      } catch (error) {
-        const result = error as {
-          status?: number;
-          stdout?: string;
-          stderr?: string;
-        };
-        return {
-          code: result.status ?? 1,
-          stdout: result.stdout ?? "",
-          stderr: result.stderr ?? "",
-        };
-      }
-    },
-  };
-  const decision: RunRecoveryDecision = {
-    action: "recreate-and-resume",
-    assessment: {
-      ...assessment,
-      baseOid,
-      branch: { exists: true, oid: baseOid },
-      expectedWorkspace: {
-        branch: "agent/expected",
-        worktreePath: "expected",
       },
     },
-    recreation: {
-      branch: "agent/expected",
-      expectedWorktreePath: "expected",
-      mode: "advance-to-base",
-      targetOid: baseOid,
-      expectedBranchOid: baseOid,
-      pruneStaleRegistration: true,
-      stagingPath: "stage",
-    },
-  };
-  await assert.rejects(
-    executeRunRecoveryMutation({
-      decision,
-      repoRoot: root,
-      runner,
-      reassess: async () => decision,
-    }),
-    /Refusing repository-wide worktree prune/,
-  );
-  assert.match(git("worktree", "list", "--porcelain"), /worktree .*unrelated/);
-  assert.equal(git("rev-parse", "agent/expected"), baseOid);
-});
-
-test("stale registration recovery refuses a dry-run that would prune an unrelated registration", async () => {
-  const decision: RunRecoveryDecision = {
-    action: "recreate-and-resume",
-    assessment,
-    recreation: {
-      branch: "issue",
-      expectedWorktreePath: "missing-worktree",
-      mode: "advance-to-base",
-      targetOid: assessment.baseOid,
-      expectedBranchOid: assessment.branch.oid,
-      pruneStaleRegistration: true,
-      stagingPath: "staging",
-    },
-  };
-  const calls: string[][] = [];
-  await assert.rejects(
-    executeRunRecoveryMutation({
-      decision,
-      repoRoot: ".",
-      runner: {
-        run: async (_command, args) => {
-          calls.push(args);
-          if (args.join(" ") === "worktree list --porcelain")
-            return {
-              code: 0,
-              stdout:
-                "worktree missing-worktree\nbranch refs/heads/issue\nprunable gone\n\nworktree unrelated\nbranch refs/heads/unrelated\nprunable gone\n",
-              stderr: "",
-            };
-          if (
-            args.join(" ") === "worktree prune --dry-run --verbose --expire=now"
-          )
-            return {
-              code: 0,
-              stdout:
-                "Removing worktrees/missing-worktree: gone\nRemoving worktrees/unrelated: gone\n",
-              stderr: "",
-            };
-          return { code: 0, stdout: "", stderr: "" };
-        },
-      },
-      reassess: async () => decision,
-    }),
-    /Refusing repository-wide worktree prune/,
-  );
+    reassess: async () => decision,
+  });
   assert.equal(
-    calls.some((args) => args[0] === "update-ref"),
-    false,
-  );
-  assert.equal(
-    calls.some((args) => args.join(" ") === "worktree prune --expire=now"),
+    calls.some((args) => args[0] === "worktree" && args[1] === "prune"),
     false,
   );
 });
@@ -546,7 +315,6 @@ test("cleanup rejects a reassessment with a changed quarantine plan before move"
       expectedWorktreePath: "work",
       expectedBranchOid: assessment.branch.oid,
       quarantinePath: "quarantine",
-      pruneStaleRegistration: false,
     },
   };
   const changed = {
@@ -594,7 +362,6 @@ test("real Git reset cleanup retains clean checkout as detached quarantine", asy
       expectedWorktreePath: expected,
       expectedBranchOid: oid,
       quarantinePath: quarantine,
-      pruneStaleRegistration: false,
     },
   };
   const runner = {
@@ -663,7 +430,6 @@ test("late ignored quarantine content prevents reset ref deletion", async () => 
       expectedWorktreePath: expected,
       expectedBranchOid: oid,
       quarantinePath: quarantine,
-      pruneStaleRegistration: false,
     },
   };
   let injected = false;
@@ -915,7 +681,6 @@ test("refusal is never accepted as a reassessment result", async () => {
       expectedWorktreePath: "work",
       mode: "create-from-base",
       targetOid: assessment.baseOid,
-      pruneStaleRegistration: false,
       stagingPath: "stage",
     },
   };

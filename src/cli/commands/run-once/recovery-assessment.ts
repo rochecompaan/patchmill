@@ -71,36 +71,72 @@ type Registered = {
   locked: boolean;
   prunable: boolean;
   malformed: boolean;
+  seen: boolean;
 };
 /** Parse the documented porcelain fields; unknown fields are preserved as
  * malformed rather than being used to authorize a destructive repair. */
-function registrations(output: string): Registered[] {
+function registrations(output: string): {
+  entries: Registered[];
+  malformed: boolean;
+} {
   const entries: Registered[] = [];
+  let malformed = false;
   let entry: Registered = {
     path: "",
     locked: false,
     prunable: false,
     malformed: false,
+    seen: false,
+  };
+  const finish = () => {
+    if (entry.path) entries.push(entry);
+    else if (entry.seen) malformed = true;
+    entry = {
+      path: "",
+      locked: false,
+      prunable: false,
+      malformed: false,
+      seen: false,
+    };
   };
   for (const line of output.split("\n")) {
     if (!line) {
-      if (entry.path) entries.push(entry);
-      entry = { path: "", locked: false, prunable: false, malformed: false };
+      finish();
     } else if (line.startsWith("worktree ")) {
+      entry.seen = true;
       if (entry.path || !line.slice(9)) entry.malformed = true;
       else entry.path = resolve(line.slice(9));
     } else if (line.startsWith("branch refs/heads/")) {
-      if (entry.branch) entry.malformed = true;
+      entry.seen = true;
+      if (entry.branch || !line.slice("branch refs/heads/".length))
+        entry.malformed = true;
       else entry.branch = line.slice("branch refs/heads/".length);
-    } else if (line === "locked" || line.startsWith("locked "))
+    } else if (line === "locked" || line.startsWith("locked ")) {
+      entry.seen = true;
       entry.locked = true;
-    else if (line === "prunable" || line.startsWith("prunable "))
+    } else if (line === "prunable" || line.startsWith("prunable ")) {
+      entry.seen = true;
       entry.prunable = true;
-    else if (!line.startsWith("HEAD ") && !line.startsWith("detached"))
-      entry.malformed = true;
+    } else {
+      entry.seen = true;
+      if (!line.startsWith("HEAD ") && !line.startsWith("detached"))
+        entry.malformed = true;
+    }
   }
-  if (entry.path) entries.push(entry);
-  return entries;
+  finish();
+  const paths = new Set<string>();
+  const branches = new Set<string>();
+  for (const item of entries) {
+    if (
+      item.malformed ||
+      paths.has(item.path) ||
+      (item.branch && branches.has(item.branch))
+    )
+      malformed = true;
+    paths.add(item.path);
+    if (item.branch) branches.add(item.branch);
+  }
+  return { entries, malformed };
 }
 function ignoredEntries(status: string): string[] {
   return status
@@ -166,7 +202,7 @@ function classify(input: {
   savedWorktreePath?: string;
   expectedWorktreePath: string;
   registrationLocked?: boolean;
-  registrationMalformed?: boolean;
+  registrationsMalformed?: boolean;
 }): RunRecoveryClassification {
   if (
     (input.savedBranch && input.savedBranch !== input.expectedBranch) ||
@@ -177,8 +213,9 @@ function classify(input: {
     input.expectedBranchElsewhere ||
     (input.registered && input.registeredBranch !== input.expectedBranch) ||
     (input.worktreeExists && input.registered && !input.registeredBranch) ||
-    (input.registered &&
-      (input.registrationLocked || input.registrationMalformed))
+    input.registrationsMalformed ||
+    (input.registered && !input.worktreeExists) ||
+    (input.registered && input.registrationLocked)
   )
     return "workspace-unverifiable";
   if (input.dirty) return "dirty-worktree";
@@ -202,13 +239,14 @@ export async function assessRunRecovery(
     input.repoRoot,
     input.expectedWorkspace.worktreePath,
   );
-  const listed = registrations(
+  const worktreeRegistrations = registrations(
     await git(
       input,
       ["worktree", "list", "--porcelain"],
       "cannot list worktrees",
     ),
   );
+  const listed = worktreeRegistrations.entries;
   const registered = listed.find((entry) => entry.path === worktreePath);
   const expectedBranchElsewhere = listed.some(
     (entry) =>
@@ -320,7 +358,7 @@ export async function assessRunRecovery(
     savedWorktreePath: input.state.worktreePath,
     expectedWorktreePath: input.expectedWorkspace.worktreePath,
     registrationLocked: registered?.locked,
-    registrationMalformed: registered?.malformed,
+    registrationsMalformed: worktreeRegistrations.malformed,
   });
   return {
     runStatePath: input.runStatePath,
