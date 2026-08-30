@@ -36,6 +36,22 @@ test("inspection prints a fingerprinted follow-up command", async () => {
   assert.equal(code, 0);
   assert.match(err.text, /--expect-lease-sha256 abc --confirm-owner-stopped/);
 });
+test("rejects mismatched and confirmation-only repair confirmations", async () => {
+  await assert.rejects(
+    runLeaseRepairCommand([
+      "--issue",
+      "45",
+      "--expect-lease-sha256",
+      "a",
+      "--confirm-all-runners-stopped",
+    ]),
+    /matching/,
+  );
+  await assert.rejects(
+    runLeaseRepairCommand(["--issue", "45", "--confirm-owner-stopped"]),
+    /requires a repair fingerprint/,
+  );
+});
 test("rejects invalid issue and mixed fingerprints", async () => {
   await assert.rejects(
     runLeaseRepairCommand(["--issue", "0"]),

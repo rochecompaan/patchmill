@@ -37,6 +37,11 @@ export async function runLeaseRepairCommand(
     args,
   );
   if (!count) {
+    if (
+      args.includes("--confirm-owner-stopped") ||
+      args.includes("--confirm-all-runners-stopped")
+    )
+      throw new Error("Repair confirmation requires a repair fingerprint");
     const inspection = await (
       dependencies.inspect ?? inspectIssueRunLeaseRepair
     )(config.runStateDir, issue);
@@ -60,10 +65,12 @@ export async function runLeaseRepairCommand(
     return 0;
   }
   if (count !== 1) throw new Error("Specify exactly one repair fingerprint");
-  const confirmed =
-    args.includes("--confirm-owner-stopped") ||
-    args.includes("--confirm-all-runners-stopped");
-  if (!confirmed)
+  const ownerStopped = args.includes("--confirm-owner-stopped");
+  const allStopped = args.includes("--confirm-all-runners-stopped");
+  const matchingConfirmation =
+    (lease && ownerStopped && !allStopped) ||
+    ((guard || state) && allStopped && !ownerStopped);
+  if (!matchingConfirmation)
     throw new Error(
       "Repair requires the matching stopped-process confirmation",
     );
