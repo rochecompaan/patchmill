@@ -246,6 +246,40 @@ test("refresh CAS failure retains staged and quarantined paths", async () => {
     },
   );
 });
+test("cleanup rejects a reassessment with a changed quarantine plan before move", async () => {
+  const decision: RunRecoveryDecision = {
+    action: "archive-reset-and-start",
+    assessment,
+    seed: { issueNumber: 45, title: "Recover" },
+    cleanup: {
+      branch: "issue",
+      expectedWorktreePath: "work",
+      expectedBranchOid: assessment.branch.oid,
+      quarantinePath: "quarantine",
+      pruneStaleRegistration: false,
+    },
+  };
+  const changed = {
+    ...decision,
+    cleanup: { ...decision.cleanup, quarantinePath: "other" },
+  };
+  const calls: string[][] = [];
+  await assert.rejects(
+    executeRunRecoveryMutation({
+      decision,
+      repoRoot: ".",
+      runner: {
+        run: async (_command, args) => {
+          calls.push(args);
+          return { code: 0, stdout: "", stderr: "" };
+        },
+      },
+      reassess: async () => changed,
+    }),
+    /evidence changed/,
+  );
+  assert.equal(calls.length, 0);
+});
 test("refusal is never accepted as a reassessment result", async () => {
   const decision: RunRecoveryDecision = {
     action: "recreate-and-resume",

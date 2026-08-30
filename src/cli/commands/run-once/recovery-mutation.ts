@@ -203,7 +203,16 @@ export async function executeRunRecoveryMutation(input: {
     }
     const p = input.decision.cleanup;
     const beforeQuarantine = nonRefusal(await input.reassess());
-    if (beforeQuarantine.action !== "archive-reset-and-start")
+    if (
+      beforeQuarantine.action !== "archive-reset-and-start" ||
+      beforeQuarantine.cleanup.branch !== p.branch ||
+      beforeQuarantine.cleanup.expectedWorktreePath !==
+        p.expectedWorktreePath ||
+      beforeQuarantine.cleanup.expectedBranchOid !== p.expectedBranchOid ||
+      beforeQuarantine.cleanup.quarantinePath !== p.quarantinePath ||
+      beforeQuarantine.cleanup.pruneStaleRegistration !==
+        p.pruneStaleRegistration
+    )
       throw new Error("Recovery evidence changed before workspace quarantine");
     if (p.expectedWorktreePath && p.quarantinePath) {
       await command(input.runner, input.repoRoot, [
