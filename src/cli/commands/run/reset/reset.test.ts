@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateResetIssueEligibility } from "./reset.ts";
+import { resetIssueRun, validateResetIssueEligibility } from "./reset.ts";
+import {
+  blockedRecoveryRunner,
+  makeConfig,
+} from "../../../../../test-support/run-once/pipeline-fixtures.ts";
+const NOW = new Date("2026-06-20T12:00:00.000Z");
 import type {
   AgentIssueConfig,
   AgentIssueRunState,
@@ -98,3 +103,18 @@ test("allows absent state so reset can provide guidance", () =>
   assert.doesNotThrow(() =>
     validateResetIssueEligibility({ issue: issue([]), config }),
   ));
+test("returns absent-state guidance without recovery mutation", async () => {
+  const runConfig = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  const runner = blockedRecoveryRunner(runConfig);
+  const result = await resetIssueRun(runner, runConfig, { now: NOW });
+  assert.equal(result.status, "nothing-to-reset");
+  assert.equal(
+    runner.calls.some((call) => call.command === "git"),
+    false,
+  );
+  assert.match(result.guidance, /run-once --issue 45/);
+});
