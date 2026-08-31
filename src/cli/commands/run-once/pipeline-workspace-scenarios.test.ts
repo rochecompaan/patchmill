@@ -265,7 +265,7 @@ test("runOneIssue resumes clean blocked implementation workspace after external 
   assert.match(
     finalLabelCall.args[finalLabelCall.args.indexOf("--remove-labels") + 1] ??
       "",
-    /needs-info/,
+    /in-progress/,
   );
   const state = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
@@ -457,7 +457,12 @@ test("runOneIssue recovers blocked state overwritten by spec review stop", async
     NOW.toISOString(),
   );
   const runner = blockedRecoveryRunner(config, {
-    selectedLabels: ["spec-review", "spec-approved", "plan-approved"],
+    selectedLabels: [
+      "agent-ready",
+      "spec-review",
+      "spec-approved",
+      "plan-approved",
+    ],
   });
 
   const result = await runOneIssue(runner, config, { now: NOW });
@@ -518,20 +523,21 @@ test("runOneIssue reports dirty blocked recovery before mutations", async () => 
   assert.equal(state.branch, "agent/issue-45-recover-blocked-run");
 });
 
-test("runOneIssue reports already merged blocked recovery before mutations", async () => {
+test("runOneIssue treats an empty ancestor blocked workspace as recoverable", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
     issueNumber: 45,
   });
   await writeBlockedRecoveryRunState(config);
-  const runner = blockedRecoveryRunner(config, { merged: true, log: "" });
+  const runner = blockedRecoveryRunner(config, {
+    merged: true,
+    revList: "0\t0\n",
+    log: "",
+  });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /Confirm the work is landed/,
-  );
-  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
 });
 
 test("runOneIssue resumes clean behind blocked recovery", async () => {
@@ -574,7 +580,7 @@ test("runOneIssue reports missing saved plan before blocked resume mutations", a
   const state = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
-  assert.equal(state.status, "blocked");
+  assert.equal(state.status, "claimed");
   assert.equal(
     state.planPath,
     "docs/plans/2026-06-20-issue-45-recover-blocked-run.md",
@@ -625,7 +631,7 @@ test("runOneIssue rejects mismatched blocked resume artifact comments before mat
   );
 });
 
-test("runOneIssue reports missing worktree with existing branch blocked recovery before mutations", async () => {
+test("runOneIssue recreates a missing worktree with an existing blocked branch", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -636,14 +642,57 @@ test("runOneIssue reports missing worktree with existing branch blocked recovery
   });
   const runner = blockedRecoveryRunner(config, { worktreeRegistered: false });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /git worktree add \.worktrees\/patchmill-issue-45-recover-blocked-run agent\/issue-45-recover-blocked-run/,
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args[0] === "worktree" &&
+        call.args[1] === "add",
+    ),
+    true,
   );
-  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
 
-test("runOneIssue reports missing branch and worktree blocked recovery before mutations", async () => {
+test("runOneIssue clears blocker state and safely recreates a blocked attempt without saved workspace", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 45,
+  });
+  await writeBlockedRecoveryRunState(
+    config,
+    {
+      branch: undefined,
+      worktreePath: undefined,
+      blockerQuestions: [{ question: "Can this run continue?" }],
+    },
+    { createWorktreePath: false },
+  );
+  const runner = blockedRecoveryRunner(config, {
+    branchExists: false,
+    worktreeRegistered: false,
+  });
+
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args.join(" ").includes("--remove-labels agent-ready,needs-info"),
+    ),
+    true,
+  );
+  const state = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+  );
+  assert.equal(state.lastError, undefined);
+  assert.equal(state.blockerQuestions, undefined);
+});
+
+test("runOneIssue recreates missing branch and worktree for a blocked retry", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -657,9 +706,16 @@ test("runOneIssue reports missing branch and worktree blocked recovery before mu
     worktreeRegistered: false,
   });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /Archive or remove stale run state/,
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        call.args
+          .join(" ")
+          .includes("worktree add -b agent/issue-45-recover-blocked-run"),
+    ),
+    true,
   );
-  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });

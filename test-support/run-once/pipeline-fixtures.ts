@@ -333,7 +333,7 @@ export function blockedRecoveryRunner(
                 {
                   ...issue(
                     45,
-                    options.selectedLabels ?? ["needs-info"],
+                    options.selectedLabels ?? ["agent-ready", "needs-info"],
                     "Recover blocked run",
                   ),
                   ...(options.selectedComments
@@ -345,6 +345,17 @@ export function blockedRecoveryRunner(
         stderr: "",
       };
     }
+    if (call.command === "git" && call.args[0] === "rev-parse") {
+      return {
+        code: 0,
+        stdout: call.args.at(-1)?.includes("agent/issue")
+          ? "abcdefabcdefabcdefabcdefabcdefabcdefabcd\n"
+          : "0123456789abcdef0123456789abcdef01234567\n",
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "cat-file")
+      return { code: 0, stdout: "blob\n", stderr: "" };
     if (call.command === "git" && call.args[0] === "show-ref") {
       return {
         code: options.branchExists === false ? 1 : 0,
@@ -362,7 +373,7 @@ export function blockedRecoveryRunner(
         stdout:
           options.worktreeRegistered === false
             ? ""
-            : `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-recover-blocked-run")}\n`,
+            : `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-45-recover-blocked-run")}\nHEAD abcdefabcdefabcdefabcdefabcdefabcdefabcd\nbranch refs/heads/agent/issue-45-recover-blocked-run\n\n`,
         stderr: "",
       };
     }

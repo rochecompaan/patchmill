@@ -1,6 +1,8 @@
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
+import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import { assertExplicitWorkflowState } from "./workflow-state.ts";
 import type {
   AgentIssueConfig,
   AgentIssueVisualEvidence,
@@ -9,7 +11,7 @@ import type {
 } from "./types.ts";
 import {
   lifecycleLabels,
-  hasBlockedSavedWorkspaceState,
+  hasBlockedRunRecoveryState,
 } from "./pipeline-lifecycle.ts";
 import { progress, type PipelineProgressOptions } from "./pipeline-progress.ts";
 import { rejectionMessage } from "./pipeline-comments.ts";
@@ -58,6 +60,30 @@ export async function emitSelectionDiagnostics(
   }
 }
 
+function assertBlockedRetryEligible(
+  issue: IssueSummary,
+  config: AgentIssueConfig,
+): void {
+  const lifecycle = lifecycleLabels(config);
+  // Keep normal triage exclusions, except the lifecycle blocker that
+  // agent-ready explicitly acknowledges for recovery.
+  const excluded = (
+    config.triagePolicy ?? DEFAULT_TRIAGE_POLICY
+  ).runOnceSelection.excludedLabels.filter(
+    (label) => label !== lifecycle.needsInfo,
+  );
+  const blocking = issue.labels.filter((label) => excluded.includes(label));
+  if (blocking.length)
+    throw new Error(
+      `Issue #${issue.number} is open but not eligible because it has ${blocking.join(", ")}`,
+    );
+  assertExplicitWorkflowState(issue.labels, {
+    readyLabel: lifecycle.ready,
+    policy: config.approvalPolicy,
+    issue,
+  });
+}
+
 export async function selectResumableIssue(
   issues: IssueSummary[],
   config: AgentIssueConfig,
@@ -89,7 +115,7 @@ export async function selectResumableIssue(
       const explicitState = explicitIssue
         ? await readRunState(config.runStateDir, explicitIssue.number)
         : undefined;
-      if (explicitIssue && hasBlockedSavedWorkspaceState(explicitState)) {
+      if (explicitIssue && hasBlockedRunRecoveryState(explicitState)) {
         if (
           resumable.length === 1 &&
           resumable[0]?.number !== explicitIssue.number
@@ -97,6 +123,12 @@ export async function selectResumableIssue(
           throw new Error(
             `Resumable ${inProgress} automation run #${resumable[0]?.number} exists; resume it before processing #${explicitIssue.number}`,
           );
+        if (!explicitIssue.labels.includes(ready)) {
+          throw new Error(
+            `Issue #${explicitIssue.number} has a blocked Run recovery state but is not labeled ${ready}`,
+          );
+        }
+        assertBlockedRetryEligible(explicitIssue, config);
         return { issue: explicitIssue, resumed: true };
       }
     }

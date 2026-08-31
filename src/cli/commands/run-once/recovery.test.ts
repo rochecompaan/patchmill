@@ -6,9 +6,18 @@ import { join } from "node:path";
 import {
   formatBlockedRunRecoveryReport,
   inspectBlockedRunRecovery,
+  planRunRecovery,
   type BlockedRunRecoveryReport,
 } from "./recovery.ts";
-import type { CommandResult, CommandRunner } from "./types.ts";
+import {
+  createRunRecoveryPaths,
+  decideRunRecovery,
+} from "./recovery-policy.ts";
+import type {
+  CommandResult,
+  CommandRunner,
+  RunRecoveryAssessment,
+} from "./types.ts";
 
 type Call = { command: string; args: string[]; cwd?: string };
 
@@ -54,6 +63,7 @@ function cleanRunner(
     merged: boolean;
     revList: string;
     log: string;
+    worktreePorcelain: string;
   }> = {},
 ) {
   return runnerFor((call) => {
@@ -68,9 +78,10 @@ function cleanRunner(
       return {
         code: 0,
         stdout:
-          overrides.worktreeRegistered === false
+          overrides.worktreePorcelain ??
+          (overrides.worktreeRegistered === false
             ? ""
-            : `worktree ${join(call.cwd ?? "/repo", baseState.worktreePath)}\nbranch refs/heads/agent/issue-45-recover-blocked-run\n`,
+            : `worktree ${join(call.cwd ?? "/repo", baseState.worktreePath)}\nHEAD 0123456789abcdef0123456789abcdef01234567\nbranch refs/heads/agent/issue-45-recover-blocked-run\n`),
         stderr: "",
       };
     }
@@ -98,11 +109,15 @@ function cleanRunner(
 
 async function inspect(
   overrides?: Parameters<typeof cleanRunner>[0],
-  options?: { worktreeExists?: boolean; ignoredPaths?: string[] },
+  options?: {
+    worktreeExists?: boolean;
+    ignoredPaths?: string[];
+    repoRoot?: string;
+  },
 ) {
   return inspectBlockedRunRecovery({
     runner: cleanRunner(overrides),
-    repoRoot: await tempRepo(options),
+    repoRoot: options?.repoRoot ?? (await tempRepo(options)),
     runStatePath: ".patchmill/runs/issue-45.json",
     state: baseState,
     baseRef: "main",
@@ -141,6 +156,17 @@ test("inspectBlockedRunRecovery ignores configured clean-status paths in saved w
   assert.equal(report.worktree.dirtyStatus, undefined);
 });
 
+test("inspectBlockedRunRecovery preserves leading porcelain status spaces before ignored-path filtering", async () => {
+  const report = await inspect(
+    { dirtyStatus: " M x.pi/todos/file\n" },
+    { ignoredPaths: [".pi/todos/"] },
+  );
+
+  assert.equal(report.kind, "dirty-worktree");
+  assert.equal(report.worktree.clean, false);
+  assert.match(report.worktree.dirtyStatus ?? "", /x\.pi\/todos\/file/);
+});
+
 test("inspectBlockedRunRecovery still blocks non-ignored dirty status with ignored paths configured", async () => {
   const report = await inspect(
     { dirtyStatus: "?? .patchmill/runs/issue-45.json\n M src/index.ts\n" },
@@ -150,6 +176,71 @@ test("inspectBlockedRunRecovery still blocks non-ignored dirty status with ignor
   assert.equal(report.kind, "dirty-worktree");
   assert.equal(report.worktree.clean, false);
   assert.equal(report.worktree.dirtyStatus, "M src/index.ts");
+});
+
+test("inspectBlockedRunRecovery accepts a valid bare worktree record alongside the expected linked worktree", async () => {
+  const root = await tempRepo();
+  const expected = join(root, baseState.worktreePath);
+  const report = await inspect(
+    {
+      worktreePorcelain:
+        `worktree ${expected}\nHEAD 0123456789abcdef0123456789abcdef01234567\nbranch refs/heads/${baseState.branch}\n\n` +
+        `worktree ${join(root, "bare-repo")}\nbare\n`,
+    },
+    { repoRoot: root },
+  );
+
+  assert.equal(report.kind, "recoverable-clean");
+});
+
+test("planRunRecovery accepts a valid bare record while preserving expected linked workspace identity", async () => {
+  const root = await tempRepo();
+  const worktree = join(root, baseState.worktreePath);
+  const bareRepository = join(root, "bare-repository");
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: { ...baseState, worktreePath: worktree },
+    baseRef: "HEAD",
+    expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout:
+            `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\n\n` +
+            `worktree ${bareRepository}\nbare\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "-C") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+
+  assert.equal(decision.action, "resume");
+  assert.equal(decision.assessment.classification, "resumable-current");
+  assert.deepEqual(decision.assessment.expectedWorkspace, {
+    branch: baseState.branch,
+    worktreePath: worktree,
+  });
+  assert.equal(decision.assessment.worktree.registered, true);
+  assert.equal(decision.assessment.worktree.registeredBranch, baseState.branch);
+  assert.equal(decision.assessment.branch.checkedOutAt, worktree);
 });
 
 test("inspectBlockedRunRecovery classifies already merged branch", async () => {
@@ -294,6 +385,290 @@ function report(
   };
   return { ...common, recommendedActions: actions[kind] };
 }
+
+test("recovery path allocation is deterministic at the orchestration boundary", () => {
+  const now = new Date("2026-08-30T12:00:00.000Z");
+  assert.deepEqual(
+    createRunRecoveryPaths({ worktreePath: "/repo/work", now }),
+    createRunRecoveryPaths({ worktreePath: "/repo/work", now }),
+  );
+});
+
+test("typed recovery decision table selects only conservative actions", () => {
+  const assessment = (
+    classification: RunRecoveryAssessment["classification"],
+  ): RunRecoveryAssessment => ({
+    runStatePath: "state",
+    issueNumber: 45,
+    title: "Recover",
+    status: "blocked",
+    lease: { status: "owned", ownerToken: "owner" },
+    legacyMigrationFenceValid: true,
+    blocked: true,
+    expectedWorkspace: { branch: "agent/recover", worktreePath: "work" },
+    savedWorkspace: {},
+    baseOid: "0123456789abcdef0123456789abcdef01234567",
+    branch: { exists: false },
+    worktree: { exists: false, registered: false, ignoredEntries: [] },
+    actualUniqueCommits: [],
+    savedCommits: [],
+    artifacts: { spec: { valid: false }, plan: { valid: false } },
+    classification,
+  });
+  assert.equal(
+    decideRunRecovery("retry", assessment("recreatable-clean"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
+    "recreate-and-resume",
+  );
+  assert.equal(
+    decideRunRecovery("retry", assessment("resumable-current"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
+    "resume",
+  );
+  assert.equal(
+    decideRunRecovery("retry", assessment("dirty-worktree"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
+    "refuse",
+  );
+  assert.equal(
+    decideRunRecovery("reset", assessment("resumable-current"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
+    "archive-reset-and-start",
+  );
+  assert.equal(
+    decideRunRecovery("reset", assessment("resumable-with-commits"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
+    "refuse",
+  );
+});
+
+test("locked absent registration is unverifiable rather than pruneable", async () => {
+  const root = await tempRepo({ worktreeExists: false });
+  const worktree = join(root, "missing-worktree");
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: {
+      issueNumber: 45,
+      title: "Recover",
+      status: "blocked",
+      branch: "agent/recover",
+      worktreePath: worktree,
+      createdAt: "x",
+      updatedAt: "x",
+    },
+    baseRef: "HEAD",
+    expectedWorkspace: { branch: "agent/recover", worktreePath: worktree },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout: `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/agent/recover\nlocked unavailable\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+  assert.equal(decision.action, "refuse");
+  if (decision.action === "refuse")
+    assert.equal(decision.reason, "workspace-unverifiable");
+});
+
+test("malformed existing worktree registration is unverifiable", async () => {
+  const root = await tempRepo();
+  const worktree = join(root, baseState.worktreePath);
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: { ...baseState, worktreePath: worktree },
+    baseRef: "HEAD",
+    expectedWorkspace: {
+      branch: baseState.branch,
+      worktreePath: worktree,
+    },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout: `worktree ${worktree}\nHEAD ${oid}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      if (call.args[0] === "-C") return { code: 0, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+  assert.equal(decision.action, "refuse");
+  if (decision.action === "refuse")
+    assert.equal(decision.reason, "workspace-unverifiable");
+});
+
+test("registered absent worktree is unverifiable and requires manual repair", async () => {
+  const root = await tempRepo({ worktreeExists: false });
+  const worktree = join(root, baseState.worktreePath);
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: { ...baseState, worktreePath: worktree },
+    baseRef: "HEAD",
+    expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout: `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\nprunable missing\n\nworktree ${join(root, "unrelated")}\nHEAD ${oid}\nbranch refs/heads/unrelated\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+  assert.equal(decision.action, "refuse");
+  if (decision.action === "refuse") {
+    assert.equal(decision.reason, "workspace-unverifiable");
+    assert.match(
+      decision.guidance.join("\n"),
+      /Repair the workspace registration/,
+    );
+  }
+});
+
+test("malformed, missing-branch/detached, or duplicate porcelain records anywhere are globally unverifiable", async () => {
+  const root = await tempRepo();
+  const worktree = join(root, baseState.worktreePath);
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  for (const extra of [
+    "HEAD detached-without-worktree\n",
+    "HEAD malformed-without-worktree\nunknown evidence\n",
+    `worktree ${join(root, "other")}\nbranch refs/heads/other\n\nworktree ${join(root, "other")}\nbranch refs/heads/other-again\n`,
+    `worktree ${join(root, "other")}\nHEAD not-a-hex-oid\nbranch refs/heads/other\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\nHEAD ${oid}\nbranch refs/heads/other\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\nbranch refs/heads/other\ndetached\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\ndetached garbage\n`,
+    `worktree relative-path\nHEAD ${oid}\nbranch refs/heads/other\n`,
+  ]) {
+    const decision = await planRunRecovery({
+      intent: "retry",
+      repoRoot: root,
+      runStatePath: join(root, "state.json"),
+      state: { ...baseState, worktreePath: worktree },
+      baseRef: "HEAD",
+      expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
+      leaseOwnerToken: "owner",
+      snapshotRaw: "state",
+      recoveryPaths: {
+        quarantinePath: join(root, "quarantine"),
+        stagingPath: join(root, "staging"),
+      },
+      runner: runnerFor((call) => {
+        if (call.args[0] === "rev-parse")
+          return { code: 0, stdout: `${oid}\n`, stderr: "" };
+        if (call.args.join(" ") === "worktree list --porcelain")
+          return {
+            code: 0,
+            stdout: `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\n\n${extra}`,
+            stderr: "",
+          };
+        if (call.args[0] === "rev-list")
+          return { code: 0, stdout: "0 0\n", stderr: "" };
+        if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+        if (call.args[0] === "cat-file" || call.args[0] === "-C")
+          return {
+            code: call.args[0] === "-C" ? 0 : 1,
+            stdout: "",
+            stderr: "",
+          };
+        throw new Error(`unexpected git ${call.args.join(" ")}`);
+      }),
+    });
+    assert.equal(decision.action, "refuse");
+    if (decision.action === "refuse")
+      assert.equal(decision.reason, "workspace-unverifiable");
+  }
+});
+
+test("unverifiable workspace guidance identifies saved and expected workspaces", () => {
+  const decision = decideRunRecovery(
+    "retry",
+    {
+      runStatePath: "state",
+      issueNumber: 45,
+      title: "Recover",
+      status: "blocked",
+      lease: { status: "owned", ownerToken: "owner" },
+      legacyMigrationFenceValid: true,
+      blocked: true,
+      expectedWorkspace: { branch: "agent/expected", worktreePath: "expected" },
+      savedWorkspace: { branch: "agent/saved", worktreePath: "saved" },
+      baseOid: "0123456789abcdef0123456789abcdef01234567",
+      branch: { exists: true },
+      worktree: { exists: false, registered: false, ignoredEntries: [] },
+      actualUniqueCommits: [],
+      savedCommits: [],
+      artifacts: { spec: { valid: false }, plan: { valid: false } },
+      classification: "workspace-unverifiable",
+    },
+    { quarantinePath: "quarantine", stagingPath: "staging" },
+  );
+  assert.equal(decision.action, "refuse");
+  if (decision.action !== "refuse") return;
+  assert.match(decision.guidance.join("\n"), /agent\/saved/);
+  assert.match(decision.guidance.join("\n"), /agent\/expected/);
+});
 
 test("formatBlockedRunRecoveryReport includes clean recovery details", () => {
   const message = formatBlockedRunRecoveryReport(report("recoverable-clean"));

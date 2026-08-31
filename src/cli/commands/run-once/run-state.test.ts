@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  adoptRunStateLeaseProtocol,
   isResumableRunState,
   readRunState,
+  readRunStateSnapshot,
+  replaceRunStateAfterReset,
   runStatePath,
   writeRunState,
 } from "./run-state.ts";
@@ -533,6 +537,85 @@ test("writeRunState clears stale optional implementation fields when replacing i
   assert.equal(mergedState.prUrl, undefined);
   assert.equal(mergedState.reviewSummary, undefined);
   assert.equal(mergedState.landingDecision, undefined);
+});
+
+test("replaceRunStateAfterReset persists exactly the reset whitelist", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-reset-whitelist-"));
+  await writeRunState(dir, {
+    issueNumber: 45,
+    title: "Old title",
+    status: "blocked",
+    branch: "agent/old",
+    worktreePath: "old-worktree",
+    commits: ["deadbeef"],
+    lastError: "old blocker",
+    blockerQuestions: ["old question"],
+    checkpoints: { implementationCompleted: true },
+  });
+  const state = await replaceRunStateAfterReset(
+    dir,
+    {
+      issueNumber: 45,
+      title: "New title",
+      seed: {
+        issueNumber: 45,
+        title: "New title",
+        specPath: "docs/specs/approved.md",
+        specCommit: "abc123",
+        startedCommentPosted: true,
+      },
+    },
+    "2026-08-30T12:00:00.000Z",
+  );
+  assert.deepEqual(state, {
+    issueNumber: 45,
+    title: "New title",
+    status: "claimed",
+    specPath: "docs/specs/approved.md",
+    specCommit: "abc123",
+    checkpoints: { claimed: true, startedCommentPosted: true },
+    leaseProtocolVersion: 1,
+    createdAt: "2026-08-30T12:00:00.000Z",
+    updatedAt: "2026-08-30T12:00:00.000Z",
+    claimedAt: "2026-08-30T12:00:00.000Z",
+  });
+});
+
+test("adoptRunStateLeaseProtocol changes only the protocol and update timestamp", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-adopt-lease-"));
+  await writeRunState(dir, {
+    issueNumber: 45,
+    title: "Legacy run",
+    status: "planning",
+    branch: "agent/legacy",
+    commits: ["abc123"],
+    checkpoints: { claimed: true, planCreated: true },
+  });
+  const snapshot = (await readRunStateSnapshot(dir, 45))!;
+  const state = await adoptRunStateLeaseProtocol({
+    snapshot,
+    expectedStateSha256: createHash("sha256")
+      .update(snapshot.raw)
+      .digest("hex"),
+    lease: {
+      path: join(dir, "locks", "issue-45.lock"),
+      record: {
+        version: 1,
+        issueNumber: 45,
+        pid: 1,
+        hostname: "test",
+        ownerToken: "owner",
+        acquiredAt: "2026-08-30T12:00:00.000Z",
+      },
+    },
+    now: "2026-08-30T12:00:00.000Z",
+  });
+  const { updatedAt: _oldUpdatedAt, ...before } = snapshot.state;
+  assert.deepEqual(state, {
+    ...before,
+    leaseProtocolVersion: 1,
+    updatedAt: "2026-08-30T12:00:00.000Z",
+  });
 });
 
 test("isResumableRunState accepts active automation phases only", () => {

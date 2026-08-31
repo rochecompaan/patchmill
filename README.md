@@ -64,6 +64,8 @@ patchmill run-once
 - `patchmill auth` configures or repairs repo-local Pi provider authentication.
 - `patchmill doctor` runs read-only readiness checks.
 - `patchmill triage` classifies open issues for automation.
+- `patchmill run reset --issue N` safely archives and resets saved Run recovery
+  state before an immediate issue-specific Run attempt.
 - `patchmill run-once` advances one actionable issue through the configured
   workflow.
 - `patchmill set-spec` and `patchmill set-plan` publish approved workflow

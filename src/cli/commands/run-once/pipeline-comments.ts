@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   AgentIssueBlockedResult,
   AgentIssueBlockerQuestion,
@@ -48,6 +49,10 @@ export function blockerComment(result: AgentIssueBlockedResult): string {
       ? ["", "Questions:", ...result.questions.map(questionText)]
       : []),
   ].join("\n");
+}
+
+export function blockerCommentKey(result: AgentIssueBlockedResult): string {
+  return `blocker-comment:v1:${createHash("sha256").update(blockerComment(result)).digest("hex")}`;
 }
 
 export function errorMessage(error: unknown): string {

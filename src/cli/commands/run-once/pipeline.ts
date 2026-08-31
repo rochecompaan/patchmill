@@ -29,14 +29,9 @@ import {
 import {
   isResumableRunState,
   readRunState,
-  runStatePath,
+  replaceRunStateAfterReset,
   writeRunState,
 } from "./run-state.ts";
-import {
-  formatBlockedRunRecoveryReport,
-  hasBlockedRunRecoveryState,
-  inspectBlockedRunRecovery,
-} from "./recovery.ts";
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import {
   createStepAccounting,
@@ -46,12 +41,19 @@ import {
 } from "./pipeline-progress.ts";
 import {
   AgentIssueSafetyError,
+  hasBlockedRunRecoveryState,
   effectiveCheckpoints,
   lifecycleLabels,
+  recoveryClaimLabels,
+  resetReceiptCheckpoints,
   nextLabels,
   workflowTransition,
 } from "./pipeline-lifecycle.ts";
-import { startedComment } from "./pipeline-comments.ts";
+import {
+  blockerComment,
+  blockerCommentKey,
+  startedComment,
+} from "./pipeline-comments.ts";
 import {
   cleanStatusIgnoredPaths,
   configuredWorktreeStrategy,
@@ -64,6 +66,11 @@ import {
   selectResumableIssue,
 } from "./pipeline-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
+import {
+  adoptLegacyRecoveryLease,
+  recoverBlockedWorkspace,
+} from "./pipeline-recovery.ts";
 import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
@@ -88,6 +95,12 @@ export type RunOneIssueOptions = {
   verbosePiOutput?: boolean;
   heartbeatMs?: number;
 };
+type LeasedRunOneIssueOptions = RunOneIssueOptions & {
+  lease?: import("./types.ts").IssueRunLease;
+  /** Internal selection pin; never exposed to ordinary callers. */
+  leasedIssueNumber?: number;
+  reset?: { seed: import("./types.ts").RunResetSeed };
+};
 
 function hasFinishedPlanningWorkspaceState(
   state: AgentIssueRunState | undefined,
@@ -105,15 +118,72 @@ export async function runOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
+  return runOneIssueInternal(runner, config, options);
+}
+
+/** Reset uses this narrow leased entry point after it has archived state. */
+export async function runOneIssueAfterReset(
+  runner: CommandRunner,
+  config: AgentIssueConfig,
+  options: RunOneIssueOptions,
+  reset: {
+    lease: import("./types.ts").IssueRunLease;
+    seed: import("./types.ts").RunResetSeed;
+  },
+): Promise<AgentIssuePipelineResult> {
+  return runOneIssueInternal(runner, config, {
+    ...options,
+    lease: reset.lease,
+    reset: { seed: reset.seed },
+  });
+}
+
+async function runOneIssueInternal(
+  runner: CommandRunner,
+  config: AgentIssueConfig,
+  options: LeasedRunOneIssueOptions = {},
+): Promise<AgentIssuePipelineResult> {
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
     host: config.host,
   });
-  const issues = await loadSelectionIssues(host, config, options);
+  // Once an automatic selection has acquired its lease, re-read only that
+  // issue. Never perform another priority selection while holding a lease for
+  // a different issue.
+  const loadedIssues =
+    options.leasedIssueNumber === undefined
+      ? await loadSelectionIssues(host, config, options)
+      : [await host.viewIssue(options.leasedIssueNumber)];
+  // A blocked saved attempt is never an implicit retry target.  It needs an
+  // explicit issue acknowledgement and the normal recovery gate below.
+  const issues =
+    config.issueNumber === undefined
+      ? (
+          await Promise.all(
+            loadedIssues.map(async (candidate) => ({
+              candidate,
+              state: await readRunState(config.runStateDir, candidate.number),
+            })),
+          )
+        )
+          .filter(({ state }) => !hasBlockedRunRecoveryState(state))
+          .map(({ candidate }) => candidate)
+      : loadedIssues;
   let selected: { issue: IssueSummary; resumed: boolean } | undefined;
   try {
-    selected = await selectResumableIssue(issues, config);
+    selected = options.reset
+      ? (() => {
+          const resetIssue = issues.find(
+            (candidate) => candidate.number === config.issueNumber,
+          );
+          if (!resetIssue)
+            throw new Error(
+              `Reset issue #${config.issueNumber ?? "?"} disappeared before pipeline entry`,
+            );
+          return { issue: resetIssue, resumed: false };
+        })()
+      : await selectResumableIssue(issues, config);
   } catch (error) {
     if (error instanceof ApprovalRequiredError) {
       return withLogPath(
@@ -150,7 +220,63 @@ export async function runOneIssue(
     return withLogPath({ status: "no-issue" }, options);
   }
 
-  const existingState = await readRunState(config.runStateDir, issue.number);
+  // A reset has already archived and validated the prior attempt.  Its seed is
+  // authoritative; do not let pre-reset checkpoints re-enter resume policy.
+  if (options.lease && options.lease.record.issueNumber !== issue.number)
+    throw new AgentIssueSafetyError(
+      `Run lease for issue #${options.lease.record.issueNumber} cannot process issue #${issue.number}`,
+    );
+  if (
+    options.leasedIssueNumber !== undefined &&
+    options.leasedIssueNumber !== issue.number
+  )
+    throw new AgentIssueSafetyError(
+      `Leased selection changed from issue #${options.leasedIssueNumber} to issue #${issue.number}`,
+    );
+
+  let existingState: AgentIssueRunState | undefined = options.reset
+    ? {
+        issueNumber: issue.number,
+        title: issue.title,
+        status: "claimed",
+        ...(options.reset.seed.specPath
+          ? { specPath: options.reset.seed.specPath }
+          : {}),
+        ...(options.reset.seed.specCommit
+          ? { specCommit: options.reset.seed.specCommit }
+          : {}),
+        ...(options.reset.seed.planPath
+          ? { planPath: options.reset.seed.planPath }
+          : {}),
+        ...(options.reset.seed.planCommit
+          ? { planCommit: options.reset.seed.planCommit }
+          : {}),
+        checkpoints: resetReceiptCheckpoints(options.reset.seed),
+        leaseProtocolVersion: 1,
+        createdAt: (options.now ?? new Date()).toISOString(),
+        updatedAt: (options.now ?? new Date()).toISOString(),
+      }
+    : await readRunState(config.runStateDir, issue.number);
+  // Every real attempt is serialized from selection through its final effect.
+  // A caller-supplied lease (reset) is borrowed and is therefore not released.
+  if (!config.dryRun && !options.lease) {
+    return withIssueRunLease(
+      { runStateDir: config.runStateDir, issueNumber: issue.number },
+      (lease) =>
+        runOneIssueInternal(runner, config, {
+          ...options,
+          lease,
+          leasedIssueNumber: issue.number,
+        }),
+    );
+  }
+  if (!config.dryRun && options.lease)
+    existingState = await adoptLegacyRecoveryLease({
+      config,
+      issueNumber: issue.number,
+      state: existingState,
+      lease: options.lease,
+    });
   const piAgentDir = localPiAgentDir(config.repoRoot);
   const resumed = selected?.resumed ?? false;
   const ordinaryResumableState =
@@ -201,18 +327,9 @@ export async function runOneIssue(
   }
 
   const ignoredPaths = cleanStatusIgnoredPaths(config, runOptions);
-  const blockedRecoveryReport = hasBlockedRunRecoveryState(existingState)
-    ? await inspectBlockedRunRecovery({
-        runner,
-        repoRoot: config.repoRoot,
-        runStatePath: runStatePath(config.runStateDir, issue.number),
-        state: existingState,
-        baseRef: config.baseRef,
-        ignoredPaths,
-      })
-    : undefined;
-  const blockedRecoveryResumable =
-    blockedRecoveryReport?.kind === "recoverable-clean";
+  // Typed recovery owns every blocked-state classification, including safely
+  // recreatable missing worktrees and branches.  Do not pre-gate it here.
+  const blockedRecoveryResumable = hasBlockedRunRecoveryState(existingState);
   const planningWorkspaceResumable =
     hasFinishedPlanningWorkspaceState(existingState);
   const resumableState =
@@ -221,14 +338,11 @@ export async function runOneIssue(
     planningWorkspaceResumable;
   const resetStaleCheckpoints = !!existingState && !resumableState;
   const checkpoints = {
-    ...(effectiveCheckpoints(existingState?.checkpoints, resumableState) ?? {}),
+    ...(options.reset
+      ? resetReceiptCheckpoints(options.reset.seed)
+      : (effectiveCheckpoints(existingState?.checkpoints, resumableState) ??
+        {})),
   };
-
-  if (blockedRecoveryReport && !blockedRecoveryResumable) {
-    throw new AgentIssueSafetyError(
-      formatBlockedRunRecoveryReport(blockedRecoveryReport),
-    );
-  }
 
   if (
     resetStaleCheckpoints &&
@@ -297,6 +411,16 @@ export async function runOneIssue(
     issue.title,
     worktreeStrategy,
   );
+  await recoverBlockedWorkspace({
+    runner,
+    config,
+    issueNumber: issue.number,
+    existingState,
+    expectedWorkspace,
+    ignoredPaths,
+    resolvedArtifacts,
+    lease: options.lease,
+  });
   const assertExpectedWorkspaceIdentity = (): void => {
     if (
       resumableState &&
@@ -412,12 +536,16 @@ export async function runOneIssue(
     artifactPolicy = approvedArtifactPreflight.policy;
   }
 
-  let labels = resumed
-    ? issue.labels.includes(inProgress)
-      ? issue.labels
-      : nextLabels(issue.labels, [ready], [inProgress])
-    : nextLabels(issue.labels, [ready], [inProgress]);
+  const recoveringBlocked =
+    hasBlockedRunRecoveryState(existingState) || !!options.reset;
+  let labels = recoveryClaimLabels(issue.labels, {
+    ready,
+    inProgress,
+    needsInfo,
+    recoveringBlocked,
+  });
   if (
+    recoveringBlocked ||
     !checkpoints.claimed ||
     (planningWorkspaceResumable && !issue.labels.includes(inProgress))
   ) {
@@ -440,17 +568,51 @@ export async function runOneIssue(
         `claimed #${issue.number}: ${ready} -> ${inProgress}`,
         { issueNumber: issue.number },
       );
-      await writeRunState(
-        config.runStateDir,
-        {
-          issueNumber: issue.number,
-          title: issue.title,
-          status: "claimed",
-          checkpoints: { claimed: true },
-          resetCheckpoints: resetStaleCheckpoints,
-        },
-        timestamp,
-      );
+      if (options.reset) {
+        await replaceRunStateAfterReset(
+          config.runStateDir,
+          {
+            issueNumber: issue.number,
+            title: issue.title,
+            seed: options.reset.seed,
+          },
+          timestamp,
+        );
+      } else {
+        if (recoveringBlocked && existingState?.lastError) {
+          const blocked = {
+            status: "blocked" as const,
+            reason: existingState.lastError,
+            questions: existingState.blockerQuestions ?? [],
+          };
+          const body = blockerComment(blocked);
+          if (issue.comments?.some((comment) => comment.body === body))
+            await writeRunState(
+              config.runStateDir,
+              {
+                issueNumber: issue.number,
+                title: issue.title,
+                status: existingState.status,
+                blockerCommentKeys: [blockerCommentKey(blocked)],
+              },
+              timestamp,
+            );
+        }
+        await writeRunState(
+          config.runStateDir,
+          {
+            issueNumber: issue.number,
+            title: issue.title,
+            status: "claimed",
+            checkpoints: { claimed: true },
+            resetCheckpoints: resetStaleCheckpoints,
+            clearLastError: recoveringBlocked,
+            clearBlockerQuestions: recoveringBlocked,
+            leaseProtocolVersion: 1,
+          },
+          timestamp,
+        );
+      }
       checkpoints.claimed = true;
     });
   }

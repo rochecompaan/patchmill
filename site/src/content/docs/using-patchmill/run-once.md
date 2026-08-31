@@ -155,6 +155,56 @@ automatically.
 to `.patchmill/runs/`. If a retryable run is already in progress, a later
 execute run resumes it before selecting new work.
 
-Use `run-once` as the supported operational loop. The continuous `patchmill run`
-factory loop is still development testing and should not replace `run-once` for
-normal usage yet.
+Use the explicit operational commands below. `patchmill run` is a command
+family, not a continuous factory loop:
+
+```sh
+patchmill run-once --issue 123
+patchmill run reset --issue 123
+patchmill run lease repair --issue 123
+```
+
+Use `run-once` for normal execution; use reset or lease repair only for their
+explicit recovery workflows.
+
+## Recovering a blocked Issue run
+
+A blocked Issue run retains its Run recovery state. After answering the blocker
+outside Patchmill, restore `agent-ready` and explicitly retry the same issue;
+comments provide context and are never a control signal:
+
+```sh
+patchmill run-once --issue 123
+patchmill run reset --issue 123
+patchmill run lease repair --issue 123
+```
+
+A clean current workspace, stale zero-ahead branch, clean branch with unique
+commits, or safely recreatable workspace can resume. Unique commits are
+preserved at their existing base without a merge or rewrite. Only an empty stale
+branch refreshes to a pinned current base. Dirty or ignored content,
+unmerged/lost commits, unverifiable paths, live leases, and unfenced legacy
+active state refuse automatic recovery.
+
+`patchmill run reset --issue N` archives the exact state, moves the expected
+checkout to retained quarantine before ref updates, deletes only a
+zero-unique-commit branch by expected OID, and starts a normal Run attempt. It
+rejects `--dry-run`, has no force option, and changes labels only during the
+normal claim. Reset accepts active `in-progress` state, blocked `agent-ready`
+state (with optional `needs-info`), and finished `agent-ready` or `in-progress`
+state after normal approval checks. It preserves only validated
+specification/plan references and the issue-scoped start-comment receipt; a new
+Issue run may therefore post legitimate failure and blocker comments.
+
+Retry keeps same-Issue-run receipts. A legacy blocker comment is deduplicated
+only after its exact canonical body is found on the issue, never from a comment
+that merely says the issue is ready. Refresh and reset move the complete
+checkout into retained quarantine before ref updates. Content that arrives late,
+including ignored files, remains quarantined or stops publication rather than
+being overwritten.
+
+Lease repair prints a fingerprinted, operator-confirmed command for abandoned
+remote leases, guards, or legacy active state. Remote lease repair requires
+`--confirm-owner-stopped`; guard and legacy-state repair require
+`--confirm-all-runners-stopped`. There is no automatic remote liveness guess or
+force cleanup.
