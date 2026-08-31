@@ -33,6 +33,66 @@ test("inspects and quarantines exact remote lease bytes", async () => {
   assert.equal(repaired.kind, "lease-quarantined");
   assert.equal(await readFile(repaired.path, "utf8"), raw);
 });
+test("marks malformed lease records unverifiable and never quarantines them", async () => {
+  const root = await fixture();
+  const source = join(root, "locks", "issue-45.lock");
+  const valid = {
+    version: 1,
+    issueNumber: 45,
+    pid: 9,
+    hostname: "remote",
+    ownerToken: "owner",
+    acquiredAt: "2026-01-01T00:00:00.000Z",
+  };
+  for (const malformed of [
+    { ...valid, pid: -1 },
+    { ...valid, ownerToken: "../owner" },
+    { ...valid, hostname: "remote/host" },
+    { ...valid, acquiredAt: "not-a-timestamp" },
+    { ...valid, issueNumber: 0 },
+    { ...valid, version: 2 },
+  ]) {
+    const raw = `${JSON.stringify(malformed)}\n`;
+    await writeFile(source, raw);
+    assert.deepEqual(await inspectIssueRunLeaseRepair(root, 45), {
+      kind: "unverifiable",
+      resource: "lease",
+    });
+    await assert.rejects(
+      repairIssueRunLease({
+        runStateDir: root,
+        issueNumber: 45,
+        expectedLeaseSha256: sha(raw),
+        confirmedProcessesStopped: true,
+      }),
+      /not a valid Issue run lease record/,
+    );
+    assert.equal(await readFile(source, "utf8"), raw);
+  }
+});
+
+test("marks malformed guards unverifiable and never quarantines them", async () => {
+  const root = await fixture();
+  const source = join(root, "locks", "issue-45.lease-guard");
+  const raw =
+    '{"version":1,"issueNumber":45,"pid":-1,"hostname":"remote","ownerToken":"owner","acquiredAt":"2026-01-01T00:00:00.000Z"}\n';
+  await writeFile(source, raw);
+  assert.deepEqual(await inspectIssueRunLeaseRepair(root, 45), {
+    kind: "unverifiable",
+    resource: "lease-guard",
+  });
+  await assert.rejects(
+    repairIssueRunLease({
+      runStateDir: root,
+      issueNumber: 45,
+      expectedGuardSha256: sha(raw),
+      confirmedProcessesStopped: true,
+    }),
+    /not a valid Issue run lease record/,
+  );
+  assert.equal(await readFile(source, "utf8"), raw);
+});
+
 test("refuses a changed lease fingerprint without moving it", async () => {
   const root = await fixture();
   const source = join(root, "locks", "issue-45.lock");

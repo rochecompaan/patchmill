@@ -76,7 +76,10 @@ function validHostname(hostname: string): boolean {
   return /^[A-Za-z0-9_][A-Za-z0-9._-]{0,252}$/u.test(hostname);
 }
 
-function parse(raw: string): IssueRunLeaseRecord | undefined {
+/** The sole parser for on-disk Issue run lease and guard records. */
+export function parseIssueRunLeaseRecord(
+  raw: string,
+): IssueRunLeaseRecord | undefined {
   try {
     const value = JSON.parse(raw) as Partial<IssueRunLeaseRecord>;
     const acquiredAt =
@@ -133,7 +136,10 @@ async function guard(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    if (current && parse(current)?.ownerToken === record.ownerToken) {
+    if (
+      current &&
+      parseIssueRunLeaseRecord(current)?.ownerToken === record.ownerToken
+    ) {
       try {
         await unlink(p.guard);
       } catch (error) {
@@ -142,16 +148,17 @@ async function guard(
     }
   };
 }
-function record(
+/** Create records through the same validator used for persisted lease data. */
+export function createIssueRunLeaseRecord(
   issueNumber: number,
-  options: IssueRunLeaseOptions,
+  options: IssueRunLeaseOptions = {},
 ): IssueRunLeaseRecord {
   const hostname = options.hostname ?? systemHostname();
   if (!validHostname(hostname))
     throw new Error(
       `Cannot create Issue run lease with invalid hostname: ${JSON.stringify(hostname)}`,
     );
-  return {
+  const candidate = {
     version: 1,
     issueNumber,
     pid: options.pid ?? process.pid,
@@ -159,13 +166,17 @@ function record(
     ownerToken: options.ownerToken ?? randomUUID(),
     acquiredAt: (options.now?.() ?? new Date()).toISOString(),
   };
+  const parsed = parseIssueRunLeaseRecord(JSON.stringify(candidate));
+  if (!parsed)
+    throw new Error("Cannot create Issue run lease with invalid record fields");
+  return parsed;
 }
 export async function acquireIssueRunLease(
   runStateDir: string,
   issueNumber: number,
   options: IssueRunLeaseOptions = {},
 ): Promise<IssueRunLease> {
-  const mine = record(issueNumber, options);
+  const mine = createIssueRunLeaseRecord(issueNumber, options);
   const p = paths(runStateDir, issueNumber);
   if (await present(p.repair))
     throw new IssueRunLeaseConflictError(p.repair, "repair-lock", issueNumber);
@@ -184,7 +195,7 @@ export async function acquireIssueRunLease(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const raw = await readFile(p.lease, "utf8");
-      const owner = parse(raw);
+      const owner = parseIssueRunLeaseRecord(raw);
       if (!owner || owner.issueNumber !== issueNumber)
         throw new IssueRunLeaseConflictError(p.lease, "lease", issueNumber);
       if (
@@ -225,7 +236,7 @@ export async function releaseIssueRunLease(
   });
   try {
     const raw = await readFile(lease.path, "utf8");
-    if (parse(raw)?.ownerToken !== lease.record.ownerToken)
+    if (parseIssueRunLeaseRecord(raw)?.ownerToken !== lease.record.ownerToken)
       throw new Error(
         `Issue run lease is not owned by this Run attempt: ${lease.path}`,
       );

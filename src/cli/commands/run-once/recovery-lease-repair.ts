@@ -11,7 +11,9 @@ import {
 import { dirname, join } from "node:path";
 import type { AgentIssueRunState, RunLegacyMigrationFence } from "./types.ts";
 import {
+  createIssueRunLeaseRecord,
   IssueRunLeaseConflictError,
+  parseIssueRunLeaseRecord,
   type IssueRunLeaseGuardRecord,
   type IssueRunLeaseRecord,
 } from "./recovery-lease.ts";
@@ -28,6 +30,7 @@ export type IssueRunLeaseRepairInspection =
       sha256: string;
       status: RunLegacyMigrationFence["status"];
     }
+  | { kind: "unverifiable"; resource: "lease" | "lease-guard" }
   | { kind: "nothing-to-repair" };
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -41,20 +44,12 @@ async function content(path: string): Promise<string | undefined> {
     throw error;
   }
 }
-function owner(raw: string): IssueRunLeaseRecord | undefined {
-  try {
-    const value = JSON.parse(raw) as Partial<IssueRunLeaseRecord>;
-    return value.version === 1 &&
-      typeof value.issueNumber === "number" &&
-      typeof value.pid === "number" &&
-      typeof value.hostname === "string" &&
-      typeof value.ownerToken === "string" &&
-      typeof value.acquiredAt === "string"
-      ? (value as IssueRunLeaseRecord)
-      : undefined;
-  } catch {
-    return undefined;
-  }
+function ownerForIssue(
+  raw: string,
+  issueNumber: number,
+): IssueRunLeaseRecord | undefined {
+  const parsed = parseIssueRunLeaseRecord(raw);
+  return parsed?.issueNumber === issueNumber ? parsed : undefined;
 }
 function active(
   state: AgentIssueRunState,
@@ -103,20 +98,22 @@ export async function inspectIssueRunLeaseRepair(
   issueNumber: number,
 ): Promise<IssueRunLeaseRepairInspection> {
   const lease = await content(file(runStateDir, issueNumber, ".lock"));
-  const parsed = lease && owner(lease);
-  if (
-    lease &&
-    parsed &&
-    parsed.hostname !== (await import("node:os")).hostname()
-  )
-    return { kind: "remote-lease", sha256: hash(lease), owner: parsed };
+  if (lease) {
+    const parsed = ownerForIssue(lease, issueNumber);
+    if (!parsed) return { kind: "unverifiable", resource: "lease" };
+    if (parsed.hostname !== hostname())
+      return { kind: "remote-lease", sha256: hash(lease), owner: parsed };
+  }
   const guard = await content(file(runStateDir, issueNumber, ".lease-guard"));
-  if (guard)
+  if (guard) {
+    const parsed = ownerForIssue(guard, issueNumber);
+    if (!parsed) return { kind: "unverifiable", resource: "lease-guard" };
     return {
       kind: "abandoned-guard",
       sha256: hash(guard),
-      ...(owner(guard) ? { owner: owner(guard) } : {}),
+      owner: parsed,
     };
+  }
   const stateRaw = await content(
     join(runStateDir, `issue-${issueNumber}.json`),
   );
@@ -181,12 +178,14 @@ export async function repairIssueRunLease(input: {
           : join(input.runStateDir, `issue-${input.issueNumber}.json`);
     if (kind === "lease") {
       guardPath = file(input.runStateDir, input.issueNumber, ".lease-guard");
-      guardToken = randomUUID();
+      const repairGuard = createIssueRunLeaseRecord(input.issueNumber, {
+        ownerToken: randomUUID(),
+        now: input.now,
+      });
+      guardToken = repairGuard.ownerToken;
       try {
         const guard = await open(guardPath, "wx", 0o600);
-        await guard.writeFile(
-          `${JSON.stringify({ version: 1, issueNumber: input.issueNumber, pid: process.pid, hostname: hostname(), ownerToken: guardToken, acquiredAt: (input.now?.() ?? new Date()).toISOString() })}\n`,
-        );
+        await guard.writeFile(`${JSON.stringify(repairGuard)}\n`);
         await guard.close();
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EEXIST")
@@ -203,6 +202,11 @@ export async function repairIssueRunLease(input: {
       throw new Error(
         "Repair fingerprint changed; no recovery file was changed",
       );
+    if (
+      (kind === "lease" || kind === "guard") &&
+      !ownerForIssue(raw, input.issueNumber)
+    )
+      throw new Error("Repair target is not a valid Issue run lease record");
     if (kind === "state") {
       const state = JSON.parse(raw) as AgentIssueRunState;
       if (!active(state))
@@ -238,7 +242,7 @@ export async function repairIssueRunLease(input: {
   } finally {
     if (guardPath && guardToken) {
       const raw = await content(guardPath);
-      if (raw && owner(raw)?.ownerToken === guardToken) {
+      if (raw && parseIssueRunLeaseRecord(raw)?.ownerToken === guardToken) {
         await unlink(guardPath).catch((error: NodeJS.ErrnoException) =>
           error.code === "ENOENT" ? undefined : Promise.reject(error),
         );

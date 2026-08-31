@@ -69,6 +69,7 @@ async function exists(path: string): Promise<boolean> {
 type Registered = {
   path: string;
   branch?: string;
+  bare: boolean;
   locked: boolean;
   prunable: boolean;
   malformed: boolean;
@@ -98,30 +99,45 @@ function registrations(output: string): {
   const entries: Registered[] = [];
   let malformed = false;
   let entry: Registered;
+  let worktrees: number;
   let heads: number;
   let branchFields: number;
   let detached: number;
+  let bares: number;
   let locks: number;
   let prunables: number;
   const reset = () => {
     entry = {
       path: "",
+      bare: false,
       locked: false,
       prunable: false,
       malformed: false,
       seen: false,
     };
+    worktrees = 0;
     heads = 0;
     branchFields = 0;
     detached = 0;
+    bares = 0;
     locks = 0;
     prunables = 0;
   };
   reset();
   const finish = () => {
     if (!entry.seen) return;
-    if (!entry.path || heads !== 1 || branchFields + detached > 1)
-      entry.malformed = true;
+    const linked =
+      worktrees === 1 &&
+      heads === 1 &&
+      branchFields + detached === 1 &&
+      bares === 0;
+    const bare =
+      worktrees === 1 &&
+      bares === 1 &&
+      heads === 0 &&
+      branchFields === 0 &&
+      detached === 0;
+    if (!linked && !bare) entry.malformed = true;
     if (entry.path) entries.push(entry);
     if (entry.malformed) malformed = true;
     reset();
@@ -134,7 +150,8 @@ function registrations(output: string): {
     entry.seen = true;
     if (line.startsWith("worktree ")) {
       const path = line.slice("worktree ".length);
-      if (entry.path || !path || !isAbsolute(path)) entry.malformed = true;
+      worktrees += 1;
+      if (worktrees > 1 || !path || !isAbsolute(path)) entry.malformed = true;
       else entry.path = resolve(path);
     } else if (line.startsWith("HEAD ")) {
       const head = line.slice("HEAD ".length);
@@ -143,12 +160,15 @@ function registrations(output: string): {
     } else if (line.startsWith("branch refs/heads/")) {
       const branch = line.slice("branch refs/heads/".length);
       branchFields += 1;
-      if (branchFields > 1 || detached > 0 || !validBranchName(branch))
-        entry.malformed = true;
+      if (branchFields > 1 || !validBranchName(branch)) entry.malformed = true;
       else entry.branch = branch;
     } else if (line === "detached") {
       detached += 1;
-      if (detached > 1 || branchFields > 0) entry.malformed = true;
+      if (detached > 1) entry.malformed = true;
+    } else if (line === "bare") {
+      bares += 1;
+      if (bares > 1) entry.malformed = true;
+      else entry.bare = true;
     } else if (line === "locked" || /^locked [^\r\n]+$/u.test(line)) {
       locks += 1;
       if (locks > 1) entry.malformed = true;

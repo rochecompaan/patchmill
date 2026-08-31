@@ -60,6 +60,7 @@ function cleanRunner(
     merged: boolean;
     revList: string;
     log: string;
+    worktreePorcelain: string;
   }> = {},
 ) {
   return runnerFor((call) => {
@@ -74,9 +75,10 @@ function cleanRunner(
       return {
         code: 0,
         stdout:
-          overrides.worktreeRegistered === false
+          overrides.worktreePorcelain ??
+          (overrides.worktreeRegistered === false
             ? ""
-            : `worktree ${join(call.cwd ?? "/repo", baseState.worktreePath)}\nHEAD 0123456789abcdef0123456789abcdef01234567\nbranch refs/heads/agent/issue-45-recover-blocked-run\n`,
+            : `worktree ${join(call.cwd ?? "/repo", baseState.worktreePath)}\nHEAD 0123456789abcdef0123456789abcdef01234567\nbranch refs/heads/agent/issue-45-recover-blocked-run\n`),
         stderr: "",
       };
     }
@@ -104,11 +106,15 @@ function cleanRunner(
 
 async function inspect(
   overrides?: Parameters<typeof cleanRunner>[0],
-  options?: { worktreeExists?: boolean; ignoredPaths?: string[] },
+  options?: {
+    worktreeExists?: boolean;
+    ignoredPaths?: string[];
+    repoRoot?: string;
+  },
 ) {
   return inspectBlockedRunRecovery({
     runner: cleanRunner(overrides),
-    repoRoot: await tempRepo(options),
+    repoRoot: options?.repoRoot ?? (await tempRepo(options)),
     runStatePath: ".patchmill/runs/issue-45.json",
     state: baseState,
     baseRef: "main",
@@ -167,6 +173,21 @@ test("inspectBlockedRunRecovery still blocks non-ignored dirty status with ignor
   assert.equal(report.kind, "dirty-worktree");
   assert.equal(report.worktree.clean, false);
   assert.equal(report.worktree.dirtyStatus, "M src/index.ts");
+});
+
+test("inspectBlockedRunRecovery accepts a valid bare worktree record alongside the expected linked worktree", async () => {
+  const root = await tempRepo();
+  const expected = join(root, baseState.worktreePath);
+  const report = await inspect(
+    {
+      worktreePorcelain:
+        `worktree ${expected}\nHEAD 0123456789abcdef0123456789abcdef01234567\nbranch refs/heads/${baseState.branch}\n\n` +
+        `worktree ${join(root, "bare-repo")}\nbare\n`,
+    },
+    { repoRoot: root },
+  );
+
+  assert.equal(report.kind, "recoverable-clean");
 });
 
 test("inspectBlockedRunRecovery classifies already merged branch", async () => {
@@ -477,7 +498,7 @@ test("registered absent worktree is unverifiable and requires manual repair", as
   }
 });
 
-test("malformed or duplicate porcelain records anywhere are globally unverifiable", async () => {
+test("malformed, missing-branch/detached, or duplicate porcelain records anywhere are globally unverifiable", async () => {
   const root = await tempRepo();
   const worktree = join(root, baseState.worktreePath);
   const oid = "0123456789abcdef0123456789abcdef01234567";
@@ -488,6 +509,7 @@ test("malformed or duplicate porcelain records anywhere are globally unverifiabl
     `worktree ${join(root, "other")}\nHEAD not-a-hex-oid\nbranch refs/heads/other\n`,
     `worktree ${join(root, "other")}\nHEAD ${oid}\nHEAD ${oid}\nbranch refs/heads/other\n`,
     `worktree ${join(root, "other")}\nHEAD ${oid}\nbranch refs/heads/other\ndetached\n`,
+    `worktree ${join(root, "other")}\nHEAD ${oid}\n`,
     `worktree ${join(root, "other")}\nHEAD ${oid}\ndetached garbage\n`,
     `worktree relative-path\nHEAD ${oid}\nbranch refs/heads/other\n`,
   ]) {

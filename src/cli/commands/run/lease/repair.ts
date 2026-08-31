@@ -74,6 +74,10 @@ export async function runLeaseRepairCommand(
       stdout.write("Nothing to repair.\n");
       return 0;
     }
+    if (inspection.kind === "unverifiable")
+      throw new Error(
+        `Issue run ${inspection.resource} metadata is malformed; repair it manually without deleting recovery evidence`,
+      );
     const flag =
       inspection.kind === "remote-lease"
         ? "--expect-lease-sha256"
