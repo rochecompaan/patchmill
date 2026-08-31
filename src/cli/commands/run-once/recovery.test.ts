@@ -190,6 +190,52 @@ test("inspectBlockedRunRecovery accepts a valid bare worktree record alongside t
   assert.equal(report.kind, "recoverable-clean");
 });
 
+test("planRunRecovery accepts a valid bare record while preserving expected linked workspace identity", async () => {
+  const root = await tempRepo();
+  const worktree = join(root, baseState.worktreePath);
+  const bareRepository = join(root, "bare-repository");
+  const oid = "0123456789abcdef0123456789abcdef01234567";
+  const decision = await planRunRecovery({
+    intent: "retry",
+    repoRoot: root,
+    runStatePath: join(root, "state.json"),
+    state: { ...baseState, worktreePath: worktree },
+    baseRef: "HEAD",
+    expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
+    leaseOwnerToken: "owner",
+    snapshotRaw: "state",
+    runner: runnerFor((call) => {
+      if (call.args[0] === "rev-parse")
+        return { code: 0, stdout: `${oid}\n`, stderr: "" };
+      if (call.args.join(" ") === "worktree list --porcelain")
+        return {
+          code: 0,
+          stdout:
+            `worktree ${worktree}\nHEAD ${oid}\nbranch refs/heads/${baseState.branch}\n\n` +
+            `worktree ${bareRepository}\nbare\n`,
+          stderr: "",
+        };
+      if (call.args[0] === "-C") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "rev-list")
+        return { code: 0, stdout: "0 0\n", stderr: "" };
+      if (call.args[0] === "log") return { code: 0, stdout: "", stderr: "" };
+      if (call.args[0] === "cat-file")
+        return { code: 1, stdout: "", stderr: "" };
+      throw new Error(`unexpected git ${call.args.join(" ")}`);
+    }),
+  });
+
+  assert.equal(decision.action, "resume");
+  assert.equal(decision.assessment.classification, "resumable-current");
+  assert.deepEqual(decision.assessment.expectedWorkspace, {
+    branch: baseState.branch,
+    worktreePath: worktree,
+  });
+  assert.equal(decision.assessment.worktree.registered, true);
+  assert.equal(decision.assessment.worktree.registeredBranch, baseState.branch);
+  assert.equal(decision.assessment.branch.checkedOutAt, worktree);
+});
+
 test("inspectBlockedRunRecovery classifies already merged branch", async () => {
   const report = await inspect({ merged: true, log: "" });
 
