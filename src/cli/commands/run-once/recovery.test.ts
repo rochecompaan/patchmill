@@ -9,7 +9,10 @@ import {
   planRunRecovery,
   type BlockedRunRecoveryReport,
 } from "./recovery.ts";
-import { decideRunRecovery } from "./recovery-policy.ts";
+import {
+  createRunRecoveryPaths,
+  decideRunRecovery,
+} from "./recovery-policy.ts";
 import type {
   CommandResult,
   CommandRunner,
@@ -204,6 +207,10 @@ test("planRunRecovery accepts a valid bare record while preserving expected link
     expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
     leaseOwnerToken: "owner",
     snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
     runner: runnerFor((call) => {
       if (call.args[0] === "rev-parse")
         return { code: 0, stdout: `${oid}\n`, stderr: "" };
@@ -379,6 +386,14 @@ function report(
   return { ...common, recommendedActions: actions[kind] };
 }
 
+test("recovery path allocation is deterministic at the orchestration boundary", () => {
+  const now = new Date("2026-08-30T12:00:00.000Z");
+  assert.deepEqual(
+    createRunRecoveryPaths({ worktreePath: "/repo/work", now }),
+    createRunRecoveryPaths({ worktreePath: "/repo/work", now }),
+  );
+});
+
 test("typed recovery decision table selects only conservative actions", () => {
   const assessment = (
     classification: RunRecoveryAssessment["classification"],
@@ -401,23 +416,38 @@ test("typed recovery decision table selects only conservative actions", () => {
     classification,
   });
   assert.equal(
-    decideRunRecovery("retry", assessment("recreatable-clean")).action,
+    decideRunRecovery("retry", assessment("recreatable-clean"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
     "recreate-and-resume",
   );
   assert.equal(
-    decideRunRecovery("retry", assessment("resumable-current")).action,
+    decideRunRecovery("retry", assessment("resumable-current"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
     "resume",
   );
   assert.equal(
-    decideRunRecovery("retry", assessment("dirty-worktree")).action,
+    decideRunRecovery("retry", assessment("dirty-worktree"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
     "refuse",
   );
   assert.equal(
-    decideRunRecovery("reset", assessment("resumable-current")).action,
+    decideRunRecovery("reset", assessment("resumable-current"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
     "archive-reset-and-start",
   );
   assert.equal(
-    decideRunRecovery("reset", assessment("resumable-with-commits")).action,
+    decideRunRecovery("reset", assessment("resumable-with-commits"), {
+      quarantinePath: "quarantine",
+      stagingPath: "staging",
+    }).action,
     "refuse",
   );
 });
@@ -443,6 +473,10 @@ test("locked absent registration is unverifiable rather than pruneable", async (
     expectedWorkspace: { branch: "agent/recover", worktreePath: worktree },
     leaseOwnerToken: "owner",
     snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
     runner: runnerFor((call) => {
       if (call.args[0] === "rev-parse")
         return { code: 0, stdout: `${oid}\n`, stderr: "" };
@@ -481,6 +515,10 @@ test("malformed existing worktree registration is unverifiable", async () => {
     },
     leaseOwnerToken: "owner",
     snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
     runner: runnerFor((call) => {
       if (call.args[0] === "rev-parse")
         return { code: 0, stdout: `${oid}\n`, stderr: "" };
@@ -517,6 +555,10 @@ test("registered absent worktree is unverifiable and requires manual repair", as
     expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
     leaseOwnerToken: "owner",
     snapshotRaw: "state",
+    recoveryPaths: {
+      quarantinePath: join(root, "quarantine"),
+      stagingPath: join(root, "staging"),
+    },
     runner: runnerFor((call) => {
       if (call.args[0] === "rev-parse")
         return { code: 0, stdout: `${oid}\n`, stderr: "" };
@@ -568,6 +610,10 @@ test("malformed, missing-branch/detached, or duplicate porcelain records anywher
       expectedWorkspace: { branch: baseState.branch, worktreePath: worktree },
       leaseOwnerToken: "owner",
       snapshotRaw: "state",
+      recoveryPaths: {
+        quarantinePath: join(root, "quarantine"),
+        stagingPath: join(root, "staging"),
+      },
       runner: runnerFor((call) => {
         if (call.args[0] === "rev-parse")
           return { code: 0, stdout: `${oid}\n`, stderr: "" };
@@ -596,24 +642,28 @@ test("malformed, missing-branch/detached, or duplicate porcelain records anywher
 });
 
 test("unverifiable workspace guidance identifies saved and expected workspaces", () => {
-  const decision = decideRunRecovery("retry", {
-    runStatePath: "state",
-    issueNumber: 45,
-    title: "Recover",
-    status: "blocked",
-    lease: { status: "owned", ownerToken: "owner" },
-    legacyMigrationFenceValid: true,
-    blocked: true,
-    expectedWorkspace: { branch: "agent/expected", worktreePath: "expected" },
-    savedWorkspace: { branch: "agent/saved", worktreePath: "saved" },
-    baseOid: "0123456789abcdef0123456789abcdef01234567",
-    branch: { exists: true },
-    worktree: { exists: false, registered: false, ignoredEntries: [] },
-    actualUniqueCommits: [],
-    savedCommits: [],
-    artifacts: { spec: { valid: false }, plan: { valid: false } },
-    classification: "workspace-unverifiable",
-  });
+  const decision = decideRunRecovery(
+    "retry",
+    {
+      runStatePath: "state",
+      issueNumber: 45,
+      title: "Recover",
+      status: "blocked",
+      lease: { status: "owned", ownerToken: "owner" },
+      legacyMigrationFenceValid: true,
+      blocked: true,
+      expectedWorkspace: { branch: "agent/expected", worktreePath: "expected" },
+      savedWorkspace: { branch: "agent/saved", worktreePath: "saved" },
+      baseOid: "0123456789abcdef0123456789abcdef01234567",
+      branch: { exists: true },
+      worktree: { exists: false, registered: false, ignoredEntries: [] },
+      actualUniqueCommits: [],
+      savedCommits: [],
+      artifacts: { spec: { valid: false }, plan: { valid: false } },
+      classification: "workspace-unverifiable",
+    },
+    { quarantinePath: "quarantine", stagingPath: "staging" },
+  );
   assert.equal(decision.action, "refuse");
   if (decision.action !== "refuse") return;
   assert.match(decision.guidance.join("\n"), /agent\/saved/);

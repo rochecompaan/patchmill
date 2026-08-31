@@ -6,7 +6,11 @@ import {
   validateRecoveryRunState,
 } from "./run-state.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
-import { formatRunRecoveryDecision, planRunRecovery } from "./recovery.ts";
+import {
+  createRunRecoveryPaths,
+  formatRunRecoveryDecision,
+  planRunRecovery,
+} from "./recovery.ts";
 import { readRunLegacyMigrationFence } from "./recovery-lease-repair.ts";
 import { executeRunRecoveryMutation } from "./recovery-mutation.ts";
 import {
@@ -88,9 +92,10 @@ export async function recoverBlockedWorkspace(input: {
       `Blocked Run recovery state is unsafe: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  let recoveryPaths:
-    | { quarantinePath: string; stagingPath: string }
-    | undefined;
+  const recoveryPaths = createRunRecoveryPaths({
+    worktreePath: input.expectedWorkspace.worktreePath,
+    now: new Date(),
+  });
   const reassess = async () => {
     const current = await readRunStateSnapshot(
       input.config.runStateDir,
@@ -129,16 +134,6 @@ export async function recoverBlockedWorkspace(input: {
   const decision = await reassess();
   if (decision.action === "refuse")
     throw new AgentIssueSafetyError(formatRunRecoveryDecision(decision));
-  if (decision.action === "refresh-and-resume")
-    recoveryPaths = {
-      quarantinePath: decision.refresh.quarantinePath,
-      stagingPath: decision.refresh.stagingPath,
-    };
-  else if (decision.action === "recreate-and-resume")
-    recoveryPaths = {
-      quarantinePath: `${decision.recreation.stagingPath}.quarantine`,
-      stagingPath: decision.recreation.stagingPath,
-    };
   if (decision.action !== "resume")
     await executeRunRecoveryMutation({
       decision,

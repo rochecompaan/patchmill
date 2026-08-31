@@ -1,6 +1,7 @@
 /** Typed public facade for Run recovery planning and legacy compatibility. */
 import { assessRunRecovery } from "./recovery-assessment.ts";
 import { decideRunRecovery } from "./recovery-policy.ts";
+export { createRunRecoveryPaths } from "./recovery-policy.ts";
 import type { PlanRunRecoveryInput, RunRecoveryDecision } from "./types.ts";
 
 export {

@@ -5,7 +5,7 @@ import {
   expectedIssueWorkspace,
 } from "../../run-once/pipeline-workspace.ts";
 import {
-  runOneIssue,
+  runOneIssueAfterReset,
   type RunOneIssueOptions,
 } from "../../run-once/pipeline.ts";
 import {
@@ -20,6 +20,7 @@ import {
   RunRecoveryMutationError,
 } from "../../run-once/recovery-mutation.ts";
 import {
+  createRunRecoveryPaths,
   formatRunRecoveryDecision,
   planRunRecovery,
 } from "../../run-once/recovery.ts";
@@ -125,7 +126,7 @@ export type ResetIssueRunDependencies = {
   createHost: typeof createRunOnceHostProvider;
   archiveRecovery: typeof archiveRunRecovery;
   executeMutation: typeof executeRunRecoveryMutation;
-  runPipeline: typeof runOneIssue;
+  runPipeline: typeof runOneIssueAfterReset;
 };
 export async function resetIssueRun(
   runner: CommandRunner,
@@ -179,9 +180,10 @@ export async function resetIssueRun(
         issue.title,
         configuredWorktreeStrategy(config),
       );
-      let recoveryPaths:
-        | { quarantinePath: string; stagingPath: string }
-        | undefined;
+      const recoveryPaths = createRunRecoveryPaths({
+        worktreePath: expectedWorkspace.worktreePath,
+        now: options.now ?? new Date(),
+      });
       const recoveryInput = async () =>
         planRunRecovery({
           intent: "reset",
@@ -201,14 +203,6 @@ export async function resetIssueRun(
           recoveryPaths,
         });
       const decision = await recoveryInput();
-      if (
-        decision.action === "archive-reset-and-start" &&
-        decision.cleanup.quarantinePath
-      )
-        recoveryPaths = {
-          quarantinePath: decision.cleanup.quarantinePath,
-          stagingPath: `${decision.cleanup.quarantinePath}.staging`,
-        };
       if (decision.action === "refuse")
         throw new Error(formatRunRecoveryDecision(decision));
       if (decision.action !== "archive-reset-and-start")
@@ -248,20 +242,9 @@ export async function resetIssueRun(
       }
       let pipelineResult;
       try {
-        pipelineResult = await (dependencies.runPipeline ?? runOneIssue)(
-          runner,
-          config,
-          {
-            ...options,
-            lease,
-            reset: {
-              lease,
-              archivePath: archive.path,
-              quarantinePaths: mutation.quarantinePaths,
-              seed: decision.seed,
-            },
-          },
-        );
+        pipelineResult = await (
+          dependencies.runPipeline ?? runOneIssueAfterReset
+        )(runner, config, options, { lease, seed: decision.seed });
       } catch (error) {
         throw new ResetIssueRunRecoveryError(
           error,

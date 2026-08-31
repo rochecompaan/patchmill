@@ -94,10 +94,12 @@ export type RunOneIssueOptions = {
   streamPiOutput?: (chunk: string) => void;
   verbosePiOutput?: boolean;
   heartbeatMs?: number;
+};
+type LeasedRunOneIssueOptions = RunOneIssueOptions & {
   lease?: import("./types.ts").IssueRunLease;
-  /** Internal: pins a post-lease retry to the issue selected before locking. */
+  /** Internal selection pin; never exposed to ordinary callers. */
   leasedIssueNumber?: number;
-  reset?: import("./types.ts").RunResetContext;
+  reset?: { seed: import("./types.ts").RunResetSeed };
 };
 
 function hasFinishedPlanningWorkspaceState(
@@ -115,6 +117,31 @@ export async function runOneIssue(
   runner: CommandRunner,
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
+): Promise<AgentIssuePipelineResult> {
+  return runOneIssueInternal(runner, config, options);
+}
+
+/** Reset uses this narrow leased entry point after it has archived state. */
+export async function runOneIssueAfterReset(
+  runner: CommandRunner,
+  config: AgentIssueConfig,
+  options: RunOneIssueOptions,
+  reset: {
+    lease: import("./types.ts").IssueRunLease;
+    seed: import("./types.ts").RunResetSeed;
+  },
+): Promise<AgentIssuePipelineResult> {
+  return runOneIssueInternal(runner, config, {
+    ...options,
+    lease: reset.lease,
+    reset: { seed: reset.seed },
+  });
+}
+
+async function runOneIssueInternal(
+  runner: CommandRunner,
+  config: AgentIssueConfig,
+  options: LeasedRunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
   const host = createRunOnceHostProvider({
     runner,
@@ -236,7 +263,7 @@ export async function runOneIssue(
     return withIssueRunLease(
       { runStateDir: config.runStateDir, issueNumber: issue.number },
       (lease) =>
-        runOneIssue(runner, config, {
+        runOneIssueInternal(runner, config, {
           ...options,
           lease,
           leasedIssueNumber: issue.number,

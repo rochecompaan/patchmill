@@ -33,6 +33,35 @@ test("inspects and quarantines exact remote lease bytes", async () => {
   assert.equal(repaired.kind, "lease-quarantined");
   assert.equal(await readFile(repaired.path, "utf8"), raw);
 });
+test("retains both same-clock repair archives without overwriting bytes", async () => {
+  const root = await fixture();
+  const source = join(root, "locks", "issue-45.lock");
+  const now = () => new Date("2026-08-30T12:00:00.000Z");
+  const first =
+    '{"version":1,"issueNumber":45,"pid":9,"hostname":"remote","ownerToken":"first","acquiredAt":"2026-01-01T00:00:00.000Z"}\n';
+  const second =
+    '{"version":1,"issueNumber":45,"pid":9,"hostname":"remote","ownerToken":"second","acquiredAt":"2026-01-01T00:00:00.000Z"}\n';
+  await writeFile(source, first);
+  const one = await repairIssueRunLease({
+    runStateDir: root,
+    issueNumber: 45,
+    expectedLeaseSha256: sha(first),
+    confirmedProcessesStopped: true,
+    now,
+  });
+  await writeFile(source, second);
+  const two = await repairIssueRunLease({
+    runStateDir: root,
+    issueNumber: 45,
+    expectedLeaseSha256: sha(second),
+    confirmedProcessesStopped: true,
+    now,
+  });
+  assert.notEqual(one.path, two.path);
+  assert.equal(await readFile(one.path, "utf8"), first);
+  assert.equal(await readFile(two.path, "utf8"), second);
+});
+
 test("marks malformed lease records unverifiable and never quarantines them", async () => {
   const root = await fixture();
   const source = join(root, "locks", "issue-45.lock");

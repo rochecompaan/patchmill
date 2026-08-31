@@ -78,12 +78,13 @@ function seed(assessment: RunRecoveryAssessment): RunResetSeed {
       : {}),
   };
 }
-function paths(
-  assessment: RunRecoveryAssessment,
-  planned?: { quarantinePath: string; stagingPath: string },
-): { quarantinePath: string; stagingPath: string } {
-  if (planned) return planned;
-  const base = `${assessment.expectedWorkspace.worktreePath}.recovery-${Date.now()}`;
+/** Allocate mutation paths once at the orchestration boundary. The policy is
+ * deterministic: it only selects among evidence and these already-pinned paths. */
+export function createRunRecoveryPaths(input: {
+  worktreePath: string;
+  now: Date;
+}): { quarantinePath: string; stagingPath: string } {
+  const base = `${input.worktreePath}.recovery-${input.now.toISOString().replaceAll(/[:.]/gu, "-")}`;
   return {
     quarantinePath: `${base}-quarantine`,
     stagingPath: `${base}-staging`,
@@ -92,7 +93,7 @@ function paths(
 export function decideRunRecovery(
   intent: RunRecoveryIntent,
   assessment: RunRecoveryAssessment,
-  plannedPaths?: { quarantinePath: string; stagingPath: string },
+  plannedPaths: { quarantinePath: string; stagingPath: string },
 ): RunRecoveryDecision {
   if (intent === "retry" && !assessment.blocked)
     return refusal(assessment, "not-blocked");
@@ -111,7 +112,7 @@ export function decideRunRecovery(
     assessment.classification === "resumable-with-commits"
   )
     return refusal(assessment, "unmerged-commits");
-  const { quarantinePath, stagingPath } = paths(assessment, plannedPaths);
+  const { quarantinePath, stagingPath } = plannedPaths;
   if (intent === "reset")
     return {
       action: "archive-reset-and-start",

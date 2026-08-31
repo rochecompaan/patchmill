@@ -472,18 +472,12 @@ export type PlanRunRecoveryInput = {
   leaseOwnerToken: string;
   snapshotRaw: string;
   legacyMigrationFence?: RunLegacyMigrationFence;
-  /** Reused across reassessment so one Run attempt never changes mutation paths. */
-  recoveryPaths?: { quarantinePath: string; stagingPath: string };
+  /** Allocated once by orchestration and reused across every reassessment. */
+  recoveryPaths: { quarantinePath: string; stagingPath: string };
 };
 export type IssueRunLease = { path: string; record: RunRecoveryLeaseOwner };
 export type RunStateSnapshot = {
   path: string;
   raw: string;
   state: AgentIssueRunState;
-};
-export type RunResetContext = {
-  lease: IssueRunLease;
-  archivePath: string;
-  quarantinePaths: string[];
-  seed: RunResetSeed;
 };

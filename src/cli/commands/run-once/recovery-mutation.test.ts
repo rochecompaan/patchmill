@@ -131,9 +131,10 @@ test("real plan reassessment recreates a missing branch without treating staging
     updatedAt: "now",
   };
   const raw = JSON.stringify(state);
-  let recoveryPaths:
-    | { quarantinePath: string; stagingPath: string }
-    | undefined;
+  let recoveryPaths: { quarantinePath: string; stagingPath: string } = {
+    quarantinePath: `${expected}.quarantine`,
+    stagingPath: `${expected}.staging`,
+  };
   const recoveryInput = () =>
     planRunRecovery({
       intent: "retry",
@@ -499,8 +500,13 @@ async function planRealRecreation(input: {
   };
 }) {
   const recoveryPaths: {
-    current?: { quarantinePath: string; stagingPath: string };
-  } = {};
+    current: { quarantinePath: string; stagingPath: string };
+  } = {
+    current: {
+      quarantinePath: `${input.expected}.quarantine`,
+      stagingPath: `${input.expected}.staging`,
+    },
+  };
   const reassess = () =>
     planRunRecovery({
       intent: "retry",

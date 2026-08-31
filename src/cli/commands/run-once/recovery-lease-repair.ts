@@ -1,13 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import {
-  mkdir,
-  open,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, open, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AgentIssueRunState, RunLegacyMigrationFence } from "./types.ts";
 import {
@@ -226,15 +219,26 @@ export async function repairIssueRunLease(input: {
       await writeFile(target, `${JSON.stringify(fence, null, 2)}\n`);
       return { kind: "legacy-fence-written", path: target };
     }
-    const target = join(
+    const root = join(
       input.runStateDir,
       "archive",
       "leases",
       `issue-${input.issueNumber}`,
-      `${(input.now?.() ?? new Date()).toISOString().replaceAll(/[:.]/gu, "-")}-${kind}.json`,
     );
-    await mkdir(dirname(target), { recursive: true });
-    await rename(source, target);
+    await mkdir(root, { recursive: true });
+    // `rename()` replaces an existing file on POSIX. A UUID path and exclusive
+    // create retain every repair's exact evidence, even with a frozen clock.
+    const target = join(
+      root,
+      `${(input.now?.() ?? new Date()).toISOString().replaceAll(/[:.]/gu, "-")}-${kind}-${randomUUID()}.json`,
+    );
+    const archive = await open(target, "wx", 0o600);
+    try {
+      await archive.writeFile(raw);
+    } finally {
+      await archive.close();
+    }
+    await unlink(source);
     return {
       kind: kind === "lease" ? "lease-quarantined" : "guard-quarantined",
       path: target,
