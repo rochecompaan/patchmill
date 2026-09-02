@@ -1,4 +1,4 @@
-import type { CommandResult, CommandRunner } from "../src/process/command.ts";
+import type { CommandResult, CommandRunner } from "../src/command/types.ts";
 
 export type RecordedCommandCall = {
   command: string;

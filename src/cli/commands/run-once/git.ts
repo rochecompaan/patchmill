@@ -1,3 +1,4 @@
+import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import { access } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import {
@@ -7,7 +8,6 @@ import {
   buildIssueWorktreePath as buildIssueWorktreePathFromStrategy,
 } from "../../../git/worktree-strategy.ts";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
-import type { CommandResult, CommandRunner } from "./types.ts";
 
 export { buildIssueBranchSlug };
 

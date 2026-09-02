@@ -6,14 +6,15 @@ import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import type { RunCostReport } from "./run-cost.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { IssueSummary } from "../triage/types.ts";
 
 export type {
   CommandResult,
   CommandRunOptions,
   CommandRunner,
-  HumanDecisionQuestion,
-  IssueSummary,
-} from "../triage/types.ts";
+} from "../../../command/types.ts";
+export type { HumanDecisionQuestion, IssueSummary } from "../triage/types.ts";
 export type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 
 export type AgentIssueConfig = {

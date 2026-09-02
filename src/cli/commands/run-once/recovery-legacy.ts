@@ -1,12 +1,9 @@
+import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { blockingStatusOutput } from "./git.ts";
 import { hasBlockedRunRecoveryState } from "./pipeline-lifecycle.ts";
-import type {
-  AgentIssueRunState,
-  CommandResult,
-  CommandRunner,
-} from "./types.ts";
+import type { AgentIssueRunState } from "./types.ts";
 
 export type BlockedRunRecoveryKind =
   | "recoverable-clean"

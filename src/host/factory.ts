@@ -1,5 +1,5 @@
+import type { CommandRunner } from "../command/types.ts";
 import type { PatchmillHostConfig } from "../config/types.ts";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import { ForgejoTeaPullRequestHost } from "./forgejo-tea-pull-requests.ts";
 import { GitHubGhPullRequestHost } from "./github-gh-pull-requests.ts";
 import type { PullRequestHost } from "./pull-requests.ts";

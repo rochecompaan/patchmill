@@ -1,4 +1,4 @@
-import type { CommandResult, CommandRunner } from "../triage/types.ts";
+import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import type { InitGitPolicyPrompt } from "./git-policy.ts";
 
 const SETUP_COMMIT_SUBJECT = "chore: initialize Patchmill";

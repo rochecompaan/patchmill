@@ -1,10 +1,7 @@
+import type { CommandResult, CommandRunner } from "../command/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { GitHubGhHostProvider } from "./github-gh.ts";
-import type {
-  CommandResult,
-  CommandRunner,
-} from "../cli/commands/triage/types.ts";
 import type { IssueSummary, LabelDefinition } from "./types.ts";
 
 type RecordedCall = {

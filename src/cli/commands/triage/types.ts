@@ -6,9 +6,9 @@ import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
 export type {
   CommandResult,
-  CommandRunner,
   CommandRunOptions,
-} from "../../../process/command.ts";
+  CommandRunner,
+} from "../../../command/types.ts";
 
 export type TriageProgressEvent =
   | { type: "selected"; total: number }

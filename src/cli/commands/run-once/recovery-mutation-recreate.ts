@@ -1,4 +1,5 @@
-import type { CommandRunner, RunRecoveryDecision } from "./types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { RunRecoveryDecision } from "./types.ts";
 import type { RunRecoveryMutationResult } from "./recovery-mutation.ts";
 import {
   assertRecoveryBranchOid,

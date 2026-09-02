@@ -1,10 +1,10 @@
 #!/usr/bin/env node
+import type { CommandRunner } from "../../../command/types.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createCommandRunner } from "../triage/command.ts";
-import type { CommandRunner } from "../triage/types.ts";
 import { createRepositorySetupHostProvider } from "../../../host/factory.ts";
 import type {
   RepositoryInfo,

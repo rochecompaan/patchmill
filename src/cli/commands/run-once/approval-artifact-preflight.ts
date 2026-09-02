@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { join } from "node:path";
 import {
   assertIssueArtifactSourcesMaterializable,
@@ -22,7 +23,6 @@ import {
 import type {
   AgentIssueConfig,
   AgentIssueRunState,
-  CommandRunner,
   IssueSummary,
 } from "./types.ts";
 import type { ReadOnlyIssueWorkspace } from "./git.ts";

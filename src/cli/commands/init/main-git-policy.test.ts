@@ -1,9 +1,9 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { CommandRunner } from "../triage/types.ts";
 import { runInit } from "./main.ts";
 
 async function tempRepo(): Promise<string> {

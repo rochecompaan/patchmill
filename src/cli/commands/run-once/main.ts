@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type { CommandRunner } from "../../../command/types.ts";
 import { mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import { cwd } from "node:process";
@@ -21,7 +22,7 @@ import {
   writeRunOnceResult,
 } from "./result-output.ts";
 import type { WriteRunOnceResultOptions } from "./result-output.ts";
-import type { AgentIssuePipelineResult, CommandRunner } from "./types.ts";
+import type { AgentIssuePipelineResult } from "./types.ts";
 import { legacyPlanningDeprecation } from "../../legacy-planning-deprecations.ts";
 
 export { summarizeResult } from "./result-summary.ts";

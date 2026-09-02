@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { constants } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -16,7 +17,6 @@ import {
   cleanStatusIgnoredPaths,
 } from "../run-once/git.ts";
 import { missingLabelDefinitions } from "../triage/labels.ts";
-import type { CommandRunner } from "../triage/types.ts";
 import type { PatchmillConfig } from "../../../config/types.ts";
 import {
   bundledSkillByConfigReference,

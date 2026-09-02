@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type { CommandRunner } from "../../../command/types.ts";
 import {
   stdin as defaultStdin,
   stdout as defaultStdout,
@@ -16,7 +17,6 @@ import {
   type DoctorPiResourceProvider,
   type DoctorPiResourceReport,
 } from "./pi-resources.ts";
-import type { CommandRunner } from "../triage/types.ts";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
 import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";

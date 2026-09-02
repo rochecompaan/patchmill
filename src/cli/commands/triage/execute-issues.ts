@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import {
   canonicalBucketForLabels,
@@ -9,7 +10,6 @@ import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import { runTriageExecuteAgent } from "./execute-agent.ts";
 import { createObservedChangeEntries } from "./reporting.ts";
 import type {
-  CommandRunner,
   IssueSummary,
   TriageLogIssueEntry,
   TriageToolCallHandler,

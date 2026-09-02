@@ -1,7 +1,5 @@
-import type {
-  AgentIssueProgressEvent,
-  CommandResult,
-} from "../../src/cli/commands/run-once/types.ts";
+import type { CommandResult } from "../../src/command/types.ts";
+import type { AgentIssueProgressEvent } from "../../src/cli/commands/run-once/types.ts";
 import type { Call } from "./mock-runner.ts";
 
 export function commentBody(call: Call | undefined): string {

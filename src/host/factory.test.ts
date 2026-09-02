@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../command/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -9,7 +10,6 @@ import { ForgejoTeaPullRequestHost } from "./forgejo-tea-pull-requests.ts";
 import { ForgejoTeaHostProvider } from "./forgejo-tea.ts";
 import { GitHubGhPullRequestHost } from "./github-gh-pull-requests.ts";
 import { GitHubGhHostProvider } from "./github-gh.ts";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
 
 const runner: CommandRunner = {
   async run() {

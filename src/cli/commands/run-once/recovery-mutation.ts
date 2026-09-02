@@ -1,4 +1,5 @@
-import type { CommandRunner, RunRecoveryDecision } from "./types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { RunRecoveryDecision } from "./types.ts";
 export class RunRecoveryMutationError extends Error {
   readonly action: Exclude<RunRecoveryDecision["action"], "refuse">;
   readonly completed: RunRecoveryMutationResult["completed"];

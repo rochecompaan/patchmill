@@ -1,6 +1,6 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { withTeaContext } from "../../../host/forgejo-tea-context.ts";
 import type {
-  CommandRunner,
   IssueCommentSummary,
   IssueSummary,
   LabelChangePlan,

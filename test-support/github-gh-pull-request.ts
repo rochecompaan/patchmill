@@ -3,7 +3,7 @@ import type {
   CommandResult,
   CommandRunOptions,
   CommandRunner,
-} from "../src/process/command.ts";
+} from "../src/command/types.ts";
 import type { RepositoryIdentity } from "../src/host/pull-requests.ts";
 
 export type Call = {

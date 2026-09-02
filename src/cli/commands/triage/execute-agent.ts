@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import {
   piAgentCommandEnv,
@@ -19,11 +20,7 @@ import {
   profileSkillArgs,
   triagePiProfile,
 } from "../../../pi/resource-profiles.ts";
-import type {
-  CommandRunner,
-  IssueSummary,
-  TriageToolCallHandler,
-} from "./types.ts";
+import type { IssueSummary, TriageToolCallHandler } from "./types.ts";
 
 export type TriageExecutePromptInput = {
   issues: IssueSummary[];

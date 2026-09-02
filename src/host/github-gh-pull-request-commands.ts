@@ -1,4 +1,4 @@
-import type { CommandResult, CommandRunner } from "../process/command.ts";
+import type { CommandResult, CommandRunner } from "../command/types.ts";
 import {
   PullRequestIdentityError,
   sameRepositoryIdentity,

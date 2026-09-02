@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import {
   piAgentCommandEnv,
@@ -20,7 +21,6 @@ import {
   triagePiProfile,
 } from "../../../pi/resource-profiles.ts";
 import type {
-  CommandRunner,
   IssueSummary,
   RawTriagePreview,
   RawTriagePreviewDocument,

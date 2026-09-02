@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { join } from "node:path";
 import { runCleanupHookScript } from "../../../pi/hooks.ts";
 import { planLabelChange } from "../triage/labels.ts";
@@ -16,7 +17,6 @@ import { writeRunState } from "./run-state.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
-  CommandRunner,
   IssueSummary,
 } from "./types.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";

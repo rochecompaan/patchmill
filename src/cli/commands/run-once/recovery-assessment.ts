@@ -1,10 +1,10 @@
+import type { CommandResult } from "../../../command/types.ts";
 import { createHash } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { blockingStatusOutput } from "./git.ts";
 import { parseWorktreeRegistrations } from "./recovery-worktree.ts";
 import type {
-  CommandResult,
   PlanRunRecoveryInput,
   RunRecoveryArtifactAssessment,
   RunRecoveryAssessment,

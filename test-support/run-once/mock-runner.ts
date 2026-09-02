@@ -1,10 +1,7 @@
+import type { CommandRunner, CommandResult } from "../../src/command/types.ts";
 import assert from "node:assert/strict";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  CommandRunner,
-  CommandResult,
-} from "../../src/cli/commands/run-once/types.ts";
 import { gitBaseContainmentResult } from "./assertions.ts";
 
 export type Call = {

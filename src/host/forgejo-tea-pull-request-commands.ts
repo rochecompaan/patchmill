@@ -1,7 +1,4 @@
-import type {
-  CommandRunner,
-  CommandResult,
-} from "../cli/commands/triage/types.ts";
+import type { CommandResult, CommandRunner } from "../command/types.ts";
 import {
   withTeaContext,
   withTeaRepositoryContext,

@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import {
@@ -13,7 +14,6 @@ import { withLogPath } from "./pipeline-progress.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
-  CommandRunner,
 } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";

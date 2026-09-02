@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -5,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
-import type { CommandRunner } from "./types.ts";
 
 type Call = { command: string; args: string[]; cwd?: string };
 

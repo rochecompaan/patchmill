@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { join } from "node:path";
 import { developmentEnvironmentNotReady } from "./development-environment-stage.ts";
 import { runImplementationAgent } from "./implementation-agent.ts";
@@ -15,7 +16,6 @@ import type {
   AgentIssuePipelineResult,
   AgentIssuePrCreatedResult,
   AgentIssueRunState,
-  CommandRunner,
   IssueSummary,
 } from "./types.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";

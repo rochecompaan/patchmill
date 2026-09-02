@@ -1,10 +1,10 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type {
   ResolvedIssueArtifactSource,
   ResolvedIssueArtifactSources,
 } from "./artifact-sources.ts";
-import type { CommandRunner } from "./types.ts";
 
 type ArtifactEntry = {
   kind: "spec" | "plan";

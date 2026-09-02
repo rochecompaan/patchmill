@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../command/types.ts";
 import { resolve } from "node:path";
 import { DEFAULT_PATCHMILL_POLICY } from "../policy/defaults.ts";
 import { runPiPrompt } from "../cli/commands/run-once/pi.ts";
@@ -5,7 +6,6 @@ import {
   buildImplementationPrompt,
   buildPlanCreationPrompt,
 } from "../cli/commands/run-once/prompts.ts";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type {
   ImplementationPiInput,

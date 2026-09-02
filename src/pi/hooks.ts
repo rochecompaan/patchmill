@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
+import type { CommandRunner } from "../command/types.ts";
 
 export type PiHookResult = {
   name: string;

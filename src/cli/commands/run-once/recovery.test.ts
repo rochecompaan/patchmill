@@ -1,3 +1,4 @@
+import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir } from "node:fs/promises";
@@ -13,11 +14,7 @@ import {
   createRunRecoveryPaths,
   decideRunRecovery,
 } from "./recovery-policy.ts";
-import type {
-  CommandResult,
-  CommandRunner,
-  RunRecoveryAssessment,
-} from "./types.ts";
+import type { RunRecoveryAssessment } from "./types.ts";
 
 type Call = { command: string; args: string[]; cwd?: string };
 

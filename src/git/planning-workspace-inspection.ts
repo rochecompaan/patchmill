@@ -1,6 +1,6 @@
 import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { CommandRunner } from "../process/command.ts";
+import type { CommandRunner } from "../command/types.ts";
 import { planningOid } from "./planning-git-validation.ts";
 import { planningWorkspacePath } from "./planning-workspace-input.ts";
 import {

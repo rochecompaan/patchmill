@@ -1,3 +1,4 @@
+import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -38,8 +39,6 @@ import type {
   AgentIssueDevelopmentEnvironmentResult,
   AgentIssuePiResult,
   AgentIssueVisualEvidence,
-  CommandResult,
-  CommandRunner,
   ProgressReporter,
 } from "./types.ts";
 

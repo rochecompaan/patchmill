@@ -1,5 +1,5 @@
 import { basename, isAbsolute, relative, resolve } from "node:path";
-import type { CommandRunner } from "../process/command.ts";
+import type { CommandRunner } from "../command/types.ts";
 import {
   isPlanningArtifactPath,
   isPlanningBranch,

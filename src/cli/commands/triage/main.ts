@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type { CommandRunner } from "../../../command/types.ts";
 import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
@@ -7,7 +8,6 @@ import { createCommandRunner } from "./command.ts";
 import { runTriage } from "./pipeline.ts";
 import { createTriageProgressReporter } from "./progress-output.ts";
 import type {
-  CommandRunner,
   TriageConfig,
   TriageProgressEvent,
   TriageResult,

@@ -1,6 +1,6 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import type { CommandRunner } from "../triage/types.ts";
 
 export type InitGitPolicy = "add" | "ignore" | "exclude";
 

@@ -1,11 +1,8 @@
+import type { CommandResult, CommandRunner } from "../command/types.ts";
 import {
   readGitHubPullRequestBody,
   updateGitHubPullRequestBody,
 } from "./github-pr-body.ts";
-import type {
-  CommandResult,
-  CommandRunner,
-} from "../cli/commands/triage/types.ts";
 import type {
   HostCliCheck,
   HostIssueCreateInput,
