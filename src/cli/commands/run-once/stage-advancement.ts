@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { isAbsolute, join, relative } from "node:path";
 import type { IssueHostProvider } from "../../../host/types.ts";
@@ -24,7 +25,6 @@ import type {
   AgentIssuePipelineResult,
   AgentIssueRunCheckpoints,
   AgentIssueRunStateStatus,
-  IssueSummary,
 } from "./types.ts";
 import { mirrorConfiguredPathInWorktree } from "./pipeline-workspace.ts";
 import {

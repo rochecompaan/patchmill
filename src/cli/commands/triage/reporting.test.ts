@@ -1,3 +1,7 @@
+import type {
+  IssueCommentSummary,
+  IssueSummary,
+} from "../../../issue/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -5,11 +9,7 @@ import {
   createPreviewEntries,
   extractNeedsInfoFollowUps,
 } from "./reporting.ts";
-import type {
-  IssueCommentSummary,
-  IssueSummary,
-  TriagePreview,
-} from "./types.ts";
+import type { TriagePreview } from "./types.ts";
 
 const stateMap = {
   "ready-for-agent": "agent-ready",

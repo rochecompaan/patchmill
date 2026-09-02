@@ -7,7 +7,7 @@ import {
   type PlanningReviewContext,
 } from "./planning-review-context.ts";
 import { buildPlanCreationPrompt, buildSpecCreationPrompt } from "./prompts.ts";
-import type { IssueSummary } from "./types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 
 const issue: IssueSummary = {
   number: 188,

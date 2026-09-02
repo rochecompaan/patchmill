@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
@@ -9,7 +10,6 @@ import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "./labels.ts";
 import { writeTriageLog } from "./log.ts";
 import { createPreviewEntries } from "./reporting.ts";
 import type {
-  IssueSummary,
   TriageConfig,
   TriageLogIssueEntry,
   TriageResult,

@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import {
@@ -9,11 +10,7 @@ import type { IssueHostProvider } from "../../../host/types.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import { runTriageExecuteAgent } from "./execute-agent.ts";
 import { createObservedChangeEntries } from "./reporting.ts";
-import type {
-  IssueSummary,
-  TriageLogIssueEntry,
-  TriageToolCallHandler,
-} from "./types.ts";
+import type { TriageLogIssueEntry, TriageToolCallHandler } from "./types.ts";
 
 export type ExecuteTriageIssuesOptions = {
   runner: CommandRunner;

@@ -5,13 +5,13 @@ import {
 } from "../../../pi/resource-profiles.ts";
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import { buildDevelopmentEnvironmentPrompt } from "./prompts.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueConfig,
   AgentIssueDevelopmentEnvironmentHandoff,
   AgentIssueDevelopmentEnvironmentNotReadyResult,
   AgentIssueProgressEvent,
-  CommandRunner,
-  IssueSummary,
   ProgressReporter,
 } from "./types.ts";
 

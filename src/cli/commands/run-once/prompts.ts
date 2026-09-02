@@ -1,5 +1,6 @@
-import { renderLandingResultContracts } from "./implementation-landing-prompt.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
+import { renderLandingResultContracts } from "./implementation-landing-prompt.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PiRepairPromptInput } from "./pi-session-repair.ts";
 import {
@@ -20,7 +21,6 @@ import type {
   AgentIssueBlockerQuestion,
   AgentIssueDevelopmentEnvironmentHandoff,
   AgentIssueImplementationResumeContext,
-  IssueSummary,
 } from "./types.ts";
 import {
   renderDevelopmentEnvironmentSkillStep,

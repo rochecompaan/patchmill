@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../src/issue/types.ts";
 import type { CommandResult } from "../../src/command/types.ts";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,7 +15,6 @@ import {
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
-  IssueSummary,
 } from "../../src/cli/commands/run-once/types.ts";
 import { issue, issueListPayload, labelListPayload } from "./issue-fixtures.ts";
 import {

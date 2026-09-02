@@ -1,8 +1,8 @@
+import type { LabelDefinition } from "../issue/types.ts";
 import type {
   PatchmillLabelsConfig,
   PatchmillTriageConfig,
 } from "../config/types.ts";
-import type { LabelDefinition } from "../host/types.ts";
 import {
   cloneTriageStateMap,
   defaultTriageStateMap,

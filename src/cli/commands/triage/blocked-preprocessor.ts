@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import type { PatchmillTriageStateMap } from "../../../policy/triage-state.ts";
 import {
@@ -5,7 +6,7 @@ import {
   replaceTriageStateLabels,
   resolveBlockedIssue,
 } from "./blocked.ts";
-import type { IssueSummary, TriageLogIssueEntry } from "./types.ts";
+import type { TriageLogIssueEntry } from "./types.ts";
 
 export type AutoUnblockContext = {
   issue: IssueSummary;

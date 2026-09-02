@@ -27,11 +27,11 @@ import {
 import { configuredPathRelativeToRepo } from "./pipeline-workspace.ts";
 import { buildSpecPath } from "./specs.ts";
 import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssuePiResult,
-  CommandRunner,
-  IssueSummary,
 } from "./types.ts";
 
 export type PlanningPhaseArtifactResolution =

@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
@@ -7,7 +8,6 @@ import type {
   AgentIssueConfig,
   AgentIssueVisualEvidence,
   IssueSelectionRejection,
-  IssueSummary,
 } from "./types.ts";
 import {
   lifecycleLabels,

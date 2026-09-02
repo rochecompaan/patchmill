@@ -31,10 +31,10 @@ import {
 } from "./planning-phase-artifacts.ts";
 import type { PlanningArtifactAgent } from "./planning-phase-artifacts.ts";
 import type { PromptTriageLabels } from "./prompts.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssuePrCreatedResult,
-  IssueSummary,
 } from "./types.ts";
 
 export type PlanningPhaseRunnerOutcome =

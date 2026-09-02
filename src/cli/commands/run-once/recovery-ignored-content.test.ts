@@ -8,8 +8,8 @@ import { decideRunRecovery } from "./recovery-policy.ts";
 import type {
   CommandResult,
   CommandRunner,
-  RunRecoveryAssessment,
-} from "./types.ts";
+} from "../../../command/types.ts";
+import type { RunRecoveryAssessment } from "./types.ts";
 
 type Call = { command: string; args: string[]; cwd?: string };
 

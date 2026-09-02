@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   CommandRunOptions,
   CommandRunner,
@@ -20,7 +21,6 @@ import {
   buildTriageExecutePrompt,
   runTriageExecuteAgent,
 } from "./execute-agent.ts";
-import type { IssueSummary } from "./types.ts";
 
 const issues: IssueSummary[] = [
   {

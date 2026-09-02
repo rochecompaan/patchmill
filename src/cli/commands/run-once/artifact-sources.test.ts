@@ -1,9 +1,9 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IssueSummary } from "./types.ts";
 import { validateIssueArtifactSources } from "./artifact-sources.ts";
 
 const issue: IssueSummary = {

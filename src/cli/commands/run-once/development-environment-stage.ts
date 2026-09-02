@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
@@ -10,7 +11,6 @@ import type {
   AgentIssueDevelopmentEnvironmentResult,
   AgentIssuePipelineResult,
   AgentIssueProgressEvent,
-  IssueSummary,
   ProgressReporter,
 } from "./types.ts";
 

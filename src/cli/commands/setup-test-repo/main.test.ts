@@ -1,3 +1,4 @@
+import type { LabelDefinition } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -8,7 +9,6 @@ import { HELP_TEXT, runSetupTestRepo } from "./main.ts";
 import type {
   HostCliCheck,
   HostIssueCreateInput,
-  LabelDefinition,
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,

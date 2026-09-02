@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import { relative, resolve, sep } from "node:path";
 import type {
   PublishedWorkflowArtifact,
@@ -8,7 +9,6 @@ import {
   artifactContentIsEmpty,
   normalizePublishedArtifactContent,
 } from "../../../workflow/artifacts/published-artifacts.ts";
-import type { IssueSummary } from "./types.ts";
 
 export type ResolvedIssueArtifactSource = PublishedWorkflowArtifact & {
   absolutePath: string;

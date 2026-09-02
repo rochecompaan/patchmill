@@ -1,4 +1,4 @@
-import type { LabelDefinition } from "../../../host/types.ts";
+import type { LabelDefinition } from "../../../issue/types.ts";
 
 export const SETUP_TEST_REPO_LABELS: LabelDefinition[] = [
   {

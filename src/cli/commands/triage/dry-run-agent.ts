@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import {
@@ -21,7 +22,6 @@ import {
   triagePiProfile,
 } from "../../../pi/resource-profiles.ts";
 import type {
-  IssueSummary,
   RawTriagePreview,
   RawTriagePreviewDocument,
   TriagePreview,

@@ -1,5 +1,5 @@
+import type { LabelDefinition } from "../issue/types.ts";
 import type { PatchmillConfig } from "../config/types.ts";
-import type { LabelDefinition } from "../host/types.ts";
 import {
   createWorkflowApprovalPolicy,
   type WorkflowApprovalPolicy,

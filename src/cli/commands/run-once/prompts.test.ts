@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -12,7 +13,6 @@ import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
 import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
-import type { IssueSummary } from "./types.ts";
 
 const issue: IssueSummary = {
   number: 42,

@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
@@ -7,7 +8,6 @@ import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueRunCheckpoints,
-  IssueSummary,
 } from "./types.ts";
 import {
   blockerComment,

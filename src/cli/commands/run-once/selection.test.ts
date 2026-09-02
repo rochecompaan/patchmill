@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
@@ -5,7 +6,6 @@ import { createTriagePolicy } from "../../../policy/triage.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import { ApprovalRequiredError } from "./workflow-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
-import type { IssueSummary } from "./types.ts";
 
 const {
   done,

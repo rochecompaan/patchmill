@@ -1,3 +1,7 @@
+import type {
+  IssueCommentSummary,
+  IssueSummary,
+} from "../../../issue/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -8,7 +12,6 @@ import {
   replaceTriageStateLabels,
   resolveBlockedIssue,
 } from "./blocked.ts";
-import type { IssueCommentSummary, IssueSummary } from "./types.ts";
 
 const stateMap = {
   "agent-ready": "agent-ready",

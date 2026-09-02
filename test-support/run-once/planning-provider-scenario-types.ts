@@ -1,4 +1,4 @@
-import type { IssueSummary } from "../../src/cli/commands/run-once/types.ts";
+import type { IssueSummary } from "../../src/issue/types.ts";
 import type { PlanningStateV1 } from "../../src/workflow/planning-state-store.ts";
 
 export type PlanningScenarioProvider = "github-gh" | "forgejo-tea";

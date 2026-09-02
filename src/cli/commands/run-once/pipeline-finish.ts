@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { join } from "node:path";
 import { runCleanupHookScript } from "../../../pi/hooks.ts";
@@ -14,11 +15,7 @@ import {
 import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
 import { cleanupLabelsForImplementation } from "./workflow-state.ts";
 import { writeRunState } from "./run-state.ts";
-import type {
-  AgentIssueConfig,
-  AgentIssuePipelineResult,
-  IssueSummary,
-} from "./types.ts";
+import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type { RunCostReport } from "./run-cost.ts";
 import { publishPrRunCost } from "./pr-cost-publication.ts";

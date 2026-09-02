@@ -1,3 +1,9 @@
+import type {
+  IssueCommentSummary,
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../issue/types.ts";
 import type { CommandResult, CommandRunner } from "../command/types.ts";
 import {
   readGitHubPullRequestBody,
@@ -6,11 +12,7 @@ import {
 import type {
   HostCliCheck,
   HostIssueCreateInput,
-  IssueCommentSummary,
   IssueHostProvider,
-  IssueSummary,
-  LabelChangePlan,
-  LabelDefinition,
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,

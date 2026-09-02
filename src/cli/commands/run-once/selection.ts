@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
@@ -6,7 +7,6 @@ import type {
   IssueSelectionOptions,
   IssueSelectionRejection,
   IssueSelectionRejectionReason,
-  IssueSummary,
 } from "./types.ts";
 import {
   assertExplicitWorkflowState,

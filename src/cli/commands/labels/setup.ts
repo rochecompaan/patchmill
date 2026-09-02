@@ -1,7 +1,5 @@
-import type {
-  IssueHostProvider,
-  LabelDefinition,
-} from "../../../host/types.ts";
+import type { LabelDefinition } from "../../../issue/types.ts";
+import type { IssueHostProvider } from "../../../host/types.ts";
 import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import { missingLabelDefinitions } from "../triage/labels.ts";
 

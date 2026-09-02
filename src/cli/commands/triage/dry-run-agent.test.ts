@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   CommandRunOptions,
   CommandRunner,
@@ -22,7 +23,6 @@ import {
   runTriageDryRunAgent,
   validateTriagePreviewDocument,
 } from "./dry-run-agent.ts";
-import type { IssueSummary } from "./types.ts";
 
 const issues: IssueSummary[] = [
   {

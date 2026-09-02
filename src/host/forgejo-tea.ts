@@ -1,3 +1,8 @@
+import type {
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../issue/types.ts";
 import type { CommandRunner } from "../command/types.ts";
 import {
   readForgejoPullRequestBody,
@@ -16,9 +21,6 @@ import type {
   HostCliCheck,
   HostIssueCreateInput,
   IssueHostProvider,
-  IssueSummary,
-  LabelChangePlan,
-  LabelDefinition,
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,

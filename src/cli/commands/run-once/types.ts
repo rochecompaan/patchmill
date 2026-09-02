@@ -1,4 +1,3 @@
-import type { CommandRunner, IssueSummary } from "../triage/types.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
@@ -7,14 +6,20 @@ import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.t
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import type { RunCostReport } from "./run-cost.ts";
 import type { CommandRunner } from "../../../command/types.ts";
-import type { IssueSummary } from "../triage/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 
 export type {
   CommandResult,
   CommandRunOptions,
   CommandRunner,
 } from "../../../command/types.ts";
-export type { HumanDecisionQuestion, IssueSummary } from "../triage/types.ts";
+export type { HumanDecisionQuestion } from "../triage/types.ts";
+export type {
+  IssueCommentSummary,
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../../../issue/types.ts";
 export type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 
 export type AgentIssueConfig = {

@@ -1,4 +1,4 @@
-import type { CommandResult } from "../../src/cli/commands/run-once/types.ts";
+import type { CommandResult } from "../../src/command/types.ts";
 import { labelListPayload } from "./issue-fixtures.ts";
 import type {
   PlanningProviderFixtureInput,

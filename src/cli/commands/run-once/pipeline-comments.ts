@@ -1,10 +1,10 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import { createHash } from "node:crypto";
 import type {
   AgentIssueBlockedResult,
   AgentIssueBlockerQuestion,
   AgentIssuePiResult,
   IssueSelectionRejection,
-  IssueSummary,
 } from "./types.ts";
 
 export function startedComment(issue: IssueSummary): string {

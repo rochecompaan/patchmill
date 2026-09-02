@@ -5,7 +5,9 @@ import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
 import { createStepAccounting, progress } from "./pipeline-progress.ts";
 import type { PlanningImplementationInput } from "./planning-implementation.ts";
 import { artifactPath } from "./planning-runtime-state.ts";
-import type { AgentIssueConfig, CommandRunner, IssueSummary } from "./types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
+import type { AgentIssueConfig } from "./types.ts";
 
 export type PlanningImplementationAdapterInput = {
   runner: CommandRunner;

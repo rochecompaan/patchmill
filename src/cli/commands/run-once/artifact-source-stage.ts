@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import {
   extractPublishedArtifactsFromIssue,
@@ -8,11 +9,7 @@ import {
   validateIssueArtifactSources,
   type ResolvedIssueArtifactSources,
 } from "./artifact-sources.ts";
-import type {
-  AgentIssueConfig,
-  AgentIssueProgressEvent,
-  IssueSummary,
-} from "./types.ts";
+import type { AgentIssueConfig, AgentIssueProgressEvent } from "./types.ts";
 
 export type ArtifactSourceStageResult = {
   issue: IssueSummary;

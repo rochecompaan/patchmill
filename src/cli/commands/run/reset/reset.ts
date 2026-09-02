@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../../issue/types.ts";
 import type { CommandRunner } from "../../../../command/types.ts";
 import { createRunOnceHostProvider } from "../../../../host/factory.ts";
 import { runArtifactSourceStage } from "../../run-once/artifact-source-stage.ts";
@@ -30,7 +31,6 @@ import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueRunState,
-  IssueSummary,
 } from "../../run-once/types.ts";
 export class ResetIssueRunRecoveryError extends Error {
   readonly archivePath: string;
