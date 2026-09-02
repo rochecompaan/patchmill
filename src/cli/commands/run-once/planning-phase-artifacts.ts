@@ -22,17 +22,17 @@ import { buildPlanPath } from "./plans.ts";
 import {
   buildSpecCreationPrompt,
   buildPlanCreationPrompt,
-  type PromptTriageLabels,
 } from "./prompts.ts";
 import { configuredPathRelativeToRepo } from "./pipeline-workspace.ts";
 import { buildSpecPath } from "./specs.ts";
 import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
 import type { CommandRunner } from "../../../command/types.ts";
-import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssuePiResult,
-} from "./types.ts";
+  PromptTriageLabels,
+} from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 
 export type PlanningPhaseArtifactResolution =
   | Readonly<{

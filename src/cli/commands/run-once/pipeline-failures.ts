@@ -1,10 +1,10 @@
+import type { AgentIssueBlockedResult } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { readRunState, writeRunState } from "./run-state.ts";
 import type {
-  AgentIssueBlockedResult,
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueRunCheckpoints,

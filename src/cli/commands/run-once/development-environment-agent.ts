@@ -6,11 +6,13 @@ import {
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
 import { buildDevelopmentEnvironmentPrompt } from "./prompts.ts";
 import type { CommandRunner } from "../../../command/types.ts";
+import type {
+  AgentIssueDevelopmentEnvironmentHandoff,
+  AgentIssueDevelopmentEnvironmentNotReadyResult,
+} from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueConfig,
-  AgentIssueDevelopmentEnvironmentHandoff,
-  AgentIssueDevelopmentEnvironmentNotReadyResult,
   AgentIssueProgressEvent,
   ProgressReporter,
 } from "./types.ts";

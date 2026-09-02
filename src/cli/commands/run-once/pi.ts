@@ -1,3 +1,9 @@
+import type {
+  AgentIssueBlockerQuestion,
+  AgentIssueDevelopmentEnvironmentResult,
+  AgentIssuePiResult,
+  AgentIssueVisualEvidence,
+} from "../../../issue-run/types.ts";
 import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -34,13 +40,7 @@ import {
   readPiRepairFacts,
   type PiRepairPromptInput,
 } from "./pi-session-repair.ts";
-import type {
-  AgentIssueBlockerQuestion,
-  AgentIssueDevelopmentEnvironmentResult,
-  AgentIssuePiResult,
-  AgentIssueVisualEvidence,
-  ProgressReporter,
-} from "./types.ts";
+import type { ProgressReporter } from "./types.ts";
 
 function piPromptArgs(
   promptPath: string,

@@ -1,3 +1,4 @@
+import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -6,7 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
-import type { AgentIssueVisualEvidence } from "./types.ts";
 
 const DEFAULT_VISUAL_EVIDENCE_REFERENCE_DIR =
   DEFAULT_PATCHMILL_CONFIG.projectPolicy.visualEvidence

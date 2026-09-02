@@ -1,3 +1,4 @@
+import type { AgentIssueBlockedResult } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { isAbsolute, join, relative } from "node:path";
@@ -20,7 +21,6 @@ import {
 } from "./planning-artifacts.ts";
 import type { AgentIssueProgressEvent } from "./progress.ts";
 import type {
-  AgentIssueBlockedResult,
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueRunCheckpoints,

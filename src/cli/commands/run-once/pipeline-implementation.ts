@@ -1,3 +1,9 @@
+import type {
+  AgentIssueDevelopmentEnvironmentHandoff,
+  AgentIssueMergedResult,
+  AgentIssuePiResult,
+  AgentIssuePrCreatedResult,
+} from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { join } from "node:path";
@@ -12,10 +18,7 @@ import { writeRunState } from "./run-state.ts";
 import type { IssueWorktreeResult } from "./git.ts";
 import type {
   AgentIssueConfig,
-  AgentIssueMergedResult,
-  AgentIssuePiResult,
   AgentIssuePipelineResult,
-  AgentIssuePrCreatedResult,
   AgentIssueRunState,
 } from "./types.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";

@@ -1,7 +1,7 @@
+import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { readFile, realpath } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
-import type { AgentIssueVisualEvidence } from "./types.ts";
 
 export type ValidateVisualEvidenceReferencesInput = {
   repoRoot: string;

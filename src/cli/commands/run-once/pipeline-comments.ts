@@ -1,11 +1,11 @@
-import type { IssueSummary } from "../../../issue/types.ts";
-import { createHash } from "node:crypto";
 import type {
   AgentIssueBlockedResult,
   AgentIssueBlockerQuestion,
   AgentIssuePiResult,
-  IssueSelectionRejection,
-} from "./types.ts";
+} from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
+import { createHash } from "node:crypto";
+import type { IssueSelectionRejection } from "./types.ts";
 
 export function startedComment(issue: IssueSummary): string {
   return `Automation started for issue #${issue.number}.\n\nThe issue has been claimed for plan and implementation orchestration.`;

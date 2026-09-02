@@ -1,8 +1,6 @@
+import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
 import { formatErrorWithCauses } from "./pi-errors.ts";
-import type {
-  AgentIssuePipelineResult,
-  AgentIssueVisualEvidence,
-} from "./types.ts";
+import type { AgentIssuePipelineResult } from "./types.ts";
 
 export type RunOnceResultLog = { logPath?: string; piSessionPath?: string };
 

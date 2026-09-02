@@ -1,3 +1,4 @@
+import type { HumanDecisionQuestion } from "../../../workflow/decisions.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
@@ -57,10 +58,7 @@ export type {
 
 export type PrimaryBucket = PatchmillTriageCanonicalBucket;
 
-export type HumanDecisionQuestion = {
-  question: string;
-  recommendedAnswer: string;
-};
+export type { HumanDecisionQuestion } from "../../../workflow/decisions.ts";
 
 export type TriageQuestion = string | HumanDecisionQuestion;
 

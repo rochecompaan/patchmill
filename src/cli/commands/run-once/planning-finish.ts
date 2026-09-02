@@ -9,7 +9,7 @@ import type {
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
 import { durableImplementationResult } from "./planning-runtime-state.ts";
-import type { AgentIssuePrCreatedResult } from "./types.ts";
+import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
 
 export type PlanningFinishInput = {
   state: PlanningStateV1;

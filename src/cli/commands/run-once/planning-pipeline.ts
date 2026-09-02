@@ -32,9 +32,9 @@ import { readRunState } from "./run-state.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
+import type { AgentIssueBlockedResult } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
-  AgentIssueBlockedResult,
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueStoppedResult,
