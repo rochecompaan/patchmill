@@ -33,11 +33,11 @@ export type ApprovedArtifactPreflightOptions = {
     "repoRoot" | "specsDir" | "plansDir" | "approvalPolicy"
   >;
   issue: IssueSummary;
-  existingState?: AgentIssueRunState;
+  existingState?: AgentIssueRunState | undefined;
   resolvedArtifacts: ResolvedIssueArtifactSources;
   now: Date;
-  artifactWorkspace?: ReadOnlyIssueWorkspace;
-  runner?: CommandRunner;
+  artifactWorkspace?: ReadOnlyIssueWorkspace | undefined;
+  runner?: CommandRunner | undefined;
 };
 
 export type ApprovedArtifactPreflight = {
@@ -96,9 +96,9 @@ async function approvedArtifactPolicy(input: {
 
 function assertExplicitMatchesSaved(input: {
   kind: "spec" | "plan";
-  explicit?: ResolvedIssueArtifactSource;
-  savedPath?: string;
-  savedCommit?: string;
+  explicit?: ResolvedIssueArtifactSource | undefined;
+  savedPath?: string | undefined;
+  savedCommit?: string | undefined;
 }): void {
   if (!input.explicit || !input.savedPath) return;
   if (input.explicit.path !== input.savedPath) {
@@ -203,8 +203,8 @@ async function assertApprovedSourcesMaterializable(input: {
   requirePlan: boolean;
   specLabel: string;
   planLabel: string;
-  artifactWorkspace?: ReadOnlyIssueWorkspace;
-  runner?: CommandRunner;
+  artifactWorkspace?: ReadOnlyIssueWorkspace | undefined;
+  runner?: CommandRunner | undefined;
 }): Promise<void> {
   const approved = [
     ...(input.requireSpec && input.sources.spec

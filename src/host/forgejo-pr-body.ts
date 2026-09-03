@@ -35,15 +35,18 @@ export async function readForgejoPullRequestBody(
   } catch (cause) {
     throw new Error("tea api returned invalid JSON", { cause });
   }
+  const record = value as Record<string, unknown>;
+  const body = record?.body;
+  const htmlUrl = record?.html_url;
   if (
     !value ||
     typeof value !== "object" ||
-    typeof (value as Record<string, unknown>).body !== "string" ||
-    typeof (value as Record<string, unknown>).html_url !== "string" ||
-    !sameCanonicalUrl(prUrl, (value as Record<string, string>).html_url)
+    typeof body !== "string" ||
+    typeof htmlUrl !== "string" ||
+    !sameCanonicalUrl(prUrl, htmlUrl)
   )
     throw new Error("tea api returned an invalid or mismatched PR body");
-  return (value as Record<string, string>).body;
+  return body;
 }
 export async function updateForgejoPullRequestBody(
   options: ForgejoPrBodyOptions,

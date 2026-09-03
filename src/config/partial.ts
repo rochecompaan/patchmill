@@ -2,7 +2,7 @@ import type { PartialPatchmillSkillsConfig } from "../workflow/skills.ts";
 import type { PatchmillConfig } from "./types.ts";
 import type { PartialWorkflowConfig } from "./workflow.ts";
 
-type PartialPiTaskContract = Partial<
+export type PartialPiTaskContract = Partial<
   PatchmillConfig["projectPolicy"]["pi"]["taskContract"]
 >;
 
@@ -12,7 +12,7 @@ type PartialPiWorkflowPolicy = Partial<
   taskContract?: PartialPiTaskContract;
 };
 
-type PartialProjectPolicy = Partial<
+export type PartialProjectPolicy = Partial<
   Omit<
     PatchmillConfig["projectPolicy"],
     "validation" | "directLand" | "visualEvidence" | "pi"

@@ -36,9 +36,9 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         worktreePath: string;
         commits: string[];
         validation: string[];
-        reviewSummary?: string;
-        landingDecision?: string;
-        visualEvidence?: AgentIssueVisualEvidence[];
+        reviewSummary?: string | undefined;
+        landingDecision?: string | undefined;
+        visualEvidence?: AgentIssueVisualEvidence[] | undefined;
       }
     | {
         status: "merged";
@@ -50,8 +50,8 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         worktreePath: string;
         commits: string[];
         validation: string[];
-        reviewSummary?: string;
-        landingDecision?: string;
+        reviewSummary?: string | undefined;
+        landingDecision?: string | undefined;
       }
     | {
         status: "approval-required";

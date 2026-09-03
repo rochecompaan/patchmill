@@ -31,14 +31,21 @@ export function parseWorktreeRegistrations(output: string): {
 } {
   const entries: RegisteredWorktree[] = [];
   let malformed = false;
-  let entry: RegisteredWorktree;
-  let worktrees: number;
-  let heads: number;
-  let branchFields: number;
-  let detached: number;
-  let bares: number;
-  let locks: number;
-  let prunables: number;
+  let entry: RegisteredWorktree = {
+    path: "",
+    bare: false,
+    locked: false,
+    prunable: false,
+    malformed: false,
+    seen: false,
+  };
+  let worktrees = 0;
+  let heads = 0;
+  let branchFields = 0;
+  let detached = 0;
+  let bares = 0;
+  let locks = 0;
+  let prunables = 0;
   const reset = () => {
     entry = {
       path: "",

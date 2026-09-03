@@ -1,7 +1,7 @@
 function fencedJsonBody(stdout: string): string {
   const trimmed = stdout.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```\s*$/u);
-  return fenced ? fenced[1] : trimmed;
+  return fenced?.[1] ?? trimmed;
 }
 
 export function finalJsonCandidates(stdout: string): Record<string, unknown>[] {

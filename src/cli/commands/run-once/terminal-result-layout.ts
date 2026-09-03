@@ -7,12 +7,15 @@ import type { TerminalResultSeverity } from "./terminal-result.ts";
 
 export type TerminalValue = {
   text: string;
-  role?: "plain" | "url" | "path" | "commit";
+  role?: "plain" | "url" | "path" | "commit" | undefined;
 };
-export type TerminalField = { label?: string; value: TerminalValue };
+export type TerminalField = {
+  label?: string | undefined;
+  value: TerminalValue;
+};
 export type TerminalListItem = {
   value: TerminalValue;
-  details?: TerminalField[];
+  details?: TerminalField[] | undefined;
 };
 export type TerminalSectionBlock =
   | { kind: "value"; value: TerminalValue }
@@ -25,7 +28,7 @@ export type TerminalSectionBlock =
     };
 export type TerminalSection = {
   heading: string;
-  count?: number;
+  count?: number | undefined;
   blocks: TerminalSectionBlock[];
 };
 export type TerminalDocument = {

@@ -52,9 +52,13 @@ export class PiRunner implements PiPromptContracts {
         issue: input.issue,
         planPath: input.planPath,
         projectPolicy,
-        planApprovalRequired: input.planApprovalRequired,
-        skills: input.skills,
-        triageLabels: input.triageLabels,
+        ...(input.planApprovalRequired === undefined
+          ? {}
+          : { planApprovalRequired: input.planApprovalRequired }),
+        ...(input.skills === undefined ? {} : { skills: input.skills }),
+        ...(input.triageLabels === undefined
+          ? {}
+          : { triageLabels: input.triageLabels }),
       }),
       {
         ...input.runOptions,
@@ -87,8 +91,8 @@ export class PiRunner implements PiPromptContracts {
         worktreePath: input.worktreePath,
         git: input.git,
         projectPolicy,
-        skills: input.skills,
-        resume: input.resume,
+        ...(input.skills === undefined ? {} : { skills: input.skills }),
+        ...(input.resume === undefined ? {} : { resume: input.resume }),
       }),
       {
         ...input.runOptions,

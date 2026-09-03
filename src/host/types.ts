@@ -12,11 +12,11 @@ export type IssueSummary = {
   body: string;
   labels: string[];
   state: string;
-  author?: string;
-  created?: string;
-  updated?: string;
-  url?: string;
-  comments?: IssueCommentSummary[];
+  author?: string | undefined;
+  created?: string | undefined;
+  updated?: string | undefined;
+  url?: string | undefined;
+  comments?: IssueCommentSummary[] | undefined;
 };
 
 export type LabelDefinition = {

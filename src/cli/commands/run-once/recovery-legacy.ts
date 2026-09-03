@@ -23,16 +23,20 @@ export type BlockedRunRecoveryReport = {
   issueNumber: number;
   title: string;
   status: AgentIssueRunState["status"];
-  blockerReason?: string;
-  branch: { name?: string; exists: boolean; merged: boolean };
+  blockerReason?: string | undefined;
+  branch: {
+    name?: string | undefined;
+    exists: boolean;
+    merged: boolean;
+  };
   worktree: {
-    path?: string;
+    path?: string | undefined;
     exists: boolean;
     registered: boolean;
     clean?: boolean;
     dirtyStatus?: string;
   };
-  divergence?: { ahead: number; behind: number };
+  divergence?: { ahead: number; behind: number } | undefined;
   commits: string[];
   recommendedActions: string[];
 };
@@ -171,8 +175,14 @@ async function branchDivergence(input: {
       `git rev-list returned unparseable divergence for ${input.branch}: ${result.stdout.trim() || "(empty output)"}`,
     );
   }
-  const [behindText, aheadText] = fields;
-  if (!/^\d+$/u.test(behindText) || !/^\d+$/u.test(aheadText)) {
+  const behindText = fields[0];
+  const aheadText = fields[1];
+  if (
+    behindText === undefined ||
+    aheadText === undefined ||
+    !/^\d+$/u.test(behindText) ||
+    !/^\d+$/u.test(aheadText)
+  ) {
     throw new Error(
       `git rev-list returned unparseable divergence for ${input.branch}: ${result.stdout.trim()}`,
     );
@@ -297,7 +307,11 @@ export async function inspectBlockedRunRecovery(input: {
       input.state.worktreePath,
     ),
   ]);
-  const worktree = {
+  const worktree: Omit<typeof baseReport.worktree, "exists" | "registered"> & {
+    exists: boolean;
+    registered: boolean;
+    clean?: boolean;
+  } = {
     ...baseReport.worktree,
     exists: physicalExists,
     registered,

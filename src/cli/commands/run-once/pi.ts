@@ -294,32 +294,35 @@ export type PiRepairOptions = {
 };
 
 export type RunPiPromptOptions<Result = AgentIssuePiResult> = {
-  progress?: ProgressReporter;
+  progress?: ProgressReporter | undefined;
   stage: RunPiPromptStage;
-  parseResult?: (stdout: string) => Result;
-  skillPaths?: string[];
-  extensionArgs?: string[];
-  heartbeatMs?: number;
-  streamOutput?: (chunk: string) => void;
-  issueNumber?: number;
-  repoRoot?: string;
-  taskProgress?: () =>
-    | PiTaskProgress
-    | undefined
-    | Promise<PiTaskProgress | undefined>;
-  onTaskProgress?: (progress: PiTaskProgress) => void | Promise<void>;
-  tokenUsage?: () => string | undefined;
-  tokenUsageState?: { total: number };
-  observeSession?: boolean;
-  sessionRoot?: string;
-  sessionDir?: string;
-  onObservation?: (observation: PiSessionObservation) => void | Promise<void>;
-  verbosePiOutput?: boolean;
-  taskContract?: PatchmillPiTaskContract;
-  piAgentDir?: string;
-  piCommand?: PiCommandSpec;
-  cleanupPromptTempDir?: (dir: string) => Promise<void>;
-  repair?: PiRepairOptions;
+  parseResult?: ((stdout: string) => Result) | undefined;
+  skillPaths?: string[] | undefined;
+  extensionArgs?: string[] | undefined;
+  heartbeatMs?: number | undefined;
+  streamOutput?: ((chunk: string) => void) | undefined;
+  issueNumber?: number | undefined;
+  repoRoot?: string | undefined;
+  taskProgress?:
+    | (() => PiTaskProgress | undefined | Promise<PiTaskProgress | undefined>)
+    | undefined;
+  onTaskProgress?:
+    | ((progress: PiTaskProgress) => void | Promise<void>)
+    | undefined;
+  tokenUsage?: (() => string | undefined) | undefined;
+  tokenUsageState?: { total: number } | undefined;
+  observeSession?: boolean | undefined;
+  sessionRoot?: string | undefined;
+  sessionDir?: string | undefined;
+  onObservation?:
+    | ((observation: PiSessionObservation) => void | Promise<void>)
+    | undefined;
+  verbosePiOutput?: boolean | undefined;
+  taskContract?: PatchmillPiTaskContract | undefined;
+  piAgentDir?: string | undefined;
+  piCommand?: PiCommandSpec | undefined;
+  cleanupPromptTempDir?: ((dir: string) => Promise<void>) | undefined;
+  repair?: PiRepairOptions | undefined;
 };
 
 function stageStatus(stage: RunPiPromptStage): string {
@@ -334,8 +337,8 @@ function formatElapsed(seconds: number): string {
   return `${Math.max(1, Math.round(seconds / 60))}m`;
 }
 
-function statusLine(
-  options: RunPiPromptOptions,
+function statusLine<Result>(
+  options: RunPiPromptOptions<Result>,
   elapsedSeconds: number,
   tokenUsage: string | undefined,
   taskProgress: PiTaskProgress | undefined,
@@ -351,8 +354,8 @@ function statusLine(
   return `[${issue}] ${stageStatus(options.stage)}${task} | ${tokenUsage ?? "tok: task=? total=?"} | elapsed ${formatElapsed(elapsedSeconds)}`;
 }
 
-async function heartbeatStatusLine(
-  options: RunPiPromptOptions,
+async function heartbeatStatusLine<Result>(
+  options: RunPiPromptOptions<Result>,
   elapsedSeconds: number,
   latestTokenUsage: string | undefined,
 ): Promise<string> {
@@ -374,9 +377,9 @@ async function heartbeatStatusLine(
   );
 }
 
-async function emitPiOutput(
+async function emitPiOutput<Result>(
   result: CommandResult,
-  options?: RunPiPromptOptions,
+  options?: RunPiPromptOptions<Result>,
 ): Promise<void> {
   if (!options?.progress) return;
   const time = new Date().toISOString();
@@ -447,7 +450,20 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
       message: "started pi",
     });
     const session = options
-      ? await createPiSessionAllocation({ ...options, promptTempDir: dir })
+      ? await createPiSessionAllocation({
+          stage: options.stage,
+          promptTempDir: dir,
+          ...(options.observeSession === undefined
+            ? {}
+            : { observeSession: options.observeSession }),
+          streamOutput: options.streamOutput !== undefined,
+          ...(options.sessionRoot === undefined
+            ? {}
+            : { sessionRoot: options.sessionRoot }),
+          ...(options.sessionDir === undefined
+            ? {}
+            : { sessionDir: options.sessionDir }),
+        })
       : undefined;
     if (session?.sessionDir) {
       await options?.progress?.event({
@@ -491,11 +507,13 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
               await options?.onObservation?.(observation);
             },
             {
-              startOffset,
-              progressState: exactSessionProgressState,
-              verboseOutput: options?.verbosePiOutput
-                ? options.streamOutput
-                : undefined,
+              ...(startOffset === undefined ? {} : { startOffset }),
+              ...(exactSessionProgressState === undefined
+                ? {}
+                : { progressState: exactSessionProgressState }),
+              ...(options?.verbosePiOutput && options.streamOutput !== undefined
+                ? { verboseOutput: options.streamOutput }
+                : {}),
             },
           )
         : session?.sessionDir
@@ -513,8 +531,12 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
             )
           : undefined;
       let observationFailure: Promise<void> | undefined;
-      if (sessionStreamer && "failure" in sessionStreamer) {
-        observationFailure = sessionStreamer.failure.catch((error) => {
+      const sessionFailure =
+        sessionStreamer && "failure" in sessionStreamer
+          ? sessionStreamer.failure
+          : undefined;
+      if (sessionFailure instanceof Promise) {
+        observationFailure = sessionFailure.catch((error: unknown) => {
           record("observation", error);
           controller?.abort(error);
         });
@@ -548,7 +570,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
                 ),
               },
             ),
-            signal: controller?.signal,
+            ...(controller === undefined ? {} : { signal: controller.signal }),
           },
         );
       } catch (error) {

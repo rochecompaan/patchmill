@@ -10,7 +10,7 @@ import type {
 import type { readRunState } from "./run-state.ts";
 
 export class AgentIssueSafetyError extends Error {
-  readonly name = "AgentIssueSafetyError";
+  override readonly name = "AgentIssueSafetyError";
 }
 
 export function nextLabels(
@@ -158,10 +158,10 @@ export function resetReceiptCheckpoints(
 export function successfulImplementationFromState(
   state:
     | {
-        implementationStatus?: "pr-created" | "merged";
-        branch?: string;
-        prUrl?: string;
-        mergeCommit?: string;
+        implementationStatus?: "pr-created" | "merged" | undefined;
+        branch?: string | undefined;
+        prUrl?: string | undefined;
+        mergeCommit?: string | undefined;
         commits?: unknown;
         validation?: unknown;
         reviewSummary?: unknown;

@@ -87,13 +87,15 @@ import type {
   IssueSummary,
 } from "./types.ts";
 
+type PiOutputStream = (chunk: string) => void;
+
 export type RunOneIssueOptions = {
-  now?: Date;
-  progress?: ProgressReporter;
-  logPath?: string;
-  streamPiOutput?: (chunk: string) => void;
-  verbosePiOutput?: boolean;
-  heartbeatMs?: number;
+  now?: Date | undefined;
+  progress?: ProgressReporter | undefined;
+  logPath?: string | undefined;
+  streamPiOutput?: PiOutputStream | undefined;
+  verbosePiOutput?: boolean | undefined;
+  heartbeatMs?: number | undefined;
 };
 type LeasedRunOneIssueOptions = RunOneIssueOptions & {
   lease?: import("./types.ts").IssueRunLease;
@@ -326,7 +328,10 @@ async function runOneIssueInternal(
     );
   }
 
-  const ignoredPaths = cleanStatusIgnoredPaths(config, runOptions);
+  const ignoredPaths = cleanStatusIgnoredPaths(
+    config,
+    runOptions.logPath === undefined ? {} : { logPath: runOptions.logPath },
+  );
   // Typed recovery owns every blocked-state classification, including safely
   // recreatable missing worktrees and branches.  Do not pre-gate it here.
   const blockedRecoveryResumable = hasBlockedRunRecoveryState(existingState);
@@ -584,6 +589,8 @@ async function runOneIssueInternal(
             status: "blocked" as const,
             reason: existingState.lastError,
             questions: existingState.blockerQuestions ?? [],
+            commits: existingState.commits ?? [],
+            validation: existingState.validation ?? [],
           };
           const body = blockerComment(blocked);
           if (issue.comments?.some((comment) => comment.body === body))
@@ -661,8 +668,9 @@ async function runOneIssueInternal(
     }
 
     if (artifactPolicy?.kind === "implementation-resume") {
+      const resumeArtifactPolicy = artifactPolicy;
       const sourcesToMaterialize = {
-        ...(!artifactPolicy.saved.specPath && resolvedArtifacts.spec
+        ...(!resumeArtifactPolicy.saved.specPath && resolvedArtifacts.spec
           ? { spec: resolvedArtifacts.spec }
           : {}),
         ...(!artifactPolicy.saved.planPath && resolvedArtifacts.plan
@@ -674,7 +682,7 @@ async function runOneIssueInternal(
           "materialize issue artifact sources",
           async () =>
             materializeIssueArtifactSources({
-              repoRoot: artifactPolicy.primary.repoRoot,
+              repoRoot: resumeArtifactPolicy.primary.repoRoot,
               runner,
               issueNumber: issueForRun.number,
               sources: sourcesToMaterialize,
@@ -805,6 +813,13 @@ async function runOneIssueInternal(
     }
 
     const worktree = await ensureIssueWorkspace();
+    const implementationWorktreePath = worktreePath ?? worktree.worktreePath;
+    const implementationBranch = branch ?? worktree.branch;
+    if (!implementationBranch || !planPath) {
+      throw new AgentIssueSafetyError(
+        `Implementation requires a branch and plan for issue #${issue.number}`,
+      );
+    }
     const implementationStage = await runPipelineImplementationStage({
       runner,
       host,
@@ -817,8 +832,8 @@ async function runOneIssueInternal(
       specCommit,
       planPath,
       planCommit,
-      branch,
-      worktreePath,
+      branch: implementationBranch,
+      worktreePath: implementationWorktreePath,
       worktree,
       worktreeStrategy,
       existingState,
@@ -888,8 +903,8 @@ async function runOneIssueInternal(
       specCommit,
       planPath,
       planCommit,
-      branch,
-      worktreePath,
+      branch: implementationBranch,
+      worktreePath: implementationWorktreePath,
       timestamp,
       runOptions,
       runStep,

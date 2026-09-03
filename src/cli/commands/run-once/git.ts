@@ -69,7 +69,7 @@ export function buildIssueWorktreePath(
 }
 
 export function cleanStatusIgnoredPaths(config: {
-  cleanStatusIgnorePrefixes?: string[];
+  cleanStatusIgnorePrefixes?: string[] | undefined;
   runStateDir: string;
   todoRoot: string;
   additionalPaths?: string[];

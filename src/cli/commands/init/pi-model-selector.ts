@@ -25,8 +25,8 @@ import type { PiModelChoice } from "./pi-preflight.ts";
 
 export type InteractiveModelSelector = (options: {
   models: PiModelChoice[];
-  current?: LocalPiDefaultModel;
-  terminal?: Terminal;
+  current?: LocalPiDefaultModel | undefined;
+  terminal?: Terminal | undefined;
 }) => Promise<PiModelChoice | undefined>;
 
 function modelRow(row: VisibleModelRow): string {
@@ -123,8 +123,8 @@ class ModelSelectorComponent extends Container implements Focusable {
 
 export async function selectModelInteractively(options: {
   models: PiModelChoice[];
-  current?: LocalPiDefaultModel;
-  terminal?: Terminal;
+  current?: LocalPiDefaultModel | undefined;
+  terminal?: Terminal | undefined;
 }): Promise<PiModelChoice | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
   const tui = new TuiMainScreen(terminal, true);

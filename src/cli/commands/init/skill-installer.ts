@@ -399,6 +399,9 @@ export async function validateExistingSkillDirectory(
       skillPath: skillConfig.implementation,
     },
   ]) {
+    if (skillPath === undefined) {
+      throw new Error(`Missing configured path for required skill ${name}`);
+    }
     await assertRequiredSkillFiles(
       name,
       resolve(repoRoot, skillPath),

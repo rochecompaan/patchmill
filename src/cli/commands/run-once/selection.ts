@@ -21,7 +21,7 @@ const DEFAULT_TRIAGE_POLICY = createTriagePolicy(
 type ResolvedIssueSelectionOptions = {
   issueNumber?: number;
   readyLabel: IssueSelectionOptions["readyLabel"];
-  approvalPolicy: IssueSelectionOptions["approvalPolicy"];
+  approvalPolicy?: IssueSelectionOptions["approvalPolicy"];
   priorityLabels: readonly string[];
   excludedLabels: Set<string>;
 };
@@ -39,9 +39,13 @@ function resolveSelectionOptions(
   const triagePolicy = options.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
 
   return {
-    issueNumber: options.issueNumber,
+    ...(options.issueNumber === undefined
+      ? {}
+      : { issueNumber: options.issueNumber }),
     readyLabel: options.readyLabel,
-    approvalPolicy: options.approvalPolicy,
+    ...(options.approvalPolicy === undefined
+      ? {}
+      : { approvalPolicy: options.approvalPolicy }),
     priorityLabels:
       options.priorityLabels ?? triagePolicy.runOnceSelection.priorityOrder,
     excludedLabels: new Set([
@@ -152,8 +156,9 @@ export function selectIssueWithDiagnostics(
   const resolved = resolveSelectionOptions(options);
 
   if (resolved.issueNumber !== undefined) {
+    const issue = selectIssue(issues, options);
     return {
-      issue: selectIssue(issues, options),
+      ...(issue === undefined ? {} : { issue }),
       rejections: [],
       consideredCount: issues.length,
     };

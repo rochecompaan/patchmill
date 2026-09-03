@@ -106,9 +106,9 @@ export async function runLeaseRepairCommand(
   const result = await (dependencies.repair ?? repairIssueRunLease)({
     runStateDir: config.runStateDir,
     issueNumber: issue,
-    expectedLeaseSha256: lease,
-    expectedGuardSha256: guard,
-    expectedStateSha256: state,
+    ...(lease === undefined ? {} : { expectedLeaseSha256: lease }),
+    ...(guard === undefined ? {} : { expectedGuardSha256: guard }),
+    ...(state === undefined ? {} : { expectedStateSha256: state }),
     confirmedProcessesStopped: matchingConfirmation,
   });
   stderr.write(`${result.kind}: ${result.path}\n`);

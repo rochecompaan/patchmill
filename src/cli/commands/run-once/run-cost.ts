@@ -24,7 +24,7 @@ export type RunCostSessionFile = {
 };
 
 export class RunCostReportError extends Error {
-  readonly name = "RunCostReportError";
+  override readonly name = "RunCostReportError";
 }
 
 const STAGE_ORDER = [
@@ -89,7 +89,10 @@ function assistantUsage(entry: unknown, path: string): Usage | undefined {
   };
 }
 function total(
-  rows: readonly RunCostModelUsage[],
+  rows: readonly Pick<
+    RunCostModelUsage,
+    "promptTokens" | "outputTokens" | "estimatedCostUsd"
+  >[],
 ): Omit<RunCostModelUsage, "model"> {
   return rows.reduce(
     (sum, row) => ({

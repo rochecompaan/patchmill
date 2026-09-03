@@ -55,6 +55,7 @@ export function parseArgs(args: string[], repoRoot = cwd()): InitConfig {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === undefined) throw new Error("Unexpected missing argument");
     if (arg === "--help" || arg === "-h") {
       config.showHelp = true;
     } else if (arg === "--yes") {

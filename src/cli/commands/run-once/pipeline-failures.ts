@@ -25,12 +25,12 @@ import {
 } from "./pipeline-progress.ts";
 
 type FailureDetails = {
-  specPath?: string;
-  specCommit?: string;
-  planPath?: string;
-  planCommit?: string;
-  branch?: string;
-  worktreePath?: string;
+  specPath?: string | undefined;
+  specCommit?: string | undefined;
+  planPath?: string | undefined;
+  planCommit?: string | undefined;
+  branch?: string | undefined;
+  worktreePath?: string | undefined;
 };
 
 export async function unexpectedFailure(

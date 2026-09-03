@@ -1,3 +1,4 @@
+import type { CommandRunner, IssueSummary } from "../triage/types.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
@@ -19,22 +20,22 @@ export type AgentIssueConfig = {
   repoRoot: string;
   dryRun: boolean;
   execute: boolean;
-  showHelp?: boolean;
-  quiet?: boolean;
-  verbosePiOutput?: boolean;
-  issueNumber?: number;
+  showHelp?: boolean | undefined;
+  quiet?: boolean | undefined;
+  verbosePiOutput?: boolean | undefined;
+  issueNumber?: number | undefined;
   planOnly: boolean;
   host: PatchmillHostConfig;
-  teaLogin?: string;
+  teaLogin?: string | undefined;
   specsDir: string;
   plansDir: string;
   runStateDir: string;
   worktreeDir: string;
-  cleanStatusIgnorePrefixes?: string[];
-  cleanupHook?: string;
+  cleanStatusIgnorePrefixes?: string[] | undefined;
+  cleanupHook?: string | undefined;
   projectPolicy: PatchmillProjectPolicy;
   skills: PatchmillSkillsConfig;
-  triagePolicy?: PatchmillTriagePolicy;
+  triagePolicy?: PatchmillTriagePolicy | undefined;
   readyLabel: string;
   issueLimit: 1;
   labelCatalog: PatchmillLabelCatalog;
@@ -52,9 +53,9 @@ export type IssueSelectionOptions = Pick<
   AgentIssueConfig,
   "issueNumber" | "readyLabel" | "triagePolicy"
 > & {
-  approvalPolicy?: AgentIssueConfig["approvalPolicy"];
-  priorityLabels?: readonly string[];
-  excludedLabels?: readonly string[];
+  approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
+  priorityLabels?: readonly string[] | undefined;
+  excludedLabels?: readonly string[] | undefined;
 };
 
 export type IssueSelectionRejectionReason =
@@ -71,12 +72,12 @@ export type IssueSelectionRejection = {
   labels: string[];
   workflowState: string;
   reason: IssueSelectionRejectionReason;
-  blockingLabels?: string[];
-  missingLabel?: string;
+  blockingLabels?: string[] | undefined;
+  missingLabel?: string | undefined;
 };
 
 export type IssueSelectionDiagnostics = {
-  issue?: IssueSummary;
+  issue?: IssueSummary | undefined;
   rejections: IssueSelectionRejection[];
   consideredCount: number;
 };
@@ -121,75 +122,75 @@ export type AgentIssueRunState = {
   issueNumber: number;
   title: string;
   status: AgentIssueRunStateStatus;
-  branch?: string;
-  worktreePath?: string;
-  specPath?: string;
-  specCommit?: string;
-  planPath?: string;
-  planCommit?: string;
-  checkpoints?: AgentIssueRunCheckpoints;
-  implementationStatus?: "pr-created" | "merged";
-  prUrl?: string;
-  mergeCommit?: string;
-  commits?: string[];
-  validation?: string[];
-  reviewSummary?: string;
-  landingDecision?: string;
-  runCostReport?: RunCostReport;
-  visualEvidence?: AgentIssueVisualEvidence[];
-  handoffCommentPosted?: boolean;
-  failureCommentKeys?: string[];
-  blockerCommentKeys?: string[];
-  leaseProtocolVersion?: 1;
-  blockerQuestions?: AgentIssueBlockerQuestion[];
+  branch?: string | undefined;
+  worktreePath?: string | undefined;
+  specPath?: string | undefined;
+  specCommit?: string | undefined;
+  planPath?: string | undefined;
+  planCommit?: string | undefined;
+  checkpoints?: AgentIssueRunCheckpoints | undefined;
+  implementationStatus?: "pr-created" | "merged" | undefined;
+  prUrl?: string | undefined;
+  mergeCommit?: string | undefined;
+  commits?: string[] | undefined;
+  validation?: string[] | undefined;
+  reviewSummary?: string | undefined;
+  landingDecision?: string | undefined;
+  runCostReport?: RunCostReport | undefined;
+  visualEvidence?: AgentIssueVisualEvidence[] | undefined;
+  handoffCommentPosted?: boolean | undefined;
+  failureCommentKeys?: string[] | undefined;
+  blockerCommentKeys?: string[] | undefined;
+  leaseProtocolVersion?: 1 | undefined;
+  blockerQuestions?: AgentIssueBlockerQuestion[] | undefined;
   createdAt: string;
   updatedAt: string;
-  claimedAt?: string;
-  planningAt?: string;
-  implementingAt?: string;
-  blockedAt?: string;
-  finishedAt?: string;
-  lastError?: string;
+  claimedAt?: string | undefined;
+  planningAt?: string | undefined;
+  implementingAt?: string | undefined;
+  blockedAt?: string | undefined;
+  finishedAt?: string | undefined;
+  lastError?: string | undefined;
 };
 
 export type AgentIssueRunStateUpdate = {
   issueNumber: number;
   status: AgentIssueRunStateStatus;
-  title?: string;
-  branch?: string;
-  worktreePath?: string;
-  specPath?: string;
-  specCommit?: string;
-  planPath?: string;
-  planCommit?: string;
-  checkpoints?: AgentIssueRunCheckpoints;
-  resetCheckpoints?: boolean;
-  implementationStatus?: "pr-created" | "merged";
-  prUrl?: string;
-  mergeCommit?: string;
-  commits?: string[];
-  validation?: string[];
-  reviewSummary?: string;
-  landingDecision?: string;
-  runCostReport?: RunCostReport;
-  visualEvidence?: AgentIssueVisualEvidence[];
-  handoffCommentPosted?: boolean;
-  failureCommentKeys?: string[];
-  blockerCommentKeys?: string[];
-  leaseProtocolVersion?: 1;
-  blockerQuestions?: AgentIssueBlockerQuestion[];
-  lastError?: string;
-  clearLastError?: boolean;
-  clearBlockerQuestions?: boolean;
+  title?: string | undefined;
+  branch?: string | undefined;
+  worktreePath?: string | undefined;
+  specPath?: string | undefined;
+  specCommit?: string | undefined;
+  planPath?: string | undefined;
+  planCommit?: string | undefined;
+  checkpoints?: AgentIssueRunCheckpoints | undefined;
+  resetCheckpoints?: boolean | undefined;
+  implementationStatus?: "pr-created" | "merged" | undefined;
+  prUrl?: string | undefined;
+  mergeCommit?: string | undefined;
+  commits?: string[] | undefined;
+  validation?: string[] | undefined;
+  reviewSummary?: string | undefined;
+  landingDecision?: string | undefined;
+  runCostReport?: RunCostReport | undefined;
+  visualEvidence?: AgentIssueVisualEvidence[] | undefined;
+  handoffCommentPosted?: boolean | undefined;
+  failureCommentKeys?: string[] | undefined;
+  blockerCommentKeys?: string[] | undefined;
+  leaseProtocolVersion?: 1 | undefined;
+  blockerQuestions?: AgentIssueBlockerQuestion[] | undefined;
+  lastError?: string | undefined;
+  clearLastError?: boolean | undefined;
+  clearBlockerQuestions?: boolean | undefined;
 };
 
 export type AgentIssueImplementationResumeContext = {
   resumed: boolean;
   worktreeCreated: boolean;
   existingCommits: string[];
-  priorBlockerReason?: string;
-  priorBlockerQuestions?: AgentIssueBlockerQuestion[];
-  priorValidation?: string[];
+  priorBlockerReason?: string | undefined;
+  priorBlockerQuestions?: AgentIssueBlockerQuestion[] | undefined;
+  priorValidation?: string[] | undefined;
 };
 
 export type AgentIssueBlockerQuestion =
@@ -207,13 +208,13 @@ export type AgentIssueBlockedResult = {
 export type AgentIssueSpecCreatedResult = {
   status: "spec-created";
   specPath: string;
-  commit?: string;
+  commit?: string | undefined;
 };
 
 export type AgentIssuePlanCreatedResult = {
   status: "plan-created";
   planPath: string;
-  commit?: string;
+  commit?: string | undefined;
 };
 
 export type AgentIssueApprovalRequiredResult = {
@@ -227,7 +228,7 @@ export type AgentIssueDevelopmentEnvironmentReadyResult = {
   status: "ready";
   summary: string;
   evidence: string[];
-  environment?: Record<string, string>;
+  environment?: Record<string, string> | undefined;
 };
 
 export type AgentIssueDevelopmentEnvironmentNotReadyResult = {
@@ -248,9 +249,9 @@ export type AgentIssueDevelopmentEnvironmentHandoff =
 
 export type AgentIssueVisualEvidence = {
   screenshotPath: string;
-  caption?: string;
-  referencePaths?: string[];
-  url?: string;
+  caption?: string | undefined;
+  referencePaths?: string[] | undefined;
+  url?: string | undefined;
 };
 
 export type AgentIssuePrCreatedResult = {
@@ -259,9 +260,9 @@ export type AgentIssuePrCreatedResult = {
   branch: string;
   commits: string[];
   validation: string[];
-  reviewSummary?: string;
-  landingDecision?: string;
-  visualEvidence?: AgentIssueVisualEvidence[];
+  reviewSummary?: string | undefined;
+  landingDecision?: string | undefined;
+  visualEvidence?: AgentIssueVisualEvidence[] | undefined;
 };
 
 export type AgentIssueMergedResult = {
@@ -270,8 +271,8 @@ export type AgentIssueMergedResult = {
   mergeCommit: string;
   commits: string[];
   validation: string[];
-  reviewSummary?: string;
-  landingDecision?: string;
+  reviewSummary?: string | undefined;
+  landingDecision?: string | undefined;
 };
 
 export type AgentIssuePiResult =
@@ -282,8 +283,8 @@ export type AgentIssuePiResult =
   | AgentIssueMergedResult;
 
 type AgentIssuePipelineResultLog = {
-  logPath?: string;
-  piSessionPath?: string;
+  logPath?: string | undefined;
+  piSessionPath?: string | undefined;
 };
 
 export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
@@ -298,33 +299,33 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
     | {
         status: "plan-created" | "plan-found";
         issue: IssueSummary;
-        specPath?: string;
+        specPath?: string | undefined;
         planPath: string;
       }
     | AgentIssueApprovalRequiredResult
     | {
         status: "development-environment-not-ready";
         issue: IssueSummary;
-        specPath?: string;
+        specPath?: string | undefined;
         planPath: string;
-        branch?: string;
-        worktreePath?: string;
+        branch?: string | undefined;
+        worktreePath?: string | undefined;
         reason: string;
         evidence: string[];
         remediation: string[];
       }
     | ({
         issue: IssueSummary;
-        specPath?: string;
+        specPath?: string | undefined;
         planPath: string;
         worktreePath: string;
       } & (AgentIssuePrCreatedResult | AgentIssueMergedResult))
     | ({
         issue: IssueSummary;
-        specPath?: string;
-        planPath?: string;
-        worktreePath?: string;
-        branch?: string;
+        specPath?: string | undefined;
+        planPath?: string | undefined;
+        worktreePath?: string | undefined;
+        branch?: string | undefined;
       } & AgentIssueBlockedResult)
   );
 
@@ -359,17 +360,17 @@ export type RunLegacyMigrationFence = {
 export type RunResetSeed = {
   issueNumber: number;
   title: string;
-  specPath?: string;
-  specCommit?: string;
-  planPath?: string;
-  planCommit?: string;
-  startedCommentPosted?: true;
+  specPath?: string | undefined;
+  specCommit?: string | undefined;
+  planPath?: string | undefined;
+  planCommit?: string | undefined;
+  startedCommentPosted?: true | undefined;
 };
 export type RunRecoveryArtifactAssessment = {
-  path?: string;
-  commit?: string;
+  path?: string | undefined;
+  commit?: string | undefined;
   valid: boolean;
-  source?: "base" | "published";
+  source?: "base" | "published" | undefined;
 };
 export type RunRecoveryAssessment = {
   runStatePath: string;
@@ -377,26 +378,33 @@ export type RunRecoveryAssessment = {
   title: string;
   status: AgentIssueRunStateStatus;
   lease: { status: "owned"; ownerToken: string };
-  leaseProtocolVersion?: 1;
+  leaseProtocolVersion?: 1 | undefined;
   legacyMigrationFenceValid: boolean;
   blocked: boolean;
-  startedCommentPosted?: true;
-  blockerReason?: string;
-  blockerQuestions?: AgentIssueBlockerQuestion[];
+  startedCommentPosted?: true | undefined;
+  blockerReason?: string | undefined;
+  blockerQuestions?: AgentIssueBlockerQuestion[] | undefined;
   expectedWorkspace: { branch: string; worktreePath: string };
-  savedWorkspace: { branch?: string; worktreePath?: string };
+  savedWorkspace: {
+    branch?: string | undefined;
+    worktreePath?: string | undefined;
+  };
   baseOid: string;
-  branch: { exists: boolean; oid?: string; checkedOutAt?: string };
+  branch: {
+    exists: boolean;
+    oid?: string | undefined;
+    checkedOutAt?: string | undefined;
+  };
   worktree: {
     exists: boolean;
     registered: boolean;
-    registeredBranch?: string;
-    clean?: boolean;
-    dirtyStatus?: string;
-    ignoredStatus?: string;
+    registeredBranch?: string | undefined;
+    clean?: boolean | undefined;
+    dirtyStatus?: string | undefined;
+    ignoredStatus?: string | undefined;
     ignoredEntries: string[];
   };
-  divergence?: { ahead: number; behind: number };
+  divergence?: { ahead: number; behind: number } | undefined;
   actualUniqueCommits: string[];
   savedCommits: string[];
   artifacts: {
@@ -417,15 +425,15 @@ export type RunRecoveryRecreationPlan = {
   branch: string;
   expectedWorktreePath: string;
   mode: "reuse-existing" | "create-from-base" | "advance-to-base";
-  expectedBranchOid?: string;
+  expectedBranchOid?: string | undefined;
   targetOid: string;
   stagingPath: string;
 };
 export type RunRecoveryCleanupPlan = {
-  branch?: string;
-  expectedWorktreePath?: string;
-  expectedBranchOid?: string;
-  quarantinePath?: string;
+  branch?: string | undefined;
+  expectedWorktreePath?: string | undefined;
+  expectedBranchOid?: string | undefined;
+  quarantinePath?: string | undefined;
 };
 export type RunRecoveryDecision =
   | { action: "resume"; assessment: RunRecoveryAssessment }
@@ -456,7 +464,7 @@ export type RunRecoveryDecision =
       reason: "active-run";
       resource: "lease" | "lease-guard" | "repair-lock";
       leasePath: string;
-      owner?: RunRecoveryLeaseOwner;
+      owner?: RunRecoveryLeaseOwner | undefined;
       guidance: string[];
     };
 export type PlanRunRecoveryInput = {
@@ -467,11 +475,13 @@ export type PlanRunRecoveryInput = {
   state: AgentIssueRunState;
   baseRef: string;
   expectedWorkspace: { branch: string; worktreePath: string };
-  ignoredPaths?: string[];
-  resolvedArtifacts?: import("./artifact-sources.ts").ResolvedIssueArtifactSources;
+  ignoredPaths?: string[] | undefined;
+  resolvedArtifacts?:
+    | import("./artifact-sources.ts").ResolvedIssueArtifactSources
+    | undefined;
   leaseOwnerToken: string;
   snapshotRaw: string;
-  legacyMigrationFence?: RunLegacyMigrationFence;
+  legacyMigrationFence?: RunLegacyMigrationFence | undefined;
   /** Allocated once by orchestration and reused across every reassessment. */
   recoveryPaths: { quarantinePath: string; stagingPath: string };
 };

@@ -101,7 +101,7 @@ export function hasSavedPlanningArtifactWorkspace(
 
 export function planningArtifactPolicyForWorkspace(input: {
   config: Pick<AgentIssueConfig, "repoRoot" | "specsDir" | "plansDir">;
-  existingState?: AgentIssueRunState;
+  existingState?: AgentIssueRunState | undefined;
   resolvedArtifacts: ResolvedIssueArtifactSources;
   worktreePath: string;
   allowGeneratedSpec: boolean;
@@ -128,7 +128,7 @@ export function planningArtifactPolicyForWorkspace(input: {
 
 export function freshPlanningArtifactPolicy(input: {
   config: Pick<AgentIssueConfig, "repoRoot" | "specsDir" | "plansDir">;
-  existingState?: AgentIssueRunState;
+  existingState?: AgentIssueRunState | undefined;
   resolvedArtifacts: ResolvedIssueArtifactSources;
   allowGeneratedSpec: boolean;
   allowGeneratedPlan: boolean;

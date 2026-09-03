@@ -14,28 +14,28 @@ export type PlanningArtifactRoot = {
 };
 
 export type ResolvedPlanningArtifact = {
-  path?: string;
-  commit?: string;
+  path?: string | undefined;
+  commit?: string | undefined;
   exists: boolean;
   fromState: boolean;
   created: boolean;
   generated: boolean;
-  rootSource?: PlanningArtifactRoot["source"];
+  rootSource?: PlanningArtifactRoot["source"] | undefined;
 };
 
 export type PlanningArtifactPolicy =
   | {
       kind: "fresh";
       primary: PlanningArtifactRoot;
-      fallbacks?: PlanningArtifactRoot[];
-      explicit?: ResolvedIssueArtifactSources;
+      fallbacks?: PlanningArtifactRoot[] | undefined;
+      explicit?: ResolvedIssueArtifactSources | undefined;
       saved?: {
-        specPath?: string;
-        specCommit?: string;
-        planPath?: string;
-        planCommit?: string;
-        specCreated?: boolean;
-        planCreated?: boolean;
+        specPath?: string | undefined;
+        specCommit?: string | undefined;
+        planPath?: string | undefined;
+        planCommit?: string | undefined;
+        specCreated?: boolean | undefined;
+        planCreated?: boolean | undefined;
       };
       allowGeneratedSpec: boolean;
       allowGeneratedPlan: boolean;
@@ -45,14 +45,14 @@ export type PlanningArtifactPolicy =
       primary: PlanningArtifactRoot;
       fallbacks: PlanningArtifactRoot[];
       saved: {
-        specPath?: string;
-        specCommit?: string;
-        planPath?: string;
-        planCommit?: string;
-        specCreated?: boolean;
-        planCreated?: boolean;
+        specPath?: string | undefined;
+        specCommit?: string | undefined;
+        planPath?: string | undefined;
+        planCommit?: string | undefined;
+        specCreated?: boolean | undefined;
+        planCreated?: boolean | undefined;
       };
-      explicit?: ResolvedIssueArtifactSources;
+      explicit?: ResolvedIssueArtifactSources | undefined;
     };
 
 export type ResolvedPlanningArtifacts = {
@@ -105,9 +105,9 @@ export function planningArtifactRoot(
 
 function explicitMatchesSaved(input: {
   kind: "spec" | "plan";
-  explicit?: { path: string; commit?: string };
-  savedPath?: string;
-  savedCommit?: string;
+  explicit?: { path: string; commit?: string } | undefined;
+  savedPath?: string | undefined;
+  savedCommit?: string | undefined;
 }): void {
   if (!input.explicit || !input.savedPath) return;
   if (input.explicit.path !== input.savedPath) {
@@ -128,9 +128,9 @@ function explicitMatchesSaved(input: {
 
 async function findSaved(input: {
   roots: PlanningArtifactRoot[];
-  savedPath?: string;
-  savedCommit?: string;
-  savedCreated?: boolean;
+  savedPath?: string | undefined;
+  savedCommit?: string | undefined;
+  savedCreated?: boolean | undefined;
 }): Promise<ResolvedPlanningArtifact> {
   if (!input.savedPath) return unresolvedArtifact();
 

@@ -34,7 +34,7 @@ export type TriageDryRunPromptInput = {
   skills?: PatchmillSkillsConfig;
   stateMap: PatchmillTriageStateMap;
   thinking?: string;
-  onToolCall?: TriageToolCallHandler;
+  onToolCall?: TriageToolCallHandler | undefined;
   piAgentDir?: string;
   piCommand?: PiCommandSpec;
 };
@@ -162,7 +162,7 @@ const STDOUT_SNIPPET_RADIUS = 80;
 function triagePreviewJsonBody(stdout: string): string {
   const trimmed = stdout.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return fenced ? fenced[1] : trimmed;
+  return fenced?.[1] ?? trimmed;
 }
 
 function hasTopLevelPreviews(

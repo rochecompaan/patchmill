@@ -40,10 +40,18 @@ const SKILL_NAMESPACE_PATTERN = /^[a-z0-9-]+:.+$/iu;
 const SKILL_FILE_NAME = "SKILL.md";
 
 export function bundledTriageSkillPath(): string {
+  if (bundledTriageSkill === undefined) {
+    throw new Error("Bundled Patchmill skill registry is missing triage");
+  }
   return bundledSkillPath(bundledTriageSkill);
 }
 
 export function bundledVisualEvidenceSkillPath(): string {
+  if (bundledVisualEvidenceSkill === undefined) {
+    throw new Error(
+      "Bundled Patchmill skill registry is missing visual evidence",
+    );
+  }
   return bundledSkillPath(bundledVisualEvidenceSkill);
 }
 

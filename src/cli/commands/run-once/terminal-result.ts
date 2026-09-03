@@ -15,9 +15,9 @@ export type TerminalResultSeverity = "success" | "warning" | "failure";
 export type TerminalResultOptions = {
   width: number;
   color: boolean;
-  stepNumber?: number;
-  totalOutputTokens?: number;
-  elapsedSeconds?: number;
+  stepNumber?: number | undefined;
+  totalOutputTokens?: number | undefined;
+  elapsedSeconds?: number | undefined;
 };
 const STATUS = {
   "no-issue": { label: "No eligible issue", severity: "success" },
@@ -316,9 +316,19 @@ export function formatTerminalResult(
       blocks: [{ kind: "list", marker: "•", items: files }],
     });
   return renderTerminalDocument({
+    width: options.width,
+    color: options.color,
     label: STATUS[summary.status].label,
     severity: STATUS[summary.status].severity,
     sections,
-    ...options,
+    ...(options.stepNumber === undefined
+      ? {}
+      : { stepNumber: options.stepNumber }),
+    ...(options.totalOutputTokens === undefined
+      ? {}
+      : { totalOutputTokens: options.totalOutputTokens }),
+    ...(options.elapsedSeconds === undefined
+      ? {}
+      : { elapsedSeconds: options.elapsedSeconds }),
   });
 }

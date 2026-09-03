@@ -40,7 +40,7 @@ export type SpecCreationPromptInput = {
 
 export type PlanCreationPromptInput = {
   issue: IssueSummary;
-  specPath?: string;
+  specPath?: string | undefined;
   planPath: string;
   projectPolicy: PatchmillProjectPolicy;
   planApprovalRequired?: boolean;
@@ -292,6 +292,7 @@ function renderNumberedStepText(text: string): string {
   if (lines.length === 0) return "";
 
   const [first, ...rest] = lines;
+  if (first === undefined) return "";
   const normalizedFirst = first.replace(/^-\s+/, "");
   if (rest.length === 0) return normalizedFirst;
 

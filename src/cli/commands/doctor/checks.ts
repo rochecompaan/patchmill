@@ -215,7 +215,8 @@ function parseSkillFrontmatter(
   text: string,
 ): { name: string; description: string } | { error: string } {
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
-  if (!match) {
+  const frontmatter = match?.[1];
+  if (frontmatter === undefined) {
     return { error: "missing frontmatter" };
   }
 
@@ -224,7 +225,7 @@ function parseSkillFrontmatter(
   let currentKey: string | undefined;
   let currentValueAllowsContinuation = false;
 
-  for (const line of match[1].split(/\r?\n/u)) {
+  for (const line of frontmatter.split(/\r?\n/u)) {
     const trimmed = line.trim();
 
     if (/^[^\s].*:/u.test(line)) {

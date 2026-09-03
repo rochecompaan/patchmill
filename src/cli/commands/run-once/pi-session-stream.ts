@@ -341,8 +341,8 @@ function readExactRange(
   return new Promise((resolve, reject) => {
     const chunks: Uint8Array[] = [];
     const stream = createReadStream(path, { start, end: end - 1 });
-    stream.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
+    stream.on("data", (chunk: string | Buffer<ArrayBufferLike>) => {
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
     });
     stream.on("error", reject);
     stream.on("end", () => resolve(Buffer.concat(chunks)));

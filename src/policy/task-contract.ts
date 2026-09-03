@@ -141,9 +141,11 @@ export function compilePlanTaskHeadingPattern(
   }
 
   const headingMatch = pattern.match(/^(#+)\s+/);
-  const minHeadingLevel = headingMatch?.[1].length ?? 0;
-  const template = headingMatch
-    ? pattern.slice(headingMatch[0].length)
+  const headingPrefix = headingMatch?.[1];
+  const fullHeadingPrefix = headingMatch?.[0];
+  const minHeadingLevel = headingPrefix?.length ?? 0;
+  const template = fullHeadingPrefix
+    ? pattern.slice(fullHeadingPrefix.length)
     : pattern;
   let bodyPattern = escapeRegExp(template);
   bodyPattern = replacePlaceholderCapture(

@@ -25,10 +25,10 @@ export type DevelopmentEnvironmentStageResult =
   | { kind: "not-ready"; result: AgentIssuePipelineResult };
 
 type DevelopmentEnvironmentDetails = {
-  specPath?: string;
-  specCommit?: string;
+  specPath?: string | undefined;
+  specCommit?: string | undefined;
   planPath: string;
-  planCommit?: string;
+  planCommit?: string | undefined;
   branch: string;
   worktreePath: string;
 };
@@ -49,7 +49,7 @@ type DevelopmentEnvironmentStageOptions = DevelopmentEnvironmentDetails & {
   heartbeatMs?: number;
   piAgentDir: string;
   tokenUsageState: { total: number };
-  progressReporter?: ProgressReporter;
+  progressReporter?: ProgressReporter | undefined;
   progress: (
     level: AgentIssueProgressEvent["level"],
     stage: string,

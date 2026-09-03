@@ -114,9 +114,9 @@ function parseLabelNames(stdout: string, context: string): string[] {
 }
 
 type TeaLoginEntry = {
-  name?: string;
-  user?: string;
-  default?: boolean | string;
+  name?: string | undefined;
+  user?: string | undefined;
+  default?: boolean | string | undefined;
 };
 
 function teaLoginEntries(stdout: string): TeaLoginEntry[] {
@@ -127,15 +127,17 @@ function teaLoginEntries(stdout: string): TeaLoginEntry[] {
   return parsed.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
     const value = entry as Record<string, unknown>;
+    const name = typeof value.name === "string" ? value.name : undefined;
+    const user = typeof value.user === "string" ? value.user : undefined;
+    const defaultLogin =
+      typeof value.default === "boolean" || typeof value.default === "string"
+        ? value.default
+        : undefined;
     return [
       {
-        name: typeof value.name === "string" ? value.name : undefined,
-        user: typeof value.user === "string" ? value.user : undefined,
-        default:
-          typeof value.default === "boolean" ||
-          typeof value.default === "string"
-            ? value.default
-            : undefined,
+        name,
+        user,
+        default: defaultLogin,
       },
     ];
   });

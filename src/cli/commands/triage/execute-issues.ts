@@ -28,7 +28,7 @@ export type ExecuteTriageIssuesOptions = {
   stateMap: PatchmillTriageStateMap;
   skills: PatchmillSkillsConfig;
   thinking: string;
-  onToolCall?: TriageToolCallHandler;
+  onToolCall?: TriageToolCallHandler | undefined;
   onIssue?: (
     entry: TriageLogIssueEntry,
     completed: number,
@@ -37,12 +37,13 @@ export type ExecuteTriageIssuesOptions = {
 };
 
 function cloneIssue(issue: IssueSummary): IssueSummary {
+  const comments = Array.isArray(issue.comments)
+    ? [...issue.comments]
+    : issue.comments;
   return {
     ...issue,
     labels: [...issue.labels],
-    comments: Array.isArray(issue.comments)
-      ? [...issue.comments]
-      : issue.comments,
+    ...(comments === undefined ? {} : { comments }),
   };
 }
 
@@ -87,7 +88,9 @@ export async function executeTriageIssues(
       host: options.hostConfig,
       skills: options.skills,
       thinking: options.thinking,
-      onToolCall: options.onToolCall,
+      ...(options.onToolCall === undefined
+        ? {}
+        : { onToolCall: options.onToolCall }),
     });
 
     const afterIssue = await snapshotIssue(options.host, beforeIssue.number);

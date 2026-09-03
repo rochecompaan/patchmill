@@ -11,15 +11,17 @@ function parse(value: string): URL | undefined {
 export function pullRequestNumber(prUrl: string, pathSegment: string): number {
   const url = parse(prUrl);
   const parts = url?.pathname.split("/").filter(Boolean);
+  const number = parts?.[3];
   if (
     !url ||
     !parts ||
     parts.length !== 4 ||
     parts[2] !== pathSegment ||
-    !/^[1-9]\d*$/u.test(parts[3])
+    number === undefined ||
+    !/^[1-9]\d*$/u.test(number)
   )
     throw new Error(`Invalid pull request URL: ${prUrl}`);
-  return Number(parts[3]);
+  return Number(number);
 }
 export function sameCanonicalUrl(left: string, right: string): boolean {
   const a = parse(left),
