@@ -45,6 +45,10 @@ const config = {
     tsConfig: {
       fileName: "tsconfig.build.json",
     },
+    enhancedResolveOptions: {
+      exportsFields: ["exports"],
+      conditionNames: ["import", "node", "default"],
+    },
   },
 };
 

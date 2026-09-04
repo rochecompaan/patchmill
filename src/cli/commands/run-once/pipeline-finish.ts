@@ -40,7 +40,7 @@ export type PipelineFinishStageOptions = {
   needsInfoLabel: string;
   checkpoints: Record<string, boolean | undefined>;
   implemented: PipelineSuccessfulImplementationResult;
-  runCostReport?: RunCostReport;
+  runCostReport?: RunCostReport | undefined;
   specPath: string | undefined;
   specCommit: string | undefined;
   planPath: string | undefined;
@@ -82,6 +82,11 @@ export async function runPipelineFinishStage(
     } = options;
     let { implemented } = options;
     let labels = options.labels;
+    if (!planPath || !branch || !worktreePath) {
+      throw new Error(
+        `Finishing implementation requires plan, branch, and worktree for issue #${issue.number}`,
+      );
+    }
 
     await writeRunState(
       config.runStateDir,

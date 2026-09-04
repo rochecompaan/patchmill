@@ -136,14 +136,19 @@ export function buildRecommendedProjectSkillConfig(
     ),
   ) as Pick<PatchmillSkillsConfig, "triage" | "visualEvidence">;
 
+  const triage = bundledProjectLocalConfig.triage;
+  const visualEvidence = bundledProjectLocalConfig.visualEvidence;
+  if (triage === undefined || visualEvidence === undefined) {
+    throw new Error("Bundled project-local skill config is incomplete");
+  }
   return {
-    triage: bundledProjectLocalConfig.triage,
+    triage,
     planning: projectSkillPath(PATCHMILL_PLANNING_SKILL, skillDir),
     implementation: projectSkillPath(
       SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
       skillDir,
     ),
-    visualEvidence: bundledProjectLocalConfig.visualEvidence,
+    visualEvidence,
   };
 }
 

@@ -3,7 +3,10 @@ import { main as lease } from "./lease/main.ts";
 export type RunCommandHandler = (args: string[]) => number | Promise<number>;
 export async function runRunCommand(
   args: string[],
-  commands: ReadonlyMap<string, RunCommandHandler> = new Map([
+  commands: ReadonlyMap<string, RunCommandHandler> = new Map<
+    string,
+    RunCommandHandler
+  >([
     ["reset", reset],
     ["lease", lease],
   ]),

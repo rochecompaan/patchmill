@@ -31,11 +31,13 @@ export type PublishedArtifactTrustOptions = {
 };
 
 export type PublishedArtifactIssue = {
-  body?: string;
-  comments?: Array<{
-    body: string;
-    authorLogin?: string;
-  }>;
+  body?: string | undefined;
+  comments?:
+    | Array<{
+        body: string;
+        authorLogin?: string | undefined;
+      }>
+    | undefined;
 };
 
 type PublishedArtifactMetadata = {

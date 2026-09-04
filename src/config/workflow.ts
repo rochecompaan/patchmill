@@ -197,19 +197,20 @@ export function readWorkflowConfig(
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw configError("workflow", "an object", value);
   }
+  const workflow = value as Record<string, unknown>;
 
   const parsed: PartialWorkflowConfig = {};
-  const specApproval = readWorkflowApprovalConfig(value, "specApproval");
-  const planApproval = readWorkflowApprovalConfig(value, "planApproval");
+  const specApproval = readWorkflowApprovalConfig(workflow, "specApproval");
+  const planApproval = readWorkflowApprovalConfig(workflow, "planApproval");
   if (specApproval !== undefined) parsed.specApproval = specApproval;
   if (planApproval !== undefined) parsed.planApproval = planApproval;
 
-  for (const entry of Object.keys(value)) {
+  for (const entry of Object.keys(workflow)) {
     if (!WORKFLOW_APPROVAL_KEYS.includes(entry as WorkflowApprovalKey)) {
       throw configError(
         `workflow.${entry}`,
         "a supported workflow setting",
-        value[entry],
+        workflow[entry],
       );
     }
   }

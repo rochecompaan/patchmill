@@ -60,6 +60,7 @@ function migrationFence(value: unknown): RunLegacyMigrationFence | undefined {
   if (
     fence.version !== 1 ||
     !Number.isSafeInteger(fence.issueNumber) ||
+    typeof fence.issueNumber !== "number" ||
     fence.issueNumber <= 0 ||
     !["claimed", "planning", "implementing"].includes(fence.status as string) ||
     typeof fence.stateSha256 !== "string" ||
@@ -162,7 +163,11 @@ export async function repairIssueRunLease(input: {
     throw error;
   }
   try {
-    const [kind, expected] = requested[0];
+    const requestedItem = requested[0];
+    if (requestedItem === undefined) {
+      throw new Error("Repair requires exactly one expected SHA-256");
+    }
+    const [kind, expected] = requestedItem;
     const source =
       kind === "lease"
         ? file(input.runStateDir, input.issueNumber, ".lock")

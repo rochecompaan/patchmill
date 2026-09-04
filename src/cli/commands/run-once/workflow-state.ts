@@ -2,7 +2,7 @@ import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.t
 import type { IssueSummary } from "./types.ts";
 
 export class ApprovalRequiredError extends Error {
-  readonly name = "ApprovalRequiredError";
+  override readonly name = "ApprovalRequiredError";
   readonly issue: IssueSummary;
   readonly approvalKind: "spec" | "plan";
   readonly missingLabel: string;

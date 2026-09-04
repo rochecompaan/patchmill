@@ -32,17 +32,17 @@ import {
 } from "./pi-runtime.ts";
 
 export type OAuthLoginCallbacksLike = {
-  onAuth: (info: { url: string; instructions?: string }) => void;
+  onAuth: (info: { url: string; instructions?: string | undefined }) => void;
   onDeviceCode: (info: {
     userCode: string;
     verificationUri: string;
-    intervalSeconds?: number;
-    expiresInSeconds?: number;
+    intervalSeconds?: number | undefined;
+    expiresInSeconds?: number | undefined;
   }) => void;
   onPrompt: (prompt: {
     message: string;
-    placeholder?: string;
-    allowEmpty?: boolean;
+    placeholder?: string | undefined;
+    allowEmpty?: boolean | undefined;
   }) => Promise<string>;
   onProgress?: (message: string) => void;
   onManualCodeInput?: () => Promise<string>;
@@ -50,7 +50,7 @@ export type OAuthLoginCallbacksLike = {
     message: string;
     options: Array<{ id: string; label: string }>;
   }) => Promise<string | undefined>;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   dispose?: () => void;
 };
 
@@ -75,8 +75,8 @@ type SelectAuthPromptOption = (prompt: {
 
 type PromptAuthText = (prompt: {
   message: string;
-  placeholder?: string;
-  allowEmpty?: boolean;
+  placeholder?: string | undefined;
+  allowEmpty?: boolean | undefined;
 }) => Promise<string | undefined>;
 
 export type InteractivePiAuthSetupOptions = {
@@ -89,8 +89,8 @@ export type InteractivePiAuthSetupOptions = {
   selectProvider: SelectAuthProvider;
   promptApiKey: PromptApiKey;
   selectModelInteractively: SelectInteractiveModel;
-  persistDefaultModel?: PersistDefaultModel;
-  oauthCallbacks?: OAuthCallbacksFactory;
+  persistDefaultModel?: PersistDefaultModel | undefined;
+  oauthCallbacks?: OAuthCallbacksFactory | undefined;
 };
 
 type InteractivePiAuthSetupResult = {
@@ -128,7 +128,7 @@ async function promptForAuthValue(options: {
   prompt: PiAuthPrompt;
   provider: AuthProviderChoice;
   promptApiKey: PromptApiKey;
-  promptText?: PromptAuthText;
+  promptText?: PromptAuthText | undefined;
   selectOption: SelectAuthPromptOption;
 }): Promise<string> {
   if (options.prompt.type === "select") {
@@ -174,7 +174,7 @@ async function promptForAuthValue(options: {
 function createApiKeyInteraction(options: {
   provider: AuthProviderChoice;
   promptApiKey: PromptApiKey;
-  promptText?: PromptAuthText;
+  promptText?: PromptAuthText | undefined;
   selectOption: SelectAuthPromptOption;
 }): PiAuthInteraction {
   return {
@@ -194,10 +194,13 @@ function createPiAuthInteraction(
   callbacks: OAuthLoginCallbacksLike,
 ): PiAuthInteraction {
   return {
-    signal: callbacks.signal,
+    ...(callbacks.signal === undefined ? {} : { signal: callbacks.signal }),
     notify: (event: PiAuthEvent) => {
       if (event.type === "auth_url") {
-        callbacks.onAuth({ url: event.url, instructions: event.instructions });
+        callbacks.onAuth({
+          url: event.url,
+          instructions: event.instructions,
+        });
       } else if (event.type === "device_code") {
         callbacks.onDeviceCode({
           userCode: event.userCode,
@@ -336,8 +339,8 @@ export async function setupPiInteractively(options: {
   agentDir: string;
   currentDefault: LocalPiDefaultModel | undefined;
   initialReadiness: PiReadiness;
-  selectModelInteractively?: SelectInteractiveModel;
-  persistDefaultModel?: PersistDefaultModel;
+  selectModelInteractively?: SelectInteractiveModel | undefined;
+  persistDefaultModel?: PersistDefaultModel | undefined;
 }): Promise<InteractivePiAuthSetupResult> {
   const { runtime } = await createRepoLocalPiAuth({
     agentDir: options.agentDir,

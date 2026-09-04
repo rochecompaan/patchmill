@@ -6,7 +6,7 @@ const TOKEN_FORMAT = new Intl.NumberFormat("en-US", {
   useGrouping: true,
 });
 export class PrCostSummaryError extends Error {
-  readonly name = "PrCostSummaryError";
+  override readonly name = "PrCostSummaryError";
 }
 function escapeCell(value: string): string {
   return value

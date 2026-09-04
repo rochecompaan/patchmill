@@ -2,10 +2,10 @@ import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type { AgentIssuePipelineResult } from "./types.ts";
 
 export type PipelineProgressOptions = {
-  now?: Date;
-  progress?: ProgressReporter;
-  logPath?: string;
-  piSessionPath?: string;
+  now?: Date | undefined;
+  progress?: ProgressReporter | undefined;
+  logPath?: string | undefined;
+  piSessionPath?: string | undefined;
 };
 
 export async function progress(
@@ -65,9 +65,9 @@ export function withLogPath<T extends AgentIssuePipelineResult>(
 }
 
 export function createStepAccounting(options: {
-  progress?: ProgressReporter;
+  progress?: ProgressReporter | undefined;
   issueNumber: number;
-  runStartedAtMs?: number;
+  runStartedAtMs?: number | undefined;
 }) {
   type ActiveStep = {
     label: string;
@@ -174,7 +174,9 @@ export async function recordPiObservation(options: {
     stage: options.stage,
     message: options.observation?.type ?? "pi observation",
     issueNumber: options.issueNumber,
-    observation: options.observation,
-    data: options.data,
+    ...(options.observation === undefined
+      ? {}
+      : { observation: options.observation }),
+    ...(options.data === undefined ? {} : { data: options.data }),
   });
 }

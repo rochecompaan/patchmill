@@ -14,10 +14,10 @@ export type RunOnceResultStream = {
 export type WriteRunOnceResultOptions = {
   stdout: RunOnceResultStream;
   env: Record<string, string | undefined>;
-  logPath?: string;
-  progress?: FinalResultProgressSnapshot;
-  elapsedSeconds?: number;
-  time?: Date;
+  logPath?: string | undefined;
+  progress?: FinalResultProgressSnapshot | undefined;
+  elapsedSeconds?: number | undefined;
+  time?: Date | undefined;
 };
 export function exitCodeForRunOnceResult(summary: RunOnceResultSummary): 0 | 1 {
   return summary.status === "approval-required" ||

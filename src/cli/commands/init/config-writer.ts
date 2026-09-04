@@ -13,7 +13,7 @@ export type InitialConfigSkills = Pick<
 
 type InitialConfig = {
   host: Pick<PatchmillConfig["host"], "provider" | "login">;
-  skills?: InitialConfigSkills;
+  skills?: InitialConfigSkills | undefined;
 };
 
 export type InitWriteResult =
@@ -40,9 +40,9 @@ export function inferHostProviderFromRemote(
 
 export function buildInitialConfig(
   options: {
-    provider?: PatchmillConfig["host"]["provider"];
-    login?: string;
-    skills?: InitialConfigSkills;
+    provider?: PatchmillConfig["host"]["provider"] | undefined;
+    login?: string | undefined;
+    skills?: InitialConfigSkills | undefined;
   } = {},
 ): InitialConfig {
   const provider = options.provider ?? DEFAULT_PATCHMILL_CONFIG.host.provider;
@@ -99,8 +99,8 @@ async function originRemoteUrl(repoRoot: string): Promise<string | undefined> {
 export async function writeInitialConfig(
   repoRoot: string,
   options: {
-    login?: string;
-    skills?: InitialConfigSkills;
+    login?: string | undefined;
+    skills?: InitialConfigSkills | undefined;
   },
 ): Promise<InitWriteResult> {
   const path = join(repoRoot, CONFIG_FILE_NAME);

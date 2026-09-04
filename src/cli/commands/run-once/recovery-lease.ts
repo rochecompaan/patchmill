@@ -14,7 +14,7 @@ export type IssueRunLeaseOptions = {
   pid?: number;
   hostname?: string;
   ownerToken?: string;
-  now?: () => Date;
+  now?: (() => Date) | undefined;
   processState?: (pid: number) => "alive" | "dead" | "unverifiable";
   afterObserveLease?: () => Promise<void> | void;
 };
@@ -41,7 +41,7 @@ export class IssueRunLeaseConflictError extends Error {
     this.leasePath = leasePath;
     this.resource = resource;
     this.issueNumber = issueNumber;
-    this.owner = owner;
+    if (owner !== undefined) this.owner = owner;
   }
 }
 function paths(dir: string, issue: number) {
@@ -88,11 +88,15 @@ export function parseIssueRunLeaseRecord(
         value.acquiredAt,
       ) &&
       !Number.isNaN(Date.parse(value.acquiredAt));
+    const issueNumber = value.issueNumber;
+    const pid = value.pid;
     return value.version === 1 &&
-      Number.isSafeInteger(value.issueNumber) &&
-      value.issueNumber > 0 &&
-      Number.isSafeInteger(value.pid) &&
-      value.pid > 0 &&
+      typeof issueNumber === "number" &&
+      Number.isSafeInteger(issueNumber) &&
+      issueNumber > 0 &&
+      typeof pid === "number" &&
+      Number.isSafeInteger(pid) &&
+      pid > 0 &&
       typeof value.hostname === "string" &&
       validHostname(value.hostname) &&
       typeof value.ownerToken === "string" &&

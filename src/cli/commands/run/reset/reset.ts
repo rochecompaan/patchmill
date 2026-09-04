@@ -65,7 +65,7 @@ export type ResetIssueRunResult =
     };
 export function validateResetIssueEligibility(input: {
   issue: IssueSummary;
-  state?: AgentIssueRunState;
+  state?: AgentIssueRunState | undefined;
   config: AgentIssueConfig;
 }): void {
   if (input.issue.state !== "open")

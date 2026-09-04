@@ -48,9 +48,10 @@ function startedAt(content: string, path: string, fallback: number): number {
   const match = /^(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-\d\d\dZ)_/u.exec(
     basename(path),
   );
-  if (match) {
+  const timestamp = match?.[1];
+  if (timestamp !== undefined) {
     const time = Date.parse(
-      match[1].replace(/T(\d\d)-(\d\d)-(\d\d)-(\d\d\d)Z/u, "T$1:$2:$3.$4Z"),
+      timestamp.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d\d\d)Z/u, "T$1:$2:$3.$4Z"),
     );
     if (!Number.isNaN(time)) return time;
   }

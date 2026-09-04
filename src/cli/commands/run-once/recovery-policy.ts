@@ -1,5 +1,6 @@
 import type {
   RunRecoveryAssessment,
+  RunRecoveryClassification,
   RunRecoveryDecision,
   RunRecoveryIntent,
   RunResetSeed,
@@ -25,7 +26,12 @@ function refusal(
               .concat(assessment.savedCommits)
               .join(", ")
           : undefined;
-  const preserveGuidance = {
+  const preserveGuidance: Partial<
+    Record<
+      RunRecoveryClassification | "not-blocked" | "active-run",
+      string | readonly string[]
+    >
+  > = {
     "dirty-worktree":
       "Commit, stash, or clean local modifications before retrying recovery.",
     "ignored-worktree-content":
@@ -43,6 +49,7 @@ function refusal(
       "Use normal run-once execution; this Run state is not blocked.",
     "active-run": "Wait for the active Run attempt before retrying recovery.",
   } as const;
+  const guidance = preserveGuidance[reason] ?? `Recovery is unsafe: ${reason}.`;
   return {
     action: "refuse",
     assessment,
@@ -51,9 +58,7 @@ function refusal(
       detail
         ? `Recovery is unsafe: ${detail}`
         : `Recovery is unsafe: ${reason}.`,
-      ...(Array.isArray(preserveGuidance[reason])
-        ? preserveGuidance[reason]
-        : [preserveGuidance[reason]]),
+      ...(Array.isArray(guidance) ? guidance : [guidance]),
     ],
   };
 }

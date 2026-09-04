@@ -100,13 +100,14 @@ export async function readIssueTodoTasks(
       const headerTags = new Set(readTodoTags(header.tags));
       if (!requiredIssueTags.every((tag) => headerTags.has(tag))) continue;
     }
-    const match = header.title?.match(pattern);
-    if (!match) continue;
+    const title = header.title;
+    const match = title?.match(pattern);
+    if (!match || title === undefined) continue;
     const taskNumber = readCapture(match, "taskNumber", 1);
     if (!taskNumber) continue;
     tasks.push({
       number: Number(taskNumber),
-      title: header.title,
+      title,
       label: labelFromSlug(readCapture(match, "taskSlug", 2) ?? "task"),
       done: issueTodoStatusDone(taskContract, header.status),
     });

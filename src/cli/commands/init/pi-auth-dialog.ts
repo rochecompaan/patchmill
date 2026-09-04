@@ -123,9 +123,9 @@ class OptionComponent extends Container {
 async function promptText(options: {
   title: string;
   prompt: string;
-  allowEmpty?: boolean;
-  terminal?: Terminal;
-  signal?: AbortSignal;
+  allowEmpty?: boolean | undefined;
+  terminal?: Terminal | undefined;
+  signal?: AbortSignal | undefined;
 }): Promise<string | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
   const tui = new TuiMainScreen(terminal, true);
@@ -157,7 +157,7 @@ async function promptText(options: {
 
 export function promptApiKeyInteractively(options: {
   providerName: string;
-  terminal?: Terminal;
+  terminal?: Terminal | undefined;
 }): Promise<string | undefined> {
   return promptText({
     title: options.providerName,
@@ -169,7 +169,7 @@ export function promptApiKeyInteractively(options: {
 async function selectOption(options: {
   title: string;
   choices: Array<{ id: string; label: string }>;
-  terminal?: Terminal;
+  terminal?: Terminal | undefined;
 }): Promise<string | undefined> {
   const terminal = options.terminal ?? new ProcessTerminal();
   const tui = new TuiMainScreen(terminal, false);
@@ -213,8 +213,8 @@ function defaultOpenUrl(url: string): void {
 
 export function createOAuthCallbacks(
   options: {
-    terminal?: Terminal;
-    openUrl?: OpenUrl;
+    terminal?: Terminal | undefined;
+    openUrl?: OpenUrl | undefined;
   } = {},
 ): OAuthLoginCallbacksLike {
   const terminal = options.terminal ?? new ProcessTerminal();

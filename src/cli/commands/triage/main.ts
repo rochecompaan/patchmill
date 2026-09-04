@@ -119,7 +119,9 @@ export async function main(
       {
         ...config,
         onProgress: reporter.onProgress,
-        onToolCall: reporter.onToolCall,
+        ...(reporter.onToolCall === undefined
+          ? {}
+          : { onToolCall: reporter.onToolCall }),
       },
     );
     reporter.finish(result);

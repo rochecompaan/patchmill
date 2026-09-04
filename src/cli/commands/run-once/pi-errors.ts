@@ -12,7 +12,10 @@ export function aggregatePiErrors(
   causes: PiErrorCause[],
 ): Error | undefined {
   if (causes.length === 0) return undefined;
-  if (causes.length === 1) return errorFromUnknown(causes[0].error);
+  const firstCause = causes[0];
+  if (causes.length === 1 && firstCause !== undefined) {
+    return errorFromUnknown(firstCause.error);
+  }
   return new AggregateError(
     causes.map(({ label, error }) => {
       const cause = errorFromUnknown(error);

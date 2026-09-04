@@ -23,8 +23,10 @@ function requireValue(args: string[], index: number, flag: string): string {
 
 function parseRepo(value: string): RepositoryTarget {
   const match = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/u.exec(value);
-  if (!match) throw new Error("--repo must use OWNER/REPO");
-  return { owner: match[1], repo: match[2], slug: value };
+  const owner = match?.[1];
+  const repo = match?.[2];
+  if (!owner || !repo) throw new Error("--repo must use OWNER/REPO");
+  return { owner, repo, slug: value };
 }
 
 function parseProvider(value: string): PatchmillHostProviderId {
@@ -39,6 +41,7 @@ export function parseArgs(args: string[]): SetupTestRepoConfig {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === undefined) throw new Error("Unexpected missing argument");
     if (arg === "--help" || arg === "-h") {
       config.showHelp = true;
     } else if (arg === "--provider") {

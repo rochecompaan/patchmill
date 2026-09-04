@@ -255,11 +255,8 @@ function mergeRunState(
   }
 
   const timestampField = STATUS_TIMESTAMPS[update.status];
-  if (!next[timestampField]) {
-    next[timestampField] = now;
-  }
-
-  return next;
+  if (next[timestampField]) return next;
+  return { ...next, [timestampField]: now };
 }
 
 export function isResumableRunState(state: AgentIssueRunState): boolean {

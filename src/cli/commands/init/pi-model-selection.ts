@@ -99,9 +99,9 @@ async function persistSelection(
 export async function selectPiModel(options: {
   readiness: PiReadiness;
   isInteractive: boolean;
-  currentDefault?: LocalPiDefaultModel;
-  selectModelInteractively?: SelectInteractiveModel;
-  persistDefaultModel?: PersistDefaultModel;
+  currentDefault?: LocalPiDefaultModel | undefined;
+  selectModelInteractively?: SelectInteractiveModel | undefined;
+  persistDefaultModel?: PersistDefaultModel | undefined;
 }): Promise<PiModelSelection> {
   if (options.readiness.status !== "ready") {
     return {

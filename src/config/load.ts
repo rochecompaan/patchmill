@@ -27,7 +27,12 @@ import {
   readOptionalString,
   readOptionalStringArray,
 } from "./parse-helpers.ts";
-import type { PartialConfig } from "./partial.ts";
+import type {
+  PartialConfig,
+  PartialPiTaskContract,
+  PartialProjectPolicy,
+} from "./partial.ts";
+import type { PartialPatchmillSkillsConfig } from "../workflow/skills.ts";
 import type { PatchmillConfig } from "./types.ts";
 import {
   cloneWorkflowConfig,
@@ -251,9 +256,12 @@ function mergeConfig(
     base.projectPolicy,
     update.projectPolicy,
   );
+  const planRequiresApprovalAlias = update.projectPolicy?.planRequiresApproval;
   const workflow = mergeWorkflowConfig(base.workflow, update.workflow, {
     labels,
-    planRequiresApprovalAlias: update.projectPolicy?.planRequiresApproval,
+    ...(planRequiresApprovalAlias === undefined
+      ? {}
+      : { planRequiresApprovalAlias }),
   });
 
   return {

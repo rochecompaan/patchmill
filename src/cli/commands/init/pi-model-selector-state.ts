@@ -8,7 +8,7 @@ export type ModelSelectorState = {
   filtered: PiModelChoice[];
   query: string;
   selectedIndex: number;
-  current?: LocalPiDefaultModel;
+  current?: LocalPiDefaultModel | undefined;
 };
 
 export type VisibleModelRow = {
@@ -44,7 +44,7 @@ function filterModels(models: PiModelChoice[], query: string): PiModelChoice[] {
 
 export function createModelSelectorState(
   models: PiModelChoice[],
-  options: { current?: LocalPiDefaultModel; query?: string } = {},
+  options: { current?: LocalPiDefaultModel | undefined; query?: string } = {},
 ): ModelSelectorState {
   const filtered = filterModels(models, options.query ?? "");
   const currentIndex = filtered.findIndex((model) =>

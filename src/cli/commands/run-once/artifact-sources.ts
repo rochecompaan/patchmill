@@ -19,7 +19,7 @@ export type ResolvedIssueArtifactSources = Partial<
 >;
 
 export class ArtifactSourcePreflightError extends Error {
-  readonly name = "ArtifactSourcePreflightError";
+  override readonly name = "ArtifactSourcePreflightError";
   readonly issueNumber: number;
   readonly artifactKind?: WorkflowArtifactKind;
 
@@ -29,7 +29,9 @@ export class ArtifactSourcePreflightError extends Error {
   ) {
     super(message);
     this.issueNumber = options.issueNumber;
-    this.artifactKind = options.artifactKind;
+    if (options.artifactKind !== undefined) {
+      this.artifactKind = options.artifactKind;
+    }
   }
 }
 

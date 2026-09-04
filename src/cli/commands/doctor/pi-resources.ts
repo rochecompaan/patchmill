@@ -15,7 +15,6 @@ import {
   loadProjectContextFiles,
   loadSkills,
   SettingsManager,
-  type MissingSourceAction,
   type ResolvedResource,
 } from "@earendil-works/pi-coding-agent";
 import { loadPatchmillConfigState } from "../../../config/load.ts";
@@ -25,6 +24,8 @@ import {
 } from "../../../pi/resource-profiles.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import type { DoctorCheckResult } from "./checks.ts";
+
+type MissingSourceAction = "install" | "skip" | "error";
 
 export type DoctorPiResourceSection = {
   heading: "Context" | "Skills" | "Prompts" | "Extensions";
@@ -397,7 +398,8 @@ export async function loadDoctorPiResources(
       if (block.sections.length > 0) blocks.push(block);
     }
 
-    return { blocks, check: piResourceWarningCheck(warnings) };
+    const check = piResourceWarningCheck(warnings);
+    return check === undefined ? { blocks } : { blocks, check };
   } catch (error) {
     return { blocks: [], check: piResourceDiscoveryFailureCheck(error) };
   }

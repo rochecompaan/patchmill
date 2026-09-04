@@ -148,7 +148,10 @@ export async function selectResumableIssue(
       resumed: resumable[0]?.number === selected.number,
     };
   }
-  if (resumable.length === 1) return { issue: resumable[0], resumed: true };
+  const resumableIssue = resumable[0];
+  if (resumable.length === 1 && resumableIssue !== undefined) {
+    return { issue: resumableIssue, resumed: true };
+  }
   const diagnostics = selectIssueWithDiagnostics(issues, {
     issueNumber: config.issueNumber,
     readyLabel: ready,

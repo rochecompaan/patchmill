@@ -15,8 +15,8 @@ export type InteractivePiSetup = (options: {
   agentDir: string;
   currentDefault: LocalPiDefaultModel | undefined;
   initialReadiness: PiReadiness;
-  selectModelInteractively?: SelectInteractiveModel;
-  persistDefaultModel?: PersistDefaultModel;
+  selectModelInteractively?: SelectInteractiveModel | undefined;
+  persistDefaultModel?: PersistDefaultModel | undefined;
 }) => Promise<{
   readiness: PiReadiness;
   selection: PiModelSelection;
@@ -71,12 +71,12 @@ export async function resolvePiInitSetup(options: {
   piAgentDir: string;
   readiness: PiReadiness;
   isInteractive: boolean;
-  currentDefault?: LocalPiDefaultModel;
-  selectModelInteractively?: SelectInteractiveModel;
-  persistDefaultModel?: PersistDefaultModel;
-  setupPiInteractively?: InteractivePiSetup;
-  runPiSmokeTest?: PiSmokeTestRunner;
-  forceInteractiveSetup?: boolean;
+  currentDefault?: LocalPiDefaultModel | undefined;
+  selectModelInteractively?: SelectInteractiveModel | undefined;
+  persistDefaultModel?: PersistDefaultModel | undefined;
+  setupPiInteractively?: InteractivePiSetup | undefined;
+  runPiSmokeTest?: PiSmokeTestRunner | undefined;
+  forceInteractiveSetup?: boolean | undefined;
 }): Promise<PiInitSetupResult> {
   const interactiveSetup = options.setupPiInteractively ?? setupPiInteractively;
   let readiness = options.readiness;
@@ -107,19 +107,20 @@ export async function resolvePiInitSetup(options: {
   }
 
   const abortStatus = abortingSelectionStatus(selection);
-  if (abortStatus) {
+  if (abortStatus && selection.status === "unavailable") {
     return { status: abortStatus, readiness, selection };
   }
 
+  const model =
+    selection.status === "selected"
+      ? selection.model
+      : selectedModelFromReadiness(readiness);
   const smoke = await (options.runPiSmokeTest ?? runPiSmokeTest)(
     createCommandRunner(),
     {
       repoRoot: options.repoRoot,
       piAgentDir: options.piAgentDir,
-      model:
-        selection.status === "selected"
-          ? selection.model
-          : selectedModelFromReadiness(readiness),
+      ...(model === undefined ? {} : { model }),
     },
   );
 

@@ -47,12 +47,12 @@ type RunStep = <T>(label: string, fn: () => Promise<T>) => Promise<T>;
 type BlockIssue = (
   result: AgentIssueBlockedResult,
   details: {
-    specPath?: string;
-    specCommit?: string;
-    planPath?: string;
-    planCommit?: string;
-    branch?: string;
-    worktreePath?: string;
+    specPath?: string | undefined;
+    specCommit?: string | undefined;
+    planPath?: string | undefined;
+    planCommit?: string | undefined;
+    branch?: string | undefined;
+    worktreePath?: string | undefined;
   },
 ) => Promise<AgentIssuePipelineResult>;
 
@@ -63,26 +63,26 @@ type PlanningArtifactWorkspace = Partial<
 };
 
 type ExistingPlanningState = {
-  status?: AgentIssueRunStateStatus;
-  branch?: string;
-  worktreePath?: string;
-  blockedAt?: string;
-  lastError?: string;
-  specPath?: string;
-  specCommit?: string;
-  planPath?: string;
-  planCommit?: string;
-  checkpoints?: AgentIssueRunCheckpoints;
+  status?: AgentIssueRunStateStatus | undefined;
+  branch?: string | undefined;
+  worktreePath?: string | undefined;
+  blockedAt?: string | undefined;
+  lastError?: string | undefined;
+  specPath?: string | undefined;
+  specCommit?: string | undefined;
+  planPath?: string | undefined;
+  planCommit?: string | undefined;
+  checkpoints?: AgentIssueRunCheckpoints | undefined;
 };
 
 export type PlanningStageAdvanceResult =
   | {
       kind: "continue";
       labels: string[];
-      specPath?: string;
-      specCommit?: string;
+      specPath?: string | undefined;
+      specCommit?: string | undefined;
       planPath: string;
-      planCommit?: string;
+      planCommit?: string | undefined;
     }
   | { kind: "finished"; result: AgentIssuePipelineResult };
 
@@ -96,19 +96,21 @@ export type AdvancePlanningStagesOptions = {
   inProgress: string;
   needsInfo: string;
   approvalGatesSatisfied: boolean;
-  existingState?: ExistingPlanningState;
-  resolvedArtifacts?: ResolvedIssueArtifactSources;
-  artifactPolicy?: PlanningArtifactPolicy;
+  existingState?: ExistingPlanningState | undefined;
+  resolvedArtifacts?: ResolvedIssueArtifactSources | undefined;
+  artifactPolicy?: PlanningArtifactPolicy | undefined;
   ensurePlanningArtifactWorkspace?: () => Promise<PlanningArtifactWorkspace>;
   checkpoints: AgentIssueRunCheckpoints;
   timestamp: string;
   now: Date;
   runOptions: {
-    progress?: { event(event: AgentIssueProgressEvent): void | Promise<void> };
-    streamPiOutput?: (chunk: string) => void;
-    verbosePiOutput?: boolean;
-    heartbeatMs?: number;
-    piSessionPath?: string;
+    progress?:
+      | { event(event: AgentIssueProgressEvent): void | Promise<void> }
+      | undefined;
+    streamPiOutput?: ((chunk: string) => void) | undefined;
+    verbosePiOutput?: boolean | undefined;
+    heartbeatMs?: number | undefined;
+    piSessionPath?: string | undefined;
   };
   piAgentDir: string;
   tokenUsageState: { total: number };
@@ -508,6 +510,7 @@ export async function advancePlanningStages({
     !checkpoints.specPublished
   ) {
     await runStep("publish spec artifact", async () => {
+      if (!specCommit) throw new Error("Published spec is missing a commit");
       await assertCommittedArtifact({
         runner,
         repoRoot: planningRepoRoot,
@@ -647,6 +650,7 @@ export async function advancePlanningStages({
   }
 
   if (!plan.exists) {
+    const planPathForPrompt = planPath;
     const planned = await runStep("create plan", async () => {
       await progress("info", "pi-plan", "creating plan with pi", {
         issueNumber: issue.number,
@@ -657,7 +661,7 @@ export async function advancePlanningStages({
         buildPlanCreationPrompt({
           issue,
           specPath,
-          planPath,
+          planPath: planPathForPrompt,
           projectPolicy: config.projectPolicy,
           planApprovalRequired: config.approvalPolicy.planApproval.required,
           skills: config.skills,
@@ -745,6 +749,7 @@ export async function advancePlanningStages({
     !checkpoints.planPublished
   ) {
     await runStep("publish plan artifact", async () => {
+      if (!planCommit) throw new Error("Published plan is missing a commit");
       await assertCommittedArtifact({
         runner,
         repoRoot: planningRepoRoot,

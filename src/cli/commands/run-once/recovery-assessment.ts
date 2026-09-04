@@ -117,20 +117,20 @@ function classify(input: {
   branchExists: boolean;
   worktreeExists: boolean;
   registered: boolean;
-  registeredBranch?: string;
+  registeredBranch?: string | undefined;
   expectedBranchElsewhere: boolean;
   expectedBranch: string;
-  dirty?: string;
+  dirty?: string | undefined;
   ignored: string[];
   savedCommits: string[];
   fenced: boolean;
   active: boolean;
-  divergence?: { ahead: number; behind: number };
+  divergence?: { ahead: number; behind: number } | undefined;
   commits: string[];
-  savedBranch?: string;
-  savedWorktreePath?: string;
+  savedBranch?: string | undefined;
+  savedWorktreePath?: string | undefined;
   expectedWorktreePath: string;
-  registrationLocked?: boolean;
+  registrationLocked?: boolean | undefined;
   registrationsMalformed?: boolean;
 }): RunRecoveryClassification {
   if (

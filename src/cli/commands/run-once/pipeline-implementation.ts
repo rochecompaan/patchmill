@@ -78,13 +78,13 @@ export type PipelineImplementationStageOptions = {
   checkpoints: Record<string, boolean | undefined>;
   timestamp: string;
   runOptions: PipelineProgressOptions & {
-    streamPiOutput?: (chunk: string) => void;
-    verbosePiOutput?: boolean;
-    heartbeatMs?: number;
+    streamPiOutput?: ((chunk: string) => void) | undefined;
+    verbosePiOutput?: boolean | undefined;
+    heartbeatMs?: number | undefined;
   };
   piAgentDir: string;
   tokenUsageState: { total: number };
-  progressReporter?: ProgressReporter;
+  progressReporter?: ProgressReporter | undefined;
   runStep: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
   stepStart: (label: string) => Promise<void>;
   stepComplete: (label: string) => Promise<void>;
@@ -187,45 +187,64 @@ export async function runPipelineImplementationStage(
     let developmentEnvironment:
       | AgentIssueDevelopmentEnvironmentHandoff
       | undefined;
-    if (!implemented && config.skills.developmentEnvironment) {
-      const developmentEnvironmentStage = await runDevelopmentEnvironmentStage({
-        runner,
-        host,
-        config,
-        issue,
-        labels: options.labels,
-        readyLabel,
-        inProgressLabel,
-        specPath,
-        specCommit,
-        planPath,
-        planCommit,
-        branch,
-        worktreePath,
-        timestamp,
-        logPath: runOptions.logPath,
-        piSessionPath: runOptions.piSessionPath,
-        streamPiOutput: runOptions.streamPiOutput,
-        verbosePiOutput: runOptions.verbosePiOutput,
-        heartbeatMs: runOptions.heartbeatMs,
-        piAgentDir,
-        tokenUsageState,
-        progressReporter,
-        progress: (level, stage, message, extras) =>
-          emitProgress(runOptions, level, stage, message, extras),
-        runStep,
-        observePi,
-        emitSimpleStep,
-      });
+    if (!implemented) {
+      if (!planPath || !branch) {
+        throw new Error(
+          `Implementation requires a plan and branch for issue #${issue.number}`,
+        );
+      }
+      if (config.skills.developmentEnvironment) {
+        const developmentEnvironmentStage =
+          await runDevelopmentEnvironmentStage({
+            runner,
+            host,
+            config,
+            issue,
+            labels: options.labels,
+            readyLabel,
+            inProgressLabel,
+            specPath,
+            specCommit,
+            planPath,
+            planCommit,
+            branch,
+            worktreePath,
+            timestamp,
+            ...(runOptions.logPath === undefined
+              ? {}
+              : { logPath: runOptions.logPath }),
+            ...(runOptions.piSessionPath === undefined
+              ? {}
+              : { piSessionPath: runOptions.piSessionPath }),
+            ...(runOptions.streamPiOutput === undefined
+              ? {}
+              : { streamPiOutput: runOptions.streamPiOutput }),
+            ...(runOptions.verbosePiOutput === undefined
+              ? {}
+              : { verbosePiOutput: runOptions.verbosePiOutput }),
+            ...(runOptions.heartbeatMs === undefined
+              ? {}
+              : { heartbeatMs: runOptions.heartbeatMs }),
+            piAgentDir,
+            tokenUsageState,
+            progressReporter,
+            progress: (level, stage, message, extras) =>
+              emitProgress(runOptions, level, stage, message, extras),
+            runStep,
+            observePi,
+            emitSimpleStep,
+          });
 
-      if (developmentEnvironmentStage.kind === "not-ready") {
-        return { kind: "blocked", result: developmentEnvironmentStage.result };
+        if (developmentEnvironmentStage.kind === "not-ready") {
+          return {
+            kind: "blocked",
+            result: developmentEnvironmentStage.result,
+          };
+        }
+
+        developmentEnvironment = developmentEnvironmentStage.handoff;
       }
 
-      developmentEnvironment = developmentEnvironmentStage.handoff;
-    }
-
-    if (!implemented) {
       await emitProgress(
         runOptions,
         "info",
@@ -388,7 +407,9 @@ export async function runPipelineImplementationStage(
               priorBlockerQuestions: existingState?.blockerQuestions,
               priorValidation: existingState?.validation,
             },
-            developmentEnvironment,
+            ...(developmentEnvironment === undefined
+              ? {}
+              : { developmentEnvironment }),
           }),
           {
             progress: progressReporter,

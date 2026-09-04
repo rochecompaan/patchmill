@@ -20,15 +20,18 @@ function bodyPayload(stdout: string, url: string): string {
   } catch (cause) {
     throw new Error("gh pr view returned invalid JSON", { cause });
   }
+  const record = data as Record<string, unknown>;
+  const body = record?.body;
+  const resultUrl = record?.url;
   if (
     !data ||
     typeof data !== "object" ||
-    typeof (data as Record<string, unknown>).body !== "string" ||
-    typeof (data as Record<string, unknown>).url !== "string" ||
-    !sameCanonicalUrl(url, (data as Record<string, string>).url)
+    typeof body !== "string" ||
+    typeof resultUrl !== "string" ||
+    !sameCanonicalUrl(url, resultUrl)
   )
     throw new Error("gh pr view returned an invalid or mismatched PR body");
-  return (data as Record<string, string>).body;
+  return body;
 }
 export async function readGitHubPullRequestBody(
   options: GitHubPrBodyOptions,

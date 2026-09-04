@@ -111,16 +111,20 @@ function parseIssuePayload(entry: unknown): IssueSummary {
     throw new Error(`Unexpected issue payload: ${JSON.stringify(entry)}`);
   }
 
+  const author = authorName(issue.author);
+  const created = issueCreated(issue);
+  const updated = typeof issue.updated === "string" ? issue.updated : undefined;
+  const comments = issueComments(issue.comments);
   const parsedIssue: IssueSummary = {
     number,
     title: issue.title,
     body: typeof issue.body === "string" ? issue.body : "",
     state: typeof issue.state === "string" ? issue.state : "open",
     labels: labelNames(issue.labels),
-    author: authorName(issue.author),
-    created: issueCreated(issue),
-    updated: typeof issue.updated === "string" ? issue.updated : undefined,
-    comments: issueComments(issue.comments),
+    author,
+    created,
+    updated,
+    comments,
   };
 
   if (typeof issue.url === "string") parsedIssue.url = issue.url;

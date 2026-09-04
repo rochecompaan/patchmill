@@ -100,7 +100,8 @@ function parseArgs(args: string[]): ParsedArgs {
   if (positional.length > 1) {
     throw new Error("Only one artifact path may be provided");
   }
-  parsed.path = positional[0];
+  const path = positional[0];
+  if (path !== undefined) parsed.path = path;
   return parsed;
 }
 
