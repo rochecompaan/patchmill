@@ -35,14 +35,25 @@ const validMarkerPattern =
 const fencedCodeStartPattern = /^ {0,3}(`{3,}|~{3,})/u;
 const fencedCodeEndPattern = /^ {0,3}(`+|~+)\s*$/u;
 const indentedCodePattern = /^(?: {4}|\t)/u;
+const containerPrefixPattern = /^(?: {0,3}> ?| {0,3}(?:[-+*]|\d+[.)])[ \t]+)/u;
+
+function withoutMarkdownContainerPrefix(line: string): string {
+  let prefix = containerPrefixPattern.exec(line);
+  while (prefix !== null) {
+    line = line.slice(prefix[0].length);
+    prefix = containerPrefixPattern.exec(line);
+  }
+  return line;
+}
 
 function withoutMarkdownCodeBlocks(body: string): string {
   let fence: string | undefined;
   return body
     .split("\n")
     .map((line) => {
+      const content = withoutMarkdownContainerPrefix(line);
       if (fence !== undefined) {
-        const closingFence = line.match(fencedCodeEndPattern)?.[1];
+        const closingFence = content.match(fencedCodeEndPattern)?.[1];
         if (
           closingFence !== undefined &&
           closingFence[0] === fence[0] &&
@@ -52,12 +63,12 @@ function withoutMarkdownCodeBlocks(body: string): string {
         }
         return "";
       }
-      const openingFence = line.match(fencedCodeStartPattern)?.[1];
+      const openingFence = content.match(fencedCodeStartPattern)?.[1];
       if (openingFence !== undefined) {
         fence = openingFence;
         return "";
       }
-      return indentedCodePattern.test(line) ? "" : line;
+      return indentedCodePattern.test(content) ? "" : line;
     })
     .join("\n");
 }
@@ -86,6 +97,7 @@ function codeSpanEnd(
   delimiterLength: number,
 ): number | undefined {
   for (let cursor = start; cursor < value.length; cursor += 1) {
+    if (/^\r?\n[ \t]*\r?\n/u.test(value.slice(cursor))) return undefined;
     if (value[cursor] !== "`" || isEscaped(value, cursor)) continue;
     const end = backtickRunEnd(value, cursor);
     if (end - cursor === delimiterLength) return end;

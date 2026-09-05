@@ -132,6 +132,12 @@ function markdownCodeSpan(value: string): string {
   return `${delimiter} ${value} ${delimiter}`;
 }
 
+function assertSingleLineArtifactPath(path: string): void {
+  if (/\r|\n/u.test(path)) {
+    throw new RangeError("Planning artifact paths must be single-line");
+  }
+}
+
 export function planningPullRequestBody(input: {
   issueNumber: number;
   phase: PlanningArtifactKind;
@@ -142,6 +148,7 @@ export function planningPullRequestBody(input: {
   if (artifactPaths.length === 0) {
     throw new RangeError("Planning pull request requires an artifact path");
   }
+  for (const path of artifactPaths) assertSingleLineArtifactPath(path);
   const label = input.phase === "spec" ? "Spec" : "Plan";
   return [
     `Refs #${input.issueNumber}`,

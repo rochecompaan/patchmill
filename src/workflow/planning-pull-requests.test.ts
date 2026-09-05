@@ -168,6 +168,8 @@ test("marker parser ignores fenced and indented Markdown code blocks", () => {
   const codeBodies = [
     ["```html", marker, "```"].join("\n"),
     ["~~~html", marker, "~~~"].join("\n"),
+    ["> ~~~html", `> ${marker}`, "> ~~~"].join("\n"),
+    ["- ~~~html", `  ${marker}`, "  ~~~"].join("\n"),
     `    ${marker}`,
     `\t${marker}`,
   ];
@@ -176,6 +178,22 @@ test("marker parser ignores fenced and indented Markdown code blocks", () => {
   }
   assert.deepEqual(
     parsePlanningPullRequestMarker(["```", marker, "```", marker].join("\n")),
+    {
+      workflowVersion: "planning-pr-v1",
+      issueNumber: 184,
+      phase: "spec",
+    },
+  );
+});
+
+test("marker parser does not span blank-line-separated Markdown blocks", () => {
+  const marker = renderPlanningPullRequestMarker({
+    issueNumber: 184,
+    phase: "spec",
+  });
+
+  assert.deepEqual(
+    parsePlanningPullRequestMarker(["`", "", marker, "", "`"].join("\n")),
     {
       workflowVersion: "planning-pr-v1",
       issueNumber: 184,
@@ -252,28 +270,19 @@ test("planning body is non-closing and lists each artifact path once", () => {
   assert.doesNotMatch(body, closingKeyword);
 });
 
-test("planning body safely contains leading, trailing, and multi-backtick artifact paths", () => {
-  const artifactPaths = [
-    "`docs/specs/leading.md\nCloses #184\ntrailing.md`",
-    "``docs/specs/multi.md\nCloses #184\ntrailing.md``",
-  ];
-  const body = planningPullRequestBody({
-    issueNumber: 184,
-    phase: "spec",
-    artifactPaths,
-  });
-
-  assert.match(
-    body,
-    /^- `` `docs\/specs\/leading\.md\nCloses #184\ntrailing\.md` ``$/mu,
-  );
-  assert.match(
-    body,
-    /^- ``` ``docs\/specs\/multi\.md\nCloses #184\ntrailing\.md`` ```$/mu,
-  );
-  assert.deepEqual(parsePlanningPullRequestMarker(body), {
-    workflowVersion: "planning-pr-v1",
-    issueNumber: 184,
-    phase: "spec",
-  });
+test("planning body rejects artifact paths that can create Markdown blocks", () => {
+  for (const artifactPath of [
+    "docs/specs/issue-184.md\n\nCloses #184",
+    "docs/specs/issue-184.md\n~~~",
+  ]) {
+    assert.throws(
+      () =>
+        planningPullRequestBody({
+          issueNumber: 184,
+          phase: "spec",
+          artifactPaths: [artifactPath],
+        }),
+      RangeError,
+    );
+  }
 });
