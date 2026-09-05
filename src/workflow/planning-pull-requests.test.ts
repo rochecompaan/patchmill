@@ -134,30 +134,20 @@ test("marker parser returns undefined when no planning marker exists", () => {
   assert.equal(parsePlanningPullRequestMarker("Refs #184"), undefined);
 });
 
-test("marker parser skips only valid unescaped code spans", () => {
+test("marker parser requires the exact final top-level marker line", () => {
   const marker = renderPlanningPullRequestMarker({
     issueNumber: 184,
     phase: "spec",
   });
-  const identity = {
-    workflowVersion: "planning-pr-v1",
-    issueNumber: 184,
-    phase: "spec",
-  } as const;
 
-  const escapedBacktick = "\\`";
-  assert.equal(parsePlanningPullRequestMarker(`\`${marker}\``), undefined);
-  assert.deepEqual(
-    parsePlanningPullRequestMarker(
-      `${escapedBacktick}${marker}${escapedBacktick}`,
-    ),
-    identity,
-  );
-  assert.deepEqual(
-    parsePlanningPullRequestMarker("`" + marker + "```"),
-    identity,
-  );
-  assert.equal(parsePlanningPullRequestMarker(`\`${marker}\\\``), undefined);
+  for (const body of [
+    `\`${marker}\``,
+    `> ${marker}`,
+    `    ${marker}`,
+    ["`", marker, "`"].join("\n"),
+  ]) {
+    assert.equal(parsePlanningPullRequestMarker(body), undefined);
+  }
 });
 
 test("marker parser ignores fenced and indented Markdown code blocks", () => {
@@ -188,24 +178,19 @@ test("marker parser ignores fenced and indented Markdown code blocks", () => {
   );
 });
 
-test("marker parser does not span Markdown block boundaries", () => {
+test("marker parser recognizes a top-level marker after a container fence ends", () => {
   const marker = renderPlanningPullRequestMarker({
     issueNumber: 184,
     phase: "spec",
   });
-  const identity = {
-    workflowVersion: "planning-pr-v1",
-    issueNumber: 184,
-    phase: "spec",
-  } as const;
 
   assert.deepEqual(
-    parsePlanningPullRequestMarker(["`", "", marker, "", "`"].join("\n")),
-    identity,
-  );
-  assert.deepEqual(
-    parsePlanningPullRequestMarker(["`", marker, "`"].join("\n")),
-    identity,
+    parsePlanningPullRequestMarker(["> ```", "> example", marker].join("\n")),
+    {
+      workflowVersion: "planning-pr-v1",
+      issueNumber: 184,
+      phase: "spec",
+    },
   );
 });
 

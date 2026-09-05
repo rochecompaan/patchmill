@@ -28,67 +28,16 @@ export function renderPlanningPullRequestMarker(input: {
   return `<!-- patchmill:${PLANNING_PR_WORKFLOW_VERSION} issue=${input.issueNumber} phase=${input.phase} -->`;
 }
 
-const markerCandidatePattern = /<!--\s*patchmill:planning-pr-[\s\S]*?-->/gu;
-const markerStartPattern = /<!--\s*patchmill:planning-pr-/gu;
+const markerPrefix = "<!-- patchmill:planning-pr-";
 const validMarkerPattern =
   /^<!-- patchmill:(planning-pr-v1) issue=([1-9]\d*) phase=(spec|plan|implementation) -->$/u;
-const fencedCodePattern = /^ {0,3}(`{3,}|~{3,})(.*)$/u;
-const fencedCodeEndPattern = /^ {0,3}(`+|~+)[ \t]*$/u;
-const indentedCodePattern = /^(?: {4}|\t)/u;
-const blockQuotePrefixPattern = /^ {0,3}> ?/u;
-const listPrefixPattern = /^ {0,3}(?:[-+*]|\d+[.)])[ \t]/u;
+const openingFencePattern = /^(`{3,}|~{3,})(.*)$/u;
+const closingFencePattern = /^(`+|~+)[ \t]*$/u;
 
-type MarkdownContainer = {
-  blockQuoteDepth: number;
-  listIndent?: number;
-};
+type MarkerLine = { line: string; index: number };
 
-type MarkdownFence = MarkdownContainer & {
-  delimiter: string;
-};
-
-function stripMarkdownContainer(
-  line: string,
-  container?: MarkdownContainer,
-): { content: string; container: MarkdownContainer } | undefined {
-  let content = line;
-  let blockQuoteDepth = 0;
-  let blockQuotePrefix = blockQuotePrefixPattern.exec(content);
-  while (blockQuotePrefix !== null) {
-    content = content.slice(blockQuotePrefix[0].length);
-    blockQuoteDepth += 1;
-    blockQuotePrefix = blockQuotePrefixPattern.exec(content);
-  }
-  if (
-    container !== undefined &&
-    blockQuoteDepth !== container.blockQuoteDepth
-  ) {
-    return undefined;
-  }
-  const listPrefix = listPrefixPattern.exec(content);
-  const listIndent = listPrefix?.[0].length;
-  if (container?.listIndent !== undefined) {
-    if (listIndent !== undefined) {
-      content = content.slice(listIndent);
-    } else if (content.startsWith(" ".repeat(container.listIndent))) {
-      content = content.slice(container.listIndent);
-    } else {
-      return undefined;
-    }
-  } else if (listIndent !== undefined) {
-    content = content.slice(listIndent);
-  }
-  return {
-    content,
-    container: {
-      blockQuoteDepth,
-      ...(listIndent === undefined ? {} : { listIndent }),
-    },
-  };
-}
-
-function parseOpeningFence(content: string): string | undefined {
-  const match = content.match(fencedCodePattern);
+function openingFence(line: string): string | undefined {
+  const match = line.match(openingFencePattern);
   if (match === null) return undefined;
   const delimiter = match[1]!;
   return delimiter[0] === "`" && match[2]!.includes("`")
@@ -96,88 +45,37 @@ function parseOpeningFence(content: string): string | undefined {
     : delimiter;
 }
 
-function withoutMarkdownCodeBlocks(body: string): string {
-  let fence: MarkdownFence | undefined;
-  return body
-    .split("\n")
-    .map((line) => {
-      const stripped = stripMarkdownContainer(line, fence);
-      if (fence !== undefined) {
-        if (stripped === undefined) return "";
-        const closingFence = stripped.content.match(fencedCodeEndPattern)?.[1];
-        if (
-          closingFence !== undefined &&
-          closingFence[0] === fence.delimiter[0] &&
-          closingFence.length >= fence.delimiter.length
-        ) {
-          fence = undefined;
-        }
-        return "";
+function topLevelMarkerLines(lines: readonly string[]): MarkerLine[] {
+  const markers: MarkerLine[] = [];
+  let fence: string | undefined;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    if (fence !== undefined) {
+      const closingFence = line.match(closingFencePattern)?.[1];
+      if (
+        closingFence !== undefined &&
+        closingFence[0] === fence[0] &&
+        closingFence.length >= fence.length
+      ) {
+        fence = undefined;
       }
-      if (stripped === undefined) return line;
-      const openingFence = parseOpeningFence(stripped.content);
-      if (openingFence !== undefined) {
-        fence = { delimiter: openingFence, ...stripped.container };
-        return "";
-      }
-      return indentedCodePattern.test(stripped.content) ? "" : line;
-    })
-    .join("\n");
-}
-
-function isEscaped(value: string, index: number): boolean {
-  let backslashCount = 0;
-  for (
-    let cursor = index - 1;
-    cursor >= 0 && value[cursor] === "\\";
-    cursor -= 1
-  ) {
-    backslashCount += 1;
-  }
-  return backslashCount % 2 === 1;
-}
-
-function backtickRunEnd(value: string, start: number): number {
-  let end = start;
-  while (value[end] === "`") end += 1;
-  return end;
-}
-
-function codeSpanEnd(
-  value: string,
-  start: number,
-  delimiterLength: number,
-): number | undefined {
-  for (let cursor = start; cursor < value.length; cursor += 1) {
-    if (/^\r?\n[ \t]*(?:\r?\n|<!--)/u.test(value.slice(cursor))) {
-      return undefined;
-    }
-    if (value[cursor] !== "`") continue;
-    const end = backtickRunEnd(value, cursor);
-    if (end - cursor === delimiterLength) return end;
-    cursor = end - 1;
-  }
-  return undefined;
-}
-
-function withoutMarkdownCodeSpans(body: string): string {
-  let visibleText = "";
-  for (let cursor = 0; cursor < body.length; cursor += 1) {
-    if (body[cursor] !== "`" || isEscaped(body, cursor)) {
-      visibleText += body[cursor];
       continue;
     }
-    const openerEnd = backtickRunEnd(body, cursor);
-    const closerEnd = codeSpanEnd(body, openerEnd, openerEnd - cursor);
-    if (closerEnd === undefined) {
-      visibleText += body.slice(cursor, openerEnd);
-      cursor = openerEnd - 1;
-      continue;
+    const opener = openingFence(line);
+    if (opener !== undefined) {
+      fence = opener;
+    } else if (line.startsWith(markerPrefix)) {
+      markers.push({ line, index });
     }
-    visibleText += " ";
-    cursor = closerEnd - 1;
   }
-  return visibleText;
+  return markers;
+}
+
+function finalNonblankLineIndex(lines: readonly string[]): number {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index]!.trim() !== "") return index;
+  }
+  return -1;
 }
 
 export function parsePlanningPullRequestMarker(body: string):
@@ -187,27 +85,24 @@ export function parsePlanningPullRequestMarker(body: string):
       phase: PlanningPhaseKind;
     }
   | undefined {
-  const markerBody = withoutMarkdownCodeSpans(withoutMarkdownCodeBlocks(body));
-  const candidates = markerBody.match(markerCandidatePattern) ?? [];
-  const starts = markerBody.match(markerStartPattern) ?? [];
-  if (starts.length === 0) return undefined;
-  if (starts.length !== candidates.length) {
-    throw new PlanningPullRequestMarkerError("malformed marker", markerBody);
+  const lines = body.split("\n");
+  const markers = topLevelMarkerLines(lines);
+  if (markers.length === 0) return undefined;
+  if (markers.length !== 1) {
+    throw new PlanningPullRequestMarkerError("multiple markers", body);
   }
-  if (candidates.length !== 1) {
-    throw new PlanningPullRequestMarkerError(
-      "multiple markers",
-      candidates.join("\n"),
-    );
-  }
-  const marker = candidates[0]!;
-  const match = validMarkerPattern.exec(marker);
-  if (!match) {
-    throw new PlanningPullRequestMarkerError("unsupported marker", marker);
+  const marker = markers[0]!;
+  if (marker.index !== finalNonblankLineIndex(lines)) return undefined;
+  const match = validMarkerPattern.exec(marker.line);
+  if (match === null) {
+    throw new PlanningPullRequestMarkerError("unsupported marker", marker.line);
   }
   const issueNumber = Number(match[2]);
   if (!Number.isSafeInteger(issueNumber)) {
-    throw new PlanningPullRequestMarkerError("invalid issue number", marker);
+    throw new PlanningPullRequestMarkerError(
+      "invalid issue number",
+      marker.line,
+    );
   }
   return {
     workflowVersion: PLANNING_PR_WORKFLOW_VERSION,
