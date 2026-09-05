@@ -188,19 +188,50 @@ test("marker parser ignores fenced and indented Markdown code blocks", () => {
   );
 });
 
-test("marker parser does not span blank-line-separated Markdown blocks", () => {
+test("marker parser does not span Markdown block boundaries", () => {
+  const marker = renderPlanningPullRequestMarker({
+    issueNumber: 184,
+    phase: "spec",
+  });
+  const identity = {
+    workflowVersion: "planning-pr-v1",
+    issueNumber: 184,
+    phase: "spec",
+  } as const;
+
+  assert.deepEqual(
+    parsePlanningPullRequestMarker(["`", "", marker, "", "`"].join("\n")),
+    identity,
+  );
+  assert.deepEqual(
+    parsePlanningPullRequestMarker(["`", marker, "`"].join("\n")),
+    identity,
+  );
+});
+
+test("planning body round-trips paths that resemble invalid fenced code blocks", () => {
+  const body = planningPullRequestBody({
+    issueNumber: 184,
+    phase: "spec",
+    artifactPaths: ["docs/``.md"],
+  });
+
+  assert.deepEqual(parsePlanningPullRequestMarker(body), {
+    workflowVersion: "planning-pr-v1",
+    issueNumber: 184,
+    phase: "spec",
+  });
+});
+
+test("marker parser keeps markers inside a top-level fence after container text", () => {
   const marker = renderPlanningPullRequestMarker({
     issueNumber: 184,
     phase: "spec",
   });
 
-  assert.deepEqual(
-    parsePlanningPullRequestMarker(["`", "", marker, "", "`"].join("\n")),
-    {
-      workflowVersion: "planning-pr-v1",
-      issueNumber: 184,
-      phase: "spec",
-    },
+  assert.equal(
+    parsePlanningPullRequestMarker(["```", "> ```", marker, "```"].join("\n")),
+    undefined,
   );
 });
 

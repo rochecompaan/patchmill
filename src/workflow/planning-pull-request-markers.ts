@@ -32,43 +32,95 @@ const markerCandidatePattern = /<!--\s*patchmill:planning-pr-[\s\S]*?-->/gu;
 const markerStartPattern = /<!--\s*patchmill:planning-pr-/gu;
 const validMarkerPattern =
   /^<!-- patchmill:(planning-pr-v1) issue=([1-9]\d*) phase=(spec|plan|implementation) -->$/u;
-const fencedCodeStartPattern = /^ {0,3}(`{3,}|~{3,})/u;
-const fencedCodeEndPattern = /^ {0,3}(`+|~+)\s*$/u;
+const fencedCodePattern = /^ {0,3}(`{3,}|~{3,})(.*)$/u;
+const fencedCodeEndPattern = /^ {0,3}(`+|~+)[ \t]*$/u;
 const indentedCodePattern = /^(?: {4}|\t)/u;
-const containerPrefixPattern = /^(?: {0,3}> ?| {0,3}(?:[-+*]|\d+[.)])[ \t])/u;
+const blockQuotePrefixPattern = /^ {0,3}> ?/u;
+const listPrefixPattern = /^ {0,3}(?:[-+*]|\d+[.)])[ \t]/u;
 
-function withoutMarkdownContainerPrefix(line: string): string {
-  let prefix = containerPrefixPattern.exec(line);
-  while (prefix !== null) {
-    line = line.slice(prefix[0].length);
-    prefix = containerPrefixPattern.exec(line);
+type MarkdownContainer = {
+  blockQuoteDepth: number;
+  listIndent?: number;
+};
+
+type MarkdownFence = MarkdownContainer & {
+  delimiter: string;
+};
+
+function stripMarkdownContainer(
+  line: string,
+  container?: MarkdownContainer,
+): { content: string; container: MarkdownContainer } | undefined {
+  let content = line;
+  let blockQuoteDepth = 0;
+  let blockQuotePrefix = blockQuotePrefixPattern.exec(content);
+  while (blockQuotePrefix !== null) {
+    content = content.slice(blockQuotePrefix[0].length);
+    blockQuoteDepth += 1;
+    blockQuotePrefix = blockQuotePrefixPattern.exec(content);
   }
-  return line;
+  if (
+    container !== undefined &&
+    blockQuoteDepth !== container.blockQuoteDepth
+  ) {
+    return undefined;
+  }
+  const listPrefix = listPrefixPattern.exec(content);
+  const listIndent = listPrefix?.[0].length;
+  if (container?.listIndent !== undefined) {
+    if (listIndent !== undefined) {
+      content = content.slice(listIndent);
+    } else if (content.startsWith(" ".repeat(container.listIndent))) {
+      content = content.slice(container.listIndent);
+    } else {
+      return undefined;
+    }
+  } else if (listIndent !== undefined) {
+    content = content.slice(listIndent);
+  }
+  return {
+    content,
+    container: {
+      blockQuoteDepth,
+      ...(listIndent === undefined ? {} : { listIndent }),
+    },
+  };
+}
+
+function parseOpeningFence(content: string): string | undefined {
+  const match = content.match(fencedCodePattern);
+  if (match === null) return undefined;
+  const delimiter = match[1]!;
+  return delimiter[0] === "`" && match[2]!.includes("`")
+    ? undefined
+    : delimiter;
 }
 
 function withoutMarkdownCodeBlocks(body: string): string {
-  let fence: string | undefined;
+  let fence: MarkdownFence | undefined;
   return body
     .split("\n")
     .map((line) => {
-      const content = withoutMarkdownContainerPrefix(line);
+      const stripped = stripMarkdownContainer(line, fence);
       if (fence !== undefined) {
-        const closingFence = content.match(fencedCodeEndPattern)?.[1];
+        if (stripped === undefined) return "";
+        const closingFence = stripped.content.match(fencedCodeEndPattern)?.[1];
         if (
           closingFence !== undefined &&
-          closingFence[0] === fence[0] &&
-          closingFence.length >= fence.length
+          closingFence[0] === fence.delimiter[0] &&
+          closingFence.length >= fence.delimiter.length
         ) {
           fence = undefined;
         }
         return "";
       }
-      const openingFence = content.match(fencedCodeStartPattern)?.[1];
+      if (stripped === undefined) return line;
+      const openingFence = parseOpeningFence(stripped.content);
       if (openingFence !== undefined) {
-        fence = openingFence;
+        fence = { delimiter: openingFence, ...stripped.container };
         return "";
       }
-      return indentedCodePattern.test(content) ? "" : line;
+      return indentedCodePattern.test(stripped.content) ? "" : line;
     })
     .join("\n");
 }
@@ -97,7 +149,9 @@ function codeSpanEnd(
   delimiterLength: number,
 ): number | undefined {
   for (let cursor = start; cursor < value.length; cursor += 1) {
-    if (/^\r?\n[ \t]*\r?\n/u.test(value.slice(cursor))) return undefined;
+    if (/^\r?\n[ \t]*(?:\r?\n|<!--)/u.test(value.slice(cursor))) {
+      return undefined;
+    }
     if (value[cursor] !== "`") continue;
     const end = backtickRunEnd(value, cursor);
     if (end - cursor === delimiterLength) return end;
