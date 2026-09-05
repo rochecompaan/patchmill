@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.21.0](https://github.com/rochecompaan/patchmill/compare/v0.20.0...v0.21.0) (2026-09-05)
+
+
+### Features
+
+* **run-once:** recover or reset blocked run-once runs ([#204](https://github.com/rochecompaan/patchmill/issues/204)) ([0b27041](https://github.com/rochecompaan/patchmill/commit/0b27041e69d9fe5bb1b86aaf8999468998722423))
+* **workflow:** define provider-neutral planning pull request foundations ([#209](https://github.com/rochecompaan/patchmill/issues/209)) ([470891c](https://github.com/rochecompaan/patchmill/commit/470891c2cc57190b68ad82a578c06175fdfe6295))
+
+
+### Bug Fixes
+
+* **deps:** fail fast on stale runtime dependencies ([#200](https://github.com/rochecompaan/patchmill/issues/200)) ([69bab32](https://github.com/rochecompaan/patchmill/commit/69bab325467d042565f6592232eace51020af5d4))
+* **deps:** reuse pi-subagents upgrade PR ([#202](https://github.com/rochecompaan/patchmill/issues/202)) ([8a98c2d](https://github.com/rochecompaan/patchmill/commit/8a98c2db28047076e1fc83a7ebf5068cc4cac2e3))
+* **validation:** restore baseline quality gates ([#208](https://github.com/rochecompaan/patchmill/issues/208)) ([7a51191](https://github.com/rochecompaan/patchmill/commit/7a511913f6836f401b98052d62af1127721a7085))
+
 ## [0.20.0](https://github.com/rochecompaan/patchmill/compare/v0.19.0...v0.20.0) (2026-08-28)
 
 
