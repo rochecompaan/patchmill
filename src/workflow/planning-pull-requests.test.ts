@@ -134,6 +134,31 @@ test("marker parser returns undefined when no planning marker exists", () => {
   assert.equal(parsePlanningPullRequestMarker("Refs #184"), undefined);
 });
 
+test("marker parser skips only valid unescaped code spans", () => {
+  const marker = renderPlanningPullRequestMarker({
+    issueNumber: 184,
+    phase: "spec",
+  });
+  const identity = {
+    workflowVersion: "planning-pr-v1",
+    issueNumber: 184,
+    phase: "spec",
+  } as const;
+
+  const escapedBacktick = "\\`";
+  assert.equal(parsePlanningPullRequestMarker(`\`${marker}\``), undefined);
+  assert.deepEqual(
+    parsePlanningPullRequestMarker(
+      `${escapedBacktick}${marker}${escapedBacktick}`,
+    ),
+    identity,
+  );
+  assert.deepEqual(
+    parsePlanningPullRequestMarker("`" + marker + "```"),
+    identity,
+  );
+});
+
 test("marker parser rejects duplicate and invalid planning markers", () => {
   const invalidBodies = [
     [
@@ -202,20 +227,24 @@ test("planning body is non-closing and lists each artifact path once", () => {
   assert.doesNotMatch(body, closingKeyword);
 });
 
-test("planning body contains adversarial artifact paths in a single code span", () => {
-  const artifactPath =
-    "docs/specs/report`\nCloses #184\n<!-- patchmill:planning-pr-v1 issue=185 phase=plan -->.md";
+test("planning body safely contains leading, trailing, and multi-backtick artifact paths", () => {
+  const artifactPaths = [
+    "`docs/specs/leading.md\nCloses #184\ntrailing.md`",
+    "``docs/specs/multi.md\nCloses #184\ntrailing.md``",
+  ];
   const body = planningPullRequestBody({
     issueNumber: 184,
     phase: "spec",
-    artifactPaths: [artifactPath],
+    artifactPaths,
   });
 
-  assert.match(body, /^- ``docs\/specs\/report`$/mu);
-  assert.match(body, /^Closes #184$/mu);
   assert.match(
     body,
-    /^<!-- patchmill:planning-pr-v1 issue=185 phase=plan -->\.md``$/mu,
+    /^- `` `docs\/specs\/leading\.md\nCloses #184\ntrailing\.md` ``$/mu,
+  );
+  assert.match(
+    body,
+    /^- ``` ``docs\/specs\/multi\.md\nCloses #184\ntrailing\.md`` ```$/mu,
   );
   assert.deepEqual(parsePlanningPullRequestMarker(body), {
     workflowVersion: "planning-pr-v1",

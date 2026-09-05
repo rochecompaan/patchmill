@@ -132,13 +132,56 @@ export function renderPlanningPullRequestMarker(input: {
   return `<!-- patchmill:${PLANNING_PR_WORKFLOW_VERSION} issue=${input.issueNumber} phase=${input.phase} -->`;
 }
 
-function withoutMarkdownCodeSpans(body: string): string {
-  let codeSpan = /(`+)[\s\S]*?\1/u.exec(body);
-  while (codeSpan) {
-    body = body.replace(codeSpan[0], "");
-    codeSpan = /(`+)[\s\S]*?\1/u.exec(body);
+function isEscaped(value: string, index: number): boolean {
+  let backslashCount = 0;
+  for (
+    let cursor = index - 1;
+    cursor >= 0 && value[cursor] === "\\";
+    cursor -= 1
+  ) {
+    backslashCount += 1;
   }
-  return body;
+  return backslashCount % 2 === 1;
+}
+
+function backtickRunEnd(value: string, start: number): number {
+  let end = start;
+  while (value[end] === "`") end += 1;
+  return end;
+}
+
+function codeSpanEnd(
+  value: string,
+  start: number,
+  delimiterLength: number,
+): number | undefined {
+  for (let cursor = start; cursor < value.length; cursor += 1) {
+    if (value[cursor] !== "`" || isEscaped(value, cursor)) continue;
+    const end = backtickRunEnd(value, cursor);
+    if (end - cursor === delimiterLength) return end;
+    cursor = end - 1;
+  }
+  return undefined;
+}
+
+function withoutMarkdownCodeSpans(body: string): string {
+  let visibleText = "";
+  for (let cursor = 0; cursor < body.length; cursor += 1) {
+    if (body[cursor] !== "`" || isEscaped(body, cursor)) {
+      visibleText += body[cursor];
+      continue;
+    }
+    const openerEnd = backtickRunEnd(body, cursor);
+    const closerEnd = codeSpanEnd(body, openerEnd, openerEnd - cursor);
+    if (closerEnd === undefined) {
+      visibleText += body.slice(cursor, openerEnd);
+      cursor = openerEnd - 1;
+      continue;
+    }
+    visibleText += " ";
+    cursor = closerEnd - 1;
+  }
+  return visibleText;
 }
 
 export function parsePlanningPullRequestMarker(body: string):
@@ -190,7 +233,7 @@ function markdownCodeSpan(value: string): string {
   const delimiter = "`".repeat(
     1 + Math.max(0, ...(value.match(/`+/gu) ?? []).map((run) => run.length)),
   );
-  return `${delimiter}${value}${delimiter}`;
+  return `${delimiter} ${value} ${delimiter}`;
 }
 
 export function planningPullRequestBody(input: {

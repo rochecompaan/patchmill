@@ -91,6 +91,37 @@ const openPullRequest = {
   body: "Refs #184",
 } satisfies PullRequestSummary;
 
+const mergedPullRequest = {
+  ...openPullRequest,
+  status: "merged",
+  mergeCommit: "def456",
+} satisfies PullRequestSummary;
+
+const closedPullRequest = {
+  ...openPullRequest,
+  status: "closed-unmerged",
+} satisfies PullRequestSummary;
+
+// @ts-expect-error A merged pull request always has a merge commit.
+void ({ ...openPullRequest, status: "merged" } satisfies PullRequestSummary);
+void ({
+  ...openPullRequest,
+  mergeCommit: "def456",
+  // @ts-expect-error An open pull request never has a merge commit.
+} satisfies PullRequestSummary);
+void ({
+  ...openPullRequest,
+  status: "closed-unmerged",
+  mergeCommit: "def456",
+  // @ts-expect-error A closed-unmerged pull request never has a merge commit.
+} satisfies PullRequestSummary);
+
+test("pull request summary status preserves merge commit invariants", () => {
+  assert.equal(mergedPullRequest.mergeCommit, "def456");
+  assert.equal("mergeCommit" in openPullRequest, false);
+  assert.equal("mergeCommit" in closedPullRequest, false);
+});
+
 function fakePullRequestHost(summary: PullRequestSummary): PullRequestHost {
   let body = summary.body;
   return {
