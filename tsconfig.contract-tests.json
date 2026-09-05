@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.quality.json",
+  "compilerOptions": {
+    "typeRoots": [
+      "./node_modules/@earendil-works/pi-coding-agent/node_modules/@types"
+    ],
+    "types": ["node"]
+  },
+  "include": [
+    "src/git/planning-workspaces.test.ts",
+    "src/host/pull-requests.test.ts"
+  ],
+  "exclude": []
+}

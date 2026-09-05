@@ -102,9 +102,9 @@ export function phaseWorkspaceIdentity(input: {
 }
 
 const markerCandidatePattern = /<!--\s*patchmill:planning-pr-[\s\S]*?-->/gu;
+const markerStartPattern = /<!--\s*patchmill:planning-pr-/gu;
 const validMarkerPattern =
   /^<!-- patchmill:(planning-pr-v1) issue=([1-9]\d*) phase=(spec|plan|implementation) -->$/u;
-const markerPrefix = "patchmill:planning-pr-";
 
 export class PlanningPullRequestMarkerError extends Error {
   readonly reason: string;
@@ -132,6 +132,15 @@ export function renderPlanningPullRequestMarker(input: {
   return `<!-- patchmill:${PLANNING_PR_WORKFLOW_VERSION} issue=${input.issueNumber} phase=${input.phase} -->`;
 }
 
+function withoutMarkdownCodeSpans(body: string): string {
+  let codeSpan = /(`+)[\s\S]*?\1/u.exec(body);
+  while (codeSpan) {
+    body = body.replace(codeSpan[0], "");
+    codeSpan = /(`+)[\s\S]*?\1/u.exec(body);
+  }
+  return body;
+}
+
 export function parsePlanningPullRequestMarker(body: string):
   | {
       workflowVersion: typeof PLANNING_PR_WORKFLOW_VERSION;
@@ -139,12 +148,12 @@ export function parsePlanningPullRequestMarker(body: string):
       phase: PlanningPhaseKind;
     }
   | undefined {
-  const candidates = body.match(markerCandidatePattern) ?? [];
-  if (candidates.length === 0) {
-    if (body.includes(markerPrefix)) {
-      throw new PlanningPullRequestMarkerError("malformed marker", body);
-    }
-    return undefined;
+  const markerBody = withoutMarkdownCodeSpans(body);
+  const candidates = markerBody.match(markerCandidatePattern) ?? [];
+  const starts = markerBody.match(markerStartPattern) ?? [];
+  if (starts.length === 0) return undefined;
+  if (starts.length !== candidates.length) {
+    throw new PlanningPullRequestMarkerError("malformed marker", markerBody);
   }
   if (candidates.length !== 1) {
     throw new PlanningPullRequestMarkerError(
@@ -177,6 +186,13 @@ export function planningPullRequestTitle(input: {
   return `${label} for #${input.issueNumber}`;
 }
 
+function markdownCodeSpan(value: string): string {
+  const delimiter = "`".repeat(
+    1 + Math.max(0, ...(value.match(/`+/gu) ?? []).map((run) => run.length)),
+  );
+  return `${delimiter}${value}${delimiter}`;
+}
+
 export function planningPullRequestBody(input: {
   issueNumber: number;
   phase: PlanningArtifactKind;
@@ -197,7 +213,7 @@ export function planningPullRequestBody(input: {
     "",
     "## Artifacts",
     "",
-    ...artifactPaths.map((path) => `- \`${path}\``),
+    ...artifactPaths.map((path) => `- ${markdownCodeSpan(path)}`),
     "",
     "Merge this pull request to unlock the next phase.",
     "",

@@ -154,6 +154,18 @@ test("marker parser rejects duplicate and invalid planning markers", () => {
   }
 });
 
+test("marker parser rejects a malformed marker alongside a valid marker", () => {
+  const body = [
+    "<!-- patchmill:planning-pr-v1 issue=184 phase=spec -->",
+    "<!-- patchmill:planning-pr-v1 issue=185 phase=plan",
+  ].join("\n");
+
+  assert.throws(
+    () => parsePlanningPullRequestMarker(body),
+    PlanningPullRequestMarkerError,
+  );
+});
+
 const closingKeyword = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d+/iu;
 
 test("planning title identifies the phase and issue without untrusted issue text", () => {
@@ -188,4 +200,26 @@ test("planning body is non-closing and lists each artifact path once", () => {
   assert.match(body, /Merge this pull request to unlock the next phase\./u);
   assert.match(body, /<!-- patchmill:planning-pr-v1 issue=184 phase=spec -->/u);
   assert.doesNotMatch(body, closingKeyword);
+});
+
+test("planning body contains adversarial artifact paths in a single code span", () => {
+  const artifactPath =
+    "docs/specs/report`\nCloses #184\n<!-- patchmill:planning-pr-v1 issue=185 phase=plan -->.md";
+  const body = planningPullRequestBody({
+    issueNumber: 184,
+    phase: "spec",
+    artifactPaths: [artifactPath],
+  });
+
+  assert.match(body, /^- ``docs\/specs\/report`$/mu);
+  assert.match(body, /^Closes #184$/mu);
+  assert.match(
+    body,
+    /^<!-- patchmill:planning-pr-v1 issue=185 phase=plan -->\.md``$/mu,
+  );
+  assert.deepEqual(parsePlanningPullRequestMarker(body), {
+    workflowVersion: "planning-pr-v1",
+    issueNumber: 184,
+    phase: "spec",
+  });
 });
