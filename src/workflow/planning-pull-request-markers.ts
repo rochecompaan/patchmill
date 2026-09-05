@@ -35,7 +35,7 @@ const validMarkerPattern =
 const fencedCodeStartPattern = /^ {0,3}(`{3,}|~{3,})/u;
 const fencedCodeEndPattern = /^ {0,3}(`+|~+)\s*$/u;
 const indentedCodePattern = /^(?: {4}|\t)/u;
-const containerPrefixPattern = /^(?: {0,3}> ?| {0,3}(?:[-+*]|\d+[.)])[ \t]+)/u;
+const containerPrefixPattern = /^(?: {0,3}> ?| {0,3}(?:[-+*]|\d+[.)])[ \t])/u;
 
 function withoutMarkdownContainerPrefix(line: string): string {
   let prefix = containerPrefixPattern.exec(line);
@@ -98,7 +98,7 @@ function codeSpanEnd(
 ): number | undefined {
   for (let cursor = start; cursor < value.length; cursor += 1) {
     if (/^\r?\n[ \t]*\r?\n/u.test(value.slice(cursor))) return undefined;
-    if (value[cursor] !== "`" || isEscaped(value, cursor)) continue;
+    if (value[cursor] !== "`") continue;
     const end = backtickRunEnd(value, cursor);
     if (end - cursor === delimiterLength) return end;
     cursor = end - 1;

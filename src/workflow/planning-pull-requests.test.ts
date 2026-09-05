@@ -157,6 +157,7 @@ test("marker parser skips only valid unescaped code spans", () => {
     parsePlanningPullRequestMarker("`" + marker + "```"),
     identity,
   );
+  assert.equal(parsePlanningPullRequestMarker(`\`${marker}\\\``), undefined);
 });
 
 test("marker parser ignores fenced and indented Markdown code blocks", () => {
@@ -170,6 +171,7 @@ test("marker parser ignores fenced and indented Markdown code blocks", () => {
     ["~~~html", marker, "~~~"].join("\n"),
     ["> ~~~html", `> ${marker}`, "> ~~~"].join("\n"),
     ["- ~~~html", `  ${marker}`, "  ~~~"].join("\n"),
+    `-     ${marker}`,
     `    ${marker}`,
     `\t${marker}`,
   ];
