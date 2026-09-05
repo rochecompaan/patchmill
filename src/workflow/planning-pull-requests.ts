@@ -3,10 +3,19 @@ import {
   buildIssueBranchName,
   buildIssueWorktreePath,
 } from "../git/worktree-strategy.ts";
+import {
+  renderPlanningPullRequestMarker,
+  type PlanningPhaseKind,
+} from "./planning-pull-request-markers.ts";
 
-export const PLANNING_PR_WORKFLOW_VERSION = "planning-pr-v1" as const;
+export {
+  PLANNING_PR_WORKFLOW_VERSION,
+  PlanningPullRequestMarkerError,
+  parsePlanningPullRequestMarker,
+  renderPlanningPullRequestMarker,
+} from "./planning-pull-request-markers.ts";
+export type { PlanningPhaseKind } from "./planning-pull-request-markers.ts";
 
-export type PlanningPhaseKind = "spec" | "plan" | "implementation";
 export type PlanningArtifactKind = "spec" | "plan";
 
 export type PlanningGateSnapshot = {
@@ -101,123 +110,10 @@ export function phaseWorkspaceIdentity(input: {
   };
 }
 
-const markerCandidatePattern = /<!--\s*patchmill:planning-pr-[\s\S]*?-->/gu;
-const markerStartPattern = /<!--\s*patchmill:planning-pr-/gu;
-const validMarkerPattern =
-  /^<!-- patchmill:(planning-pr-v1) issue=([1-9]\d*) phase=(spec|plan|implementation) -->$/u;
-
-export class PlanningPullRequestMarkerError extends Error {
-  readonly reason: string;
-  readonly marker: string;
-
-  constructor(reason: string, marker: string) {
-    super(`Planning pull request marker is invalid: ${reason}`);
-    this.name = "PlanningPullRequestMarkerError";
-    this.reason = reason;
-    this.marker = marker;
-  }
-}
-
 function assertPositiveIssueNumber(issueNumber: number): void {
   if (!Number.isSafeInteger(issueNumber) || issueNumber < 1) {
     throw new RangeError("Issue number must be a positive safe integer");
   }
-}
-
-export function renderPlanningPullRequestMarker(input: {
-  issueNumber: number;
-  phase: PlanningPhaseKind;
-}): string {
-  assertPositiveIssueNumber(input.issueNumber);
-  return `<!-- patchmill:${PLANNING_PR_WORKFLOW_VERSION} issue=${input.issueNumber} phase=${input.phase} -->`;
-}
-
-function isEscaped(value: string, index: number): boolean {
-  let backslashCount = 0;
-  for (
-    let cursor = index - 1;
-    cursor >= 0 && value[cursor] === "\\";
-    cursor -= 1
-  ) {
-    backslashCount += 1;
-  }
-  return backslashCount % 2 === 1;
-}
-
-function backtickRunEnd(value: string, start: number): number {
-  let end = start;
-  while (value[end] === "`") end += 1;
-  return end;
-}
-
-function codeSpanEnd(
-  value: string,
-  start: number,
-  delimiterLength: number,
-): number | undefined {
-  for (let cursor = start; cursor < value.length; cursor += 1) {
-    if (value[cursor] !== "`" || isEscaped(value, cursor)) continue;
-    const end = backtickRunEnd(value, cursor);
-    if (end - cursor === delimiterLength) return end;
-    cursor = end - 1;
-  }
-  return undefined;
-}
-
-function withoutMarkdownCodeSpans(body: string): string {
-  let visibleText = "";
-  for (let cursor = 0; cursor < body.length; cursor += 1) {
-    if (body[cursor] !== "`" || isEscaped(body, cursor)) {
-      visibleText += body[cursor];
-      continue;
-    }
-    const openerEnd = backtickRunEnd(body, cursor);
-    const closerEnd = codeSpanEnd(body, openerEnd, openerEnd - cursor);
-    if (closerEnd === undefined) {
-      visibleText += body.slice(cursor, openerEnd);
-      cursor = openerEnd - 1;
-      continue;
-    }
-    visibleText += " ";
-    cursor = closerEnd - 1;
-  }
-  return visibleText;
-}
-
-export function parsePlanningPullRequestMarker(body: string):
-  | {
-      workflowVersion: typeof PLANNING_PR_WORKFLOW_VERSION;
-      issueNumber: number;
-      phase: PlanningPhaseKind;
-    }
-  | undefined {
-  const markerBody = withoutMarkdownCodeSpans(body);
-  const candidates = markerBody.match(markerCandidatePattern) ?? [];
-  const starts = markerBody.match(markerStartPattern) ?? [];
-  if (starts.length === 0) return undefined;
-  if (starts.length !== candidates.length) {
-    throw new PlanningPullRequestMarkerError("malformed marker", markerBody);
-  }
-  if (candidates.length !== 1) {
-    throw new PlanningPullRequestMarkerError(
-      "multiple markers",
-      candidates.join("\n"),
-    );
-  }
-  const marker = candidates[0]!;
-  const match = validMarkerPattern.exec(marker);
-  if (!match) {
-    throw new PlanningPullRequestMarkerError("unsupported marker", marker);
-  }
-  const issueNumber = Number(match[2]);
-  if (!Number.isSafeInteger(issueNumber)) {
-    throw new PlanningPullRequestMarkerError("invalid issue number", marker);
-  }
-  return {
-    workflowVersion: PLANNING_PR_WORKFLOW_VERSION,
-    issueNumber,
-    phase: match[3] as PlanningPhaseKind,
-  };
 }
 
 export function planningPullRequestTitle(input: {

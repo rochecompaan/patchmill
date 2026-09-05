@@ -159,6 +159,31 @@ test("marker parser skips only valid unescaped code spans", () => {
   );
 });
 
+test("marker parser ignores fenced and indented Markdown code blocks", () => {
+  const marker = renderPlanningPullRequestMarker({
+    issueNumber: 184,
+    phase: "spec",
+  });
+
+  const codeBodies = [
+    ["```html", marker, "```"].join("\n"),
+    ["~~~html", marker, "~~~"].join("\n"),
+    `    ${marker}`,
+    `\t${marker}`,
+  ];
+  for (const body of codeBodies) {
+    assert.equal(parsePlanningPullRequestMarker(body), undefined);
+  }
+  assert.deepEqual(
+    parsePlanningPullRequestMarker(["```", marker, "```", marker].join("\n")),
+    {
+      workflowVersion: "planning-pr-v1",
+      issueNumber: 184,
+      phase: "spec",
+    },
+  );
+});
+
 test("marker parser rejects duplicate and invalid planning markers", () => {
   const invalidBodies = [
     [
