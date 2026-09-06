@@ -97,8 +97,12 @@ interface, Git, and GitHub CLI (`gh`).
   identifiers and diagnostic fields.
 - Create `src/host/github-gh-pull-requests.ts` for `PullRequestHost`
   orchestration.
-- Create `src/host/github-gh-pull-requests.test.ts` for exact `git` and `gh`
-  command contracts.
+- Create `src/host/github-gh-pull-requests.test.ts` for repository-resolution
+  and view command contracts.
+- Create `src/host/github-gh-pull-request-operations.test.ts` for discovery and
+  mutation command contracts.
+- Create `test-support/github-gh-pull-request.ts` for shared recording-runner
+  fixtures.
 - Do not modify `src/host/pull-requests.ts`. It is the fixed provider-neutral
   seam.
 - Do not modify `src/host/github-gh.ts`. The new adapter stays separate from the
@@ -2369,6 +2373,8 @@ git commit -m "feat(host): mutate GitHub planning pull requests"
 - Inspect: `src/host/github-gh-pull-requests.ts`
 - Inspect: `src/host/github-gh-pull-request-parsing.test.ts`
 - Inspect: `src/host/github-gh-pull-requests.test.ts`
+- Inspect: `src/host/github-gh-pull-request-operations.test.ts`
+- Inspect: `test-support/github-gh-pull-request.ts`
 - Verify unchanged: `src/host/factory.ts`
 - Verify unchanged: `src/cli/commands/run-once/`
 
@@ -2474,6 +2480,7 @@ node --test src/cli/commands/triage/command.test.ts
 node --test src/host/pull-request-reference.test.ts
 node --test src/host/github-gh-pull-request-parsing.test.ts
 node --test src/host/github-gh-pull-requests.test.ts
+node --test src/host/github-gh-pull-request-operations.test.ts
 ```
 
 Expected: PASS.
@@ -2524,7 +2531,9 @@ src/host/github-gh-pull-request-view.ts
 src/host/github-gh-pull-request-parsing.test.ts
 src/host/github-gh-pull-request-parsing.ts
 src/host/github-gh-pull-requests.test.ts
+src/host/github-gh-pull-request-operations.test.ts
 src/host/github-gh-pull-requests.ts
+test-support/github-gh-pull-request.ts
 ```
 
 The second command must produce no diff. This direct verification replaces tests

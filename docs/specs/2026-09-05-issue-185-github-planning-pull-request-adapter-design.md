@@ -166,9 +166,15 @@ It contains no command execution or response parsing.
 
 `src/host/github-gh-pull-request-parsing.test.ts` tests GitHub parsing rules.
 
-`src/host/github-gh-pull-requests.test.ts` tests the adapter through a recording
-`CommandRunner`. These tests assert required command arguments, dependency
-ordering, and observable results.
+`src/host/github-gh-pull-requests.test.ts` tests repository resolution and views
+through a recording `CommandRunner`.
+
+`src/host/github-gh-pull-request-operations.test.ts` tests discovery and
+mutation command contracts through the same recording seam.
+
+`test-support/github-gh-pull-request.ts` owns shared recording-runner fixtures.
+These tests assert required command arguments, dependency ordering, and
+observable results.
 
 Each production module must stay below 200 meaningful lines. The focused error
 module prevents error contracts from inflating the command or parsing modules.
@@ -700,6 +706,7 @@ Focused development uses:
 node --test src/host/pull-request-reference.test.ts
 node --test src/host/github-gh-pull-request-parsing.test.ts
 node --test src/host/github-gh-pull-requests.test.ts
+node --test src/host/github-gh-pull-request-operations.test.ts
 ```
 
 Final validation uses:
