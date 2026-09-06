@@ -77,14 +77,26 @@ interface, Git, and GitHub CLI (`gh`).
   pull request URL parser.
 - Modify `src/host/pull-request-reference.test.ts` for shared URL parser
   behavior.
-- Create `src/host/github-gh-pull-request-parsing.ts` for GitHub remote,
-  repository, and pull request parsing.
+- Create `src/host/github-gh-pull-request-parsing.ts` as the GitHub parsing
+  public facade.
+- Create `src/host/github-gh-repository-parsing.ts` for GitHub remote and
+  repository identity parsing.
+- Create `src/host/github-gh-pull-request-existence.ts` for machine-readable
+  pull request existence parsing.
+- Create `src/host/github-gh-pull-request-normalization.ts` for pull request
+  response normalization and create-output parsing.
+- Create `src/host/github-gh-pull-request-validation.ts` for deterministic
+  GitHub input validation.
+- Create `src/host/github-gh-pull-request-commands.ts` for GitHub command
+  execution and repository-context resolution.
+- Create `src/host/github-gh-pull-request-view.ts` for existence probing and
+  normalized pull request views.
 - Create `src/host/github-gh-pull-request-parsing.test.ts` for parser and
   normalization behavior.
 - Create `src/host/github-gh-pull-request-errors.ts` for stable adapter error
   identifiers and diagnostic fields.
-- Create `src/host/github-gh-pull-requests.ts` for command execution and
-  `PullRequestHost` behavior.
+- Create `src/host/github-gh-pull-requests.ts` for `PullRequestHost`
+  orchestration.
 - Create `src/host/github-gh-pull-requests.test.ts` for exact `git` and `gh`
   command contracts.
 - Do not modify `src/host/pull-requests.ts`. It is the fixed provider-neutral
@@ -2348,6 +2360,12 @@ git commit -m "feat(host): mutate GitHub planning pull requests"
 - Inspect: `src/host/pull-request-reference.test.ts`
 - Inspect: `src/host/github-gh-pull-request-errors.ts`
 - Inspect: `src/host/github-gh-pull-request-parsing.ts`
+- Inspect: `src/host/github-gh-repository-parsing.ts`
+- Inspect: `src/host/github-gh-pull-request-existence.ts`
+- Inspect: `src/host/github-gh-pull-request-normalization.ts`
+- Inspect: `src/host/github-gh-pull-request-validation.ts`
+- Inspect: `src/host/github-gh-pull-request-commands.ts`
+- Inspect: `src/host/github-gh-pull-request-view.ts`
 - Inspect: `src/host/github-gh-pull-requests.ts`
 - Inspect: `src/host/github-gh-pull-request-parsing.test.ts`
 - Inspect: `src/host/github-gh-pull-requests.test.ts`
@@ -2374,10 +2392,28 @@ src/host/github-gh-pull-request-errors.ts
   Stable adapter error identifiers and diagnostic fields only.
 
 src/host/github-gh-pull-request-parsing.ts
-  Pure input validation plus GitHub identity and JSON normalization only.
+  Public parsing facade only.
+
+src/host/github-gh-repository-parsing.ts
+  GitHub remote and repository identity parsing only.
+
+src/host/github-gh-pull-request-existence.ts
+  Machine-readable pull request existence parsing only.
+
+src/host/github-gh-pull-request-normalization.ts
+  Pull request response normalization and create-output parsing only.
+
+src/host/github-gh-pull-request-validation.ts
+  Deterministic GitHub input validation only.
+
+src/host/github-gh-pull-request-commands.ts
+  Command execution and repository-context resolution only.
+
+src/host/github-gh-pull-request-view.ts
+  Existence probing and normalized pull request views only.
 
 src/host/github-gh-pull-requests.ts
-  Command execution, repository-context validation, and error mapping only.
+  Pull request host orchestration and error mapping only.
 ```
 
 For this plan, a meaningful line is a nonblank source line outside import
@@ -2394,6 +2430,12 @@ const paths = [
   "src/host/pull-request-reference.ts",
   "src/host/github-gh-pull-request-errors.ts",
   "src/host/github-gh-pull-request-parsing.ts",
+  "src/host/github-gh-repository-parsing.ts",
+  "src/host/github-gh-pull-request-existence.ts",
+  "src/host/github-gh-pull-request-normalization.ts",
+  "src/host/github-gh-pull-request-validation.ts",
+  "src/host/github-gh-pull-request-commands.ts",
+  "src/host/github-gh-pull-request-view.ts",
   "src/host/github-gh-pull-requests.ts",
 ];
 
@@ -2473,6 +2515,12 @@ test-support/command-runner.ts
 src/host/pull-request-reference.ts
 src/host/pull-request-reference.test.ts
 src/host/github-gh-pull-request-errors.ts
+src/host/github-gh-repository-parsing.ts
+src/host/github-gh-pull-request-existence.ts
+src/host/github-gh-pull-request-normalization.ts
+src/host/github-gh-pull-request-validation.ts
+src/host/github-gh-pull-request-commands.ts
+src/host/github-gh-pull-request-view.ts
 src/host/github-gh-pull-request-parsing.test.ts
 src/host/github-gh-pull-request-parsing.ts
 src/host/github-gh-pull-requests.test.ts

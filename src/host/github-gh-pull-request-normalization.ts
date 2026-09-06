@@ -128,7 +128,7 @@ function summary(
   );
   const headSha = requiredString(payload.headRefOid, "pull-request-payload");
   const body = requiredString(payload.body, "pull-request-payload");
-  if (!baseBranch || !headBranch || !headSha)
+  if (!baseBranch.trim() || !headBranch.trim() || !headSha.trim())
     throw response("pull-request-payload");
   const head = object(
     payload.headRepository,

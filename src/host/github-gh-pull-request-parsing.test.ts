@@ -135,6 +135,9 @@ test("classifies malformed provider pull request fields as response errors", () 
   for (const [overrides, reason] of [
     [{ number: 0 }, "pull-request-payload"],
     [{ number: 1.5 }, "pull-request-payload"],
+    [{ baseRefName: " " }, "pull-request-payload"],
+    [{ headRefName: "\t" }, "pull-request-payload"],
+    [{ headRefOid: "\n" }, "pull-request-payload"],
     [{ url: "http://github.com/acme/project/pull/42" }, "pull-request-url"],
     [
       { url: "https://github.com:8443/acme/project/pull/42" },
