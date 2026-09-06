@@ -1,8 +1,8 @@
 # Preserve Ignored Agent State During Blocked-Run Retry Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `subagent-driven-development` (recommended) or `executing-plans` to implement
-> this plan task by task. Track every checkbox (`- [ ]`) as it is completed.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development`
+> (recommended) or `executing-plans` to implement this plan task by task. Track
+> every checkbox (`- [ ]`) as it is completed.
 
 **Goal:** Let an explicit retry resume a verified clean Issue run worktree in
 place while preserving all ignored content, without weakening safeguards for
@@ -25,8 +25,8 @@ Astro documentation; no new dependency.
 
 ## Global Constraints
 
-- Use the domain terms **Issue run**, **Run attempt**, and **Run recovery state**
-  from `CONTEXT.md`.
+- Use the domain terms **Issue run**, **Run attempt**, and **Run recovery
+  state** from `CONTEXT.md`.
 - Only an explicit, acknowledged blocked retry may use this exception; do not
   change issue selection, labels, leases, checkpoints, artifacts, or reset seed
   semantics.
@@ -52,8 +52,8 @@ Astro documentation; no new dependency.
   processes.
 - Keep `pipeline.ts` (currently about 936 lines) as narrow orchestration only.
   Put focused ignored-content tests in new files rather than expanding
-  `recovery.test.ts` (currently about 771 lines) or
-  `recovery-mutation.test.ts` (currently about 707 lines).
+  `recovery.test.ts` (currently about 771 lines) or `recovery-mutation.test.ts`
+  (currently about 707 lines).
 - `recovery-archive.ts` continues to serialize assessment evidence; no persisted
   Run recovery state schema field is added.
 - Do not change `package.json`, `package-lock.json`, or `npm-shrinkwrap.json`.
@@ -106,13 +106,15 @@ Astro documentation; no new dependency.
 
 ### Destructive recovery safety
 
-- `src/cli/commands/run-once/recovery-mutation-ignored-content.test.ts` — add the
-  missing real-Git refresh race where ignored content appears after assessment
-  and stops detach, ref update, and publication.
-- `src/cli/commands/run/reset/reset.test.ts` — prove pre-existing ignored content
-  refuses reset before archive or mutation and reports the blocked reset action.
+- `src/cli/commands/run-once/recovery-mutation-ignored-content.test.ts` — add
+  the missing real-Git refresh race where ignored content appears after
+  assessment and stops detach, ref update, and publication.
+- `src/cli/commands/run/reset/reset.test.ts` — prove pre-existing ignored
+  content refuses reset before archive or mutation and reports the blocked reset
+  action.
 - `src/cli/commands/run-once/recovery-mutation-helpers.ts` — intentionally
-  unchanged; its complete ordinary-plus-ignored late check remains authoritative.
+  unchanged; its complete ordinary-plus-ignored late check remains
+  authoritative.
 - `src/cli/commands/run-once/recovery-mutation-refresh.ts` and
   `src/cli/commands/run-once/recovery-mutation-reset.ts` — intentionally
   unchanged unless a new regression test exposes a real safety gap.
@@ -161,10 +163,7 @@ export type RunRecoveryAction =
   | "recreate-and-resume"
   | "archive-reset-and-start";
 
-export type RunRecoveryMutatingAction = Exclude<
-  RunRecoveryAction,
-  "resume"
->;
+export type RunRecoveryMutatingAction = Exclude<RunRecoveryAction, "resume">;
 
 export type RunRecoveryRefusalReason =
   | RunRecoveryClassification
@@ -174,8 +173,8 @@ export type RunRecoveryRefusalReason =
 
 - Replace ambiguous `worktree.clean?: boolean` with
   `worktree.ordinaryClean?: boolean`. `ordinaryClean` is true exactly when the
-  configured ordinary-status exclusions leave no blocking line; it remains
-  true when `ignoredEntries` is non-empty.
+  configured ordinary-status exclusions leave no blocking line; it remains true
+  when `ignoredEntries` is non-empty.
 - The assessment refusal variant for `reason: "ignored-worktree-content"`
   carries `blockedAction: RunRecoveryMutatingAction`. Other assessed refusals do
   not claim a blocked action. The existing `active-run` refusal remains
@@ -259,8 +258,7 @@ Add six more cases with these outcomes:
 Assert `formatRunRecoveryDecision()` says the destructive action cannot prove
 ignored content will survive, lists normalized entries, and does not contain
 `resuming in place`. Assert formatting an allowed ignored `resume` says
-`resuming in place without workspace mutation` and `preserving ignored
-entries`.
+`resuming in place without workspace mutation` and `preserving ignored entries`.
 
 - [ ] **Step 2: Run the focused test and verify the regression**
 
@@ -272,9 +270,9 @@ node --test \
 ```
 
 Expected: FAIL because ignored entries currently become the intrinsic
-`ignored-worktree-content` classification, current/commit-bearing retries refuse,
-`ordinaryClean` and `blockedAction` do not exist, and preservation formatting is
-absent.
+`ignored-worktree-content` classification, current/commit-bearing retries
+refuse, `ordinaryClean` and `blockedAction` do not exist, and preservation
+formatting is absent.
 
 - [ ] **Step 3: Clarify the recovery types**
 
@@ -313,15 +311,12 @@ Change `classify()` so its ordered decisions are:
 ```ts
 if (workspaceIdentityIsUnsafe) return "workspace-unverifiable";
 if (input.dirty) return "dirty-worktree";
-if (!input.branchExists && input.savedCommits.length)
-  return "unmerged-commits";
+if (!input.branchExists && input.savedCommits.length) return "unmerged-commits";
 if (input.active && !input.fenced) return "legacy-active-unfenced";
-if (!input.branchExists || !input.worktreeExists)
-  return "recreatable-clean";
+if (!input.branchExists || !input.worktreeExists) return "recreatable-clean";
 if (input.commits.length || (input.divergence?.ahead ?? 0) > 0)
   return "resumable-with-commits";
-if ((input.divergence?.behind ?? 0) > 0)
-  return "resumable-stale-base";
+if ((input.divergence?.behind ?? 0) > 0) return "resumable-stale-base";
 return "resumable-current";
 ```
 
@@ -384,8 +379,9 @@ dirty, commit-loss, and identity diagnostics.
 - [ ] **Step 7: Update existing typed fixtures and archived evidence coverage**
 
 Update `recovery.test.ts` assessment factories and any compile-time fixtures to
-use `ordinaryClean`. Preserve all legacy `BlockedRunRecoveryReport.worktree.clean`
-uses because that is a separate compatibility type.
+use `ordinaryClean`. Preserve all legacy
+`BlockedRunRecoveryReport.worktree.clean` uses because that is a separate
+compatibility type.
 
 In `recovery-archive.test.ts`, include an assessment fixture with
 `ordinaryClean: true`, a non-empty `ignoredStatus`, and a non-empty
@@ -470,8 +466,8 @@ onPi?: (
 ) => CommandResult | Promise<CommandResult>;
 ```
 
-Import `Call` from `mock-runner.ts`. For worktree status, use
-`ignoredStatus` only when arguments contain `--ignored=matching`; otherwise use
+Import `Call` from `mock-runner.ts`. For worktree status, use `ignoredStatus`
+only when arguments contain `--ignored=matching`; otherwise use
 `ordinaryStatus`. Retain `dirtyStatus` as a backwards-compatible fallback for
 existing tests:
 
@@ -531,18 +527,16 @@ assert.ok(
   ),
 );
 assert.equal(timeline.at(-1), "pi");
-assert.deepEqual(
-  runner.calls.filter(isRecoveryMutationCommand),
-  [],
-);
+assert.deepEqual(runner.calls.filter(isRecoveryMutationCommand), []);
 ```
 
-Define `isRecoveryMutationCommand()` to reject `git worktree add`, `git worktree
-move`, `git update-ref`, `git reset`, and `git clean`. Also assert the worktree
-root keeps the same device/inode, the result reaches `pr-created`, and the
-commit-bearing-behind case does not refresh to the base.
+Define `isRecoveryMutationCommand()` to reject `git worktree add`,
+`git worktree move`, `git update-ref`, `git reset`, and `git clean`. Also assert
+the worktree root keeps the same device/inode, the result reaches `pr-created`,
+and the commit-bearing-behind case does not refresh to the base.
 
-- [ ] **Step 3: Run the pipeline test and verify the missing outcome diagnostic**
+- [ ] **Step 3: Run the pipeline test and verify the missing outcome
+      diagnostic**
 
 Run:
 
@@ -635,7 +629,8 @@ git commit -m "fix: preserve ignored state on blocked retry"
 - Verify unchanged: `src/cli/commands/run-once/recovery-mutation-helpers.ts`
 - Verify unchanged: `src/cli/commands/run-once/recovery-mutation-refresh.ts`
 - Verify unchanged: `src/cli/commands/run-once/recovery-mutation-reset.ts`
-- Verify unchanged: `src/cli/commands/run-once/recovery-mutation.test.ts:409-466`
+- Verify unchanged:
+  `src/cli/commands/run-once/recovery-mutation.test.ts:409-466`
 
 **Interfaces:**
 
@@ -648,26 +643,31 @@ git commit -m "fix: preserve ignored state on blocked retry"
 
 - [ ] **Step 1: Add a real-Git pre-existing ignored reset test**
 
-Use the existing `resetFixture()` in `run/reset/reset.test.ts`. Add
-`.env.local` to the repository's common `.git/info/exclude`, write a sentinel in
-the registered issue worktree, and record the issue branch OID. Inject archive
-and mutation spies:
+Use the existing `resetFixture()` in `run/reset/reset.test.ts`. Add `.env.local`
+to the repository's common `.git/info/exclude`, write a sentinel in the
+registered issue worktree, and record the issue branch OID. Inject archive and
+mutation spies:
 
 ```ts
 let archiveCalled = false;
 let mutationCalled = false;
 await assert.rejects(
-  resetIssueRun(fixture.runner, fixture.runConfig, { now: NOW }, {
-    ...fixture.dependencies,
-    archiveRecovery: async () => {
-      archiveCalled = true;
-      return { path: "must-not-exist" };
+  resetIssueRun(
+    fixture.runner,
+    fixture.runConfig,
+    { now: NOW },
+    {
+      ...fixture.dependencies,
+      archiveRecovery: async () => {
+        archiveCalled = true;
+        return { path: "must-not-exist" };
+      },
+      executeMutation: async () => {
+        mutationCalled = true;
+        throw new Error("mutation must not run");
+      },
     },
-    executeMutation: async () => {
-      mutationCalled = true;
-      throw new Error("mutation must not run");
-    },
-  }),
+  ),
   (error: unknown) => {
     assert.match(String(error), /ignored-worktree-content/);
     assert.match(String(error), /archive-reset-and-start/);
@@ -686,14 +686,14 @@ positioned before both destructive reset phases.
 - [ ] **Step 2: Add the missing late-ignored refresh race test**
 
 Create `recovery-mutation-ignored-content.test.ts` with a real repository whose
-initial commit includes `.gitignore` for `.cache/`, a stale issue branch/worktree,
-and a newer base commit. Construct the existing pinned
+initial commit includes `.gitignore` for `.cache/`, a stale issue
+branch/worktree, and a newer base commit. Construct the existing pinned
 `refresh-and-resume` decision. Wrap the real-Git runner so immediately after the
-first successful `git worktree move` it writes
-`quarantine/.cache/late.bin` and records all subsequent commands.
+first successful `git worktree move` it writes `quarantine/.cache/late.bin` and
+records all subsequent commands.
 
-Invoke `executeRunRecoveryMutation()` and assert a
-`RunRecoveryMutationError`. Then assert:
+Invoke `executeRunRecoveryMutation()` and assert a `RunRecoveryMutationError`.
+Then assert:
 
 ```ts
 assert.deepEqual(
@@ -710,8 +710,7 @@ assert.equal(
   false,
 );
 assert.equal(
-  calls.filter((args) => args[0] === "worktree" && args[1] === "move")
-    .length,
+  calls.filter((args) => args[0] === "worktree" && args[1] === "move").length,
   1,
 );
 ```
@@ -878,13 +877,13 @@ git commit -m "docs: explain ignored state recovery safety"
 
 ## Acceptance Mapping
 
-| Acceptance criterion | Plan evidence |
-| --- | --- |
-| Clean commit-bearing retry resumes with ignored files | Task 1 selects `resume`; Task 2 exercises an ahead-and-behind branch through Pi. |
-| Ignored workflow bytes are identical at agent start | Task 2 reads four sentinel files and compares bytes/device/inode in the Pi callback. |
-| Retry does not refresh, reset, delete, or replace | Task 2 checks worktree identity and rejects every recovery mutation command. |
-| Current zero-ahead worktree resumes | Task 1 policy and Task 2 pipeline cases use `ahead = 0`, `behind = 0`. |
-| Destructive mutation remains fail-closed | Tasks 1 and 3 refuse stale refresh/recreate/reset and preserve reset's stronger commit refusal. |
-| Refresh/reset late races remain effective | Task 3 adds refresh race coverage and reruns the existing reset race. |
-| Diagnostics distinguish preserve from refuse | Task 1 formats separate messages; Task 2 proves preservation is emitted before Pi; Task 3 checks reset refusal action. |
-| Workflow and ordinary ignored paths are covered | Tasks 1 and 2 include `.pi/todos/`, `.superpowers/`, and `.cache/`. |
+| Acceptance criterion                                  | Plan evidence                                                                                                          |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Clean commit-bearing retry resumes with ignored files | Task 1 selects `resume`; Task 2 exercises an ahead-and-behind branch through Pi.                                       |
+| Ignored workflow bytes are identical at agent start   | Task 2 reads four sentinel files and compares bytes/device/inode in the Pi callback.                                   |
+| Retry does not refresh, reset, delete, or replace     | Task 2 checks worktree identity and rejects every recovery mutation command.                                           |
+| Current zero-ahead worktree resumes                   | Task 1 policy and Task 2 pipeline cases use `ahead = 0`, `behind = 0`.                                                 |
+| Destructive mutation remains fail-closed              | Tasks 1 and 3 refuse stale refresh/recreate/reset and preserve reset's stronger commit refusal.                        |
+| Refresh/reset late races remain effective             | Task 3 adds refresh race coverage and reruns the existing reset race.                                                  |
+| Diagnostics distinguish preserve from refuse          | Task 1 formats separate messages; Task 2 proves preservation is emitted before Pi; Task 3 checks reset refusal action. |
+| Workflow and ordinary ignored paths are covered       | Tasks 1 and 2 include `.pi/todos/`, `.superpowers/`, and `.cache/`.                                                    |

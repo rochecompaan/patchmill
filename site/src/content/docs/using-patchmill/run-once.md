@@ -179,12 +179,19 @@ patchmill run reset --issue 123
 patchmill run lease repair --issue 123
 ```
 
-A clean current workspace, stale zero-ahead branch, clean branch with unique
-commits, or safely recreatable workspace can resume. Unique commits are
-preserved at their existing base without a merge or rewrite. Only an empty stale
-branch refreshes to a pinned current base. Dirty or ignored content,
-unmerged/lost commits, unverifiable paths, live leases, and unfenced legacy
-active state refuse automatic recovery.
+A verified ordinary-clean current workspace or clean branch with unique commits
+resumes at the same path without workspace mutation. Every ignored entry remains
+in place through the Pi invocation; `.pi/todos/`, `.superpowers/`, environment
+files, and generated content all follow the same path-agnostic rule. Unique
+commits are preserved at their existing base without a merge or rewrite.
+
+An empty zero-ahead branch behind the base still requires refresh to a pinned
+current base, so ignored content blocks that refresh instead of resuming stale
+content. Ignored content also blocks recreation and reset: those actions cannot
+prove it will survive and the refusal names the blocked action. An allowed
+in-place retry reports that it is resuming in place and lists the preserved
+entries. Dirty content, unmerged/lost commits, unverifiable paths, live leases,
+and unfenced legacy active state continue to refuse automatic recovery.
 
 `patchmill run reset --issue N` archives the exact state, moves the expected
 checkout to retained quarantine before ref updates, deletes only a
