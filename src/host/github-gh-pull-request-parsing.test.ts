@@ -9,6 +9,7 @@ import {
 import {
   GitHubPullRequestInputError,
   GitHubPullRequestJsonError,
+  GitHubPullRequestResponseError,
 } from "./github-gh-pull-request-errors.ts";
 import {
   assertGitHubHeadBranch,
@@ -127,6 +128,62 @@ test("normalizes same-repository pull requests and rejects cross-repository head
   assert.throws(
     () => parseGitHubPullRequest("not-json", target),
     GitHubPullRequestJsonError,
+  );
+});
+
+test("classifies malformed provider pull request fields as response errors", () => {
+  for (const [overrides, reason] of [
+    [{ number: 0 }, "pull-request-payload"],
+    [{ number: 1.5 }, "pull-request-payload"],
+    [{ url: "http://github.com/acme/project/pull/42" }, "pull-request-url"],
+    [
+      { url: "https://github.com:8443/acme/project/pull/42" },
+      "pull-request-url",
+    ],
+  ] as const) {
+    assert.throws(
+      () => parseGitHubPullRequest(JSON.stringify(payload(overrides)), target),
+      (error: unknown) => {
+        assert.ok(error instanceof GitHubPullRequestResponseError);
+        assert.equal(error.reason, reason);
+        return true;
+      },
+    );
+  }
+});
+
+test("reports missing repository identity fields as identity errors", () => {
+  assert.throws(
+    () =>
+      parseGitHubRepositoryIdentity(
+        JSON.stringify({ url: "https://github.com/acme/project" }),
+      ),
+    PullRequestIdentityError,
+  );
+  assert.throws(
+    () =>
+      parseGitHubRepositoryIdentity(
+        JSON.stringify({
+          nameWithOwner: "acme/project",
+          url: "https://github.com/acme/other",
+        }),
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof PullRequestIdentityError);
+      assert.deepEqual(error.expected, {
+        provider: "github-gh",
+        host: "github.com",
+        owner: "acme",
+        repository: "project",
+      });
+      assert.deepEqual(error.actual, {
+        provider: "github-gh",
+        host: "github.com",
+        owner: "acme",
+        repository: "other",
+      });
+      return true;
+    },
   );
 });
 
