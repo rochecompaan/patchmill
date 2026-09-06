@@ -291,6 +291,37 @@ test("resolves every configured push destination sequentially", async () => {
   );
 });
 
+test("waits for each multi-push provider lookup before starting the next", async () => {
+  const first = Promise.withResolvers<CommandResult>();
+  const runner = new Runner(
+    new Map([
+      [
+        key("git", remote),
+        [
+          ok(
+            "git@github.com:acme/project.git\nhttps://github.com/acme/project.git\n",
+          ),
+        ],
+      ],
+      [key("gh", remoteRepo), [first.promise, ok(targetPayload)]],
+    ]),
+  );
+  const pending = new GitHubGhPullRequestHost({
+    runner,
+    repoRoot: "/repo",
+    pushRemote: "publish",
+  }).resolveRemoteRepositoryIdentity("publish");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    runner.calls.filter(
+      (call) => key(call.command, call.args) === key("gh", remoteRepo),
+    ).length,
+    1,
+  );
+  first.resolve(ok(targetPayload));
+  await pending;
+});
+
 test("gets a validated same-repository pull request using exact GitHub commands", async () => {
   const runner = setup([
     [
@@ -441,6 +472,32 @@ test("uses host-qualified GitHub Enterprise commands", async () => {
   );
 });
 
+test("preserves rate-limit and transport probe failures as command errors", async () => {
+  for (const code of [2, 75]) {
+    const runner = setup([
+      ["gh", existence, { code, stdout: "diagnostic", stderr: "diagnostic" }],
+    ]);
+    await assert.rejects(
+      new GitHubGhPullRequestHost({
+        runner,
+        repoRoot: "/repo",
+        pushRemote: "publish",
+      }).getPullRequest({ targetRepository: target, number: 42 }),
+      (error: unknown) => {
+        assert.ok(error instanceof GitHubPullRequestCommandError);
+        assert.equal(error.reason, "command-failed");
+        assert.equal(error.operation, "probe-pull-request");
+        assert.equal(error.exitCode, code);
+        assert.equal(
+          Object.prototype.propertyIsEnumerable.call(error, "diagnostics"),
+          false,
+        );
+        return true;
+      },
+    );
+  }
+});
+
 test("classifies only the exact exit-one missing payload as not found", async () => {
   const missing = JSON.stringify({
     data: { repository: { nameWithOwner: "acme/project", pullRequest: null } },
@@ -459,6 +516,82 @@ test("classifies only the exact exit-one missing payload as not found", async ()
     PullRequestNotFoundError,
   );
 });
+test("rejects push, query, and reference identities before discovery or view", async () => {
+  const other = { ...target, owner: "other" };
+  const list = [
+    "pr",
+    "list",
+    "--repo",
+    "github.com/acme/project",
+    "--state",
+    "all",
+    "--base",
+    "main",
+    "--head",
+    "agent/change",
+    "--limit",
+    "1000",
+    "--json",
+    fields,
+  ];
+  const pushRunner = setup(
+    [],
+    undefined,
+    JSON.stringify({
+      nameWithOwner: "other/project",
+      url: "https://github.com/other/project",
+    }),
+  );
+  await assert.rejects(
+    new GitHubGhPullRequestHost({
+      runner: pushRunner,
+      repoRoot: "/repo",
+      pushRemote: "publish",
+    }).findPullRequests({
+      targetRepository: target,
+      baseBranch: "main",
+      headRepository: target,
+      headBranch: "agent/change",
+    }),
+    PullRequestIdentityError,
+  );
+  assert.equal(
+    pushRunner.calls.some(
+      (call) => key(call.command, call.args) === key("gh", list),
+    ),
+    false,
+  );
+  for (const operation of ["query", "reference"] as const) {
+    const runner = setup();
+    const host = new GitHubGhPullRequestHost({
+      runner,
+      repoRoot: "/repo",
+      pushRemote: "publish",
+    });
+    if (operation === "query")
+      await assert.rejects(
+        host.findPullRequests({
+          targetRepository: other,
+          baseBranch: "main",
+          headRepository: target,
+          headBranch: "agent/change",
+        }),
+        PullRequestIdentityError,
+      );
+    else
+      await assert.rejects(
+        host.getPullRequest({ targetRepository: other, number: 42 }),
+        PullRequestIdentityError,
+      );
+    assert.equal(
+      runner.calls.some(
+        (call) => call.args[0] === "api" || call.args[1] === "list",
+      ),
+      false,
+    );
+  }
+});
+
 test("reads bodies and discovers exact pull requests with explicit all-state limit", async () => {
   const list = [
     "pr",

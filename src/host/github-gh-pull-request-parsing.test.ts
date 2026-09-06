@@ -80,6 +80,35 @@ test("parses supported GitHub remotes and provider-normalized repository payload
   );
 });
 
+test("parses SSH remotes and rejects unsafe remote forms without credential disclosure", () => {
+  assert.deepEqual(
+    parseGitHubRemoteRepositorySelector(
+      "ssh://git@github.example.com/Platform/Project.git",
+    ),
+    { host: "github.example.com", owner: "Platform", repository: "Project" },
+  );
+  for (const remote of [
+    "../project",
+    "/home/user/project",
+    "file:///home/user/project",
+    "https://github.com/owner",
+    "https://github.com/owner/project/extra",
+    "ssh://git@github.example.com/owner",
+  ])
+    assert.throws(() => parseGitHubRemoteRepositorySelector(remote));
+  assert.throws(
+    () =>
+      parseGitHubRemoteRepositorySelector(
+        "https://secret-user:secret-token@github.com/acme/project/extra",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.doesNotMatch(error.message, /secret-user|secret-token/u);
+      return true;
+    },
+  );
+});
+
 test("validates deterministic GitHub inputs before command use", () => {
   assert.doesNotThrow(() => assertGitHubHeadBranch("@"));
   for (const branch of [
@@ -129,6 +158,38 @@ test("normalizes same-repository pull requests and rejects cross-repository head
     () => parseGitHubPullRequest("not-json", target),
     GitHubPullRequestJsonError,
   );
+  assert.throws(
+    () =>
+      parseGitHubPullRequest(
+        JSON.stringify(
+          payload({ url: "https://github.com/other/project/pull/42" }),
+        ),
+        target,
+      ),
+    PullRequestIdentityError,
+  );
+});
+
+test("normalizes closed pull requests and rejects inconsistent states", () => {
+  assert.equal(
+    parseGitHubPullRequest(JSON.stringify(payload({ state: "CLOSED" })), target)
+      .status,
+    "closed-unmerged",
+  );
+  for (const overrides of [
+    { state: "UNKNOWN" },
+    { state: "OPEN", mergeCommit: { oid: "merge" } },
+    { state: "CLOSED", mergeCommit: { oid: "merge" } },
+    { state: "MERGED", mergeCommit: null },
+  ])
+    assert.throws(
+      () => parseGitHubPullRequest(JSON.stringify(payload(overrides)), target),
+      (error: unknown) => {
+        assert.ok(error instanceof GitHubPullRequestResponseError);
+        assert.equal(error.reason, "pull-request-state");
+        return true;
+      },
+    );
 });
 
 test("classifies malformed provider pull request fields as response errors", () => {
@@ -190,6 +251,40 @@ test("reports missing repository identity fields as identity errors", () => {
   );
 });
 
+test("validates present and malformed GraphQL existence payloads", () => {
+  const present = {
+    data: {
+      repository: {
+        nameWithOwner: "acme/project",
+        pullRequest: { number: 42 },
+      },
+    },
+  };
+  assert.equal(
+    parseGitHubPullRequestExistence(JSON.stringify(present), target, 42),
+    "present",
+  );
+  for (const value of [
+    {
+      data: {
+        repository: { nameWithOwner: "other/project", pullRequest: null },
+      },
+    },
+    { data: { repository: { nameWithOwner: "acme/project" } } },
+    {
+      data: {
+        repository: {
+          nameWithOwner: "acme/project",
+          pullRequest: { number: 43 },
+        },
+      },
+    },
+  ])
+    assert.throws(() =>
+      parseGitHubPullRequestExistence(JSON.stringify(value), target, 42),
+    );
+});
+
 test("proves absence only from the exact GraphQL signature and fails closed at the list limit", () => {
   const missing = {
     data: { repository: { nameWithOwner: "acme/project", pullRequest: null } },
@@ -221,4 +316,12 @@ test("proves absence only from the exact GraphQL signature and fails closed at t
     ),
     { targetRepository: target, number: 42 },
   );
+  for (const output of [
+    "",
+    "https://github.com/acme/project/pull/42 https://github.com/acme/project/pull/43",
+  ])
+    assert.throws(
+      () => parseCreatedGitHubPullRequest(output, target),
+      GitHubPullRequestResponseError,
+    );
 });

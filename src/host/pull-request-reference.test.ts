@@ -50,6 +50,10 @@ test("parsePullRequestUrl exposes canonical URL parts without accepting unsafe f
     "ftp://github.com/acme/repo/pull/42",
     "https://github.com/acme/repo/pull/0",
     "https://github.com/acme/repo/pull/42?x=y",
+    "https://github.com/acme/repo/pull/42#fragment",
+    "file:///acme/repo/pull/42",
+    "https://github.com/acme//repo/pull/42",
+    "https://github.com/acme/repo/pull/42/extra",
     "https://github.com/acme/repo/pull/9007199254740992",
   ])
     assert.throws(() => parsePullRequestUrl(value, "pull"));

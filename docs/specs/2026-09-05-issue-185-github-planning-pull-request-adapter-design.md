@@ -99,8 +99,9 @@ delegates to that structured parser.
 
 ### `src/host/github-gh-pull-requests.ts`
 
-This module owns the `GitHubGhPullRequestHost` adapter. It runs `git` and `gh`
-commands, applies operation rules, and maps command outcomes to host errors.
+This module owns the `GitHubGhPullRequestHost` adapter orchestration and maps
+operation outcomes to host errors. Focused command and view modules run `git`
+and `gh` commands.
 
 The public constructor accepts these options:
 
@@ -120,16 +121,39 @@ The adapter has `id: "github-gh"`. This module does not export a new factory.
 
 ### `src/host/github-gh-pull-request-parsing.ts`
 
-This module owns GitHub-specific parsing and normalization. It parses remote
-URLs, repository payloads, existence-probe payloads, and pull request payloads.
-It uses `parsePullRequestUrl` for canonical pull request URLs, then applies
-GitHub host and identity rules.
+This public facade exports the focused, pure GitHub parsing APIs below.
 
-It also validates pull request numbers and GitHub head branch names before
+### `src/host/github-gh-repository-parsing.ts`
+
+This module parses GitHub remote URLs and provider-normalized repository
+payloads.
+
+### `src/host/github-gh-pull-request-existence.ts`
+
+This module parses machine-readable pull request existence-probe payloads.
+
+### `src/host/github-gh-pull-request-normalization.ts`
+
+This module normalizes pull request payloads and create-output URLs. It uses
+`parsePullRequestUrl` for canonical pull request URLs, then applies GitHub host
+and identity rules.
+
+### `src/host/github-gh-pull-request-validation.ts`
+
+This module validates pull request numbers and GitHub head branch names before
 command execution.
 
-The parsing module has no process, filesystem, or network access. The command
-adapter supplies all expected identities and command context.
+### `src/host/github-gh-pull-request-commands.ts`
+
+This module executes GitHub and Git commands and resolves repository context.
+
+### `src/host/github-gh-pull-request-view.ts`
+
+This module performs existence probing and normalized pull request views.
+
+The parsing and validation modules have no process, filesystem, or network
+access. The command adapter supplies all expected identities and command
+context.
 
 ### `src/host/github-gh-pull-request-errors.ts`
 
