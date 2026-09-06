@@ -67,6 +67,7 @@ import {
 } from "./pipeline-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { withIssueRunLease } from "./recovery-lease.ts";
+import { formatRunRecoveryDecision } from "./recovery.ts";
 import {
   adoptLegacyRecoveryLease,
   recoverBlockedWorkspace,
@@ -416,7 +417,7 @@ async function runOneIssueInternal(
     issue.title,
     worktreeStrategy,
   );
-  await recoverBlockedWorkspace({
+  const blockedRecovery = await recoverBlockedWorkspace({
     runner,
     config,
     issueNumber: issue.number,
@@ -426,6 +427,22 @@ async function runOneIssueInternal(
     resolvedArtifacts,
     lease: options.lease,
   });
+  if (
+    blockedRecovery?.decision.action === "resume" &&
+    blockedRecovery.decision.assessment.worktree.ignoredEntries.length
+  ) {
+    const message = formatRunRecoveryDecision(blockedRecovery.decision);
+    await progress(runOptions, "info", "recovery", message, {
+      issueNumber: issue.number,
+      consoleMessage: message,
+      data: {
+        action: "resume",
+        mutationApplied: false,
+        ignoredEntries:
+          blockedRecovery.decision.assessment.worktree.ignoredEntries,
+      },
+    });
+  }
   const assertExpectedWorkspaceIdentity = (): void => {
     if (
       resumableState &&

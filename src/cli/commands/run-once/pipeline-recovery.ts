@@ -12,7 +12,10 @@ import {
   planRunRecovery,
 } from "./recovery.ts";
 import { readRunLegacyMigrationFence } from "./recovery-lease-repair.ts";
-import { executeRunRecoveryMutation } from "./recovery-mutation.ts";
+import {
+  executeRunRecoveryMutation,
+  type RunRecoveryMutationResult,
+} from "./recovery-mutation.ts";
 import {
   AgentIssueSafetyError,
   hasBlockedRunRecoveryState,
@@ -22,6 +25,7 @@ import type {
   AgentIssueRunState,
   CommandRunner,
   IssueRunLease,
+  RunRecoveryDecision,
 } from "./types.ts";
 
 /** Adopts a fenced legacy active state before the caller performs pipeline effects. */
@@ -65,6 +69,11 @@ export async function adoptLegacyRecoveryLease(input: {
   });
 }
 
+export type BlockedWorkspaceRecoveryOutcome = {
+  decision: Exclude<RunRecoveryDecision, { action: "refuse" }>;
+  mutation?: RunRecoveryMutationResult;
+};
+
 /** Reassesses and applies only a safe blocked-workspace recovery under the held lease. */
 export async function recoverBlockedWorkspace(input: {
   runner: CommandRunner;
@@ -75,8 +84,9 @@ export async function recoverBlockedWorkspace(input: {
   ignoredPaths: string[];
   resolvedArtifacts: ResolvedIssueArtifactSources;
   lease: IssueRunLease | undefined;
-}): Promise<void> {
-  if (!hasBlockedRunRecoveryState(input.existingState) || !input.lease) return;
+}): Promise<BlockedWorkspaceRecoveryOutcome | undefined> {
+  if (!hasBlockedRunRecoveryState(input.existingState) || !input.lease)
+    return undefined;
   const snapshot = await readRunStateSnapshot(
     input.config.runStateDir,
     input.issueNumber,
@@ -134,11 +144,12 @@ export async function recoverBlockedWorkspace(input: {
   const decision = await reassess();
   if (decision.action === "refuse")
     throw new AgentIssueSafetyError(formatRunRecoveryDecision(decision));
-  if (decision.action !== "resume")
-    await executeRunRecoveryMutation({
-      decision,
-      runner: input.runner,
-      repoRoot: input.config.repoRoot,
-      reassess,
-    });
+  if (decision.action === "resume") return { decision };
+  const mutation = await executeRunRecoveryMutation({
+    decision,
+    runner: input.runner,
+    repoRoot: input.config.repoRoot,
+    reassess,
+  });
+  return { decision, mutation };
 }
