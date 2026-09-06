@@ -52,6 +52,7 @@ for (const scenario of [
       await mkdir(join(worktreeRoot, path, ".."), { recursive: true });
       await writeFile(join(worktreeRoot, path), bytes);
     }
+    const worktreeStat = await stat(worktreeRoot);
     const stats = new Map(
       await Promise.all(
         [...sentinels.keys()].map(
@@ -70,6 +71,9 @@ for (const scenario of [
       ignoredStatus,
       async onPi(_prompt, call) {
         assert.equal(call.cwd, worktreeRoot);
+        const currentWorktreeStat = await stat(worktreeRoot);
+        assert.equal(currentWorktreeStat.dev, worktreeStat.dev);
+        assert.equal(currentWorktreeStat.ino, worktreeStat.ino);
         for (const [path, expected] of sentinels) {
           assert.deepEqual(await readFile(join(worktreeRoot, path)), expected);
           const before = stats.get(path)!;
