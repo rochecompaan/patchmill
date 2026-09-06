@@ -17,15 +17,17 @@ type IntrinsicRefusalReason = Exclude<
   "ignored-worktree-content"
 >;
 
+const unsafeClassifications = {
+  "dirty-worktree": true,
+  "unmerged-commits": true,
+  "workspace-unverifiable": true,
+  "legacy-active-unfenced": true,
+} satisfies Record<RunRecoveryUnsafeClassification, true>;
+
 function isUnsafeClassification(
   classification: RunRecoveryClassification,
 ): classification is RunRecoveryUnsafeClassification {
-  return (
-    classification === "workspace-unverifiable" ||
-    classification === "dirty-worktree" ||
-    classification === "unmerged-commits" ||
-    classification === "legacy-active-unfenced"
-  );
+  return Object.hasOwn(unsafeClassifications, classification);
 }
 
 function refusal(
