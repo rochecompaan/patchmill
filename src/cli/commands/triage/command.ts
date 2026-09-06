@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { CommandResult, CommandRunner } from "./types.ts";
+import type { CommandResult, CommandRunner } from "../../../process/command.ts";
 
 function appendAbortMarker(stderr: string): string {
   return `${stderr}${stderr.length > 0 && !stderr.endsWith("\n") ? "\n" : ""}command aborted\n`;

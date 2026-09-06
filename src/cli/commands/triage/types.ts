@@ -4,6 +4,12 @@ import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillTriageCanonicalBucket } from "../../../policy/triage-state.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
+export type {
+  CommandResult,
+  CommandRunner,
+  CommandRunOptions,
+} from "../../../process/command.ts";
+
 export type TriageProgressEvent =
   | { type: "selected"; total: number }
   | {
@@ -40,28 +46,6 @@ export type TriageConfig = {
   skills: PatchmillSkillsConfig;
   onProgress?: TriageProgressHandler;
   onToolCall?: TriageToolCallHandler;
-};
-
-export type CommandResult = {
-  code: number;
-  stdout: string;
-  stderr: string;
-};
-
-export type CommandRunOptions = {
-  cwd?: string;
-  env?: Record<string, string | undefined>;
-  onStdout?: (chunk: string) => void;
-  onStderr?: (chunk: string) => void;
-  signal?: AbortSignal;
-};
-
-export type CommandRunner = {
-  run(
-    command: string,
-    args: string[],
-    options?: CommandRunOptions,
-  ): Promise<CommandResult>;
 };
 
 export type IssueCommentSummary = {
