@@ -28,6 +28,42 @@ import {
   view,
 } from "../../test-support/github-gh-pull-request.ts";
 
+test("derives the create head operand from the resolved owner for branch at", async () => {
+  const create = [
+    "pr",
+    "create",
+    "--repo",
+    "github.com/acme/project",
+    "--base",
+    "main",
+    "--head",
+    "acme:@",
+    "--title",
+    "title",
+    "--body",
+    "body",
+  ];
+  const runner = setup([["gh", create, ok("")]]);
+  await assert.rejects(
+    new GitHubGhPullRequestHost({
+      runner,
+      repoRoot: "/repo",
+      pushRemote: "publish",
+    }).createPullRequest({
+      title: "title",
+      body: "body",
+      baseBranch: "main",
+      headBranch: "@",
+    }),
+    GitHubPullRequestResponseError,
+  );
+  assert.ok(
+    runner.calls.some(
+      (call) => key(call.command, call.args) === key("gh", create),
+    ),
+  );
+});
+
 test("fails closed for empty and multiple create-command URLs with stable response codes", async () => {
   const create = [
     "pr",

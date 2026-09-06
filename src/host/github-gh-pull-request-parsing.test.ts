@@ -130,6 +130,64 @@ test("validates deterministic GitHub inputs before command use", () => {
     );
 });
 
+test("exposes stable input and JSON error fields", () => {
+  for (const [value, reason] of [
+    ["", "blank-head-branch"],
+    ["owner:branch", "qualified-head-branch"],
+    ["refs/heads/main", "invalid-head-branch"],
+  ] as const)
+    assert.throws(
+      () => assertGitHubHeadBranch(value),
+      (error: unknown) => {
+        assert.ok(error instanceof GitHubPullRequestInputError);
+        assert.equal(error.code, "github-pull-request-invalid-input");
+        assert.equal(error.reason, reason);
+        return true;
+      },
+    );
+  for (const value of [0, 1.5, 2_147_483_648])
+    assert.throws(
+      () => assertPullRequestNumber(value),
+      (error: unknown) => {
+        assert.ok(error instanceof GitHubPullRequestInputError);
+        assert.equal(error.code, "github-pull-request-invalid-input");
+        assert.equal(error.reason, "invalid-pull-request-number");
+        return true;
+      },
+    );
+  assert.throws(
+    () => parseGitHubPullRequest("not-json", target),
+    (error: unknown) => {
+      assert.ok(error instanceof GitHubPullRequestJsonError);
+      assert.equal(error.code, "github-pull-request-invalid-json");
+      assert.ok(error.cause instanceof SyntaxError);
+      return true;
+    },
+  );
+});
+
+test("rejects provider repository identities from another expected host", () => {
+  assert.throws(
+    () =>
+      parseGitHubRepositoryIdentity(
+        JSON.stringify({
+          nameWithOwner: "acme/project",
+          url: "https://github.com/acme/project",
+        }),
+        "github.example.com",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof PullRequestIdentityError);
+      assert.deepEqual(error.expected, {
+        ...target,
+        host: "github.example.com",
+      });
+      assert.deepEqual(error.actual, target);
+      return true;
+    },
+  );
+});
+
 test("normalizes same-repository pull requests and rejects cross-repository heads", () => {
   assert.equal(
     parseGitHubPullRequest(JSON.stringify(payload()), target, 42).status,

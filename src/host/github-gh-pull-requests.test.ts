@@ -28,11 +28,11 @@ import {
 } from "../../test-support/github-gh-pull-request.ts";
 
 test("rejects invalid options and public reference input before commands", async () => {
-  for (const options of [
-    { pushRemote: " " },
-    { pushRemote: "publish", discoveryLimit: 0 },
-    { pushRemote: "publish", discoveryLimit: 1.5 },
-  ]) {
+  for (const [options, reason] of [
+    [{ pushRemote: " " }, "blank-push-remote"],
+    [{ pushRemote: "publish", discoveryLimit: 0 }, "invalid-discovery-limit"],
+    [{ pushRemote: "publish", discoveryLimit: 1.5 }, "invalid-discovery-limit"],
+  ] as const) {
     assert.throws(
       () =>
         new GitHubGhPullRequestHost({
@@ -40,7 +40,12 @@ test("rejects invalid options and public reference input before commands", async
           repoRoot: "/repo",
           ...options,
         }),
-      GitHubPullRequestInputError,
+      (error: unknown) => {
+        assert.ok(error instanceof GitHubPullRequestInputError);
+        assert.equal(error.code, "github-pull-request-invalid-input");
+        assert.equal(error.reason, reason);
+        return true;
+      },
     );
   }
   const runner = new Runner(new Map());
@@ -110,6 +115,76 @@ test("rejects invalid public operation input before commands", async () => {
         GitHubPullRequestInputError,
       );
     assert.deepEqual(runner.calls, []);
+  }
+});
+
+test("maps repository-resolution command failures to stable error fields", async () => {
+  const remoteFailure = {
+    code: 7,
+    stdout: "remote output",
+    stderr: "remote error",
+  };
+  const repositoryFailure = {
+    code: 4,
+    stdout: "repo output",
+    stderr: "repo error",
+  };
+  const cases = [
+    {
+      runner: new Runner(
+        new Map([[key("gh", repository), [repositoryFailure]]]),
+      ),
+      operation: "resolve-target-repository",
+      command: "gh",
+      exitCode: 4,
+      reason: "authentication-required",
+      invoke: (host: GitHubGhPullRequestHost) =>
+        host.resolveTargetRepositoryIdentity(),
+    },
+    {
+      runner: new Runner(new Map([[key("git", remote), [remoteFailure]]])),
+      operation: "read-push-remote-urls",
+      command: "git",
+      exitCode: 7,
+      reason: "command-failed",
+      invoke: (host: GitHubGhPullRequestHost) =>
+        host.resolveRemoteRepositoryIdentity("publish"),
+    },
+    {
+      runner: new Runner(
+        new Map([
+          [key("git", remote), [ok("git@github.com:acme/project.git\n")]],
+          [key("gh", remoteRepo), [repositoryFailure]],
+        ]),
+      ),
+      operation: "resolve-push-repository",
+      command: "gh",
+      exitCode: 4,
+      reason: "authentication-required",
+      invoke: (host: GitHubGhPullRequestHost) =>
+        host.resolveRemoteRepositoryIdentity("publish"),
+    },
+  ] as const;
+  for (const entry of cases) {
+    const host = new GitHubGhPullRequestHost({
+      runner: entry.runner,
+      repoRoot: "/repo",
+      pushRemote: "publish",
+    });
+    await assert.rejects(entry.invoke(host), (error: unknown) => {
+      assert.ok(error instanceof GitHubPullRequestCommandError);
+      assert.equal(error.code, "github-pull-request-command-failed");
+      assert.equal(error.reason, entry.reason);
+      assert.equal(error.operation, entry.operation);
+      assert.equal(error.command, entry.command);
+      assert.equal(error.exitCode, entry.exitCode);
+      assert.equal(
+        Object.prototype.propertyIsEnumerable.call(error, "diagnostics"),
+        false,
+      );
+      assert.equal(error.diagnostics.code, entry.exitCode);
+      return true;
+    });
   }
 });
 
