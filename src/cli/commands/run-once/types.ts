@@ -338,10 +338,26 @@ export type RunRecoveryClassification =
   | "resumable-with-commits"
   | "recreatable-clean"
   | "dirty-worktree"
-  | "ignored-worktree-content"
   | "unmerged-commits"
   | "workspace-unverifiable"
   | "legacy-active-unfenced";
+export type RunRecoveryUnsafeClassification = Extract<
+  RunRecoveryClassification,
+  | "dirty-worktree"
+  | "unmerged-commits"
+  | "workspace-unverifiable"
+  | "legacy-active-unfenced"
+>;
+export type RunRecoveryAction =
+  | "resume"
+  | "refresh-and-resume"
+  | "recreate-and-resume"
+  | "archive-reset-and-start";
+export type RunRecoveryMutatingAction = Exclude<RunRecoveryAction, "resume">;
+export type RunRecoveryRefusalReason =
+  | RunRecoveryUnsafeClassification
+  | "ignored-worktree-content"
+  | "not-blocked";
 export type RunRecoveryLeaseOwner = {
   version: 1;
   issueNumber: number;
@@ -399,7 +415,7 @@ export type RunRecoveryAssessment = {
     exists: boolean;
     registered: boolean;
     registeredBranch?: string | undefined;
-    clean?: boolean | undefined;
+    ordinaryClean?: boolean | undefined;
     dirtyStatus?: string | undefined;
     ignoredStatus?: string | undefined;
     ignoredEntries: string[];
@@ -456,7 +472,14 @@ export type RunRecoveryDecision =
   | {
       action: "refuse";
       assessment: RunRecoveryAssessment;
-      reason: RunRecoveryClassification | "not-blocked";
+      reason: "ignored-worktree-content";
+      blockedAction: RunRecoveryMutatingAction;
+      guidance: string[];
+    }
+  | {
+      action: "refuse";
+      assessment: RunRecoveryAssessment;
+      reason: Exclude<RunRecoveryRefusalReason, "ignored-worktree-content">;
       guidance: string[];
     }
   | {

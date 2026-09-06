@@ -403,6 +403,98 @@ async function resetFixture(fail?: (args: string[]) => boolean) {
   };
 }
 
+test("ignored content refuses reset before archive or mutation", async () => {
+  const fixture = await resetFixture();
+  await writeFile(
+    join(fixture.runConfig.repoRoot, ".git", "info", "exclude"),
+    ".env.local\n",
+  );
+  const sentinel = join(fixture.worktreePath, ".env.local");
+  await writeFile(sentinel, "secret\n");
+  const branchOid = fixture.git("rev-parse", fixture.workspace.branch).trim();
+  let archiveCalled = false;
+  let mutationCalled = false;
+  await assert.rejects(
+    resetIssueRun(
+      fixture.runner,
+      fixture.runConfig,
+      { now: NOW },
+      {
+        ...fixture.dependencies,
+        archiveRecovery: async () => {
+          archiveCalled = true;
+          return { path: "must-not-exist" } as never;
+        },
+        executeMutation: async () => {
+          mutationCalled = true;
+          throw new Error("mutation must not run");
+        },
+      },
+    ),
+    (error: unknown) => {
+      assert.match(String(error), /ignored-worktree-content/);
+      assert.match(String(error), /archive-reset-and-start/);
+      assert.match(String(error), /\.env\.local/);
+      return true;
+    },
+  );
+  assert.equal(archiveCalled, false);
+  assert.equal(mutationCalled, false);
+  assert.equal(
+    await (await import("node:fs/promises")).readFile(sentinel, "utf8"),
+    "secret\n",
+  );
+  assert.equal(
+    fixture.git("rev-parse", fixture.workspace.branch).trim(),
+    branchOid,
+  );
+});
+
+test("missing worktree with unique commits refuses reset before archive or mutation", async () => {
+  const fixture = await resetFixture();
+  await writeFile(join(fixture.worktreePath, "partial"), "implementation\n");
+  fixture.git("-C", fixture.worktreePath, "add", "partial");
+  fixture.git(
+    "-C",
+    fixture.worktreePath,
+    "commit",
+    "-m",
+    "partial implementation",
+  );
+  const branchOid = fixture.git("rev-parse", fixture.workspace.branch).trim();
+  fixture.git("worktree", "remove", "--force", fixture.worktreePath);
+  let archiveCalled = false;
+  let mutationCalled = false;
+  await assert.rejects(
+    resetIssueRun(
+      fixture.runner,
+      fixture.runConfig,
+      { now: NOW },
+      {
+        ...fixture.dependencies,
+        archiveRecovery: async () => {
+          archiveCalled = true;
+          return { path: "must-not-exist" } as never;
+        },
+        executeMutation: async () => {
+          mutationCalled = true;
+          throw new Error("mutation must not run");
+        },
+      },
+    ),
+    (error: unknown) => {
+      assert.match(String(error), /unmerged-commits/);
+      return true;
+    },
+  );
+  assert.equal(archiveCalled, false);
+  assert.equal(mutationCalled, false);
+  assert.equal(
+    fixture.git("rev-parse", fixture.workspace.branch).trim(),
+    branchOid,
+  );
+});
+
 test("archive failure leaves the active state and workspace untouched without pipeline entry", async () => {
   const fixture = await resetFixture();
   await assert.rejects(

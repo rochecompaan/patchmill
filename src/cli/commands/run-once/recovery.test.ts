@@ -408,9 +408,26 @@ test("typed recovery decision table selects only conservative actions", () => {
     expectedWorkspace: { branch: "agent/recover", worktreePath: "work" },
     savedWorkspace: {},
     baseOid: "0123456789abcdef0123456789abcdef01234567",
-    branch: { exists: false },
-    worktree: { exists: false, registered: false, ignoredEntries: [] },
-    actualUniqueCommits: [],
+    branch: {
+      exists: classification !== "recreatable-clean",
+      ...(classification === "resumable-current" ||
+      classification === "resumable-with-commits"
+        ? { checkedOutAt: "work" }
+        : {}),
+    },
+    worktree:
+      classification === "resumable-current" ||
+      classification === "resumable-with-commits"
+        ? {
+            exists: true,
+            registered: true,
+            registeredBranch: "agent/recover",
+            ordinaryClean: true,
+            ignoredEntries: [],
+          }
+        : { exists: false, registered: false, ignoredEntries: [] },
+    actualUniqueCommits:
+      classification === "resumable-with-commits" ? ["abc123 implement"] : [],
     savedCommits: [],
     artifacts: { spec: { valid: false }, plan: { valid: false } },
     classification,

@@ -121,7 +121,6 @@ function classify(input: {
   expectedBranchElsewhere: boolean;
   expectedBranch: string;
   dirty?: string | undefined;
-  ignored: string[];
   savedCommits: string[];
   fenced: boolean;
   active: boolean;
@@ -148,13 +147,12 @@ function classify(input: {
   )
     return "workspace-unverifiable";
   if (input.dirty) return "dirty-worktree";
-  if (input.ignored.length) return "ignored-worktree-content";
   if (!input.branchExists && input.savedCommits.length)
     return "unmerged-commits";
-  if (input.commits.length || (input.divergence?.ahead ?? 0) > 0)
-    return "resumable-with-commits";
   if (input.active && !input.fenced) return "legacy-active-unfenced";
   if (!input.branchExists || !input.worktreeExists) return "recreatable-clean";
+  if (input.commits.length || (input.divergence?.ahead ?? 0) > 0)
+    return "resumable-with-commits";
   if ((input.divergence?.behind ?? 0) > 0) return "resumable-stale-base";
   return "resumable-current";
 }
@@ -279,7 +277,6 @@ export async function assessRunRecovery(
     expectedBranchElsewhere,
     expectedBranch: input.expectedWorkspace.branch,
     dirty: dirtyStatus,
-    ignored,
     savedCommits,
     fenced: legacyMigrationFenceValid,
     active,
@@ -324,7 +321,7 @@ export async function assessRunRecovery(
       ...(registered?.branch ? { registeredBranch: registered.branch } : {}),
       ...(registered && worktreeExists
         ? {
-            clean: !dirtyStatus && ignored.length === 0,
+            ordinaryClean: !dirtyStatus,
             dirtyStatus,
             ignoredStatus,
           }

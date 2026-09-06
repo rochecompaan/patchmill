@@ -311,10 +311,15 @@ export function blockedRecoveryRunner(
     branchExists?: boolean;
     worktreeRegistered?: boolean;
     dirtyStatus?: string;
+    ordinaryStatus?: string;
+    ignoredStatus?: string;
     merged?: boolean;
     revList?: string;
     log?: string;
-    onPi?: (prompt: string) => CommandResult;
+    onPi?: (
+      prompt: string,
+      call: Call,
+    ) => CommandResult | Promise<CommandResult>;
     selectedComments?: IssueSummary["comments"];
   } = {},
 ): MockRunner {
@@ -382,7 +387,10 @@ export function blockedRecoveryRunner(
       call.args[0] === "-C" &&
       call.args[2] === "status"
     ) {
-      return { code: 0, stdout: options.dirtyStatus ?? "", stderr: "" };
+      const status = call.args.includes("--ignored=matching")
+        ? (options.ignoredStatus ?? options.dirtyStatus ?? "")
+        : (options.ordinaryStatus ?? options.dirtyStatus ?? "");
+      return { code: 0, stdout: status, stderr: "" };
     }
     if (
       call.command === "git" &&
@@ -401,6 +409,12 @@ export function blockedRecoveryRunner(
     if (call.command === "git" && call.args[0] === "rev-list") {
       return { code: 0, stdout: options.revList ?? "0\t2\n", stderr: "" };
     }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "move"
+    )
+      return { code: 0, stdout: "", stderr: "" };
     if (call.command === "git" && call.args[0] === "status") {
       return { code: 0, stdout: "", stderr: "" };
     }
@@ -434,7 +448,7 @@ export function blockedRecoveryRunner(
     if (call.command === "pi") {
       const prompt = await readFile(promptPath(call.args), "utf8");
       return options.onPi
-        ? options.onPi(prompt)
+        ? await options.onPi(prompt, call)
         : {
             code: 0,
             stdout: JSON.stringify({
