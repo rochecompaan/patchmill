@@ -142,7 +142,8 @@ export function decideRunRecovery(
     return refusal(assessment, assessment.classification);
   if (
     intent === "reset" &&
-    assessment.classification === "resumable-with-commits"
+    (assessment.actualUniqueCommits.length > 0 ||
+      (assessment.divergence?.ahead ?? 0) > 0)
   )
     return refusal(assessment, "unmerged-commits");
 

@@ -426,7 +426,8 @@ test("typed recovery decision table selects only conservative actions", () => {
             ignoredEntries: [],
           }
         : { exists: false, registered: false, ignoredEntries: [] },
-    actualUniqueCommits: [],
+    actualUniqueCommits:
+      classification === "resumable-with-commits" ? ["abc123 implement"] : [],
     savedCommits: [],
     artifacts: { spec: { valid: false }, plan: { valid: false } },
     classification,
