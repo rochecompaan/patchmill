@@ -188,6 +188,42 @@ test("maps repository-resolution command failures to stable error fields", async
   }
 });
 
+test("hides credentials from failed remote commands while retaining diagnostics", async () => {
+  const sensitive = "secret-user:secret-token";
+  const runner = new Runner(
+    new Map([
+      [
+        key("git", remote),
+        [{ code: 7, stdout: sensitive, stderr: `failed for ${sensitive}` }],
+      ],
+    ]),
+  );
+  await assert.rejects(
+    new GitHubGhPullRequestHost({
+      runner,
+      repoRoot: "/repo",
+      pushRemote: "publish",
+    }).resolveRemoteRepositoryIdentity("publish"),
+    (error: unknown) => {
+      assert.ok(error instanceof GitHubPullRequestCommandError);
+      assert.equal(error.code, "github-pull-request-command-failed");
+      assert.equal(error.operation, "read-push-remote-urls");
+      assert.equal(error.command, "git");
+      assert.doesNotMatch(
+        `${error.message}\n${JSON.stringify(error)}`,
+        /secret-user|secret-token/u,
+      );
+      assert.equal(
+        Object.prototype.propertyIsEnumerable.call(error, "diagnostics"),
+        false,
+      );
+      assert.match(error.diagnostics.stdout, /secret-user:secret-token/u);
+      assert.match(error.diagnostics.stderr, /secret-user:secret-token/u);
+      return true;
+    },
+  );
+});
+
 test("resolves leading-hyphen remotes and preserves command-error diagnostics", async () => {
   const read = ["remote", "get-url", "--push", "--all", "--", "-publish"];
   const selector = [

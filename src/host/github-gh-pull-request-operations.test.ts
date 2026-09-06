@@ -8,6 +8,7 @@ import {
 } from "./pull-requests.ts";
 import {
   GitHubPullRequestCommandError,
+  GitHubPullRequestInputError,
   GitHubPullRequestJsonError,
   GitHubPullRequestResponseError,
 } from "./github-gh-pull-request-errors.ts";
@@ -43,25 +44,79 @@ test("derives the create head operand from the resolved owner for branch at", as
     "--body",
     "body",
   ];
-  const runner = setup([["gh", create, ok("")]]);
-  await assert.rejects(
-    new GitHubGhPullRequestHost({
-      runner,
-      repoRoot: "/repo",
-      pushRemote: "publish",
-    }).createPullRequest({
-      title: "title",
-      body: "body",
-      baseBranch: "main",
-      headBranch: "@",
-    }),
-    GitHubPullRequestResponseError,
-  );
+  const runner = setup([
+    ["gh", create, ok("https://github.com/acme/project/pull/42\n")],
+    [
+      "gh",
+      existence,
+      ok(
+        JSON.stringify({
+          data: {
+            repository: {
+              nameWithOwner: "acme/project",
+              pullRequest: { number: 42 },
+            },
+          },
+        }),
+      ),
+    ],
+    ["gh", view, ok(payload)],
+  ]);
+  const summary = await new GitHubGhPullRequestHost({
+    runner,
+    repoRoot: "/repo",
+    pushRemote: "publish",
+  }).createPullRequest({
+    title: "title",
+    body: "body",
+    baseBranch: "main",
+    headBranch: "@",
+  });
+  assert.equal(summary.number, 42);
   assert.ok(
     runner.calls.some(
       (call) => key(call.command, call.args) === key("gh", create),
     ),
   );
+});
+
+test("fails fast for every invalid create head without running commands", async () => {
+  for (const [headBranch, reason] of [
+    ["", "blank-head-branch"],
+    ["   ", "blank-head-branch"],
+    ["owner:branch", "qualified-head-branch"],
+    ["-branch", "invalid-head-branch"],
+    ["refs/heads/branch", "invalid-head-branch"],
+    ["feature branch", "invalid-head-branch"],
+    ["feature\tbranch", "invalid-head-branch"],
+    ["feature..branch", "invalid-head-branch"],
+    ["feature@{branch", "invalid-head-branch"],
+    ["feature//branch", "invalid-head-branch"],
+    ["feature/.hidden", "invalid-head-branch"],
+    ["feature/branch.lock", "invalid-head-branch"],
+    ["HEAD", "invalid-head-branch"],
+  ] as const) {
+    const runner = new Runner(new Map());
+    await assert.rejects(
+      new GitHubGhPullRequestHost({
+        runner,
+        repoRoot: "/repo",
+        pushRemote: "publish",
+      }).createPullRequest({
+        title: "title",
+        body: "body",
+        baseBranch: "main",
+        headBranch,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof GitHubPullRequestInputError);
+        assert.equal(error.code, "github-pull-request-invalid-input");
+        assert.equal(error.reason, reason);
+        return true;
+      },
+    );
+    assert.deepEqual(runner.calls, []);
+  }
 });
 
 test("fails closed for empty and multiple create-command URLs with stable response codes", async () => {
@@ -421,7 +476,11 @@ test("fails closed for ambiguous discovery and malformed create, list, and view 
       baseBranch: "main",
       headBranch: "agent/change",
     }),
-    GitHubPullRequestResponseError,
+    (error: unknown) => {
+      assert.ok(error instanceof GitHubPullRequestResponseError);
+      assert.equal(error.code, "github-pull-request-malformed-response");
+      return true;
+    },
   );
 
   for (const [command, args, result] of [
