@@ -341,6 +341,13 @@ export type RunRecoveryClassification =
   | "unmerged-commits"
   | "workspace-unverifiable"
   | "legacy-active-unfenced";
+export type RunRecoveryUnsafeClassification = Extract<
+  RunRecoveryClassification,
+  | "dirty-worktree"
+  | "unmerged-commits"
+  | "workspace-unverifiable"
+  | "legacy-active-unfenced"
+>;
 export type RunRecoveryAction =
   | "resume"
   | "refresh-and-resume"
@@ -348,7 +355,7 @@ export type RunRecoveryAction =
   | "archive-reset-and-start";
 export type RunRecoveryMutatingAction = Exclude<RunRecoveryAction, "resume">;
 export type RunRecoveryRefusalReason =
-  | RunRecoveryClassification
+  | RunRecoveryUnsafeClassification
   | "ignored-worktree-content"
   | "not-blocked";
 export type RunRecoveryLeaseOwner = {

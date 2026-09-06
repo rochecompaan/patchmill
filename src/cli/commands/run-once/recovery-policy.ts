@@ -4,6 +4,7 @@ import type {
   RunRecoveryDecision,
   RunRecoveryIntent,
   RunRecoveryMutatingAction,
+  RunRecoveryUnsafeClassification,
   RunResetSeed,
 } from "./types.ts";
 
@@ -11,10 +12,25 @@ type AssessedRefusal = Extract<
   RunRecoveryDecision,
   { action: "refuse"; assessment: RunRecoveryAssessment }
 >;
+type IntrinsicRefusalReason = Exclude<
+  AssessedRefusal["reason"],
+  "ignored-worktree-content"
+>;
+
+function isUnsafeClassification(
+  classification: RunRecoveryClassification,
+): classification is RunRecoveryUnsafeClassification {
+  return (
+    classification === "workspace-unverifiable" ||
+    classification === "dirty-worktree" ||
+    classification === "unmerged-commits" ||
+    classification === "legacy-active-unfenced"
+  );
+}
 
 function refusal(
   assessment: RunRecoveryAssessment,
-  reason: Exclude<AssessedRefusal["reason"], "ignored-worktree-content">,
+  reason: IntrinsicRefusalReason,
 ): AssessedRefusal {
   const detail =
     reason === "dirty-worktree"
@@ -24,11 +40,9 @@ function refusal(
             .concat(assessment.savedCommits)
             .join(", ")
         : undefined;
-  const preserveGuidance: Partial<
-    Record<
-      RunRecoveryClassification | "not-blocked" | "active-run",
-      string | readonly string[]
-    >
+  const preserveGuidance: Record<
+    IntrinsicRefusalReason,
+    string | readonly string[]
   > = {
     "dirty-worktree":
       "Commit, stash, or clean local modifications before retrying recovery.",
@@ -43,9 +57,8 @@ function refusal(
       "Repair the legacy Run lease fence before retrying recovery.",
     "not-blocked":
       "Use normal run-once execution; this Run state is not blocked.",
-    "active-run": "Wait for the active Run attempt before retrying recovery.",
   } as const;
-  const guidance = preserveGuidance[reason] ?? `Recovery is unsafe: ${reason}.`;
+  const guidance = preserveGuidance[reason];
   return {
     action: "refuse",
     assessment,
@@ -199,14 +212,7 @@ export function decideRunRecovery(
 ): RunRecoveryDecision {
   if (intent === "retry" && !assessment.blocked)
     return refusal(assessment, "not-blocked");
-  if (
-    [
-      "workspace-unverifiable",
-      "dirty-worktree",
-      "unmerged-commits",
-      "legacy-active-unfenced",
-    ].includes(assessment.classification)
-  )
+  if (isUnsafeClassification(assessment.classification))
     return refusal(assessment, assessment.classification);
   if (
     intent === "reset" &&
