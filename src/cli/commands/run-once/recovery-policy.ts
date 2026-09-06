@@ -111,6 +111,74 @@ function canResumeInPlace(assessment: RunRecoveryAssessment): boolean {
   );
 }
 
+type CandidateDecision = Exclude<RunRecoveryDecision, { action: "refuse" }>;
+
+function deriveCandidateDecision(
+  intent: RunRecoveryIntent,
+  assessment: RunRecoveryAssessment,
+  plannedPaths: { quarantinePath: string; stagingPath: string },
+): CandidateDecision {
+  const { quarantinePath, stagingPath } = plannedPaths;
+  if (intent === "reset") {
+    return {
+      action: "archive-reset-and-start",
+      assessment,
+      seed: seed(assessment),
+      cleanup: {
+        branch: assessment.branch.exists
+          ? assessment.expectedWorkspace.branch
+          : undefined,
+        expectedWorktreePath: assessment.worktree.registered
+          ? assessment.expectedWorkspace.worktreePath
+          : undefined,
+        expectedBranchOid: assessment.branch.oid,
+        quarantinePath: assessment.worktree.registered
+          ? quarantinePath
+          : undefined,
+      },
+    };
+  }
+  if (assessment.classification === "resumable-stale-base") {
+    return {
+      action: "refresh-and-resume",
+      assessment,
+      refresh: {
+        branch: assessment.expectedWorkspace.branch,
+        expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
+        expectedBranchOid: assessment.branch.oid!,
+        baseOid: assessment.baseOid,
+        quarantinePath,
+        stagingPath,
+      },
+    };
+  }
+  if (assessment.classification === "recreatable-clean") {
+    const branchBehindBase =
+      assessment.divergence?.ahead === 0 &&
+      (assessment.divergence.behind ?? 0) > 0;
+    let mode: "create-from-base" | "advance-to-base" | "reuse-existing" =
+      "reuse-existing";
+    if (!assessment.branch.exists) mode = "create-from-base";
+    else if (branchBehindBase) mode = "advance-to-base";
+    return {
+      action: "recreate-and-resume",
+      assessment,
+      recreation: {
+        branch: assessment.expectedWorkspace.branch,
+        expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
+        mode,
+        expectedBranchOid: assessment.branch.oid,
+        targetOid:
+          assessment.branch.exists && branchBehindBase
+            ? assessment.baseOid
+            : (assessment.branch.oid ?? assessment.baseOid),
+        stagingPath,
+      },
+    };
+  }
+  return { action: "resume", assessment };
+}
+
 /** Allocate mutation paths once at the orchestration boundary. The policy is
  * deterministic: it only selects among evidence and these already-pinned paths. */
 export function createRunRecoveryPaths(input: {
@@ -147,63 +215,7 @@ export function decideRunRecovery(
   )
     return refusal(assessment, "unmerged-commits");
 
-  const { quarantinePath, stagingPath } = plannedPaths;
-  const candidate: Exclude<RunRecoveryDecision, { action: "refuse" }> =
-    intent === "reset"
-      ? {
-          action: "archive-reset-and-start",
-          assessment,
-          seed: seed(assessment),
-          cleanup: {
-            branch: assessment.branch.exists
-              ? assessment.expectedWorkspace.branch
-              : undefined,
-            expectedWorktreePath: assessment.worktree.registered
-              ? assessment.expectedWorkspace.worktreePath
-              : undefined,
-            expectedBranchOid: assessment.branch.oid,
-            quarantinePath: assessment.worktree.registered
-              ? quarantinePath
-              : undefined,
-          },
-        }
-      : assessment.classification === "resumable-stale-base"
-        ? {
-            action: "refresh-and-resume",
-            assessment,
-            refresh: {
-              branch: assessment.expectedWorkspace.branch,
-              expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
-              expectedBranchOid: assessment.branch.oid!,
-              baseOid: assessment.baseOid,
-              quarantinePath,
-              stagingPath,
-            },
-          }
-        : assessment.classification === "recreatable-clean"
-          ? {
-              action: "recreate-and-resume",
-              assessment,
-              recreation: {
-                branch: assessment.expectedWorkspace.branch,
-                expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
-                mode: !assessment.branch.exists
-                  ? "create-from-base"
-                  : assessment.divergence?.ahead === 0 &&
-                      (assessment.divergence.behind ?? 0) > 0
-                    ? "advance-to-base"
-                    : "reuse-existing",
-                expectedBranchOid: assessment.branch.oid,
-                targetOid:
-                  assessment.branch.exists &&
-                  assessment.divergence?.ahead === 0 &&
-                  (assessment.divergence.behind ?? 0) > 0
-                    ? assessment.baseOid
-                    : (assessment.branch.oid ?? assessment.baseOid),
-                stagingPath,
-              },
-            }
-          : { action: "resume", assessment };
+  const candidate = deriveCandidateDecision(intent, assessment, plannedPaths);
 
   if (candidate.action === "resume" && !canResumeInPlace(assessment))
     return refusal(assessment, "workspace-unverifiable");
