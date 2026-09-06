@@ -49,5 +49,7 @@ export function formatRunRecoveryDecision(
     return `Issue #${decision.assessment.issueNumber} will recreate its clean workspace before resuming.`;
   if (decision.action === "archive-reset-and-start")
     return `Issue #${decision.assessment.issueNumber} will archive recovery state and start a new Run attempt.`;
+  if (decision.assessment.worktree.ignoredEntries.length)
+    return `Issue #${decision.assessment.issueNumber} is resuming in place without workspace mutation; preserving ignored entries: ${decision.assessment.worktree.ignoredEntries.join(", ")}.`;
   return `Issue #${decision.assessment.issueNumber} will resume (${decision.assessment.classification}).`;
 }

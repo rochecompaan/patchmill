@@ -3,29 +3,27 @@ import type {
   RunRecoveryClassification,
   RunRecoveryDecision,
   RunRecoveryIntent,
+  RunRecoveryMutatingAction,
   RunResetSeed,
 } from "./types.ts";
 
-function refusal(
-  assessment: RunRecoveryAssessment,
-  reason: Extract<
-    RunRecoveryDecision,
-    { action: "refuse"; assessment: RunRecoveryAssessment }
-  >["reason"],
-): Extract<
+type AssessedRefusal = Extract<
   RunRecoveryDecision,
   { action: "refuse"; assessment: RunRecoveryAssessment }
-> {
+>;
+
+function refusal(
+  assessment: RunRecoveryAssessment,
+  reason: Exclude<AssessedRefusal["reason"], "ignored-worktree-content">,
+): AssessedRefusal {
   const detail =
     reason === "dirty-worktree"
       ? assessment.worktree.dirtyStatus
-      : reason === "ignored-worktree-content"
-        ? assessment.worktree.ignoredEntries.join(", ")
-        : reason === "unmerged-commits"
-          ? assessment.actualUniqueCommits
-              .concat(assessment.savedCommits)
-              .join(", ")
-          : undefined;
+      : reason === "unmerged-commits"
+        ? assessment.actualUniqueCommits
+            .concat(assessment.savedCommits)
+            .join(", ")
+        : undefined;
   const preserveGuidance: Partial<
     Record<
       RunRecoveryClassification | "not-blocked" | "active-run",
@@ -34,8 +32,6 @@ function refusal(
   > = {
     "dirty-worktree":
       "Commit, stash, or clean local modifications before retrying recovery.",
-    "ignored-worktree-content":
-      "Inspect and preserve ignored workspace content before retrying recovery.",
     "unmerged-commits":
       "Merge or preserve the unique branch commits before retrying recovery.",
     "workspace-unverifiable": [
@@ -62,6 +58,24 @@ function refusal(
     ],
   };
 }
+
+function ignoredRefusal(
+  assessment: RunRecoveryAssessment,
+  blockedAction: RunRecoveryMutatingAction,
+): Extract<AssessedRefusal, { reason: "ignored-worktree-content" }> {
+  const entries = assessment.worktree.ignoredEntries.join(", ");
+  return {
+    action: "refuse",
+    assessment,
+    reason: "ignored-worktree-content",
+    blockedAction,
+    guidance: [
+      `Recovery action ${blockedAction} cannot prove ignored content will survive: ${entries}.`,
+      `Inspect and preserve ignored workspace content before retrying ${blockedAction}.`,
+    ],
+  };
+}
+
 function seed(assessment: RunRecoveryAssessment): RunResetSeed {
   return {
     issueNumber: assessment.issueNumber,
@@ -83,6 +97,20 @@ function seed(assessment: RunRecoveryAssessment): RunResetSeed {
       : {}),
   };
 }
+
+function canResumeInPlace(assessment: RunRecoveryAssessment): boolean {
+  return (
+    assessment.worktree.exists &&
+    assessment.worktree.registered &&
+    assessment.worktree.ordinaryClean === true &&
+    assessment.worktree.registeredBranch ===
+      assessment.expectedWorkspace.branch &&
+    assessment.branch.checkedOutAt !== undefined &&
+    (assessment.classification === "resumable-current" ||
+      assessment.classification === "resumable-with-commits")
+  );
+}
+
 /** Allocate mutation paths once at the orchestration boundary. The policy is
  * deterministic: it only selects among evidence and these already-pinned paths. */
 export function createRunRecoveryPaths(input: {
@@ -95,6 +123,7 @@ export function createRunRecoveryPaths(input: {
     stagingPath: `${base}-staging`,
   };
 }
+
 export function decideRunRecovery(
   intent: RunRecoveryIntent,
   assessment: RunRecoveryAssessment,
@@ -106,7 +135,6 @@ export function decideRunRecovery(
     [
       "workspace-unverifiable",
       "dirty-worktree",
-      "ignored-worktree-content",
       "unmerged-commits",
       "legacy-active-unfenced",
     ].includes(assessment.classification)
@@ -117,60 +145,71 @@ export function decideRunRecovery(
     assessment.classification === "resumable-with-commits"
   )
     return refusal(assessment, "unmerged-commits");
+
   const { quarantinePath, stagingPath } = plannedPaths;
-  if (intent === "reset")
-    return {
-      action: "archive-reset-and-start",
-      assessment,
-      seed: seed(assessment),
-      cleanup: {
-        branch: assessment.branch.exists
-          ? assessment.expectedWorkspace.branch
-          : undefined,
-        expectedWorktreePath: assessment.worktree.registered
-          ? assessment.expectedWorkspace.worktreePath
-          : undefined,
-        expectedBranchOid: assessment.branch.oid,
-        quarantinePath: assessment.worktree.registered
-          ? quarantinePath
-          : undefined,
-      },
-    };
-  if (assessment.classification === "resumable-stale-base")
-    return {
-      action: "refresh-and-resume",
-      assessment,
-      refresh: {
-        branch: assessment.expectedWorkspace.branch,
-        expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
-        expectedBranchOid: assessment.branch.oid!,
-        baseOid: assessment.baseOid,
-        quarantinePath,
-        stagingPath,
-      },
-    };
-  if (assessment.classification === "recreatable-clean")
-    return {
-      action: "recreate-and-resume",
-      assessment,
-      recreation: {
-        branch: assessment.expectedWorkspace.branch,
-        expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
-        mode: !assessment.branch.exists
-          ? "create-from-base"
-          : assessment.divergence?.ahead === 0 &&
-              (assessment.divergence.behind ?? 0) > 0
-            ? "advance-to-base"
-            : "reuse-existing",
-        expectedBranchOid: assessment.branch.oid,
-        targetOid:
-          assessment.branch.exists &&
-          assessment.divergence?.ahead === 0 &&
-          (assessment.divergence.behind ?? 0) > 0
-            ? assessment.baseOid
-            : (assessment.branch.oid ?? assessment.baseOid),
-        stagingPath,
-      },
-    };
-  return { action: "resume", assessment };
+  const candidate: Exclude<RunRecoveryDecision, { action: "refuse" }> =
+    intent === "reset"
+      ? {
+          action: "archive-reset-and-start",
+          assessment,
+          seed: seed(assessment),
+          cleanup: {
+            branch: assessment.branch.exists
+              ? assessment.expectedWorkspace.branch
+              : undefined,
+            expectedWorktreePath: assessment.worktree.registered
+              ? assessment.expectedWorkspace.worktreePath
+              : undefined,
+            expectedBranchOid: assessment.branch.oid,
+            quarantinePath: assessment.worktree.registered
+              ? quarantinePath
+              : undefined,
+          },
+        }
+      : assessment.classification === "resumable-stale-base"
+        ? {
+            action: "refresh-and-resume",
+            assessment,
+            refresh: {
+              branch: assessment.expectedWorkspace.branch,
+              expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
+              expectedBranchOid: assessment.branch.oid!,
+              baseOid: assessment.baseOid,
+              quarantinePath,
+              stagingPath,
+            },
+          }
+        : assessment.classification === "recreatable-clean"
+          ? {
+              action: "recreate-and-resume",
+              assessment,
+              recreation: {
+                branch: assessment.expectedWorkspace.branch,
+                expectedWorktreePath: assessment.expectedWorkspace.worktreePath,
+                mode: !assessment.branch.exists
+                  ? "create-from-base"
+                  : assessment.divergence?.ahead === 0 &&
+                      (assessment.divergence.behind ?? 0) > 0
+                    ? "advance-to-base"
+                    : "reuse-existing",
+                expectedBranchOid: assessment.branch.oid,
+                targetOid:
+                  assessment.branch.exists &&
+                  assessment.divergence?.ahead === 0 &&
+                  (assessment.divergence.behind ?? 0) > 0
+                    ? assessment.baseOid
+                    : (assessment.branch.oid ?? assessment.baseOid),
+                stagingPath,
+              },
+            }
+          : { action: "resume", assessment };
+
+  if (candidate.action === "resume" && !canResumeInPlace(assessment))
+    return refusal(assessment, "workspace-unverifiable");
+  if (
+    !assessment.worktree.ignoredEntries.length ||
+    candidate.action === "resume"
+  )
+    return candidate;
+  return ignoredRefusal(assessment, candidate.action);
 }

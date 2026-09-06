@@ -24,7 +24,13 @@ test("archives exact state bytes before reset mutation", async () => {
     savedWorkspace: {},
     baseOid: "0123456789abcdef0123456789abcdef01234567",
     branch: { exists: true, oid: "abcdefabcdefabcdefabcdefabcdefabcdefabcd" },
-    worktree: { exists: true, registered: true, ignoredEntries: [] },
+    worktree: {
+      exists: true,
+      registered: true,
+      ordinaryClean: true,
+      ignoredStatus: "!! .pi/todos/issue-211-task.md\n",
+      ignoredEntries: [".pi/todos/issue-211-task.md"],
+    },
     actualUniqueCommits: [],
     savedCommits: [],
     artifacts: { spec: { valid: false }, plan: { valid: false } },
@@ -55,6 +61,16 @@ test("archives exact state bytes before reset mutation", async () => {
     ).recoveryClassification,
     "resumable-current",
   );
+  const archivedAssessment = JSON.parse(
+    await readFile(join(archived.path, "recovery-assessment.json"), "utf8"),
+  );
+  assert.deepEqual(archivedAssessment.worktree, {
+    exists: true,
+    registered: true,
+    ordinaryClean: true,
+    ignoredStatus: "!! .pi/todos/issue-211-task.md\n",
+    ignoredEntries: [".pi/todos/issue-211-task.md"],
+  });
   assert.doesNotMatch(archived.path, /:/);
 });
 
