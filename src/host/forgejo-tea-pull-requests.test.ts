@@ -3,7 +3,10 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type { CommandResult } from "../cli/commands/triage/types.ts";
+import type {
+  CommandResult,
+  CommandRunner,
+} from "../cli/commands/triage/types.ts";
 import { createStaticCommandRunner } from "../../test-support/command-runner.ts";
 import { ForgejoTeaPullRequestError } from "./forgejo-tea-pull-request-errors.ts";
 import { PullRequestIdentityError } from "./pull-requests.ts";
@@ -311,6 +314,77 @@ test("command failures retain safe status diagnostics", async () =>
         assert.equal(error.httpStatus, 403);
         assert.equal(error.rawDiagnostics?.stdout, "secret");
         assert.ok(!JSON.stringify(error).includes("secret"));
+        return true;
+      },
+    );
+  }));
+
+test("runner rejections retain neither caller input nor rejection diagnostics", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const secret = "body-that-must-not-leak";
+    const teaRunner: CommandRunner = {
+      async run(command, args) {
+        if (command === "git")
+          return {
+            code: 0,
+            stdout: "git@forge.example:contributor/widgets.git\n",
+            stderr: "",
+          };
+        if (args.includes("POST"))
+          throw new TypeError(`runner rejected ${args.join(" ")} ${secret}`);
+        return jsonResult(
+          repositoryPayload(
+            args.includes("contributor/widgets") ? head : target,
+          ),
+        );
+      },
+    };
+    const host = new ForgejoTeaPullRequestHost({
+      runner: teaRunner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      host.createPullRequest({
+        title: secret,
+        body: secret,
+        baseBranch: "main",
+        headBranch: "topic",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ForgejoTeaPullRequestError);
+        assert.equal(error.category, "command-failed");
+        assert.equal(error.operation, "create-pull-request");
+        assert.equal(error.command, "tea");
+        assert.equal(error.cause, undefined);
+        assert.equal(error.rawDiagnostics, undefined);
+        assert.ok(!error.message.includes(secret));
+        assert.ok(!JSON.stringify(error).includes(secret));
+        return true;
+      },
+    );
+
+    const gitRunner: CommandRunner = {
+      async run(_command, args) {
+        throw new TypeError(`runner rejected ${args.join(" ")} ${secret}`);
+      },
+    };
+    const gitHost = new ForgejoTeaPullRequestHost({
+      runner: gitRunner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      gitHost.resolveRemoteRepositoryIdentity("publish"),
+      (error: unknown) => {
+        assert.ok(error instanceof ForgejoTeaPullRequestError);
+        assert.equal(error.category, "command-failed");
+        assert.equal(error.operation, "resolve-remote-repository");
+        assert.equal(error.command, "git");
+        assert.equal(error.cause, undefined);
+        assert.equal(error.rawDiagnostics, undefined);
+        assert.ok(!error.message.includes(secret));
+        assert.ok(!JSON.stringify(error).includes(secret));
         return true;
       },
     );

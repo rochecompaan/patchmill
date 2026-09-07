@@ -47,6 +47,24 @@ export class ForgejoTeaPullRequestCommands {
     this.options = options;
   }
 
+  private async run(
+    operation: ForgejoPullRequestOperation,
+    command: "git" | "tea",
+    args: string[],
+  ): Promise<CommandResult> {
+    try {
+      return await this.options.runner.run(command, args, {
+        cwd: this.options.repoRoot,
+      });
+    } catch {
+      throw new ForgejoTeaPullRequestError({
+        category: "command-failed",
+        operation,
+        command,
+      });
+    }
+  }
+
   private async api(
     operation: ForgejoPullRequestOperation,
     args: string[],
@@ -66,9 +84,7 @@ export class ForgejoTeaPullRequestCommands {
             context.slug,
             this.options.login,
           );
-    const result = await this.options.runner.run("tea", commandArgs, {
-      cwd: this.options.repoRoot,
-    });
+    const result = await this.run(operation, "tea", commandArgs);
     const httpStatus = status(result.stderr);
     if (
       result.code !== 0 &&
@@ -119,11 +135,14 @@ export class ForgejoTeaPullRequestCommands {
     remote: string,
   ): Promise<RepositoryIdentity> {
     validateForgejoRemoteName(remote);
-    const result = await this.options.runner.run(
-      "git",
-      ["remote", "get-url", "--push", "--all", "--", remote],
-      { cwd: this.options.repoRoot },
-    );
+    const result = await this.run("resolve-remote-repository", "git", [
+      "remote",
+      "get-url",
+      "--push",
+      "--all",
+      "--",
+      remote,
+    ]);
     if (result.code !== 0)
       throw new ForgejoTeaPullRequestError({
         category: "command-failed",
