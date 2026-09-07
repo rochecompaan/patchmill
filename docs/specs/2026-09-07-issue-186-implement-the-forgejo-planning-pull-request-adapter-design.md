@@ -2,8 +2,7 @@
 
 ## Status
 
-This written specification awaits manual approval. Planning and implementation
-must not continue until that approval is explicit.
+This specification is approved for implementation.
 
 Issue #184 supplied the provider-neutral `PullRequestHost` foundation. This
 issue adds only its Forgejo implementation.
