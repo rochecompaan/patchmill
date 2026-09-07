@@ -181,7 +181,11 @@ export class PlanningStateStore {
       }
     } finally {
       if (handle !== undefined) await handle.close().catch(() => undefined);
-      if (!renamed) await unlink(temporary).catch(() => undefined);
+      if (!renamed)
+        await unlink(temporary).catch((unlinkError: unknown) => {
+          if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT")
+            throw unlinkError;
+        });
     }
   }
 }

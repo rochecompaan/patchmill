@@ -6,6 +6,11 @@ import {
 } from "./planning-workspaces.ts";
 import type { PlanningRemoteBaseSnapshot } from "./planning-workspaces.ts";
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const BRANCH =
+  /^(?!-)(?!\/)(?!.*(?:\.\.|@\{|[\s\\~^:?*[]))(?!.*(?:\/\/|\/$|\.$)).+$/u;
+function remote(value: string): boolean {
+  return value.length > 0 && value.length <= 1024 && !/[\0\r\n]/u.test(value);
+}
 function directory(root: string, value: string): string {
   const absolute = isAbsolute(value) ? resolve(value) : resolve(root, value);
   const path = relative(root, absolute).replaceAll("\\", "/");
@@ -54,8 +59,8 @@ export class PlanningRemoteBaseGit {
     if (
       !Number.isSafeInteger(input.issueNumber) ||
       input.issueNumber < 1 ||
-      !input.remote ||
-      !input.baseBranch
+      !remote(input.remote) ||
+      !BRANCH.test(input.baseBranch)
     )
       throw new RangeError("Invalid planning remote-base input");
     const ref = `refs/remotes/${input.remote}/${input.baseBranch}`;
@@ -122,8 +127,16 @@ export class PlanningRemoteBaseGit {
           "tree-inspection",
           seen.has(path!) ? "duplicate-entry" : "malformed-record",
         );
+      if (
+        (mode === "160000" && type !== "commit") ||
+        (mode !== "160000" && type !== "blob")
+      )
+        throw new PlanningWorkspaceResponseError(
+          "tree-inspection",
+          "invalid-mode-type",
+        );
       seen.add(path!);
-      if ((mode !== "100644" && mode !== "100755") || type !== "blob") continue;
+      if (mode === "120000" || mode === "160000") continue;
       if (basename(path!).includes(`-issue-${input.issueNumber}-`)) {
         if (path === this.specsDir || path!.startsWith(`${this.specsDir}/`))
           spec.push(path!);

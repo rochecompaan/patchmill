@@ -192,7 +192,10 @@ export async function acquirePlanningIssueLock(
   } catch (error) {
     if (handle !== undefined) {
       await handle.close();
-      await unlink(path).catch(() => undefined);
+      await unlink(path).catch((unlinkError: unknown) => {
+        if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT")
+          throw unlinkError;
+      });
     }
     if ((error as NodeJS.ErrnoException).code === "EEXIST")
       throw new PlanningIssueLockConflictError(

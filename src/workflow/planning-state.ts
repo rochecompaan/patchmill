@@ -140,14 +140,6 @@ export function assertPlanningStateReplacement(
       }
     }
     if (
-      a.status === b.status &&
-      JSON.stringify(leftJson) !== JSON.stringify(rightJson)
-    )
-      throw new PlanningStateValidationError(
-        "immutable-evidence",
-        `$.phases[${index}]`,
-      );
-    if (
       a.status === "complete" &&
       b.status === "complete" &&
       a.completion.kind === "merged-pull-request" &&
@@ -175,6 +167,35 @@ export function assertPlanningStateReplacement(
           "invalid-cleanup-transition",
           `$.phases[${index}].workspace.cleanup`,
         );
+      const leftCleanup = leftJson.workspace as Record<string, unknown>;
+      const rightCleanup = rightJson.workspace as Record<string, unknown>;
+      (leftCleanup.cleanup as Record<string, unknown>).state = "<cleanup>";
+      (rightCleanup.cleanup as Record<string, unknown>).state = "<cleanup>";
+      delete (leftCleanup.cleanup as Record<string, unknown>).pushedHeadOid;
+      delete (rightCleanup.cleanup as Record<string, unknown>).pushedHeadOid;
     }
+    if (a.status === "workspace-ready" && b.status === "pull-request-open") {
+      delete rightJson.artifacts;
+      delete rightJson.pullRequest;
+      rightJson.status = "workspace-ready";
+    }
+    if (
+      a.status === "pull-request-open" &&
+      b.status === "complete" &&
+      b.completion.kind === "merged-pull-request"
+    ) {
+      delete rightJson.completion;
+      rightJson.status = "pull-request-open";
+    }
+    if (
+      (a.status === b.status ||
+        a.status === "workspace-ready" ||
+        a.status === "pull-request-open") &&
+      JSON.stringify(leftJson) !== JSON.stringify(rightJson)
+    )
+      throw new PlanningStateValidationError(
+        "immutable-evidence",
+        `$.phases[${index}]`,
+      );
   }
 }
