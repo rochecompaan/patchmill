@@ -117,6 +117,18 @@ const worktreePath = (value: unknown, path: string): string => {
     ? v
     : fail("invalid-worktree-path", path);
 };
+const canonicalWorktreePath = (path: string): string => {
+  const output: string[] = [];
+  for (const segment of path.replace(/\\\\/gu, "/").split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (output.length === 0 || output[output.length - 1] === "..")
+        output.push(segment);
+      else output.pop();
+    } else output.push(segment);
+  }
+  return output.join("/");
+};
 
 function gates(value: unknown, path: string): PlanningGateSnapshot {
   const v = object(value, ["specRequired", "planRequired"], path);
@@ -420,9 +432,8 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
         p.workspace.baseOid !== p.base.baseOid
       )
         fail("workspace-mismatch", `$.phases[${i}].workspace`);
-      const normalizedPath = p.workspace.identity.worktreePath.replaceAll(
-        "\\\\",
-        "/",
+      const normalizedPath = canonicalWorktreePath(
+        p.workspace.identity.worktreePath,
       );
       if (
         branches.has(p.workspace.identity.branch) ||
