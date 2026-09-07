@@ -88,7 +88,11 @@ test("does not expose rejected clone URLs", () => {
     "https://forge.example/widgets.git",
     "https://forge.example/group/acme/widgets.git",
     "https://forge.example/acme/widgets.git?token=secret",
+    "https://forge.example/acme\\widgets.git",
+    "https://forge.example/acme/widgets%",
     "git@forge.example:acme/widgets.git?token=secret",
+    "git@forge.example:acme\\widgets.git",
+    "git@forge.example:acme/widgets%",
     "git@forge.example:acme/widgets.git#fragment",
     "git@forge.example:widgets.git",
     "git@forge.example:group/acme/widgets.git",
@@ -257,6 +261,14 @@ test("rejects malformed repository and pull-request response fields by category"
       ...targetPayload,
       html_url: "https://forge.example/ignored/../platform/widgets-renamed",
     },
+    {
+      ...targetPayload,
+      html_url: "https://forge.example/platform\\widgets-renamed",
+    },
+    {
+      ...targetPayload,
+      html_url: "https://forge.example/platform/widgets-renamed%",
+    },
   ];
   for (const payload of malformedRepositoryPayloads)
     assert.throws(
@@ -285,6 +297,12 @@ test("rejects malformed repository and pull-request response fields by category"
     pull({
       html_url:
         "https://forge.example/ignored/../platform/widgets-renamed/pulls/42",
+    }),
+    pull({
+      html_url: "https://forge.example/platform\\widgets-renamed/pulls/42",
+    }),
+    pull({
+      html_url: "https://forge.example/platform/widgets-renamed/pulls/42%",
     }),
     pull({
       html_url: "https://forge.example/platform/widgets-renamed/issues/42",

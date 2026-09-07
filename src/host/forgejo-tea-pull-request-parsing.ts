@@ -48,13 +48,16 @@ function nonblank(
 function rawUrlPath(value: string): string {
   return /^[a-z][a-z\d+.-]*:\/\/[^/?#]*(\/[^?#]*)?/iu.exec(value)?.[1] ?? "";
 }
-function hasDotSegment(path: string): boolean {
+function hasUnsafeUrlText(value: string): boolean {
+  return /[\\\x00-\x20\x7f]/u.test(value);
+}
+function hasInvalidOrDotSegment(path: string): boolean {
   return path.split("/").some((part) => {
     try {
       const decoded = decodeURIComponent(part);
       return decoded === "." || decoded === "..";
     } catch {
-      return false;
+      return true;
     }
   });
 }
@@ -75,7 +78,8 @@ function urlCoordinates(
     url.password ||
     url.search ||
     url.hash ||
-    hasDotSegment(rawUrlPath(value))
+    hasUnsafeUrlText(value) ||
+    hasInvalidOrDotSegment(rawUrlPath(value))
   )
     return malformed(operation);
   const parts = url.pathname.split("/");
@@ -164,7 +168,8 @@ export function parseForgejoRemoteUrl(
   const owner = scpLike ? parts[0] : parts[1];
   const last = scpLike ? parts[1] : parts[2];
   if (
-    hasDotSegment(path) ||
+    hasUnsafeUrlText(remoteUrl) ||
+    hasInvalidOrDotSegment(path) ||
     (scpLike &&
       (path.includes("?") ||
         path.includes("#") ||
@@ -288,7 +293,8 @@ export function normalizeForgejoPullRequest(
     parsed.password ||
     parsed.search ||
     parsed.hash ||
-    hasDotSegment(rawUrlPath(html))
+    hasUnsafeUrlText(html) ||
+    hasInvalidOrDotSegment(rawUrlPath(html))
   )
     return malformed(options.operation);
   const parts = parsed.pathname.split("/");

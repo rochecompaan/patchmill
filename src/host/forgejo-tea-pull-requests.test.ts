@@ -251,6 +251,19 @@ test("create, find, get, read, and update use exhaustive validated API operation
       ],
       cwd: repoRoot,
     });
+    assert.deepEqual(runner.calls[12], {
+      command: "tea",
+      args: [
+        "api",
+        "/repos/{owner}/{repo}/pulls/42",
+        "--include",
+        "--repo",
+        "legacy/widgets",
+        "--login",
+        "robot",
+      ],
+      cwd: repoRoot,
+    });
     assert.deepEqual(runner.calls.at(-1), {
       command: "tea",
       args: [
