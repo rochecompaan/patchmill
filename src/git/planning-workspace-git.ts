@@ -1,7 +1,12 @@
 import { lstat } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { CommandRunner } from "../process/command.ts";
 import type { PlanningPhaseKind } from "../workflow/planning-pull-request-markers.ts";
+import {
+  assertPlanningWorkspacePrepareInput,
+  planningOid,
+  planningWorkspacePath,
+} from "./planning-workspace-input.ts";
 import {
   parsePlanningWorktreePorcelain,
   type PlanningWorktreeRegistration,
@@ -17,35 +22,7 @@ import {
   type PlanningWorkspaceSnapshot,
   type PreparedPlanningWorkspace,
 } from "./planning-workspaces.ts";
-const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const BRANCH =
-  /^(?!-)(?!\/)(?!.*(?:\.\.|@\{|[\s\\~^:?*[]))(?!.*(?:\/\/|\/$|\.$)).+$/u;
-function validPath(path: unknown): path is string {
-  return (
-    typeof path === "string" &&
-    path.length > 0 &&
-    path.length <= 4096 &&
-    !/[\\\0\r\n]/u.test(path) &&
-    !path.startsWith("/") &&
-    !path
-      .split("/")
-      .some((part) => part === "" || part === "." || part === "..")
-  );
-}
-function exact(
-  value: unknown,
-  keys: readonly string[],
-): value is Record<string, unknown> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value as Record<string, unknown>).length === keys.length &&
-    keys.every((key) => key in (value as Record<string, unknown>))
-  );
-}
+const OID = planningOid;
 export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   readonly runner: CommandRunner;
   readonly repoRoot: string;
@@ -60,15 +37,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
     this.worktreeRoot = resolve(input.worktreeRoot);
   }
   private path(identity: PlanningWorkspaceIdentity): string {
-    const path = resolve(this.repoRoot, identity.worktreePath);
-    const rel = relative(this.worktreeRoot, path);
-    const portable = rel.replaceAll("\\", "/");
-    if (portable === ".." || portable.startsWith("../"))
-      throw new PlanningWorkspaceConflictError(
-        "outside-worktree-root",
-        identity,
-      );
-    return path;
+    return planningWorkspacePath(this.repoRoot, this.worktreeRoot, identity);
   }
   private async run(
     args: string[],
@@ -186,7 +155,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
     identity: PlanningWorkspaceIdentity;
     base: PlanningRemoteBaseSnapshot;
   }): Promise<PreparedPlanningWorkspace> {
-    this.validatePrepare(input);
+    assertPlanningWorkspacePrepareInput(input);
     const path = this.path(input.identity);
     if (!OID.test(input.base.baseOid))
       throw new PlanningWorkspaceConflictError(
@@ -232,55 +201,6 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
       },
       snapshot,
     };
-  }
-  private validatePrepare(input: {
-    runId: string;
-    phase: PlanningPhaseKind;
-    identity: PlanningWorkspaceIdentity;
-    base: PlanningRemoteBaseSnapshot;
-  }): void {
-    const raw = input as unknown;
-    if (
-      !exact(raw, ["runId", "phase", "identity", "base"]) ||
-      !UUID.test(input.runId) ||
-      !["spec", "plan", "implementation"].includes(input.phase) ||
-      !exact(input.identity, ["branch", "worktreePath"]) ||
-      !BRANCH.test(input.identity.branch) ||
-      typeof input.identity.worktreePath !== "string" ||
-      input.identity.worktreePath.length === 0 ||
-      /[\0\r\n]/u.test(input.identity.worktreePath) ||
-      !exact(input.base, [
-        "remote",
-        "baseBranch",
-        "baseOid",
-        "artifactCandidates",
-      ]) ||
-      typeof input.base.remote !== "string" ||
-      input.base.remote.length === 0 ||
-      input.base.remote.length > 1024 ||
-      /[\0\r\n]/u.test(input.base.remote) ||
-      !BRANCH.test(input.base.baseBranch) ||
-      !OID.test(input.base.baseOid) ||
-      !exact(input.base.artifactCandidates, ["spec", "plan"])
-    )
-      throw new PlanningWorkspaceConflictError(
-        "invalid-saved-identity",
-        input.identity,
-      );
-    for (const values of [
-      input.base.artifactCandidates.spec,
-      input.base.artifactCandidates.plan,
-    ]) {
-      if (
-        !Array.isArray(values) ||
-        values.some((value) => !validPath(value)) ||
-        new Set(values).size !== values.length
-      )
-        throw new PlanningWorkspaceConflictError(
-          "invalid-saved-identity",
-          input.identity,
-        );
-    }
   }
   async resume(input: {
     runId: string;
