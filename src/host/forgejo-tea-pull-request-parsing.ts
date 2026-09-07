@@ -45,6 +45,19 @@ function nonblank(
     return malformed(operation);
   return value;
 }
+function rawUrlPath(value: string): string {
+  return /^[a-z][a-z\d+.-]*:\/\/[^/?#]*(\/[^?#]*)?/iu.exec(value)?.[1] ?? "";
+}
+function hasDotSegment(path: string): boolean {
+  return path.split("/").some((part) => {
+    try {
+      const decoded = decodeURIComponent(part);
+      return decoded === "." || decoded === "..";
+    } catch {
+      return false;
+    }
+  });
+}
 function urlCoordinates(
   value: string,
   operation: ForgejoPullRequestOperation,
@@ -57,10 +70,12 @@ function urlCoordinates(
   }
   if (
     !/^https?:$/u.test(url.protocol) ||
+    !url.host ||
     url.username ||
     url.password ||
     url.search ||
-    url.hash
+    url.hash ||
+    hasDotSegment(rawUrlPath(value))
   )
     return malformed(operation);
   const parts = url.pathname.split("/");
@@ -141,13 +156,15 @@ export function parseForgejoRemoteUrl(
       (url.protocol !== "ssh:" && (url.username || url.password))
     )
       return fail();
+    if (!url.host) return fail();
     host = url.host;
-    path = url.pathname;
+    path = rawUrlPath(remoteUrl);
   }
   const parts = path.split("/");
   const owner = scpLike ? parts[0] : parts[1];
   const last = scpLike ? parts[1] : parts[2];
   if (
+    hasDotSegment(path) ||
     (scpLike && (parts.length !== 2 || !owner || !last)) ||
     (!scpLike && (parts.length !== 3 || parts[0] !== "" || !owner || !last))
   )
@@ -261,10 +278,12 @@ export function normalizeForgejoPullRequest(
   }
   if (
     !/^https?:$/u.test(parsed.protocol) ||
+    !parsed.host ||
     parsed.username ||
     parsed.password ||
     parsed.search ||
-    parsed.hash
+    parsed.hash ||
+    hasDotSegment(rawUrlPath(html))
   )
     return malformed(options.operation);
   const parts = parsed.pathname.split("/");

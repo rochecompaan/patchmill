@@ -85,6 +85,8 @@ test("does not expose rejected clone URLs", () => {
     "git@forge.example:acme/widgets.git/",
     "https://forge.example/acme//widgets.git",
     "https://forge.example/acme/widgets.git/",
+    "ssh:///acme/widgets.git",
+    "https://forge.example/ignored/../acme/widgets.git",
   ]) {
     assert.throws(
       () => parseForgejoRemoteUrl(url),
@@ -240,6 +242,10 @@ test("rejects malformed repository and pull-request response fields by category"
       ...targetPayload,
       html_url: "https://forge.example/platform/widgets-renamed/",
     },
+    {
+      ...targetPayload,
+      html_url: "https://forge.example/ignored/../platform/widgets-renamed",
+    },
   ];
   for (const payload of malformedRepositoryPayloads)
     assert.throws(
@@ -264,6 +270,10 @@ test("rejects malformed repository and pull-request response fields by category"
     }),
     pull({
       html_url: "https://forge.example/platform/widgets-renamed/pulls/42/",
+    }),
+    pull({
+      html_url:
+        "https://forge.example/ignored/../platform/widgets-renamed/pulls/42",
     }),
     pull({
       html_url: "https://forge.example/platform/widgets-renamed/issues/42",

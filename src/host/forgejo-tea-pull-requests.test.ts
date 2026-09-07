@@ -316,6 +316,25 @@ test("command failures retain safe status diagnostics", async () =>
     );
   }));
 
+test("invalid JSON does not retain a secret-bearing parser cause", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const secret = "credential-that-must-not-leak";
+    const host = hostFor(repoRoot, [
+      { code: 0, stdout: `{"token":"${secret}"`, stderr: "" },
+    ]);
+    await assert.rejects(
+      host.resolveTargetRepositoryIdentity(),
+      (error: unknown) => {
+        assert.ok(error instanceof ForgejoTeaPullRequestError);
+        assert.equal(error.category, "invalid-json");
+        assert.equal(error.cause, undefined);
+        assert.ok(!error.message.includes(secret));
+        assert.ok(!JSON.stringify(error).includes(secret));
+        return true;
+      },
+    );
+  }));
+
 test("a contradictory successful 404 remains a command failure", async () =>
   withForgejoRepository(async (repoRoot) => {
     const runner = createStaticCommandRunner([

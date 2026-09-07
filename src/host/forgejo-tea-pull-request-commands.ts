@@ -96,13 +96,12 @@ export class ForgejoTeaPullRequestCommands {
     const result = await this.api(operation, args, context, notFoundReference);
     try {
       return JSON.parse(result.stdout);
-    } catch (cause) {
+    } catch {
       throw new ForgejoTeaPullRequestError({
         category: "invalid-json",
         operation,
         command: "tea",
         rawDiagnostics: result,
-        cause,
       });
     }
   }
