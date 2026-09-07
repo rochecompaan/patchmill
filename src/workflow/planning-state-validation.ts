@@ -1,4 +1,9 @@
-import { isPlanningBranch } from "../git/planning-git-validation.ts";
+import {
+  isPlanningArtifactPath,
+  isPlanningBranch,
+  isPlanningSingleLine,
+  planningOid,
+} from "../git/planning-git-validation.ts";
 import type {
   PlanningWorkspaceIdentity,
   PlanningWorkspaceOwnership,
@@ -23,7 +28,6 @@ import type {
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const FULL_OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
 export class PlanningStateValidationError extends Error {
@@ -74,7 +78,7 @@ const uuid = (value: unknown, path: string): string => {
 };
 const oid = (value: unknown, path: string): string => {
   const v = string(value, path);
-  return FULL_OID.test(v) ? v : fail("invalid-oid", path);
+  return planningOid.test(v) ? v : fail("invalid-oid", path);
 };
 const timestamp = (value: unknown, path: string): string => {
   const v = string(value, path);
@@ -86,9 +90,7 @@ const timestamp = (value: unknown, path: string): string => {
 };
 const singleLine = (value: unknown, path: string): string => {
   const v = string(value, path);
-  return v.length > 0 && v.length <= 1024 && !/[\0\r\n]/u.test(v)
-    ? v
-    : fail("invalid-string", path);
+  return isPlanningSingleLine(v) ? v : fail("invalid-string", path);
 };
 const branch = (value: unknown, path: string): string => {
   const v = string(value, path);
@@ -96,13 +98,7 @@ const branch = (value: unknown, path: string): string => {
 };
 const artifactPath = (value: unknown, path: string): string => {
   const v = string(value, path);
-  return v.length > 0 &&
-    v.length <= 4096 &&
-    !/[\0\r\n\\]/u.test(v) &&
-    !v.startsWith("/") &&
-    !v.split("/").some((part) => part === "" || part === "." || part === "..")
-    ? v
-    : fail("invalid-path", path);
+  return isPlanningArtifactPath(v) ? v : fail("invalid-path", path);
 };
 const worktreePath = (value: unknown, path: string): string => {
   const v = string(value, path);

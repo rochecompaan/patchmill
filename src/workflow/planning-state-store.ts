@@ -3,6 +3,7 @@ import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   assertPlanningIssueLockOwned,
+  planningIssueLockPath,
   type PlanningIssueLock,
 } from "./planning-issue-lock.ts";
 import {
@@ -111,28 +112,16 @@ export class PlanningStateStore {
     runId: string,
     path: string,
   ): Promise<void> {
+    const lockPath = planningIssueLockPath(this.runStateDir, issue);
     try {
       await assertPlanningIssueLockOwned(lock, {
         issueNumber: issue,
         runId,
-        lockPath: join(
-          this.runStateDir,
-          "planning-pr-v1",
-          "locks",
-          `issue-${issue}.lock`,
-        ),
+        lockPath,
       });
     } catch (_error) {
       throw new PlanningStateConflictError(
-        resolve(lock.path) !==
-          resolve(
-            join(
-              this.runStateDir,
-              "planning-pr-v1",
-              "locks",
-              `issue-${issue}.lock`,
-            ),
-          )
+        resolve(lock.path) !== resolve(lockPath)
           ? "lock-path-mismatch"
           : "lock-ownership-mismatch",
         path,

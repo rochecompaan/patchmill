@@ -225,10 +225,6 @@ export async function assertPlanningIssueLockOwned(
   lock: PlanningIssueLock,
   expected: { issueNumber: number; runId: string; lockPath?: string },
 ): Promise<void> {
-  const path = planningIssueLockPath(
-    join(lock.path, "..", "..", "..", ".."),
-    expected.issueNumber,
-  );
   if (
     expected.lockPath !== undefined &&
     resolve(expected.lockPath) !== resolve(lock.path)
@@ -260,7 +256,6 @@ export async function assertPlanningIssueLockOwned(
       path: lock.path,
       fingerprint: "",
     });
-  void path;
 }
 export async function releasePlanningIssueLock(
   lock: PlanningIssueLock,

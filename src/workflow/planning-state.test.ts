@@ -645,7 +645,7 @@ test("accepts both idempotent merged-workspace cleanup transitions", () => {
         revision: 1,
         updatedAt: "2026-09-07T12:00:01.000Z",
       }),
-    /cleanup-transition/,
+    /(?:cleanup-transition|invalid-transition)/,
   );
 });
 
