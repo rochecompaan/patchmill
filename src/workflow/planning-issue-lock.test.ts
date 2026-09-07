@@ -229,6 +229,29 @@ test("malformed or replaced lock bytes are fingerprinted and never removed", asy
   }
 });
 
+test("malformed binary lock fingerprints the exact on-disk bytes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+  try {
+    const lock = await acquirePlanningIssueLock(
+      dir,
+      { issueNumber: 187, runId },
+      { ownershipId, hostname: "local.test" },
+    );
+    const bytes = Buffer.from([0xff, 0xfe, 0x7b, 0x0a]);
+    await writeFile(lock.path, bytes);
+    await assert.rejects(
+      acquirePlanningIssueLock(dir, { issueNumber: 187, runId }),
+      (error: unknown) =>
+        error instanceof PlanningIssueLockConflictError &&
+        error.diagnostic.classification === "malformed" &&
+        error.diagnostic.fingerprint ===
+          createHash("sha256").update(bytes).digest("hex"),
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("classifies competing valid local locks without takeover", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
   try {

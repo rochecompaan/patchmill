@@ -123,13 +123,13 @@ function liveness(pid: number): "alive" | "dead" | "unverifiable" {
 }
 function diagnostic(
   path: string,
-  bytes: string,
+  bytes: Buffer,
   options: PlanningIssueLockOptions,
 ): PlanningIssueLockDiagnostic {
   const fingerprint = createHash("sha256").update(bytes).digest("hex");
   let record: PlanningIssueLockRecord;
   try {
-    record = parsePlanningIssueLockRecord(bytes);
+    record = parsePlanningIssueLockRecord(bytes.toString("utf8"));
   } catch {
     return { classification: "malformed", path, fingerprint };
   }
@@ -195,7 +195,7 @@ export async function acquirePlanningIssueLock(
     if (handle === undefined) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
         throw new PlanningIssueLockConflictError(
-          diagnostic(path, await readFile(path, "utf8"), options),
+          diagnostic(path, await readFile(path), options),
         );
       }
       throw error;
