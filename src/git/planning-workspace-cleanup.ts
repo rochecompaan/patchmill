@@ -153,8 +153,8 @@ export class PlanningWorkspaceCleanupGit {
       ],
       "remote-head-inspection",
     );
-    const expected = `${workspace.cleanup.pushedHeadOid}\trefs/heads/${workspace.identity.branch}`;
-    if (remote.stdout.trim() !== expected) {
+    const expected = `${workspace.cleanup.pushedHeadOid}\trefs/heads/${workspace.identity.branch}\n`;
+    if (remote.stdout !== expected) {
       throw new PlanningWorkspaceConflictError(
         "remote-head-mismatch",
         workspace.identity,

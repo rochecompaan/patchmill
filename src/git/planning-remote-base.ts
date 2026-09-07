@@ -1,6 +1,7 @@
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { CommandRunner } from "../process/command.ts";
 import {
+  isPlanningArtifactPath,
   isPlanningBranch,
   isPlanningSingleLine,
   planningOid,
@@ -121,11 +122,20 @@ export class PlanningRemoteBaseGit {
           "malformed-record",
         );
       const [mode, type, objectId, path] = match.slice(1);
-      if (!planningOid.test(objectId!) || seen.has(path!))
+      if (
+        !planningOid.test(objectId!) ||
+        !isPlanningArtifactPath(path!) ||
+        seen.has(path!)
+      ) {
         throw new PlanningWorkspaceResponseError(
           "tree-inspection",
-          seen.has(path!) ? "duplicate-entry" : "malformed-record",
+          seen.has(path!)
+            ? "duplicate-entry"
+            : !isPlanningArtifactPath(path!)
+              ? "invalid-path"
+              : "malformed-record",
         );
+      }
       if (
         (mode === "160000" && type !== "commit") ||
         (mode !== "160000" && type !== "blob")

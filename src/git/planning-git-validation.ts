@@ -19,7 +19,7 @@ export function isPlanningBranch(value: unknown): value is string {
     !value.startsWith("/") &&
     !value.endsWith("/") &&
     !value.endsWith(".") &&
-    !/[\x00-\x20\\~^:?*[]/u.test(value) &&
+    !/[\s\x00-\x1f\x7f\\~^:?*[]/u.test(value) &&
     !value.includes("..") &&
     !value.includes("@{") &&
     !value.split("/").some((part) => part.length === 0)

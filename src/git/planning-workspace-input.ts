@@ -1,4 +1,4 @@
-import { relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, win32 } from "node:path";
 import type { PlanningPhaseKind } from "../workflow/planning-pull-request-markers.ts";
 import {
   isPlanningArtifactPath,
@@ -26,15 +26,26 @@ function exact(
     keys.every((key) => key in (value as Record<string, unknown>))
   );
 }
+export function isPlanningRelativeWithinRoot(relativePath: string): boolean {
+  const portable = relativePath.replaceAll("\\", "/");
+  return (
+    !isAbsolute(relativePath) &&
+    !win32.isAbsolute(relativePath) &&
+    portable !== ".." &&
+    !portable.startsWith("../")
+  );
+}
+
 export function planningWorkspacePath(
   repoRoot: string,
   worktreeRoot: string,
   identity: PlanningWorkspaceIdentity,
 ): string {
   const path = resolve(repoRoot, identity.worktreePath);
-  const relativePath = relative(worktreeRoot, path).replaceAll("\\", "/");
-  if (relativePath === ".." || relativePath.startsWith("../"))
+  const relativePath = relative(worktreeRoot, path);
+  if (!isPlanningRelativeWithinRoot(relativePath)) {
     throw new PlanningWorkspaceConflictError("outside-worktree-root", identity);
+  }
   return path;
 }
 export function assertPlanningWorkspacePrepareInput(input: {

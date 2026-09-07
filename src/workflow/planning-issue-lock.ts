@@ -188,22 +188,37 @@ export async function acquirePlanningIssueLock(
     handle = await open(path, "wx", 0o600);
     await handle.writeFile(`${JSON.stringify(record)}\n`);
     await handle.sync();
+    await handle.close();
+    handle = undefined;
     return { path, record };
   } catch (error) {
-    if (handle !== undefined) {
+    if (handle === undefined) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new PlanningIssueLockConflictError(
+          diagnostic(path, await readFile(path, "utf8"), options),
+        );
+      }
+      throw error;
+    }
+    const failures: unknown[] = [error];
+    try {
       await handle.close();
-      await unlink(path).catch((unlinkError: unknown) => {
-        if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT")
-          throw unlinkError;
+    } catch (closeError) {
+      failures.push(closeError);
+    }
+    try {
+      await unlink(path);
+    } catch (unlinkError) {
+      if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") {
+        failures.push(unlinkError);
+      }
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Planning issue lock cleanup failed", {
+        cause: error,
       });
     }
-    if ((error as NodeJS.ErrnoException).code === "EEXIST")
-      throw new PlanningIssueLockConflictError(
-        diagnostic(path, await readFile(path, "utf8"), options),
-      );
     throw error;
-  } finally {
-    if (handle !== undefined) await handle.close().catch(() => undefined);
   }
 }
 export async function assertPlanningIssueLockOwned(

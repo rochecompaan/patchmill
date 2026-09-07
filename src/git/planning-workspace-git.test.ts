@@ -7,6 +7,7 @@ import test from "node:test";
 import type { CommandRunner } from "../process/command.ts";
 import { PlanningRemoteBaseGit } from "./planning-remote-base.ts";
 import { PlanningWorkspaceGit } from "./planning-workspace-git.ts";
+import { isPlanningRelativeWithinRoot } from "./planning-workspace-input.ts";
 import type { PlanningWorkspaceOwnership } from "./planning-workspaces.ts";
 const oid = "a".repeat(40);
 const identity = { branch: "topic", worktreePath: ".worktrees/topic" };
@@ -96,6 +97,7 @@ test("invalid prepare evidence is rejected before any Git command", async () => 
     { ...valid, runId: "not-a-uuid" },
     { ...valid, phase: "unknown" },
     { ...valid, identity: { ...identity, branch: "bad branch" } },
+    { ...valid, identity: { ...identity, branch: "bad\u00a0branch" } },
     { ...valid, base: { ...base, remote: "bad\nremote" } },
     { ...valid, base: { ...base, baseBranch: "bad branch" } },
     {
@@ -112,6 +114,9 @@ test("invalid prepare evidence is rejected before any Git command", async () => 
     );
   }
   assert.deepEqual(calls, []);
+  assert.equal(isPlanningRelativeWithinRoot("D:\\owned"), false);
+  assert.equal(isPlanningRelativeWithinRoot("../owned"), false);
+  assert.equal(isPlanningRelativeWithinRoot("phase/spec"), true);
 });
 
 test("fresh prepare refuses every branch and worktree registration collision", async () => {
@@ -293,6 +298,9 @@ test("branch cleanup requires exact remote proof and expected-old CAS", async ()
     `${oid}\trefs/heads/other\n`,
     `${exact}${exact}`,
     "malformed\n",
+    `\n${exact}`,
+    `${exact}\n`,
+    ` ${exact}`,
   ]) {
     const calls: string[][] = [];
     const adapter = new PlanningWorkspaceGit({

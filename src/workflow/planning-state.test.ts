@@ -94,6 +94,19 @@ function mergedState(
   };
 }
 
+function recordAt(
+  value: unknown,
+  ...segments: readonly (string | number)[]
+): Record<string, unknown> {
+  let current = value;
+  for (const segment of segments) {
+    assert.ok(current !== null && typeof current === "object");
+    current = (current as Record<string | number, unknown>)[segment];
+  }
+  assert.ok(current !== null && typeof current === "object");
+  return current as Record<string, unknown>;
+}
+
 function completeState(): unknown {
   const base = {
     remote: "origin",
@@ -178,6 +191,192 @@ test("creates and round-trips strict initial planning state", () => {
   ]);
   assert.deepEqual(parsePlanningState(serializePlanningState(state)), state);
 });
+test("round-trips pull request and every cleanup discriminator", () => {
+  const documents = [
+    mergedState({ state: "ready" }),
+    mergedState({ state: "worktree-removed", pushedHeadOid: oid }),
+    mergedState({ state: "removed", pushedHeadOid: oid }),
+  ];
+  const open = structuredClone(mergedState({ state: "ready" }));
+  recordAt(open, "phases", 0).status = "pull-request-open";
+  delete recordAt(open, "phases", 0).completion;
+  documents.push(open);
+  for (const document of documents) {
+    const state = validatePlanningState(document);
+    assert.deepEqual(parsePlanningState(serializePlanningState(state)), state);
+  }
+});
+
+test("rejects malformed scalars and nested state schemas with stable paths", () => {
+  const cases: ReadonlyArray<{
+    name: string;
+    reason: string;
+    path: string;
+    mutate: (document: Record<string, unknown>) => void;
+  }> = [
+    {
+      name: "run UUID",
+      reason: "invalid-uuid",
+      path: "$.runId",
+      mutate: (document) => {
+        document.runId = "not-a-uuid";
+      },
+    },
+    {
+      name: "issue number",
+      reason: "invalid-positive-integer",
+      path: "$.issueNumber",
+      mutate: (document) => {
+        document.issueNumber = 0;
+      },
+    },
+    {
+      name: "issue title",
+      reason: "invalid-string",
+      path: "$.issueTitle",
+      mutate: (document) => {
+        document.issueTitle = "bad\ntitle";
+      },
+    },
+    {
+      name: "revision",
+      reason: "invalid-nonnegative-integer",
+      path: "$.revision",
+      mutate: (document) => {
+        document.revision = -1;
+      },
+    },
+    {
+      name: "timestamp",
+      reason: "invalid-timestamp",
+      path: "$.createdAt",
+      mutate: (document) => {
+        document.createdAt = "2026-09-07";
+      },
+    },
+    {
+      name: "base OID",
+      reason: "invalid-oid",
+      path: "$.phases[0].base.baseOid",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "base").baseOid = "a".repeat(39);
+      },
+    },
+    {
+      name: "workspace branch",
+      reason: "invalid-branch",
+      path: "$.phases[0].workspace.identity.branch",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "workspace", "identity").branch =
+          "bad\u00a0branch";
+      },
+    },
+    {
+      name: "worktree path",
+      reason: "invalid-worktree-path",
+      path: "$.phases[0].workspace.identity.worktreePath",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "workspace", "identity").worktreePath =
+          "bad\0path";
+      },
+    },
+    {
+      name: "artifact path",
+      reason: "invalid-path",
+      path: "$.phases[0].artifacts[0].path",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "artifacts", 0).path = "../outside.md";
+      },
+    },
+    {
+      name: "pull request number",
+      reason: "invalid-positive-integer",
+      path: "$.phases[0].pullRequest.reference.number",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "pullRequest", "reference").number = 0;
+      },
+    },
+    {
+      name: "provider",
+      reason: "invalid-provider",
+      path: "$.phases[0].pullRequest.reference.targetRepository.provider",
+      mutate: (document) => {
+        recordAt(
+          document,
+          "phases",
+          0,
+          "pullRequest",
+          "reference",
+          "targetRepository",
+        ).provider = "unknown";
+      },
+    },
+    {
+      name: "cleanup unknown key",
+      reason: "unknown-key",
+      path: "$.phases[0].workspace.cleanup.extra",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "workspace", "cleanup").extra = true;
+      },
+    },
+    {
+      name: "candidate unknown key",
+      reason: "unknown-key",
+      path: "$.phases[0].base.artifactCandidates.extra",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "base", "artifactCandidates").extra =
+          [];
+      },
+    },
+    {
+      name: "repository unknown key",
+      reason: "unknown-key",
+      path: "$.phases[0].pullRequest.reference.targetRepository.extra",
+      mutate: (document) => {
+        recordAt(
+          document,
+          "phases",
+          0,
+          "pullRequest",
+          "reference",
+          "targetRepository",
+        ).extra = true;
+      },
+    },
+    {
+      name: "missing workspace head",
+      reason: "missing-key",
+      path: "$.phases[0].workspace.headOid",
+      mutate: (document) => {
+        delete recordAt(document, "phases", 0, "workspace").headOid;
+      },
+    },
+    {
+      name: "forbidden pending evidence",
+      reason: "unknown-key",
+      path: "$.phases[0].base",
+      mutate: (document) => {
+        recordAt(document, "phases", 0).status = "pending";
+      },
+    },
+  ];
+  for (const item of cases) {
+    const document = structuredClone(mergedState({ state: "ready" })) as Record<
+      string,
+      unknown
+    >;
+    item.mutate(document);
+    assert.throws(
+      () => validatePlanningState(document),
+      (error: unknown) =>
+        error instanceof PlanningStateValidationError &&
+        error.reason === item.reason &&
+        error.path === item.path,
+      item.name,
+    );
+  }
+});
+
 test("rejects unknown and contradictory persisted state", () => {
   const state = createPlanningState({
     issueNumber: 187,

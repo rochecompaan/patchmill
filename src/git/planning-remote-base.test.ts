@@ -174,6 +174,7 @@ test("rejects invalid remote inputs before invoking Git", async () => {
     { issueNumber: 0, remote: "origin", baseBranch: "main" },
     { issueNumber: 187, remote: "origin\nother", baseBranch: "main" },
     { issueNumber: 187, remote: "origin", baseBranch: "bad branch" },
+    { issueNumber: 187, remote: "origin", baseBranch: "bad\u00a0branch" },
     { issueNumber: 187, remote: "origin", baseBranch: `x${"a".repeat(1024)}` },
     { issueNumber: 187, remote: "origin", baseBranch: "bad\u0001branch" },
   ]) {
@@ -212,6 +213,20 @@ test("rejects malformed symlink entries and duplicate tree paths", async () => {
   await assert.rejects(
     malformed.fetch({ issueNumber: 187, remote: "origin", baseBranch: "main" }),
     /malformed-record/,
+  );
+  const invalidPath = new PlanningRemoteBaseGit({
+    runner: runner(`100644 blob ${oid}\tdocs/specs/bad\\name-issue-187.md\0`),
+    repoRoot: "/repo",
+    specsDir: "docs/specs",
+    plansDir: "docs/plans",
+  });
+  await assert.rejects(
+    invalidPath.fetch({
+      issueNumber: 187,
+      remote: "origin",
+      baseBranch: "main",
+    }),
+    /invalid-path/,
   );
   const duplicate = new PlanningRemoteBaseGit({
     runner: runner(

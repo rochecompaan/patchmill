@@ -46,6 +46,7 @@ test("rejects every unsafe branch spelling", () => {
     "topic*next",
     "topic[next",
     "topic next",
+    "topic\u00a0next",
     "topic\u0001next",
     "a/" + "x".repeat(1024),
   ]) {
@@ -58,9 +59,14 @@ test("rejects every unsafe branch spelling", () => {
 });
 
 test("strictly parses marker field values and record coherence", () => {
+  assert.equal(
+    parsePlanningWorktreePorcelain(
+      `worktree /repo\0HEAD ${oid}\0detached\0locked held by CI\0prunable retry after cleanup\0\0`,
+    ).malformed,
+    false,
+  );
   const invalid = [
     `worktree /repo\0HEAD ${oid}\0detached value\0\0`,
-    `worktree /repo\0HEAD ${oid}\0locked two words\0\0`,
     `worktree /repo\0HEAD ${oid}\0prunable bad\u0001\0\0`,
     `worktree /repo\0HEAD ${oid}\0branch refs/heads/topic\0detached\0\0`,
     `worktree /repo\0HEAD ${oid}\0unknown value\0\0`,

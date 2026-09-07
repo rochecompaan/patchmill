@@ -1,3 +1,4 @@
+import { isPlanningBranch } from "../git/planning-git-validation.ts";
 import type {
   PlanningWorkspaceIdentity,
   PlanningWorkspaceOwnership,
@@ -90,16 +91,8 @@ const singleLine = (value: unknown, path: string): string => {
     : fail("invalid-string", path);
 };
 const branch = (value: unknown, path: string): string => {
-  const v = singleLine(value, path);
-  return v.length <= 1024 &&
-    !v.startsWith("-") &&
-    !v.startsWith("/") &&
-    !v.endsWith("/") &&
-    !v.endsWith(".") &&
-    !/[\s\\~^:?*[\x00-\x1f]|\.\.|@\{/u.test(v) &&
-    !v.split("/").some((part) => part.length === 0)
-    ? v
-    : fail("invalid-branch", path);
+  const v = string(value, path);
+  return isPlanningBranch(v) ? v : fail("invalid-branch", path);
 };
 const artifactPath = (value: unknown, path: string): string => {
   const v = string(value, path);
@@ -385,6 +378,13 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
   if (v.version !== 1) fail("unsupported-version", "$.version");
   if (v.workflowVersion !== PLANNING_PR_WORKFLOW_VERSION)
     fail("unsupported-workflow-version", "$.workflowVersion");
+  const parsedRunId = uuid(v.runId, "$.runId");
+  const parsedIssueNumber = positive(v.issueNumber, "$.issueNumber");
+  const parsedIssueTitle = singleLine(v.issueTitle, "$.issueTitle");
+  const parsedRevision = nonnegative(v.revision, "$.revision");
+  const createdAt = timestamp(v.createdAt, "$.createdAt");
+  const updatedAt = timestamp(v.updatedAt, "$.updatedAt");
+  if (updatedAt < createdAt) fail("timestamp-order", "$.updatedAt");
   const parsedGates = gates(v.gates, "$.gates");
   if (!Array.isArray(v.phases)) fail("expected-array", "$.phases");
   const phases = (v.phases as unknown[]).map((item, i) =>
@@ -425,7 +425,7 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
       fail("artifact-kinds", `$.phases[${i}].artifacts`);
     if ("workspace" in p) {
       if (
-        p.workspace.runId !== v.runId ||
+        p.workspace.runId !== parsedRunId ||
         p.workspace.phase !== p.kind ||
         p.workspace.remote !== p.base.remote ||
         p.workspace.baseBranch !== p.base.baseBranch ||
@@ -492,18 +492,15 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
         fail("pull-request-mismatch", `$.phases[${i}].pullRequest`);
     }
   }
-  const createdAt = timestamp(v.createdAt, "$.createdAt"),
-    updatedAt = timestamp(v.updatedAt, "$.updatedAt");
-  if (updatedAt < createdAt) fail("timestamp-order", "$.updatedAt");
   return {
     version: 1,
     workflowVersion: PLANNING_PR_WORKFLOW_VERSION,
-    runId: uuid(v.runId, "$.runId"),
-    issueNumber: positive(v.issueNumber, "$.issueNumber"),
-    issueTitle: singleLine(v.issueTitle, "$.issueTitle"),
+    runId: parsedRunId,
+    issueNumber: parsedIssueNumber,
+    issueTitle: parsedIssueTitle,
     gates: parsedGates,
     phases,
-    revision: nonnegative(v.revision, "$.revision"),
+    revision: parsedRevision,
     createdAt,
     updatedAt,
   };
