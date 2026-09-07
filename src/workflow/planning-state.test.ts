@@ -193,6 +193,7 @@ test("creates and round-trips strict initial planning state", () => {
 });
 test("round-trips pull request and every cleanup discriminator", () => {
   const documents = [
+    completeState(),
     mergedState({ state: "ready" }),
     mergedState({ state: "worktree-removed", pushedHeadOid: oid }),
     mergedState({ state: "removed", pushedHeadOid: oid }),
@@ -214,6 +215,22 @@ test("rejects malformed scalars and nested state schemas with stable paths", () 
     path: string;
     mutate: (document: Record<string, unknown>) => void;
   }> = [
+    {
+      name: "version",
+      reason: "unsupported-version",
+      path: "$.version",
+      mutate: (document) => {
+        document.version = 2;
+      },
+    },
+    {
+      name: "workflow version",
+      reason: "unsupported-workflow-version",
+      path: "$.workflowVersion",
+      mutate: (document) => {
+        document.workflowVersion = "planning-pr-v2";
+      },
+    },
     {
       name: "run UUID",
       reason: "invalid-uuid",
@@ -252,6 +269,30 @@ test("rejects malformed scalars and nested state schemas with stable paths", () 
       path: "$.createdAt",
       mutate: (document) => {
         document.createdAt = "2026-09-07";
+      },
+    },
+    {
+      name: "gates",
+      reason: "invalid-gates",
+      path: "$.gates",
+      mutate: (document) => {
+        recordAt(document, "gates").specRequired = "yes";
+      },
+    },
+    {
+      name: "status",
+      reason: "invalid-status",
+      path: "$.phases[0].status",
+      mutate: (document) => {
+        recordAt(document, "phases", 0).status = "unknown";
+      },
+    },
+    {
+      name: "completion",
+      reason: "invalid-completion",
+      path: "$.phases[0].completion.kind",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "completion").kind = "unknown";
       },
     },
     {
@@ -344,11 +385,110 @@ test("rejects malformed scalars and nested state schemas with stable paths", () 
       },
     },
     {
+      name: "duplicate candidates",
+      reason: "duplicate-value",
+      path: "$.phases[0].base.artifactCandidates.spec",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "base", "artifactCandidates").spec = [
+          "docs/specs/a.md",
+          "docs/specs/a.md",
+        ];
+      },
+    },
+    {
+      name: "duplicate artifacts",
+      reason: "duplicate-artifact-kind",
+      path: "$.phases[0].artifacts",
+      mutate: (document) => {
+        recordAt(document, "phases", 0, "artifacts", 1).kind = "spec";
+      },
+    },
+    {
+      name: "missing top-level field",
+      reason: "missing-key",
+      path: "$.updatedAt",
+      mutate: (document) => {
+        delete document.updatedAt;
+      },
+    },
+    {
+      name: "missing gate",
+      reason: "missing-key",
+      path: "$.gates.planRequired",
+      mutate: (document) => {
+        delete recordAt(document, "gates").planRequired;
+      },
+    },
+    {
+      name: "missing candidate kind",
+      reason: "missing-key",
+      path: "$.phases[0].base.artifactCandidates.plan",
+      mutate: (document) => {
+        delete recordAt(document, "phases", 0, "base", "artifactCandidates")
+          .plan;
+      },
+    },
+    {
       name: "missing workspace head",
       reason: "missing-key",
       path: "$.phases[0].workspace.headOid",
       mutate: (document) => {
         delete recordAt(document, "phases", 0, "workspace").headOid;
+      },
+    },
+    {
+      name: "missing identity branch",
+      reason: "missing-key",
+      path: "$.phases[0].workspace.identity.branch",
+      mutate: (document) => {
+        delete recordAt(document, "phases", 0, "workspace", "identity").branch;
+      },
+    },
+    {
+      name: "missing cleanup state",
+      reason: "missing-key",
+      path: "$.phases[0].workspace.cleanup.state",
+      mutate: (document) => {
+        delete recordAt(document, "phases", 0, "workspace", "cleanup").state;
+      },
+    },
+    {
+      name: "missing artifact source",
+      reason: "missing-key",
+      path: "$.phases[0].artifacts[0].source",
+      mutate: (document) => {
+        delete recordAt(document, "phases", 0, "artifacts", 0).source;
+      },
+    },
+    {
+      name: "missing pull request head",
+      reason: "missing-key",
+      path: "$.phases[0].pullRequest.headOid",
+      mutate: (document) => {
+        delete recordAt(document, "phases", 0, "pullRequest").headOid;
+      },
+    },
+    {
+      name: "missing repository owner",
+      reason: "missing-key",
+      path: "$.phases[0].pullRequest.reference.targetRepository.owner",
+      mutate: (document) => {
+        delete recordAt(
+          document,
+          "phases",
+          0,
+          "pullRequest",
+          "reference",
+          "targetRepository",
+        ).owner;
+      },
+    },
+    {
+      name: "missing merge OID",
+      reason: "missing-key",
+      path: "$.phases[0].completion.mergeOid",
+      mutate: (document) => {
+        delete recordAt(document, "phases", 0, "completion").mergeOid;
       },
     },
     {
@@ -373,6 +513,36 @@ test("rejects malformed scalars and nested state schemas with stable paths", () 
         error.reason === item.reason &&
         error.path === item.path,
       item.name,
+    );
+  }
+});
+
+test("forbids evidence outside each phase discriminator", () => {
+  const workspaceReady = structuredClone(completeState());
+  recordAt(workspaceReady, "phases", 2).artifacts = [];
+  const pullRequestOpen = structuredClone(mergedState({ state: "ready" }));
+  recordAt(pullRequestOpen, "phases", 0).status = "pull-request-open";
+  const remoteComplete = structuredClone(completeState());
+  recordAt(remoteComplete, "phases", 0).workspace = recordAt(
+    completeState(),
+    "phases",
+    2,
+    "workspace",
+  );
+  const mergedComplete = structuredClone(mergedState({ state: "ready" }));
+  recordAt(mergedComplete, "phases", 0).unexpected = true;
+  for (const [document, path] of [
+    [workspaceReady, "$.phases[2].artifacts"],
+    [pullRequestOpen, "$.phases[0].completion"],
+    [remoteComplete, "$.phases[0].workspace"],
+    [mergedComplete, "$.phases[0].unexpected"],
+  ] as const) {
+    assert.throws(
+      () => validatePlanningState(document),
+      (error: unknown) =>
+        error instanceof PlanningStateValidationError &&
+        error.reason === "unknown-key" &&
+        error.path === path,
     );
   }
 });

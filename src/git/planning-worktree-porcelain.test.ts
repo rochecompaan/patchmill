@@ -59,12 +59,14 @@ test("rejects every unsafe branch spelling", () => {
 });
 
 test("strictly parses marker field values and record coherence", () => {
-  assert.equal(
-    parsePlanningWorktreePorcelain(
-      `worktree /repo\0HEAD ${oid}\0detached\0locked held by CI\0prunable retry after cleanup\0\0`,
-    ).malformed,
-    false,
-  );
+  for (const reason of ["held by CI", "x".repeat(2048)]) {
+    assert.equal(
+      parsePlanningWorktreePorcelain(
+        `worktree /repo\0HEAD ${oid}\0detached\0locked ${reason}\0prunable retry after cleanup\0\0`,
+      ).malformed,
+      false,
+    );
+  }
   const invalid = [
     `worktree /repo\0HEAD ${oid}\0detached value\0\0`,
     `worktree /repo\0HEAD ${oid}\0prunable bad\u0001\0\0`,

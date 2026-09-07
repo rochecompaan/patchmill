@@ -147,6 +147,7 @@ export class PlanningStateStore {
     const temporary = `${path}.${randomUUID()}.tmp`;
     let renamed = false;
     let handle;
+    let primaryFailure: unknown;
     try {
       if (!replace) {
         try {
@@ -179,13 +180,32 @@ export class PlanningStateStore {
         )
           throw error;
       }
-    } finally {
-      if (handle !== undefined) await handle.close().catch(() => undefined);
-      if (!renamed)
-        await unlink(temporary).catch((unlinkError: unknown) => {
-          if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT")
-            throw unlinkError;
-        });
+    } catch (error) {
+      primaryFailure = error;
     }
+    const failures: unknown[] =
+      primaryFailure === undefined ? [] : [primaryFailure];
+    if (handle !== undefined) {
+      try {
+        await handle.close();
+      } catch (closeError) {
+        failures.push(closeError);
+      }
+    }
+    if (!renamed) {
+      try {
+        await unlink(temporary);
+      } catch (unlinkError) {
+        if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") {
+          failures.push(unlinkError);
+        }
+      }
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Planning state cleanup failed", {
+        cause: primaryFailure,
+      });
+    }
+    if (failures.length === 1) throw failures[0];
   }
 }

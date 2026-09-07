@@ -10,11 +10,7 @@ export type PlanningWorktreeRegistration = Readonly<{
   prunable: boolean;
 }>;
 function validMarkerValue(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value.length <= 1024 &&
-    !/[\x00-\x1f\x7f\r\n]/u.test(value)
-  );
+  return value.length > 0 && !/[\x00-\x1f\x7f\r\n]/u.test(value);
 }
 export function parsePlanningWorktreePorcelain(output: string): Readonly<{
   entries: readonly PlanningWorktreeRegistration[];
