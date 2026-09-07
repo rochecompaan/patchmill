@@ -134,8 +134,8 @@ export function parseForgejoRemoteUrl(
   let host: string;
   let path: string;
   let scpLike = false;
-  if (/^[^@\s/:]+@[^\s/:]+:[^\s]+$/u.test(remoteUrl)) {
-    const match = /^[^@\s/:]+@([^\s/:]+):([^\s]+)$/u.exec(remoteUrl);
+  if (/^(?:[^@\s/:]+@)?[^\s/:]+:(?!\/)[^\s]+$/u.test(remoteUrl)) {
+    const match = /^(?:[^@\s/:]+@)?([^\s/:]+):(?!\/)([^\s]+)$/u.exec(remoteUrl);
     const matchHost = match?.[1];
     const matchPath = match?.[2];
     if (matchHost === undefined || matchPath === undefined) return fail();

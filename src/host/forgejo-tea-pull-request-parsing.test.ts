@@ -67,6 +67,15 @@ for (const [url, expected] of [
       slug: "acme/widgets",
     },
   ],
+  [
+    "forge.example:acme/widgets.git",
+    {
+      host: "forge.example",
+      owner: "acme",
+      repository: "widgets",
+      slug: "acme/widgets",
+    },
+  ],
 ] as const)
   test(`parses ${url}`, () =>
     assert.deepEqual(parseForgejoRemoteUrl(url), expected));
