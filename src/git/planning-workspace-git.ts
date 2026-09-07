@@ -34,7 +34,8 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   private path(identity: PlanningWorkspaceIdentity): string {
     const path = resolve(this.repoRoot, identity.worktreePath);
     const rel = relative(this.worktreeRoot, path);
-    if (rel === ".." || rel.startsWith("../") || !rel)
+    const portable = rel.replaceAll("\\", "/");
+    if (portable === ".." || portable.startsWith("../"))
       throw new PlanningWorkspaceConflictError(
         "outside-worktree-root",
         identity,
@@ -94,6 +95,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   private async clean(path: string): Promise<boolean> {
     const result = await this.run(
       [
+        "--no-optional-locks",
         "-C",
         path,
         "status",
@@ -121,6 +123,14 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
     const path = this.path(identity);
     const entries = await this.entries();
     const entry = entries.find((item) => item.path === path);
+    const branchElsewhere = entries.find(
+      (item) => item.branch === identity.branch && item.path !== path,
+    );
+    if (branchElsewhere !== undefined)
+      throw new PlanningWorkspaceConflictError(
+        "branch-owned-by-other-worktree",
+        identity,
+      );
     const head = await this.branchHead(identity.branch);
     if (entry === undefined)
       return head === undefined
@@ -247,8 +257,20 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
         workspace.identity,
       );
     const snapshot = await this.inspect(workspace.identity);
-    if (snapshot.state === "missing") return snapshot;
+    if (snapshot.state === "missing") {
+      if (await this.existing(this.path(workspace.identity)))
+        throw new PlanningWorkspaceConflictError(
+          "unregistered-path",
+          workspace.identity,
+        );
+      return snapshot;
+    }
     if (snapshot.state === "branch-only") {
+      if (await this.existing(this.path(workspace.identity)))
+        throw new PlanningWorkspaceConflictError(
+          "unregistered-path",
+          workspace.identity,
+        );
       if (snapshot.headOid !== workspace.headOid)
         throw new PlanningWorkspaceConflictError(
           "head-oid-mismatch",
@@ -292,10 +314,20 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
         "invalid-saved-identity",
         workspace.identity,
       );
+    if (workspace.cleanup.pushedHeadOid !== workspace.headOid)
+      throw new PlanningWorkspaceConflictError(
+        "head-oid-mismatch",
+        workspace.identity,
+      );
     const current = await this.inspect(workspace.identity);
     if (current.state === "ready")
       throw new PlanningWorkspaceConflictError(
         "branch-owned-by-other-worktree",
+        workspace.identity,
+      );
+    if (await this.existing(this.path(workspace.identity)))
+      throw new PlanningWorkspaceConflictError(
+        "unregistered-path",
         workspace.identity,
       );
     const remote = await this.runner.run(

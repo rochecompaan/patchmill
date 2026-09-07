@@ -127,33 +127,34 @@ function diagnostic(
   options: PlanningIssueLockOptions,
 ): PlanningIssueLockDiagnostic {
   const fingerprint = createHash("sha256").update(bytes).digest("hex");
+  let record: PlanningIssueLockRecord;
   try {
-    const record = parsePlanningIssueLockRecord(bytes);
-    const here = options.hostname ?? localHostname();
-    const state =
-      record.hostname === here
-        ? (options.processState ?? liveness)(record.pid)
-        : "unverifiable";
-    return {
-      classification:
-        state === "alive"
-          ? "active"
-          : state === "dead"
-            ? "stale"
-            : "unverifiable",
-      path,
-      fingerprint,
-      owner: {
-        issueNumber: record.issueNumber,
-        runId: record.runId,
-        pid: record.pid,
-        hostname: record.hostname,
-        acquiredAt: record.acquiredAt,
-      },
-    };
+    record = parsePlanningIssueLockRecord(bytes);
   } catch {
     return { classification: "malformed", path, fingerprint };
   }
+  const here = options.hostname ?? localHostname();
+  const state =
+    record.hostname === here
+      ? (options.processState ?? liveness)(record.pid)
+      : "unverifiable";
+  return {
+    classification:
+      state === "alive"
+        ? "active"
+        : state === "dead"
+          ? "stale"
+          : "unverifiable",
+    path,
+    fingerprint,
+    owner: {
+      issueNumber: record.issueNumber,
+      runId: record.runId,
+      pid: record.pid,
+      hostname: record.hostname,
+      acquiredAt: record.acquiredAt,
+    },
+  };
 }
 export class PlanningIssueLockConflictError extends Error {
   readonly diagnostic: PlanningIssueLockDiagnostic;

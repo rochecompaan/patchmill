@@ -384,27 +384,31 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
     phases.some((item, i) => item.kind !== expected[i]?.kind)
   )
     fail("phase-sequence", "$.phases");
-  const statuses = phases.map((item) => item.status);
-  const active = statuses.filter(
-    (status) => status === "workspace-ready" || status === "pull-request-open",
-  );
-  if (active.length > 1) fail("multiple-active-phases", "$.phases");
+  let active = false;
   let pending = false;
-  let completed = false;
+  const branches = new Set<string>();
+  const worktreePaths = new Set<string>();
   for (let i = 0; i < phases.length; i += 1) {
     const p = phases[i]!;
-    if (p.status === "pending") pending = true;
-    else {
-      if (pending) fail("progress-order", `$.phases[${i}]`);
-      if (p.status === "complete") completed = true;
-      else if (completed) fail("progress-order", `$.phases[${i}]`);
+    if (p.status === "complete") {
+      if (active || pending) fail("progress-order", `$.phases[${i}]`);
+    } else if (
+      p.status === "workspace-ready" ||
+      p.status === "pull-request-open"
+    ) {
+      if (active || pending) fail("progress-order", `$.phases[${i}]`);
+      active = true;
+    } else {
+      pending = true;
     }
     const assigned = expected[i]!.artifactKinds;
     if (
       p.status !== "pending" &&
       "artifacts" in p &&
       (p.artifacts.length !== assigned.length ||
-        p.artifacts.some((a, j) => a.kind !== assigned[j]))
+        p.artifacts.some(
+          (artifact, index) => artifact.kind !== assigned[index],
+        ))
     )
       fail("artifact-kinds", `$.phases[${i}].artifacts`);
     if ("workspace" in p) {
@@ -416,11 +420,65 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
         p.workspace.baseOid !== p.base.baseOid
       )
         fail("workspace-mismatch", `$.phases[${i}].workspace`);
+      const normalizedPath = p.workspace.identity.worktreePath.replaceAll(
+        "\\\\",
+        "/",
+      );
+      if (
+        branches.has(p.workspace.identity.branch) ||
+        worktreePaths.has(normalizedPath)
+      )
+        fail(
+          "duplicate-workspace-identity",
+          `$.phases[${i}].workspace.identity`,
+        );
+      branches.add(p.workspace.identity.branch);
+      worktreePaths.add(normalizedPath);
       if (
         (p.status === "workspace-ready" || p.status === "pull-request-open") &&
         p.workspace.cleanup.state !== "ready"
       )
         fail("invalid-cleanup-progress", `$.phases[${i}].workspace.cleanup`);
+      if (
+        p.workspace.cleanup.state !== "ready" &&
+        p.workspace.cleanup.pushedHeadOid !== p.workspace.headOid
+      )
+        fail(
+          "cleanup-head-mismatch",
+          `$.phases[${i}].workspace.cleanup.pushedHeadOid`,
+        );
+    }
+    if ("artifacts" in p) {
+      for (let index = 0; index < p.artifacts.length; index += 1) {
+        const artifact = p.artifacts[index]!;
+        if (artifact.source === "remote-base") {
+          if (
+            artifact.commitOid !== p.base.baseOid ||
+            !p.base.artifactCandidates[artifact.kind].includes(artifact.path)
+          )
+            fail(
+              "remote-artifact-mismatch",
+              `$.phases[${i}].artifacts[${index}]`,
+            );
+        } else if (
+          !("workspace" in p) ||
+          artifact.commitOid !== p.workspace.headOid
+        ) {
+          fail(
+            "workspace-artifact-mismatch",
+            `$.phases[${i}].artifacts[${index}]`,
+          );
+        }
+      }
+    }
+    if ("pullRequest" in p) {
+      if (
+        !("workspace" in p) ||
+        p.pullRequest.baseBranch !== p.base.baseBranch ||
+        p.pullRequest.headBranch !== p.workspace.identity.branch ||
+        p.pullRequest.headOid !== p.workspace.headOid
+      )
+        fail("pull-request-mismatch", `$.phases[${i}].pullRequest`);
     }
   }
   const createdAt = timestamp(v.createdAt, "$.createdAt"),

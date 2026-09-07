@@ -8,6 +8,8 @@ export type PlanningWorktreeRegistration = Readonly<{
   prunable: boolean;
 }>;
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const BRANCH =
+  /^(?!-)(?!\/)(?!.*(?:\.\.|@\{|[\s\\~^:?*[]))(?!.*(?:\/\/|\/$|\.$)).+$/u;
 export function parsePlanningWorktreePorcelain(output: string): Readonly<{
   entries: readonly PlanningWorktreeRegistration[];
   malformed: boolean;
@@ -49,7 +51,10 @@ export function parsePlanningWorktreePorcelain(output: string): Readonly<{
       !isAbsolute(path) ||
       !OID.test(head) ||
       (ref !== undefined &&
-        (!ref.startsWith("refs/heads/") || ref.length === 11)) ||
+        (!ref.startsWith("refs/heads/") ||
+          ref.length === 11 ||
+          !BRANCH.test(ref.slice(11)))) ||
+      (values.has("detached") && ref !== undefined) ||
       (!values.has("detached") && ref === undefined)
     ) {
       return { entries: [], malformed: true };

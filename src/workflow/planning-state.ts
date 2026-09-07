@@ -80,52 +80,101 @@ export function assertPlanningStateReplacement(
   for (let index = 0; index < left.phases.length; index += 1) {
     const a = left.phases[index]!;
     const b = right.phases[index]!;
-    const allowed: Record<string, readonly string[]> = {
-      pending: ["pending", "workspace-ready", "complete"],
-      "workspace-ready": ["workspace-ready", "pull-request-open"],
-      "pull-request-open": ["pull-request-open", "complete"],
-      complete: ["complete"],
-    };
-    if (!allowed[a.status]!.includes(b.status))
+    const completion = (phase: typeof b) =>
+      phase.status === "complete" ? phase.completion.kind : undefined;
+    const allowed =
+      (a.status === "pending" &&
+        (b.status === "pending" ||
+          b.status === "workspace-ready" ||
+          completion(b) === "remote-base")) ||
+      (a.status === "workspace-ready" &&
+        (b.status === "workspace-ready" || b.status === "pull-request-open")) ||
+      (a.status === "pull-request-open" &&
+        (b.status === "pull-request-open" ||
+          completion(b) === "merged-pull-request")) ||
+      (a.status === "complete" &&
+        b.status === "complete" &&
+        a.completion.kind === b.completion.kind);
+    if (!allowed)
       throw new PlanningStateValidationError(
         "invalid-transition",
         `$.phases[${index}].status`,
       );
-    if (a.status === "complete" && b.status === "complete") {
-      const ak = a.completion.kind;
-      const bk = b.completion.kind;
-      if (ak !== bk)
-        throw new PlanningStateValidationError(
-          "invalid-transition",
-          `$.phases[${index}].completion`,
-        );
-      if (ak === "merged-pull-request" && bk === "merged-pull-request") {
-        const leftMerged = a as Extract<
-          typeof a,
-          { completion: { kind: "merged-pull-request" } }
-        >;
-        const rightMerged = b as Extract<
-          typeof b,
-          { completion: { kind: "merged-pull-request" } }
-        >;
-        if (
-          leftMerged.workspace.cleanup.state !==
-          rightMerged.workspace.cleanup.state
-        ) {
-          const edges: Record<string, string> = {
-            ready: "worktree-removed",
-            "worktree-removed": "removed",
-          };
-          if (
-            edges[leftMerged.workspace.cleanup.state] !==
-            rightMerged.workspace.cleanup.state
-          )
-            throw new PlanningStateValidationError(
-              "invalid-cleanup-transition",
-              `$.phases[${index}].workspace.cleanup`,
-            );
-        }
+    const leftJson = JSON.parse(JSON.stringify(a)) as Record<string, unknown>;
+    const rightJson = JSON.parse(JSON.stringify(b)) as Record<string, unknown>;
+    const leftWorkspace = leftJson.workspace as
+      | Record<string, unknown>
+      | undefined;
+    const rightWorkspace = rightJson.workspace as
+      | Record<string, unknown>
+      | undefined;
+    if (
+      leftWorkspace !== undefined &&
+      rightWorkspace !== undefined &&
+      (leftWorkspace.cleanup as Record<string, unknown>).state === "ready" &&
+      (rightWorkspace.cleanup as Record<string, unknown>).state === "ready"
+    ) {
+      leftWorkspace.headOid = "<head>";
+      rightWorkspace.headOid = "<head>";
+      const leftArtifacts = leftJson.artifacts as
+        | Array<Record<string, unknown>>
+        | undefined;
+      const rightArtifacts = rightJson.artifacts as
+        | Array<Record<string, unknown>>
+        | undefined;
+      if (leftArtifacts !== undefined && rightArtifacts !== undefined) {
+        for (const artifact of leftArtifacts)
+          if (artifact.source === "workspace") artifact.commitOid = "<head>";
+        for (const artifact of rightArtifacts)
+          if (artifact.source === "workspace") artifact.commitOid = "<head>";
       }
+      const leftPull = leftJson.pullRequest as
+        | Record<string, unknown>
+        | undefined;
+      const rightPull = rightJson.pullRequest as
+        | Record<string, unknown>
+        | undefined;
+      if (leftPull !== undefined && rightPull !== undefined) {
+        leftPull.headOid = "<head>";
+        rightPull.headOid = "<head>";
+      }
+    }
+    if (
+      a.status === b.status &&
+      JSON.stringify(leftJson) !== JSON.stringify(rightJson)
+    )
+      throw new PlanningStateValidationError(
+        "immutable-evidence",
+        `$.phases[${index}]`,
+      );
+    if (
+      a.status === "complete" &&
+      b.status === "complete" &&
+      a.completion.kind === "merged-pull-request" &&
+      b.completion.kind === "merged-pull-request"
+    ) {
+      const leftMerged = a as Extract<
+        typeof a,
+        { completion: { kind: "merged-pull-request" } }
+      >;
+      const rightMerged = b as Extract<
+        typeof b,
+        { completion: { kind: "merged-pull-request" } }
+      >;
+      const edges: Record<string, string> = {
+        ready: "worktree-removed",
+        "worktree-removed": "removed",
+      };
+      if (
+        leftMerged.workspace.cleanup.state !==
+          rightMerged.workspace.cleanup.state &&
+        edges[leftMerged.workspace.cleanup.state] !==
+          rightMerged.workspace.cleanup.state
+      )
+        throw new PlanningStateValidationError(
+          "invalid-cleanup-transition",
+          `$.phases[${index}].workspace.cleanup`,
+        );
     }
   }
 }

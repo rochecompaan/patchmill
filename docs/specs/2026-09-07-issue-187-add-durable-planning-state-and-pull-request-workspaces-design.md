@@ -2,8 +2,7 @@
 
 ## Status
 
-This specification awaits manual review. Implementation planning must not begin
-until the specification is approved.
+This specification was approved for implementation for issue #187.
 
 ## Summary
 

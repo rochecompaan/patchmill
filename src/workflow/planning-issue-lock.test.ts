@@ -51,6 +51,32 @@ test("acquires a mode-0600 owner lock and releases idempotently", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+test("propagates unexpected process liveness failures", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+  try {
+    await acquirePlanningIssueLock(
+      dir,
+      { issueNumber: 187, runId },
+      { ownershipId, pid: 1234, hostname: "local.test" },
+    );
+    await assert.rejects(
+      acquirePlanningIssueLock(
+        dir,
+        { issueNumber: 187, runId },
+        {
+          ownershipId: "123e4567-e89b-42d3-a456-426614174002",
+          hostname: "local.test",
+          processState: () => {
+            throw new Error("liveness failed");
+          },
+        },
+      ),
+      /liveness failed/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 test("classifies competing valid local locks without takeover", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
   try {

@@ -100,6 +100,7 @@ export class PlanningRemoteBaseGit {
     check(result, "tree-inspection");
     const spec: string[] = [];
     const plan: string[] = [];
+    const seen = new Set<string>();
     if (result.stdout !== "" && !result.stdout.endsWith("\0"))
       throw new PlanningWorkspaceResponseError(
         "tree-inspection",
@@ -107,25 +108,27 @@ export class PlanningRemoteBaseGit {
       );
     for (const record of result.stdout.split("\0").filter(Boolean)) {
       const match =
-        /^(100644|100755) (blob) ([0-9a-f]{40}|[0-9a-f]{64})\t(.+)$/u.exec(
+        /^(100644|100755|120000|160000) (blob|commit) ([0-9a-f]{40}|[0-9a-f]{64})\t([^\0\r\n]+)$/u.exec(
           record,
         );
-      if (match === null) {
-        if (/^(120000|160000) /u.test(record)) continue;
+      if (match === null)
         throw new PlanningWorkspaceResponseError(
           "tree-inspection",
           "malformed-record",
         );
-      }
-      const path = match[4]!;
-      if (
-        !path.includes("\0") &&
-        basename(path).includes(`-issue-${input.issueNumber}-`)
-      ) {
-        if (path === this.specsDir || path.startsWith(`${this.specsDir}/`))
-          spec.push(path);
-        if (path === this.plansDir || path.startsWith(`${this.plansDir}/`))
-          plan.push(path);
+      const [mode, type, objectId, path] = match.slice(1);
+      if (!OID.test(objectId!) || seen.has(path!))
+        throw new PlanningWorkspaceResponseError(
+          "tree-inspection",
+          seen.has(path!) ? "duplicate-entry" : "malformed-record",
+        );
+      seen.add(path!);
+      if ((mode !== "100644" && mode !== "100755") || type !== "blob") continue;
+      if (basename(path!).includes(`-issue-${input.issueNumber}-`)) {
+        if (path === this.specsDir || path!.startsWith(`${this.specsDir}/`))
+          spec.push(path!);
+        if (path === this.plansDir || path!.startsWith(`${this.plansDir}/`))
+          plan.push(path!);
       }
     }
     return Object.freeze({
@@ -133,8 +136,8 @@ export class PlanningRemoteBaseGit {
       baseBranch: input.baseBranch,
       baseOid,
       artifactCandidates: Object.freeze({
-        spec: Object.freeze([...new Set(spec)].sort()),
-        plan: Object.freeze([...new Set(plan)].sort()),
+        spec: Object.freeze(spec.sort()),
+        plan: Object.freeze(plan.sort()),
       }),
     });
   }
