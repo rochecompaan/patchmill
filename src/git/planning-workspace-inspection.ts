@@ -1,10 +1,8 @@
 import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { CommandRunner } from "../process/command.ts";
-import {
-  planningOid,
-  planningWorkspacePath,
-} from "./planning-workspace-input.ts";
+import { planningOid } from "./planning-git-validation.ts";
+import { planningWorkspacePath } from "./planning-workspace-input.ts";
 import {
   parsePlanningWorktreePorcelain,
   type PlanningWorktreeRegistration,

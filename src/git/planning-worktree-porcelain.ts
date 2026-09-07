@@ -1,4 +1,6 @@
 import { isAbsolute, normalize } from "node:path";
+import { isPlanningBranch, planningOid } from "./planning-git-validation.ts";
+
 export type PlanningWorktreeRegistration = Readonly<{
   path: string;
   headOid: string;
@@ -7,21 +9,6 @@ export type PlanningWorktreeRegistration = Readonly<{
   locked: boolean;
   prunable: boolean;
 }>;
-const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-function validBranch(branch: string): boolean {
-  return (
-    branch.length > 0 &&
-    branch.length <= 1024 &&
-    !branch.startsWith("-") &&
-    !branch.startsWith("/") &&
-    !branch.endsWith("/") &&
-    !branch.endsWith(".") &&
-    !/[\x00-\x20\\~^:?*[]/u.test(branch) &&
-    !branch.includes("..") &&
-    !branch.includes("@{") &&
-    !branch.split("/").some((part) => part.length === 0)
-  );
-}
 function validMarkerValue(value: string): boolean {
   return (
     value.length > 0 &&
@@ -76,11 +63,11 @@ export function parsePlanningWorktreePorcelain(output: string): Readonly<{
       path === undefined ||
       head === undefined ||
       !isAbsolute(path) ||
-      !OID.test(head) ||
+      !planningOid.test(head) ||
       (ref !== undefined &&
         (!ref.startsWith("refs/heads/") ||
           ref.length === 11 ||
-          !validBranch(ref.slice(11)))) ||
+          !isPlanningBranch(ref.slice(11)))) ||
       (values.has("detached") && ref !== undefined) ||
       (!values.has("detached") && ref === undefined)
     ) {

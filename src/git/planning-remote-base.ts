@@ -1,16 +1,15 @@
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { CommandRunner } from "../process/command.ts";
 import {
+  isPlanningBranch,
+  isPlanningSingleLine,
+  planningOid,
+} from "./planning-git-validation.ts";
+import {
   PlanningWorkspaceCommandError,
   PlanningWorkspaceResponseError,
 } from "./planning-workspaces.ts";
 import type { PlanningRemoteBaseSnapshot } from "./planning-workspaces.ts";
-const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const BRANCH =
-  /^(?!-)(?!\/)(?!.*(?:\.\.|@\{|[\s\\~^:?*[]))(?!.*(?:\/\/|\/$|\.$)).+$/u;
-function remote(value: string): boolean {
-  return value.length > 0 && value.length <= 1024 && !/[\0\r\n]/u.test(value);
-}
 function directory(root: string, value: string): string {
   const absolute = isAbsolute(value) ? resolve(value) : resolve(root, value);
   const path = relative(root, absolute).replaceAll("\\", "/");
@@ -59,8 +58,8 @@ export class PlanningRemoteBaseGit {
     if (
       !Number.isSafeInteger(input.issueNumber) ||
       input.issueNumber < 1 ||
-      !remote(input.remote) ||
-      !BRANCH.test(input.baseBranch)
+      !isPlanningSingleLine(input.remote) ||
+      !isPlanningBranch(input.baseBranch)
     )
       throw new RangeError("Invalid planning remote-base input");
     const ref = `refs/remotes/${input.remote}/${input.baseBranch}`;
@@ -83,7 +82,7 @@ export class PlanningRemoteBaseGit {
     );
     check(result, "ref-resolution");
     const baseOid = result.stdout.trim();
-    if (!OID.test(baseOid))
+    if (!planningOid.test(baseOid))
       throw new PlanningWorkspaceResponseError(
         "ref-resolution",
         "invalid-object-id",
@@ -122,7 +121,7 @@ export class PlanningRemoteBaseGit {
           "malformed-record",
         );
       const [mode, type, objectId, path] = match.slice(1);
-      if (!OID.test(objectId!) || seen.has(path!))
+      if (!planningOid.test(objectId!) || seen.has(path!))
         throw new PlanningWorkspaceResponseError(
           "tree-inspection",
           seen.has(path!) ? "duplicate-entry" : "malformed-record",
