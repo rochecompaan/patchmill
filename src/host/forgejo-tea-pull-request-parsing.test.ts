@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ForgejoTeaPullRequestError } from "./forgejo-tea-pull-request-errors.ts";
 import { PullRequestIdentityError } from "./pull-requests.ts";
 import {
   normalizeForgejoPullRequest,
@@ -80,6 +81,10 @@ test("does not expose rejected clone URLs", () => {
     "https://forge.example/acme/widgets.git?token=secret",
     "git@forge.example:widgets.git",
     "git@forge.example:group/acme/widgets.git",
+    "git@forge.example:/acme/widgets.git",
+    "git@forge.example:acme/widgets.git/",
+    "https://forge.example/acme//widgets.git",
+    "https://forge.example/acme/widgets.git/",
   ]) {
     assert.throws(
       () => parseForgejoRemoteUrl(url),
@@ -101,6 +106,7 @@ test("validates public remote, branch, and number input", () => {
     "owner:topic",
     "topic..next",
     "-topic",
+    "topic\u007fnext",
   ])
     assert.throws(() => validateForgejoBranchName(value));
   for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN])
@@ -170,7 +176,17 @@ const options = {
   expectedNumber: 42,
 };
 test("normalizes valid state combinations and rejects inconsistent pull payloads", () => {
-  assert.equal(normalizeForgejoPullRequest(pull(), options).status, "open");
+  assert.deepEqual(normalizeForgejoPullRequest(pull(), options), {
+    number: 42,
+    url: "https://forge.example/platform/widgets-renamed/pulls/42",
+    targetRepository: target,
+    baseBranch: "main",
+    headRepository: head,
+    headBranch: "agent/issue-186-adapter",
+    headSha: "abc123",
+    body: "Refs #186",
+    status: "open",
+  });
   assert.deepEqual(
     normalizeForgejoPullRequest(
       pull({ state: "closed", merged: true, merge_commit_sha: "abc" }),
@@ -191,3 +207,134 @@ test("normalizes valid state combinations and rejects inconsistent pull payloads
   ])
     assert.throws(() => normalizeForgejoPullRequest(payload, options));
 });
+
+test("rejects malformed repository and pull-request response fields by category", () => {
+  const malformedRepositoryPayloads = [
+    null,
+    {},
+    { ...targetPayload, name: null },
+    { ...targetPayload, name: "" },
+    { ...targetPayload, full_name: null },
+    { ...targetPayload, full_name: "platform//widgets-renamed" },
+    { ...targetPayload, owner: null },
+    { ...targetPayload, owner: { login: 1 } },
+    { ...targetPayload, owner: { login: "" } },
+    { ...targetPayload, html_url: null },
+    {
+      ...targetPayload,
+      html_url: "ssh://forge.example/platform/widgets-renamed",
+    },
+    {
+      ...targetPayload,
+      html_url: "https://robot:secret@forge.example/platform/widgets-renamed",
+    },
+    {
+      ...targetPayload,
+      html_url: "https://forge.example/platform/widgets-renamed?token=secret",
+    },
+    {
+      ...targetPayload,
+      html_url: "https://forge.example/platform//widgets-renamed",
+    },
+    {
+      ...targetPayload,
+      html_url: "https://forge.example/platform/widgets-renamed/",
+    },
+  ];
+  for (const payload of malformedRepositoryPayloads)
+    assert.throws(
+      () =>
+        normalizeForgejoRepository(payload, {
+          operation: "resolve-target-repository",
+        }),
+      (error: unknown) =>
+        error instanceof ForgejoTeaPullRequestError &&
+        error.category === "malformed-response",
+    );
+
+  for (const payload of [
+    pull({ number: Number.MAX_SAFE_INTEGER + 1 }),
+    pull({ body: null }),
+    pull({ base: null }),
+    pull({ base: { ref: "", repo: targetPayload } }),
+    pull({ head: null }),
+    pull({ head: { ref: "topic", sha: "", repo: targetPayload } }),
+    pull({
+      html_url: "https://forge.example/platform//widgets-renamed/pulls/42",
+    }),
+    pull({
+      html_url: "https://forge.example/platform/widgets-renamed/pulls/42/",
+    }),
+    pull({
+      html_url: "https://forge.example/platform/widgets-renamed/issues/42",
+    }),
+    pull({
+      html_url: "https://forge.example/platform/widgets-renamed/pulls/41",
+    }),
+    pull({ state: "open", merged: false, merge_commit_sha: "abc" }),
+    pull({ state: "open", merged: false, merge_commit_sha: undefined }),
+    pull({ state: "open", merged: true, merge_commit_sha: null }),
+    pull({ state: "open", merged: true, merge_commit_sha: "abc" }),
+    pull({ state: "closed", merged: true, merge_commit_sha: null }),
+    pull({ state: "closed", merged: true, merge_commit_sha: " " }),
+    pull({ state: "closed", merged: false, merge_commit_sha: "abc" }),
+    pull({ state: "closed", merged: false, merge_commit_sha: " " }),
+    pull({ state: "closed", merged: false, merge_commit_sha: undefined }),
+  ])
+    assert.throws(
+      () => normalizeForgejoPullRequest(payload, options),
+      (error: unknown) =>
+        error instanceof ForgejoTeaPullRequestError &&
+        error.category === "malformed-response",
+    );
+});
+
+test("uses identity errors only for complete identity disagreements", () => {
+  assert.throws(
+    () =>
+      normalizeForgejoRepository(
+        { ...targetPayload, name: "other" },
+        { operation: "resolve-target-repository" },
+      ),
+    PullRequestIdentityError,
+  );
+  for (const payload of [
+    pull({
+      html_url: "https://other.example/platform/widgets-renamed/pulls/42",
+    }),
+    pull({
+      head: {
+        ref: "agent/issue-186-adapter",
+        sha: "abc123",
+        repo: targetPayload,
+      },
+    }),
+  ])
+    assert.throws(
+      () => normalizeForgejoPullRequest(payload, options),
+      PullRequestIdentityError,
+    );
+  const sameOwner = pull({
+    head: {
+      ref: "topic",
+      sha: "abc",
+      repo: repositoryPayload(target),
+    },
+  });
+  assert.equal(
+    normalizeForgejoPullRequest(sameOwner, {
+      operation: "list-pull-requests",
+      expectedTargetRepository: target,
+    }).headRepository.owner,
+    "platform",
+  );
+});
+
+function repositoryPayload(identity: typeof target) {
+  return {
+    name: identity.repository,
+    full_name: `${identity.owner}/${identity.repository}`,
+    owner: { login: identity.owner },
+    html_url: `https://${identity.host}/${identity.owner}/${identity.repository}`,
+  };
+}

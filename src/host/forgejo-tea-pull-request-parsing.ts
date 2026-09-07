@@ -63,10 +63,16 @@ function urlCoordinates(
     url.hash
   )
     return malformed(operation);
-  const parts = url.pathname.split("/").filter(Boolean);
-  if (parts.length !== 2 || parts.some((part) => part === ""))
+  const parts = url.pathname.split("/");
+  if (
+    parts.length !== 3 ||
+    parts[0] !== "" ||
+    parts[1] === "" ||
+    parts[2] === ""
+  )
     return malformed(operation);
-  const [owner, repository] = parts;
+  const owner = parts[1];
+  const repository = parts[2];
   if (owner === undefined || repository === undefined)
     return malformed(operation);
   return {
@@ -89,7 +95,7 @@ export function validateForgejoBranchName(branch: string): void {
     branch === "@" ||
     branch.includes("..") ||
     branch.includes("@{") ||
-    /[\x00-\x20~^:?*[\\]/u.test(branch) ||
+    /[\x00-\x20\x7f~^:?*[\\]/u.test(branch) ||
     branch.startsWith("/") ||
     branch.endsWith("/") ||
     branch.includes("//") ||
@@ -112,6 +118,7 @@ export function parseForgejoRemoteUrl(
   };
   let host: string;
   let path: string;
+  let scpLike = false;
   if (/^[^@\s/:]+@[^\s/:]+:[^\s]+$/u.test(remoteUrl)) {
     const match = /^[^@\s/:]+@([^\s/:]+):([^\s]+)$/u.exec(remoteUrl);
     const matchHost = match?.[1];
@@ -119,6 +126,7 @@ export function parseForgejoRemoteUrl(
     if (matchHost === undefined || matchPath === undefined) return fail();
     host = matchHost;
     path = matchPath;
+    scpLike = true;
   } else {
     let url: URL;
     try {
@@ -136,10 +144,14 @@ export function parseForgejoRemoteUrl(
     host = url.host;
     path = url.pathname;
   }
-  const parts = path.replace(/^\/+|\/+$/gu, "").split("/");
-  if (parts.length !== 2 || parts.some((part) => !part)) return fail();
-  const owner = parts[0];
-  const last = parts[1];
+  const parts = path.split("/");
+  const owner = scpLike ? parts[0] : parts[1];
+  const last = scpLike ? parts[1] : parts[2];
+  if (
+    (scpLike && (parts.length !== 2 || !owner || !last)) ||
+    (!scpLike && (parts.length !== 3 || parts[0] !== "" || !owner || !last))
+  )
+    return fail();
   if (owner === undefined || last === undefined) return fail();
   const repository = last.endsWith(".git") ? last.slice(0, -4) : last;
   if (!repository) return fail();
@@ -255,10 +267,16 @@ export function normalizeForgejoPullRequest(
     parsed.hash
   )
     return malformed(options.operation);
-  const parts = parsed.pathname.split("/").filter(Boolean);
-  const [urlOwner, urlRepository, pathKind, urlNumber] = parts;
+  const parts = parsed.pathname.split("/");
+  const urlOwner = parts[1];
+  const urlRepository = parts[2];
+  const pathKind = parts[3];
+  const urlNumber = parts[4];
   if (
-    parts.length !== 4 ||
+    parts.length !== 5 ||
+    parts[0] !== "" ||
+    urlOwner === "" ||
+    urlRepository === "" ||
     pathKind !== "pulls" ||
     urlNumber !== String(number)
   )

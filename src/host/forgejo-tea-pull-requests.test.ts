@@ -6,6 +6,7 @@ import test from "node:test";
 import type { CommandResult } from "../cli/commands/triage/types.ts";
 import { createStaticCommandRunner } from "../../test-support/command-runner.ts";
 import { ForgejoTeaPullRequestError } from "./forgejo-tea-pull-request-errors.ts";
+import { PullRequestIdentityError } from "./pull-requests.ts";
 import { ForgejoTeaPullRequestHost } from "./forgejo-tea-pull-requests.ts";
 
 function repositoryPayload({
@@ -336,4 +337,373 @@ test("a contradictory successful 404 remains a command failure", async () =>
       host.getPullRequest({ targetRepository: target, number: 42 }),
       ForgejoTeaPullRequestError,
     );
+  }));
+
+function contextResults(): CommandResult[] {
+  return [
+    jsonResult(repositoryPayload(target)),
+    {
+      code: 0,
+      stdout: "git@forge.example:contributor/widgets.git\n",
+      stderr: "",
+    },
+    jsonResult(repositoryPayload(head)),
+  ];
+}
+function query() {
+  return {
+    targetRepository: target,
+    baseBranch: "main",
+    headRepository: head,
+    headBranch: "topic",
+  };
+}
+function hostFor(repoRoot: string, results: CommandResult[]) {
+  return new ForgejoTeaPullRequestHost({
+    runner: createStaticCommandRunner(results),
+    repoRoot,
+    pushRemote: "publish",
+    login: "robot",
+  });
+}
+
+test("repository commands retain complete HTTP status diagnostics", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    for (const { stderr, expectedStatus } of [
+      { stderr: "HTTP/2 401 Unauthorized\n", expectedStatus: 401 },
+      { stderr: "HTTP/1.1 429 Too Many Requests\n", expectedStatus: 429 },
+      {
+        stderr: "request failed with 404 in diagnostic text",
+        expectedStatus: undefined,
+      },
+      {
+        stderr: "HTTP/1.1 302 Found\nlocation: /next\n\nHTTP/2 403 Forbidden\n",
+        expectedStatus: 403,
+      },
+    ]) {
+      const host = hostFor(repoRoot, [{ code: 1, stdout: "secret", stderr }]);
+      await assert.rejects(
+        host.resolveTargetRepositoryIdentity(),
+        (error: unknown) => {
+          assert.ok(error instanceof ForgejoTeaPullRequestError);
+          assert.equal(error.category, "command-failed");
+          assert.equal(error.operation, "resolve-target-repository");
+          assert.equal(error.exitCode, 1);
+          assert.equal(error.httpStatus, expectedStatus);
+          assert.equal(error.rawDiagnostics?.stdout, "secret");
+          assert.equal(Object.keys(error).includes("rawDiagnostics"), false);
+          return true;
+        },
+      );
+    }
+  }));
+
+test("remote resolution rejects failed, empty, malformed, and disagreeing remotes", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const cases = [
+      {
+        results: [{ code: 1, stdout: "", stderr: "failed" }],
+        error: ForgejoTeaPullRequestError,
+      },
+      {
+        results: [{ code: 0, stdout: "\n\r\n", stderr: "" }],
+        error: ForgejoTeaPullRequestError,
+      },
+      {
+        results: [
+          {
+            code: 0,
+            stdout: "git@forge.example:/contributor/widgets.git\n",
+            stderr: "",
+          },
+        ],
+        error: PullRequestIdentityError,
+      },
+      {
+        results: [
+          {
+            code: 0,
+            stdout: "git@forge.example:contributor/widgets.git\n",
+            stderr: "",
+          },
+          jsonResult(repositoryPayload({ ...head, host: "other.example" })),
+        ],
+        error: PullRequestIdentityError,
+      },
+      {
+        results: [
+          {
+            code: 0,
+            stdout:
+              "git@forge.example:contributor/widgets.git\ngit@forge.example:other/widgets.git\n",
+            stderr: "",
+          },
+          jsonResult(repositoryPayload(head)),
+          jsonResult(repositoryPayload({ ...head, owner: "other" })),
+        ],
+        error: PullRequestIdentityError,
+      },
+    ];
+    for (const { results, error } of cases) {
+      const host = hostFor(repoRoot, results);
+      await assert.rejects(
+        host.resolveRemoteRepositoryIdentity("publish"),
+        error,
+      );
+    }
+  }));
+
+test("input validation prevents any live command", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const runner = createStaticCommandRunner([]);
+    assert.throws(
+      () =>
+        new ForgejoTeaPullRequestHost({
+          runner,
+          repoRoot,
+          pushRemote: " ",
+        }),
+      ForgejoTeaPullRequestError,
+    );
+    const host = new ForgejoTeaPullRequestHost({
+      runner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      host.createPullRequest({
+        title: "title",
+        body: "body",
+        baseBranch: "main",
+        headBranch: "topic\u007fnext",
+      }),
+      ForgejoTeaPullRequestError,
+    );
+    await assert.rejects(
+      host.getPullRequest({ targetRepository: target, number: 0 }),
+      ForgejoTeaPullRequestError,
+    );
+    assert.deepEqual(runner.calls, []);
+  }));
+
+test("find fetches page two before filtering and never returns a partial result", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const fullPage = Array.from({ length: 50 }, (_, index) => pull(index + 1));
+    const runner = createStaticCommandRunner([
+      ...contextResults(),
+      jsonResult(fullPage),
+      { code: 1, stdout: "", stderr: "HTTP/2 500 Server Error\n" },
+    ]);
+    const host = new ForgejoTeaPullRequestHost({
+      runner,
+      repoRoot,
+      pushRemote: "publish",
+      login: "robot",
+    });
+    await assert.rejects(host.findPullRequests(query()), (error: unknown) => {
+      assert.ok(error instanceof ForgejoTeaPullRequestError);
+      assert.equal(error.operation, "list-pull-requests");
+      return true;
+    });
+    assert.deepEqual(runner.calls[4], {
+      command: "tea",
+      args: [
+        "api",
+        "/repos/{owner}/{repo}/pulls?state=all&page=2&limit=50",
+        "--include",
+        "--repo",
+        "legacy/widgets",
+        "--login",
+        "robot",
+      ],
+      cwd: repoRoot,
+    });
+  }));
+
+test("find stops on a short raw page and excludes nonmatching heads", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const unrelatedHead = {
+      provider: "forgejo-tea" as const,
+      host: "forge.example",
+      owner: "other",
+      repository: "widgets",
+    };
+    const runner = createStaticCommandRunner([
+      ...contextResults(),
+      jsonResult([
+        pull(1),
+        pull(2, {
+          head: {
+            ref: "topic",
+            sha: "abc",
+            repo: repositoryPayload(unrelatedHead),
+          },
+        }),
+      ]),
+    ]);
+    const host = new ForgejoTeaPullRequestHost({
+      runner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    assert.deepEqual(
+      (await host.findPullRequests(query())).map((entry) => entry.number),
+      [1],
+    );
+    assert.equal(runner.calls.length, 4);
+  }));
+
+test("get status classification, malformed payloads, and failed validation suppress PATCH", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const reference = { targetRepository: target, number: 42 };
+    const statusCases = [
+      { code: 1, stderr: "request failed with 404 in diagnostic text\n" },
+      { code: 1, stderr: "HTTP/2 401 Unauthorized\n" },
+      { code: 1, stderr: "HTTP/1.1 429 Too Many Requests\n" },
+      { code: 1, stderr: "HTTP/2 500 Server Error\n" },
+      { code: 0, stderr: "HTTP/2 404 Not Found\n" },
+    ];
+    for (const result of statusCases) {
+      const host = hostFor(repoRoot, [
+        ...contextResults(),
+        { stdout: "{}", ...result },
+      ]);
+      await assert.rejects(
+        host.getPullRequest(reference),
+        ForgejoTeaPullRequestError,
+      );
+    }
+    for (const result of [
+      { code: 0, stdout: "not json", stderr: "" },
+      { code: 0, stdout: "{}", stderr: "" },
+    ]) {
+      const host = hostFor(repoRoot, [...contextResults(), result]);
+      await assert.rejects(
+        host.getPullRequest(reference),
+        ForgejoTeaPullRequestError,
+      );
+    }
+    const runner = createStaticCommandRunner([
+      ...contextResults(),
+      { code: 1, stdout: "", stderr: "HTTP/2 403 Forbidden\n" },
+    ]);
+    const host = new ForgejoTeaPullRequestHost({
+      runner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      host.updatePullRequestBody(reference, "Summary\n\nDetails\n"),
+      ForgejoTeaPullRequestError,
+    );
+    assert.equal(
+      runner.calls.some((call) => call.args.includes("PATCH")),
+      false,
+    );
+  }));
+
+test("the final HTTP status controls exact get classification", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const reference = { targetRepository: target, number: 42 };
+    const notFound = hostFor(repoRoot, [
+      ...contextResults(),
+      {
+        code: 1,
+        stdout: "",
+        stderr: "HTTP/1.1 302 Found\nlocation: /next\n\nHTTP/2 404 Not Found\n",
+      },
+    ]);
+    await assert.rejects(notFound.getPullRequest(reference), {
+      name: "PullRequestNotFoundError",
+    });
+    const found = hostFor(repoRoot, [
+      ...contextResults(),
+      jsonResult(pull(), "HTTP/2 404 Not Found\nHTTP/2 200 OK\n"),
+    ]);
+    assert.equal((await found.getPullRequest(reference)).number, 42);
+  }));
+
+test("find rejects malformed later list results without exposing partial matches", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    for (const result of [
+      { code: 0, stdout: "not json", stderr: "" },
+      jsonResult({}),
+      jsonResult([pull(1, { head: { ref: "topic" } })]),
+    ]) {
+      const host = hostFor(repoRoot, [...contextResults(), result]);
+      await assert.rejects(
+        host.findPullRequests(query()),
+        ForgejoTeaPullRequestError,
+      );
+    }
+  }));
+
+test("find validates live query identities before issuing a list request", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const runner = createStaticCommandRunner(contextResults());
+    const host = new ForgejoTeaPullRequestHost({
+      runner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      host.findPullRequests({ ...query(), targetRepository: head }),
+      PullRequestIdentityError,
+    );
+    assert.equal(runner.calls.length, 3);
+  }));
+
+test("get validates caller and response identities before accepting a payload", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const reference = { targetRepository: target, number: 42 };
+    const callerMismatchRunner = createStaticCommandRunner(contextResults());
+    const callerMismatch = new ForgejoTeaPullRequestHost({
+      runner: callerMismatchRunner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      callerMismatch.getPullRequest({ targetRepository: head, number: 42 }),
+      PullRequestIdentityError,
+    );
+    assert.equal(callerMismatchRunner.calls.length, 3);
+
+    for (const payload of [
+      pull(41),
+      pull(42, {
+        html_url: "https://forge.example/platform/widgets/issues/42",
+      }),
+      pull(42, { base: { ref: "main" } }),
+      pull(42, {
+        head: { ref: "topic", sha: "abc", repo: repositoryPayload(target) },
+      }),
+    ]) {
+      const host = hostFor(repoRoot, [
+        ...contextResults(),
+        jsonResult(payload),
+      ]);
+      await assert.rejects(host.getPullRequest(reference));
+    }
+  }));
+
+test("a PATCH 404 remains a command failure after a validated get", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const runner = createStaticCommandRunner([
+      ...contextResults(),
+      jsonResult(pull()),
+      { code: 1, stdout: "", stderr: "HTTP/2 404 Not Found\n" },
+    ]);
+    const host = new ForgejoTeaPullRequestHost({
+      runner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      host.updatePullRequestBody(
+        { targetRepository: target, number: 42 },
+        "Summary\n\nDetails\n",
+      ),
+      ForgejoTeaPullRequestError,
+    );
+    assert.equal(runner.calls.at(-1)?.args.includes("PATCH"), true);
   }));
