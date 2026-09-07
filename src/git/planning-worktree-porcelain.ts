@@ -8,8 +8,27 @@ export type PlanningWorktreeRegistration = Readonly<{
   prunable: boolean;
 }>;
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const BRANCH =
-  /^(?!-)(?!\/)(?!.*(?:\.\.|@\{|[\s\\~^:?*[]))(?!.*(?:\/\/|\/$|\.$)).+$/u;
+function validBranch(branch: string): boolean {
+  return (
+    branch.length > 0 &&
+    branch.length <= 1024 &&
+    !branch.startsWith("-") &&
+    !branch.startsWith("/") &&
+    !branch.endsWith("/") &&
+    !branch.endsWith(".") &&
+    !/[\x00-\x20\\~^:?*[]/u.test(branch) &&
+    !branch.includes("..") &&
+    !branch.includes("@{") &&
+    !branch.split("/").some((part) => part.length === 0)
+  );
+}
+function validMarkerValue(value: string): boolean {
+  return (
+    value.length > 0 &&
+    !/[\x00-\x1f\x7f\r\n]/u.test(value) &&
+    !value.includes(" ")
+  );
+}
 export function parsePlanningWorktreePorcelain(output: string): Readonly<{
   entries: readonly PlanningWorktreeRegistration[];
   malformed: boolean;
@@ -24,7 +43,9 @@ export function parsePlanningWorktreePorcelain(output: string): Readonly<{
     const values = new Map<string, string>();
     let malformed = false;
     for (const field of fields) {
-      const [key, ...rest] = field.split(" ");
+      const separator = field.indexOf(" ");
+      const key = separator === -1 ? field : field.slice(0, separator);
+      const value = separator === -1 ? "" : field.slice(separator + 1);
       if (
         ![
           "worktree",
@@ -33,13 +54,19 @@ export function parsePlanningWorktreePorcelain(output: string): Readonly<{
           "detached",
           "locked",
           "prunable",
-        ].includes(key!) ||
-        values.has(key!)
+        ].includes(key) ||
+        values.has(key) ||
+        (key === "detached" && value !== "") ||
+        ((key === "locked" || key === "prunable") &&
+          value !== "" &&
+          !validMarkerValue(value)) ||
+        ((key === "worktree" || key === "HEAD" || key === "branch") &&
+          value === "")
       ) {
         malformed = true;
         break;
       }
-      values.set(key!, rest.join(" "));
+      values.set(key, value);
     }
     const path = values.get("worktree"),
       head = values.get("HEAD"),
@@ -53,7 +80,7 @@ export function parsePlanningWorktreePorcelain(output: string): Readonly<{
       (ref !== undefined &&
         (!ref.startsWith("refs/heads/") ||
           ref.length === 11 ||
-          !BRANCH.test(ref.slice(11)))) ||
+          !validBranch(ref.slice(11)))) ||
       (values.has("detached") && ref !== undefined) ||
       (!values.has("detached") && ref === undefined)
     ) {
