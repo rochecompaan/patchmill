@@ -119,7 +119,7 @@ const worktreePath = (value: unknown, path: string): string => {
 };
 const canonicalWorktreePath = (path: string): string => {
   const output: string[] = [];
-  for (const segment of path.replace(/\\\\/gu, "/").split("/")) {
+  for (const segment of path.replace(/\\/gu, "/").split("/")) {
     if (segment === "" || segment === ".") continue;
     if (segment === "..") {
       if (output.length === 0 || output[output.length - 1] === "..")

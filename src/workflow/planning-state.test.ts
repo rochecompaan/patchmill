@@ -14,6 +14,86 @@ const now = "2026-09-07T12:00:00.000Z";
 const oid = "a".repeat(40);
 const gates = { specRequired: true, planRequired: true };
 
+function pullRequest(headBranch: string, headOid: string) {
+  return {
+    reference: {
+      targetRepository: {
+        provider: "github-gh",
+        host: "github.com",
+        owner: "example",
+        repository: "patchmill",
+      },
+      number: 1,
+    },
+    baseBranch: "main",
+    headBranch,
+    headOid,
+  };
+}
+
+function mergedState(
+  cleanup:
+    | { state: "ready" }
+    | { state: "worktree-removed"; pushedHeadOid: string }
+    | { state: "removed"; pushedHeadOid: string },
+): unknown {
+  const base = {
+    remote: "origin",
+    baseBranch: "main",
+    baseOid: oid,
+    artifactCandidates: { spec: [], plan: [] },
+  };
+  const branch = "agent/issue-187-implementation";
+  const workspace = {
+    runId,
+    phase: "implementation",
+    identity: {
+      branch,
+      worktreePath: ".worktrees/issue-187-implementation",
+    },
+    remote: "origin",
+    baseBranch: "main",
+    baseOid: oid,
+    headOid: oid,
+    cleanup,
+  };
+  return {
+    version: 1,
+    workflowVersion: "planning-pr-v1",
+    runId,
+    issueNumber: 187,
+    issueTitle: "Example",
+    gates: { specRequired: false, planRequired: false },
+    phases: [
+      {
+        kind: "implementation",
+        status: "complete",
+        base,
+        workspace,
+        artifacts: [
+          {
+            kind: "spec",
+            path: "docs/specs/example-issue-187-spec.md",
+            commitOid: oid,
+            source: "workspace",
+          },
+          {
+            kind: "plan",
+            path: "docs/plans/example-issue-187-plan.md",
+            commitOid: oid,
+            source: "workspace",
+          },
+        ],
+        pullRequest: pullRequest(branch, oid),
+        completion: { kind: "merged-pull-request", mergeOid: "b".repeat(40) },
+      },
+    ],
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 function completeState(): unknown {
   const base = {
     remote: "origin",
@@ -171,6 +251,142 @@ test("accepts complete prefix then one active and rejects evidence contradiction
     /(?:cleanup-head-mismatch|invalid-cleanup-progress)/,
   );
 });
+test("accepts both idempotent merged-workspace cleanup transitions", () => {
+  const ready = validatePlanningState(mergedState({ state: "ready" }));
+  const worktreeRemoved = validatePlanningState({
+    ...mergedState({ state: "worktree-removed", pushedHeadOid: oid }),
+    revision: 1,
+    updatedAt: "2026-09-07T12:00:01.000Z",
+  });
+  const removed = validatePlanningState({
+    ...mergedState({ state: "removed", pushedHeadOid: oid }),
+    revision: 2,
+    updatedAt: "2026-09-07T12:00:02.000Z",
+  });
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(ready, worktreeRemoved),
+  );
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(worktreeRemoved, removed),
+  );
+  assert.throws(
+    () =>
+      assertPlanningStateReplacement(ready, {
+        ...removed,
+        revision: 1,
+        updatedAt: "2026-09-07T12:00:01.000Z",
+      }),
+    /cleanup-transition/,
+  );
+});
+
+test("forward transitions preserve carried workspace and pull request evidence", () => {
+  const initial = completeState() as {
+    phases: Array<Record<string, unknown>>;
+  };
+  const ready = validatePlanningState({
+    ...initial,
+    phases: [
+      initial.phases[0],
+      initial.phases[1],
+      {
+        ...initial.phases[2],
+        status: "workspace-ready",
+      },
+    ],
+  });
+  const workspace = ready.phases[2]!;
+  assert.equal(workspace.status, "workspace-ready");
+  const open = validatePlanningState({
+    ...ready,
+    revision: 1,
+    updatedAt: "2026-09-07T12:00:01.000Z",
+    phases: [
+      ready.phases[0],
+      ready.phases[1],
+      {
+        ...workspace,
+        status: "pull-request-open",
+        artifacts: [],
+        pullRequest: pullRequest(workspace.workspace.identity.branch, oid),
+      },
+    ],
+  });
+  assert.doesNotThrow(() => assertPlanningStateReplacement(ready, open));
+  const completed = validatePlanningState({
+    ...open,
+    revision: 2,
+    updatedAt: "2026-09-07T12:00:02.000Z",
+    phases: [
+      open.phases[0],
+      open.phases[1],
+      {
+        ...open.phases[2],
+        status: "complete",
+        completion: {
+          kind: "merged-pull-request",
+          mergeOid: "b".repeat(40),
+        },
+      },
+    ],
+  });
+  assert.doesNotThrow(() => assertPlanningStateReplacement(open, completed));
+
+  const changedPullRequest = structuredClone(completed);
+  const phase = changedPullRequest.phases[2]!;
+  assert.ok("pullRequest" in phase);
+  phase.pullRequest.reference.number = 2;
+  assert.throws(
+    () => assertPlanningStateReplacement(open, changedPullRequest),
+    /immutable-evidence/,
+  );
+});
+
+test("rejects equivalent workspace paths across phases", () => {
+  const state = completeState() as {
+    phases: Array<Record<string, unknown>>;
+  };
+  const base = state.phases[0]!.base;
+  const merged = (
+    kind: "spec" | "plan",
+    branch: string,
+    worktreePath: string,
+  ) => ({
+    kind,
+    status: "complete",
+    base,
+    workspace: {
+      runId,
+      phase: kind,
+      identity: { branch, worktreePath },
+      remote: "origin",
+      baseBranch: "main",
+      baseOid: oid,
+      headOid: oid,
+      cleanup: { state: "ready" },
+    },
+    artifacts: [
+      {
+        kind,
+        path: `docs/${kind}s/example-issue-187-${kind}.md`,
+        commitOid: oid,
+        source: "workspace",
+      },
+    ],
+    pullRequest: pullRequest(branch, oid),
+    completion: { kind: "merged-pull-request", mergeOid: "b".repeat(40) },
+  });
+  state.phases = [
+    merged("spec", "agent/spec", ".worktrees\\x\\..\\topic"),
+    merged("plan", "agent/plan", ".worktrees/topic"),
+    { kind: "implementation", status: "pending" },
+  ];
+  assert.throws(
+    () => validatePlanningState(state),
+    /duplicate-workspace-identity/,
+  );
+});
+
 test("requires immutable identity and exactly one revision step", () => {
   const state = createPlanningState({
     issueNumber: 187,
