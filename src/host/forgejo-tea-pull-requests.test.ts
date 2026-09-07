@@ -314,3 +314,26 @@ test("command failures retain safe status diagnostics", async () =>
       },
     );
   }));
+
+test("a contradictory successful 404 remains a command failure", async () =>
+  withForgejoRepository(async (repoRoot) => {
+    const runner = createStaticCommandRunner([
+      jsonResult(repositoryPayload(target)),
+      {
+        code: 0,
+        stdout: "git@forge.example:contributor/widgets.git\n",
+        stderr: "",
+      },
+      jsonResult(repositoryPayload(head)),
+      { code: 0, stdout: "{}", stderr: "HTTP/2 404 Not Found\n" },
+    ]);
+    const host = new ForgejoTeaPullRequestHost({
+      runner,
+      repoRoot,
+      pushRemote: "publish",
+    });
+    await assert.rejects(
+      host.getPullRequest({ targetRepository: target, number: 42 }),
+      ForgejoTeaPullRequestError,
+    );
+  }));
