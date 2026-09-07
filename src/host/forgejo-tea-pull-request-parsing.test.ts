@@ -79,6 +79,8 @@ test("does not expose rejected clone URLs", () => {
     "https://forge.example/widgets.git",
     "https://forge.example/group/acme/widgets.git",
     "https://forge.example/acme/widgets.git?token=secret",
+    "git@forge.example:acme/widgets.git?token=secret",
+    "git@forge.example:acme/widgets.git#fragment",
     "git@forge.example:widgets.git",
     "git@forge.example:group/acme/widgets.git",
     "git@forge.example:/acme/widgets.git",

@@ -165,7 +165,12 @@ export function parseForgejoRemoteUrl(
   const last = scpLike ? parts[1] : parts[2];
   if (
     hasDotSegment(path) ||
-    (scpLike && (parts.length !== 2 || !owner || !last)) ||
+    (scpLike &&
+      (path.includes("?") ||
+        path.includes("#") ||
+        parts.length !== 2 ||
+        !owner ||
+        !last)) ||
     (!scpLike && (parts.length !== 3 || parts[0] !== "" || !owner || !last))
   )
     return fail();
