@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PullRequestNotFoundError } from "../../../host/pull-requests.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import { reconcilePlanningPhase } from "./planning-phase-reconciler.ts";
 
@@ -123,6 +124,98 @@ test("uses the branch discovery read-back for cleanup and classification", async
   });
   assert.equal(result.outcome.kind, "review-pending");
   assert.equal(getCalls, 1);
+});
+test("maps only typed saved-reference absence to missing without cleanup", async () => {
+  const repository = {
+    provider: "github-gh" as const,
+    host: "github.com",
+    owner: "acme",
+    repository: "patchmill",
+  };
+  const reference = { targetRepository: repository, number: 188 };
+  const saved = {
+    ...state,
+    phases: [
+      {
+        kind: "spec" as const,
+        status: "pull-request-open" as const,
+        base: {
+          ...state.phases[0]!.base,
+          artifactCandidates: { spec: [], plan: [] },
+        },
+        workspace: {
+          runId: state.runId,
+          phase: "spec" as const,
+          identity: { branch: "planning/spec", worktreePath: "/workspace" },
+          remote: "origin",
+          baseBranch: "main",
+          baseOid: oid,
+          headOid: oid,
+          cleanup: { state: "removed" as const, pushedHeadOid: oid },
+        },
+        artifacts: [
+          {
+            kind: "spec" as const,
+            path: "docs/specs/example.md",
+            source: "workspace" as const,
+            commitOid: oid,
+          },
+        ],
+        publication: {
+          targetRepository: repository,
+          headRepository: repository,
+          baseBranch: "main",
+          headBranch: "planning/spec",
+          headOid: oid,
+        },
+        pullRequest: {
+          reference,
+          url: "https://github.com/acme/patchmill/pull/188",
+        },
+      },
+      { kind: "implementation" as const, status: "pending" as const },
+    ],
+  };
+  const bytes = JSON.stringify(saved);
+  const missing = await reconcilePlanningPhase({
+    state: saved,
+    phaseIndex: 0,
+    lock: {} as never,
+    stateStore: {
+      async replace() {
+        throw new Error("unexpected");
+      },
+    },
+    host: {
+      async getPullRequest() {
+        throw new PullRequestNotFoundError(reference);
+      },
+    } as never,
+    remoteBase: {} as never,
+    git: {} as never,
+    workspaces: {} as never,
+  });
+  assert.equal(missing.outcome.kind, "missing");
+  assert.equal(JSON.stringify(saved), bytes);
+  await assert.rejects(
+    () =>
+      reconcilePlanningPhase({
+        state: saved,
+        phaseIndex: 0,
+        lock: {} as never,
+        stateStore: {} as never,
+        host: {
+          async getPullRequest() {
+            throw new Error("transport");
+          },
+        } as never,
+        remoteBase: {} as never,
+        git: {} as never,
+        workspaces: {} as never,
+      }),
+    /transport/,
+  );
+  assert.equal(JSON.stringify(saved), bytes);
 });
 test("returns remote-base completion without host or Git effects", async () => {
   const result = await reconcilePlanningPhase({
