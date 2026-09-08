@@ -29,6 +29,13 @@ import {
   renderVisualEvidenceSkillStep,
 } from "./prompt-workflow.ts";
 
+export type PlanningReviewContext =
+  | "dedicated-pull-request"
+  | "same-phase-pull-request"
+  | "merged-base"
+  | "implementation-pull-request"
+  | "legacy-label";
+
 export type SpecCreationPromptInput = {
   issue: IssueSummary;
   specPath: string;
@@ -36,6 +43,7 @@ export type SpecCreationPromptInput = {
   specApprovalRequired?: boolean;
   skills?: PatchmillSkillsConfig;
   triageLabels?: Partial<PromptTriageLabels>;
+  reviewContext?: PlanningReviewContext;
 };
 
 export type PlanCreationPromptInput = {
@@ -46,6 +54,7 @@ export type PlanCreationPromptInput = {
   planApprovalRequired?: boolean;
   skills?: PatchmillSkillsConfig;
   triageLabels?: Partial<PromptTriageLabels>;
+  reviewContext?: PlanningReviewContext;
 };
 
 export type PromptTriageLabels = {
@@ -674,6 +683,23 @@ Return this exact JSON object after \`${targetBranch}\` is pushed successfully:
 ${renderPrCreatedContract(branch)}`;
 }
 
+function planningReviewInstruction(
+  context: PlanningReviewContext,
+): string | undefined {
+  switch (context) {
+    case "dedicated-pull-request":
+      return "Review this artifact in the current planning pull request.";
+    case "same-phase-pull-request":
+      return "Review the spec and plan together in the current planning pull request; do not call the spec already approved.";
+    case "merged-base":
+      return "Use the verified merged-base spec as source material for this artifact.";
+    case "implementation-pull-request":
+      return "Carry this artifact with implementation code; no planning pull request is created for it.";
+    case "legacy-label":
+      return undefined;
+  }
+}
+
 function numberedWorkflow(steps: string[]): string {
   return steps
     .filter((step) => step.trim().length > 0)
@@ -688,8 +714,12 @@ export function buildSpecCreationPrompt(
   const specApprovalRequired = input.specApprovalRequired ?? false;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
+  const reviewInstruction = planningReviewInstruction(
+    input.reviewContext ?? "legacy-label",
+  );
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
+    ...(reviewInstruction === undefined ? [] : [reviewInstruction]),
     `Treat \`${ready}\` as meaning the issue is clear enough for automation to write a design spec. Do not implement code.`,
     "Write a concise design spec that captures requirements, proposed behavior, affected components, and verification strategy.",
     `Save the spec to ${specPath}.`,
@@ -754,8 +784,12 @@ export function buildPlanCreationPrompt(
   const planApprovalRequired = input.planApprovalRequired ?? false;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
+  const reviewInstruction = planningReviewInstruction(
+    input.reviewContext ?? "legacy-label",
+  );
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
+    ...(reviewInstruction === undefined ? [] : [reviewInstruction]),
     specPath
       ? `Read and base the implementation plan on the approved spec at ${specPath}.`
       : "No separate spec artifact was found; write the minimum design context needed in the implementation plan before task steps.",
