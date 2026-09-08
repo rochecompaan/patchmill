@@ -1,4 +1,7 @@
-import type { RepositoryIdentity } from "../host/pull-requests.ts";
+import {
+  sameRepositoryIdentity,
+  type RepositoryIdentity,
+} from "../host/pull-requests.ts";
 
 export type PlanningPublicationRepositoryReason =
   | "provider-mismatch"
@@ -15,20 +18,11 @@ export class PlanningPublicationRepositoryError extends Error {
   }
 }
 
-function sameCaseInsensitiveValue(left: string, right: string): boolean {
-  return left.toLowerCase() === right.toLowerCase();
-}
-
-export function sameRepositoryIdentity(
+function sameRepositoryHost(
   left: RepositoryIdentity,
   right: RepositoryIdentity,
 ): boolean {
-  return (
-    left.provider === right.provider &&
-    sameCaseInsensitiveValue(left.host, right.host) &&
-    sameCaseInsensitiveValue(left.owner, right.owner) &&
-    sameCaseInsensitiveValue(left.repository, right.repository)
-  );
+  return left.host.toLowerCase() === right.host.toLowerCase();
 }
 
 export function assertPlanningPublicationRepositories(input: {
@@ -47,7 +41,7 @@ export function assertPlanningPublicationRepositories(input: {
   }
   if (
     targetRepository.provider === "forgejo-tea" &&
-    !sameCaseInsensitiveValue(targetRepository.host, headRepository.host)
+    !sameRepositoryHost(targetRepository, headRepository)
   ) {
     throw new PlanningPublicationRepositoryError("forgejo-host-mismatch");
   }

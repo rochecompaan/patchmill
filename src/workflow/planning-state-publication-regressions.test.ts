@@ -136,6 +136,61 @@ function invalid(value: unknown, reason: string, path: string): void {
   );
 }
 
+test("preserves strict v1 scalar and schema rejection reasons and paths", () => {
+  const cases: ReadonlyArray<
+    [string, (value: Record<string, unknown>) => void, string, string]
+  > = [
+    [
+      "unsupported version",
+      (value) => {
+        value.version = 2;
+      },
+      "unsupported-version",
+      "$.version",
+    ],
+    [
+      "negative revision",
+      (value) => {
+        value.revision = -1;
+      },
+      "invalid-nonnegative-integer",
+      "$.revision",
+    ],
+    [
+      "invalid timestamp",
+      (value) => {
+        value.updatedAt = "not-a-timestamp";
+      },
+      "invalid-timestamp",
+      "$.updatedAt",
+    ],
+    [
+      "invalid worktree path",
+      (value) => {
+        (
+          (value.phases as Array<Record<string, unknown>>)[0]!
+            .workspace as Record<string, unknown>
+        ).identity = { branch: "planning/spec", worktreePath: "" };
+      },
+      "invalid-worktree-path",
+      "$.phases[0].workspace.identity.worktreePath",
+    ],
+    [
+      "phase sequence",
+      (value) => {
+        (value.phases as Array<Record<string, unknown>>)[0]!.kind = "plan";
+      },
+      "phase-sequence",
+      "$.phases",
+    ],
+  ];
+  for (const [, mutate, reason, path] of cases) {
+    const value = structuredClone(document(phase("workspace-ready")));
+    mutate(value);
+    invalid(value, reason, path);
+  }
+});
+
 test("rejects nested unknown and missing fields at stable paths for every state variant", () => {
   const cases: ReadonlyArray<
     [string, string, (value: Record<string, unknown>) => void, string, string]
@@ -468,11 +523,16 @@ test("permits every checkpoint edge and rejects skipped or backward checkpoint e
   for (const [current, next] of allowed)
     assert.doesNotThrow(() => assertPlanningPhaseReplacement(current, next, 0));
   for (const [current, next] of [
+    [ready, parsed("pending")],
     [ready, open],
+    [pushed, ready],
     [pushed, removed],
+    [open, pushed],
     [open, removed],
     [worktreeRemoved, open],
     [removed, open],
+    [remoteBase, ready],
+    [merged, pushed],
   ] as const)
     assert.throws(
       () => assertPlanningPhaseReplacement(current, next, 0),

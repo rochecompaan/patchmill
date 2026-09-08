@@ -1,6 +1,7 @@
-import type {
-  PullRequestReference,
-  PullRequestSummary,
+import {
+  sameRepositoryIdentity,
+  type PullRequestReference,
+  type PullRequestSummary,
 } from "../host/pull-requests.ts";
 import { parsePullRequestUrl } from "../host/pull-request-reference.ts";
 import {
@@ -11,7 +12,6 @@ import type { PlanningPublicationEvidence } from "./planning-state-types.ts";
 import {
   assertPlanningPublicationRepositories as assertPublicationRepositories,
   PlanningPublicationRepositoryError,
-  sameRepositoryIdentity,
 } from "./planning-publication-repositories.ts";
 
 export type ValidatedPlanningPullRequest = Readonly<{

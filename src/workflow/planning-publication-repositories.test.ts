@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { sameRepositoryIdentity } from "../host/pull-requests.ts";
 import {
   PlanningStateValidationError,
   validatePlanningState,
@@ -7,7 +8,6 @@ import {
 import {
   PlanningPublicationRepositoryError,
   assertPlanningPublicationRepositories,
-  sameRepositoryIdentity,
 } from "./planning-publication-repositories.ts";
 import {
   assertPlanningPublicationRepositories as assertPullRequestPublicationRepositories,

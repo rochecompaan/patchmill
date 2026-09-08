@@ -1,5 +1,4 @@
 import type { PatchmillHostProviderId } from "../config/types.ts";
-export { sameRepositoryIdentity } from "../workflow/planning-publication-repositories.ts";
 
 export type RepositoryIdentity = {
   provider: PatchmillHostProviderId;
@@ -46,6 +45,22 @@ export type FindPullRequestsQuery = {
   headRepository: RepositoryIdentity;
   headBranch: string;
 };
+
+function sameCaseInsensitiveValue(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+export function sameRepositoryIdentity(
+  left: RepositoryIdentity,
+  right: RepositoryIdentity,
+): boolean {
+  return (
+    left.provider === right.provider &&
+    sameCaseInsensitiveValue(left.host, right.host) &&
+    sameCaseInsensitiveValue(left.owner, right.owner) &&
+    sameCaseInsensitiveValue(left.repository, right.repository)
+  );
+}
 
 export class IncompletePullRequestSearchError extends Error {
   readonly query: FindPullRequestsQuery;

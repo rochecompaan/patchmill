@@ -6,7 +6,7 @@ import {
   specSourceInstruction,
   type PlanningReviewContext,
 } from "./planning-review-context.ts";
-import { buildSpecCreationPrompt } from "./prompts.ts";
+import { buildPlanCreationPrompt, buildSpecCreationPrompt } from "./prompts.ts";
 import type { IssueSummary } from "./types.ts";
 
 const issue: IssueSummary = {
@@ -45,6 +45,28 @@ test("renders context-specific planning review and spec-source policy", () => {
     );
   }
 });
+test("composes every planning review context into plan source instructions", () => {
+  const expectedPlanSources: ReadonlyArray<[PlanningReviewContext, RegExp]> = [
+    ["dedicated-pull-request", /approved spec/u],
+    ["same-phase-pull-request", /current-phase spec.*not yet approved/u],
+    ["merged-base", /verified merged-base spec/u],
+    ["implementation-pull-request", /implementation-carried spec/u],
+    ["legacy-label", /approved spec/u],
+  ];
+  for (const [reviewContext, pattern] of expectedPlanSources) {
+    assert.match(
+      buildPlanCreationPrompt({
+        issue,
+        specPath: "docs/specs/example.md",
+        planPath: "docs/plans/example.md",
+        projectPolicy: DEFAULT_PATCHMILL_POLICY,
+        reviewContext,
+      }),
+      pattern,
+    );
+  }
+});
+
 test("renders explicit planning review contexts without changing legacy default", () => {
   const input = {
     issue,

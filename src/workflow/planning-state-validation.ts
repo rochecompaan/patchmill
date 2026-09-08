@@ -8,9 +8,10 @@ import type {
   PlanningWorkspaceIdentity,
   PlanningWorkspaceOwnership,
 } from "../git/planning-workspaces.ts";
-import type {
-  PullRequestReference,
-  RepositoryIdentity,
+import {
+  sameRepositoryIdentity,
+  type PullRequestReference,
+  type RepositoryIdentity,
 } from "../host/pull-requests.ts";
 import {
   PLANNING_PR_WORKFLOW_VERSION,
@@ -29,7 +30,6 @@ import type {
 import {
   assertPlanningPublicationRepositories,
   PlanningPublicationRepositoryError,
-  sameRepositoryIdentity,
 } from "./planning-publication-repositories.ts";
 
 const UUID =
