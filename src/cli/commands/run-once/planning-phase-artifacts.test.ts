@@ -233,6 +233,22 @@ test("resumes from a saved spec checkpoint without invoking spec again", async (
     `git:${oid("b")}`,
     `checkpoint:${oid("c")}`,
   ]);
+  assert.equal(result.kind, "workspace-ready");
+  if (result.kind === "workspace-ready")
+    assert.deepEqual(result.phase.artifacts, [
+      {
+        kind: "spec",
+        path: "docs/specs/example.md",
+        source: "workspace",
+        commitOid: oid("c"),
+      },
+      {
+        kind: "plan",
+        path: "docs/plans/2026-09-08-issue-188-example.md",
+        source: "workspace",
+        commitOid: oid("c"),
+      },
+    ]);
 });
 
 test("stops on blocked spec or checkpoint failure before the plan agent", async () => {
@@ -303,54 +319,65 @@ test("stops on blocked spec or checkpoint failure before the plan agent", async 
   assert.deepEqual(calls, ["agent:spec", "git", "checkpoint"]);
 });
 
-test("rejects unexpected result paths before the Git validation seam", async () => {
-  let gitCalled = false;
-  await assert.rejects(
-    () =>
-      runPlanningPhaseArtifacts({
-        issue,
-        phase: {
-          kind: "spec",
-          artifactKinds: ["spec"],
-          pullRequestRequired: true,
-        },
-        current: {
-          kind: "spec",
-          status: "workspace-ready",
-          base,
-          workspace: {
-            ...workspace,
-            phase: "spec",
-            identity: { branch: "planning/spec", worktreePath: "/workspace" },
+test("rejects invalid artifact path forms before the Git validation seam", async () => {
+  for (const [label, specPath] of [
+    ["parent escape", "../escape.md"],
+    ["absolute path", "/repo/docs/specs/escape.md"],
+    ["backslash path", "docs\\specs\\escape.md"],
+    ["wrong configured directory", "docs/plans/escape.md"],
+  ] as const) {
+    let gitCalled = false;
+    await assert.rejects(
+      () =>
+        runPlanningPhaseArtifacts({
+          issue,
+          phase: {
+            kind: "spec",
+            artifactKinds: ["spec"],
+            pullRequestRequired: true,
           },
-          artifacts: [],
-        },
-        repoRoot: "/repo",
-        specsDir: "/repo/docs/specs",
-        plansDir: "/repo/docs/plans",
-        artifactDate: new Date("2026-09-08"),
-        agent: {
-          async run() {
-            return {
-              status: "spec-created",
-              specPath: "../escape.md",
-              commit: oid("b"),
-            };
+          current: {
+            kind: "spec",
+            status: "workspace-ready",
+            base,
+            workspace: {
+              ...workspace,
+              phase: "spec",
+              identity: {
+                branch: "planning/spec",
+                worktreePath: "/workspace",
+              },
+            },
+            artifacts: [],
           },
-        },
-        git: {
-          async verifyArtifactCommit() {
-            gitCalled = true;
+          repoRoot: "/repo",
+          specsDir: "/repo/docs/specs",
+          plansDir: "/repo/docs/plans",
+          artifactDate: new Date("2026-09-08"),
+          agent: {
+            async run() {
+              return {
+                status: "spec-created",
+                specPath,
+                commit: oid("b"),
+              };
+            },
           },
-        },
-        checkpoint: async () => {},
-        projectPolicy: DEFAULT_PATCHMILL_POLICY,
-        skills: DEFAULT_PATCHMILL_SKILLS,
-        triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
-      }),
-    /invalid-artifact-path/,
-  );
-  assert.equal(gitCalled, false);
+          git: {
+            async verifyArtifactCommit() {
+              gitCalled = true;
+            },
+          },
+          checkpoint: async () => {},
+          projectPolicy: DEFAULT_PATCHMILL_POLICY,
+          skills: DEFAULT_PATCHMILL_SKILLS,
+          triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
+        }),
+      /invalid-artifact-path/,
+      label,
+    );
+    assert.equal(gitCalled, false, label);
+  }
 });
 
 test("propagates delegated Git validation failures and rejects malformed agent results", async () => {

@@ -497,7 +497,26 @@ test("permits every cleanup checkpoint and the all-at-once merged-base conversio
     [removed, merged],
   ] as const)
     assert.doesNotThrow(() => assertPlanningStateReplacement(left, right));
-  for (const document of [removed, merged]) {
+  const remoteBase = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "complete",
+        base,
+        artifacts: [artifact("remote-base", oid("a"))],
+        completion: { kind: "remote-base" },
+      },
+      6,
+    ),
+  );
+  for (const document of [
+    pushed,
+    open,
+    worktreeRemoved,
+    removed,
+    merged,
+    remoteBase,
+  ]) {
     const replacement = {
       ...document,
       revision: document.revision + 1,
@@ -584,6 +603,20 @@ test("rejects unknown and missing fields for every durable phase discriminator",
       base,
       artifacts: [artifact("remote-base", oid("a"))],
       completion: { kind: "remote-base" },
+    },
+    {
+      kind: "spec",
+      status: "complete",
+      base,
+      workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+      artifacts: [artifact("remote-base", oid("c"))],
+      publication,
+      pullRequest,
+      completion: {
+        kind: "merged-pull-request",
+        mergeOid: oid("d"),
+        mergedBaseOid: oid("c"),
+      },
     },
   ];
   for (const variant of variants) {
