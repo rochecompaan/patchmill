@@ -177,3 +177,178 @@ test("checkpoints spec before running plan", async () => {
       [oid("c"), oid("c")],
     );
 });
+
+test("resumes from a saved spec checkpoint without invoking spec again", async () => {
+  const calls: string[] = [];
+  const result = await runPlanningPhaseArtifacts({
+    issue,
+    phase: {
+      kind: "plan",
+      artifactKinds: ["spec", "plan"],
+      pullRequestRequired: true,
+    },
+    current: {
+      kind: "plan",
+      status: "workspace-ready",
+      base,
+      workspace: { ...workspace, headOid: oid("b") },
+      artifacts: [
+        {
+          kind: "spec",
+          path: "docs/specs/example.md",
+          source: "workspace",
+          commitOid: oid("b"),
+        },
+      ],
+    },
+    repoRoot: "/repo",
+    specsDir: "/repo/docs/specs",
+    plansDir: "/repo/docs/plans",
+    artifactDate: new Date("2026-09-08"),
+    agent: {
+      async run({ kind }) {
+        calls.push(`agent:${kind}`);
+        return {
+          status: "plan-created",
+          planPath: "docs/plans/2026-09-08-issue-188-example.md",
+          commit: oid("c"),
+        };
+      },
+    },
+    git: {
+      async verifyArtifactCommit({ previousHeadOid }) {
+        calls.push(`git:${previousHeadOid}`);
+      },
+    },
+    checkpoint: async (phase) => {
+      calls.push(`checkpoint:${phase.workspace.headOid}`);
+    },
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    skills: DEFAULT_PATCHMILL_SKILLS,
+    triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
+  });
+  assert.equal(result.kind, "workspace-ready");
+  assert.deepEqual(calls, [
+    `agent:plan`,
+    `git:${oid("b")}`,
+    `checkpoint:${oid("c")}`,
+  ]);
+});
+
+test("stops on blocked spec or checkpoint failure before the plan agent", async () => {
+  const calls: string[] = [];
+  const input = {
+    issue,
+    phase: {
+      kind: "plan" as const,
+      artifactKinds: ["spec", "plan"] as const,
+      pullRequestRequired: true,
+    },
+    current: {
+      kind: "plan" as const,
+      status: "workspace-ready" as const,
+      base,
+      workspace,
+      artifacts: [],
+    },
+    repoRoot: "/repo",
+    specsDir: "/repo/docs/specs",
+    plansDir: "/repo/docs/plans",
+    artifactDate: new Date("2026-09-08"),
+    git: {
+      async verifyArtifactCommit() {
+        calls.push("git");
+      },
+    },
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    skills: DEFAULT_PATCHMILL_SKILLS,
+    triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
+  };
+  const blocked = await runPlanningPhaseArtifacts({
+    ...input,
+    agent: {
+      async run({ kind }) {
+        calls.push(`agent:${kind}`);
+        return { status: "blocked", reason: "needs input", questions: [] };
+      },
+    },
+    checkpoint: async () => {
+      calls.push("checkpoint");
+    },
+  });
+  assert.equal(blocked.kind, "blocked");
+  assert.deepEqual(calls, ["agent:spec"]);
+  calls.length = 0;
+  await assert.rejects(
+    () =>
+      runPlanningPhaseArtifacts({
+        ...input,
+        agent: {
+          async run({ kind }) {
+            calls.push(`agent:${kind}`);
+            return {
+              status: "spec-created",
+              specPath: "docs/specs/2026-09-08-issue-188-example-design.md",
+              commit: oid("b"),
+            };
+          },
+        },
+        checkpoint: async () => {
+          calls.push("checkpoint");
+          throw new Error("store failed");
+        },
+      }),
+    /store failed/,
+  );
+  assert.deepEqual(calls, ["agent:spec", "git", "checkpoint"]);
+});
+
+test("rejects unexpected result paths before the Git validation seam", async () => {
+  let gitCalled = false;
+  await assert.rejects(
+    () =>
+      runPlanningPhaseArtifacts({
+        issue,
+        phase: {
+          kind: "spec",
+          artifactKinds: ["spec"],
+          pullRequestRequired: true,
+        },
+        current: {
+          kind: "spec",
+          status: "workspace-ready",
+          base,
+          workspace: {
+            ...workspace,
+            phase: "spec",
+            identity: { branch: "planning/spec", worktreePath: "/workspace" },
+          },
+          artifacts: [],
+        },
+        repoRoot: "/repo",
+        specsDir: "/repo/docs/specs",
+        plansDir: "/repo/docs/plans",
+        artifactDate: new Date("2026-09-08"),
+        agent: {
+          async run() {
+            return {
+              status: "spec-created",
+              specPath: "../escape.md",
+              commit: oid("b"),
+            };
+          },
+        },
+        git: {
+          async verifyArtifactCommit() {
+            gitCalled = true;
+          },
+        },
+        checkpoint: async () => {},
+        projectPolicy: DEFAULT_PATCHMILL_POLICY,
+        skills: DEFAULT_PATCHMILL_SKILLS,
+        triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
+      }),
+    /invalid-artifact-path/,
+  );
+  assert.equal(gitCalled, false);
+});

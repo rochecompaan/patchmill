@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   PlanningPublicationGit,
@@ -190,6 +194,86 @@ test("blocks a conflicting remote head before push", async () => {
       error.reason === "conflicting-head",
   );
 });
+test("publishes a full OID to a local bare remote, retries safely, and preserves conflicts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "planning-publication-"));
+  const remote = join(root, "remote.git");
+  const repo = join(root, "repo");
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  const runner = {
+    async run(command: string, args: string[], options?: { cwd?: string }) {
+      try {
+        return {
+          code: 0,
+          stdout: execFileSync(command, args, {
+            cwd: options?.cwd,
+            encoding: "utf8",
+          }),
+          stderr: "",
+        };
+      } catch (error) {
+        const failure = error as {
+          status?: number;
+          stdout?: string;
+          stderr?: string;
+        };
+        return {
+          code: failure.status ?? 1,
+          stdout: failure.stdout ?? "",
+          stderr: failure.stderr ?? "",
+        };
+      }
+    },
+  };
+  try {
+    execFileSync("git", ["init", "--bare", "--initial-branch=main", remote]);
+    execFileSync("git", ["init", "-b", "main", repo]);
+    git(repo, "config", "user.name", "Patchmill Test");
+    git(repo, "config", "user.email", "patchmill@example.test");
+    await writeFile(join(repo, "artifact.md"), "A\\n");
+    git(repo, "add", "artifact.md");
+    git(repo, "commit", "-m", "artifact");
+    git(repo, "remote", "add", "origin", remote);
+    const headOid = git(repo, "rev-parse", "HEAD");
+    const publication = new PlanningPublicationGit({ repoRoot: repo, runner });
+    assert.deepEqual(
+      await publication.ensureRemoteHead({
+        remote: "origin",
+        branch: "planning/spec",
+        headOid,
+      }),
+      { pushed: true, headOid },
+    );
+    assert.deepEqual(
+      await publication.ensureRemoteHead({
+        remote: "origin",
+        branch: "planning/spec",
+        headOid,
+      }),
+      { pushed: false, headOid },
+    );
+    await writeFile(join(repo, "artifact.md"), "B\\n");
+    git(repo, "commit", "-am", "other");
+    await assert.rejects(
+      () =>
+        publication.ensureRemoteHead({
+          remote: "origin",
+          branch: "planning/spec",
+          headOid: git(repo, "rev-parse", "HEAD"),
+        }),
+      /conflicting-head/,
+    );
+    assert.equal(
+      git(repo, "ls-remote", "origin", "refs/heads/planning/spec").split(
+        "\t",
+      )[0],
+      headOid,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("rejects a non-regular committed artifact", async () => {
   const git = new PlanningPublicationGit({
     repoRoot: "/repo",

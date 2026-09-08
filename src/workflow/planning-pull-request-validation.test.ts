@@ -122,3 +122,87 @@ test("permits same-host Forgejo heads and rejects cross-host heads", () => {
     /forgejo-host-mismatch/,
   );
 });
+
+test("rejects every immutable pull request summary identity mutation", () => {
+  const mutations: Array<[string, (value: Record<string, unknown>) => void]> = [
+    [
+      "target repository",
+      (value) => {
+        value.targetRepository = { ...repository, repository: "other" };
+      },
+    ],
+    [
+      "head repository",
+      (value) => {
+        value.headRepository = { ...repository, repository: "other" };
+      },
+    ],
+    [
+      "base branch",
+      (value) => {
+        value.baseBranch = "other";
+      },
+    ],
+    [
+      "head branch",
+      (value) => {
+        value.headBranch = "planning/other";
+      },
+    ],
+    [
+      "head oid",
+      (value) => {
+        value.headSha = "b".repeat(40);
+      },
+    ],
+    [
+      "url",
+      (value) => {
+        value.url = "https://github.com/acme/other/pull/188";
+      },
+    ],
+  ];
+  for (const [name, mutate] of mutations) {
+    const value = structuredClone(summary) as Record<string, unknown>;
+    mutate(value);
+    assert.throws(
+      () =>
+        validatePlanningPullRequestSummary({
+          summary: value as never,
+          issueNumber: 188,
+          phase: "spec",
+          publication,
+        }),
+      PlanningPullRequestValidationError,
+      name,
+    );
+  }
+});
+
+test("rejects missing duplicate and unsupported markers without leaking body sentinels", () => {
+  const secret = "credential-sentinel-should-never-escape";
+  const bodies = [
+    secret,
+    `${secret}\n${renderPlanningPullRequestMarker({ issueNumber: 188, phase: "spec" })}\n${renderPlanningPullRequestMarker({ issueNumber: 188, phase: "spec" })}`,
+    `${secret}\n<!-- patchmill:planning-pr-v2 issue=188 phase=spec -->`,
+  ];
+  for (const body of bodies) {
+    try {
+      validatePlanningPullRequestSummary({
+        summary: { ...summary, body },
+        issueNumber: 188,
+        phase: "spec",
+        publication,
+      });
+      assert.fail("expected validation failure");
+    } catch (error) {
+      assert.ok(error instanceof PlanningPullRequestValidationError);
+      assert.equal(error.message.includes(secret), false);
+      assert.equal(JSON.stringify(error).includes(secret), false);
+      assert.equal(
+        Object.values(error).some((value) => String(value).includes(secret)),
+        false,
+      );
+    }
+  }
+});

@@ -401,3 +401,152 @@ test("creates strict pending state", () => {
     { kind: "implementation", status: "pending" },
   ]);
 });
+
+test("permits every cleanup checkpoint and the all-at-once merged-base conversion", () => {
+  const ready = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+    }),
+  );
+  const pushed = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "branch-pushed",
+        base,
+        workspace: workspace(),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+      },
+      1,
+    ),
+  );
+  const open = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "pull-request-open",
+        base,
+        workspace: workspace(),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+        pullRequest,
+      },
+      2,
+    ),
+  );
+  const worktreeRemoved = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "pull-request-open",
+        base,
+        workspace: workspace({
+          state: "worktree-removed",
+          pushedHeadOid: oid("b"),
+        }),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+        pullRequest,
+      },
+      3,
+    ),
+  );
+  const removed = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "pull-request-open",
+        base,
+        workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+        pullRequest,
+      },
+      4,
+    ),
+  );
+  const merged = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "complete",
+        base,
+        workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+        artifacts: [artifact("remote-base", oid("c"))],
+        publication,
+        pullRequest,
+        completion: {
+          kind: "merged-pull-request",
+          mergeOid: oid("d"),
+          mergedBaseOid: oid("c"),
+        },
+      },
+      5,
+    ),
+  );
+  for (const [left, right] of [
+    [ready, pushed],
+    [pushed, open],
+    [open, worktreeRemoved],
+    [worktreeRemoved, removed],
+    [removed, merged],
+  ] as const)
+    assert.doesNotThrow(() => assertPlanningStateReplacement(left, right));
+  for (const document of [removed, merged]) {
+    const replacement = {
+      ...document,
+      revision: document.revision + 1,
+      updatedAt: "2026-09-08T12:00:02.000Z",
+    };
+    assert.doesNotThrow(() =>
+      assertPlanningStateReplacement(document, replacement),
+    );
+  }
+  for (const [left, right] of [
+    [open, removed],
+    [worktreeRemoved, open],
+    [pushed, removed],
+    [open, merged],
+  ] as const)
+    assert.throws(
+      () => assertPlanningStateReplacement(left, right),
+      PlanningStateValidationError,
+    );
+});
+
+test("freezes publication and pull request identity after branch publication", () => {
+  const pushed = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "branch-pushed",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+    }),
+  );
+  for (const mutate of [
+    (phase: Record<string, unknown>) =>
+      ((phase.publication as Record<string, unknown>).headOid = oid("c")),
+    (phase: Record<string, unknown>) =>
+      ((phase.publication as Record<string, unknown>).headBranch =
+        "planning/other"),
+    (phase: Record<string, unknown>) =>
+      ((phase.workspace as Record<string, unknown>).headOid = oid("c")),
+    (phase: Record<string, unknown>) =>
+      ((phase.artifacts as Array<Record<string, unknown>>)[0]!.commitOid =
+        oid("c")),
+  ]) {
+    const next = structuredClone(pushed.phases[0]!) as Record<string, unknown>;
+    mutate(next);
+    assert.throws(
+      () => assertPlanningStateReplacement(pushed.phases[0]!, next as never),
+      PlanningStateValidationError,
+    );
+  }
+});
