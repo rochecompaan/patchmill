@@ -352,3 +352,75 @@ test("rejects unexpected result paths before the Git validation seam", async () 
   );
   assert.equal(gitCalled, false);
 });
+
+test("propagates delegated Git validation failures and rejects malformed agent results", async () => {
+  const common = {
+    issue,
+    phase: {
+      kind: "spec" as const,
+      artifactKinds: ["spec"] as const,
+      pullRequestRequired: true,
+    },
+    current: {
+      kind: "spec" as const,
+      status: "workspace-ready" as const,
+      base,
+      workspace: {
+        ...workspace,
+        phase: "spec",
+        identity: { branch: "planning/spec", worktreePath: "/workspace" },
+      },
+      artifacts: [],
+    },
+    repoRoot: "/repo",
+    specsDir: "/repo/docs/specs",
+    plansDir: "/repo/docs/plans",
+    artifactDate: new Date("2026-09-08"),
+    checkpoint: async () => {},
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    skills: DEFAULT_PATCHMILL_SKILLS,
+    triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
+  };
+  await assert.rejects(
+    () =>
+      runPlanningPhaseArtifacts({
+        ...common,
+        agent: {
+          async run() {
+            return {
+              status: "spec-created",
+              specPath: "docs/specs/2026-09-08-issue-188-example-design.md",
+              commit: oid("b"),
+            };
+          },
+        },
+        git: {
+          async verifyArtifactCommit() {
+            throw new Error("dirty workspace");
+          },
+        },
+      }),
+    /dirty workspace/,
+  );
+  await assert.rejects(
+    () =>
+      runPlanningPhaseArtifacts({
+        ...common,
+        agent: {
+          async run() {
+            return {
+              status: "plan-created",
+              planPath: "docs/plans/x.md",
+              commit: oid("b"),
+            };
+          },
+        },
+        git: {
+          async verifyArtifactCommit() {
+            assert.fail("unexpected");
+          },
+        },
+      }),
+    /unexpected-agent-result/,
+  );
+});

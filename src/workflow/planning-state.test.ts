@@ -550,3 +550,83 @@ test("freezes publication and pull request identity after branch publication", (
     );
   }
 });
+
+test("rejects unknown and missing fields for every durable phase discriminator", () => {
+  const variants: Array<Record<string, unknown>> = [
+    { kind: "spec", status: "pending" },
+    {
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [],
+    },
+    {
+      kind: "spec",
+      status: "branch-pushed",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+    },
+    {
+      kind: "spec",
+      status: "pull-request-open",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+      pullRequest,
+    },
+    {
+      kind: "spec",
+      status: "complete",
+      base,
+      artifacts: [artifact("remote-base", oid("a"))],
+      completion: { kind: "remote-base" },
+    },
+  ];
+  for (const variant of variants) {
+    const unknown = structuredClone(variant);
+    unknown.unexpected = true;
+    assert.throws(
+      () => validatePlanningState(state(unknown)),
+      PlanningStateValidationError,
+    );
+    const missing = structuredClone(variant);
+    delete missing.kind;
+    assert.throws(
+      () => validatePlanningState(state(missing)),
+      PlanningStateValidationError,
+    );
+  }
+});
+
+test("permits revision-stepped idempotence for pending and workspace-ready", () => {
+  const pending = validatePlanningState(
+    state({ kind: "spec", status: "pending" }),
+  );
+  const pendingRetry = {
+    ...pending,
+    revision: 1,
+    updatedAt: "2026-09-08T12:00:01.000Z",
+  };
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(pending, pendingRetry),
+  );
+  const ready = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [],
+    }),
+  );
+  const readyRetry = {
+    ...ready,
+    revision: 1,
+    updatedAt: "2026-09-08T12:00:01.000Z",
+  };
+  assert.doesNotThrow(() => assertPlanningStateReplacement(ready, readyRetry));
+});

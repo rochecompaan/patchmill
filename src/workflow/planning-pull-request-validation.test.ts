@@ -206,3 +206,59 @@ test("rejects missing duplicate and unsupported markers without leaking body sen
     }
   }
 });
+
+test("rejects expected-reference and URL shape mismatches without exposing confidential bodies", () => {
+  const secret = "private-body-sentinel";
+  const expectedReference = { targetRepository: repository, number: 189 };
+  const cases = [
+    { name: "reference", summary, expectedReference },
+    {
+      name: "url number",
+      summary: {
+        ...summary,
+        url: "https://github.com/acme/patchmill/pull/189",
+      },
+    },
+    {
+      name: "provider segment",
+      summary: {
+        ...summary,
+        url: "https://github.com/acme/patchmill/pulls/188",
+      },
+    },
+    {
+      name: "credential URL",
+      summary: {
+        ...summary,
+        url: "https://token@example.com/acme/patchmill/pull/188",
+        body: secret,
+      },
+    },
+    {
+      name: "phase marker",
+      summary: {
+        ...summary,
+        body: `${secret}\n${renderPlanningPullRequestMarker({ issueNumber: 188, phase: "plan" })}`,
+      },
+    },
+  ];
+  for (const item of cases) {
+    assert.throws(
+      () =>
+        validatePlanningPullRequestSummary({
+          summary: item.summary,
+          issueNumber: 188,
+          phase: "spec",
+          publication,
+          ...(item.expectedReference === undefined
+            ? {}
+            : { expectedReference: item.expectedReference }),
+        }),
+      (error: unknown) =>
+        error instanceof PlanningPullRequestValidationError &&
+        !error.message.includes(secret) &&
+        !JSON.stringify(error).includes(secret),
+      item.name,
+    );
+  }
+});
