@@ -1,5 +1,8 @@
 import type { PatchmillHostConfig } from "../config/types.ts";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
+import { ForgejoTeaPullRequestHost } from "./forgejo-tea-pull-requests.ts";
+import { GitHubGhPullRequestHost } from "./github-gh-pull-requests.ts";
+import type { PullRequestHost } from "./pull-requests.ts";
 import { ForgejoTeaHostProvider } from "./forgejo-tea.ts";
 import { GitHubGhHostProvider } from "./github-gh.ts";
 import type {
@@ -24,6 +27,29 @@ function createHostProvider(options: {
       return new GitHubGhHostProvider({
         runner: options.runner,
         repoRoot: options.repoRoot,
+      });
+  }
+}
+
+export function createPullRequestHost(options: {
+  runner: CommandRunner;
+  repoRoot: string;
+  remote: string;
+  host: PatchmillHostConfig;
+}): PullRequestHost {
+  switch (options.host.provider) {
+    case "github-gh":
+      return new GitHubGhPullRequestHost({
+        runner: options.runner,
+        repoRoot: options.repoRoot,
+        pushRemote: options.remote,
+      });
+    case "forgejo-tea":
+      return new ForgejoTeaPullRequestHost({
+        runner: options.runner,
+        repoRoot: options.repoRoot,
+        pushRemote: options.remote,
+        login: options.host.login,
       });
   }
 }
