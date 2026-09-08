@@ -26,6 +26,11 @@ import type {
   PlanningPhaseStateV1,
   PlanningStateV1,
 } from "./planning-state-types.ts";
+import {
+  assertPlanningPublicationRepositories,
+  PlanningPublicationRepositoryError,
+  sameRepositoryIdentity,
+} from "./planning-publication-repositories.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -271,23 +276,13 @@ function publication(value: unknown, path: string) {
     parsed.headRepository,
     `${path}.headRepository`,
   );
-  if (targetRepository.provider !== headRepository.provider)
-    fail("publication-repository-mismatch", path);
-  if (
-    targetRepository.provider === "github-gh" &&
-    (targetRepository.host.toLowerCase() !==
-      headRepository.host.toLowerCase() ||
-      targetRepository.owner.toLowerCase() !==
-        headRepository.owner.toLowerCase() ||
-      targetRepository.repository.toLowerCase() !==
-        headRepository.repository.toLowerCase())
-  )
-    fail("publication-repository-mismatch", path);
-  if (
-    targetRepository.provider === "forgejo-tea" &&
-    targetRepository.host.toLowerCase() !== headRepository.host.toLowerCase()
-  )
-    fail("publication-repository-mismatch", path);
+  try {
+    assertPlanningPublicationRepositories({ targetRepository, headRepository });
+  } catch (error) {
+    if (error instanceof PlanningPublicationRepositoryError)
+      fail("publication-repository-mismatch", path);
+    throw error;
+  }
   return {
     targetRepository,
     headRepository,
@@ -586,16 +581,11 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
     )
       fail("publication-mismatch", `${path}.publication`);
     if (
-      ("pullRequest" in item &&
-        item.pullRequest.reference.targetRepository.provider !==
-          item.publication.targetRepository.provider) ||
-      ("pullRequest" in item &&
-        (item.pullRequest.reference.targetRepository.host.toLowerCase() !==
-          item.publication.targetRepository.host.toLowerCase() ||
-          item.pullRequest.reference.targetRepository.owner.toLowerCase() !==
-            item.publication.targetRepository.owner.toLowerCase() ||
-          item.pullRequest.reference.targetRepository.repository.toLowerCase() !==
-            item.publication.targetRepository.repository.toLowerCase()))
+      "pullRequest" in item &&
+      !sameRepositoryIdentity(
+        item.pullRequest.reference.targetRepository,
+        item.publication.targetRepository,
+      )
     )
       fail("pull-request-mismatch", `${path}.pullRequest`);
     if (

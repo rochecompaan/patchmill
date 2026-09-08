@@ -56,13 +56,24 @@ export type PlanningPublicationGitOperation =
   | "status"
   | "remote-head"
   | "push";
+export type PlanningPublicationGitReason =
+  | "invalid-input"
+  | "invalid-workspace"
+  | "command-failed"
+  | "malformed-response"
+  | "head-mismatch"
+  | "not-ancestor"
+  | "non-regular-file"
+  | "dirty-workspace"
+  | "unexpected-changes"
+  | "conflicting-head";
 export class PlanningPublicationGitError extends Error {
   readonly operation: PlanningPublicationGitOperation;
-  readonly reason: string;
+  readonly reason: PlanningPublicationGitReason;
   readonly exitCode?: number;
   constructor(
     operation: PlanningPublicationGitOperation,
-    reason: string,
+    reason: PlanningPublicationGitReason,
     result?: CommandResult,
   ) {
     super(`Planning publication Git failed: ${operation}/${reason}`);
@@ -79,9 +90,13 @@ export class PlanningPublicationGitError extends Error {
   }
   declare readonly diagnostics: Readonly<CommandResult>;
 }
-function input(value: string, predicate: (value: string) => boolean): void {
+function input(
+  operation: PlanningPublicationGitOperation,
+  value: string,
+  predicate: (value: string) => boolean,
+): void {
   if (!predicate(value))
-    throw new PlanningPublicationGitError("head", "invalid-input");
+    throw new PlanningPublicationGitError(operation, "invalid-input");
 }
 function nulRecords(
   value: string,
@@ -125,12 +140,15 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
       );
     return result;
   }
-  private validateOid(value: string): void {
-    input(value, (item) => planningOid.test(item));
+  private validateOid(
+    operation: PlanningPublicationGitOperation,
+    value: string,
+  ): void {
+    input(operation, value, (item) => planningOid.test(item));
   }
   async assertAncestor(inputValue: PlanningAncestryInput): Promise<void> {
-    this.validateOid(inputValue.ancestorOid);
-    this.validateOid(inputValue.descendantOid);
+    this.validateOid("ancestry", inputValue.ancestorOid);
+    this.validateOid("ancestry", inputValue.descendantOid);
     const result = await this.runner.run(
       "git",
       [
@@ -153,11 +171,11 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
   async assertRegularFiles(
     inputValue: PlanningRegularFilesInput,
   ): Promise<void> {
-    this.validateOid(inputValue.commitOid);
+    this.validateOid("tree", inputValue.commitOid);
     if (inputValue.paths.length === 0)
       throw new PlanningPublicationGitError("tree", "invalid-input");
     for (const path of inputValue.paths) {
-      input(path, isPlanningArtifactPath);
+      input("tree", path, isPlanningArtifactPath);
       const result = await this.run(
         "tree",
         ["ls-tree", "-z", inputValue.commitOid, "--", path],
@@ -190,9 +208,9 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
     inputValue: PlanningArtifactCommitInput,
   ): Promise<void> {
     const workspacePath = this.workspace(inputValue.workspacePath);
-    this.validateOid(inputValue.previousHeadOid);
-    this.validateOid(inputValue.headOid);
-    input(inputValue.artifactPath, isPlanningArtifactPath);
+    this.validateOid("head", inputValue.previousHeadOid);
+    this.validateOid("head", inputValue.headOid);
+    input("tree", inputValue.artifactPath, isPlanningArtifactPath);
     const head = await this.run(
       "head",
       ["-C", workspacePath, "rev-parse", "--verify", "HEAD^{commit}"],
@@ -244,8 +262,8 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
     inputValue: PlanningWorkspaceVerificationInput,
   ): Promise<void> {
     const workspacePath = this.workspace(inputValue.workspacePath);
-    this.validateOid(inputValue.baseOid);
-    this.validateOid(inputValue.headOid);
+    this.validateOid("head", inputValue.baseOid);
+    this.validateOid("head", inputValue.headOid);
     const head = await this.run(
       "head",
       ["-C", workspacePath, "rev-parse", "--verify", "HEAD^{commit}"],
@@ -266,8 +284,8 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
   async inspectRemoteHead(
     inputValue: PlanningRemoteBranchInput,
   ): Promise<PlanningRemoteHead> {
-    input(inputValue.remote, isPlanningSingleLine);
-    input(inputValue.branch, isPlanningBranch);
+    input("remote-head", inputValue.remote, isPlanningSingleLine);
+    input("remote-head", inputValue.branch, isPlanningBranch);
     const result = await this.runner.run(
       "git",
       [
@@ -306,7 +324,7 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
   async ensureRemoteHead(
     inputValue: PlanningExactPushInput,
   ): Promise<Readonly<{ pushed: boolean; headOid: string }>> {
-    this.validateOid(inputValue.headOid);
+    this.validateOid("push", inputValue.headOid);
     const before = await this.inspectRemoteHead(inputValue);
     if (before.state === "present" && before.headOid !== inputValue.headOid)
       throw new PlanningPublicationGitError("remote-head", "conflicting-head");

@@ -9,6 +9,70 @@ import {
   PlanningPublicationGitError,
 } from "./planning-publication-git.ts";
 
+test("reports the operation that rejected scalar input", async () => {
+  const git = new PlanningPublicationGit({
+    repoRoot: "/repo",
+    runner: {
+      async run() {
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    },
+  });
+  const cases: ReadonlyArray<[string, () => Promise<unknown>, string]> = [
+    [
+      "tree path",
+      () =>
+        git.assertRegularFiles({
+          commitOid: "a".repeat(40),
+          paths: ["../a.md"],
+        }),
+      "tree",
+    ],
+    [
+      "remote",
+      () =>
+        git.inspectRemoteHead({
+          remote: "bad\nremote",
+          branch: "planning/spec",
+        }),
+      "remote-head",
+    ],
+    [
+      "branch",
+      () => git.inspectRemoteHead({ remote: "origin", branch: "bad branch" }),
+      "remote-head",
+    ],
+    [
+      "push oid",
+      () =>
+        git.ensureRemoteHead({
+          remote: "origin",
+          branch: "planning/spec",
+          headOid: "not-an-oid",
+        }),
+      "push",
+    ],
+    [
+      "ancestry oid",
+      () =>
+        git.assertAncestor({
+          ancestorOid: "not-an-oid",
+          descendantOid: "a".repeat(40),
+        }),
+      "ancestry",
+    ],
+  ];
+  for (const [, operation, expectedOperation] of cases) {
+    await assert.rejects(
+      operation,
+      (error: unknown) =>
+        error instanceof PlanningPublicationGitError &&
+        error.operation === expectedOperation &&
+        error.reason === "invalid-input",
+    );
+  }
+});
+
 test("accepts an owned workspace outside the repository root", async () => {
   const git = new PlanningPublicationGit({
     repoRoot: "/repo",

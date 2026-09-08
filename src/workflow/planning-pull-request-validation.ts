@@ -1,8 +1,6 @@
-import {
-  sameRepositoryIdentity,
-  type PullRequestReference,
-  type PullRequestSummary,
-  type RepositoryIdentity,
+import type {
+  PullRequestReference,
+  PullRequestSummary,
 } from "../host/pull-requests.ts";
 import { parsePullRequestUrl } from "../host/pull-request-reference.ts";
 import {
@@ -10,6 +8,11 @@ import {
   PlanningPullRequestMarkerError,
 } from "./planning-pull-request-markers.ts";
 import type { PlanningPublicationEvidence } from "./planning-state-types.ts";
+import {
+  assertPlanningPublicationRepositories as assertPublicationRepositories,
+  PlanningPublicationRepositoryError,
+  sameRepositoryIdentity,
+} from "./planning-publication-repositories.ts";
 
 export type ValidatedPlanningPullRequest = Readonly<{
   summary: PullRequestSummary;
@@ -27,29 +30,16 @@ export class PlanningPullRequestValidationError extends Error {
 function fail(reason: string): never {
   throw new PlanningPullRequestValidationError(reason);
 }
-function sameForgejoHost(
-  left: RepositoryIdentity,
-  right: RepositoryIdentity,
-): boolean {
-  return (
-    left.provider === "forgejo-tea" &&
-    right.provider === "forgejo-tea" &&
-    left.host.toLowerCase() === right.host.toLowerCase()
-  );
-}
 export function assertPlanningPublicationRepositories(input: {
-  targetRepository: RepositoryIdentity;
-  headRepository: RepositoryIdentity;
+  targetRepository: PlanningPublicationEvidence["targetRepository"];
+  headRepository: PlanningPublicationEvidence["headRepository"];
 }): void {
-  if (input.targetRepository.provider !== input.headRepository.provider)
-    fail("provider-mismatch");
-  if (input.targetRepository.provider === "github-gh") {
-    if (!sameRepositoryIdentity(input.targetRepository, input.headRepository))
-      fail("github-head-mismatch");
-    return;
+  try {
+    assertPublicationRepositories(input);
+  } catch (error) {
+    if (error instanceof PlanningPublicationRepositoryError) fail(error.reason);
+    throw error;
   }
-  if (!sameForgejoHost(input.targetRepository, input.headRepository))
-    fail("forgejo-host-mismatch");
 }
 export function validatePlanningPullRequestSummary(input: {
   summary: PullRequestSummary;
