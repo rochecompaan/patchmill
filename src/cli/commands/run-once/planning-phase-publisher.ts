@@ -5,6 +5,7 @@ import type {
   PullRequestSummary,
 } from "../../../host/pull-requests.ts";
 import {
+  planningPhasePlan,
   planningPullRequestBody,
   planningPullRequestTitle,
 } from "../../../workflow/planning-pull-requests.ts";
@@ -82,8 +83,15 @@ export async function publishPlanningPhase(input: {
   if (phase === undefined || phase.kind === "implementation")
     throw new RangeError("Planning phase is not publishable");
   const phaseKind = phase.kind as "spec" | "plan";
+  const assignedArtifacts = planningPhasePlan(state.gates)[input.phaseIndex]!
+    .artifactKinds;
   if (phase.status === "workspace-ready") {
-    if (phase.artifacts.length === 0)
+    if (
+      phase.artifacts.length !== assignedArtifacts.length ||
+      phase.artifacts.some(
+        (artifact, index) => artifact.kind !== assignedArtifacts[index],
+      )
+    )
       throw new Error("Planning workspace artifacts are incomplete");
     await input.workspaces.resume({
       runId: state.runId,
@@ -216,5 +224,12 @@ export async function publishPlanningPhase(input: {
     },
   });
   pullRequest = await input.host.getPullRequest(phase.pullRequest.reference);
+  validatePlanningPullRequestSummary({
+    summary: pullRequest,
+    issueNumber: state.issueNumber,
+    phase: phaseKind,
+    publication: phase.publication,
+    expectedReference: phase.pullRequest.reference,
+  });
   return { kind: "published", state, pullRequest };
 }

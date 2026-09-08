@@ -5,6 +5,28 @@ import {
   PlanningPublicationGitError,
 } from "./planning-publication-git.ts";
 
+test("accepts an owned workspace outside the repository root", async () => {
+  const git = new PlanningPublicationGit({
+    repoRoot: "/repo",
+    runner: {
+      async run() {
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    },
+  });
+  await assert.rejects(
+    () =>
+      git.verifyWorkspace({
+        workspacePath: "/other-worktrees/spec",
+        baseOid: "a".repeat(40),
+        headOid: "a".repeat(40),
+        artifactPaths: ["docs/specs/a.md"],
+      }),
+    (error: unknown) =>
+      error instanceof PlanningPublicationGitError &&
+      error.reason === "head-mismatch",
+  );
+});
 test("recovers an already-pushed exact phase head without a push", async () => {
   const calls: string[][] = [];
   const git = new PlanningPublicationGit({

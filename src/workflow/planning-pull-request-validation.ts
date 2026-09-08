@@ -89,7 +89,7 @@ export function validatePlanningPullRequestSummary(input: {
       summary.targetRepository.provider === "github-gh" ? "pull" : "pulls";
     const parsed = parsePullRequestUrl(summary.url, segment);
     if (
-      parsed.hostname.toLowerCase() !==
+      `${parsed.hostname}${parsed.port === "" ? "" : `:${parsed.port}`}`.toLowerCase() !==
         summary.targetRepository.host.toLowerCase() ||
       parsed.owner.toLowerCase() !==
         summary.targetRepository.owner.toLowerCase() ||

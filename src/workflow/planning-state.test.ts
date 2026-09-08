@@ -248,6 +248,38 @@ test("rejects incomplete publication, cleanup, URLs, and merge evidence", () => 
   );
 });
 
+test("allows pending phases to advance into workspace and remote-base completion", () => {
+  const pending = validatePlanningState(
+    state({ kind: "spec", status: "pending" }),
+  );
+  const ready = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "workspace-ready",
+        base,
+        workspace: workspace(),
+        artifacts: [],
+      },
+      1,
+    ),
+  );
+  const complete = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "complete",
+        base,
+        artifacts: [artifact("remote-base", oid("a"))],
+        completion: { kind: "remote-base" },
+      },
+      1,
+    ),
+  );
+  assert.doesNotThrow(() => assertPlanningStateReplacement(pending, ready));
+  assert.doesNotThrow(() => assertPlanningStateReplacement(pending, complete));
+});
+
 test("allows only one durable publication edge at a time", () => {
   const ready = validatePlanningState(
     state({
@@ -264,8 +296,8 @@ test("allows only one durable publication edge at a time", () => {
         kind: "spec",
         status: "workspace-ready",
         base,
-        workspace: workspace(),
-        artifacts: [artifact("workspace", oid("b"))],
+        workspace: { ...workspace(), headOid: oid("c") },
+        artifacts: [artifact("workspace", oid("c"))],
       },
       1,
     ),
@@ -279,9 +311,9 @@ test("allows only one durable publication edge at a time", () => {
         kind: "spec",
         status: "branch-pushed",
         base,
-        workspace: workspace(),
-        artifacts: [artifact("workspace", oid("b"))],
-        publication,
+        workspace: { ...workspace(), headOid: oid("c") },
+        artifacts: [artifact("workspace", oid("c"))],
+        publication: { ...publication, headOid: oid("c") },
       },
       2,
     ),
@@ -295,9 +327,9 @@ test("allows only one durable publication edge at a time", () => {
         kind: "spec",
         status: "pull-request-open",
         base,
-        workspace: workspace(),
-        artifacts: [artifact("workspace", oid("b"))],
-        publication,
+        workspace: { ...workspace(), headOid: oid("c") },
+        artifacts: [artifact("workspace", oid("c"))],
+        publication: { ...publication, headOid: oid("c") },
         pullRequest,
       },
       3,

@@ -45,9 +45,12 @@ function fail(reason: string, index: number, suffix = ""): never {
 function same(left: unknown, right: unknown, index: number): void {
   if (!isDeepStrictEqual(left, right)) fail("immutable-evidence", index);
 }
-function workspaceStable(workspace: PlanningWorkspaceEvidence) {
-  const { cleanup: _cleanup, ...stable } = workspace;
-  return stable;
+function workspaceStable(
+  workspace: PlanningWorkspaceEvidence,
+  allowHeadAdvance: boolean,
+) {
+  const { cleanup: _cleanup, headOid: _headOid, ...stable } = workspace;
+  return allowHeadAdvance ? stable : { ...stable, headOid: workspace.headOid };
 }
 function assertWorkspace(
   current: PlanningWorkspaceEvidence,
@@ -55,7 +58,11 @@ function assertWorkspace(
   allowHeadAdvance: boolean,
   index: number,
 ): void {
-  same(workspaceStable(current), workspaceStable(next), index);
+  same(
+    workspaceStable(current, allowHeadAdvance),
+    workspaceStable(next, allowHeadAdvance),
+    index,
+  );
   if (!allowHeadAdvance && current.headOid !== next.headOid)
     fail("immutable-evidence", index);
   if (current.cleanup.state === next.cleanup.state) {
@@ -83,7 +90,6 @@ function assertArtifacts(
   allowMergeConversion: boolean,
   index: number,
 ): void {
-  if (allowMergeConversion) return;
   if (
     next.length < current.length ||
     (!allowAppend && next.length !== current.length)
@@ -92,12 +98,10 @@ function assertArtifacts(
   for (let offset = 0; offset < current.length; offset += 1) {
     const left = current[offset]!;
     const right = next[offset]!;
-    if (
-      left.kind !== right.kind ||
-      left.path !== right.path ||
-      left.source !== right.source
-    )
+    if (left.kind !== right.kind || left.path !== right.path)
       fail("immutable-evidence", index);
+    if (allowMergeConversion) continue;
+    if (left.source !== right.source) fail("immutable-evidence", index);
     if (
       left.commitOid !== right.commitOid &&
       !(allowAppend && left.source === "workspace")
@@ -113,7 +117,11 @@ export function assertPlanningPhaseReplacement(
   const from = phaseName(current);
   const to = phaseName(next);
   if (!allowed[from].includes(to)) fail("invalid-transition", index, ".status");
-  if (current.status === "pending" || current.status === "complete") {
+  if (current.status === "pending") {
+    if (next.status === "pending") same(current, next, index);
+    return;
+  }
+  if (current.status === "complete") {
     same(current, next, index);
     return;
   }

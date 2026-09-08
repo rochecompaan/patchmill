@@ -263,12 +263,34 @@ function publication(value: unknown, path: string) {
     ],
     path,
   );
+  const targetRepository = repository(
+    parsed.targetRepository,
+    `${path}.targetRepository`,
+  );
+  const headRepository = repository(
+    parsed.headRepository,
+    `${path}.headRepository`,
+  );
+  if (targetRepository.provider !== headRepository.provider)
+    fail("publication-repository-mismatch", path);
+  if (
+    targetRepository.provider === "github-gh" &&
+    (targetRepository.host.toLowerCase() !==
+      headRepository.host.toLowerCase() ||
+      targetRepository.owner.toLowerCase() !==
+        headRepository.owner.toLowerCase() ||
+      targetRepository.repository.toLowerCase() !==
+        headRepository.repository.toLowerCase())
+  )
+    fail("publication-repository-mismatch", path);
+  if (
+    targetRepository.provider === "forgejo-tea" &&
+    targetRepository.host.toLowerCase() !== headRepository.host.toLowerCase()
+  )
+    fail("publication-repository-mismatch", path);
   return {
-    targetRepository: repository(
-      parsed.targetRepository,
-      `${path}.targetRepository`,
-    ),
-    headRepository: repository(parsed.headRepository, `${path}.headRepository`),
+    targetRepository,
+    headRepository,
     baseBranch: branch(parsed.baseBranch, `${path}.baseBranch`),
     headBranch: branch(parsed.headBranch, `${path}.headBranch`),
     headOid: oid(parsed.headOid, `${path}.headOid`),

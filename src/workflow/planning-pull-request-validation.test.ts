@@ -61,6 +61,31 @@ test("rejects a marker mismatch without disclosing the body", () => {
       error.reason === "ownership-marker",
   );
 });
+test("accepts a port-qualified Forgejo pull request URL", () => {
+  const forgejo = {
+    provider: "forgejo-tea" as const,
+    host: "forge.test:3000",
+    owner: "acme",
+    repository: "patchmill",
+  };
+  assert.doesNotThrow(() =>
+    validatePlanningPullRequestSummary({
+      summary: {
+        ...summary,
+        url: "https://forge.test:3000/acme/patchmill/pulls/188",
+        targetRepository: forgejo,
+        headRepository: forgejo,
+      },
+      issueNumber: 188,
+      phase: "spec",
+      publication: {
+        ...publication,
+        targetRepository: forgejo,
+        headRepository: forgejo,
+      },
+    }),
+  );
+});
 test("permits same-host Forgejo heads and rejects cross-host heads", () => {
   assert.doesNotThrow(() =>
     assertPlanningPublicationRepositories({

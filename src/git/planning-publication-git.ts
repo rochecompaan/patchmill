@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import type { CommandResult, CommandRunner } from "../process/command.ts";
 import {
   isPlanningArtifactPath,
@@ -107,10 +107,9 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
     this.repoRoot = resolve(input.repoRoot);
   }
   private workspace(path: string): string {
-    const resolved = resolve(path);
-    if (!isAbsolute(path) || relative(this.repoRoot, resolved).startsWith(".."))
+    if (!isAbsolute(path))
       throw new PlanningPublicationGitError("head", "invalid-workspace");
-    return resolved;
+    return resolve(path);
   }
   private async run(
     operation: PlanningPublicationGitOperation,

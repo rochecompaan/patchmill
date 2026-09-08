@@ -1,6 +1,10 @@
 import { isAbsolute, relative, resolve } from "node:path";
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningRemoteBaseSnapshot } from "../../../git/planning-workspaces.ts";
+import {
+  profileExtensionArgs,
+  runOncePlanningPiProfile,
+} from "../../../pi/resource-profiles.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import type {
@@ -19,9 +23,11 @@ import {
 } from "./prompts.ts";
 import { configuredPathRelativeToRepo } from "./pipeline-workspace.ts";
 import { buildSpecPath } from "./specs.ts";
+import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssuePiResult,
+  CommandRunner,
   IssueSummary,
 } from "./types.ts";
 
@@ -45,6 +51,36 @@ export interface PlanningArtifactAgent {
 export type PlanningArtifactCheckpoint = (
   phase: WorkspaceReadyPlanningPhase,
 ) => Promise<void>;
+
+export function createPlanningArtifactAgent(input: {
+  runner: CommandRunner;
+  skills: PatchmillSkillsConfig;
+  issueNumber: number;
+  runOptions?: Omit<
+    RunPiPromptOptions,
+    | "stage"
+    | "issueNumber"
+    | "repoRoot"
+    | "skillPaths"
+    | "extensionArgs"
+    | "observeSession"
+  >;
+}): PlanningArtifactAgent {
+  return {
+    async run({ cwd, prompt }) {
+      const profile = runOncePlanningPiProfile(input.skills, cwd);
+      return runPiPrompt(input.runner, cwd, prompt, {
+        ...input.runOptions,
+        stage: "pi-plan",
+        issueNumber: input.issueNumber,
+        repoRoot: cwd,
+        skillPaths: profile.additionalSkillPaths,
+        extensionArgs: profileExtensionArgs(profile),
+        observeSession: true,
+      });
+    },
+  };
+}
 export class PlanningPhaseArtifactError extends Error {
   readonly reason: string;
   constructor(reason: string) {
@@ -76,6 +112,12 @@ export function resolvePlanningPhaseArtifacts(input: {
     ? { kind: "satisfied-by-base", artifacts }
     : { kind: "workspace-required", artifacts, missing };
 }
+function mergedBaseSpecPath(
+  current: WorkspaceReadyPlanningPhase,
+): string | undefined {
+  const candidates = current.base.artifactCandidates.spec;
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
 function reviewContext(
   phase: PlannedPhase,
   kind: PlanningArtifactKind,
@@ -86,7 +128,8 @@ function reviewContext(
     : phase.artifactKinds.length > 1
       ? ("same-phase-pull-request" as const)
       : kind === "plan" &&
-          current.artifacts.some((artifact) => artifact.kind === "spec")
+          (current.artifacts.some((artifact) => artifact.kind === "spec") ||
+            mergedBaseSpecPath(current) !== undefined)
         ? ("merged-base" as const)
         : ("dedicated-pull-request" as const);
 }
@@ -129,9 +172,9 @@ export async function runPlanningPhaseArtifacts(input: {
   agent: PlanningArtifactAgent;
   git: Pick<PlanningPublicationOperations, "verifyArtifactCommit">;
   checkpoint: PlanningArtifactCheckpoint;
-  projectPolicy?: PatchmillProjectPolicy;
-  skills?: PatchmillSkillsConfig;
-  triageLabels?: PromptTriageLabels;
+  projectPolicy: PatchmillProjectPolicy;
+  skills: PatchmillSkillsConfig;
+  triageLabels: PromptTriageLabels;
 }): Promise<
   | { kind: "workspace-ready"; phase: WorkspaceReadyPlanningPhase }
   | { kind: "blocked"; result: AgentIssueBlockedResult }
@@ -155,38 +198,32 @@ export async function runPlanningPhaseArtifacts(input: {
             input.issue.title,
             input.artifactDate,
           );
+    const expectedPathInWorkspace = configuredPathRelativeToRepo(
+      input.repoRoot,
+      expectedPath,
+    );
+    const specPath =
+      current.artifacts.find((artifact) => artifact.kind === "spec")?.path ??
+      mergedBaseSpecPath(current);
     const prompt =
-      input.projectPolicy === undefined
-        ? ""
-        : kind === "spec"
-          ? buildSpecCreationPrompt({
-              issue: input.issue,
-              specPath: expectedPath,
-              projectPolicy: input.projectPolicy,
-              ...(input.skills === undefined ? {} : { skills: input.skills }),
-              ...(input.triageLabels === undefined
-                ? {}
-                : { triageLabels: input.triageLabels }),
-              reviewContext: reviewContext(input.phase, kind, current),
-            })
-          : buildPlanCreationPrompt({
-              issue: input.issue,
-              ...(current.artifacts.find((artifact) => artifact.kind === "spec")
-                ?.path === undefined
-                ? {}
-                : {
-                    specPath: current.artifacts.find(
-                      (artifact) => artifact.kind === "spec",
-                    )!.path,
-                  }),
-              planPath: expectedPath,
-              projectPolicy: input.projectPolicy,
-              ...(input.skills === undefined ? {} : { skills: input.skills }),
-              ...(input.triageLabels === undefined
-                ? {}
-                : { triageLabels: input.triageLabels }),
-              reviewContext: reviewContext(input.phase, kind, current),
-            });
+      kind === "spec"
+        ? buildSpecCreationPrompt({
+            issue: input.issue,
+            specPath: expectedPathInWorkspace,
+            projectPolicy: input.projectPolicy,
+            skills: input.skills,
+            triageLabels: input.triageLabels,
+            reviewContext: reviewContext(input.phase, kind, current),
+          })
+        : buildPlanCreationPrompt({
+            issue: input.issue,
+            ...(specPath === undefined ? {} : { specPath }),
+            planPath: expectedPathInWorkspace,
+            projectPolicy: input.projectPolicy,
+            skills: input.skills,
+            triageLabels: input.triageLabels,
+            reviewContext: reviewContext(input.phase, kind, current),
+          });
     const result = resultFor(
       kind,
       await input.agent.run({

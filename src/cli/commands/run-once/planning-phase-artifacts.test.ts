@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
+import { DEFAULT_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
 import {
   resolvePlanningPhaseArtifacts,
   runPlanningPhaseArtifacts,
@@ -76,6 +78,7 @@ test("blocks ambiguous base artifacts before agent execution", () => {
 });
 test("checkpoints spec before running plan", async () => {
   const events: string[] = [];
+  const prompts: string[] = [];
   let head = oid("a");
   const result = await runPlanningPhaseArtifacts({
     issue,
@@ -96,7 +99,8 @@ test("checkpoints spec before running plan", async () => {
     plansDir: "/repo/docs/plans",
     artifactDate: new Date("2026-09-08"),
     agent: {
-      async run({ kind }) {
+      async run({ kind, prompt }) {
+        prompts.push(prompt);
         events.push(`agent:${kind}`);
         head = kind === "spec" ? oid("b") : oid("c");
         return kind === "spec"
@@ -122,6 +126,9 @@ test("checkpoints spec before running plan", async () => {
         `checkpoint:${phase.artifacts.map((item) => item.kind).join("+")}`,
       );
     },
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    skills: DEFAULT_PATCHMILL_SKILLS,
+    triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
   });
   assert.equal(result.kind, "workspace-ready");
   assert.deepEqual(events, [
@@ -132,6 +139,7 @@ test("checkpoints spec before running plan", async () => {
     "git:plan",
     "checkpoint:spec+plan",
   ]);
+  assert.ok(prompts.every((prompt) => !prompt.includes("/repo/docs/")));
   if (result.kind === "workspace-ready")
     assert.deepEqual(
       result.phase.artifacts.map((item) => item.commitOid),

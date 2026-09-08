@@ -81,6 +81,8 @@ export async function reconcilePlanningPhase(input: {
   let phase = state.phases[input.phaseIndex];
   if (phase === undefined)
     throw new RangeError("Planning phase index is invalid");
+  if (phase.kind === "implementation")
+    throw new RangeError("Planning phase is not reconcilable");
   if (phase.status === "complete" && phase.completion.kind === "remote-base")
     return {
       state,
@@ -103,7 +105,17 @@ export async function reconcilePlanningPhase(input: {
       phase: phaseKind,
       publication: phase.publication,
     });
-    const read = await input.host.getPullRequest(found.reference);
+    let read: PullRequestSummary;
+    try {
+      read = await input.host.getPullRequest(found.reference);
+    } catch (error) {
+      if (error instanceof PullRequestNotFoundError)
+        return {
+          state,
+          outcome: { kind: "missing", reference: found.reference },
+        };
+      throw error;
+    }
     const confirmed = validatePlanningPullRequestSummary({
       summary: read,
       issueNumber: state.issueNumber,

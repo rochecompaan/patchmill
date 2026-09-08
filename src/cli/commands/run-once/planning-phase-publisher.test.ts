@@ -58,6 +58,27 @@ const state = {
     { kind: "implementation" as const, status: "pending" as const },
   ],
 };
+test("rejects incomplete workspace artifacts before publication effects", async () => {
+  const partial = structuredClone(state);
+  partial.phases[0] = {
+    ...partial.phases[0],
+    status: "workspace-ready",
+    artifacts: [],
+  };
+  await assert.rejects(
+    () =>
+      publishPlanningPhase({
+        state: partial,
+        phaseIndex: 0,
+        lock: {} as never,
+        stateStore: {} as never,
+        host: {} as never,
+        git: {} as never,
+        workspaces: {} as never,
+      }),
+    /artifacts are incomplete/,
+  );
+});
 test("returns ambiguous discovery without creating a replacement pull request", async () => {
   const result = await publishPlanningPhase({
     state,
