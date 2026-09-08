@@ -58,6 +58,66 @@ const state = {
     { kind: "implementation" as const, status: "pending" as const },
   ],
 };
+test("stops after exact push when its branch checkpoint cannot persist", async () => {
+  const events: string[] = [];
+  const ready = structuredClone(state);
+  ready.phases[0] = { ...ready.phases[0], status: "workspace-ready" };
+  await assert.rejects(
+    () =>
+      publishPlanningPhase({
+        state: ready,
+        phaseIndex: 0,
+        lock: {} as never,
+        stateStore: {
+          async replace() {
+            events.push("replace");
+            throw new Error("store failed");
+          },
+        },
+        host: {
+          async resolveTargetRepositoryIdentity() {
+            events.push("target");
+            return repository;
+          },
+          async resolveRemoteRepositoryIdentity() {
+            events.push("head");
+            return repository;
+          },
+          async findPullRequests() {
+            events.push("find");
+            return [];
+          },
+        } as never,
+        git: {
+          async verifyWorkspace() {
+            events.push("verify");
+          },
+          async ensureRemoteHead() {
+            events.push("push");
+            return { pushed: true, headOid: oid };
+          },
+          async inspectRemoteHead() {
+            events.push("inspect");
+            return { state: "present" as const, headOid: oid };
+          },
+        },
+        workspaces: {
+          async resume() {
+            events.push("resume");
+          },
+        } as never,
+      }),
+    /store failed/,
+  );
+  assert.deepEqual(events, [
+    "resume",
+    "verify",
+    "target",
+    "head",
+    "push",
+    "replace",
+  ]);
+});
 test("rejects incomplete workspace artifacts before publication effects", async () => {
   const partial = structuredClone(state);
   partial.phases[0] = {
