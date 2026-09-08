@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import { publishPlanningPhase } from "./planning-phase-publisher.ts";
 
 const oid = "a".repeat(40);
@@ -164,6 +165,112 @@ test("blocks branch-pushed discovery when the saved remote head changed", async 
     /remote head changed/,
   );
   assert.equal(discovered, false);
+});
+function pullRequest(status: "open" | "closed-unmerged" | "merged" = "open") {
+  return {
+    number: 188,
+    url: "https://github.com/acme/patchmill/pull/188",
+    targetRepository: repository,
+    headRepository: repository,
+    baseBranch: "main",
+    headBranch: "planning/spec",
+    headSha: oid,
+    body: renderPlanningPullRequestMarker({ issueNumber: 188, phase: "spec" }),
+    status,
+  };
+}
+test("creates, checkpoints, and cleans up one discovered-missing pull request", async () => {
+  const events: string[] = [];
+  const created = pullRequest();
+  const result = await publishPlanningPhase({
+    state,
+    phaseIndex: 0,
+    lock: {} as never,
+    stateStore: {
+      async replace({ next }) {
+        events.push(`replace:${next.phases[0]!.status}`);
+        return next;
+      },
+    },
+    host: {
+      async findPullRequests() {
+        events.push("find");
+        return [];
+      },
+      async createPullRequest() {
+        events.push("create");
+        return created;
+      },
+      async getPullRequest() {
+        events.push("get");
+        return created;
+      },
+    } as never,
+    git: {
+      async inspectRemoteHead() {
+        events.push("inspect");
+        return { state: "present" as const, headOid: oid };
+      },
+    } as never,
+    workspaces: {
+      async removeWorktree() {
+        events.push("worktree");
+      },
+      async removeBranch() {
+        events.push("branch");
+      },
+    } as never,
+  });
+  assert.equal(result.kind, "published");
+  assert.deepEqual(events, [
+    "inspect",
+    "find",
+    "create",
+    "get",
+    "replace:pull-request-open",
+    "get",
+    "inspect",
+    "worktree",
+    "replace:pull-request-open",
+    "branch",
+    "replace:pull-request-open",
+    "get",
+  ]);
+});
+test("adopts one exact pull request without creating or rewriting it", async () => {
+  const events: string[] = [];
+  const adopted = pullRequest();
+  await publishPlanningPhase({
+    state,
+    phaseIndex: 0,
+    lock: {} as never,
+    stateStore: {
+      async replace({ next }) {
+        return next;
+      },
+    },
+    host: {
+      async findPullRequests() {
+        events.push("find");
+        return [adopted];
+      },
+      async createPullRequest() {
+        events.push("create");
+        return adopted;
+      },
+      async getPullRequest() {
+        events.push("get");
+        return adopted;
+      },
+    } as never,
+    git: {
+      async inspectRemoteHead() {
+        return { state: "present" as const, headOid: oid };
+      },
+    } as never,
+    workspaces: { async removeWorktree() {}, async removeBranch() {} } as never,
+  });
+  assert.deepEqual(events, ["find", "get", "get", "get"]);
 });
 test("returns ambiguous discovery without creating a replacement pull request", async () => {
   const result = await publishPlanningPhase({
