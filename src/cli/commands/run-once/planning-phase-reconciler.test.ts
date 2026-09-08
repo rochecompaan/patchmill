@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import { reconcilePlanningPhase } from "./planning-phase-reconciler.ts";
 
 const oid = "a".repeat(40);
@@ -36,6 +37,93 @@ const state = {
     { kind: "implementation" as const, status: "pending" as const },
   ],
 };
+test("uses the branch discovery read-back for cleanup and classification", async () => {
+  const repository = {
+    provider: "github-gh" as const,
+    host: "github.com",
+    owner: "acme",
+    repository: "patchmill",
+  };
+  const published = {
+    ...state,
+    phases: [
+      {
+        kind: "spec" as const,
+        status: "branch-pushed" as const,
+        base: {
+          ...state.phases[0]!.base,
+          artifactCandidates: { spec: [], plan: [] },
+        },
+        workspace: {
+          runId: state.runId,
+          phase: "spec" as const,
+          identity: { branch: "planning/spec", worktreePath: "/workspace" },
+          remote: "origin",
+          baseBranch: "main",
+          baseOid: oid,
+          headOid: oid,
+          cleanup: { state: "ready" as const },
+        },
+        artifacts: [
+          {
+            kind: "spec" as const,
+            path: "docs/specs/example.md",
+            source: "workspace" as const,
+            commitOid: oid,
+          },
+        ],
+        publication: {
+          targetRepository: repository,
+          headRepository: repository,
+          baseBranch: "main",
+          headBranch: "planning/spec",
+          headOid: oid,
+        },
+      },
+      { kind: "implementation" as const, status: "pending" as const },
+    ],
+  };
+  const summary = {
+    number: 188,
+    url: "https://github.com/acme/patchmill/pull/188",
+    targetRepository: repository,
+    headRepository: repository,
+    baseBranch: "main",
+    headBranch: "planning/spec",
+    headSha: oid,
+    body: renderPlanningPullRequestMarker({ issueNumber: 188, phase: "spec" }),
+    status: "open" as const,
+  };
+  let getCalls = 0;
+  const result = await reconcilePlanningPhase({
+    state: published,
+    phaseIndex: 0,
+    lock: {} as never,
+    stateStore: {
+      async replace({ next }) {
+        return next;
+      },
+    },
+    host: {
+      async findPullRequests() {
+        return [summary];
+      },
+      async getPullRequest() {
+        getCalls += 1;
+        return summary;
+      },
+    } as never,
+    remoteBase: {} as never,
+    git: {
+      async inspectRemoteHead() {
+        return { state: "present" as const, headOid: oid };
+      },
+    } as never,
+    workspaces: { async removeWorktree() {}, async removeBranch() {} } as never,
+  });
+  assert.equal(result.outcome.kind, "review-pending");
+  assert.equal(getCalls, 1);
+});
 test("returns remote-base completion without host or Git effects", async () => {
   const result = await reconcilePlanningPhase({
     state,

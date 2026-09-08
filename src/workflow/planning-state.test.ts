@@ -305,6 +305,38 @@ test("allows only one durable publication edge at a time", () => {
   assert.doesNotThrow(() =>
     assertPlanningStateReplacement(ready, artifactReady),
   );
+  const rewritten = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "workspace-ready",
+        base,
+        workspace: { ...workspace(), headOid: oid("d") },
+        artifacts: [],
+      },
+      1,
+    ),
+  );
+  assert.throws(
+    () => assertPlanningStateReplacement(ready, rewritten),
+    PlanningStateValidationError,
+  );
+  const rewrittenArtifact = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "workspace-ready",
+        base,
+        workspace: { ...workspace(), headOid: oid("d") },
+        artifacts: [artifact("workspace", oid("d"))],
+      },
+      2,
+    ),
+  );
+  assert.throws(
+    () => assertPlanningStateReplacement(artifactReady, rewrittenArtifact),
+    PlanningStateValidationError,
+  );
   const pushed = validatePlanningState(
     state(
       {

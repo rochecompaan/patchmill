@@ -1,10 +1,12 @@
 import { isAbsolute, relative, resolve } from "node:path";
+import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningRemoteBaseSnapshot } from "../../../git/planning-workspaces.ts";
 import {
   profileExtensionArgs,
   runOncePlanningPiProfile,
 } from "../../../pi/resource-profiles.ts";
+import type { PatchmillPiTaskContract } from "../../../policy/task-contract.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import type {
@@ -54,7 +56,9 @@ export type PlanningArtifactCheckpoint = (
 
 export function createPlanningArtifactAgent(input: {
   runner: CommandRunner;
+  repoRoot: string;
   skills: PatchmillSkillsConfig;
+  taskContract: PatchmillPiTaskContract;
   issueNumber: number;
   runOptions?: Omit<
     RunPiPromptOptions,
@@ -74,6 +78,11 @@ export function createPlanningArtifactAgent(input: {
         stage: "pi-plan",
         issueNumber: input.issueNumber,
         repoRoot: cwd,
+        piAgentDir: localPiAgentDir(input.repoRoot),
+        taskContract: {
+          ...input.taskContract,
+          todoRoot: resolve(input.repoRoot, input.taskContract.todoRoot),
+        },
         skillPaths: profile.additionalSkillPaths,
         extensionArgs: profileExtensionArgs(profile),
         observeSession: true,

@@ -88,6 +88,7 @@ export async function reconcilePlanningPhase(input: {
       state,
       outcome: { kind: "satisfied-by-base", artifacts: phase.artifacts },
     };
+  let pullRequest: PullRequestSummary | undefined;
   if (phase.status === "branch-pushed") {
     const matches = await input.host.findPullRequests({
       targetRepository: phase.publication.targetRepository,
@@ -123,6 +124,7 @@ export async function reconcilePlanningPhase(input: {
       publication: phase.publication,
       expectedReference: found.reference,
     });
+    pullRequest = confirmed.summary;
     phase = {
       ...phase,
       status: "pull-request-open",
@@ -140,16 +142,19 @@ export async function reconcilePlanningPhase(input: {
   if (phase.status !== "pull-request-open")
     throw new Error("Planning phase is not reconcilable");
   const phaseKind = phase.kind as "spec" | "plan";
-  let pullRequest: PullRequestSummary;
-  try {
-    pullRequest = await input.host.getPullRequest(phase.pullRequest.reference);
-  } catch (error) {
-    if (error instanceof PullRequestNotFoundError)
-      return {
-        state,
-        outcome: { kind: "missing", reference: phase.pullRequest.reference },
-      };
-    throw error;
+  if (pullRequest === undefined) {
+    try {
+      pullRequest = await input.host.getPullRequest(
+        phase.pullRequest.reference,
+      );
+    } catch (error) {
+      if (error instanceof PullRequestNotFoundError)
+        return {
+          state,
+          outcome: { kind: "missing", reference: phase.pullRequest.reference },
+        };
+      throw error;
+    }
   }
   validatePlanningPullRequestSummary({
     summary: pullRequest,

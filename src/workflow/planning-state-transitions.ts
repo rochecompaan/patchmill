@@ -129,24 +129,27 @@ export function assertPlanningPhaseReplacement(
     if (next.status !== "workspace-ready" && next.status !== "branch-pushed")
       fail("invalid-transition", index, ".status");
     same(current.base, next.base, index);
-    assertWorkspace(
-      current.workspace,
-      next.workspace,
-      next.status === "workspace-ready",
-      index,
-    );
-    assertArtifacts(
-      current.artifacts,
-      next.artifacts,
-      next.status === "workspace-ready",
-      false,
-      index,
-    );
+    const appendingArtifact =
+      next.status === "workspace-ready" &&
+      next.artifacts.length === current.artifacts.length + 1;
     if (
       next.status === "workspace-ready" &&
       next.artifacts.length > current.artifacts.length + 1
     )
       fail("invalid-transition", index, ".artifacts");
+    assertWorkspace(
+      current.workspace,
+      next.workspace,
+      appendingArtifact,
+      index,
+    );
+    assertArtifacts(
+      current.artifacts,
+      next.artifacts,
+      appendingArtifact,
+      false,
+      index,
+    );
     return;
   }
   if (current.status === "branch-pushed") {

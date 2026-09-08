@@ -134,6 +134,15 @@ export async function publishPlanningPhase(input: {
     });
   }
   if (phase.status === "branch-pushed") {
+    const remoteHead = await input.git.inspectRemoteHead({
+      remote: phase.base.remote,
+      branch: phase.workspace.identity.branch,
+    });
+    if (
+      remoteHead.state !== "present" ||
+      remoteHead.headOid !== phase.publication.headOid
+    )
+      throw new Error("Planning remote head changed");
     const matches = await input.host.findPullRequests({
       targetRepository: phase.publication.targetRepository,
       baseBranch: phase.publication.baseBranch,

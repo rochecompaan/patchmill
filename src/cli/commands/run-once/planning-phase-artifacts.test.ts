@@ -3,6 +3,7 @@ import test from "node:test";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
 import {
+  createPlanningArtifactAgent,
   resolvePlanningPhaseArtifacts,
   runPlanningPhaseArtifacts,
 } from "./planning-phase-artifacts.ts";
@@ -31,6 +32,36 @@ const issue = {
   body: "",
   state: "open" as const,
 };
+test("production artifact agent keeps Pi operator state in the primary repository", async () => {
+  const calls: Array<{ cwd?: string; env?: NodeJS.ProcessEnv }> = [];
+  const agent = createPlanningArtifactAgent({
+    runner: {
+      async run(_command, _args, options) {
+        calls.push(options ?? {});
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            status: "spec-created",
+            specPath: "docs/specs/example.md",
+            commit: oid("b"),
+          }),
+          stderr: "",
+        };
+      },
+    },
+    repoRoot: "/primary",
+    skills: DEFAULT_PATCHMILL_SKILLS,
+    taskContract: DEFAULT_PATCHMILL_POLICY.pi.taskContract,
+    issueNumber: 188,
+  });
+  await agent.run({ kind: "spec", cwd: "/phase-worktree", prompt: "prompt" });
+  assert.equal(calls[0]?.cwd, "/phase-worktree");
+  assert.equal(
+    calls[0]?.env?.PI_CODING_AGENT_DIR,
+    "/primary/.patchmill/pi-agent",
+  );
+  assert.equal(calls[0]?.env?.PI_TODO_PATH, "/primary/.pi/todos");
+});
 test("resolves mixed base candidates in planner order", () => {
   const result = resolvePlanningPhaseArtifacts({
     phase: {

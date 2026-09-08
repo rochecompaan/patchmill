@@ -79,6 +79,32 @@ test("rejects incomplete workspace artifacts before publication effects", async 
     /artifacts are incomplete/,
   );
 });
+test("blocks branch-pushed discovery when the saved remote head changed", async () => {
+  let discovered = false;
+  await assert.rejects(
+    () =>
+      publishPlanningPhase({
+        state,
+        phaseIndex: 0,
+        lock: {} as never,
+        stateStore: {} as never,
+        host: {
+          async findPullRequests() {
+            discovered = true;
+            return [];
+          },
+        } as never,
+        git: {
+          async inspectRemoteHead() {
+            return { state: "present", headOid: "b".repeat(40) };
+          },
+        } as never,
+        workspaces: {} as never,
+      }),
+    /remote head changed/,
+  );
+  assert.equal(discovered, false);
+});
 test("returns ambiguous discovery without creating a replacement pull request", async () => {
   const result = await publishPlanningPhase({
     state,

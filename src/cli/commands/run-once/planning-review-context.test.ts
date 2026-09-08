@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_PATCHMILL_POLICY } from "../../../policy/defaults.ts";
 import {
+  buildPlanCreationPrompt,
   buildSpecCreationPrompt,
   type PlanningReviewContext,
 } from "./prompts.ts";
@@ -23,6 +24,25 @@ const expected: ReadonlyArray<[PlanningReviewContext, RegExp]> = [
   ["merged-base", /verified merged-base spec/u],
   ["implementation-pull-request", /no planning pull request is created/u],
 ];
+test("renders context-specific plan spec sources", () => {
+  const expectedPlanSources: ReadonlyArray<[PlanningReviewContext, RegExp]> = [
+    ["dedicated-pull-request", /approved spec/u],
+    ["same-phase-pull-request", /current-phase spec.*not yet approved/u],
+    ["merged-base", /verified merged-base spec/u],
+    ["implementation-pull-request", /implementation-carried spec/u],
+    ["legacy-label", /approved spec/u],
+  ];
+  for (const [reviewContext, pattern] of expectedPlanSources) {
+    const prompt = buildPlanCreationPrompt({
+      issue,
+      specPath: "docs/specs/example.md",
+      planPath: "docs/plans/example.md",
+      projectPolicy: DEFAULT_PATCHMILL_POLICY,
+      reviewContext,
+    });
+    assert.match(prompt, pattern);
+  }
+});
 test("renders explicit planning review contexts without changing legacy default", () => {
   const input = {
     issue,

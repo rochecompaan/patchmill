@@ -700,6 +700,25 @@ function planningReviewInstruction(
   }
 }
 
+function specSourceInstruction(
+  context: PlanningReviewContext,
+  specPath: string | undefined,
+): string {
+  if (specPath === undefined)
+    return "No separate spec artifact was found; write the minimum design context needed in the implementation plan before task steps.";
+  switch (context) {
+    case "same-phase-pull-request":
+      return `Read and base the implementation plan on the current-phase spec at ${specPath}; it is not yet approved.`;
+    case "merged-base":
+      return `Read and base the implementation plan on the verified merged-base spec at ${specPath}.`;
+    case "implementation-pull-request":
+      return `Read and base the implementation plan on the implementation-carried spec at ${specPath}.`;
+    case "dedicated-pull-request":
+    case "legacy-label":
+      return `Read and base the implementation plan on the approved spec at ${specPath}.`;
+  }
+}
+
 function numberedWorkflow(steps: string[]): string {
   return steps
     .filter((step) => step.trim().length > 0)
@@ -790,9 +809,7 @@ export function buildPlanCreationPrompt(
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
     ...(reviewInstruction === undefined ? [] : [reviewInstruction]),
-    specPath
-      ? `Read and base the implementation plan on the approved spec at ${specPath}.`
-      : "No separate spec artifact was found; write the minimum design context needed in the implementation plan before task steps.",
+    specSourceInstruction(input.reviewContext ?? "legacy-label", specPath),
     `Treat \`${ready}\` as meaning the issue is already clear and unambiguous enough to plan. Do not run a separate brainstorming/requirements-discovery process by default.`,
     renderPlanningSkillStep(skills),
     `Do not substitute an ad-hoc planning process for the configured planning skill. The plan must be saved to ${planPath} and use checkbox steps suitable for agent execution.`,
