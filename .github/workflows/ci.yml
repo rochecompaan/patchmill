@@ -43,6 +43,29 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  site:
+    name: Site audit and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install site dependencies
+        run: npm --prefix site ci
+
+      - name: Audit site dependencies
+        run: npm --prefix site audit --audit-level=high
+
+      - name: Build site
+        run: npm --prefix site run build
+
   nix:
     name: Nix package build
     runs-on: ubuntu-latest
