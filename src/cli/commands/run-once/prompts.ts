@@ -28,6 +28,13 @@ import {
   renderPlanningSkillStep,
   renderVisualEvidenceSkillStep,
 } from "./prompt-workflow.ts";
+import {
+  planningReviewInstruction,
+  specSourceInstruction,
+  type PlanningReviewContext,
+} from "./planning-review-context.ts";
+
+export type { PlanningReviewContext } from "./planning-review-context.ts";
 
 export type SpecCreationPromptInput = {
   issue: IssueSummary;
@@ -36,6 +43,7 @@ export type SpecCreationPromptInput = {
   specApprovalRequired?: boolean;
   skills?: PatchmillSkillsConfig;
   triageLabels?: Partial<PromptTriageLabels>;
+  reviewContext?: PlanningReviewContext;
 };
 
 export type PlanCreationPromptInput = {
@@ -46,6 +54,7 @@ export type PlanCreationPromptInput = {
   planApprovalRequired?: boolean;
   skills?: PatchmillSkillsConfig;
   triageLabels?: Partial<PromptTriageLabels>;
+  reviewContext?: PlanningReviewContext;
 };
 
 export type PromptTriageLabels = {
@@ -688,8 +697,12 @@ export function buildSpecCreationPrompt(
   const specApprovalRequired = input.specApprovalRequired ?? false;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
+  const reviewInstruction = planningReviewInstruction(
+    input.reviewContext ?? "legacy-label",
+  );
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
+    ...(reviewInstruction === undefined ? [] : [reviewInstruction]),
     `Treat \`${ready}\` as meaning the issue is clear enough for automation to write a design spec. Do not implement code.`,
     "Write a concise design spec that captures requirements, proposed behavior, affected components, and verification strategy.",
     `Save the spec to ${specPath}.`,
@@ -754,11 +767,13 @@ export function buildPlanCreationPrompt(
   const planApprovalRequired = input.planApprovalRequired ?? false;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
   const { ready, needsInfo } = resolvePromptTriageLabels(input.triageLabels);
+  const reviewInstruction = planningReviewInstruction(
+    input.reviewContext ?? "legacy-label",
+  );
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
-    specPath
-      ? `Read and base the implementation plan on the approved spec at ${specPath}.`
-      : "No separate spec artifact was found; write the minimum design context needed in the implementation plan before task steps.",
+    ...(reviewInstruction === undefined ? [] : [reviewInstruction]),
+    specSourceInstruction(input.reviewContext ?? "legacy-label", specPath),
     `Treat \`${ready}\` as meaning the issue is already clear and unambiguous enough to plan. Do not run a separate brainstorming/requirements-discovery process by default.`,
     renderPlanningSkillStep(skills),
     `Do not substitute an ad-hoc planning process for the configured planning skill. The plan must be saved to ${planPath} and use checkbox steps suitable for agent execution.`,

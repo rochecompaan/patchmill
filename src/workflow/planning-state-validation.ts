@@ -8,9 +8,10 @@ import type {
   PlanningWorkspaceIdentity,
   PlanningWorkspaceOwnership,
 } from "../git/planning-workspaces.ts";
-import type {
-  PullRequestReference,
-  RepositoryIdentity,
+import {
+  sameRepositoryIdentity,
+  type PullRequestReference,
+  type RepositoryIdentity,
 } from "../host/pull-requests.ts";
 import {
   PLANNING_PR_WORKFLOW_VERSION,
@@ -22,14 +23,18 @@ import {
   type PlanningGateSnapshot,
 } from "./planning-pull-requests.ts";
 import type {
+  PlanningArtifactEvidence,
   PlanningPhaseStateV1,
   PlanningStateV1,
 } from "./planning-state-types.ts";
+import {
+  assertPlanningPublicationRepositories,
+  PlanningPublicationRepositoryError,
+} from "./planning-publication-repositories.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-
 export class PlanningStateValidationError extends Error {
   readonly reason: string;
   readonly path: string;
@@ -72,104 +77,88 @@ const nonnegative = (value: unknown, path: string): number =>
   Number.isSafeInteger(value) && (value as number) >= 0
     ? (value as number)
     : fail("invalid-nonnegative-integer", path);
-const uuid = (value: unknown, path: string): string => {
-  const v = string(value, path);
-  return UUID.test(v) ? v : fail("invalid-uuid", path);
-};
 const oid = (value: unknown, path: string): string => {
-  const v = string(value, path);
-  return planningOid.test(v) ? v : fail("invalid-oid", path);
-};
-const timestamp = (value: unknown, path: string): string => {
-  const v = string(value, path);
-  return ISO_TIMESTAMP.test(v) &&
-    !Number.isNaN(Date.parse(v)) &&
-    new Date(v).toISOString() === v
-    ? v
-    : fail("invalid-timestamp", path);
+  const parsed = string(value, path);
+  return planningOid.test(parsed) ? parsed : fail("invalid-oid", path);
 };
 const singleLine = (value: unknown, path: string): string => {
-  const v = string(value, path);
-  return isPlanningSingleLine(v) ? v : fail("invalid-string", path);
+  const parsed = string(value, path);
+  return isPlanningSingleLine(parsed) ? parsed : fail("invalid-string", path);
 };
 const branch = (value: unknown, path: string): string => {
-  const v = string(value, path);
-  return isPlanningBranch(v) ? v : fail("invalid-branch", path);
+  const parsed = string(value, path);
+  return isPlanningBranch(parsed) ? parsed : fail("invalid-branch", path);
 };
 const artifactPath = (value: unknown, path: string): string => {
-  const v = string(value, path);
-  return isPlanningArtifactPath(v) ? v : fail("invalid-path", path);
+  const parsed = string(value, path);
+  return isPlanningArtifactPath(parsed) ? parsed : fail("invalid-path", path);
 };
-const worktreePath = (value: unknown, path: string): string => {
-  const v = string(value, path);
-  return v.length > 0 && v.length <= 4096 && !/[\0\r\n]/u.test(v)
-    ? v
-    : fail("invalid-worktree-path", path);
-};
-const canonicalWorktreePath = (path: string): string => {
-  const output: string[] = [];
-  for (const segment of path.replace(/\\/gu, "/").split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") {
-      if (output.length === 0 || output[output.length - 1] === "..")
-        output.push(segment);
-      else output.pop();
-    } else output.push(segment);
-  }
-  return output.join("/");
-};
-
-function gates(value: unknown, path: string): PlanningGateSnapshot {
-  const v = object(value, ["specRequired", "planRequired"], path);
-  if (
-    typeof v.specRequired !== "boolean" ||
-    typeof v.planRequired !== "boolean"
-  )
-    fail("invalid-gates", path);
+function timestamp(value: unknown, path: string): string {
+  const parsed = string(value, path);
+  return ISO_TIMESTAMP.test(parsed) &&
+    !Number.isNaN(Date.parse(parsed)) &&
+    new Date(parsed).toISOString() === parsed
+    ? parsed
+    : fail("invalid-timestamp", path);
+}
+function phase(value: unknown, path: string): PlanningPhaseKind {
+  const parsed = string(value, path);
+  return parsed === "spec" || parsed === "plan" || parsed === "implementation"
+    ? parsed
+    : fail("invalid-phase", path);
+}
+function repository(value: unknown, path: string): RepositoryIdentity {
+  const parsed = object(
+    value,
+    ["provider", "host", "owner", "repository"],
+    path,
+  );
+  const provider = string(parsed.provider, `${path}.provider`);
+  if (provider !== "github-gh" && provider !== "forgejo-tea")
+    fail("invalid-provider", `${path}.provider`);
   return {
-    specRequired: v.specRequired as boolean,
-    planRequired: v.planRequired as boolean,
-  };
+    provider,
+    host: singleLine(parsed.host, `${path}.host`),
+    owner: singleLine(parsed.owner, `${path}.owner`),
+    repository: singleLine(parsed.repository, `${path}.repository`),
+  } as RepositoryIdentity;
 }
 function candidates(
   value: unknown,
   path: string,
 ): { spec: readonly string[]; plan: readonly string[] } {
-  const v = object(value, ["spec", "plan"], path);
+  const parsed = object(value, ["spec", "plan"], path);
+  const parse = (items: unknown, child: string) => {
+    if (!Array.isArray(items)) fail("expected-array", child);
+    const paths = (items as unknown[]).map((item: unknown, index: number) =>
+      artifactPath(item, `${child}[${index}]`),
+    );
+    if (new Set(paths).size !== paths.length) fail("duplicate-value", child);
+    return paths;
+  };
   return {
-    spec: paths(v.spec, `${path}.spec`),
-    plan: paths(v.plan, `${path}.plan`),
+    spec: parse(parsed.spec, `${path}.spec`),
+    plan: parse(parsed.plan, `${path}.plan`),
   };
 }
-function paths(value: unknown, path: string): readonly string[] {
-  if (!Array.isArray(value)) fail("expected-array", path);
-  const output = (value as unknown[]).map((item, index) =>
-    artifactPath(item, `${path}[${index}]`),
+function base(value: unknown, path: string) {
+  const parsed = object(
+    value,
+    ["remote", "baseBranch", "baseOid", "artifactCandidates"],
+    path,
   );
-  if (new Set(output).size !== output.length) fail("duplicate-value", path);
-  return output;
-}
-function identity(value: unknown, path: string): PlanningWorkspaceIdentity {
-  const v = object(value, ["branch", "worktreePath"], path);
   return {
-    branch: branch(v.branch, `${path}.branch`),
-    worktreePath: worktreePath(v.worktreePath, `${path}.worktreePath`),
+    remote: singleLine(parsed.remote, `${path}.remote`),
+    baseBranch: branch(parsed.baseBranch, `${path}.baseBranch`),
+    baseOid: oid(parsed.baseOid, `${path}.baseOid`),
+    artifactCandidates: candidates(
+      parsed.artifactCandidates,
+      `${path}.artifactCandidates`,
+    ),
   };
 }
-function repository(value: unknown, path: string): RepositoryIdentity {
-  const v = object(value, ["provider", "host", "owner", "repository"], path);
-  const provider = string(v.provider, `${path}.provider`);
-  if (provider !== "github-gh" && provider !== "forgejo-tea")
-    fail("invalid-provider", `${path}.provider`);
-  return {
-    provider,
-    host: singleLine(v.host, `${path}.host`),
-    owner: singleLine(v.owner, `${path}.owner`),
-    repository: singleLine(v.repository, `${path}.repository`),
-  } as RepositoryIdentity;
-}
-function workspace(value: unknown, path: string) {
-  const v = object(
+function workspace(value: unknown, path: string): PlanningWorkspaceOwnership {
+  const parsed = object(
     value,
     [
       "runId",
@@ -183,28 +172,52 @@ function workspace(value: unknown, path: string) {
     ],
     path,
   );
-  const cleanupValue = v.cleanup as Record<string, unknown>;
+  const identity = object(
+    parsed.identity,
+    ["branch", "worktreePath"],
+    `${path}.identity`,
+  );
+  const worktreePath = string(
+    identity.worktreePath,
+    `${path}.identity.worktreePath`,
+  );
+  if (
+    worktreePath.length === 0 ||
+    worktreePath.length > 4096 ||
+    /[\0\r\n]/u.test(worktreePath)
+  )
+    fail("invalid-worktree-path", `${path}.identity.worktreePath`);
+  const cleanupRaw = parsed.cleanup as Record<string, unknown>;
   const cleanup = object(
-    cleanupValue,
-    cleanupValue?.state === "ready" ? ["state"] : ["state", "pushedHeadOid"],
+    cleanupRaw,
+    cleanupRaw?.state === "ready" ? ["state"] : ["state", "pushedHeadOid"],
     `${path}.cleanup`,
   );
-  const state = string(cleanup.state, `${path}.cleanup.state`);
-  if (state !== "ready" && state !== "worktree-removed" && state !== "removed")
+  const cleanupState = string(cleanup.state, `${path}.cleanup.state`);
+  if (
+    cleanupState !== "ready" &&
+    cleanupState !== "worktree-removed" &&
+    cleanupState !== "removed"
+  )
     fail("invalid-cleanup", `${path}.cleanup.state`);
+  const runId = string(parsed.runId, `${path}.runId`);
+  if (!UUID.test(runId)) fail("invalid-uuid", `${path}.runId`);
   return {
-    runId: uuid(v.runId, `${path}.runId`),
-    phase: phase(v.phase, `${path}.phase`),
-    identity: identity(v.identity, `${path}.identity`),
-    remote: singleLine(v.remote, `${path}.remote`),
-    baseBranch: branch(v.baseBranch, `${path}.baseBranch`),
-    baseOid: oid(v.baseOid, `${path}.baseOid`),
-    headOid: oid(v.headOid, `${path}.headOid`),
+    runId,
+    phase: phase(parsed.phase, `${path}.phase`),
+    identity: {
+      branch: branch(identity.branch, `${path}.identity.branch`),
+      worktreePath,
+    } as PlanningWorkspaceIdentity,
+    remote: singleLine(parsed.remote, `${path}.remote`),
+    baseBranch: branch(parsed.baseBranch, `${path}.baseBranch`),
+    baseOid: oid(parsed.baseOid, `${path}.baseOid`),
+    headOid: oid(parsed.headOid, `${path}.headOid`),
     cleanup:
-      state === "ready"
-        ? { state }
+      cleanupState === "ready"
+        ? { state: "ready" }
         : {
-            state,
+            state: cleanupState,
             pushedHeadOid: oid(
               cleanup.pushedHeadOid,
               `${path}.cleanup.pushedHeadOid`,
@@ -212,150 +225,271 @@ function workspace(value: unknown, path: string) {
           },
   } as PlanningWorkspaceOwnership;
 }
-function base(value: unknown, path: string) {
-  const v = object(
-    value,
-    ["remote", "baseBranch", "baseOid", "artifactCandidates"],
-    path,
-  );
-  return {
-    remote: singleLine(v.remote, `${path}.remote`),
-    baseBranch: branch(v.baseBranch, `${path}.baseBranch`),
-    baseOid: oid(v.baseOid, `${path}.baseOid`),
-    artifactCandidates: candidates(
-      v.artifactCandidates,
-      `${path}.artifactCandidates`,
-    ),
-  };
-}
-function phase(value: unknown, path: string): PlanningPhaseKind {
-  const v = string(value, path);
-  return v === "spec" || v === "plan" || v === "implementation"
-    ? v
-    : fail("invalid-phase", path);
-}
-function artifacts(value: unknown, path: string) {
+function artifacts(
+  value: unknown,
+  path: string,
+): readonly PlanningArtifactEvidence[] {
   if (!Array.isArray(value)) fail("expected-array", path);
-  const output = (value as unknown[]).map((item, i) => {
-    const v = object(
+  const parsed = (value as unknown[]).map((item: unknown, index: number) => {
+    const record = object(
       item,
       ["kind", "path", "commitOid", "source"],
-      `${path}[${i}]`,
+      `${path}[${index}]`,
     );
-    const kind = string(v.kind, `${path}[${i}].kind`);
+    const kind = string(record.kind, `${path}[${index}].kind`);
     if (kind !== "spec" && kind !== "plan")
-      fail("invalid-artifact-kind", `${path}[${i}].kind`);
-    const source = string(v.source, `${path}[${i}].source`);
+      fail("invalid-artifact-kind", `${path}[${index}].kind`);
+    const source = string(record.source, `${path}[${index}].source`);
     if (source !== "remote-base" && source !== "workspace")
-      fail("invalid-artifact-source", `${path}[${i}].source`);
+      fail("invalid-artifact-source", `${path}[${index}].source`);
     return {
       kind: kind as PlanningArtifactKind,
-      path: artifactPath(v.path, `${path}[${i}].path`),
-      commitOid: oid(v.commitOid, `${path}[${i}].commitOid`),
+      path: artifactPath(record.path, `${path}[${index}].path`),
+      commitOid: oid(record.commitOid, `${path}[${index}].commitOid`),
       source: source as "remote-base" | "workspace",
     };
   });
-  if (new Set(output.map((item) => item.kind)).size !== output.length)
+  if (
+    new Set(parsed.map((artifact: PlanningArtifactEvidence) => artifact.kind))
+      .size !== parsed.length
+  )
     fail("duplicate-artifact-kind", path);
-  return output;
+  return parsed;
 }
-function pullRequest(value: unknown, path: string) {
-  const v = object(
+function publication(value: unknown, path: string) {
+  const parsed = object(
     value,
-    ["reference", "baseBranch", "headBranch", "headOid"],
+    [
+      "targetRepository",
+      "headRepository",
+      "baseBranch",
+      "headBranch",
+      "headOid",
+    ],
     path,
   );
-  const ref = object(
-    v.reference,
+  const targetRepository = repository(
+    parsed.targetRepository,
+    `${path}.targetRepository`,
+  );
+  const headRepository = repository(
+    parsed.headRepository,
+    `${path}.headRepository`,
+  );
+  try {
+    assertPlanningPublicationRepositories({ targetRepository, headRepository });
+  } catch (error) {
+    if (error instanceof PlanningPublicationRepositoryError)
+      fail("publication-repository-mismatch", path);
+    throw error;
+  }
+  return {
+    targetRepository,
+    headRepository,
+    baseBranch: branch(parsed.baseBranch, `${path}.baseBranch`),
+    headBranch: branch(parsed.headBranch, `${path}.headBranch`),
+    headOid: oid(parsed.headOid, `${path}.headOid`),
+  };
+}
+function pullRequest(value: unknown, path: string) {
+  const parsed = object(value, ["reference", "url"], path);
+  const reference = object(
+    parsed.reference,
     ["targetRepository", "number"],
     `${path}.reference`,
   );
+  const url = string(parsed.url, `${path}.url`);
+  try {
+    const parsedUrl = new URL(url);
+    if (
+      (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") ||
+      parsedUrl.username ||
+      parsedUrl.password ||
+      parsedUrl.search ||
+      parsedUrl.hash ||
+      /[\r\n]/u.test(url)
+    )
+      fail("invalid-url", `${path}.url`);
+  } catch (error) {
+    if (error instanceof PlanningStateValidationError) throw error;
+    fail("invalid-url", `${path}.url`);
+  }
   return {
     reference: {
       targetRepository: repository(
-        ref.targetRepository,
+        reference.targetRepository,
         `${path}.reference.targetRepository`,
       ),
-      number: positive(ref.number, `${path}.reference.number`),
+      number: positive(reference.number, `${path}.reference.number`),
     } as PullRequestReference,
-    baseBranch: branch(v.baseBranch, `${path}.baseBranch`),
-    headBranch: branch(v.headBranch, `${path}.headBranch`),
-    headOid: oid(v.headOid, `${path}.headOid`),
+    url,
   };
 }
-
 function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
   const raw = value as Record<string, unknown>;
   const status = raw?.status;
-  const completion = raw?.completion as Record<string, unknown> | undefined;
   const keys =
     status === "pending"
       ? ["kind", "status"]
       : status === "workspace-ready"
-        ? ["kind", "status", "base", "workspace"]
-        : status === "pull-request-open"
-          ? ["kind", "status", "base", "workspace", "artifacts", "pullRequest"]
-          : completion?.kind === "remote-base"
-            ? ["kind", "status", "base", "artifacts", "completion"]
-            : [
+        ? ["kind", "status", "base", "workspace", "artifacts"]
+        : status === "branch-pushed"
+          ? ["kind", "status", "base", "workspace", "artifacts", "publication"]
+          : status === "pull-request-open"
+            ? [
                 "kind",
                 "status",
                 "base",
                 "workspace",
                 "artifacts",
+                "publication",
                 "pullRequest",
-                "completion",
-              ];
-  const v = object(value, keys, path);
-  const kind = phase(v.kind, `${path}.kind`);
-  if (v.status === "pending") return { kind, status: "pending" };
-  if (v.status === "workspace-ready")
+              ]
+            : raw?.completion &&
+                (raw.completion as Record<string, unknown>).kind ===
+                  "remote-base"
+              ? ["kind", "status", "base", "artifacts", "completion"]
+              : [
+                  "kind",
+                  "status",
+                  "base",
+                  "workspace",
+                  "artifacts",
+                  "publication",
+                  "pullRequest",
+                  "completion",
+                ];
+  const parsed = object(value, keys, path);
+  const kind = phase(parsed.kind, `${path}.kind`);
+  if (parsed.status === "pending") return { kind, status: "pending" };
+  if (parsed.status === "workspace-ready")
     return {
       kind,
       status: "workspace-ready",
-      base: base(v.base, `${path}.base`),
-      workspace: workspace(v.workspace, `${path}.workspace`),
+      base: base(parsed.base, `${path}.base`),
+      workspace: workspace(
+        parsed.workspace,
+        `${path}.workspace`,
+      ) as PlanningWorkspaceOwnership<{ state: "ready" }>,
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
     };
-  if (v.status === "pull-request-open")
+  if (parsed.status === "branch-pushed")
+    return {
+      kind,
+      status: "branch-pushed",
+      base: base(parsed.base, `${path}.base`),
+      workspace: workspace(
+        parsed.workspace,
+        `${path}.workspace`,
+      ) as PlanningWorkspaceOwnership<{ state: "ready" }>,
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+      publication: publication(parsed.publication, `${path}.publication`),
+    };
+  if (parsed.status === "pull-request-open")
     return {
       kind,
       status: "pull-request-open",
-      base: base(v.base, `${path}.base`),
-      workspace: workspace(v.workspace, `${path}.workspace`),
-      artifacts: artifacts(v.artifacts, `${path}.artifacts`),
-      pullRequest: pullRequest(v.pullRequest, `${path}.pullRequest`),
+      base: base(parsed.base, `${path}.base`),
+      workspace: workspace(parsed.workspace, `${path}.workspace`),
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+      publication: publication(parsed.publication, `${path}.publication`),
+      pullRequest: pullRequest(parsed.pullRequest, `${path}.pullRequest`),
     };
-  if (v.status !== "complete") fail("invalid-status", `${path}.status`);
-  const c = v.completion as Record<string, unknown>;
-  if (c?.kind === "remote-base") {
-    object(c, ["kind"], `${path}.completion`);
+  if (parsed.status !== "complete") fail("invalid-status", `${path}.status`);
+  const completion = parsed.completion as Record<string, unknown>;
+  if (completion?.kind === "remote-base") {
+    object(completion, ["kind"], `${path}.completion`);
     return {
       kind,
       status: "complete",
-      base: base(v.base, `${path}.base`),
-      artifacts: artifacts(v.artifacts, `${path}.artifacts`),
+      base: base(parsed.base, `${path}.base`),
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
       completion: { kind: "remote-base" },
     };
   }
-  const merged = object(c, ["kind", "mergeOid"], `${path}.completion`);
+  const merged = object(
+    completion,
+    ["kind", "mergeOid", "mergedBaseOid"],
+    `${path}.completion`,
+  );
   if (merged.kind !== "merged-pull-request")
     fail("invalid-completion", `${path}.completion.kind`);
   return {
     kind,
     status: "complete",
-    base: base(v.base, `${path}.base`),
-    workspace: workspace(v.workspace, `${path}.workspace`),
-    artifacts: artifacts(v.artifacts, `${path}.artifacts`),
-    pullRequest: pullRequest(v.pullRequest, `${path}.pullRequest`),
+    base: base(parsed.base, `${path}.base`),
+    workspace: workspace(
+      parsed.workspace,
+      `${path}.workspace`,
+    ) as PlanningWorkspaceOwnership<{
+      state: "removed";
+      pushedHeadOid: string;
+    }>,
+    artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+    publication: publication(parsed.publication, `${path}.publication`),
+    pullRequest: pullRequest(parsed.pullRequest, `${path}.pullRequest`),
     completion: {
       kind: "merged-pull-request",
       mergeOid: oid(merged.mergeOid, `${path}.completion.mergeOid`),
+      mergedBaseOid: oid(
+        merged.mergedBaseOid,
+        `${path}.completion.mergedBaseOid`,
+      ),
     },
   };
 }
-
+function artifactEvidence(
+  phase: PlanningPhaseStateV1,
+  assigned: readonly PlanningArtifactKind[],
+  path: string,
+): void {
+  if (!("artifacts" in phase)) return;
+  const complete = phase.status !== "workspace-ready";
+  if (
+    (complete && phase.artifacts.length !== assigned.length) ||
+    phase.artifacts.some((artifact, index) => artifact.kind !== assigned[index])
+  )
+    fail("artifact-kinds", `${path}.artifacts`);
+  for (const [index, artifact] of phase.artifacts.entries()) {
+    if (
+      phase.status === "complete" &&
+      phase.completion.kind === "merged-pull-request"
+    ) {
+      if (
+        artifact.source !== "remote-base" ||
+        artifact.commitOid !== phase.completion.mergedBaseOid
+      )
+        fail("merged-artifact-mismatch", `${path}.artifacts[${index}]`);
+    } else if (artifact.source === "remote-base") {
+      if (
+        artifact.commitOid !== phase.base.baseOid ||
+        !phase.base.artifactCandidates[artifact.kind].includes(artifact.path)
+      )
+        fail("remote-artifact-mismatch", `${path}.artifacts[${index}]`);
+    } else if (
+      !("workspace" in phase) ||
+      artifact.commitOid !== phase.workspace.headOid
+    )
+      fail("workspace-artifact-mismatch", `${path}.artifacts[${index}]`);
+  }
+}
+function canonicalPath(path: string): string {
+  return path
+    .replaceAll("\\", "/")
+    .split("/")
+    .reduce<string[]>(
+      (out, part) =>
+        part === "" || part === "."
+          ? out
+          : part === ".."
+            ? (out.pop(), out)
+            : [...out, part],
+      [],
+    )
+    .join("/");
+}
 export function validatePlanningState(value: unknown): PlanningStateV1 {
-  const v = object(
+  const parsed = object(
     value,
     [
       "version",
@@ -371,132 +505,108 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
     ],
     "$",
   );
-  if (v.version !== 1) fail("unsupported-version", "$.version");
-  if (v.workflowVersion !== PLANNING_PR_WORKFLOW_VERSION)
+  if (parsed.version !== 1) fail("unsupported-version", "$.version");
+  if (parsed.workflowVersion !== PLANNING_PR_WORKFLOW_VERSION)
     fail("unsupported-workflow-version", "$.workflowVersion");
-  const parsedRunId = uuid(v.runId, "$.runId");
-  const parsedIssueNumber = positive(v.issueNumber, "$.issueNumber");
-  const parsedIssueTitle = singleLine(v.issueTitle, "$.issueTitle");
-  const parsedRevision = nonnegative(v.revision, "$.revision");
-  const createdAt = timestamp(v.createdAt, "$.createdAt");
-  const updatedAt = timestamp(v.updatedAt, "$.updatedAt");
-  if (updatedAt < createdAt) fail("timestamp-order", "$.updatedAt");
-  const parsedGates = gates(v.gates, "$.gates");
-  if (!Array.isArray(v.phases)) fail("expected-array", "$.phases");
-  const phases = (v.phases as unknown[]).map((item, i) =>
-    phaseState(item, `$.phases[${i}]`),
+  const runId = string(parsed.runId, "$.runId");
+  if (!UUID.test(runId)) fail("invalid-uuid", "$.runId");
+  const gates = object(
+    parsed.gates,
+    ["specRequired", "planRequired"],
+    "$.gates",
   );
-  const expected = planningPhasePlan(parsedGates);
+  if (
+    typeof gates.specRequired !== "boolean" ||
+    typeof gates.planRequired !== "boolean"
+  )
+    fail("invalid-gates", "$.gates");
+  if (!Array.isArray(parsed.phases)) fail("expected-array", "$.phases");
+  const phases = (parsed.phases as unknown[]).map(
+    (item: unknown, index: number) => phaseState(item, `$.phases[${index}]`),
+  );
+  const expected = planningPhasePlan(gates as PlanningGateSnapshot);
   if (
     phases.length !== expected.length ||
-    phases.some((item, i) => item.kind !== expected[i]?.kind)
+    phases.some(
+      (item: PlanningPhaseStateV1, index: number) =>
+        item.kind !== expected[index]?.kind,
+    )
   )
     fail("phase-sequence", "$.phases");
   let active = false;
   let pending = false;
   const branches = new Set<string>();
-  const worktreePaths = new Set<string>();
-  for (let i = 0; i < phases.length; i += 1) {
-    const p = phases[i]!;
-    if (p.status === "complete") {
-      if (active || pending) fail("progress-order", `$.phases[${i}]`);
-    } else if (
-      p.status === "workspace-ready" ||
-      p.status === "pull-request-open"
-    ) {
-      if (active || pending) fail("progress-order", `$.phases[${i}]`);
-      active = true;
+  const paths = new Set<string>();
+  for (const [index, item] of phases.entries()) {
+    const path = `$.phases[${index}]`;
+    if (item.status === "pending") pending = true;
+    else if (item.status === "complete") {
+      if (active || pending) fail("progress-order", path);
     } else {
-      pending = true;
+      if (active || pending) fail("progress-order", path);
+      active = true;
     }
-    const assigned = expected[i]!.artifactKinds;
+    artifactEvidence(item, expected[index]!.artifactKinds, path);
+    if (!("workspace" in item)) continue;
     if (
-      p.status !== "pending" &&
-      "artifacts" in p &&
-      (p.artifacts.length !== assigned.length ||
-        p.artifacts.some(
-          (artifact, index) => artifact.kind !== assigned[index],
-        ))
+      item.workspace.runId !== runId ||
+      item.workspace.phase !== item.kind ||
+      item.workspace.remote !== item.base.remote ||
+      item.workspace.baseBranch !== item.base.baseBranch ||
+      item.workspace.baseOid !== item.base.baseOid
     )
-      fail("artifact-kinds", `$.phases[${i}].artifacts`);
-    if ("workspace" in p) {
-      if (
-        p.workspace.runId !== parsedRunId ||
-        p.workspace.phase !== p.kind ||
-        p.workspace.remote !== p.base.remote ||
-        p.workspace.baseBranch !== p.base.baseBranch ||
-        p.workspace.baseOid !== p.base.baseOid
+      fail("workspace-mismatch", `${path}.workspace`);
+    if (
+      branches.has(item.workspace.identity.branch) ||
+      paths.has(canonicalPath(item.workspace.identity.worktreePath))
+    )
+      fail("duplicate-workspace-identity", `${path}.workspace.identity`);
+    branches.add(item.workspace.identity.branch);
+    paths.add(canonicalPath(item.workspace.identity.worktreePath));
+    if (
+      (item.status === "workspace-ready" || item.status === "branch-pushed") &&
+      item.workspace.cleanup.state !== "ready"
+    )
+      fail("invalid-cleanup-progress", `${path}.workspace.cleanup`);
+    if (
+      item.workspace.cleanup.state !== "ready" &&
+      item.workspace.cleanup.pushedHeadOid !== item.workspace.headOid
+    )
+      fail("cleanup-head-mismatch", `${path}.workspace.cleanup.pushedHeadOid`);
+    if (
+      "publication" in item &&
+      (item.publication.baseBranch !== item.base.baseBranch ||
+        item.publication.headBranch !== item.workspace.identity.branch ||
+        item.publication.headOid !== item.workspace.headOid)
+    )
+      fail("publication-mismatch", `${path}.publication`);
+    if (
+      "pullRequest" in item &&
+      !sameRepositoryIdentity(
+        item.pullRequest.reference.targetRepository,
+        item.publication.targetRepository,
       )
-        fail("workspace-mismatch", `$.phases[${i}].workspace`);
-      const normalizedPath = canonicalWorktreePath(
-        p.workspace.identity.worktreePath,
-      );
-      if (
-        branches.has(p.workspace.identity.branch) ||
-        worktreePaths.has(normalizedPath)
-      )
-        fail(
-          "duplicate-workspace-identity",
-          `$.phases[${i}].workspace.identity`,
-        );
-      branches.add(p.workspace.identity.branch);
-      worktreePaths.add(normalizedPath);
-      if (
-        (p.status === "workspace-ready" || p.status === "pull-request-open") &&
-        p.workspace.cleanup.state !== "ready"
-      )
-        fail("invalid-cleanup-progress", `$.phases[${i}].workspace.cleanup`);
-      if (
-        p.workspace.cleanup.state !== "ready" &&
-        p.workspace.cleanup.pushedHeadOid !== p.workspace.headOid
-      )
-        fail(
-          "cleanup-head-mismatch",
-          `$.phases[${i}].workspace.cleanup.pushedHeadOid`,
-        );
-    }
-    if ("artifacts" in p) {
-      for (let index = 0; index < p.artifacts.length; index += 1) {
-        const artifact = p.artifacts[index]!;
-        if (artifact.source === "remote-base") {
-          if (
-            artifact.commitOid !== p.base.baseOid ||
-            !p.base.artifactCandidates[artifact.kind].includes(artifact.path)
-          )
-            fail(
-              "remote-artifact-mismatch",
-              `$.phases[${i}].artifacts[${index}]`,
-            );
-        } else if (
-          !("workspace" in p) ||
-          artifact.commitOid !== p.workspace.headOid
-        ) {
-          fail(
-            "workspace-artifact-mismatch",
-            `$.phases[${i}].artifacts[${index}]`,
-          );
-        }
-      }
-    }
-    if ("pullRequest" in p) {
-      if (
-        !("workspace" in p) ||
-        p.pullRequest.baseBranch !== p.base.baseBranch ||
-        p.pullRequest.headBranch !== p.workspace.identity.branch ||
-        p.pullRequest.headOid !== p.workspace.headOid
-      )
-        fail("pull-request-mismatch", `$.phases[${i}].pullRequest`);
-    }
+    )
+      fail("pull-request-mismatch", `${path}.pullRequest`);
+    if (
+      item.status === "complete" &&
+      item.completion.kind === "merged-pull-request" &&
+      item.workspace.cleanup.state !== "removed"
+    )
+      fail("invalid-cleanup-progress", `${path}.workspace.cleanup`);
   }
+  const createdAt = timestamp(parsed.createdAt, "$.createdAt");
+  const updatedAt = timestamp(parsed.updatedAt, "$.updatedAt");
+  if (updatedAt < createdAt) fail("timestamp-order", "$.updatedAt");
   return {
     version: 1,
     workflowVersion: PLANNING_PR_WORKFLOW_VERSION,
-    runId: parsedRunId,
-    issueNumber: parsedIssueNumber,
-    issueTitle: parsedIssueTitle,
-    gates: parsedGates,
+    runId,
+    issueNumber: positive(parsed.issueNumber, "$.issueNumber"),
+    issueTitle: singleLine(parsed.issueTitle, "$.issueTitle"),
+    gates: gates as PlanningGateSnapshot,
     phases,
-    revision: parsedRevision,
+    revision: nonnegative(parsed.revision, "$.revision"),
     createdAt,
     updatedAt,
   };

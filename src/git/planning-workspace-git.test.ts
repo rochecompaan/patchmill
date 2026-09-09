@@ -277,6 +277,55 @@ test("cleanup rejects dirty owned worktrees before destructive command", async (
   );
 });
 
+test("branch cleanup preserves an absent worktree branch when its local head changed", async () => {
+  const calls: string[][] = [];
+  const workspace: PlanningWorkspaceOwnership<{
+    state: "worktree-removed";
+    pushedHeadOid: string;
+  }> = {
+    runId: "123e4567-e89b-42d3-a456-426614174000",
+    phase: "spec",
+    identity,
+    remote: "origin",
+    baseBranch: "main",
+    baseOid: oid,
+    headOid: oid,
+    cleanup: { state: "worktree-removed", pushedHeadOid: oid },
+  };
+  const adapter = new PlanningWorkspaceGit({
+    runner: {
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "worktree") return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "show-ref") return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "rev-parse")
+          return { code: 0, stdout: `${"b".repeat(40)}\n`, stderr: "" };
+        if (args[0] === "ls-remote")
+          return {
+            code: 0,
+            stdout: `${oid}\trefs/heads/topic\n`,
+            stderr: "",
+          };
+        throw new Error(`unexpected command ${args.join(" ")}`);
+      },
+    },
+    repoRoot: "/repo",
+    worktreeRoot: "/repo/.worktrees",
+  });
+  await assert.rejects(
+    adapter.removeBranch({
+      runId: workspace.runId,
+      phase: workspace.phase,
+      workspace,
+    }),
+    /head-oid-mismatch/,
+  );
+  assert.equal(
+    calls.some((args) => args[0] === "update-ref"),
+    false,
+  );
+});
+
 test("branch cleanup requires exact remote proof and expected-old CAS", async () => {
   const runId = "123e4567-e89b-42d3-a456-426614174000";
   const workspace: PlanningWorkspaceOwnership<{

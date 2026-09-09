@@ -9,773 +9,657 @@ import {
   validatePlanningState,
 } from "./planning-state.ts";
 
+const oid = (character: string) => character.repeat(40);
 const runId = "123e4567-e89b-42d3-a456-426614174000";
-const now = "2026-09-07T12:00:00.000Z";
-const oid = "a".repeat(40);
-const gates = { specRequired: true, planRequired: true };
-
-function pullRequest(headBranch: string, headOid: string) {
-  return {
-    reference: {
-      targetRepository: {
-        provider: "github-gh",
-        host: "github.com",
-        owner: "example",
-        repository: "patchmill",
-      },
-      number: 1,
-    },
-    baseBranch: "main",
-    headBranch,
-    headOid,
-  };
-}
-
-function mergedState(
-  cleanup:
-    | { state: "ready" }
-    | { state: "worktree-removed"; pushedHeadOid: string }
-    | { state: "removed"; pushedHeadOid: string },
-): unknown {
-  const base = {
-    remote: "origin",
-    baseBranch: "main",
-    baseOid: oid,
-    artifactCandidates: { spec: [], plan: [] },
-  };
-  const branch = "agent/issue-187-implementation";
-  const workspace = {
-    runId,
-    phase: "implementation",
-    identity: {
-      branch,
-      worktreePath: ".worktrees/issue-187-implementation",
-    },
-    remote: "origin",
-    baseBranch: "main",
-    baseOid: oid,
-    headOid: oid,
-    cleanup,
-  };
+const now = "2026-09-08T12:00:00.000Z";
+const base = {
+  remote: "origin",
+  baseBranch: "main",
+  baseOid: oid("a"),
+  artifactCandidates: {
+    spec: ["docs/specs/example-issue-188.md"],
+    plan: ["docs/plans/example-issue-188.md"],
+  },
+};
+const workspace = (cleanup: unknown = { state: "ready" }) => ({
+  runId,
+  phase: "spec",
+  identity: { branch: "planning/spec", worktreePath: ".worktrees/188-spec" },
+  remote: "origin",
+  baseBranch: "main",
+  baseOid: oid("a"),
+  headOid: oid("b"),
+  cleanup,
+});
+const publication = {
+  targetRepository: {
+    provider: "github-gh",
+    host: "github.com",
+    owner: "acme",
+    repository: "patchmill",
+  },
+  headRepository: {
+    provider: "github-gh",
+    host: "github.com",
+    owner: "acme",
+    repository: "patchmill",
+  },
+  baseBranch: "main",
+  headBranch: "planning/spec",
+  headOid: oid("b"),
+};
+const artifact = (source: "remote-base" | "workspace", commitOid: string) => ({
+  kind: "spec",
+  path: "docs/specs/example-issue-188.md",
+  source,
+  commitOid,
+});
+const pullRequest = {
+  reference: { targetRepository: publication.targetRepository, number: 188 },
+  url: "https://github.com/acme/patchmill/pull/188",
+};
+function state(phase: object, revision = 0) {
   return {
     version: 1,
     workflowVersion: "planning-pr-v1",
     runId,
-    issueNumber: 187,
+    issueNumber: 188,
     issueTitle: "Example",
-    gates: { specRequired: false, planRequired: false },
-    phases: [
-      {
-        kind: "implementation",
-        status: "complete",
-        base,
-        workspace,
-        artifacts: [
-          {
-            kind: "spec",
-            path: "docs/specs/example-issue-187-spec.md",
-            commitOid: oid,
-            source: "workspace",
-          },
-          {
-            kind: "plan",
-            path: "docs/plans/example-issue-187-plan.md",
-            commitOid: oid,
-            source: "workspace",
-          },
-        ],
-        pullRequest: pullRequest(branch, oid),
-        completion: { kind: "merged-pull-request", mergeOid: "b".repeat(40) },
+    gates: { specRequired: true, planRequired: false },
+    phases: [phase, { kind: "implementation", status: "pending" }],
+    revision,
+    createdAt: now,
+    updatedAt: revision === 0 ? now : "2026-09-08T12:00:01.000Z",
+  };
+}
+
+test("round trips every durable planning publication checkpoint", () => {
+  const documents = [
+    { kind: "spec", status: "pending" },
+    {
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [],
+    },
+    {
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("remote-base", oid("a"))],
+    },
+    {
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+    },
+    {
+      kind: "spec",
+      status: "branch-pushed",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+    },
+    {
+      kind: "spec",
+      status: "pull-request-open",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+      pullRequest,
+    },
+    {
+      kind: "spec",
+      status: "pull-request-open",
+      base,
+      workspace: workspace({
+        state: "worktree-removed",
+        pushedHeadOid: oid("b"),
+      }),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+      pullRequest,
+    },
+    {
+      kind: "spec",
+      status: "pull-request-open",
+      base,
+      workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+      pullRequest,
+    },
+    {
+      kind: "spec",
+      status: "complete",
+      base,
+      workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+      artifacts: [artifact("remote-base", oid("c"))],
+      publication,
+      pullRequest,
+      completion: {
+        kind: "merged-pull-request",
+        mergeOid: oid("d"),
+        mergedBaseOid: oid("c"),
+      },
+    },
+  ];
+  for (const document of documents) {
+    const parsed = validatePlanningState(state(document));
+    assert.deepEqual(
+      parsePlanningState(serializePlanningState(parsed)),
+      parsed,
+    );
+  }
+  const direct = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "complete",
+      base,
+      artifacts: [artifact("remote-base", oid("a"))],
+      completion: { kind: "remote-base" },
+    }),
+  );
+  assert.equal(direct.phases[0]!.status, "complete");
+});
+
+test("rejects incomplete publication, cleanup, URLs, and merge evidence", () => {
+  const cases: ReadonlyArray<
+    [string, (phase: Record<string, unknown>) => void]
+  > = [
+    [
+      "partial branch",
+      (phase) => {
+        phase.artifacts = [];
       },
     ],
-    revision: 0,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-function recordAt(
-  value: unknown,
-  ...segments: readonly (string | number)[]
-): Record<string, unknown> {
-  let current = value;
-  for (const segment of segments) {
-    assert.ok(current !== null && typeof current === "object");
-    current = (current as Record<string | number, unknown>)[segment];
+    [
+      "wrong publication head",
+      (phase) => {
+        (phase.publication as Record<string, unknown>).headOid = oid("e");
+      },
+    ],
+    [
+      "wrong reference target",
+      (phase) => {
+        (
+          (phase.pullRequest as Record<string, unknown>).reference as Record<
+            string,
+            unknown
+          >
+        ).targetRepository = {
+          ...publication.targetRepository,
+          repository: "other",
+        };
+      },
+    ],
+    [
+      "unsafe URL",
+      (phase) => {
+        (phase.pullRequest as Record<string, unknown>).url =
+          "https://token@example.com/pull/188";
+      },
+    ],
+    [
+      "cleanup mismatch",
+      (phase) => {
+        (phase.workspace as Record<string, unknown>).cleanup = {
+          state: "removed",
+          pushedHeadOid: oid("e"),
+        };
+      },
+    ],
+  ];
+  for (const [, mutate] of cases) {
+    const phase: Record<string, unknown> = structuredClone({
+      kind: "spec",
+      status: "pull-request-open",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+      pullRequest,
+    });
+    mutate(phase);
+    assert.throws(
+      () => validatePlanningState(state(phase)),
+      PlanningStateValidationError,
+    );
   }
-  assert.ok(current !== null && typeof current === "object");
-  return current as Record<string, unknown>;
-}
+  const merged = {
+    kind: "spec",
+    status: "complete",
+    base,
+    workspace: workspace({ state: "ready" }),
+    artifacts: [artifact("workspace", oid("b"))],
+    publication,
+    pullRequest,
+    completion: { kind: "merged-pull-request", mergeOid: oid("d") },
+  };
+  assert.throws(
+    () => validatePlanningState(state(merged)),
+    PlanningStateValidationError,
+  );
+});
 
-function completeState(): unknown {
-  const base = {
-    remote: "origin",
-    baseBranch: "main",
-    baseOid: oid,
-    artifactCandidates: {
-      spec: ["docs/specs/example-issue-187-spec.md"],
-      plan: ["docs/plans/example-issue-187-plan.md"],
-    },
-  };
-  const workspace = {
-    runId,
-    phase: "implementation",
-    identity: {
-      branch: "agent/issue-187-implementation",
-      worktreePath: ".worktrees/issue-187-implementation",
-    },
-    remote: "origin",
-    baseBranch: "main",
-    baseOid: oid,
-    headOid: oid,
-    cleanup: { state: "ready" },
-  };
-  return {
-    version: 1,
-    workflowVersion: "planning-pr-v1",
-    runId,
-    issueNumber: 187,
-    issueTitle: "Example",
-    gates,
-    revision: 0,
-    createdAt: now,
-    updatedAt: now,
-    phases: [
+test("allows pending phases to advance into workspace and remote-base completion", () => {
+  const pending = validatePlanningState(
+    state({ kind: "spec", status: "pending" }),
+  );
+  const ready = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "workspace-ready",
+        base,
+        workspace: workspace(),
+        artifacts: [],
+      },
+      1,
+    ),
+  );
+  const complete = validatePlanningState(
+    state(
       {
         kind: "spec",
         status: "complete",
         base,
-        artifacts: [
-          {
-            kind: "spec",
-            path: base.artifactCandidates.spec[0],
-            commitOid: oid,
-            source: "remote-base",
-          },
-        ],
+        artifacts: [artifact("remote-base", oid("a"))],
         completion: { kind: "remote-base" },
       },
+      1,
+    ),
+  );
+  assert.doesNotThrow(() => assertPlanningStateReplacement(pending, ready));
+  assert.doesNotThrow(() => assertPlanningStateReplacement(pending, complete));
+});
+
+test("allows only one durable publication edge at a time", () => {
+  const ready = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [],
+    }),
+  );
+  const artifactReady = validatePlanningState(
+    state(
       {
-        kind: "plan",
-        status: "complete",
+        kind: "spec",
+        status: "workspace-ready",
         base,
-        artifacts: [
-          {
-            kind: "plan",
-            path: base.artifactCandidates.plan[0],
-            commitOid: oid,
-            source: "remote-base",
-          },
-        ],
-        completion: { kind: "remote-base" },
+        workspace: { ...workspace(), headOid: oid("c") },
+        artifacts: [artifact("workspace", oid("c"))],
       },
-      { kind: "implementation", status: "workspace-ready", base, workspace },
-    ],
-  };
-}
-test("creates and round-trips strict initial planning state", () => {
-  const state = createPlanningState({
-    issueNumber: 187,
+      1,
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(ready, artifactReady),
+  );
+  const rewritten = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "workspace-ready",
+        base,
+        workspace: { ...workspace(), headOid: oid("d") },
+        artifacts: [],
+      },
+      1,
+    ),
+  );
+  assert.throws(
+    () => assertPlanningStateReplacement(ready, rewritten),
+    PlanningStateValidationError,
+  );
+  const rewrittenArtifact = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "workspace-ready",
+        base,
+        workspace: { ...workspace(), headOid: oid("d") },
+        artifacts: [artifact("workspace", oid("d"))],
+      },
+      2,
+    ),
+  );
+  assert.throws(
+    () => assertPlanningStateReplacement(artifactReady, rewrittenArtifact),
+    PlanningStateValidationError,
+  );
+  const pushed = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "branch-pushed",
+        base,
+        workspace: { ...workspace(), headOid: oid("c") },
+        artifacts: [artifact("workspace", oid("c"))],
+        publication: { ...publication, headOid: oid("c") },
+      },
+      2,
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(artifactReady, pushed),
+  );
+  const open = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "pull-request-open",
+        base,
+        workspace: { ...workspace(), headOid: oid("c") },
+        artifacts: [artifact("workspace", oid("c"))],
+        publication: { ...publication, headOid: oid("c") },
+        pullRequest,
+      },
+      3,
+    ),
+  );
+  assert.doesNotThrow(() => assertPlanningStateReplacement(pushed, open));
+  const removed = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "pull-request-open",
+        base,
+        workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+        pullRequest,
+      },
+      4,
+    ),
+  );
+  assert.throws(
+    () => assertPlanningStateReplacement(open, removed),
+    PlanningStateValidationError,
+  );
+});
+
+test("creates strict pending state", () => {
+  const created = createPlanningState({
+    issueNumber: 188,
     issueTitle: "Example",
-    gates,
+    gates: { specRequired: true, planRequired: false },
     runId,
     now,
   });
-  assert.equal(state.revision, 0);
-  assert.equal(state.createdAt, now);
-  assert.equal(state.updatedAt, now);
-  assert.deepEqual(state.phases, [
+  assert.deepEqual(created.phases, [
     { kind: "spec", status: "pending" },
-    { kind: "plan", status: "pending" },
     { kind: "implementation", status: "pending" },
   ]);
-  assert.deepEqual(parsePlanningState(serializePlanningState(state)), state);
-});
-test("round-trips pull request and every cleanup discriminator", () => {
-  const documents = [
-    completeState(),
-    mergedState({ state: "ready" }),
-    mergedState({ state: "worktree-removed", pushedHeadOid: oid }),
-    mergedState({ state: "removed", pushedHeadOid: oid }),
-  ];
-  const open = structuredClone(mergedState({ state: "ready" }));
-  recordAt(open, "phases", 0).status = "pull-request-open";
-  delete recordAt(open, "phases", 0).completion;
-  documents.push(open);
-  for (const document of documents) {
-    const state = validatePlanningState(document);
-    assert.deepEqual(parsePlanningState(serializePlanningState(state)), state);
-  }
 });
 
-test("rejects malformed scalars and nested state schemas with stable paths", () => {
-  const cases: ReadonlyArray<{
-    name: string;
-    reason: string;
-    path: string;
-    mutate: (document: Record<string, unknown>) => void;
-  }> = [
-    {
-      name: "version",
-      reason: "unsupported-version",
-      path: "$.version",
-      mutate: (document) => {
-        document.version = 2;
-      },
-    },
-    {
-      name: "workflow version",
-      reason: "unsupported-workflow-version",
-      path: "$.workflowVersion",
-      mutate: (document) => {
-        document.workflowVersion = "planning-pr-v2";
-      },
-    },
-    {
-      name: "run UUID",
-      reason: "invalid-uuid",
-      path: "$.runId",
-      mutate: (document) => {
-        document.runId = "not-a-uuid";
-      },
-    },
-    {
-      name: "issue number",
-      reason: "invalid-positive-integer",
-      path: "$.issueNumber",
-      mutate: (document) => {
-        document.issueNumber = 0;
-      },
-    },
-    {
-      name: "issue title",
-      reason: "invalid-string",
-      path: "$.issueTitle",
-      mutate: (document) => {
-        document.issueTitle = "bad\ntitle";
-      },
-    },
-    {
-      name: "revision",
-      reason: "invalid-nonnegative-integer",
-      path: "$.revision",
-      mutate: (document) => {
-        document.revision = -1;
-      },
-    },
-    {
-      name: "timestamp",
-      reason: "invalid-timestamp",
-      path: "$.createdAt",
-      mutate: (document) => {
-        document.createdAt = "2026-09-07";
-      },
-    },
-    {
-      name: "gates",
-      reason: "invalid-gates",
-      path: "$.gates",
-      mutate: (document) => {
-        recordAt(document, "gates").specRequired = "yes";
-      },
-    },
-    {
-      name: "status",
-      reason: "invalid-status",
-      path: "$.phases[0].status",
-      mutate: (document) => {
-        recordAt(document, "phases", 0).status = "unknown";
-      },
-    },
-    {
-      name: "completion",
-      reason: "invalid-completion",
-      path: "$.phases[0].completion.kind",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "completion").kind = "unknown";
-      },
-    },
-    {
-      name: "base OID",
-      reason: "invalid-oid",
-      path: "$.phases[0].base.baseOid",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "base").baseOid = "a".repeat(39);
-      },
-    },
-    {
-      name: "workspace branch",
-      reason: "invalid-branch",
-      path: "$.phases[0].workspace.identity.branch",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "workspace", "identity").branch =
-          "bad\u00a0branch";
-      },
-    },
-    {
-      name: "worktree path",
-      reason: "invalid-worktree-path",
-      path: "$.phases[0].workspace.identity.worktreePath",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "workspace", "identity").worktreePath =
-          "bad\0path";
-      },
-    },
-    {
-      name: "artifact path",
-      reason: "invalid-path",
-      path: "$.phases[0].artifacts[0].path",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "artifacts", 0).path = "../outside.md";
-      },
-    },
-    {
-      name: "pull request number",
-      reason: "invalid-positive-integer",
-      path: "$.phases[0].pullRequest.reference.number",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "pullRequest", "reference").number = 0;
-      },
-    },
-    {
-      name: "provider",
-      reason: "invalid-provider",
-      path: "$.phases[0].pullRequest.reference.targetRepository.provider",
-      mutate: (document) => {
-        recordAt(
-          document,
-          "phases",
-          0,
-          "pullRequest",
-          "reference",
-          "targetRepository",
-        ).provider = "unknown";
-      },
-    },
-    {
-      name: "cleanup unknown key",
-      reason: "unknown-key",
-      path: "$.phases[0].workspace.cleanup.extra",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "workspace", "cleanup").extra = true;
-      },
-    },
-    {
-      name: "candidate unknown key",
-      reason: "unknown-key",
-      path: "$.phases[0].base.artifactCandidates.extra",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "base", "artifactCandidates").extra =
-          [];
-      },
-    },
-    {
-      name: "repository unknown key",
-      reason: "unknown-key",
-      path: "$.phases[0].pullRequest.reference.targetRepository.extra",
-      mutate: (document) => {
-        recordAt(
-          document,
-          "phases",
-          0,
-          "pullRequest",
-          "reference",
-          "targetRepository",
-        ).extra = true;
-      },
-    },
-    {
-      name: "duplicate candidates",
-      reason: "duplicate-value",
-      path: "$.phases[0].base.artifactCandidates.spec",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "base", "artifactCandidates").spec = [
-          "docs/specs/a.md",
-          "docs/specs/a.md",
-        ];
-      },
-    },
-    {
-      name: "duplicate artifacts",
-      reason: "duplicate-artifact-kind",
-      path: "$.phases[0].artifacts",
-      mutate: (document) => {
-        recordAt(document, "phases", 0, "artifacts", 1).kind = "spec";
-      },
-    },
-    {
-      name: "missing top-level field",
-      reason: "missing-key",
-      path: "$.updatedAt",
-      mutate: (document) => {
-        delete document.updatedAt;
-      },
-    },
-    {
-      name: "missing gate",
-      reason: "missing-key",
-      path: "$.gates.planRequired",
-      mutate: (document) => {
-        delete recordAt(document, "gates").planRequired;
-      },
-    },
-    {
-      name: "missing candidate kind",
-      reason: "missing-key",
-      path: "$.phases[0].base.artifactCandidates.plan",
-      mutate: (document) => {
-        delete recordAt(document, "phases", 0, "base", "artifactCandidates")
-          .plan;
-      },
-    },
-    {
-      name: "missing workspace head",
-      reason: "missing-key",
-      path: "$.phases[0].workspace.headOid",
-      mutate: (document) => {
-        delete recordAt(document, "phases", 0, "workspace").headOid;
-      },
-    },
-    {
-      name: "missing identity branch",
-      reason: "missing-key",
-      path: "$.phases[0].workspace.identity.branch",
-      mutate: (document) => {
-        delete recordAt(document, "phases", 0, "workspace", "identity").branch;
-      },
-    },
-    {
-      name: "missing cleanup state",
-      reason: "missing-key",
-      path: "$.phases[0].workspace.cleanup.state",
-      mutate: (document) => {
-        delete recordAt(document, "phases", 0, "workspace", "cleanup").state;
-      },
-    },
-    {
-      name: "missing artifact source",
-      reason: "missing-key",
-      path: "$.phases[0].artifacts[0].source",
-      mutate: (document) => {
-        delete recordAt(document, "phases", 0, "artifacts", 0).source;
-      },
-    },
-    {
-      name: "missing pull request head",
-      reason: "missing-key",
-      path: "$.phases[0].pullRequest.headOid",
-      mutate: (document) => {
-        delete recordAt(document, "phases", 0, "pullRequest").headOid;
-      },
-    },
-    {
-      name: "missing repository owner",
-      reason: "missing-key",
-      path: "$.phases[0].pullRequest.reference.targetRepository.owner",
-      mutate: (document) => {
-        delete recordAt(
-          document,
-          "phases",
-          0,
-          "pullRequest",
-          "reference",
-          "targetRepository",
-        ).owner;
-      },
-    },
-    {
-      name: "missing merge OID",
-      reason: "missing-key",
-      path: "$.phases[0].completion.mergeOid",
-      mutate: (document) => {
-        delete recordAt(document, "phases", 0, "completion").mergeOid;
-      },
-    },
-    {
-      name: "forbidden pending evidence",
-      reason: "unknown-key",
-      path: "$.phases[0].base",
-      mutate: (document) => {
-        recordAt(document, "phases", 0).status = "pending";
-      },
-    },
-  ];
-  for (const item of cases) {
-    const document = structuredClone(mergedState({ state: "ready" })) as Record<
-      string,
-      unknown
-    >;
-    item.mutate(document);
-    assert.throws(
-      () => validatePlanningState(document),
-      (error: unknown) =>
-        error instanceof PlanningStateValidationError &&
-        error.reason === item.reason &&
-        error.path === item.path,
-      item.name,
-    );
-  }
-});
-
-test("forbids evidence outside each phase discriminator", () => {
-  const workspaceReady = structuredClone(completeState());
-  recordAt(workspaceReady, "phases", 2).artifacts = [];
-  const pullRequestOpen = structuredClone(mergedState({ state: "ready" }));
-  recordAt(pullRequestOpen, "phases", 0).status = "pull-request-open";
-  const remoteComplete = structuredClone(completeState());
-  recordAt(remoteComplete, "phases", 0).workspace = recordAt(
-    completeState(),
-    "phases",
-    2,
-    "workspace",
+test("permits every cleanup checkpoint and the all-at-once merged-base conversion", () => {
+  const ready = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+    }),
   );
-  const mergedComplete = structuredClone(mergedState({ state: "ready" }));
-  recordAt(mergedComplete, "phases", 0).unexpected = true;
-  for (const [document, path] of [
-    [workspaceReady, "$.phases[2].artifacts"],
-    [pullRequestOpen, "$.phases[0].completion"],
-    [remoteComplete, "$.phases[0].workspace"],
-    [mergedComplete, "$.phases[0].unexpected"],
-  ] as const) {
-    assert.throws(
-      () => validatePlanningState(document),
-      (error: unknown) =>
-        error instanceof PlanningStateValidationError &&
-        error.reason === "unknown-key" &&
-        error.path === path,
-    );
-  }
-});
-
-test("rejects unknown and contradictory persisted state", () => {
-  const state = createPlanningState({
-    issueNumber: 187,
-    issueTitle: "Example",
-    gates,
-    runId,
-    now,
-  });
-  assert.throws(
-    () => validatePlanningState({ ...state, extra: true }),
-    (error: unknown) =>
-      error instanceof PlanningStateValidationError &&
-      error.reason === "unknown-key" &&
-      error.path === "$.extra",
-  );
-  assert.throws(
-    () =>
-      validatePlanningState({ ...state, phases: [...state.phases].reverse() }),
-    (error: unknown) =>
-      error instanceof PlanningStateValidationError &&
-      error.reason === "phase-sequence" &&
-      error.path === "$.phases",
-  );
-  assert.throws(
-    () => parsePlanningState("{"),
-    (error: unknown) =>
-      error instanceof PlanningStateValidationError &&
-      error.reason === "invalid-json",
-  );
-});
-test("accepts complete prefix then one active and rejects evidence contradictions", () => {
-  const state = completeState() as { phases: Array<Record<string, unknown>> };
-  assert.doesNotThrow(() => validatePlanningState(state));
-  const activeThenComplete = structuredClone(state);
-  activeThenComplete.phases[0] = {
-    kind: "spec",
-    status: "workspace-ready",
-    base: activeThenComplete.phases[0]!.base,
-    workspace: {
-      ...(activeThenComplete.phases[2]!.workspace as Record<string, unknown>),
-      phase: "spec",
-      identity: {
-        branch: "agent/issue-187-spec",
-        worktreePath: ".worktrees/issue-187-spec",
-      },
-    },
-  };
-  assert.throws(
-    () => validatePlanningState(activeThenComplete),
-    /progress-order/,
-  );
-  const wrongCandidate = structuredClone(state);
-  (
-    wrongCandidate.phases[0]!.artifacts as Array<Record<string, unknown>>
-  )[0]!.path = "docs/specs/other.md";
-  assert.throws(
-    () => validatePlanningState(wrongCandidate),
-    /remote-artifact-mismatch/,
-  );
-  const wrongCleanup = structuredClone(state);
-  (
-    (wrongCleanup.phases[2]!.workspace as Record<string, unknown>)
-      .cleanup as Record<string, unknown>
-  ).state = "worktree-removed";
-  (
-    (wrongCleanup.phases[2]!.workspace as Record<string, unknown>)
-      .cleanup as Record<string, unknown>
-  ).pushedHeadOid = "b".repeat(40);
-  assert.throws(
-    () => validatePlanningState(wrongCleanup),
-    /(?:cleanup-head-mismatch|invalid-cleanup-progress)/,
-  );
-});
-test("accepts both idempotent merged-workspace cleanup transitions", () => {
-  const ready = validatePlanningState(mergedState({ state: "ready" }));
-  const worktreeRemoved = validatePlanningState({
-    ...mergedState({ state: "worktree-removed", pushedHeadOid: oid }),
-    revision: 1,
-    updatedAt: "2026-09-07T12:00:01.000Z",
-  });
-  const removed = validatePlanningState({
-    ...mergedState({ state: "removed", pushedHeadOid: oid }),
-    revision: 2,
-    updatedAt: "2026-09-07T12:00:02.000Z",
-  });
-  assert.doesNotThrow(() =>
-    assertPlanningStateReplacement(ready, worktreeRemoved),
-  );
-  assert.doesNotThrow(() =>
-    assertPlanningStateReplacement(worktreeRemoved, removed),
-  );
-  assert.throws(
-    () =>
-      assertPlanningStateReplacement(ready, {
-        ...removed,
-        revision: 1,
-        updatedAt: "2026-09-07T12:00:01.000Z",
-      }),
-    /(?:cleanup-transition|invalid-transition)/,
-  );
-});
-
-test("forward transitions preserve carried workspace and pull request evidence", () => {
-  const initial = completeState() as {
-    phases: Array<Record<string, unknown>>;
-  };
-  const ready = validatePlanningState({
-    ...initial,
-    phases: [
-      initial.phases[0],
-      initial.phases[1],
+  const pushed = validatePlanningState(
+    state(
       {
-        ...initial.phases[2],
-        status: "workspace-ready",
+        kind: "spec",
+        status: "branch-pushed",
+        base,
+        workspace: workspace(),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
       },
-    ],
-  });
-  const workspace = ready.phases[2]!;
-  assert.equal(workspace.status, "workspace-ready");
-  const open = validatePlanningState({
-    ...ready,
-    revision: 1,
-    updatedAt: "2026-09-07T12:00:01.000Z",
-    phases: [
-      ready.phases[0],
-      ready.phases[1],
+      1,
+    ),
+  );
+  const open = validatePlanningState(
+    state(
       {
-        ...workspace,
+        kind: "spec",
         status: "pull-request-open",
-        artifacts: [],
-        pullRequest: pullRequest(workspace.workspace.identity.branch, oid),
+        base,
+        workspace: workspace(),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+        pullRequest,
       },
-    ],
-  });
-  assert.doesNotThrow(() => assertPlanningStateReplacement(ready, open));
-  const completed = validatePlanningState({
-    ...open,
-    revision: 2,
-    updatedAt: "2026-09-07T12:00:02.000Z",
-    phases: [
-      open.phases[0],
-      open.phases[1],
+      2,
+    ),
+  );
+  const worktreeRemoved = validatePlanningState(
+    state(
       {
-        ...open.phases[2],
+        kind: "spec",
+        status: "pull-request-open",
+        base,
+        workspace: workspace({
+          state: "worktree-removed",
+          pushedHeadOid: oid("b"),
+        }),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+        pullRequest,
+      },
+      3,
+    ),
+  );
+  const removed = validatePlanningState(
+    state(
+      {
+        kind: "spec",
+        status: "pull-request-open",
+        base,
+        workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+        artifacts: [artifact("workspace", oid("b"))],
+        publication,
+        pullRequest,
+      },
+      4,
+    ),
+  );
+  const merged = validatePlanningState(
+    state(
+      {
+        kind: "spec",
         status: "complete",
+        base,
+        workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+        artifacts: [artifact("remote-base", oid("c"))],
+        publication,
+        pullRequest,
         completion: {
           kind: "merged-pull-request",
-          mergeOid: "b".repeat(40),
+          mergeOid: oid("d"),
+          mergedBaseOid: oid("c"),
         },
       },
-    ],
-  });
-  assert.doesNotThrow(() => assertPlanningStateReplacement(open, completed));
-
-  const changedPullRequest = structuredClone(completed);
-  const phase = changedPullRequest.phases[2]!;
-  assert.ok("pullRequest" in phase);
-  phase.pullRequest.reference.number = 2;
-  assert.throws(
-    () => assertPlanningStateReplacement(open, changedPullRequest),
-    /immutable-evidence/,
+      5,
+    ),
   );
-});
-
-test("rejects equivalent workspace paths across phases", () => {
-  const state = completeState() as {
-    phases: Array<Record<string, unknown>>;
-  };
-  const base = state.phases[0]!.base;
-  const merged = (
-    kind: "spec" | "plan",
-    branch: string,
-    worktreePath: string,
-  ) => ({
-    kind,
-    status: "complete",
-    base,
-    workspace: {
-      runId,
-      phase: kind,
-      identity: { branch, worktreePath },
-      remote: "origin",
-      baseBranch: "main",
-      baseOid: oid,
-      headOid: oid,
-      cleanup: { state: "ready" },
-    },
-    artifacts: [
+  for (const [left, right] of [
+    [ready, pushed],
+    [pushed, open],
+    [open, worktreeRemoved],
+    [worktreeRemoved, removed],
+    [removed, merged],
+  ] as const)
+    assert.doesNotThrow(() => assertPlanningStateReplacement(left, right));
+  const remoteBase = validatePlanningState(
+    state(
       {
-        kind,
-        path: `docs/${kind}s/example-issue-187-${kind}.md`,
-        commitOid: oid,
-        source: "workspace",
+        kind: "spec",
+        status: "complete",
+        base,
+        artifacts: [artifact("remote-base", oid("a"))],
+        completion: { kind: "remote-base" },
       },
-    ],
-    pullRequest: pullRequest(branch, oid),
-    completion: { kind: "merged-pull-request", mergeOid: "b".repeat(40) },
-  });
-  state.phases = [
-    merged("spec", "agent/spec", ".worktrees\\x\\..\\topic"),
-    merged("plan", "agent/plan", ".worktrees/topic"),
-    { kind: "implementation", status: "pending" },
-  ];
-  assert.throws(
-    () => validatePlanningState(state),
-    /duplicate-workspace-identity/,
+      6,
+    ),
   );
+  for (const document of [
+    pushed,
+    open,
+    worktreeRemoved,
+    removed,
+    merged,
+    remoteBase,
+  ]) {
+    const replacement = {
+      ...document,
+      revision: document.revision + 1,
+      updatedAt: "2026-09-08T12:00:02.000Z",
+    };
+    assert.doesNotThrow(() =>
+      assertPlanningStateReplacement(document, replacement),
+    );
+  }
+  for (const [left, right] of [
+    [open, removed],
+    [worktreeRemoved, open],
+    [pushed, removed],
+    [open, merged],
+  ] as const)
+    assert.throws(
+      () => assertPlanningStateReplacement(left, right),
+      PlanningStateValidationError,
+    );
 });
 
-test("requires immutable identity and exactly one revision step", () => {
-  const state = createPlanningState({
-    issueNumber: 187,
-    issueTitle: "Example",
-    gates,
-    runId,
-    now,
-  });
-  const next = { ...state, revision: 1, updatedAt: "2026-09-07T12:00:01.000Z" };
-  assert.doesNotThrow(() => assertPlanningStateReplacement(state, next));
-  assert.throws(
-    () =>
-      assertPlanningStateReplacement(state, {
-        ...next,
-        runId: "123e4567-e89b-42d3-a456-426614174001",
-      }),
-    /immutable/,
+test("freezes publication and pull request identity after branch publication", () => {
+  const pushed = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "branch-pushed",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+    }),
   );
-  assert.throws(
-    () => assertPlanningStateReplacement(state, { ...next, revision: 2 }),
-    /revision/,
+  for (const mutate of [
+    (phase: Record<string, unknown>) =>
+      ((phase.publication as Record<string, unknown>).headOid = oid("c")),
+    (phase: Record<string, unknown>) =>
+      ((phase.publication as Record<string, unknown>).headBranch =
+        "planning/other"),
+    (phase: Record<string, unknown>) =>
+      ((phase.workspace as Record<string, unknown>).headOid = oid("c")),
+    (phase: Record<string, unknown>) =>
+      ((phase.artifacts as Array<Record<string, unknown>>)[0]!.commitOid =
+        oid("c")),
+  ]) {
+    const next = structuredClone(pushed.phases[0]!) as Record<string, unknown>;
+    mutate(next);
+    assert.throws(
+      () => assertPlanningStateReplacement(pushed.phases[0]!, next as never),
+      PlanningStateValidationError,
+    );
+  }
+});
+
+test("rejects unknown and missing fields for every durable phase discriminator", () => {
+  const variants: Array<Record<string, unknown>> = [
+    { kind: "spec", status: "pending" },
+    {
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [],
+    },
+    {
+      kind: "spec",
+      status: "branch-pushed",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+    },
+    {
+      kind: "spec",
+      status: "pull-request-open",
+      base,
+      workspace: workspace(),
+      artifacts: [artifact("workspace", oid("b"))],
+      publication,
+      pullRequest,
+    },
+    {
+      kind: "spec",
+      status: "complete",
+      base,
+      artifacts: [artifact("remote-base", oid("a"))],
+      completion: { kind: "remote-base" },
+    },
+    {
+      kind: "spec",
+      status: "complete",
+      base,
+      workspace: workspace({ state: "removed", pushedHeadOid: oid("b") }),
+      artifacts: [artifact("remote-base", oid("c"))],
+      publication,
+      pullRequest,
+      completion: {
+        kind: "merged-pull-request",
+        mergeOid: oid("d"),
+        mergedBaseOid: oid("c"),
+      },
+    },
+  ];
+  for (const variant of variants) {
+    const unknown = structuredClone(variant);
+    unknown.unexpected = true;
+    assert.throws(
+      () => validatePlanningState(state(unknown)),
+      PlanningStateValidationError,
+    );
+    const missing = structuredClone(variant);
+    delete missing.kind;
+    assert.throws(
+      () => validatePlanningState(state(missing)),
+      PlanningStateValidationError,
+    );
+  }
+});
+
+test("permits revision-stepped idempotence for pending and workspace-ready", () => {
+  const pending = validatePlanningState(
+    state({ kind: "spec", status: "pending" }),
   );
+  const pendingRetry = {
+    ...pending,
+    revision: 1,
+    updatedAt: "2026-09-08T12:00:01.000Z",
+  };
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(pending, pendingRetry),
+  );
+  const ready = validatePlanningState(
+    state({
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [],
+    }),
+  );
+  const readyRetry = {
+    ...ready,
+    revision: 1,
+    updatedAt: "2026-09-08T12:00:01.000Z",
+  };
+  assert.doesNotThrow(() => assertPlanningStateReplacement(ready, readyRetry));
 });
