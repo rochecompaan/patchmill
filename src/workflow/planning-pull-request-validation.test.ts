@@ -42,6 +42,25 @@ test("accepts exactly matching owned planning pull requests", () => {
     188,
   );
 });
+test("rejects an implementation marker in a three-space indented code fence", () => {
+  assert.throws(
+    () =>
+      validatePlanningPullRequestSummary({
+        summary: {
+          ...summary,
+          headBranch: "planning/implementation",
+          body: `Closes #188\n\n   \`\`\`md\n${renderPlanningPullRequestMarker({ issueNumber: 188, phase: "implementation" })}\n   \`\`\``,
+        },
+        issueNumber: 188,
+        phase: "implementation",
+        publication: { ...publication, headBranch: "planning/implementation" },
+      }),
+    (error: unknown) =>
+      error instanceof PlanningPullRequestValidationError &&
+      error.reason === "ownership-marker",
+  );
+});
+
 test("rejects a marker mismatch without disclosing the body", () => {
   const secret = "https://token@example.test/private";
   assert.throws(

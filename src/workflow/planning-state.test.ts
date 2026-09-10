@@ -830,6 +830,159 @@ test("accepts implementation checkpoints only with immutable validated evidence"
   );
 });
 
+test("permits implementation workspace initialization and a newer branch-pushed head", () => {
+  const pending = validatePlanningState({
+    version: 1,
+    workflowVersion: "planning-pr-v1",
+    runId,
+    issueNumber: 188,
+    issueTitle: "Example",
+    gates: { specRequired: false, planRequired: false },
+    phases: [{ kind: "implementation", status: "pending" }],
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const workspaceReady = validatePlanningState({
+    ...pending,
+    revision: 1,
+    updatedAt: "2026-09-08T12:00:01.000Z",
+    phases: [
+      {
+        kind: "implementation",
+        status: "workspace-ready",
+        base,
+        workspace: {
+          ...workspace(),
+          phase: "implementation",
+          identity: {
+            branch: "planning/implementation",
+            worktreePath: ".worktrees/188-implementation",
+          },
+        },
+        artifacts: [
+          artifact("workspace", oid("b")),
+          {
+            kind: "plan",
+            path: "docs/plans/example-issue-188.md",
+            source: "workspace",
+            commitOid: oid("b"),
+          },
+        ],
+      },
+    ],
+  });
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(pending, workspaceReady),
+  );
+  const branchPushed = validatePlanningState({
+    ...workspaceReady,
+    revision: 2,
+    updatedAt: "2026-09-08T12:00:02.000Z",
+    phases: [
+      {
+        ...workspaceReady.phases[0]!,
+        status: "branch-pushed",
+        workspace: {
+          ...(workspaceReady.phases[0] as { workspace: object }).workspace,
+          headOid: oid("c"),
+        },
+        publication: {
+          ...publication,
+          headBranch: "planning/implementation",
+          headOid: oid("c"),
+        },
+        implementation: {
+          status: "pr-created",
+          prUrl: "https://github.com/acme/patchmill/pull/189",
+          branch: "planning/implementation",
+          commits: [oid("c")],
+          validation: ["npm test"],
+          visualEvidence: [],
+        },
+      },
+    ],
+  });
+  assert.doesNotThrow(() =>
+    assertPlanningStateReplacement(workspaceReady, branchPushed),
+  );
+});
+
+test("requires an empty finish checkpoint when implementation PR validation opens", () => {
+  const current = validatePlanningState({
+    version: 1,
+    workflowVersion: "planning-pr-v1",
+    runId,
+    issueNumber: 188,
+    issueTitle: "Example",
+    gates: { specRequired: false, planRequired: false },
+    phases: [
+      {
+        kind: "implementation",
+        status: "branch-pushed",
+        base,
+        workspace: {
+          ...workspace(),
+          phase: "implementation",
+          identity: {
+            branch: "planning/implementation",
+            worktreePath: ".worktrees/188-implementation",
+          },
+          headOid: oid("c"),
+        },
+        artifacts: [
+          artifact("workspace", oid("c")),
+          {
+            kind: "plan",
+            path: "docs/plans/example-issue-188.md",
+            source: "workspace",
+            commitOid: oid("c"),
+          },
+        ],
+        publication: {
+          ...publication,
+          headBranch: "planning/implementation",
+          headOid: oid("c"),
+        },
+        implementation: {
+          status: "pr-created",
+          prUrl: "https://github.com/acme/patchmill/pull/189",
+          branch: "planning/implementation",
+          commits: [oid("c")],
+          validation: ["npm test"],
+          visualEvidence: [],
+        },
+      },
+    ],
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const next = validatePlanningState({
+    ...current,
+    revision: 1,
+    updatedAt: "2026-09-08T12:00:01.000Z",
+    phases: [
+      {
+        ...current.phases[0]!,
+        status: "pull-request-open",
+        pullRequest: {
+          reference: {
+            targetRepository: publication.targetRepository,
+            number: 189,
+          },
+          url: "https://github.com/acme/patchmill/pull/189",
+        },
+        finish: { costPublicationCompleted: true },
+      },
+    ],
+  });
+  assert.throws(
+    () => assertPlanningStateReplacement(current, next),
+    PlanningStateValidationError,
+  );
+});
+
 test("preserves complete sanitized implementation agent evidence", () => {
   const document = {
     version: 1,
@@ -914,6 +1067,15 @@ test("preserves complete sanitized implementation agent evidence", () => {
   assert.deepEqual(
     (parsed.phases[0] as { implementation: unknown }).implementation,
     document.phases[0]!.implementation,
+  );
+  const blankValidation = structuredClone(document);
+  blankValidation.phases[0]!.implementation.validation = ["   "];
+  assert.throws(
+    () => validatePlanningState(blankValidation),
+    (error: unknown) =>
+      error instanceof PlanningStateValidationError &&
+      error.reason === "invalid-string" &&
+      error.path === "$.phases[0].implementation.validation[0]",
   );
   const unsafe = structuredClone(document);
   unsafe.phases[0]!.implementation.prUrl =

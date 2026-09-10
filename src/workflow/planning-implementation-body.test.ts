@@ -11,6 +11,7 @@ test("requires one effective top-level implementation closing reference", () => 
   );
   for (const body of [
     "```md\nCloses #189\n```",
+    "```lang~x\nCloses #189\n```",
     "   ```md\nCloses #189",
     "  ~~~md\nCloses #189",
     "> Closes #189",

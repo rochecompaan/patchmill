@@ -38,7 +38,12 @@ function phaseName(phase: PlanningPhaseStateV1): PhaseName {
   return `pull-request-open-${phase.workspace.cleanup.state}`;
 }
 const allowed: Readonly<Record<PhaseName, readonly PhaseName[]>> = {
-  pending: ["pending", "workspace-ready", "complete-remote-base"],
+  pending: [
+    "pending",
+    "workspace-ready",
+    "complete-remote-base",
+    "implementation-workspace-ready",
+  ],
   "workspace-ready": ["workspace-ready", "branch-pushed"],
   "branch-pushed": ["branch-pushed", "pull-request-open-ready"],
   "pull-request-open-ready": [
@@ -122,7 +127,7 @@ function assertImplementationFinish(
   current: Record<string, unknown>,
   next: Record<string, unknown>,
   index: number,
-): void {
+): boolean {
   const steps = [
     "costPublicationCompleted",
     "visualEvidenceValidated",
@@ -144,6 +149,7 @@ function assertImplementationFinish(
           fail("invalid-finish-transition", index, ".finish");
     }
   }
+  return additions.length === 1;
 }
 function assertArtifacts(
   current: readonly PlanningArtifactEvidence[],
@@ -190,6 +196,8 @@ export function assertPlanningPhaseReplacement(
     const appendingArtifact =
       next.status === "workspace-ready" &&
       next.artifacts.length === current.artifacts.length + 1;
+    const implementationHeadAdvance =
+      current.kind === "implementation" && next.status === "branch-pushed";
     if (
       next.status === "workspace-ready" &&
       next.artifacts.length > current.artifacts.length + 1
@@ -198,7 +206,7 @@ export function assertPlanningPhaseReplacement(
     assertWorkspace(
       current.workspace,
       next.workspace,
-      appendingArtifact,
+      appendingArtifact || implementationHeadAdvance,
       index,
     );
     assertArtifacts(
@@ -221,6 +229,11 @@ export function assertPlanningPhaseReplacement(
       if (!("implementation" in next))
         fail("invalid-transition", index, ".implementation");
       same(current.implementation, next.implementation, index);
+      if (
+        next.status === "pull-request-open" &&
+        Object.keys(next.finish).length
+      )
+        fail("invalid-finish-transition", index, ".finish");
     }
     return;
   }
@@ -234,11 +247,16 @@ export function assertPlanningPhaseReplacement(
       if (!("implementation" in next) || !("finish" in next))
         fail("invalid-transition", index, ".implementation");
       same(current.implementation, next.implementation, index);
-      assertImplementationFinish(
+      const finishAdvanced = assertImplementationFinish(
         current.finish as Record<string, unknown>,
         next.finish as Record<string, unknown>,
         index,
       );
+      if (
+        finishAdvanced &&
+        current.workspace.cleanup.state !== next.workspace.cleanup.state
+      )
+        fail("invalid-finish-transition", index, ".finish");
       if (
         next.workspace.cleanup.state !== "ready" &&
         next.finish.cleanupHookCompleted !== true
@@ -271,11 +289,7 @@ export function assertPlanningPhaseReplacement(
     same(current.pullRequest, next.pullRequest, index);
     same(current.implementation, next.implementation, index);
     same(current.artifacts, next.artifacts, index);
-    assertImplementationFinish(
-      current.finish as Record<string, unknown>,
-      next.finish as Record<string, unknown>,
-      index,
-    );
+    same(current.finish, next.finish, index);
     return;
   }
   if (

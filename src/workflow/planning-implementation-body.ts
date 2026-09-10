@@ -25,9 +25,10 @@ function effectiveTopLevelLines(body: string): readonly string[] {
         fence = undefined;
       continue;
     }
-    const opening = /^(?<fence>`{3,}|~{3,})[^`~]*$/u.exec(topLevel)?.groups
-      ?.fence;
-    if (opening !== undefined) {
+    const openingMatch = /^(?<fence>`{3,}|~{3,})(?<info>.*)$/u.exec(topLevel);
+    const opening = openingMatch?.groups?.fence;
+    const info = openingMatch?.groups?.info;
+    if (opening !== undefined && (opening[0] !== "`" || !info!.includes("`"))) {
       fence = opening;
       continue;
     }

@@ -50,8 +50,11 @@ function topLevelMarkerLines(lines: readonly string[]): MarkerLine[] {
   let fence: string | undefined;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!;
+    // CommonMark permits up to three spaces before fenced code blocks. Markers
+    // themselves remain column-zero ownership evidence.
+    const fencedLine = line.replace(/^[ ]{0,3}/u, "");
     if (fence !== undefined) {
-      const closingFence = line.match(closingFencePattern)?.[1];
+      const closingFence = fencedLine.match(closingFencePattern)?.[1];
       if (
         closingFence !== undefined &&
         closingFence[0] === fence[0] &&
@@ -61,7 +64,7 @@ function topLevelMarkerLines(lines: readonly string[]): MarkerLine[] {
       }
       continue;
     }
-    const opener = openingFence(line);
+    const opener = openingFence(fencedLine);
     if (opener !== undefined) {
       fence = opener;
     } else if (line.startsWith(markerPrefix)) {

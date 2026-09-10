@@ -93,6 +93,10 @@ const singleLine = (value: unknown, path: string): string => {
   const parsed = string(value, path);
   return isPlanningSingleLine(parsed) ? parsed : fail("invalid-string", path);
 };
+const nonblankSingleLine = (value: unknown, path: string): string => {
+  const parsed = singleLine(value, path);
+  return parsed.trim().length > 0 ? parsed : fail("invalid-string", path);
+};
 const branch = (value: unknown, path: string): string => {
   const parsed = string(value, path);
   return isPlanningBranch(parsed) ? parsed : fail("invalid-branch", path);
@@ -428,7 +432,7 @@ function implementationEvidence(value: unknown, path: string) {
     if (!Array.isArray(items) || items.length === 0)
       fail("expected-nonempty-array", itemPath);
     return (items as unknown[]).map((entry: unknown, index: number) =>
-      singleLine(entry, `${itemPath}[${index}]`),
+      nonblankSingleLine(entry, `${itemPath}[${index}]`),
     );
   };
   if (!Array.isArray(parsed.visualEvidence))
