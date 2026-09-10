@@ -32,15 +32,59 @@ export type PlanningPullRequestEvidence = Readonly<{
   url: string;
 }>;
 
+export type PlanningImplementationVisualEvidence = Readonly<{
+  screenshotPath: string;
+  caption?: string;
+  referencePaths?: readonly string[];
+  url?: string;
+}>;
+export type PlanningRunCostEvidence = Readonly<{
+  stages: readonly Readonly<{
+    stage: string;
+    models: readonly Readonly<{
+      model: string;
+      promptTokens: number;
+      outputTokens: number;
+      estimatedCostUsd: number;
+    }>[];
+    promptTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+  }>[];
+  promptTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+}>;
+export type PlanningImplementationAgentEvidence = Readonly<{
+  status: "pr-created";
+  prUrl: string;
+  branch: string;
+  commits: readonly string[];
+  validation: readonly string[];
+  reviewSummary?: string;
+  landingDecision?: string;
+  visualEvidence: readonly PlanningImplementationVisualEvidence[];
+  runCostReport?: PlanningRunCostEvidence;
+}>;
+export type PlanningImplementationFinishCheckpoints = Readonly<{
+  costPublicationCompleted?: true;
+  visualEvidenceValidated?: true;
+  handoffCommentPosted?: true;
+  cleanupHookCompleted?: true;
+  doneLabelEnsured?: true;
+  doneLabelApplied?: true;
+}>;
+type PlanningPhasePullRequestKind = "spec" | "plan";
+
 export type WorkspaceReadyPlanningPhase = Readonly<{
-  kind: PlanningPhaseKind;
+  kind: PlanningPhasePullRequestKind;
   status: "workspace-ready";
   base: PlanningBaseEvidence;
   workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
   artifacts: readonly PlanningArtifactEvidence[];
 }>;
 export type BranchPushedPlanningPhase = Readonly<{
-  kind: PlanningPhaseKind;
+  kind: PlanningPhasePullRequestKind;
   status: "branch-pushed";
   base: PlanningBaseEvidence;
   workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
@@ -48,7 +92,7 @@ export type BranchPushedPlanningPhase = Readonly<{
   publication: PlanningPublicationEvidence;
 }>;
 export type PullRequestOpenPlanningPhase = Readonly<{
-  kind: PlanningPhaseKind;
+  kind: PlanningPhasePullRequestKind;
   status: "pull-request-open";
   base: PlanningBaseEvidence;
   workspace: PlanningWorkspaceOwnership;
@@ -57,14 +101,14 @@ export type PullRequestOpenPlanningPhase = Readonly<{
   pullRequest: PlanningPullRequestEvidence;
 }>;
 export type RemoteBaseCompletePlanningPhase = Readonly<{
-  kind: PlanningPhaseKind;
+  kind: PlanningPhasePullRequestKind;
   status: "complete";
   base: PlanningBaseEvidence;
   artifacts: readonly PlanningArtifactEvidence[];
   completion: Readonly<{ kind: "remote-base" }>;
 }>;
 export type MergedPullRequestCompletePlanningPhase = Readonly<{
-  kind: PlanningPhaseKind;
+  kind: PlanningPhasePullRequestKind;
   status: "complete";
   base: PlanningBaseEvidence;
   workspace: PlanningWorkspaceOwnership<{
@@ -80,13 +124,59 @@ export type MergedPullRequestCompletePlanningPhase = Readonly<{
     mergedBaseOid: string;
   }>;
 }>;
+export type ImplementationWorkspaceReadyPlanningPhase = Readonly<{
+  kind: "implementation";
+  status: "workspace-ready";
+  base: PlanningBaseEvidence;
+  workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
+  artifacts: readonly PlanningArtifactEvidence[];
+}>;
+export type ImplementationBranchPushedPlanningPhase = Readonly<{
+  kind: "implementation";
+  status: "branch-pushed";
+  base: PlanningBaseEvidence;
+  workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
+  artifacts: readonly PlanningArtifactEvidence[];
+  publication: PlanningPublicationEvidence;
+  implementation: PlanningImplementationAgentEvidence;
+}>;
+export type ImplementationPullRequestOpenPlanningPhase = Readonly<{
+  kind: "implementation";
+  status: "pull-request-open";
+  base: PlanningBaseEvidence;
+  workspace: PlanningWorkspaceOwnership;
+  artifacts: readonly PlanningArtifactEvidence[];
+  publication: PlanningPublicationEvidence;
+  pullRequest: PlanningPullRequestEvidence;
+  implementation: PlanningImplementationAgentEvidence;
+  finish: PlanningImplementationFinishCheckpoints;
+}>;
+export type ImplementationCompletePlanningPhase = Readonly<{
+  kind: "implementation";
+  status: "complete";
+  base: PlanningBaseEvidence;
+  workspace: PlanningWorkspaceOwnership<{
+    state: "removed";
+    pushedHeadOid: string;
+  }>;
+  artifacts: readonly PlanningArtifactEvidence[];
+  publication: PlanningPublicationEvidence;
+  pullRequest: PlanningPullRequestEvidence;
+  implementation: PlanningImplementationAgentEvidence;
+  finish: Required<PlanningImplementationFinishCheckpoints>;
+  completion: Readonly<{ kind: "implementation-pull-request" }>;
+}>;
 export type PlanningPhaseStateV1 =
   | Readonly<{ kind: PlanningPhaseKind; status: "pending" }>
   | WorkspaceReadyPlanningPhase
   | BranchPushedPlanningPhase
   | PullRequestOpenPlanningPhase
   | RemoteBaseCompletePlanningPhase
-  | MergedPullRequestCompletePlanningPhase;
+  | MergedPullRequestCompletePlanningPhase
+  | ImplementationWorkspaceReadyPlanningPhase
+  | ImplementationBranchPushedPlanningPhase
+  | ImplementationPullRequestOpenPlanningPhase
+  | ImplementationCompletePlanningPhase;
 export type PlanningStateV1 = Readonly<{
   version: 1;
   workflowVersion: "planning-pr-v1";

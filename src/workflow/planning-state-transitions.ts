@@ -14,8 +14,22 @@ type PhaseName =
   | "pull-request-open-worktree-removed"
   | "pull-request-open-removed"
   | "complete-remote-base"
-  | "complete-merged";
+  | "complete-merged"
+  | "implementation-workspace-ready"
+  | "implementation-branch-pushed"
+  | "implementation-pull-request-open-ready"
+  | "implementation-pull-request-open-worktree-removed"
+  | "implementation-pull-request-open-removed"
+  | "implementation-complete";
 function phaseName(phase: PlanningPhaseStateV1): PhaseName {
+  if (phase.kind === "implementation") {
+    if (phase.status === "complete") return "implementation-complete";
+    if (phase.status === "workspace-ready")
+      return "implementation-workspace-ready";
+    if (phase.status === "branch-pushed") return "implementation-branch-pushed";
+    if (phase.status === "pull-request-open")
+      return `implementation-pull-request-open-${phase.workspace.cleanup.state}`;
+  }
   if (phase.status === "complete")
     return phase.completion.kind === "remote-base"
       ? "complete-remote-base"
@@ -38,6 +52,27 @@ const allowed: Readonly<Record<PhaseName, readonly PhaseName[]>> = {
   "pull-request-open-removed": ["pull-request-open-removed", "complete-merged"],
   "complete-remote-base": ["complete-remote-base"],
   "complete-merged": ["complete-merged"],
+  "implementation-workspace-ready": [
+    "implementation-workspace-ready",
+    "implementation-branch-pushed",
+  ],
+  "implementation-branch-pushed": [
+    "implementation-branch-pushed",
+    "implementation-pull-request-open-ready",
+  ],
+  "implementation-pull-request-open-ready": [
+    "implementation-pull-request-open-ready",
+    "implementation-pull-request-open-worktree-removed",
+  ],
+  "implementation-pull-request-open-worktree-removed": [
+    "implementation-pull-request-open-worktree-removed",
+    "implementation-pull-request-open-removed",
+  ],
+  "implementation-pull-request-open-removed": [
+    "implementation-pull-request-open-removed",
+    "implementation-complete",
+  ],
+  "implementation-complete": ["implementation-complete"],
 };
 function fail(reason: string, index: number, suffix = ""): never {
   throw new PlanningStateValidationError(reason, `$.phases[${index}]${suffix}`);
@@ -82,6 +117,29 @@ function assertWorkspace(
   )
     return;
   fail("invalid-cleanup-transition", index, ".workspace.cleanup");
+}
+function assertImplementationFinish(
+  current: Record<string, unknown>,
+  next: Record<string, unknown>,
+  index: number,
+): void {
+  const steps = [
+    "costPublicationCompleted",
+    "visualEvidenceValidated",
+    "handoffCommentPosted",
+    "cleanupHookCompleted",
+    "doneLabelEnsured",
+    "doneLabelApplied",
+  ];
+  for (const [stepIndex, step] of steps.entries()) {
+    if (current[step] === true && next[step] !== true)
+      fail("immutable-evidence", index, ".finish");
+    if (current[step] !== true && next[step] === true) {
+      for (const prior of steps.slice(0, stepIndex))
+        if (next[prior] !== true)
+          fail("invalid-finish-transition", index, ".finish");
+    }
+  }
 }
 function assertArtifacts(
   current: readonly PlanningArtifactEvidence[],
@@ -159,6 +217,11 @@ export function assertPlanningPhaseReplacement(
     same(current.workspace, next.workspace, index);
     same(current.artifacts, next.artifacts, index);
     same(current.publication, next.publication, index);
+    if (current.kind === "implementation") {
+      if (!("implementation" in next))
+        fail("invalid-transition", index, ".implementation");
+      same(current.implementation, next.implementation, index);
+    }
     return;
   }
   if (next.status === "pull-request-open") {
@@ -167,6 +230,36 @@ export function assertPlanningPhaseReplacement(
     same(current.artifacts, next.artifacts, index);
     same(current.publication, next.publication, index);
     same(current.pullRequest, next.pullRequest, index);
+    if (current.kind === "implementation") {
+      if (!("implementation" in next) || !("finish" in next))
+        fail("invalid-transition", index, ".implementation");
+      same(current.implementation, next.implementation, index);
+      assertImplementationFinish(
+        current.finish as Record<string, unknown>,
+        next.finish as Record<string, unknown>,
+        index,
+      );
+    }
+    return;
+  }
+  if (current.kind === "implementation") {
+    if (
+      next.status !== "complete" ||
+      !("implementation" in next) ||
+      !("finish" in next) ||
+      next.completion.kind !== "implementation-pull-request"
+    )
+      fail("invalid-transition", index, ".status");
+    same(current.base, next.base, index);
+    same(current.workspace, next.workspace, index);
+    same(current.publication, next.publication, index);
+    same(current.pullRequest, next.pullRequest, index);
+    same(current.implementation, next.implementation, index);
+    assertImplementationFinish(
+      current.finish as Record<string, unknown>,
+      next.finish as Record<string, unknown>,
+      index,
+    );
     return;
   }
   if (

@@ -663,3 +663,82 @@ test("permits revision-stepped idempotence for pending and workspace-ready", () 
   };
   assert.doesNotThrow(() => assertPlanningStateReplacement(ready, readyRetry));
 });
+
+test("accepts implementation checkpoints only with immutable validated evidence", () => {
+  const implementationWorkspace = {
+    ...workspace(),
+    phase: "implementation",
+    identity: {
+      branch: "planning/implementation",
+      worktreePath: ".worktrees/188-implementation",
+    },
+    headOid: oid("c"),
+  };
+  const implementationPublication = {
+    ...publication,
+    headBranch: "planning/implementation",
+    headOid: oid("c"),
+  };
+  const implementation = {
+    status: "pr-created",
+    prUrl: "https://github.com/acme/patchmill/pull/189",
+    branch: "planning/implementation",
+    commits: [oid("c")],
+    validation: ["npm test"],
+    visualEvidence: [],
+  };
+  const implementationPullRequest = {
+    reference: { targetRepository: publication.targetRepository, number: 189 },
+    url: "https://github.com/acme/patchmill/pull/189",
+  };
+  const document = {
+    version: 1,
+    workflowVersion: "planning-pr-v1",
+    runId,
+    issueNumber: 188,
+    issueTitle: "Example",
+    gates: { specRequired: false, planRequired: false },
+    phases: [
+      {
+        kind: "implementation",
+        status: "pull-request-open",
+        base,
+        workspace: implementationWorkspace,
+        artifacts: [
+          artifact("workspace", oid("c")),
+          {
+            kind: "plan",
+            path: "docs/plans/example-issue-188.md",
+            source: "workspace",
+            commitOid: oid("c"),
+          },
+        ],
+        publication: implementationPublication,
+        pullRequest: implementationPullRequest,
+        implementation,
+        finish: {},
+      },
+    ],
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  assert.equal(
+    validatePlanningState(document).phases[0]!.status,
+    "pull-request-open",
+  );
+  const remoteBase = structuredClone(document);
+  remoteBase.phases[0]!.status = "complete";
+  remoteBase.phases[0]!.completion = { kind: "remote-base" };
+  delete remoteBase.phases[0]!.workspace;
+  delete remoteBase.phases[0]!.publication;
+  delete remoteBase.phases[0]!.pullRequest;
+  delete remoteBase.phases[0]!.implementation;
+  delete remoteBase.phases[0]!.finish;
+  assert.throws(
+    () => validatePlanningState(remoteBase),
+    (error: unknown) =>
+      error instanceof PlanningStateValidationError &&
+      error.reason === "implementation-completion",
+  );
+});
