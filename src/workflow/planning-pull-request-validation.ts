@@ -9,6 +9,7 @@ import {
   PlanningPullRequestMarkerError,
 } from "./planning-pull-request-markers.ts";
 import type { PlanningPublicationEvidence } from "./planning-state-types.ts";
+import type { PlanningPhaseKind } from "./planning-pull-request-markers.ts";
 import {
   assertPlanningPublicationRepositories as assertPublicationRepositories,
   PlanningPublicationRepositoryError,
@@ -44,7 +45,7 @@ export function assertPlanningPublicationRepositories(input: {
 export function validatePlanningPullRequestSummary(input: {
   summary: PullRequestSummary;
   issueNumber: number;
-  phase: "spec" | "plan";
+  phase: PlanningPhaseKind;
   publication: PlanningPublicationEvidence;
   expectedReference?: PullRequestReference;
 }): ValidatedPlanningPullRequest {

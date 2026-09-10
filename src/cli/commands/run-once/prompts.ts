@@ -75,6 +75,7 @@ export type ImplementationPromptInput = {
   skills?: PatchmillSkillsConfig;
   resume?: AgentIssueImplementationResumeContext;
   developmentEnvironment?: AgentIssueDevelopmentEnvironmentHandoff;
+  requiredPullRequestMarker?: string | undefined;
 };
 
 export type DevelopmentEnvironmentPromptInput = {
@@ -937,6 +938,7 @@ export function buildImplementationPrompt(
     projectPolicy,
     resume,
     developmentEnvironment,
+    requiredPullRequestMarker,
   } = input;
   const skills = input.skills ?? DEFAULT_PATCHMILL_SKILLS;
 
@@ -949,6 +951,14 @@ export function buildImplementationPrompt(
     renderTestingValueGateStep(),
     "Follow the visual-change evidence requirements below whenever the issue changes visible UI.",
     "Apply the landing policy below. Follow its direct-land and PR handoff requirements, or report the exact blocker if PR creation is impossible.",
+    ...(requiredPullRequestMarker === undefined
+      ? []
+      : [
+          "Direct landing is disabled for this planning workflow. Create an implementation pull request whose body has a top-level `Closes #" +
+            issue.number +
+            "` line and ends with this exact ownership marker:",
+          requiredPullRequestMarker,
+        ]),
   ];
 
   return `Implement ${formatIssueTarget(projectPolicy)} #${issue.number}: ${issue.title}

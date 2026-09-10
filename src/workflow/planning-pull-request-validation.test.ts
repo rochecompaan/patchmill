@@ -262,3 +262,17 @@ test("rejects expected-reference and URL shape mismatches without exposing confi
     );
   }
 });
+
+test("accepts implementation ownership identity without changing status semantics", () => {
+  assert.doesNotThrow(() =>
+    validatePlanningPullRequestSummary({
+      summary: {
+        ...summary,
+        body: `Summary\n\n${renderPlanningPullRequestMarker({ issueNumber: 188, phase: "implementation" })}`,
+      },
+      issueNumber: 188,
+      phase: "implementation",
+      publication,
+    }),
+  );
+});
