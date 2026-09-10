@@ -130,6 +130,21 @@ test("planning pull request marker renders and parses exact identity", () => {
   });
 });
 
+test("marker parser accepts CRLF pull request bodies", () => {
+  const marker = renderPlanningPullRequestMarker({
+    issueNumber: 184,
+    phase: "implementation",
+  });
+  assert.deepEqual(
+    parsePlanningPullRequestMarker(`Summary\r\n\r\n${marker}\r\n`),
+    {
+      workflowVersion: "planning-pr-v1",
+      issueNumber: 184,
+      phase: "implementation",
+    },
+  );
+});
+
 test("marker parser returns undefined when no planning marker exists", () => {
   assert.equal(parsePlanningPullRequestMarker("Refs #184"), undefined);
 });

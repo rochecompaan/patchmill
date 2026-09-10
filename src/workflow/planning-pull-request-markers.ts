@@ -88,7 +88,7 @@ export function parsePlanningPullRequestMarker(body: string):
       phase: PlanningPhaseKind;
     }
   | undefined {
-  const lines = body.split("\n");
+  const lines = body.replaceAll("\r\n", "\n").split("\n");
   const markers = topLevelMarkerLines(lines);
   if (markers.length === 0) return undefined;
   if (markers.length !== 1) {
