@@ -1,0 +1,102 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { validatePlanningImplementation } from "./planning-implementation-validation.ts";
+
+const oid = (value: string) => value.repeat(40);
+const repository = {
+  provider: "github-gh" as const,
+  host: "github.com",
+  owner: "acme",
+  repository: "patchmill",
+};
+const phase = {
+  kind: "implementation" as const,
+  status: "branch-pushed" as const,
+  base: {
+    remote: "origin",
+    baseBranch: "main",
+    baseOid: oid("a"),
+    artifactCandidates: { spec: [], plan: [] },
+  },
+  workspace: {
+    runId: "123e4567-e89b-42d3-a456-426614174000",
+    phase: "implementation" as const,
+    identity: {
+      branch: "planning/implementation",
+      worktreePath: ".worktrees/implementation",
+    },
+    remote: "origin",
+    baseBranch: "main",
+    baseOid: oid("a"),
+    headOid: oid("b"),
+    cleanup: { state: "ready" as const },
+  },
+  artifacts: [],
+  publication: {
+    targetRepository: repository,
+    headRepository: repository,
+    baseBranch: "main",
+    headBranch: "planning/implementation",
+    headOid: oid("b"),
+  },
+  implementation: {
+    status: "pr-created" as const,
+    prUrl: "https://github.com/acme/patchmill/pull/189",
+    branch: "planning/implementation",
+    commits: [oid("b")],
+    validation: ["npm test"],
+    visualEvidence: [],
+  },
+};
+const state = { issueNumber: 189 } as never;
+function input(status: "open" | "merged" = "open") {
+  return {
+    state,
+    phase,
+    workspaces: {
+      inspect: async () => ({
+        state: "ready" as const,
+        identity: phase.workspace.identity,
+        headOid: oid("b"),
+        clean: true,
+      }),
+    },
+    git: {
+      inspectRemoteHead: async () => ({
+        state: "present" as const,
+        headOid: oid("b"),
+      }),
+      assertAncestor: async () => {},
+    },
+    host: {
+      id: "github-gh" as const,
+      resolveTargetRepositoryIdentity: async () => repository,
+      resolveRemoteRepositoryIdentity: async () => repository,
+      getPullRequest: async () => ({
+        number: 189,
+        url: phase.implementation.prUrl,
+        targetRepository: repository,
+        baseBranch: "main",
+        headRepository: repository,
+        headBranch: "planning/implementation",
+        headSha: oid("b"),
+        body: "Closes #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+        ...(status === "open"
+          ? { status: "open" as const }
+          : { status: "merged" as const, mergeCommit: oid("c") }),
+      }),
+    },
+  };
+}
+
+test("validates an exact open implementation pull request before finish", async () => {
+  const result = await validatePlanningImplementation(input());
+  assert.equal(result.pullRequest.url, phase.implementation.prUrl);
+});
+
+test("rejects an implementation pull request that is not open", async () => {
+  await assert.rejects(
+    validatePlanningImplementation(input("merged")),
+    /status/,
+  );
+});
