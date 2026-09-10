@@ -14,7 +14,7 @@ import { coordinatePlanningPhases } from "./planning-phase-coordinator.ts";
 import { handoffComment } from "./pipeline-comments.ts";
 import { publishPlanningPrRunCost } from "./pr-cost-publication.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
-import { progress } from "./pipeline-progress.ts";
+import { createStepAccounting, progress } from "./pipeline-progress.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
@@ -126,6 +126,10 @@ export function createPlanningRuntime(
       tokenUsageState: input.tokenUsageState,
     },
   });
+  const steps = createStepAccounting({
+    progress: input.progressReporter,
+    issueNumber: input.issue.number,
+  });
   const git = {
     baseBranch: input.config.baseBranch,
     baseRef: input.config.baseRef,
@@ -196,6 +200,7 @@ export function createPlanningRuntime(
                 phase: implementation,
                 git: policy,
                 requiredPullRequestMarker,
+                workspaceCreated,
               }) => {
                 const durablePlan = planPath(durable);
                 const result = await runImplementationAgent({
@@ -210,13 +215,19 @@ export function createPlanningRuntime(
                     branch: implementation.workspace.identity.branch,
                     worktreePath:
                       implementation.workspace.identity.worktreePath,
-                    created: true,
-                    hasExistingCommits: false,
-                    existingCommits: [],
+                    created: workspaceCreated,
+                    hasExistingCommits:
+                      implementation.workspace.headOid !==
+                      implementation.workspace.baseOid,
+                    existingCommits:
+                      implementation.workspace.headOid !==
+                      implementation.workspace.baseOid
+                        ? [implementation.workspace.headOid]
+                        : [],
                   },
                   git: policy as typeof git,
                   resume: {
-                    resumed: implementation.status !== "workspace-ready",
+                    resumed: !workspaceCreated,
                   },
                   piAgentDir: input.piAgentDir,
                   tokenUsageState: input.tokenUsageState,
@@ -229,11 +240,19 @@ export function createPlanningRuntime(
                   heartbeatMs: input.heartbeatMs,
                   piSessionPath: input.piSessionPath,
                   requiredPullRequestMarker,
-                  progress: async () => {},
-                  runStep: async (_label, fn) => fn(),
-                  stepStart: async () => {},
-                  stepComplete: async () => {},
-                  observePi: () => async () => {},
+                  progress: (level, stage, message, extras) =>
+                    progress(
+                      { progress: input.progressReporter },
+                      level,
+                      stage,
+                      message,
+                      { issueNumber: input.issue.number, ...extras },
+                    ),
+                  runStep: steps.run,
+                  stepStart: steps.start,
+                  stepComplete: steps.complete,
+                  observePi: (stage) => async (observation) =>
+                    steps.observe(stage, observation),
                 });
                 if (result.kind === "implemented") return result.result;
                 if (result.kind === "blocked") return result.result;

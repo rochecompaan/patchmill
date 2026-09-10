@@ -349,6 +349,7 @@ async function implementation(
   input: PlanningPhaseRunnerInput,
   state: PlanningStateV1,
   run: RunnerOperations,
+  workspaceCreated = false,
 ): Promise<PlanningPhaseRunnerOutcome> {
   const current = state.phases[input.phaseIndex];
   if (current?.kind !== "implementation")
@@ -367,6 +368,7 @@ async function implementation(
       throw new Error("Planning implementation runner is not configured");
     const implemented = await run.runImplementation({
       ...input.implementationInput,
+      workspaceCreated,
       state,
       phaseIndex: input.phaseIndex,
       lock: input.lock,
@@ -446,7 +448,7 @@ export async function runPlanningPhase(
       return { kind: "stopped", state, reason: "plan-only" };
   }
   if (input.phase.kind === "implementation")
-    return implementation(input, state, run);
+    return implementation(input, state, run, phase.status === "pending");
   const artifacts = await runArtifacts(input, state, run);
   if (artifacts.kind !== "workspace-ready") return artifacts;
   return publish(input, artifacts.state, run);

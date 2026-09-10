@@ -48,10 +48,12 @@ export type PlanningImplementationInput = {
     phase: ImplementationWorkspaceReadyPlanningPhase;
     git: Record<string, unknown>;
     requiredPullRequestMarker: string;
+    workspaceCreated: boolean;
   }): Promise<
     AgentIssuePrCreatedResult | AgentIssueMergedResult | AgentIssueBlockedResult
   >;
   resolveRunCost?: () => Promise<RunCostReport | undefined>;
+  workspaceCreated?: boolean;
   now?: () => Date;
 };
 
@@ -140,6 +142,7 @@ export async function runPlanningImplementation(
       state,
       phase,
       git: { ...input.configuredGit, allowDirectLand: false },
+      workspaceCreated: input.workspaceCreated ?? false,
       requiredPullRequestMarker: renderPlanningPullRequestMarker({
         issueNumber: state.issueNumber,
         phase: "implementation",
