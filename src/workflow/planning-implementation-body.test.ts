@@ -23,6 +23,10 @@ test("requires one effective top-level implementation closing reference", () => 
     "1. Example closing syntax:\nCloses #189",
     "1) Example closing syntax:\nCloses #189",
     "- Example closing syntax:\nCloses #189",
+    "<!--\nCloses #189\n-->",
+    "<!-- example\nCloses #189\n-->\n<!-- patchmill marker -->",
+    "<script>\nCloses #189\n</script>",
+    "<div>\nCloses #189\n</div>",
     "Closes #190",
     "Refs #189",
   ])

@@ -41,6 +41,24 @@ function active(state: PlanningStateV1): boolean {
   return state.phases.some((phase) => phase.status !== "complete");
 }
 
+/** Identifies finish recovery after the live done label may precede its checkpoint. */
+export function planningFinishReachedDoneLabelBoundary(
+  state: PlanningStateV1 | undefined,
+): boolean {
+  return Boolean(
+    state?.phases.some(
+      (phase) =>
+        "finish" in phase &&
+        (phase.finish.doneLabelApplied === true ||
+          (phase.workspace.cleanup.state === "removed" &&
+            phase.finish.visualEvidenceValidated === true &&
+            phase.finish.handoffCommentPosted === true &&
+            phase.finish.cleanupHookCompleted === true &&
+            phase.finish.doneLabelEnsured === true)),
+    ),
+  );
+}
+
 export function planningIssueEligible(input: {
   issue: IssueSummary;
   config: AgentIssueConfig;
@@ -52,16 +70,7 @@ export function planningIssueEligible(input: {
   const excluded =
     config.triagePolicy?.runOnceSelection?.excludedLabels ??
     DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
-  const doneCheckpoint = state?.phases.some(
-    (phase) =>
-      "finish" in phase &&
-      (phase.finish.doneLabelApplied === true ||
-        (phase.workspace.cleanup.state === "removed" &&
-          phase.finish.visualEvidenceValidated === true &&
-          phase.finish.handoffCommentPosted === true &&
-          phase.finish.cleanupHookCompleted === true &&
-          phase.finish.doneLabelEnsured === true)),
-  );
+  const doneCheckpoint = planningFinishReachedDoneLabelBoundary(state);
   const blocked = issue.labels.filter((label) => {
     if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
     if (doneCheckpoint && label === lifecycle.done) return false;

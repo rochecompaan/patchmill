@@ -1,7 +1,4 @@
-import {
-  PlanningPublicationGitError,
-  type PlanningPublicationOperations,
-} from "../../../git/planning-publication-git.ts";
+import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import {
   PullRequestNotFoundError,
@@ -10,6 +7,10 @@ import {
 } from "../../../host/pull-requests.ts";
 import { parsePullRequestUrl } from "../../../host/pull-request-reference.ts";
 import { assertImplementationClosingReference } from "../../../workflow/planning-implementation-body.ts";
+import {
+  assertPlanningImplementationAncestry,
+  PlanningImplementationAncestryError,
+} from "./planning-implementation-ancestry.ts";
 import {
   assertPlanningPublicationRepositories,
   PlanningPullRequestValidationError,
@@ -157,46 +158,17 @@ export async function validatePlanningImplementation(
     fail("closing-reference");
   }
   try {
-    await input.git.assertAncestor({
-      ancestorOid: phase.base.baseOid,
-      descendantOid: workspace.headOid,
+    await assertPlanningImplementationAncestry({
+      state: input.state,
+      baseOid: phase.base.baseOid,
+      savedHeadOid: phase.workspace.headOid,
+      headOid: workspace.headOid,
+      commits: phase.implementation.commits,
+      git: input.git,
     });
   } catch (error) {
-    if (
-      error instanceof PlanningPublicationGitError &&
-      error.reason === "not-ancestor"
-    )
-      fail("ancestry");
+    if (error instanceof PlanningImplementationAncestryError) fail("ancestry");
     throw error;
-  }
-  const workspaceArtifactCommits = input.state.phases.flatMap((item) =>
-    "artifacts" in item
-      ? item.artifacts
-          .filter((artifact) => artifact.source === "workspace")
-          .map((artifact) => artifact.commitOid)
-      : [],
-  );
-  for (const commit of new Set([
-    ...phase.implementation.commits,
-    ...workspaceArtifactCommits,
-  ])) {
-    try {
-      await input.git.assertAncestor({
-        ancestorOid: phase.base.baseOid,
-        descendantOid: commit,
-      });
-      await input.git.assertAncestor({
-        ancestorOid: commit,
-        descendantOid: workspace.headOid,
-      });
-    } catch (error) {
-      if (
-        error instanceof PlanningPublicationGitError &&
-        error.reason === "not-ancestor"
-      )
-        fail("ancestry");
-      throw error;
-    }
   }
   return {
     publication: phase.publication,

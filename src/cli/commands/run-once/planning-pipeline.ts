@@ -23,6 +23,7 @@ import { createPlanningRuntime } from "./planning-runtime.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
 import {
   legacyActiveForIssue,
+  planningFinishReachedDoneLabelBoundary,
   planningIssueEligible,
   planningStateDiagnostic,
 } from "./planning-selection.ts";
@@ -98,13 +99,16 @@ export function planningIssueNeedsClaim(input: {
   issue: IssueSummary;
   fresh: boolean;
   state: PlanningStateV1;
-  labels: Pick<ReturnType<typeof lifecycleLabels>, "ready" | "inProgress">;
+  labels: Pick<
+    ReturnType<typeof lifecycleLabels>,
+    "ready" | "inProgress" | "done"
+  >;
 }): boolean {
-  const doneLabelApplied = input.state.phases.some(
-    (phase) => "finish" in phase && phase.finish.doneLabelApplied === true,
-  );
+  const doneLabelAlreadyApplied =
+    input.issue.labels.includes(input.labels.done) &&
+    planningFinishReachedDoneLabelBoundary(input.state);
   return (
-    !doneLabelApplied &&
+    !doneLabelAlreadyApplied &&
     (input.fresh ||
       input.issue.labels.includes(input.labels.ready) ||
       !input.issue.labels.includes(input.labels.inProgress))

@@ -201,6 +201,43 @@ test("refuses dirty blocker progress without checkpointing", async () => {
   assert.deepEqual(checkpoints, []);
 });
 
+test("blocks unproven reported commits before branch-pushed evidence", async () => {
+  const checkpoints: unknown[] = [];
+  let inspectedRemote = false;
+  const result = await runPlanningImplementation(
+    input({
+      git: {
+        inspectRemoteHead: async () => {
+          inspectedRemote = true;
+          return { state: "present" as const, headOid: oid("b") };
+        },
+        assertAncestor: async ({ ancestorOid, descendantOid }) => {
+          if (ancestorOid === oid("a") && descendantOid === oid("c"))
+            throw new PlanningPublicationGitError("merge-base", "not-ancestor");
+        },
+      },
+      runAgent: async () => ({
+        status: "pr-created" as const,
+        prUrl: "https://github.com/acme/patchmill/pull/189",
+        branch: "agent/189",
+        commits: [oid("c")],
+        validation: [],
+      }),
+      stateStore: {
+        replace: async ({ next }: { next: unknown }) => {
+          checkpoints.push(next);
+          return next;
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked")
+    assert.equal(result.result.reason, "implementation-ancestry");
+  assert.deepEqual(checkpoints, []);
+  assert.equal(inspectedRemote, false);
+});
+
 test("persists a sanitized fresh implementation run-cost report", async () => {
   const checkpoints: Array<{
     phases: Array<{ implementation: { runCostReport?: unknown } }>;

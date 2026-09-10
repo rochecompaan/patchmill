@@ -21,6 +21,10 @@ import type {
   AgentIssuePrCreatedResult,
 } from "./types.ts";
 import {
+  assertPlanningImplementationAncestry,
+  PlanningImplementationAncestryError,
+} from "./planning-implementation-ancestry.ts";
+import {
   PlanningImplementationValidationError,
   validatePlanningImplementation,
 } from "./planning-implementation-validation.ts";
@@ -211,6 +215,24 @@ export async function runPlanningImplementation(
           };
         throw error;
       }
+    }
+    try {
+      await assertPlanningImplementationAncestry({
+        state,
+        baseOid: phase.base.baseOid,
+        savedHeadOid: phase.workspace.headOid,
+        headOid: workspace.headOid,
+        commits: result.commits,
+        git: input.git,
+      });
+    } catch (error) {
+      if (error instanceof PlanningImplementationAncestryError)
+        return {
+          kind: "blocked",
+          state,
+          result: blocked("implementation-ancestry"),
+        };
+      throw error;
     }
     const remote = await input.git.inspectRemoteHead({
       remote: phase.workspace.remote,

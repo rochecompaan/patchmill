@@ -24,6 +24,8 @@ function effectiveTopLevelLines(body: string): readonly string[] {
   const lines = body.replaceAll("\r\n", "\n").split("\n");
   const output: string[] = [];
   let fence: string | undefined;
+  let htmlComment = false;
+  let htmlBlock: string | undefined;
   let inLazyContainer = false;
   for (const line of lines) {
     const topLevel = line.replace(/^[ ]{0,3}/u, "");
@@ -40,6 +42,27 @@ function effectiveTopLevelLines(body: string): readonly string[] {
         closing.length >= fence.length
       )
         fence = undefined;
+      continue;
+    }
+    if (htmlComment) {
+      if (line.includes("-->")) htmlComment = false;
+      continue;
+    }
+    if (line.includes("<!--")) {
+      if (!line.includes("-->")) htmlComment = true;
+      continue;
+    }
+    if (htmlBlock !== undefined) {
+      if (new RegExp(`^</${htmlBlock}>[ \\t]*$`, "iu").test(topLevel))
+        htmlBlock = undefined;
+      continue;
+    }
+    const htmlOpening =
+      /^<(?<tag>script|style|pre|textarea|div)(?:[ \\t][^>]*)?>[ \\t]*$/iu.exec(
+        topLevel,
+      );
+    if (htmlOpening?.groups?.tag !== undefined) {
+      htmlBlock = htmlOpening.groups.tag;
       continue;
     }
     const openingMatch = /^(?<fence>`{3,}|~{3,})(?<info>.*)$/u.exec(topLevel);
