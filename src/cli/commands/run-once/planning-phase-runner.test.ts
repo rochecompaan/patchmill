@@ -420,3 +420,45 @@ test("returns durable terminal implementation result without rerunning implement
   assert.equal(implementationRuns, 0);
   assert.equal(finishEffects, 0);
 });
+
+test("passes fresh versus resumed workspace context to implementation", async () => {
+  const seen: boolean[] = [];
+  const run = async (initial: unknown) =>
+    runPlanningPhase(
+      input({
+        state: initial,
+        implementation: { implementation: {}, finish: () => ({}) },
+        operations: {
+          runImplementation: async ({
+            state: durable,
+            workspaceCreated,
+          }: {
+            state: unknown;
+            workspaceCreated?: boolean;
+          }) => {
+            seen.push(workspaceCreated === true);
+            return { kind: "validated", state: durable };
+          },
+          finishImplementation: async ({
+            state: durable,
+          }: {
+            state: unknown;
+          }) => ({
+            state: durable,
+            result: { status: "pr-created" },
+          }),
+        },
+      }),
+    );
+  await run(state({ kind: "implementation", status: "pending" }));
+  await run(
+    state({
+      kind: "implementation",
+      status: "workspace-ready",
+      base,
+      workspace,
+      artifacts: [],
+    }),
+  );
+  assert.deepEqual(seen, [true, false]);
+});

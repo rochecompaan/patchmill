@@ -47,6 +47,7 @@ export async function runPlanningImplementationPhase(
   input: PlanningPhaseRunnerInput,
 ): Promise<PlanningPhaseRunnerOutcome> {
   let state = input.state;
+  let workspaceCreated = false;
   let phase = state.phases[input.phaseIndex];
   if (phase?.kind !== "implementation" || input.phase.kind !== "implementation")
     throw new RangeError(
@@ -61,6 +62,7 @@ export async function runPlanningImplementationPhase(
   if (phase.status === "pending") {
     try {
       state = await prepare(input, state);
+      workspaceCreated = true;
     } catch (error) {
       if (
         error instanceof PlanningPhaseArtifactError &&
@@ -94,6 +96,7 @@ export async function runPlanningImplementationPhase(
       host: input.host,
       workspaces: input.workspaces,
       git: input.publicationGit,
+      workspaceCreated,
     });
     if (implemented.kind === "blocked")
       return {
