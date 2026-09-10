@@ -70,6 +70,7 @@ export type PlanningImplementationFinishCheckpoints = Readonly<{
   costPublicationCompleted?: true;
   visualEvidenceValidated?: true;
   handoffCommentPosted?: true;
+  cleanupHookStarted?: true;
   cleanupHookCompleted?: true;
   doneLabelEnsured?: true;
   doneLabelApplied?: true;

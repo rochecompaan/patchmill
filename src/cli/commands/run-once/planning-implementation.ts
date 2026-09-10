@@ -99,7 +99,36 @@ export async function runPlanningImplementation(
         phase: "implementation",
       }),
     });
-    if (result.status === "blocked") return { kind: "blocked", state, result };
+    if (result.status === "blocked") {
+      const workspace = await input.workspaces.inspect(
+        phase.workspace.identity,
+      );
+      if (workspace.state !== "ready" || !workspace.clean)
+        return {
+          kind: "blocked",
+          state,
+          result: blocked("implementation-workspace"),
+        };
+      if (workspace.headOid !== phase.workspace.headOid) {
+        try {
+          await input.git.assertAncestor({
+            ancestorOid: phase.workspace.headOid,
+            descendantOid: workspace.headOid,
+          });
+        } catch {
+          return {
+            kind: "blocked",
+            state,
+            result: blocked("implementation-workspace"),
+          };
+        }
+        state = await replace(input, state, {
+          ...phase,
+          workspace: { ...phase.workspace, headOid: workspace.headOid },
+        });
+      }
+      return { kind: "blocked", state, result };
+    }
     if (result.status === "merged")
       return {
         kind: "blocked",

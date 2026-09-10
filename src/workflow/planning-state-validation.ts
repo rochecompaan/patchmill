@@ -517,6 +517,7 @@ function implementationFinish(value: unknown, path: string) {
     "costPublicationCompleted",
     "visualEvidenceValidated",
     "handoffCommentPosted",
+    "cleanupHookStarted",
     "cleanupHookCompleted",
     "doneLabelEnsured",
     "doneLabelApplied",

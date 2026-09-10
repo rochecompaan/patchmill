@@ -132,6 +132,7 @@ function assertImplementationFinish(
     "costPublicationCompleted",
     "visualEvidenceValidated",
     "handoffCommentPosted",
+    "cleanupHookStarted",
     "cleanupHookCompleted",
     "doneLabelEnsured",
     "doneLabelApplied",
@@ -197,7 +198,10 @@ export function assertPlanningPhaseReplacement(
       next.status === "workspace-ready" &&
       next.artifacts.length === current.artifacts.length + 1;
     const implementationHeadAdvance =
-      current.kind === "implementation" && next.status === "branch-pushed";
+      current.kind === "implementation" &&
+      (next.status === "branch-pushed" ||
+        (next.status === "workspace-ready" &&
+          next.workspace.headOid !== current.workspace.headOid));
     if (
       next.status === "workspace-ready" &&
       next.artifacts.length > current.artifacts.length + 1

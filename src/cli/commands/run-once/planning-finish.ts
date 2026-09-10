@@ -123,7 +123,29 @@ export async function finishPlanningImplementation(
   await effect("handoffCommentPosted", () =>
     input.effects.postHandoff(resultFor(phase)),
   );
-  await effect("cleanupHookCompleted", input.effects.cleanupHook);
+  if (
+    phase.finish.cleanupHookStarted === true &&
+    phase.finish.cleanupHookCompleted !== true
+  )
+    throw new Error(
+      "Planning cleanup hook outcome is unknown; operator repair required",
+    );
+  if (phase.finish.cleanupHookCompleted !== true) {
+    phase = { ...phase, finish: { ...phase.finish, cleanupHookStarted: true } };
+    state = await checkpoint(input, state, phase);
+    phase = state.phases[
+      input.phaseIndex
+    ] as ImplementationPullRequestOpenPlanningPhase;
+    await input.effects.cleanupHook();
+    phase = {
+      ...phase,
+      finish: { ...phase.finish, cleanupHookCompleted: true },
+    };
+    state = await checkpoint(input, state, phase);
+    phase = state.phases[
+      input.phaseIndex
+    ] as ImplementationPullRequestOpenPlanningPhase;
+  }
   if (phase.workspace.cleanup.state === "ready") {
     await input.workspaces.removeWorktree({
       runId: state.runId,
