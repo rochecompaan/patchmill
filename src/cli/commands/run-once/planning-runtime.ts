@@ -12,7 +12,8 @@ import { runImplementationAgent } from "./implementation-agent.ts";
 import { createPlanningArtifactAgent } from "./planning-phase-artifacts.ts";
 import { coordinatePlanningPhases } from "./planning-phase-coordinator.ts";
 import { handoffComment } from "./pipeline-comments.ts";
-import { publishPrRunCost } from "./pr-cost-publication.ts";
+import { publishPlanningPrRunCost } from "./pr-cost-publication.ts";
+import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
 import { cleanupLabelsForImplementation } from "./workflow-state.ts";
@@ -230,9 +231,13 @@ export function createPlanningRuntime(
                   )
                     return;
                   const report = implementation.implementation.runCostReport;
-                  await publishPrRunCost({
+                  await publishPlanningPrRunCost({
                     host,
                     prUrl: implementation.pullRequest.url,
+                    marker: renderPlanningPullRequestMarker({
+                      issueNumber: durable.issueNumber,
+                      phase: "implementation",
+                    }),
                     report: {
                       stages: report.stages.map((stage) => ({
                         stage: stage.stage,

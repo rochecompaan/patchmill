@@ -89,3 +89,16 @@ export function upsertRunCostSection(
     throw new PrCostSummaryError("Malformed Patchmill run-cost markers");
   return `${body.slice(0, start)}${section}${body.slice(end + END_MARKER.length)}`;
 }
+
+/** Keeps the strict planning ownership marker as the final nonblank line. */
+export function upsertPlanningRunCostSection(
+  body: string,
+  report: RunCostReport,
+  marker: string,
+): string {
+  if (!body.trimEnd().endsWith(marker))
+    throw new PrCostSummaryError("Planning marker is not final");
+  const prefix = body.slice(0, body.lastIndexOf(marker)).trimEnd();
+  const next = upsertRunCostSection(prefix, report).trimEnd();
+  return `${next}\n\n${marker}\n`;
+}
