@@ -1,4 +1,7 @@
-import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
+import {
+  PlanningPublicationGitError,
+  type PlanningPublicationOperations,
+} from "../../../git/planning-publication-git.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import type { PullRequestHost } from "../../../host/pull-requests.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
@@ -158,12 +161,17 @@ export async function runPlanningImplementation(
             ancestorOid: phase.workspace.headOid,
             descendantOid: workspace.headOid,
           });
-        } catch {
-          return {
-            kind: "blocked",
-            state,
-            result: blocked("implementation-workspace"),
-          };
+        } catch (error) {
+          if (
+            error instanceof PlanningPublicationGitError &&
+            error.reason === "not-ancestor"
+          )
+            return {
+              kind: "blocked",
+              state,
+              result: blocked("implementation-workspace"),
+            };
+          throw error;
         }
         state = await replace(input, state, {
           ...phase,

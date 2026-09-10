@@ -173,13 +173,21 @@ export function createPlanningRuntime(
                 ready: input.readyLabel,
                 needsInfo: input.needsInfoLabel,
               },
-              workspaceIdentity: (planned) =>
-                phaseWorkspaceIdentity({
+              workspaceIdentity: (planned) => {
+                const identity = phaseWorkspaceIdentity({
                   issueNumber: input.issue.number,
                   title: input.issue.title,
                   phase: planned.kind,
                   strategy: git,
-                }),
+                });
+                return {
+                  ...identity,
+                  worktreePath: resolve(
+                    input.config.repoRoot,
+                    identity.worktreePath,
+                  ),
+                };
+              },
             },
             implementationInput: {
               configuredGit: git,

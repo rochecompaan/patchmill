@@ -39,7 +39,14 @@ export function planningIssueEligible(input: {
     config.triagePolicy?.runOnceSelection?.excludedLabels ??
     DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
   const doneCheckpoint = state?.phases.some(
-    (phase) => "finish" in phase && phase.finish.doneLabelApplied === true,
+    (phase) =>
+      "finish" in phase &&
+      (phase.finish.doneLabelApplied === true ||
+        (phase.workspace.cleanup.state === "removed" &&
+          phase.finish.visualEvidenceValidated === true &&
+          phase.finish.handoffCommentPosted === true &&
+          phase.finish.cleanupHookCompleted === true &&
+          phase.finish.doneLabelEnsured === true)),
   );
   const blocked = issue.labels.filter((label) => {
     if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
@@ -80,6 +87,8 @@ export async function selectRunOnceWorkflow(
   const choices: Array<Exclude<RunOnceWorkflowSelection, { kind: "none" }>> =
     [];
   for (const issue of issues) {
+    if (config.issueNumber !== undefined && issue.number !== config.issueNumber)
+      continue;
     if (issue.state !== "open") continue;
     let state: PlanningStateV1 | undefined;
     try {
