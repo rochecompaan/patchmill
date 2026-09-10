@@ -124,6 +124,19 @@ export async function runLegacyOneIssue(
   return runLegacyOneIssueInternal(runner, config, options);
 }
 
+/** Runs one already-selected legacy issue without returning to advisory selection. */
+export async function runLegacyOneIssueForSelection(
+  runner: CommandRunner,
+  config: AgentIssueConfig,
+  issueNumber: number,
+  options: RunOneIssueOptions = {},
+): Promise<AgentIssuePipelineResult> {
+  return runLegacyOneIssueInternal(runner, config, {
+    ...options,
+    leasedIssueNumber: issueNumber,
+  });
+}
+
 /** Reset uses this narrow leased entry point after it has archived state. */
 export async function runLegacyOneIssueAfterReset(
   runner: CommandRunner,

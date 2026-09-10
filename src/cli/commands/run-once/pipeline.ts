@@ -1,8 +1,13 @@
+import { createRunOnceHostProvider } from "../../../host/factory.ts";
+import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import {
   runLegacyOneIssue,
   runLegacyOneIssueAfterReset,
   type RunOneIssueOptions,
 } from "./pipeline-legacy.ts";
+import { runPlanningWorkflow } from "./planning-pipeline.ts";
+import { selectRunOnceWorkflow } from "./planning-selection.ts";
+import { loadSelectionIssues } from "./pipeline-selection.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
@@ -11,13 +16,54 @@ import type {
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 
-/** Public run-once facade for the legacy workflow. */
+/** Public facade that selects exactly once, then pins the chosen workflow. */
 export async function runOneIssue(
   runner: CommandRunner,
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  return runLegacyOneIssue(runner, config, options);
+  // Preserve legacy dry-run output and its non-mutating diagnostic contract.
+  if (config.dryRun) return runLegacyOneIssue(runner, config, options);
+  const host = createRunOnceHostProvider({
+    runner,
+    repoRoot: config.repoRoot,
+    host: config.host,
+  });
+  const issues = await loadSelectionIssues(host, config, options);
+  const selected = await selectRunOnceWorkflow(
+    issues,
+    config,
+    new PlanningStateStore(config.runStateDir),
+  );
+  switch (selected.kind) {
+    case "none":
+      // The legacy facade retains the established no-issue diagnostics.
+      return runLegacyOneIssue(runner, config, options);
+    case "invalid-planning-state":
+      throw new Error(
+        `Planning workflow state for issue #${selected.issue.number} is invalid: ${selected.reason}`,
+      );
+    case "legacy":
+      return runLegacyOneIssue(runner, config, options);
+    case "planning":
+      return runPlanningWorkflow({
+        runner,
+        config,
+        options,
+        issue: selected.issue,
+        state: selected.state,
+        host,
+      });
+    case "fresh-planning":
+      return runPlanningWorkflow({
+        runner,
+        config,
+        options,
+        issue: selected.issue,
+        state: selected.initialState,
+        host,
+      });
+  }
 }
 
 /** Reset is intentionally pinned to the legacy recovery contract. */
