@@ -105,10 +105,12 @@ function state(
 }
 function input(initial = state(), fail?: string) {
   const events: string[] = [];
+  const warnings: string[] = [];
   const checkpoints: PlanningStateV1[] = [];
   let current = initial;
   return {
     events,
+    warnings,
     checkpoints,
     value: {
       state: initial,
@@ -147,6 +149,10 @@ function input(initial = state(), fail?: string) {
           },
         ]),
       ) as never,
+      // The cost publication failure is intentionally warning-only.
+      onCostPublicationFailure: async () => {
+        warnings.push("cost-publication");
+      },
     },
   };
 }
@@ -166,6 +172,21 @@ test("finishes in durable external-effect and cleanup order", async () => {
   ]);
   assert.equal(run.checkpoints.length, 10);
 });
+test("warns before checkpointing a best-effort cost publication failure", async () => {
+  const run = input(state(), "publishCost");
+  await finishPlanningImplementation(run.value);
+  assert.deepEqual(run.warnings, ["cost-publication"]);
+  assert.equal(run.checkpoints[0]?.phases[0]?.status, "pull-request-open");
+  assert.equal(
+    (
+      run.checkpoints[0]?.phases[0] as {
+        finish?: { costPublicationCompleted?: boolean };
+      }
+    ).finish?.costPublicationCompleted,
+    true,
+  );
+});
+
 test("does not rerun an interrupted cleanup hook or later effects", async () => {
   const run = input(
     state({

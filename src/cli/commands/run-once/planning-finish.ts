@@ -28,6 +28,7 @@ export type PlanningFinishInput = {
     ensureDoneLabel: () => Promise<void>;
     applyDoneLabels: () => Promise<void>;
   };
+  onCostPublicationFailure?: (error: unknown) => Promise<void>;
   now?: () => Date;
 };
 
@@ -75,8 +76,8 @@ export async function finishPlanningImplementation(
   if (phase.finish.costPublicationCompleted !== true) {
     try {
       await input.effects.publishCost();
-    } catch {
-      /* established best effort */
+    } catch (error) {
+      await input.onCostPublicationFailure?.(error);
     }
     phase = {
       ...phase,

@@ -3,10 +3,10 @@ import { runCleanupHookScript } from "../../../pi/hooks.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { handoffComment } from "./pipeline-comments.ts";
+import { progress } from "./pipeline-progress.ts";
 import { nextLabels } from "./pipeline-lifecycle.ts";
 import { publishPlanningPrRunCost } from "./pr-cost-publication.ts";
 import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
-import { cleanupLabelsForImplementation } from "./workflow-state.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { PlanningFinishInput } from "./planning-finish.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
@@ -28,6 +28,7 @@ export type PlanningFinishEffectsInput = {
   needsInfoLabel: string;
   host: RunOnceHostProvider;
   phaseIndex: number;
+  progressReporter?: Parameters<typeof progress>[0]["progress"];
   now?: (() => Date) | undefined;
 };
 
@@ -120,16 +121,26 @@ export function createPlanningFinishEffects(
               input.issue.number,
               input.labels,
               nextLabels(
-                cleanupLabelsForImplementation(input.labels, {
-                  readyLabel: input.readyLabel,
-                  policy: input.config.approvalPolicy,
-                }),
-                [input.inProgressLabel, input.needsInfoLabel],
+                input.labels,
+                [input.readyLabel, input.inProgressLabel, input.needsInfoLabel],
                 [input.doneLabel],
               ),
             ),
           ),
       },
+      onCostPublicationFailure: async (error) =>
+        progress(
+          { progress: input.progressReporter },
+          "warning",
+          "run-cost",
+          "Patchmill could not update the PR run-cost summary",
+          {
+            issueNumber: input.issue.number,
+            data: error instanceof Error ? error.message : String(error),
+            consoleMessage:
+              "Warning: Patchmill could not update the PR run-cost summary",
+          },
+        ),
       ...(input.now === undefined ? {} : { now: input.now }),
     };
   };

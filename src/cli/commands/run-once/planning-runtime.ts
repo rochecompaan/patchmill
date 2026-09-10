@@ -189,6 +189,7 @@ export function createPlanningRuntime(
                 needsInfoLabel: input.needsInfoLabel,
                 host,
                 phaseIndex,
+                progressReporter: input.progressReporter,
                 now: input.now,
               }),
             },
