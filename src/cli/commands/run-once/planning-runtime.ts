@@ -6,25 +6,15 @@ import {
   createPullRequestHost,
   createRunOnceHostProvider,
 } from "../../../host/factory.ts";
-import { runCleanupHookScript } from "../../../pi/hooks.ts";
-import { ensureAutomationLabel } from "./automation-labels.ts";
-import { runImplementationAgent } from "./implementation-agent.ts";
-import { createPlanningArtifactAgent } from "./planning-phase-artifacts.ts";
-import { coordinatePlanningPhases } from "./planning-phase-coordinator.ts";
-import { handoffComment } from "./pipeline-comments.ts";
-import { publishPlanningPrRunCost } from "./pr-cost-publication.ts";
-import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
-import { createStepAccounting, progress } from "./pipeline-progress.ts";
-import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
-import { runPlanningPhase } from "./planning-phase-runner.ts";
-import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
-import { cleanupLabelsForImplementation } from "./workflow-state.ts";
-import { nextLabels } from "./pipeline-lifecycle.ts";
-import { planLabelChange } from "../triage/labels.ts";
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import { phaseWorkspaceIdentity } from "../../../workflow/planning-pull-requests.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
+import { createPlanningArtifactAgent } from "./planning-phase-artifacts.ts";
+import { coordinatePlanningPhases } from "./planning-phase-coordinator.ts";
+import { runPlanningPhase } from "./planning-phase-runner.ts";
+import { createPlanningFinishEffects } from "./planning-finish-effects.ts";
+import { createPlanningImplementationAdapter } from "./planning-implementation-adapter.ts";
 import type { AgentIssueConfig, CommandRunner, IssueSummary } from "./types.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 
@@ -34,7 +24,6 @@ export type PlanningRuntime = {
     lock: PlanningIssueLock,
   ) => ReturnType<typeof coordinatePlanningPhases>;
 };
-
 export type PlanningRuntimeInput = {
   runner: CommandRunner;
   config: AgentIssueConfig;
@@ -47,7 +36,7 @@ export type PlanningRuntimeInput = {
   piAgentDir: string;
   tokenUsageState: { total: number };
   progressReporter?: Parameters<
-    typeof runImplementationAgent
+    typeof createPlanningImplementationAdapter
   >[0]["progressReporter"];
   streamPiOutput?: ((chunk: string) => void) | undefined;
   verbosePiOutput?: boolean | undefined;
@@ -57,18 +46,7 @@ export type PlanningRuntimeInput = {
   host?: RunOnceHostProvider;
 };
 
-function planPath(state: PlanningStateV1): string {
-  for (const phase of state.phases)
-    if ("artifacts" in phase) {
-      const path = phase.artifacts.find(
-        (artifact) => artifact.kind === "plan",
-      )?.path;
-      if (path) return path;
-    }
-  throw new Error("Planning implementation requires a durable plan path");
-}
-
-/** Builds the production planning coordinator callback without legacy run state. */
+/** Constructs boring Git, host, and coordinator services for planning-pr-v1. */
 export function createPlanningRuntime(
   input: PlanningRuntimeInput,
 ): PlanningRuntime {
@@ -126,10 +104,6 @@ export function createPlanningRuntime(
       tokenUsageState: input.tokenUsageState,
     },
   });
-  const steps = createStepAccounting({
-    progress: input.progressReporter,
-    issueNumber: input.issue.number,
-  });
   const git = {
     baseBranch: input.config.baseBranch,
     baseRef: input.config.baseRef,
@@ -146,12 +120,7 @@ export function createPlanningRuntime(
         state,
         issue: input.issue,
         planOnly: input.config.planOnly,
-        runPlanningPhase: async ({
-          state: current,
-          phaseIndex,
-          phase,
-          planOnly,
-        }) =>
+        runPlanningPhase: ({ state: current, phaseIndex, phase, planOnly }) =>
           runPlanningPhase({
             state: current,
             phaseIndex,
@@ -194,217 +163,33 @@ export function createPlanningRuntime(
               },
             },
             implementation: {
-              implementation: {
-                configuredGit: git,
-                runAgent: async ({
-                  state: durable,
-                  phase: implementation,
-                  git: policy,
-                  requiredPullRequestMarker,
-                  workspaceCreated,
-                }) => {
-                  const durablePlan = planPath(durable);
-                  const result = await runImplementationAgent({
-                    runner: input.runner,
-                    config: input.config,
-                    issue: input.issue,
-                    labels: input.labels,
-                    planPath: durablePlan,
-                    branch: implementation.workspace.identity.branch,
-                    worktreePath:
-                      implementation.workspace.identity.worktreePath,
-                    worktree: {
-                      branch: implementation.workspace.identity.branch,
-                      worktreePath:
-                        implementation.workspace.identity.worktreePath,
-                      created: workspaceCreated,
-                      hasExistingCommits:
-                        implementation.workspace.headOid !==
-                        implementation.workspace.baseOid,
-                      existingCommits:
-                        implementation.workspace.headOid !==
-                        implementation.workspace.baseOid
-                          ? [implementation.workspace.headOid]
-                          : [],
-                    },
-                    git: policy as typeof git,
-                    resume: {
-                      resumed: !workspaceCreated,
-                    },
-                    piAgentDir: input.piAgentDir,
-                    tokenUsageState: input.tokenUsageState,
-                    completedAt: (
-                      input.now ?? (() => new Date())
-                    )().toISOString(),
-                    progressReporter: input.progressReporter,
-                    streamPiOutput: input.streamPiOutput,
-                    verbosePiOutput: input.verbosePiOutput,
-                    heartbeatMs: input.heartbeatMs,
-                    piSessionPath: input.piSessionPath,
-                    requiredPullRequestMarker,
-                    progress: (level, stage, message, extras) =>
-                      progress(
-                        { progress: input.progressReporter },
-                        level,
-                        stage,
-                        message,
-                        { issueNumber: input.issue.number, ...extras },
-                      ),
-                    runStep: steps.run,
-                    stepStart: steps.start,
-                    stepComplete: steps.complete,
-                    observePi: (stage) => async (observation) =>
-                      steps.observe(stage, observation),
-                  });
-                  if (result.kind === "implemented") return result.result;
-                  if (result.kind === "blocked") return result.result;
-                  return {
-                    status: "blocked",
-                    reason: result.result.reason,
-                    questions: [],
-                    commits: [],
-                    validation: [],
-                  };
-                },
-                resolveRunCost: () =>
-                  resolvePipelineRunCost({
-                    implementationKind: "implemented",
-                    implementationStatus: "pr-created",
-                    ...(input.piSessionPath === undefined
-                      ? {}
-                      : { piSessionPath: input.piSessionPath }),
-                    warn: (message, error) =>
-                      progress(
-                        { progress: input.progressReporter },
-                        "warning",
-                        "run-cost",
-                        message,
-                        {
-                          issueNumber: input.issue.number,
-                          data:
-                            error instanceof Error
-                              ? error.message
-                              : String(error ?? ""),
-                        },
-                      ),
-                  }),
-                ...(input.now === undefined ? {} : { now: input.now }),
-              },
-              finish: (durable) => ({
-                effects: {
-                  publishCost: async () => {
-                    const implementation = durable.phases[phaseIndex];
-                    if (
-                      implementation?.kind !== "implementation" ||
-                      !("implementation" in implementation) ||
-                      implementation.implementation.runCostReport ===
-                        undefined ||
-                      !("pullRequest" in implementation)
-                    )
-                      return;
-                    const report = implementation.implementation.runCostReport;
-                    await publishPlanningPrRunCost({
-                      host,
-                      prUrl: implementation.pullRequest.url,
-                      marker: renderPlanningPullRequestMarker({
-                        issueNumber: durable.issueNumber,
-                        phase: "implementation",
-                      }),
-                      report: {
-                        stages: report.stages.map((stage) => ({
-                          stage: stage.stage,
-                          models: stage.models.map((model) => ({ ...model })),
-                          promptTokens: stage.promptTokens,
-                          outputTokens: stage.outputTokens,
-                          estimatedCostUsd: stage.estimatedCostUsd,
-                        })),
-                        promptTokens: report.promptTokens,
-                        outputTokens: report.outputTokens,
-                        estimatedCostUsd: report.estimatedCostUsd,
-                      },
-                    });
-                  },
-                  validateVisualEvidence: async () => {
-                    const implementation = durable.phases[phaseIndex];
-                    if (
-                      implementation?.kind === "implementation" &&
-                      "implementation" in implementation
-                    )
-                      await validateVisualEvidenceReferences({
-                        repoRoot: resolve(
-                          input.config.repoRoot,
-                          implementation.workspace.identity.worktreePath,
-                        ),
-                        evidence:
-                          implementation.implementation.visualEvidence.map(
-                            (item) => ({
-                              screenshotPath: item.screenshotPath,
-                              ...(item.caption === undefined
-                                ? {}
-                                : { caption: item.caption }),
-                              ...(item.referencePaths === undefined
-                                ? {}
-                                : { referencePaths: [...item.referencePaths] }),
-                              ...(item.url === undefined
-                                ? {}
-                                : { url: item.url }),
-                            }),
-                          ),
-                        runner: input.runner,
-                        referenceScreenshotPaths:
-                          input.config.projectPolicy.visualEvidence
-                            .referenceScreenshotPaths,
-                      });
-                  },
-                  postHandoff: async (result) => {
-                    const body = handoffComment(
-                      planPath(durable),
-                      result,
-                      input.config.baseBranch,
-                    );
-                    const current = await host.viewIssue(input.issue.number);
-                    if (
-                      !current.comments?.some(
-                        (comment) => comment.body === body,
-                      )
-                    )
-                      await host.commentIssue(input.issue.number, body);
-                  },
-                  cleanupHook: async () => {
-                    const implementation = durable.phases[phaseIndex];
-                    if (
-                      implementation?.kind !== "implementation" ||
-                      !("workspace" in implementation)
-                    )
-                      return;
-                    const results = await runCleanupHookScript(
-                      input.runner,
-                      input.config.repoRoot,
-                      implementation.workspace.identity.worktreePath,
-                      input.config.cleanupHook,
-                    );
-                    if (results.some((result) => result.status === "failed"))
-                      throw new Error("Planning cleanup hook failed");
-                  },
-                  ensureDoneLabel: async () =>
-                    ensureAutomationLabel(host, input.config, input.doneLabel),
-                  applyDoneLabels: async () =>
-                    host.applyLabels(
-                      planLabelChange(
-                        input.issue.number,
-                        input.labels,
-                        nextLabels(
-                          cleanupLabelsForImplementation(input.labels, {
-                            readyLabel: input.readyLabel,
-                            policy: input.config.approvalPolicy,
-                          }),
-                          [input.inProgressLabel, input.needsInfoLabel],
-                          [input.doneLabel],
-                        ),
-                      ),
-                    ),
-                },
-                ...(input.now === undefined ? {} : { now: input.now }),
+              implementation: createPlanningImplementationAdapter({
+                runner: input.runner,
+                config: input.config,
+                issue: input.issue,
+                labels: input.labels,
+                git,
+                piAgentDir: input.piAgentDir,
+                tokenUsageState: input.tokenUsageState,
+                progressReporter: input.progressReporter,
+                streamPiOutput: input.streamPiOutput,
+                verbosePiOutput: input.verbosePiOutput,
+                heartbeatMs: input.heartbeatMs,
+                piSessionPath: input.piSessionPath,
+                now: input.now,
+              }),
+              finish: createPlanningFinishEffects({
+                runner: input.runner,
+                config: input.config,
+                issue: input.issue,
+                labels: input.labels,
+                readyLabel: input.readyLabel,
+                inProgressLabel: input.inProgressLabel,
+                doneLabel: input.doneLabel,
+                needsInfoLabel: input.needsInfoLabel,
+                host,
+                phaseIndex,
+                now: input.now,
               }),
             },
             ...(input.now === undefined ? {} : { now: input.now }),

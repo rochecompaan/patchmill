@@ -1,3 +1,4 @@
+import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import {
   PlanningPublicationGitError,
   type PlanningPublicationOperations,
@@ -43,11 +44,11 @@ export type PlanningImplementationInput = {
     PlanningPublicationOperations,
     "inspectRemoteHead" | "assertAncestor"
   >;
-  configuredGit: Record<string, unknown>;
+  configuredGit: GitWorktreeStrategyConfig;
   runAgent(input: {
     state: PlanningStateV1;
     phase: ImplementationWorkspaceReadyPlanningPhase;
-    git: Record<string, unknown>;
+    git: GitWorktreeStrategyConfig;
     requiredPullRequestMarker: string;
     workspaceCreated: boolean;
   }): Promise<
