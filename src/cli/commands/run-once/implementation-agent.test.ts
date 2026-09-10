@@ -48,6 +48,10 @@ test("keeps planning implementation todos in the primary repository", async () =
     piAgentDir: join(config.repoRoot, ".patchmill/pi-agent"),
     tokenUsageState: { total: 0 },
     completedAt: "2026-09-10T00:00:00.000Z",
+    taskContract: {
+      ...config.projectPolicy.pi.taskContract,
+      todoRoot: join(config.repoRoot, ".pi/todos"),
+    },
     progress: async () => {},
     runStep: async (_label, fn) => fn(),
     stepStart: async () => {},

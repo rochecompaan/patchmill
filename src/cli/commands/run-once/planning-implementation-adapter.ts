@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { runImplementationAgent } from "./implementation-agent.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
@@ -74,6 +75,13 @@ export function createPlanningImplementationAdapter(
         heartbeatMs: input.heartbeatMs,
         piSessionPath: input.piSessionPath,
         requiredPullRequestMarker,
+        taskContract: {
+          ...input.config.projectPolicy.pi.taskContract,
+          todoRoot: resolve(
+            input.config.repoRoot,
+            input.config.projectPolicy.pi.taskContract.todoRoot,
+          ),
+        },
         progress: (level, stage, message, extras) =>
           progress(
             { progress: input.progressReporter },

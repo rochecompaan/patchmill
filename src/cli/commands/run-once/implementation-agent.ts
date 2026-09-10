@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import type { PatchmillPiTaskContract } from "../../../policy/task-contract.ts";
 import {
   profileExtensionArgs,
   runOnceImplementationPiProfile,
@@ -59,6 +60,8 @@ export type ImplementationAgentInput = {
   heartbeatMs?: number | undefined;
   piSessionPath?: string | undefined;
   requiredPullRequestMarker?: string | undefined;
+  /** Planning runs pin operator todo state outside their owned worktree. */
+  taskContract?: PatchmillPiTaskContract | undefined;
   progress: (
     level: AgentIssueProgressEvent["level"],
     stage: string,
@@ -112,15 +115,8 @@ export async function runImplementationAgent(
       issueNumber: input.issue.number,
     },
   );
-  // Pi runs in the owned phase worktree, while operator todos stay in the
-  // primary repository so ignored task files cannot make that worktree dirty.
-  const taskContract = {
-    ...input.config.projectPolicy.pi.taskContract,
-    todoRoot: resolve(
-      input.config.repoRoot,
-      input.config.projectPolicy.pi.taskContract.todoRoot,
-    ),
-  };
+  const taskContract =
+    input.taskContract ?? input.config.projectPolicy.pi.taskContract;
   const taskProgress = await createImplementationTaskProgress({
     repoRoot: input.config.repoRoot,
     worktreeRoot,
