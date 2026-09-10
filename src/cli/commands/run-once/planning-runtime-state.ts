@@ -1,4 +1,6 @@
+import type { AgentIssuePrCreatedResult } from "./types.ts";
 import type {
+  ImplementationCompletePlanningPhase,
   ImplementationPullRequestOpenPlanningPhase,
   PlanningArtifactEvidence,
   PlanningStateV1,
@@ -22,12 +24,43 @@ export function artifactPath(
 }
 
 /** Selects the validated implementation evidence required for finish effects. */
+export function durableImplementationResult(
+  phase: ImplementationCompletePlanningPhase,
+): AgentIssuePrCreatedResult {
+  return {
+    status: "pr-created",
+    prUrl: phase.pullRequest.url,
+    branch: phase.implementation.branch,
+    commits: [...phase.implementation.commits],
+    validation: [...phase.implementation.validation],
+    ...(phase.implementation.reviewSummary === undefined
+      ? {}
+      : { reviewSummary: phase.implementation.reviewSummary }),
+    ...(phase.implementation.landingDecision === undefined
+      ? {}
+      : { landingDecision: phase.implementation.landingDecision }),
+    visualEvidence: phase.implementation.visualEvidence.map((evidence) => ({
+      screenshotPath: evidence.screenshotPath,
+      ...(evidence.caption === undefined ? {} : { caption: evidence.caption }),
+      ...(evidence.referencePaths === undefined
+        ? {}
+        : { referencePaths: [...evidence.referencePaths] }),
+      ...(evidence.url === undefined ? {} : { url: evidence.url }),
+    })),
+  };
+}
+
 export function requiredImplementationFinishContext(
   state: PlanningStateV1,
   phaseIndex: number,
-): ImplementationPullRequestOpenPlanningPhase {
+):
+  | ImplementationPullRequestOpenPlanningPhase
+  | ImplementationCompletePlanningPhase {
   const phase = state.phases[phaseIndex];
-  if (phase?.kind !== "implementation" || phase.status !== "pull-request-open")
+  if (
+    phase?.kind !== "implementation" ||
+    (phase.status !== "pull-request-open" && phase.status !== "complete")
+  )
     throw new Error(
       "Planning finish requires a validated implementation pull request",
     );

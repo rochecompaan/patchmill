@@ -28,6 +28,17 @@ test("selects one durable planning artifact and validated implementation finish 
   assert.equal(requiredImplementationFinishContext(state, 1), state.phases[1]);
 });
 
+test("accepts terminal complete implementation evidence for idempotent finish", () => {
+  const terminal = {
+    ...state,
+    phases: [{ ...state.phases[1]!, status: "complete" }],
+  } as never;
+  assert.equal(
+    requiredImplementationFinishContext(terminal, 0),
+    terminal.phases[0],
+  );
+});
+
 test("rejects missing artifacts and unvalidated finish phases", () => {
   assert.throws(() => artifactPath(state, "planx" as never));
   assert.throws(() => requiredImplementationFinishContext(state, 0));

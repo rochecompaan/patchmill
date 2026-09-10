@@ -340,3 +340,53 @@ test("finishes implementation only after the implementation runner validates it"
   assert.equal(result.kind, "complete");
   assert.equal(finished, true);
 });
+
+test("returns durable terminal implementation result without rerunning implementation", async () => {
+  const terminal = state({
+    kind: "implementation",
+    status: "complete",
+    workspace,
+    artifacts: [],
+    pullRequest: { url: "https://example.test/pr/189" },
+    implementation: {
+      branch: workspace.identity.branch,
+      commits: [],
+      validation: [],
+      visualEvidence: [],
+    },
+  });
+  let implementationRuns = 0;
+  let finishEffects = 0;
+  const result = await runPlanningPhase(
+    input({
+      state: terminal,
+      implementation: {
+        implementation: {},
+        finish: () => {
+          finishEffects += 1;
+          return {};
+        },
+      },
+      operations: {
+        runImplementation: async () => ((implementationRuns += 1), {}),
+        finishImplementation: async ({
+          state: durable,
+        }: {
+          state: unknown;
+        }) => ({
+          state: durable,
+          result: {
+            status: "pr-created",
+            prUrl: "https://example.test/pr/189",
+            branch: workspace.identity.branch,
+            commits: [],
+            validation: [],
+          },
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "complete");
+  assert.equal(implementationRuns, 0);
+  assert.equal(finishEffects, 0);
+});

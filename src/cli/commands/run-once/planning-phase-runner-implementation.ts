@@ -3,6 +3,7 @@ import type {
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
+import { durableImplementationResult } from "./planning-runtime-state.ts";
 import {
   blocked,
   operations,
@@ -51,6 +52,12 @@ export async function runPlanningImplementationPhase(
     throw new RangeError(
       "Planning phase does not match durable implementation state",
     );
+  if (phase.status === "complete")
+    return {
+      kind: "complete",
+      state,
+      result: durableImplementationResult(phase),
+    };
   if (phase.status === "pending") {
     try {
       state = await prepare(input, state);
