@@ -1043,6 +1043,20 @@ test("requires an empty finish checkpoint when implementation PR validation open
     () => assertPlanningStateReplacement(current, next),
     PlanningStateValidationError,
   );
+  const preHookCheckpoint = structuredClone(next);
+  preHookCheckpoint.phases[0]!.finish = {
+    costPublicationCompleted: true,
+    visualEvidenceValidated: true,
+    handoffCommentPosted: true,
+    cleanupHookStarted: true,
+  };
+  assert.throws(
+    () => validatePlanningState(preHookCheckpoint),
+    (error: unknown) =>
+      error instanceof PlanningStateValidationError &&
+      error.reason === "unknown-key" &&
+      error.path.endsWith(".cleanupHookStarted"),
+  );
 });
 
 test("preserves complete sanitized implementation agent evidence", () => {

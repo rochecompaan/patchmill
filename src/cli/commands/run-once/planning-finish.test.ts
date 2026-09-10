@@ -112,6 +112,7 @@ function input(initial = state(), fail?: string) {
     events,
     warnings,
     checkpoints,
+    state: () => current,
     value: {
       state: initial,
       phaseIndex: 0,
@@ -170,7 +171,7 @@ test("finishes in durable external-effect and cleanup order", async () => {
     "ensureDoneLabel",
     "applyDoneLabels",
   ]);
-  assert.equal(run.checkpoints.length, 10);
+  assert.equal(run.checkpoints.length, 9);
 });
 test("warns before checkpointing a best-effort cost publication failure", async () => {
   const run = input(state(), "publishCost");
@@ -187,20 +188,40 @@ test("warns before checkpointing a best-effort cost publication failure", async 
   );
 });
 
-test("does not rerun an interrupted cleanup hook or later effects", async () => {
-  const run = input(
-    state({
-      costPublicationCompleted: true,
-      visualEvidenceValidated: true,
-      handoffCommentPosted: true,
-      cleanupHookStarted: true,
-    }),
-  );
+test("retries a failed cleanup hook from the last completed checkpoint", async () => {
+  const run = input();
+  let attempts = 0;
+  run.value.effects.cleanupHook = async () => {
+    run.events.push("cleanupHook");
+    if (attempts++ === 0) throw new Error("cleanup hook failed");
+  };
   await assert.rejects(
     finishPlanningImplementation(run.value),
-    /operator repair/,
+    /cleanup hook failed/,
   );
-  assert.deepEqual(run.events, []);
+  assert.deepEqual(run.events, [
+    "publishCost",
+    "validateVisualEvidence",
+    "postHandoff",
+    "cleanupHook",
+  ]);
+
+  const resumed = await finishPlanningImplementation({
+    ...run.value,
+    state: run.state(),
+  });
+  assert.equal(resumed.state.phases[0]?.status, "complete");
+  assert.deepEqual(run.events, [
+    "publishCost",
+    "validateVisualEvidence",
+    "postHandoff",
+    "cleanupHook",
+    "cleanupHook",
+    "worktree",
+    "branch",
+    "ensureDoneLabel",
+    "applyDoneLabels",
+  ]);
 });
 test("effect failure prevents later effects", async () => {
   const run = input(state(), "validateVisualEvidence");

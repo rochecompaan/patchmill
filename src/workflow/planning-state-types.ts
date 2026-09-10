@@ -71,7 +71,6 @@ export const planningImplementationFinishCheckpointKeys = [
   "costPublicationCompleted",
   "visualEvidenceValidated",
   "handoffCommentPosted",
-  "cleanupHookStarted",
   "cleanupHookCompleted",
   "doneLabelEnsured",
   "doneLabelApplied",

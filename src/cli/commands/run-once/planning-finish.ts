@@ -92,19 +92,7 @@ export async function finishPlanningImplementation(
   await effect("handoffCommentPosted", () =>
     input.effects.postHandoff(durableImplementationResult(phase)),
   );
-  if (
-    phase.finish.cleanupHookStarted === true &&
-    phase.finish.cleanupHookCompleted !== true
-  )
-    throw new Error(
-      "Planning cleanup hook outcome is unknown; operator repair required",
-    );
   if (phase.finish.cleanupHookCompleted !== true) {
-    phase = { ...phase, finish: { ...phase.finish, cleanupHookStarted: true } };
-    state = await checkpoint(input, state, phase);
-    phase = state.phases[
-      input.phaseIndex
-    ] as ImplementationPullRequestOpenPlanningPhase;
     await input.effects.cleanupHook();
     phase = {
       ...phase,
