@@ -160,6 +160,7 @@ export async function runPlanningIssue(
       if (
         issue.number !== input.issue.number ||
         issue.title !== input.issue.title ||
+        current.issueNumber !== input.issue.number ||
         issue.state !== "open" ||
         !planningActive ||
         legacyActive ||
@@ -168,7 +169,7 @@ export async function runPlanningIssue(
       )
         return blocked(input.issue, "planning-identity-changed");
       if (saved !== undefined && saved.runId !== lock.record.runId) {
-        if (retriedAuthoritativeRun)
+        if (input.expectedStatePresence !== "absent" || retriedAuthoritativeRun)
           return blocked(input.issue, "planning-identity-changed");
         const provisionalLock = lock;
         lock = undefined;

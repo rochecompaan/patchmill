@@ -97,8 +97,9 @@ export async function selectRunOnceWorkflow(
       return {
         kind: "invalid-planning-state",
         issue,
-        reason:
-          error instanceof Error ? error.message : "invalid planning state",
+        reason: `${planningState.path(issue.number)}: ${
+          error instanceof Error ? error.message : "invalid planning state"
+        }`,
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);

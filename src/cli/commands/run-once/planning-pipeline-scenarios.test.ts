@@ -127,7 +127,7 @@ test("fresh production pipeline initializes before claim, comment, and coordinat
   ]);
 });
 
-test("authoritative run-id replacement releases and retries before mutating", async () => {
+test("existing planning run-id changes fail closed without mutation", async () => {
   const initial = state({ specRequired: false, planRequired: false });
   const replacement = {
     ...initial,
@@ -176,6 +176,62 @@ test("authoritative run-id replacement releases and retries before mutating", as
       calls.push("release");
     },
   });
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(calls, [`acquire:${initial.runId}`, "release"]);
+});
+
+test("fresh initialization races retry with the authoritative run ID", async () => {
+  const initial = state({ specRequired: false, planRequired: false });
+  const replacement = {
+    ...initial,
+    runId: "223e4567-e89b-42d3-a456-426614174000",
+  } as never;
+  const calls: string[] = [];
+  const result = await runPlanningIssue({
+    issue: {
+      number: 189,
+      title: "Safety",
+      state: "open",
+      labels: ["agent-ready"],
+    } as never,
+    config: { readyLabel: "agent-ready" } as never,
+    state: initial,
+    expectedStatePresence: "absent",
+    runStateDir: "/tmp/planning-scenarios",
+    stateStore: {
+      read: async () => replacement,
+      initialize: async () => {
+        throw new Error("racing state must not be initialized twice");
+      },
+    },
+    readIssue: async () =>
+      ({
+        number: 189,
+        title: "Safety",
+        state: "open",
+        labels: ["agent-ready"],
+      }) as never,
+    readLegacy: async () => undefined,
+    mutate: async () => {
+      calls.push("mutate");
+      return [];
+    },
+    coordinate: async () => {
+      calls.push("coordinate");
+      return {
+        kind: "stopped",
+        state: replacement,
+        reason: "plan-only",
+      } as never;
+    },
+    acquire: async (_dir, identity) => {
+      calls.push(`acquire:${identity.runId}`);
+      return { record: { runId: identity.runId } } as never;
+    },
+    release: async () => {
+      calls.push("release");
+    },
+  });
   assert.equal(result.status, "coordinated");
   assert.deepEqual(calls, [
     `acquire:${initial.runId}`,
@@ -185,6 +241,48 @@ test("authoritative run-id replacement releases and retries before mutating", as
     "coordinate",
     "release",
   ]);
+});
+
+test("post-lock state for another issue blocks before mutation", async () => {
+  let mutated = false;
+  const initial = state({ specRequired: false, planRequired: false });
+  const result = await runPlanningIssue({
+    issue: {
+      number: 189,
+      title: "Safety",
+      state: "open",
+      labels: ["agent-ready"],
+    } as never,
+    config: { readyLabel: "agent-ready" } as never,
+    state: initial,
+    expectedStatePresence: "present",
+    runStateDir: "/tmp/planning-scenarios",
+    stateStore: {
+      read: async () => ({ ...initial, issueNumber: 190 }),
+      initialize: async () => {
+        throw new Error("unreachable");
+      },
+    },
+    readIssue: async () =>
+      ({
+        number: 189,
+        title: "Safety",
+        state: "open",
+        labels: ["agent-ready"],
+      }) as never,
+    readLegacy: async () => undefined,
+    mutate: async () => {
+      mutated = true;
+      return [];
+    },
+    coordinate: async () => {
+      throw new Error("unreachable");
+    },
+    acquire: async () => ({ record: { runId: initial.runId } }) as never,
+    release: async () => {},
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(mutated, false);
 });
 
 test("active, stale, and malformed locks have distinct no-mutation outcomes", async () => {

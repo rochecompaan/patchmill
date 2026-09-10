@@ -71,4 +71,6 @@ test("returns malformed planning state rather than selecting fresh work", async 
     } as never,
   );
   assert.equal(result.kind, "invalid-planning-state");
+  if (result.kind === "invalid-planning-state")
+    assert.match(result.reason, /state: invalid-json/);
 });
