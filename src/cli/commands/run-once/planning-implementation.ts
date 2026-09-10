@@ -6,6 +6,7 @@ import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspace
 import type { PullRequestHost } from "../../../host/pull-requests.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
+import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
@@ -113,19 +114,13 @@ async function replace(
   state: PlanningStateV1,
   phase: PlanningStateV1["phases"][number],
 ): Promise<PlanningStateV1> {
-  return input.stateStore.replace({
-    issueNumber: state.issueNumber,
-    expectedRunId: state.runId,
-    expectedRevision: state.revision,
+  return replacePlanningPhase({
+    stateStore: input.stateStore,
     lock: input.lock,
-    next: {
-      ...state,
-      revision: state.revision + 1,
-      updatedAt: (input.now ?? (() => new Date()))().toISOString(),
-      phases: state.phases.map((item, index) =>
-        index === input.phaseIndex ? phase : item,
-      ),
-    },
+    state,
+    phaseIndex: input.phaseIndex,
+    phase,
+    ...(input.now === undefined ? {} : { now: input.now }),
   });
 }
 
