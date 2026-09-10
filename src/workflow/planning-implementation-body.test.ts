@@ -16,8 +16,12 @@ test("requires one effective top-level implementation closing reference", () => 
     "  ~~~md\nCloses #189",
     "> Closes #189",
     "> Example closing syntax:\nCloses #189",
+    "  > Example closing syntax:\nCloses #189",
     "    Closes #189",
     "- Closes #189",
+    "   - Example closing syntax:\nCloses #189",
+    "1. Example closing syntax:\nCloses #189",
+    "1) Example closing syntax:\nCloses #189",
     "- Example closing syntax:\nCloses #189",
     "Closes #190",
     "Refs #189",
@@ -28,4 +32,6 @@ test("requires one effective top-level implementation closing reference", () => 
         error instanceof PlanningImplementationBodyError &&
         error.reason === "closing-reference",
     );
+  for (const body of ["- - -\nCloses #189", "  ***\nCloses #189"])
+    assert.doesNotThrow(() => assertImplementationClosingReference(body, 189));
 });

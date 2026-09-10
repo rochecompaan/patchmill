@@ -9,15 +9,26 @@ export class PlanningImplementationBodyError extends Error {
   }
 }
 
+function thematicBreak(line: string): boolean {
+  if (/^(?:[ ]{4}|\t)/u.test(line)) return false;
+  const markers = line.replace(/^[ ]{0,3}/u, "").replace(/[ \t]/gu, "");
+  return /^(?:\*{3,}|-{3,}|_{3,})$/u.test(markers);
+}
+
+function lazyContainer(line: string): boolean {
+  if (thematicBreak(line)) return false;
+  return /^(?:[ ]{0,3}>|[ ]{0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+)/u.test(line);
+}
+
 function effectiveTopLevelLines(body: string): readonly string[] {
   const lines = body.replaceAll("\r\n", "\n").split("\n");
   const output: string[] = [];
   let fence: string | undefined;
-  let lazyContainer = false;
+  let inLazyContainer = false;
   for (const line of lines) {
     const topLevel = line.replace(/^[ ]{0,3}/u, "");
     if (line.trim() === "") {
-      lazyContainer = false;
+      inLazyContainer = false;
       output.push(line);
       continue;
     }
@@ -38,11 +49,12 @@ function effectiveTopLevelLines(body: string): readonly string[] {
       fence = opening;
       continue;
     }
-    if (line.startsWith(">") || /^(?:[ \t]{4}|\t|[-*+]\s)/u.test(line)) {
-      lazyContainer = line.startsWith(">") || /^(?:[-*+]\s)/u.test(line);
+    if (/^(?:[ \t]{4}|\t)/u.test(line)) continue;
+    if (lazyContainer(line)) {
+      inLazyContainer = true;
       continue;
     }
-    if (lazyContainer) continue;
+    if (inLazyContainer) continue;
     output.push(line);
   }
   return output;
