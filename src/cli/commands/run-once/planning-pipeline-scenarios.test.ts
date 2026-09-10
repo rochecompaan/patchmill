@@ -17,37 +17,78 @@ function state(gates: { specRequired: boolean; planRequired: boolean }) {
   } as never;
 }
 
-test("all gate assignments run only the first unreviewed planning phase", async () => {
-  for (const gates of [
-    { specRequired: false, planRequired: false },
-    { specRequired: true, planRequired: false },
-    { specRequired: false, planRequired: true },
-    { specRequired: true, planRequired: true },
-  ]) {
+test("all gate assignments preserve review stops across merged-phase attempts", async () => {
+  const cases = [
+    {
+      gates: { specRequired: false, planRequired: false },
+      sequence: ["implementation"],
+    },
+    {
+      gates: { specRequired: true, planRequired: false },
+      sequence: ["spec:review", "spec:merged", "implementation"],
+    },
+    {
+      gates: { specRequired: false, planRequired: true },
+      sequence: ["plan:review", "plan:merged", "implementation"],
+    },
+    {
+      gates: { specRequired: true, planRequired: true },
+      sequence: [
+        "spec:review",
+        "spec:merged",
+        "plan:review",
+        "plan:merged",
+        "implementation",
+      ],
+    },
+  ];
+  for (const { gates, sequence } of cases) {
     const calls: string[] = [];
-    const outcome = await coordinatePlanningPhases({
-      state: state(gates),
-      issue,
-      runPlanningPhase: async ({ phase }) => {
-        calls.push(phase.kind);
-        return phase.kind === "implementation"
-          ? {
+    const reviewed = new Set<number>();
+    let current = state(gates);
+    for (;;) {
+      const outcome = await coordinatePlanningPhases({
+        state: current,
+        issue,
+        runPlanningPhase: async ({
+          phase,
+          phaseIndex,
+          state: currentState,
+        }) => {
+          if (phase.kind === "implementation") {
+            calls.push("implementation");
+            return {
               kind: "complete",
-              state: state(gates),
+              state: currentState,
               result: { status: "pr-created" } as never,
-            }
-          : {
-              kind: "review-pending",
-              state: state(gates),
-              prUrl: "https://example.test/pr/1",
             };
-      },
-    });
-    assert.equal(calls.length, 1);
-    assert.equal(
-      outcome.kind,
-      gates.specRequired || gates.planRequired ? "review-pending" : "complete",
-    );
+          }
+          if (!reviewed.has(phaseIndex)) {
+            reviewed.add(phaseIndex);
+            calls.push(`${phase.kind}:review`);
+            return {
+              kind: "review-pending",
+              state: currentState,
+              prUrl: `https://example.test/${phase.kind}`,
+            };
+          }
+          calls.push(`${phase.kind}:merged`);
+          return {
+            kind: "advanced",
+            state: {
+              ...currentState,
+              phases: currentState.phases.map((saved, index) =>
+                index === phaseIndex ? { ...saved, status: "complete" } : saved,
+              ),
+            },
+          } as never;
+        },
+      });
+      current = outcome.state;
+      if (outcome.kind === "complete") break;
+      assert.equal(outcome.kind, "review-pending");
+    }
+    assert.deepEqual(calls, sequence);
   }
 });
 
