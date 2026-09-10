@@ -350,9 +350,18 @@ test("returns durable terminal implementation result without rerunning implement
     pullRequest: { url: "https://example.test/pr/189" },
     implementation: {
       branch: workspace.identity.branch,
-      commits: [],
-      validation: [],
-      visualEvidence: [],
+      commits: ["abc123"],
+      validation: ["npm test"],
+      reviewSummary: "approved",
+      landingDecision: "no-direct-land",
+      visualEvidence: [
+        {
+          screenshotPath: "artifacts/terminal.png",
+          caption: "terminal",
+          referencePaths: ["reference.png"],
+          url: "https://example.test/evidence",
+        },
+      ],
     },
   });
   let implementationRuns = 0;
@@ -387,6 +396,27 @@ test("returns durable terminal implementation result without rerunning implement
     }),
   );
   assert.equal(result.kind, "complete");
+  assert.deepEqual(result.result, {
+    status: "pr-created",
+    prUrl: "https://example.test/pr/189",
+    branch: workspace.identity.branch,
+    commits: ["abc123"],
+    validation: ["npm test"],
+    reviewSummary: "approved",
+    landingDecision: "no-direct-land",
+    visualEvidence: [
+      {
+        screenshotPath: "artifacts/terminal.png",
+        caption: "terminal",
+        referencePaths: ["reference.png"],
+        url: "https://example.test/evidence",
+      },
+    ],
+  });
+  assert.notEqual(
+    result.result.visualEvidence[0]?.referencePaths,
+    terminal.phases[0]!.implementation.visualEvidence[0]!.referencePaths,
+  );
   assert.equal(implementationRuns, 0);
   assert.equal(finishEffects, 0);
 });

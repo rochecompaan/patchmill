@@ -8,6 +8,7 @@ import type {
   PlanningPhaseStateV1,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
+import { durableImplementationResult } from "./planning-runtime-state.ts";
 import type { AgentIssuePrCreatedResult } from "./types.ts";
 
 export type PlanningFinishInput = {
@@ -29,34 +30,6 @@ export type PlanningFinishInput = {
   };
   now?: () => Date;
 };
-
-function resultFor(
-  phase:
-    | ImplementationPullRequestOpenPlanningPhase
-    | ImplementationCompletePlanningPhase,
-): AgentIssuePrCreatedResult {
-  return {
-    status: "pr-created",
-    prUrl: phase.pullRequest.url,
-    branch: phase.implementation.branch,
-    commits: [...phase.implementation.commits],
-    validation: [...phase.implementation.validation],
-    ...(phase.implementation.reviewSummary === undefined
-      ? {}
-      : { reviewSummary: phase.implementation.reviewSummary }),
-    ...(phase.implementation.landingDecision === undefined
-      ? {}
-      : { landingDecision: phase.implementation.landingDecision }),
-    visualEvidence: phase.implementation.visualEvidence.map((evidence) => ({
-      screenshotPath: evidence.screenshotPath,
-      ...(evidence.caption === undefined ? {} : { caption: evidence.caption }),
-      ...(evidence.referencePaths === undefined
-        ? {}
-        : { referencePaths: [...evidence.referencePaths] }),
-      ...(evidence.url === undefined ? {} : { url: evidence.url }),
-    })),
-  };
-}
 
 async function checkpoint(
   input: PlanningFinishInput,
@@ -82,7 +55,7 @@ export async function finishPlanningImplementation(
   if (initial?.kind !== "implementation")
     throw new RangeError("Invalid implementation phase");
   if (initial.status === "complete")
-    return { state, result: resultFor(initial) };
+    return { state, result: durableImplementationResult(initial) };
   if (initial.status !== "pull-request-open")
     throw new RangeError("Implementation pull request has not been validated");
   let phase: ImplementationPullRequestOpenPlanningPhase = initial;
@@ -116,7 +89,7 @@ export async function finishPlanningImplementation(
   }
   await effect("visualEvidenceValidated", input.effects.validateVisualEvidence);
   await effect("handoffCommentPosted", () =>
-    input.effects.postHandoff(resultFor(phase)),
+    input.effects.postHandoff(durableImplementationResult(phase)),
   );
   if (
     phase.finish.cleanupHookStarted === true &&
@@ -207,5 +180,5 @@ export async function finishPlanningImplementation(
     completion: { kind: "implementation-pull-request" as const },
   } as ImplementationCompletePlanningPhase;
   state = await checkpoint(input, state, complete);
-  return { state, result: resultFor(complete) };
+  return { state, result: durableImplementationResult(complete) };
 }

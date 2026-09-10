@@ -25,7 +25,9 @@ export function artifactPath(
 
 /** Selects the validated implementation evidence required for finish effects. */
 export function durableImplementationResult(
-  phase: ImplementationCompletePlanningPhase,
+  phase:
+    | ImplementationPullRequestOpenPlanningPhase
+    | ImplementationCompletePlanningPhase,
 ): AgentIssuePrCreatedResult {
   return {
     status: "pr-created",
