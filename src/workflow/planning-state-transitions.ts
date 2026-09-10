@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
 import type {
   PlanningArtifactEvidence,
   PlanningPhaseStateV1,
@@ -128,15 +129,7 @@ function assertImplementationFinish(
   next: Record<string, unknown>,
   index: number,
 ): boolean {
-  const steps = [
-    "costPublicationCompleted",
-    "visualEvidenceValidated",
-    "handoffCommentPosted",
-    "cleanupHookStarted",
-    "cleanupHookCompleted",
-    "doneLabelEnsured",
-    "doneLabelApplied",
-  ];
+  const steps = planningImplementationFinishCheckpointKeys;
   const additions = steps.filter(
     (step) => current[step] !== true && next[step] === true,
   );

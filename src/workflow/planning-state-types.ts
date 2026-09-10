@@ -66,15 +66,21 @@ export type PlanningImplementationAgentEvidence = Readonly<{
   visualEvidence: readonly PlanningImplementationVisualEvidence[];
   runCostReport?: PlanningRunCostEvidence;
 }>;
-export type PlanningImplementationFinishCheckpoints = Readonly<{
-  costPublicationCompleted?: true;
-  visualEvidenceValidated?: true;
-  handoffCommentPosted?: true;
-  cleanupHookStarted?: true;
-  cleanupHookCompleted?: true;
-  doneLabelEnsured?: true;
-  doneLabelApplied?: true;
-}>;
+/** Ordered durable effects required before an implementation PR can be terminal. */
+export const planningImplementationFinishCheckpointKeys = [
+  "costPublicationCompleted",
+  "visualEvidenceValidated",
+  "handoffCommentPosted",
+  "cleanupHookStarted",
+  "cleanupHookCompleted",
+  "doneLabelEnsured",
+  "doneLabelApplied",
+] as const;
+export type PlanningImplementationFinishCheckpoints = Readonly<
+  Partial<
+    Record<(typeof planningImplementationFinishCheckpointKeys)[number], true>
+  >
+>;
 type PlanningPhasePullRequestKind = "spec" | "plan";
 
 export type WorkspaceReadyPlanningPhase = Readonly<{

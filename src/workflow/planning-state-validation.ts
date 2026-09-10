@@ -22,6 +22,7 @@ import {
   type PlanningArtifactKind,
   type PlanningGateSnapshot,
 } from "./planning-pull-requests.ts";
+import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
 import type {
   PlanningArtifactEvidence,
   PlanningImplementationFinishCheckpoints,
@@ -513,20 +514,13 @@ function implementationEvidence(value: unknown, path: string) {
   };
 }
 function implementationFinish(value: unknown, path: string) {
-  const allowed = [
-    "costPublicationCompleted",
-    "visualEvidenceValidated",
-    "handoffCommentPosted",
-    "cleanupHookStarted",
-    "cleanupHookCompleted",
-    "doneLabelEnsured",
-    "doneLabelApplied",
-  ];
+  const allowed = planningImplementationFinishCheckpointKeys;
   if (value === null || typeof value !== "object" || Array.isArray(value))
     fail("expected-object", path);
   const parsed = value as Record<string, unknown>;
   for (const key of Object.keys(parsed))
-    if (!allowed.includes(key)) fail("unknown-key", `${path}.${key}`);
+    if (!(allowed as readonly string[]).includes(key))
+      fail("unknown-key", `${path}.${key}`);
   for (const key of Object.keys(parsed))
     if (parsed[key] !== true) fail("invalid-checkpoint", `${path}.${key}`);
   for (let index = 1; index < allowed.length; index += 1)
@@ -535,7 +529,7 @@ function implementationFinish(value: unknown, path: string) {
       parsed[allowed[index - 1]!] !== true
     )
       fail("skipped-finish-checkpoint", `${path}.${allowed[index]}`);
-  return parsed;
+  return parsed as PlanningImplementationFinishCheckpoints;
 }
 function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
   const raw = value as Record<string, unknown>;
@@ -720,7 +714,9 @@ function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
       evidence.branch !== workspaceEvidence.identity.branch ||
       evidence.prUrl !== pullRequestEvidence.url ||
       publicationEvidence.headOid !== workspaceEvidence.headOid ||
-      Object.keys(finish).length !== 6
+      !planningImplementationFinishCheckpointKeys.every(
+        (checkpoint) => finish[checkpoint] === true,
+      )
     )
       fail("implementation-mismatch", path);
     return {
