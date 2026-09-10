@@ -111,6 +111,64 @@ test("passes the post-prepare durable state and implementation workspace to the 
   assert.equal(received?.git.allowDirectLand, false);
 });
 
+test("checkpoints clean committed blocker progress for resumption", async () => {
+  const checkpoints: Array<{
+    phases: Array<{ workspace: { headOid: string } }>;
+  }> = [];
+  const result = await runPlanningImplementation(
+    input({
+      runAgent: async () => ({
+        status: "blocked",
+        reason: "pause",
+        questions: [],
+        commits: [],
+        validation: [],
+      }),
+      stateStore: {
+        replace: async ({ next }: { next: (typeof checkpoints)[number] }) => {
+          checkpoints.push(next);
+          return next;
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
+});
+
+test("refuses dirty blocker progress without checkpointing", async () => {
+  const checkpoints: unknown[] = [];
+  const result = await runPlanningImplementation(
+    input({
+      runAgent: async () => ({
+        status: "blocked",
+        reason: "pause",
+        questions: [],
+        commits: [],
+        validation: [],
+      }),
+      workspaces: {
+        inspect: async () => ({
+          state: "ready",
+          identity: { branch: "agent/189", worktreePath: "/worktrees/189" },
+          headOid: oid("b"),
+          clean: false,
+        }),
+      },
+      stateStore: {
+        replace: async ({ next }: { next: unknown }) => {
+          checkpoints.push(next);
+          return next;
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked")
+    assert.equal(result.result.reason, "implementation-workspace");
+  assert.deepEqual(checkpoints, []);
+});
+
 test("propagates host transport failures instead of converting them to validation blockers", async () => {
   await assert.rejects(
     runPlanningImplementation(input()),

@@ -279,15 +279,18 @@ export function createPlanningRuntime(
                           .referenceScreenshotPaths,
                     });
                 },
-                postHandoff: async (result) =>
-                  host.commentIssue(
-                    input.issue.number,
-                    handoffComment(
-                      planPath(durable),
-                      result,
-                      input.config.baseBranch,
-                    ),
-                  ),
+                postHandoff: async (result) => {
+                  const body = handoffComment(
+                    planPath(durable),
+                    result,
+                    input.config.baseBranch,
+                  );
+                  const current = await host.viewIssue(input.issue.number);
+                  if (
+                    !current.comments?.some((comment) => comment.body === body)
+                  )
+                    await host.commentIssue(input.issue.number, body);
+                },
                 cleanupHook: async () => {
                   const implementation = durable.phases[phaseIndex];
                   if (
