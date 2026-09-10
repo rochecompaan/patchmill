@@ -94,6 +94,18 @@ test("validates an exact open implementation pull request before finish", async 
   assert.equal(result.pullRequest.url, phase.implementation.prUrl);
 });
 
+test("rejects a trailing-slash agent URL that differs from host readback", async () => {
+  const validation = input();
+  validation.phase = {
+    ...phase,
+    implementation: {
+      ...phase.implementation,
+      prUrl: `${phase.implementation.prUrl}/`,
+    },
+  };
+  await assert.rejects(validatePlanningImplementation(validation), /url/);
+});
+
 test("rejects an implementation pull request that is not open", async () => {
   await assert.rejects(
     validatePlanningImplementation(input("merged")),

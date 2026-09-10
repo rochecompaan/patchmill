@@ -154,6 +154,48 @@ test("keeps a later base artifact while preparing implementation work", async ()
   assert.deepEqual(artifacts, ["plan"]);
 });
 
+test("blocks dirty resumed workspaces before planning or implementation agents", async () => {
+  for (const kind of ["spec", "plan", "implementation"] as const) {
+    let artifactRuns = 0;
+    let implementationRuns = 0;
+    const result = await runPlanningPhase(
+      input({
+        state: state({
+          kind,
+          status: "workspace-ready",
+          base,
+          workspace: { ...workspace, phase: kind },
+          artifacts: [],
+        }),
+        phase: { kind, artifactKinds: [], pullRequestRequired: true },
+        workspaces: {
+          resume: async () => ({
+            state: "ready",
+            identity: workspace.identity,
+            headOid: oid("a"),
+            clean: false,
+          }),
+        } as never,
+        operations: {
+          runArtifacts: async () => {
+            artifactRuns += 1;
+            throw new Error("unexpected artifact agent");
+          },
+          runImplementation: async () => {
+            implementationRuns += 1;
+            throw new Error("unexpected implementation agent");
+          },
+        },
+      }),
+    );
+    assert.equal(result.kind, "blocked");
+    if (result.kind === "blocked")
+      assert.equal(result.result.reason, "planning-workspace-dirty");
+    assert.equal(artifactRuns, 0);
+    assert.equal(implementationRuns, 0);
+  }
+});
+
 test("reconciles a published planning branch before any workspace effect", async () => {
   const published = state({ kind: "spec", status: "branch-pushed" });
   let prepared = false;

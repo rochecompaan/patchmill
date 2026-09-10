@@ -35,6 +35,28 @@ function fail(reason: string): never {
   throw new PlanningImplementationValidationError(reason);
 }
 
+function sameExactPullRequestUrl(
+  left: string,
+  right: string,
+  segment: "pull" | "pulls",
+): boolean {
+  try {
+    const first = parsePullRequestUrl(left, segment);
+    const second = parsePullRequestUrl(right, segment);
+    return (
+      first.protocol === second.protocol &&
+      first.hostname === second.hostname &&
+      first.port === second.port &&
+      first.owner.toLowerCase() === second.owner.toLowerCase() &&
+      first.repository.toLowerCase() === second.repository.toLowerCase() &&
+      first.number === second.number &&
+      first.hasTrailingSlash === second.hasTrailingSlash
+    );
+  } catch {
+    return false;
+  }
+}
+
 export type PlanningImplementationValidationInput = {
   state: PlanningStateV1;
   phase: ImplementationBranchPushedPlanningPhase;
@@ -121,6 +143,10 @@ export async function validatePlanningImplementation(
     if (error instanceof PlanningPullRequestValidationError) fail(error.reason);
     throw error;
   }
+  if (
+    !sameExactPullRequestUrl(phase.implementation.prUrl, validated.url, segment)
+  )
+    fail("url");
   if (validated.summary.status !== "open") fail("status");
   try {
     assertImplementationClosingReference(

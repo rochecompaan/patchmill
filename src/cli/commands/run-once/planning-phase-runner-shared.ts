@@ -157,13 +157,19 @@ export async function runWorkspaceArtifacts(
   const current = state.phases[input.phaseIndex];
   if (current?.status !== "workspace-ready")
     throw new RangeError("Planning phase workspace is not ready");
-  await input.workspaces.resume({
+  const workspace = await input.workspaces.resume({
     runId: state.runId,
     phase: current.kind,
     identity: current.workspace.identity,
     base: current.base,
     saved: current.workspace,
   });
+  if (!workspace.clean)
+    return {
+      kind: "blocked",
+      state,
+      result: blocked("planning-workspace-dirty"),
+    };
   const artifacts = await operations(input).runArtifacts({
     issue: input.issue,
     phase: input.phase,
