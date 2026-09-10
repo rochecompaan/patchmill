@@ -5,9 +5,9 @@ import {
   expectedIssueWorkspace,
 } from "../../run-once/pipeline-workspace.ts";
 import {
-  runOneIssueAfterReset,
+  runLegacyOneIssueAfterReset,
   type RunOneIssueOptions,
-} from "../../run-once/pipeline.ts";
+} from "../../run-once/pipeline-legacy.ts";
 import {
   readRunStateSnapshot,
   validateRecoveryRunState,
@@ -126,7 +126,7 @@ export type ResetIssueRunDependencies = {
   createHost: typeof createRunOnceHostProvider;
   archiveRecovery: typeof archiveRunRecovery;
   executeMutation: typeof executeRunRecoveryMutation;
-  runPipeline: typeof runOneIssueAfterReset;
+  runPipeline: typeof runLegacyOneIssueAfterReset;
 };
 export async function resetIssueRun(
   runner: CommandRunner,
@@ -243,7 +243,7 @@ export async function resetIssueRun(
       let pipelineResult;
       try {
         pipelineResult = await (
-          dependencies.runPipeline ?? runOneIssueAfterReset
+          dependencies.runPipeline ?? runLegacyOneIssueAfterReset
         )(runner, config, options, { lease, seed: decision.seed });
       } catch (error) {
         throw new ResetIssueRunRecoveryError(
