@@ -65,6 +65,26 @@ test("renders ordered sections, vertical arrays, and header metrics", () => {
   assert.match(output, /^ {2}• def456$/mu);
 });
 
+test("renders stopped reason before preserved workspace and artifact details", () => {
+  const output = formatTerminalResult(
+    {
+      status: "stopped",
+      issueNumber: 189,
+      reason: "plan-only",
+      nextPhase: "implementation",
+      specPath: "docs/specs/issue-189.md",
+      planPath: "docs/plans/issue-189.md",
+      branch: "agent/issue-189-implementation",
+      worktreePath: ".worktrees/issue-189-implementation",
+    },
+    { width: 100, color: false },
+  );
+  const reason = output.indexOf("Reason:");
+  assert.ok(reason >= 0);
+  assert.ok(reason < output.indexOf("Issue and workspace"));
+  assert.ok(reason < output.indexOf("Artifacts"));
+});
+
 test("wraps narrow output without truncating dynamic values", () => {
   const output = formatTerminalResult(summary, { width: 24, color: false });
   for (const line of output.split("\n"))
@@ -133,6 +153,19 @@ test("maps every status to its visible severity marker and label", () => {
         validation: [],
       },
       "✓ Merged",
+    ],
+    [
+      {
+        status: "review-pending",
+        issueNumber: 1,
+        phase: "spec",
+        prUrl: "https://example.test/pulls/1",
+      },
+      "! Review pending",
+    ],
+    [
+      { status: "stopped", issueNumber: 1, reason: "issue-locked" },
+      "! Stopped",
     ],
     [
       {

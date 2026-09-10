@@ -1117,4 +1117,8 @@ test("buildImplementationPrompt renders an optional planning pull request marker
     prompt,
     /<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->/,
   );
+  assert.match(
+    prompt,
+    /Closes #189\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->\n```/,
+  );
 });

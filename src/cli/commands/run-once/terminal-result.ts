@@ -59,6 +59,21 @@ export function formatTerminalResult(
   options: TerminalResultOptions,
 ): string {
   const sections: TerminalSection[] = [];
+  if (summary.status === "stopped")
+    sections.push({
+      heading: "Stopped",
+      blocks: [
+        {
+          kind: "fields",
+          fields: [
+            { label: "Reason", value: value(summary.reason) },
+            ...(summary.nextPhase !== undefined
+              ? [{ label: "Next phase", value: value(summary.nextPhase) }]
+              : []),
+          ],
+        },
+      ],
+    });
   if ("prUrl" in summary && nonblank(summary.prUrl))
     sections.push({
       heading: "Pull request",
@@ -122,21 +137,6 @@ export function formatTerminalResult(
         {
           kind: "fields",
           fields: [{ label: "Phase", value: value(summary.phase) }],
-        },
-      ],
-    });
-  if (summary.status === "stopped")
-    sections.push({
-      heading: "Stopped",
-      blocks: [
-        {
-          kind: "fields",
-          fields: [
-            { label: "Reason", value: value(summary.reason) },
-            ...(summary.nextPhase !== undefined
-              ? [{ label: "Next phase", value: value(summary.nextPhase) }]
-              : []),
-          ],
         },
       ],
     });

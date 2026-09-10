@@ -723,9 +723,96 @@ test("accepts implementation checkpoints only with immutable validated evidence"
     createdAt: now,
     updatedAt: now,
   };
-  assert.equal(
-    validatePlanningState(document).phases[0]!.status,
-    "pull-request-open",
+  const initial = validatePlanningState(document);
+  assert.equal(initial.phases[0]!.status, "pull-request-open");
+  const skippedFinish = structuredClone(document);
+  skippedFinish.revision = 1;
+  skippedFinish.updatedAt = "2026-09-08T12:00:01.000Z";
+  skippedFinish.phases[0]!.finish = {
+    costPublicationCompleted: true,
+    visualEvidenceValidated: true,
+    handoffCommentPosted: true,
+    cleanupHookCompleted: true,
+    doneLabelEnsured: true,
+    doneLabelApplied: true,
+  };
+  assert.throws(
+    () =>
+      assertPlanningStateReplacement(
+        initial,
+        validatePlanningState(skippedFinish),
+      ),
+    PlanningStateValidationError,
+  );
+  const cleanupBeforeHook = structuredClone(document);
+  cleanupBeforeHook.revision = 1;
+  cleanupBeforeHook.updatedAt = "2026-09-08T12:00:01.000Z";
+  cleanupBeforeHook.phases[0]!.workspace.cleanup = {
+    state: "worktree-removed",
+    pushedHeadOid: oid("c"),
+  };
+  assert.throws(
+    () =>
+      assertPlanningStateReplacement(
+        initial,
+        validatePlanningState(cleanupBeforeHook),
+      ),
+    PlanningStateValidationError,
+  );
+  const workspaceReady = structuredClone(document);
+  workspaceReady.phases[0]!.status = "workspace-ready";
+  workspaceReady.phases[0]!.artifacts = [
+    workspaceReady.phases[0]!.artifacts[0]!,
+  ];
+  delete workspaceReady.phases[0]!.publication;
+  delete workspaceReady.phases[0]!.pullRequest;
+  delete workspaceReady.phases[0]!.implementation;
+  delete workspaceReady.phases[0]!.finish;
+  const appendedArtifact = structuredClone(workspaceReady);
+  appendedArtifact.revision = 1;
+  appendedArtifact.updatedAt = "2026-09-08T12:00:01.000Z";
+  appendedArtifact.phases[0]!.workspace.headOid = oid("d");
+  appendedArtifact.phases[0]!.artifacts[0]!.commitOid = oid("d");
+  appendedArtifact.phases[0]!.artifacts.push({
+    kind: "plan",
+    path: "docs/plans/example-issue-188.md",
+    source: "workspace",
+    commitOid: oid("d"),
+  });
+  assert.throws(
+    () =>
+      assertPlanningStateReplacement(
+        validatePlanningState(workspaceReady),
+        validatePlanningState(appendedArtifact),
+      ),
+    PlanningStateValidationError,
+  );
+  const removed = structuredClone(document);
+  removed.phases[0]!.workspace.cleanup = {
+    state: "removed",
+    pushedHeadOid: oid("c"),
+  };
+  removed.phases[0]!.finish = {
+    costPublicationCompleted: true,
+    visualEvidenceValidated: true,
+    handoffCommentPosted: true,
+    cleanupHookCompleted: true,
+    doneLabelEnsured: true,
+    doneLabelApplied: true,
+  };
+  const terminal = structuredClone(removed);
+  terminal.revision = 1;
+  terminal.updatedAt = "2026-09-08T12:00:01.000Z";
+  terminal.phases[0]!.status = "complete";
+  terminal.phases[0]!.completion = { kind: "implementation-pull-request" };
+  terminal.phases[0]!.artifacts[0]!.commitOid = oid("d");
+  assert.throws(
+    () =>
+      assertPlanningStateReplacement(
+        validatePlanningState(removed),
+        validatePlanningState(terminal),
+      ),
+    PlanningStateValidationError,
   );
   const remoteBase = structuredClone(document);
   remoteBase.phases[0]!.status = "complete";
@@ -740,5 +827,102 @@ test("accepts implementation checkpoints only with immutable validated evidence"
     (error: unknown) =>
       error instanceof PlanningStateValidationError &&
       error.reason === "implementation-completion",
+  );
+});
+
+test("preserves complete sanitized implementation agent evidence", () => {
+  const document = {
+    version: 1,
+    workflowVersion: "planning-pr-v1",
+    runId,
+    issueNumber: 188,
+    issueTitle: "Example",
+    gates: { specRequired: false, planRequired: false },
+    phases: [
+      {
+        kind: "implementation",
+        status: "branch-pushed",
+        base,
+        workspace: {
+          ...workspace(),
+          phase: "implementation",
+          identity: {
+            branch: "planning/implementation",
+            worktreePath: ".worktrees/188-implementation",
+          },
+          headOid: oid("c"),
+        },
+        artifacts: [
+          artifact("workspace", oid("c")),
+          {
+            kind: "plan",
+            path: "docs/plans/example-issue-188.md",
+            source: "workspace",
+            commitOid: oid("c"),
+          },
+        ],
+        publication: {
+          ...publication,
+          headBranch: "planning/implementation",
+          headOid: oid("c"),
+        },
+        implementation: {
+          status: "pr-created",
+          prUrl: "https://github.com/acme/patchmill/pull/189",
+          branch: "planning/implementation",
+          commits: [oid("c")],
+          validation: ["npm test"],
+          reviewSummary: "reviewed",
+          landingDecision: "PR required",
+          visualEvidence: [
+            {
+              screenshotPath: "docs/screenshots/result.png",
+              caption: "Result",
+              referencePaths: ["docs/screenshots/before.png"],
+              url: "https://example.test/evidence/189",
+            },
+          ],
+          runCostReport: {
+            stages: [
+              {
+                stage: "implementation",
+                models: [
+                  {
+                    model: "example/model",
+                    promptTokens: 1,
+                    outputTokens: 2,
+                    estimatedCostUsd: 0.03,
+                  },
+                ],
+                promptTokens: 1,
+                outputTokens: 2,
+                estimatedCostUsd: 0.03,
+              },
+            ],
+            promptTokens: 1,
+            outputTokens: 2,
+            estimatedCostUsd: 0.03,
+          },
+        },
+      },
+    ],
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const parsed = validatePlanningState(document);
+  assert.deepEqual(
+    (parsed.phases[0] as { implementation: unknown }).implementation,
+    document.phases[0]!.implementation,
+  );
+  const unsafe = structuredClone(document);
+  unsafe.phases[0]!.implementation.prUrl =
+    "https://token@example.test/pull/189";
+  assert.throws(
+    () => validatePlanningState(unsafe),
+    (error: unknown) =>
+      error instanceof PlanningStateValidationError &&
+      error.reason === "invalid-url" &&
+      error.path === "$.phases[0].implementation.prUrl",
   );
 });

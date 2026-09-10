@@ -14,8 +14,9 @@ function effectiveTopLevelLines(body: string): readonly string[] {
   const output: string[] = [];
   let fence: string | undefined;
   for (const line of lines) {
+    const topLevel = line.replace(/^[ ]{0,3}/u, "");
     if (fence !== undefined) {
-      const closing = /^(?<fence>`+|~+)[ \t]*$/u.exec(line)?.groups?.fence;
+      const closing = /^(?<fence>`+|~+)[ \t]*$/u.exec(topLevel)?.groups?.fence;
       if (
         closing !== undefined &&
         closing[0] === fence[0] &&
@@ -24,7 +25,8 @@ function effectiveTopLevelLines(body: string): readonly string[] {
         fence = undefined;
       continue;
     }
-    const opening = /^(?<fence>`{3,}|~{3,})[^`~]*$/u.exec(line)?.groups?.fence;
+    const opening = /^(?<fence>`{3,}|~{3,})[^`~]*$/u.exec(topLevel)?.groups
+      ?.fence;
     if (opening !== undefined) {
       fence = opening;
       continue;

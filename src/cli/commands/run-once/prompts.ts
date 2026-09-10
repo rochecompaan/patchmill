@@ -537,6 +537,7 @@ function renderVisualEvidenceDataSection(
 function renderPrCreationInstruction(
   remote: string,
   issueNumber: number,
+  requiredPullRequestMarker?: string,
 ): string {
   return [
     `Push the branch to \`${remote}\` and open a pull request using the repository's configured host tooling. Include \`Closes #${issueNumber}\` in the pull request description/body.`,
@@ -559,6 +560,9 @@ function renderPrCreationInstruction(
     "- Review completed.",
     "",
     `Closes #${issueNumber}`,
+    ...(requiredPullRequestMarker === undefined
+      ? []
+      : [requiredPullRequestMarker]),
     "```",
   ].join("\n");
 }
@@ -613,6 +617,7 @@ function renderLandingResultContracts(input: {
   remote: string;
   issueNumber: number;
   branch: string;
+  requiredPullRequestMarker?: string;
 }): string {
   const {
     allowDirectLand,
@@ -621,8 +626,13 @@ function renderLandingResultContracts(input: {
     remote,
     issueNumber,
     branch,
+    requiredPullRequestMarker,
   } = input;
-  const prInstruction = renderPrCreationInstruction(remote, issueNumber);
+  const prInstruction = renderPrCreationInstruction(
+    remote,
+    issueNumber,
+    requiredPullRequestMarker,
+  );
 
   if (!allowDirectLand) {
     return `Landing result contracts:
@@ -1001,6 +1011,9 @@ ${renderLandingResultContracts({
   remote: git.remote,
   issueNumber: issue.number,
   branch,
+  ...(requiredPullRequestMarker === undefined
+    ? {}
+    : { requiredPullRequestMarker }),
 })}
 `;
 }

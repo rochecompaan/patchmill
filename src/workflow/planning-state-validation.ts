@@ -55,13 +55,20 @@ const object = (
   value: unknown,
   keys: readonly string[],
   path: string,
+): Record<string, unknown> => objectWithOptionalKeys(value, keys, [], path);
+const objectWithOptionalKeys = (
+  value: unknown,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[],
+  path: string,
 ): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     fail("expected-object", path);
   const result = value as Record<string, unknown>;
+  const allowedKeys = [...requiredKeys, ...optionalKeys];
   for (const key of Object.keys(result))
-    if (!keys.includes(key)) fail("unknown-key", `${path}.${key}`);
-  for (const key of keys)
+    if (!allowedKeys.includes(key)) fail("unknown-key", `${path}.${key}`);
+  for (const key of requiredKeys)
     if (!(key in result)) fail("missing-key", `${path}.${key}`);
   return result;
 };
@@ -292,14 +299,8 @@ function publication(value: unknown, path: string) {
     headOid: oid(parsed.headOid, `${path}.headOid`),
   };
 }
-function pullRequest(value: unknown, path: string) {
-  const parsed = object(value, ["reference", "url"], path);
-  const reference = object(
-    parsed.reference,
-    ["targetRepository", "number"],
-    `${path}.reference`,
-  );
-  const url = string(parsed.url, `${path}.url`);
+function safeUrl(value: unknown, path: string): string {
+  const url = string(value, path);
   try {
     const parsedUrl = new URL(url);
     if (
@@ -310,11 +311,21 @@ function pullRequest(value: unknown, path: string) {
       parsedUrl.hash ||
       /[\r\n]/u.test(url)
     )
-      fail("invalid-url", `${path}.url`);
+      fail("invalid-url", path);
   } catch (error) {
     if (error instanceof PlanningStateValidationError) throw error;
-    fail("invalid-url", `${path}.url`);
+    fail("invalid-url", path);
   }
+  return url;
+}
+function pullRequest(value: unknown, path: string) {
+  const parsed = object(value, ["reference", "url"], path);
+  const reference = object(
+    parsed.reference,
+    ["targetRepository", "number"],
+    `${path}.reference`,
+  );
+  const url = safeUrl(parsed.url, `${path}.url`);
   return {
     reference: {
       targetRepository: repository(
@@ -326,10 +337,89 @@ function pullRequest(value: unknown, path: string) {
     url,
   };
 }
-function implementationEvidence(value: unknown, path: string) {
+function nonnegativeFinite(value: unknown, path: string): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : fail("invalid-nonnegative-number", path);
+}
+function implementationRunCost(value: unknown, path: string) {
   const parsed = object(
     value,
+    ["stages", "promptTokens", "outputTokens", "estimatedCostUsd"],
+    path,
+  );
+  if (!Array.isArray(parsed.stages)) fail("expected-array", `${path}.stages`);
+  const model = (entry: unknown, entryPath: string) => {
+    const parsedModel = object(
+      entry,
+      ["model", "promptTokens", "outputTokens", "estimatedCostUsd"],
+      entryPath,
+    );
+    return {
+      model: singleLine(parsedModel.model, `${entryPath}.model`),
+      promptTokens: nonnegativeFinite(
+        parsedModel.promptTokens,
+        `${entryPath}.promptTokens`,
+      ),
+      outputTokens: nonnegativeFinite(
+        parsedModel.outputTokens,
+        `${entryPath}.outputTokens`,
+      ),
+      estimatedCostUsd: nonnegativeFinite(
+        parsedModel.estimatedCostUsd,
+        `${entryPath}.estimatedCostUsd`,
+      ),
+    };
+  };
+  return {
+    stages: (parsed.stages as unknown[]).map((entry, index) => {
+      const entryPath = `${path}.stages[${index}]`;
+      const stage = object(
+        entry,
+        ["stage", "models", "promptTokens", "outputTokens", "estimatedCostUsd"],
+        entryPath,
+      );
+      const models = stage.models;
+      if (!Array.isArray(models)) fail("expected-array", `${entryPath}.models`);
+      const modelEntries = models as unknown[];
+      return {
+        stage: singleLine(stage.stage, `${entryPath}.stage`),
+        models: modelEntries.map((modelEntry, modelIndex) =>
+          model(modelEntry, `${entryPath}.models[${modelIndex}]`),
+        ),
+        promptTokens: nonnegativeFinite(
+          stage.promptTokens,
+          `${entryPath}.promptTokens`,
+        ),
+        outputTokens: nonnegativeFinite(
+          stage.outputTokens,
+          `${entryPath}.outputTokens`,
+        ),
+        estimatedCostUsd: nonnegativeFinite(
+          stage.estimatedCostUsd,
+          `${entryPath}.estimatedCostUsd`,
+        ),
+      };
+    }),
+    promptTokens: nonnegativeFinite(
+      parsed.promptTokens,
+      `${path}.promptTokens`,
+    ),
+    outputTokens: nonnegativeFinite(
+      parsed.outputTokens,
+      `${path}.outputTokens`,
+    ),
+    estimatedCostUsd: nonnegativeFinite(
+      parsed.estimatedCostUsd,
+      `${path}.estimatedCostUsd`,
+    ),
+  };
+}
+function implementationEvidence(value: unknown, path: string) {
+  const parsed = objectWithOptionalKeys(
+    value,
     ["status", "prUrl", "branch", "commits", "validation", "visualEvidence"],
+    ["reviewSummary", "landingDecision", "runCostReport"],
     path,
   );
   if (parsed.status !== "pr-created")
@@ -345,27 +435,77 @@ function implementationEvidence(value: unknown, path: string) {
     fail("expected-array", `${path}.visualEvidence`);
   return {
     status: "pr-created" as const,
-    prUrl: string(parsed.prUrl, `${path}.prUrl`),
+    prUrl: safeUrl(parsed.prUrl, `${path}.prUrl`),
     branch: branch(parsed.branch, `${path}.branch`),
     commits: entries(parsed.commits, `${path}.commits`).map(
       (entry: string, index: number) => oid(entry, `${path}.commits[${index}]`),
     ),
     validation: entries(parsed.validation, `${path}.validation`),
+    ...(parsed.reviewSummary === undefined
+      ? {}
+      : {
+          reviewSummary: singleLine(
+            parsed.reviewSummary,
+            `${path}.reviewSummary`,
+          ),
+        }),
+    ...(parsed.landingDecision === undefined
+      ? {}
+      : {
+          landingDecision: singleLine(
+            parsed.landingDecision,
+            `${path}.landingDecision`,
+          ),
+        }),
     visualEvidence: (parsed.visualEvidence as unknown[]).map(
       (entry: unknown, index: number) => {
-        const visual = object(
+        const visualPath = `${path}.visualEvidence[${index}]`;
+        const visual = objectWithOptionalKeys(
           entry,
           ["screenshotPath"],
-          `${path}.visualEvidence[${index}]`,
+          ["caption", "referencePaths", "url"],
+          visualPath,
         );
+        const references = visual.referencePaths;
+        if (references !== undefined && !Array.isArray(references))
+          fail("expected-array", `${visualPath}.referencePaths`);
+        const referencePaths =
+          references === undefined
+            ? undefined
+            : (references as unknown[]).map((reference, referenceIndex) =>
+                artifactPath(
+                  reference,
+                  `${visualPath}.referencePaths[${referenceIndex}]`,
+                ),
+              );
+        if (
+          referencePaths !== undefined &&
+          new Set(referencePaths).size !== referencePaths.length
+        )
+          fail("duplicate-value", `${visualPath}.referencePaths`);
         return {
           screenshotPath: artifactPath(
             visual.screenshotPath,
-            `${path}.visualEvidence[${index}].screenshotPath`,
+            `${visualPath}.screenshotPath`,
           ),
+          ...(visual.caption === undefined
+            ? {}
+            : { caption: singleLine(visual.caption, `${visualPath}.caption`) }),
+          ...(referencePaths === undefined ? {} : { referencePaths }),
+          ...(visual.url === undefined
+            ? {}
+            : { url: safeUrl(visual.url, `${visualPath}.url`) }),
         };
       },
     ),
+    ...(parsed.runCostReport === undefined
+      ? {}
+      : {
+          runCostReport: implementationRunCost(
+            parsed.runCostReport,
+            `${path}.runCostReport`,
+          ),
+        }),
   };
 }
 function implementationFinish(value: unknown, path: string) {

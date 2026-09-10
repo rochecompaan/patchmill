@@ -131,6 +131,10 @@ function assertImplementationFinish(
     "doneLabelEnsured",
     "doneLabelApplied",
   ];
+  const additions = steps.filter(
+    (step) => current[step] !== true && next[step] === true,
+  );
+  if (additions.length > 1) fail("invalid-finish-transition", index, ".finish");
   for (const [stepIndex, step] of steps.entries()) {
     if (current[step] === true && next[step] !== true)
       fail("immutable-evidence", index, ".finish");
@@ -160,11 +164,7 @@ function assertArtifacts(
       fail("immutable-evidence", index);
     if (allowMergeConversion) continue;
     if (left.source !== right.source) fail("immutable-evidence", index);
-    if (
-      left.commitOid !== right.commitOid &&
-      !(allowAppend && left.source === "workspace")
-    )
-      fail("immutable-evidence", index);
+    if (left.commitOid !== right.commitOid) fail("immutable-evidence", index);
   }
 }
 export function assertPlanningPhaseReplacement(
@@ -239,6 +239,21 @@ export function assertPlanningPhaseReplacement(
         next.finish as Record<string, unknown>,
         index,
       );
+      if (
+        next.workspace.cleanup.state !== "ready" &&
+        next.finish.cleanupHookCompleted !== true
+      )
+        fail("invalid-cleanup-transition", index, ".workspace.cleanup");
+      if (
+        next.finish.doneLabelEnsured === true &&
+        next.workspace.cleanup.state !== "removed"
+      )
+        fail("invalid-finish-transition", index, ".finish.doneLabelEnsured");
+      if (
+        next.finish.doneLabelApplied === true &&
+        next.workspace.cleanup.state !== "removed"
+      )
+        fail("invalid-finish-transition", index, ".finish.doneLabelApplied");
     }
     return;
   }
@@ -255,6 +270,7 @@ export function assertPlanningPhaseReplacement(
     same(current.publication, next.publication, index);
     same(current.pullRequest, next.pullRequest, index);
     same(current.implementation, next.implementation, index);
+    same(current.artifacts, next.artifacts, index);
     assertImplementationFinish(
       current.finish as Record<string, unknown>,
       next.finish as Record<string, unknown>,
