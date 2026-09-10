@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {
+  assertPlanningStateReplacement,
+  validatePlanningState,
+  type PlanningImplementationFinishCheckpoints,
+  type PlanningStateV1,
+} from "../../../workflow/planning-state.ts";
 import { finishPlanningImplementation } from "./planning-finish.ts";
 
 const oid = (v: string) => v.repeat(40);
 function state(
-  finish: Record<string, true> = {},
+  finish: PlanningImplementationFinishCheckpoints = {},
   cleanup: "ready" | "worktree-removed" | "removed" = "ready",
-) {
+): PlanningStateV1 {
   const workspace = {
     runId: "123e4567-e89b-42d3-a456-426614174000",
     phase: "implementation" as const,
@@ -20,7 +26,7 @@ function state(
         ? { state: "ready" as const }
         : { state: cleanup, pushedHeadOid: oid("b") },
   };
-  return {
+  return validatePlanningState({
     version: 1,
     workflowVersion: "planning-pr-v1",
     runId: workspace.runId,
@@ -41,7 +47,20 @@ function state(
           artifactCandidates: { spec: [], plan: [] },
         },
         workspace,
-        artifacts: [],
+        artifacts: [
+          {
+            kind: "spec" as const,
+            path: "docs/specs/2026-01-01-issue-189-finish.md",
+            source: "workspace" as const,
+            commitOid: oid("b"),
+          },
+          {
+            kind: "plan" as const,
+            path: "docs/plans/2026-01-01-issue-189-finish.md",
+            source: "workspace" as const,
+            commitOid: oid("b"),
+          },
+        ],
         publication: {
           targetRepository: {
             provider: "github-gh" as const,
@@ -76,17 +95,18 @@ function state(
           prUrl: "https://github.com/a/b/pull/1",
           branch: "agent/189",
           commits: [oid("b")],
-          validation: [],
+          validation: ["npm test passed"],
           visualEvidence: [],
         },
         finish,
       },
     ],
-  } as never;
+  });
 }
 function input(initial = state(), fail?: string) {
   const events: string[] = [];
-  const checkpoints: unknown[] = [];
+  const checkpoints: PlanningStateV1[] = [];
+  let current = initial;
   return {
     events,
     checkpoints,
@@ -95,9 +115,12 @@ function input(initial = state(), fail?: string) {
       phaseIndex: 0,
       lock: {} as never,
       stateStore: {
-        replace: async ({ next }: { next: unknown }) => {
-          checkpoints.push(next);
-          return next;
+        replace: async ({ next }: { next: PlanningStateV1 }) => {
+          const validated = validatePlanningState(next);
+          assertPlanningStateReplacement(current, validated);
+          current = validated;
+          checkpoints.push(validated);
+          return validated;
         },
       },
       workspaces: {
