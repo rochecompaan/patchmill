@@ -48,7 +48,7 @@ const phase = {
     visualEvidence: [],
   },
 };
-const state = { issueNumber: 189 } as never;
+const state = { issueNumber: 189, phases: [phase] } as never;
 function input(status: "open" | "merged" = "open") {
   return {
     state,
@@ -99,4 +99,38 @@ test("rejects an implementation pull request that is not open", async () => {
     validatePlanningImplementation(input("merged")),
     /status/,
   );
+});
+
+test("proves workspace artifact commits from completed planning phases reach final head", async () => {
+  const calls: Array<{ ancestorOid: string; descendantOid: string }> = [];
+  const validation = input();
+  validation.state = {
+    issueNumber: 189,
+    phases: [
+      {
+        kind: "spec",
+        status: "complete",
+        artifacts: [
+          {
+            kind: "spec",
+            path: "docs/specs/issue-189.md",
+            source: "workspace",
+            commitOid: oid("c"),
+          },
+        ],
+      },
+      phase,
+    ],
+  } as never;
+  validation.git.assertAncestor = async (call) => {
+    calls.push(call);
+  };
+  await validatePlanningImplementation(validation);
+  assert.deepEqual(calls, [
+    { ancestorOid: oid("a"), descendantOid: oid("b") },
+    { ancestorOid: oid("a"), descendantOid: oid("b") },
+    { ancestorOid: oid("b"), descendantOid: oid("b") },
+    { ancestorOid: oid("a"), descendantOid: oid("c") },
+    { ancestorOid: oid("c"), descendantOid: oid("b") },
+  ]);
 });

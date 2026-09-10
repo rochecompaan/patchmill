@@ -261,9 +261,9 @@ export async function runPlanningPhaseArtifacts(input: {
       ...current.artifacts.filter(
         (artifact) => artifact.source === "remote-base",
       ),
-      ...current.artifacts
-        .filter((artifact) => artifact.source === "workspace")
-        .map((artifact) => ({ ...artifact, commitOid: result.commit })),
+      ...current.artifacts.filter(
+        (artifact) => artifact.source === "workspace",
+      ),
       { kind, path, source: "workspace" as const, commitOid: result.commit },
     ].sort(
       (left, right) =>

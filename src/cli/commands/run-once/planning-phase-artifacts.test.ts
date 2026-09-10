@@ -174,7 +174,7 @@ test("checkpoints spec before running plan", async () => {
   if (result.kind === "workspace-ready")
     assert.deepEqual(
       result.phase.artifacts.map((item) => item.commitOid),
-      [oid("c"), oid("c")],
+      [oid("b"), oid("c")],
     );
 });
 
@@ -240,7 +240,7 @@ test("resumes from a saved spec checkpoint without invoking spec again", async (
         kind: "spec",
         path: "docs/specs/example.md",
         source: "workspace",
-        commitOid: oid("c"),
+        commitOid: oid("b"),
       },
       {
         kind: "plan",

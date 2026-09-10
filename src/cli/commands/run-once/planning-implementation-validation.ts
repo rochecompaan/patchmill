@@ -119,7 +119,17 @@ export async function validatePlanningImplementation(
     ancestorOid: phase.base.baseOid,
     descendantOid: workspace.headOid,
   });
-  for (const commit of phase.implementation.commits) {
+  const workspaceArtifactCommits = input.state.phases.flatMap((item) =>
+    "artifacts" in item
+      ? item.artifacts
+          .filter((artifact) => artifact.source === "workspace")
+          .map((artifact) => artifact.commitOid)
+      : [],
+  );
+  for (const commit of new Set([
+    ...phase.implementation.commits,
+    ...workspaceArtifactCommits,
+  ])) {
     await input.git.assertAncestor({
       ancestorOid: phase.base.baseOid,
       descendantOid: commit,

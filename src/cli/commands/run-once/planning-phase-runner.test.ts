@@ -210,6 +210,33 @@ test("checkpoints a planning phase satisfied by the fetched base without a pull 
   );
 });
 
+test("plan-only stops before creating an implementation workspace when its artifacts are durable", async () => {
+  let prepared = false;
+  const result = await runPlanningPhase(
+    input({
+      planOnly: true,
+      workspaces: {
+        prepare: async () => ((prepared = true), { workspace, base }),
+      } as never,
+      operations: {
+        resolveArtifacts: () => ({
+          kind: "satisfied-by-base",
+          artifacts: [
+            {
+              kind: "plan",
+              path: "docs/plans/issue-189.md",
+              source: "remote-base",
+              commitOid: oid("a"),
+            },
+          ],
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "stopped");
+  assert.equal(prepared, false);
+});
+
 test("checkpoints implementation planning artifacts then stops before implementation code", async () => {
   const initial = state({
     kind: "implementation",

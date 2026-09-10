@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { resolve } from "node:path";
 import {
   profileExtensionArgs,
   runOnceDevelopmentEnvironmentPiProfile,
@@ -59,7 +59,7 @@ export async function runDevelopmentEnvironmentAgent(
     throw new Error(
       "Development environment stage requires skills.developmentEnvironment",
     );
-  const worktreeRoot = join(input.config.repoRoot, input.worktreePath);
+  const worktreeRoot = resolve(input.config.repoRoot, input.worktreePath);
   const profile = runOnceDevelopmentEnvironmentPiProfile(
     input.config.skills,
     input.config.repoRoot,

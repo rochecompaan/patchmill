@@ -6,6 +6,7 @@ import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
+  ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
 import type {
@@ -13,7 +14,10 @@ import type {
   AgentIssueMergedResult,
   AgentIssuePrCreatedResult,
 } from "./types.ts";
-import { validatePlanningImplementation } from "./planning-implementation-validation.ts";
+import {
+  PlanningImplementationValidationError,
+  validatePlanningImplementation,
+} from "./planning-implementation-validation.ts";
 
 export type PlanningImplementationOutcome =
   | { kind: "validated"; state: PlanningStateV1 }
@@ -36,6 +40,8 @@ export type PlanningImplementationInput = {
   >;
   configuredGit: Record<string, unknown>;
   runAgent(input: {
+    state: PlanningStateV1;
+    phase: ImplementationWorkspaceReadyPlanningPhase;
     git: Record<string, unknown>;
     requiredPullRequestMarker: string;
   }): Promise<
@@ -85,6 +91,8 @@ export async function runPlanningImplementation(
     throw new RangeError("Invalid implementation phase");
   if (phase.status === "workspace-ready") {
     const result = await input.runAgent({
+      state,
+      phase,
       git: { ...input.configuredGit, allowDirectLand: false },
       requiredPullRequestMarker: renderPlanningPullRequestMarker({
         issueNumber: state.issueNumber,
@@ -185,12 +193,12 @@ export async function runPlanningImplementation(
     });
     return { kind: "validated", state };
   } catch (error) {
-    return {
-      kind: "blocked",
-      state,
-      result: blocked(
-        error instanceof Error ? error.message : "implementation-validation",
-      ),
-    };
+    if (error instanceof PlanningImplementationValidationError)
+      return {
+        kind: "blocked",
+        state,
+        result: blocked(error.message),
+      };
+    throw error;
   }
 }

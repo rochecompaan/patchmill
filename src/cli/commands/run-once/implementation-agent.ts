@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { resolve } from "node:path";
 import {
   profileExtensionArgs,
   runOnceImplementationPiProfile,
@@ -77,7 +77,7 @@ export type ImplementationAgentInput = {
 export async function runImplementationAgent(
   input: ImplementationAgentInput,
 ): Promise<ImplementationAgentOutcome> {
-  const worktreeRoot = join(input.config.repoRoot, input.worktreePath);
+  const worktreeRoot = resolve(input.config.repoRoot, input.worktreePath);
   let developmentEnvironment;
   if (input.config.skills.developmentEnvironment) {
     const environment = await runDevelopmentEnvironmentAgent({

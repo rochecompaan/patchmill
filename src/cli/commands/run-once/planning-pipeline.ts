@@ -156,10 +156,9 @@ function statePaths(state: PlanningStateV1) {
   const implementation = state.phases.find(
     (phase) => phase.kind === "implementation",
   );
-  const artifacts =
-    implementation && "artifacts" in implementation
-      ? implementation.artifacts
-      : [];
+  const artifacts = state.phases.flatMap((phase) =>
+    "artifacts" in phase ? phase.artifacts : [],
+  );
   const workspace =
     implementation && "workspace" in implementation
       ? implementation.workspace

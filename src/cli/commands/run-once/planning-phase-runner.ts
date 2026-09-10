@@ -241,20 +241,20 @@ async function preparePending(
     baseBranch: input.config.baseBranch,
   });
   const resolution = run.resolveArtifacts({ phase: input.phase, base });
-  if (
-    resolution.kind === "satisfied-by-base" &&
-    input.phase.kind !== "implementation"
-  ) {
-    return {
-      state: await replace(input, state, {
-        kind: input.phase.kind,
-        status: "complete",
-        base,
-        artifacts: resolution.artifacts,
-        completion: { kind: "remote-base" },
-      }),
-      resolution,
-    };
+  if (resolution.kind === "satisfied-by-base") {
+    if (input.phase.kind === "implementation" && input.planOnly)
+      return { state, resolution };
+    if (input.phase.kind !== "implementation")
+      return {
+        state: await replace(input, state, {
+          kind: input.phase.kind,
+          status: "complete",
+          base,
+          artifacts: resolution.artifacts,
+          completion: { kind: "remote-base" },
+        }),
+        resolution,
+      };
   }
   const prepared = await input.workspaces.prepare({
     runId: state.runId,
@@ -419,10 +419,16 @@ export async function runPlanningPhase(
     const prepared = await preparePending(input, state, run);
     state = prepared.state;
     if (
-      input.phase.kind !== "implementation" &&
-      prepared.resolution.kind === "satisfied-by-base"
+      prepared.resolution.kind === "satisfied-by-base" &&
+      input.phase.kind !== "implementation"
     )
       return { kind: "advanced", state };
+    if (
+      prepared.resolution.kind === "satisfied-by-base" &&
+      input.phase.kind === "implementation" &&
+      input.planOnly
+    )
+      return { kind: "stopped", state, reason: "plan-only" };
   }
   if (input.phase.kind === "implementation")
     return implementation(input, state, run);

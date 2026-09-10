@@ -162,16 +162,13 @@ export function createPlanningRuntime(
             },
             implementationInput: {
               configuredGit: git,
-              runAgent: async ({ git: policy, requiredPullRequestMarker }) => {
-                const durablePlan = planPath(current);
-                const implementation = current.phases[phaseIndex];
-                if (
-                  implementation?.kind !== "implementation" ||
-                  !("workspace" in implementation)
-                )
-                  throw new Error(
-                    "Planning implementation workspace is missing",
-                  );
+              runAgent: async ({
+                state: durable,
+                phase: implementation,
+                git: policy,
+                requiredPullRequestMarker,
+              }) => {
+                const durablePlan = planPath(durable);
                 const result = await runImplementationAgent({
                   runner: input.runner,
                   config: input.config,
