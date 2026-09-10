@@ -9,6 +9,7 @@ import type {
   ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
+import type { RunCostReport } from "./run-cost.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssueMergedResult,
@@ -47,6 +48,7 @@ export type PlanningImplementationInput = {
   }): Promise<
     AgentIssuePrCreatedResult | AgentIssueMergedResult | AgentIssueBlockedResult
   >;
+  resolveRunCost?: () => Promise<RunCostReport | undefined>;
   now?: () => Date;
 };
 
@@ -57,6 +59,47 @@ function blocked(reason: string): AgentIssueBlockedResult {
     questions: [],
     commits: [],
     validation: [],
+  };
+}
+
+function finiteNonnegative(value: number, field: string): number {
+  if (!Number.isFinite(value) || value < 0)
+    throw new RangeError(`Invalid planning run-cost ${field}`);
+  return value;
+}
+
+function planningRunCost(report: RunCostReport) {
+  return {
+    stages: report.stages.map((stage) => ({
+      stage: stage.stage,
+      models: stage.models.map((model) => ({
+        model: model.model,
+        promptTokens: finiteNonnegative(
+          model.promptTokens,
+          "model promptTokens",
+        ),
+        outputTokens: finiteNonnegative(
+          model.outputTokens,
+          "model outputTokens",
+        ),
+        estimatedCostUsd: finiteNonnegative(
+          model.estimatedCostUsd,
+          "model estimatedCostUsd",
+        ),
+      })),
+      promptTokens: finiteNonnegative(stage.promptTokens, "stage promptTokens"),
+      outputTokens: finiteNonnegative(stage.outputTokens, "stage outputTokens"),
+      estimatedCostUsd: finiteNonnegative(
+        stage.estimatedCostUsd,
+        "stage estimatedCostUsd",
+      ),
+    })),
+    promptTokens: finiteNonnegative(report.promptTokens, "promptTokens"),
+    outputTokens: finiteNonnegative(report.outputTokens, "outputTokens"),
+    estimatedCostUsd: finiteNonnegative(
+      report.estimatedCostUsd,
+      "estimatedCostUsd",
+    ),
   };
 }
 
@@ -135,6 +178,7 @@ export async function runPlanningImplementation(
         state,
         result: blocked("implementation-direct-merge"),
       };
+    const runCostReport = await input.resolveRunCost?.();
     const workspace = await input.workspaces.inspect(phase.workspace.identity);
     if (workspace.state !== "ready" || !workspace.clean)
       return {
@@ -179,6 +223,9 @@ export async function runPlanningImplementation(
         ...(result.landingDecision === undefined
           ? {}
           : { landingDecision: result.landingDecision }),
+        ...(runCostReport === undefined
+          ? {}
+          : { runCostReport: planningRunCost(runCostReport) }),
         visualEvidence: (result.visualEvidence ?? []).map((evidence) => ({
           screenshotPath: evidence.screenshotPath,
           ...(evidence.caption === undefined

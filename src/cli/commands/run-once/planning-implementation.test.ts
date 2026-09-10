@@ -169,6 +169,37 @@ test("refuses dirty blocker progress without checkpointing", async () => {
   assert.deepEqual(checkpoints, []);
 });
 
+test("persists a sanitized fresh implementation run-cost report", async () => {
+  const checkpoints: Array<{
+    phases: Array<{ implementation: { runCostReport?: unknown } }>;
+  }> = [];
+  await assert.rejects(
+    runPlanningImplementation(
+      input({
+        resolveRunCost: async () => ({
+          stages: [],
+          promptTokens: 2,
+          outputTokens: 3,
+          estimatedCostUsd: 0.4,
+        }),
+        stateStore: {
+          replace: async ({ next }: { next: (typeof checkpoints)[number] }) => {
+            checkpoints.push(next);
+            return next;
+          },
+        },
+      }),
+    ),
+    /host transport failure/,
+  );
+  assert.deepEqual(checkpoints[0]?.phases[0]?.implementation.runCostReport, {
+    stages: [],
+    promptTokens: 2,
+    outputTokens: 3,
+    estimatedCostUsd: 0.4,
+  });
+});
+
 test("propagates host transport failures instead of converting them to validation blockers", async () => {
   await assert.rejects(
     runPlanningImplementation(input()),

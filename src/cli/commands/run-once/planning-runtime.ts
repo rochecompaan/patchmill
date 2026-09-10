@@ -13,6 +13,8 @@ import { createPlanningArtifactAgent } from "./planning-phase-artifacts.ts";
 import { coordinatePlanningPhases } from "./planning-phase-coordinator.ts";
 import { handoffComment } from "./pipeline-comments.ts";
 import { publishPlanningPrRunCost } from "./pr-cost-publication.ts";
+import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
+import { progress } from "./pipeline-progress.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
@@ -217,6 +219,28 @@ export function createPlanningRuntime(
                   validation: [],
                 };
               },
+              resolveRunCost: () =>
+                resolvePipelineRunCost({
+                  implementationKind: "implemented",
+                  implementationStatus: "pr-created",
+                  ...(input.piSessionPath === undefined
+                    ? {}
+                    : { piSessionPath: input.piSessionPath }),
+                  warn: (message, error) =>
+                    progress(
+                      { progress: input.progressReporter },
+                      "warning",
+                      "run-cost",
+                      message,
+                      {
+                        issueNumber: input.issue.number,
+                        data:
+                          error instanceof Error
+                            ? error.message
+                            : String(error ?? ""),
+                      },
+                    ),
+                }),
               ...(input.now === undefined ? {} : { now: input.now }),
             },
             finishInputForState: (durable) => ({
