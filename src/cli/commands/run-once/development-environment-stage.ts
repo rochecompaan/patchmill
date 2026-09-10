@@ -27,37 +27,38 @@ type DevelopmentEnvironmentDetails = {
   worktreePath: string;
 };
 
-type DevelopmentEnvironmentStageOptions = DevelopmentEnvironmentDetails & {
-  runner: CommandRunner;
-  host: IssueHostProvider;
-  config: AgentIssueConfig;
-  issue: IssueSummary;
-  labels: string[];
-  readyLabel: string;
-  inProgressLabel: string;
-  timestamp: string;
-  logPath?: string;
-  piSessionPath?: string;
-  streamPiOutput?: (chunk: string) => void;
-  verbosePiOutput?: boolean;
-  heartbeatMs?: number;
-  piAgentDir: string;
-  tokenUsageState: { total: number };
-  progressReporter?: ProgressReporter | undefined;
-  progress: (
-    level: AgentIssueProgressEvent["level"],
-    stage: string,
-    message: string,
-    extras?: Partial<
-      Pick<AgentIssueProgressEvent, "issueNumber" | "elapsedSeconds" | "data">
-    >,
-  ) => Promise<void>;
-  runStep: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
-  observePi: (
-    stage: "pi-development-environment",
-  ) => (observation: AgentIssueProgressEvent["observation"]) => Promise<void>;
-  emitSimpleStep: (issueNumber: number, label: string) => Promise<void>;
-};
+export type DevelopmentEnvironmentStageOptions =
+  DevelopmentEnvironmentDetails & {
+    runner: CommandRunner;
+    host: IssueHostProvider;
+    config: AgentIssueConfig;
+    issue: IssueSummary;
+    labels: string[];
+    readyLabel: string;
+    inProgressLabel: string;
+    timestamp: string;
+    logPath?: string;
+    piSessionPath?: string;
+    streamPiOutput?: (chunk: string) => void;
+    verbosePiOutput?: boolean;
+    heartbeatMs?: number;
+    piAgentDir: string;
+    tokenUsageState: { total: number };
+    progressReporter?: ProgressReporter | undefined;
+    progress: (
+      level: AgentIssueProgressEvent["level"],
+      stage: string,
+      message: string,
+      extras?: Partial<
+        Pick<AgentIssueProgressEvent, "issueNumber" | "elapsedSeconds" | "data">
+      >,
+    ) => Promise<void>;
+    runStep: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
+    observePi: (
+      stage: "pi-development-environment",
+    ) => (observation: AgentIssueProgressEvent["observation"]) => Promise<void>;
+    emitSimpleStep: (issueNumber: number, label: string) => Promise<void>;
+  };
 
 function withLogPath<T extends AgentIssuePipelineResult>(
   result: T,
@@ -73,7 +74,7 @@ function withLogPath<T extends AgentIssuePipelineResult>(
   };
 }
 
-async function developmentEnvironmentNotReady(
+export async function developmentEnvironmentNotReady(
   options: DevelopmentEnvironmentStageOptions,
   result: Extract<
     AgentIssueDevelopmentEnvironmentResult,
