@@ -33,6 +33,8 @@ const validMarkerPattern =
   /^<!-- patchmill:(planning-pr-v1) issue=([1-9]\d*) phase=(spec|plan|implementation) -->$/u;
 const openingFencePattern = /^(`{3,}|~{3,})(.*)$/u;
 const closingFencePattern = /^(`+|~+)[ \t]*$/u;
+const rawHtmlBlockOpening =
+  /^<(?<tag>script|style|pre|textarea|div)(?:[ \t][^>]*)?>/iu;
 
 type MarkerLine = { line: string; index: number };
 
@@ -45,9 +47,15 @@ function openingFence(line: string): string | undefined {
     : delimiter;
 }
 
+function rawHtmlBlockEnds(tag: string, line: string): boolean {
+  return new RegExp(`</${tag}[ \t]*>`, "iu").test(line);
+}
+
 function topLevelMarkerLines(lines: readonly string[]): MarkerLine[] {
   const markers: MarkerLine[] = [];
   let fence: string | undefined;
+  let htmlComment = false;
+  let htmlBlock: string | undefined;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!;
     // CommonMark permits up to three spaces before fenced code blocks. Markers
@@ -64,12 +72,30 @@ function topLevelMarkerLines(lines: readonly string[]): MarkerLine[] {
       }
       continue;
     }
+    if (htmlComment) {
+      if (line.includes("-->")) htmlComment = false;
+      continue;
+    }
+    if (htmlBlock !== undefined) {
+      if (rawHtmlBlockEnds(htmlBlock, fencedLine)) htmlBlock = undefined;
+      continue;
+    }
     const opener = openingFence(fencedLine);
     if (opener !== undefined) {
       fence = opener;
-    } else if (line.startsWith(markerPrefix)) {
-      markers.push({ line, index });
+      continue;
     }
+    const htmlOpening = rawHtmlBlockOpening.exec(fencedLine);
+    if (htmlOpening?.groups?.tag !== undefined) {
+      if (!rawHtmlBlockEnds(htmlOpening.groups.tag, fencedLine))
+        htmlBlock = htmlOpening.groups.tag;
+      continue;
+    }
+    if (line.startsWith(markerPrefix)) {
+      markers.push({ line, index });
+      continue;
+    }
+    if (line.includes("<!--") && !line.includes("-->")) htmlComment = true;
   }
   return markers;
 }

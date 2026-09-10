@@ -106,6 +106,25 @@ test("rejects a trailing-slash agent URL that differs from host readback", async
   await assert.rejects(validatePlanningImplementation(validation), /url/);
 });
 
+test("rejects an implementation marker nested in an HTML comment", async () => {
+  const validation = input();
+  validation.host.getPullRequest = async () => ({
+    number: 189,
+    url: phase.implementation.prUrl,
+    targetRepository: repository,
+    baseBranch: "main",
+    headRepository: repository,
+    headBranch: "planning/implementation",
+    headSha: oid("b"),
+    body: "Closes #189\n\n<!--\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+    status: "open" as const,
+  });
+  await assert.rejects(
+    validatePlanningImplementation(validation),
+    /ownership-marker/,
+  );
+});
+
 test("rejects an implementation pull request that is not open", async () => {
   await assert.rejects(
     validatePlanningImplementation(input("merged")),

@@ -235,6 +235,15 @@ test("marker parser keeps markers inside a top-level fence after container text"
   );
 });
 
+test("marker parser ignores markers nested in a multiline HTML comment", () => {
+  const marker = renderPlanningPullRequestMarker({
+    issueNumber: 184,
+    phase: "implementation",
+  });
+
+  assert.equal(parsePlanningPullRequestMarker(`<!--\n${marker}`), undefined);
+});
+
 test("marker parser rejects duplicate and invalid planning markers", () => {
   const invalidBodies = [
     [

@@ -27,6 +27,7 @@ test("requires one effective top-level implementation closing reference", () => 
     "<!-- example\nCloses #189\n-->\n<!-- patchmill marker -->",
     "<script>\nCloses #189\n</script>",
     "<div>\nCloses #189\n</div>",
+    "<pre>example\nCloses #189\n</pre>",
     "Closes #190",
     "Refs #189",
   ])

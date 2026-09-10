@@ -20,6 +20,13 @@ function lazyContainer(line: string): boolean {
   return /^(?:[ ]{0,3}>|[ ]{0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+)/u.test(line);
 }
 
+const rawHtmlBlockOpening =
+  /^<(?<tag>script|style|pre|textarea|div)(?:[ \t][^>]*)?>/iu;
+
+function rawHtmlBlockEnds(tag: string, line: string): boolean {
+  return new RegExp(`</${tag}[ \t]*>`, "iu").test(line);
+}
+
 function effectiveTopLevelLines(body: string): readonly string[] {
   const lines = body.replaceAll("\r\n", "\n").split("\n");
   const output: string[] = [];
@@ -53,16 +60,13 @@ function effectiveTopLevelLines(body: string): readonly string[] {
       continue;
     }
     if (htmlBlock !== undefined) {
-      if (new RegExp(`^</${htmlBlock}>[ \\t]*$`, "iu").test(topLevel))
-        htmlBlock = undefined;
+      if (rawHtmlBlockEnds(htmlBlock, topLevel)) htmlBlock = undefined;
       continue;
     }
-    const htmlOpening =
-      /^<(?<tag>script|style|pre|textarea|div)(?:[ \\t][^>]*)?>[ \\t]*$/iu.exec(
-        topLevel,
-      );
+    const htmlOpening = rawHtmlBlockOpening.exec(topLevel);
     if (htmlOpening?.groups?.tag !== undefined) {
-      htmlBlock = htmlOpening.groups.tag;
+      if (!rawHtmlBlockEnds(htmlOpening.groups.tag, topLevel))
+        htmlBlock = htmlOpening.groups.tag;
       continue;
     }
     const openingMatch = /^(?<fence>`{3,}|~{3,})(?<info>.*)$/u.exec(topLevel);
