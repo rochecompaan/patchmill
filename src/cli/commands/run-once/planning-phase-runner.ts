@@ -15,6 +15,7 @@ import type {
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import {
+  PlanningPhaseArtifactError,
   resolvePlanningPhaseArtifacts,
   runPlanningPhaseArtifacts,
   type PlanningArtifactAgent,
@@ -416,7 +417,21 @@ export async function runPlanningPhase(
   )
     return reconcile(input, state, run);
   if (phase.status === "pending") {
-    const prepared = await preparePending(input, state, run);
+    let prepared: Awaited<ReturnType<typeof preparePending>>;
+    try {
+      prepared = await preparePending(input, state, run);
+    } catch (error) {
+      if (
+        error instanceof PlanningPhaseArtifactError &&
+        error.reason === "ambiguous-base-artifact"
+      )
+        return {
+          kind: "blocked",
+          state,
+          result: blocked(error.reason),
+        };
+      throw error;
+    }
     state = prepared.state;
     if (
       prepared.resolution.kind === "satisfied-by-base" &&

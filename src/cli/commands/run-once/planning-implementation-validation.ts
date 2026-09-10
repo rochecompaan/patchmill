@@ -1,6 +1,10 @@
-import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
+import {
+  PlanningPublicationGitError,
+  type PlanningPublicationOperations,
+} from "../../../git/planning-publication-git.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import {
+  PullRequestNotFoundError,
   sameRepositoryIdentity,
   type PullRequestHost,
 } from "../../../host/pull-requests.ts";
@@ -8,6 +12,7 @@ import { parsePullRequestUrl } from "../../../host/pull-request-reference.ts";
 import { assertImplementationClosingReference } from "../../../workflow/planning-implementation-body.ts";
 import {
   assertPlanningPublicationRepositories,
+  PlanningPullRequestValidationError,
   validatePlanningPullRequestSummary,
 } from "../../../workflow/planning-pull-request-validation.ts";
 import type {
@@ -98,14 +103,24 @@ export async function validatePlanningImplementation(
     if (error instanceof PlanningImplementationValidationError) throw error;
     fail("url");
   }
-  const summary = await input.host.getPullRequest({ targetRepository, number });
-  const validated = validatePlanningPullRequestSummary({
-    summary,
-    issueNumber: input.state.issueNumber,
-    phase: "implementation",
-    publication: phase.publication,
-    expectedReference: { targetRepository, number },
-  });
+  let validated: ReturnType<typeof validatePlanningPullRequestSummary>;
+  try {
+    const summary = await input.host.getPullRequest({
+      targetRepository,
+      number,
+    });
+    validated = validatePlanningPullRequestSummary({
+      summary,
+      issueNumber: input.state.issueNumber,
+      phase: "implementation",
+      publication: phase.publication,
+      expectedReference: { targetRepository, number },
+    });
+  } catch (error) {
+    if (error instanceof PullRequestNotFoundError) fail("missing");
+    if (error instanceof PlanningPullRequestValidationError) fail(error.reason);
+    throw error;
+  }
   if (validated.summary.status !== "open") fail("status");
   try {
     assertImplementationClosingReference(
@@ -115,10 +130,19 @@ export async function validatePlanningImplementation(
   } catch {
     fail("closing-reference");
   }
-  await input.git.assertAncestor({
-    ancestorOid: phase.base.baseOid,
-    descendantOid: workspace.headOid,
-  });
+  try {
+    await input.git.assertAncestor({
+      ancestorOid: phase.base.baseOid,
+      descendantOid: workspace.headOid,
+    });
+  } catch (error) {
+    if (
+      error instanceof PlanningPublicationGitError &&
+      error.reason === "not-ancestor"
+    )
+      fail("ancestry");
+    throw error;
+  }
   const workspaceArtifactCommits = input.state.phases.flatMap((item) =>
     "artifacts" in item
       ? item.artifacts
@@ -130,14 +154,23 @@ export async function validatePlanningImplementation(
     ...phase.implementation.commits,
     ...workspaceArtifactCommits,
   ])) {
-    await input.git.assertAncestor({
-      ancestorOid: phase.base.baseOid,
-      descendantOid: commit,
-    });
-    await input.git.assertAncestor({
-      ancestorOid: commit,
-      descendantOid: workspace.headOid,
-    });
+    try {
+      await input.git.assertAncestor({
+        ancestorOid: phase.base.baseOid,
+        descendantOid: commit,
+      });
+      await input.git.assertAncestor({
+        ancestorOid: commit,
+        descendantOid: workspace.headOid,
+      });
+    } catch (error) {
+      if (
+        error instanceof PlanningPublicationGitError &&
+        error.reason === "not-ancestor"
+      )
+        fail("ancestry");
+      throw error;
+    }
   }
   return {
     publication: phase.publication,

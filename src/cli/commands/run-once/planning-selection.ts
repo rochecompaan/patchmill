@@ -27,28 +27,48 @@ function active(state: PlanningStateV1): boolean {
   return state.phases.some((phase) => phase.status !== "complete");
 }
 
-function eligibleLabels(
-  issue: IssueSummary,
-  config: AgentIssueConfig,
-  activePlanning: boolean,
-): boolean {
+export function planningIssueEligible(input: {
+  issue: IssueSummary;
+  config: AgentIssueConfig;
+  state?: PlanningStateV1;
+  activeOwnedWorkflow: boolean;
+}): boolean {
+  const { issue, config, state, activeOwnedWorkflow } = input;
   const lifecycle = lifecycleLabels(config);
   const excluded =
     config.triagePolicy?.runOnceSelection?.excludedLabels ??
     DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
-  const blocked = issue.labels.filter(
-    (label) =>
+  const doneCheckpoint = state?.phases.some(
+    (phase) => "finish" in phase && phase.finish.doneLabelApplied === true,
+  );
+  const blocked = issue.labels.filter((label) => {
+    if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
+    if (doneCheckpoint && label === lifecycle.done) return false;
+    return (
       label === lifecycle.done ||
       label === lifecycle.needsInfo ||
-      excluded.includes(label),
-  );
+      excluded.includes(label)
+    );
+  });
   if (blocked.length === 0) return true;
-  // A targeted retry may acknowledge only the lifecycle blocker with ready.
+  // Ready acknowledges only the lifecycle needs-info blocker for both retries.
   return (
-    activePlanning &&
-    config.issueNumber === issue.number &&
+    activeOwnedWorkflow &&
     issue.labels.includes(lifecycle.ready) &&
     blocked.every((label) => label === lifecycle.needsInfo)
+  );
+}
+
+export function legacyActiveForIssue(
+  issue: IssueSummary,
+  config: AgentIssueConfig,
+  legacy: Awaited<ReturnType<typeof readRunState>>,
+): boolean {
+  return Boolean(
+    legacy &&
+    (isResumableRunState(legacy) ||
+      (hasBlockedRunRecoveryState(legacy) &&
+        issue.labels.includes(lifecycleLabels(config).ready))),
   );
 }
 
@@ -73,30 +93,42 @@ export async function selectRunOnceWorkflow(
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
-    const legacyActive = Boolean(
-      legacy &&
-      (isResumableRunState(legacy) ||
-        (hasBlockedRunRecoveryState(legacy) &&
-          issue.labels.includes(lifecycleLabels(config).ready))),
-    );
+    const legacyActive = legacyActiveForIssue(issue, config, legacy);
     if (state && active(state) && legacyActive)
       return {
         kind: "invalid-planning-state",
         issue,
         reason: "planning and legacy state are both active",
       };
-    if (state && active(state) && eligibleLabels(issue, config, true))
+    if (
+      state &&
+      active(state) &&
+      planningIssueEligible({
+        issue,
+        config,
+        state,
+        activeOwnedWorkflow: true,
+      })
+    )
       choices.push({ kind: "planning", issue, state });
     else if (
       legacyActive &&
-      eligibleLabels(issue, config, true) &&
+      planningIssueEligible({
+        issue,
+        config,
+        activeOwnedWorkflow: true,
+      }) &&
       (issue.labels.includes(lifecycleLabels(config).inProgress) ||
         issue.labels.includes(lifecycleLabels(config).ready))
     )
       choices.push({ kind: "legacy", issue });
     else if (
       issue.labels.includes(config.readyLabel) &&
-      eligibleLabels(issue, config, false)
+      planningIssueEligible({
+        issue,
+        config,
+        activeOwnedWorkflow: false,
+      })
     )
       choices.push({
         kind: "fresh-planning",

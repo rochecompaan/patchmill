@@ -14,8 +14,12 @@ import { ensureAutomationLabel } from "./automation-labels.ts";
 import { blockerComment, startedComment } from "./pipeline-comments.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
+import {
+  legacyActiveForIssue,
+  planningIssueEligible,
+} from "./planning-selection.ts";
 import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts";
-import { isResumableRunState, readRunState } from "./run-state.ts";
+import { readRunState } from "./run-state.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type {
@@ -287,15 +291,20 @@ export async function runPlanningWorkflow(input: {
     runStateDir: input.config.runStateDir,
     stateStore,
     readIssue: () => host.viewIssue(input.issue.number),
-    readLegacy: async () => {
-      const legacy = await readRunState(
-        input.config.runStateDir,
-        input.issue.number,
-      );
-      return legacy !== undefined && isResumableRunState(legacy);
-    },
+    readLegacy: async () =>
+      legacyActiveForIssue(
+        input.issue,
+        input.config,
+        await readRunState(input.config.runStateDir, input.issue.number),
+      ),
     eligible: (issue, state) =>
-      state !== undefined || issue.labels.includes(input.config.readyLabel),
+      planningIssueEligible({
+        issue,
+        config: input.config,
+        ...(state === undefined ? {} : { state }),
+        activeOwnedWorkflow: state !== undefined,
+      }) &&
+      (state !== undefined || issue.labels.includes(input.config.readyLabel)),
     mutate: async (issue, fresh) => {
       const mustClaim =
         fresh ||

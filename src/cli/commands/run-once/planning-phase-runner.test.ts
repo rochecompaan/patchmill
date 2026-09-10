@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 
 const oid = (character: string) => character.repeat(40);
@@ -167,6 +168,31 @@ test("maps a missing planning pull request to a sanitized blocker", async () => 
       validation: [],
     },
   });
+});
+
+test("blocks ambiguous base artifacts without starting a workspace", async () => {
+  let prepared = false;
+  const result = await runPlanningPhase(
+    input({
+      phase: {
+        kind: "spec",
+        artifactKinds: ["spec"],
+        pullRequestRequired: true,
+      },
+      state: state({ kind: "spec", status: "pending" }),
+      workspaces: {
+        prepare: async () => ((prepared = true), { workspace, base }),
+      } as never,
+      operations: {
+        resolveArtifacts: () => {
+          throw new PlanningPhaseArtifactError("ambiguous-base-artifact");
+        },
+      },
+    }),
+  );
+  // The production error is classified by its stable reason before Git effects.
+  assert.equal(prepared, false);
+  assert.equal(result.kind, "blocked");
 });
 
 test("checkpoints a planning phase satisfied by the fetched base without a pull request", async () => {
