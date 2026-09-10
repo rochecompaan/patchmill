@@ -13,8 +13,14 @@ function effectiveTopLevelLines(body: string): readonly string[] {
   const lines = body.replaceAll("\r\n", "\n").split("\n");
   const output: string[] = [];
   let fence: string | undefined;
+  let lazyContainer = false;
   for (const line of lines) {
     const topLevel = line.replace(/^[ ]{0,3}/u, "");
+    if (line.trim() === "") {
+      lazyContainer = false;
+      output.push(line);
+      continue;
+    }
     if (fence !== undefined) {
       const closing = /^(?<fence>`+|~+)[ \t]*$/u.exec(topLevel)?.groups?.fence;
       if (
@@ -32,8 +38,11 @@ function effectiveTopLevelLines(body: string): readonly string[] {
       fence = opening;
       continue;
     }
-    if (line.startsWith(">") || /^(?:[ \t]{4}|\t|[-*+]\s)/u.test(line))
+    if (line.startsWith(">") || /^(?:[ \t]{4}|\t|[-*+]\s)/u.test(line)) {
+      lazyContainer = line.startsWith(">") || /^(?:[-*+]\s)/u.test(line);
       continue;
+    }
+    if (lazyContainer) continue;
     output.push(line);
   }
   return output;

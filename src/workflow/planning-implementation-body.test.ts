@@ -15,8 +15,10 @@ test("requires one effective top-level implementation closing reference", () => 
     "   ```md\nCloses #189",
     "  ~~~md\nCloses #189",
     "> Closes #189",
+    "> Example closing syntax:\nCloses #189",
     "    Closes #189",
     "- Closes #189",
+    "- Example closing syntax:\nCloses #189",
     "Closes #190",
     "Refs #189",
   ])
