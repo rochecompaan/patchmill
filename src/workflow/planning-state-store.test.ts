@@ -18,6 +18,7 @@ import {
 import {
   PlanningStateValidationError,
   createPlanningState,
+  validatePlanningState,
 } from "./planning-state.ts";
 import {
   PlanningStateConflictError,
@@ -62,6 +63,104 @@ test("initializes and atomically replaces canonical planning state under owner l
     await rm(dir, { recursive: true, force: true });
   }
 });
+test("atomically appends a later plan artifact without changing the earlier spec evidence", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-store-"));
+  const oid = (character: string) => character.repeat(40);
+  try {
+    const store = new PlanningStateStore(dir);
+    const lock = await acquirePlanningIssueLock(dir, {
+      issueNumber: 187,
+      runId,
+    });
+    const initial = validatePlanningState({
+      version: 1,
+      workflowVersion: "planning-pr-v1",
+      runId,
+      issueNumber: 187,
+      issueTitle: "Example",
+      gates: { specRequired: false, planRequired: true },
+      revision: 0,
+      createdAt: "2026-09-07T12:00:00.000Z",
+      updatedAt: "2026-09-07T12:00:00.000Z",
+      phases: [
+        {
+          kind: "plan",
+          status: "workspace-ready",
+          base: {
+            remote: "origin",
+            baseBranch: "main",
+            baseOid: oid("a"),
+            artifactCandidates: { spec: [], plan: [] },
+          },
+          workspace: {
+            runId,
+            phase: "plan",
+            identity: {
+              branch: "agent/issue-187-plan",
+              worktreePath: ".worktrees/issue-187-plan",
+            },
+            remote: "origin",
+            baseBranch: "main",
+            baseOid: oid("a"),
+            headOid: oid("b"),
+            cleanup: { state: "ready" },
+          },
+          artifacts: [
+            {
+              kind: "spec",
+              path: "docs/specs/issue-187.md",
+              source: "workspace",
+              commitOid: oid("b"),
+            },
+          ],
+        },
+        { kind: "implementation", status: "pending" },
+      ],
+    });
+    await store.initialize({ state: initial, lock });
+    const next = validatePlanningState({
+      ...initial,
+      revision: 1,
+      updatedAt: "2026-09-07T12:00:01.000Z",
+      phases: [
+        {
+          ...initial.phases[0]!,
+          workspace: {
+            ...(initial.phases[0] as { workspace: object }).workspace,
+            headOid: oid("c"),
+          },
+          artifacts: [
+            ...(initial.phases[0] as { artifacts: object[] }).artifacts,
+            {
+              kind: "plan",
+              path: "docs/plans/issue-187.md",
+              source: "workspace",
+              commitOid: oid("c"),
+            },
+          ],
+        },
+        initial.phases[1]!,
+      ],
+    });
+    const saved = await store.replace({
+      issueNumber: 187,
+      expectedRunId: runId,
+      expectedRevision: 0,
+      next,
+      lock,
+    });
+    const plan = saved.phases[0]!;
+    if (!("artifacts" in plan)) assert.fail("expected plan artifacts");
+    assert.deepEqual(
+      plan.artifacts.map((artifact) => artifact.commitOid),
+      [oid("b"), oid("c")],
+    );
+    await releasePlanningIssueLock(lock);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("malformed reads fail closed with the canonical state path", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-store-"));
   try {

@@ -70,7 +70,7 @@ test("publishPrRunCost retains legacy update and unchanged behavior", async () =
 test("planning cost publication inserts and replaces before its final marker", async () => {
   const marker =
     "<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->";
-  let body = `Summary\n\n${marker}\n`;
+  let body = `Summary\n\nCloses #189\n\n${marker}\n`;
   const updates: string[] = [];
   const host: PullRequestBodyHostProvider = {
     async readPullRequestBody() {
@@ -86,15 +86,41 @@ test("planning cost publication inserts and replaces before its final marker", a
     prUrl: "https://github.com/a/b/pull/1",
     report,
     marker,
+    issueNumber: 189,
   });
   await publishPlanningPrRunCost({
     host,
     prUrl: "https://github.com/a/b/pull/1",
     report,
     marker,
+    issueNumber: 189,
   });
   assert.equal(body.trimEnd().split("\n").at(-1), marker);
   assert.equal((body.match(/planning-pr-v1/g) ?? []).length, 1);
   assert.equal((body.match(/patchmill-run-cost:start/g) ?? []).length, 1);
   assert.equal(updates.length, 1);
+});
+
+test("planning cost publication preserves an effective closing reference", async () => {
+  const marker =
+    "<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->";
+  const body = `Summary\n\n<!-- patchmill-run-cost:start -->\nCloses #189\n<!-- patchmill-run-cost:end -->\n\n${marker}\n`;
+  const host: PullRequestBodyHostProvider = {
+    async readPullRequestBody() {
+      return body;
+    },
+    async updatePullRequestBody() {
+      assert.fail("must not remove the sole closing reference");
+    },
+  };
+  await assert.rejects(
+    publishPlanningPrRunCost({
+      host,
+      prUrl: "https://github.com/a/b/pull/1",
+      report,
+      marker,
+      issueNumber: 189,
+    }),
+    /effective closing reference/,
+  );
 });

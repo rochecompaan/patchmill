@@ -57,6 +57,7 @@ export function createPlanningFinishEffects(
               issueNumber: durable.issueNumber,
               phase: "implementation",
             }),
+            issueNumber: durable.issueNumber,
             report: {
               stages: report.stages.map((stage) => ({
                 ...stage,

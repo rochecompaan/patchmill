@@ -3,6 +3,7 @@ import {
   upsertPlanningRunCostSection,
   upsertRunCostSection,
 } from "./pr-cost-summary.ts";
+import { assertImplementationClosingReference } from "../../../workflow/planning-implementation-body.ts";
 import { parsePlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import type { RunCostReport } from "./run-cost.ts";
 export async function publishPlanningPrRunCost(options: {
@@ -10,6 +11,7 @@ export async function publishPlanningPrRunCost(options: {
   prUrl: string;
   report: RunCostReport;
   marker: string;
+  issueNumber: number;
 }): Promise<"updated" | "unchanged"> {
   const body = await options.host.readPullRequestBody(options.prUrl);
   const next = upsertPlanningRunCostSection(
@@ -19,6 +21,7 @@ export async function publishPlanningPrRunCost(options: {
   );
   if (parsePlanningPullRequestMarker(next) === undefined)
     throw new Error("Planning marker is invalid after cost publication");
+  assertImplementationClosingReference(next, options.issueNumber);
   if (next === body) return "unchanged";
   await options.host.updatePullRequestBody(options.prUrl, next);
   return "updated";

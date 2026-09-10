@@ -10,6 +10,10 @@ import {
   lifecycleLabels,
 } from "./pipeline-lifecycle.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import {
+  isActionableWorkflowState,
+  resolveWorkflowState,
+} from "./workflow-state.ts";
 import { compareIssuesByPriority } from "./selection.ts";
 import type { AgentIssueConfig, IssueSummary } from "./types.ts";
 
@@ -160,7 +164,14 @@ export async function selectRunOnceWorkflow(
           activeOwnedWorkflow: true,
         })) &&
       (issue.labels.includes(lifecycleLabels(config).inProgress) ||
-        issue.labels.includes(lifecycleLabels(config).ready))
+        issue.labels.includes(lifecycleLabels(config).ready) ||
+        (hasFinishedPlanningWorkspaceState(legacy) &&
+          isActionableWorkflowState(
+            resolveWorkflowState(issue.labels, {
+              readyLabel: lifecycleLabels(config).ready,
+              policy: config.approvalPolicy,
+            }),
+          )))
     )
       choices.push({ kind: "legacy", issue });
     else if (

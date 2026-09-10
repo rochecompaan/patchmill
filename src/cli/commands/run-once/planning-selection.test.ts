@@ -128,6 +128,48 @@ test("selects a finished legacy planning workspace over fresh planning", async (
   }
 });
 
+test("selects approval-resumed finished legacy planning workspaces", async () => {
+  const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
+  try {
+    await writeRunState(runStateDir, {
+      issueNumber: 3,
+      title: "Issue 3",
+      status: "finished",
+      specPath: "docs/specs/issue-3.md",
+      branch: "agent/issue-3",
+    });
+    const approvalConfig = {
+      ...config,
+      runStateDir,
+      approvalPolicy: {
+        specApproval: {
+          kind: "spec",
+          required: true,
+          reviewLabel: "spec-review",
+          approvedLabel: "spec-approved",
+        },
+        planApproval: {
+          kind: "plan",
+          required: true,
+          reviewLabel: "plan-review",
+          approvedLabel: "plan-approved",
+        },
+      },
+    } as never;
+    for (const label of ["spec-approved", "plan-approved"]) {
+      const result = await selectRunOnceWorkflow(
+        [issue(3, [label]), issue(4, ["agent-ready"])],
+        approvalConfig,
+        { path: () => "state", read: async () => undefined } as never,
+      );
+      assert.equal(result.kind, "legacy");
+      if (result.kind === "legacy") assert.equal(result.issue.number, 3);
+    }
+  } finally {
+    await rm(runStateDir, { recursive: true, force: true });
+  }
+});
+
 test("reserves blocked legacy recovery for an explicit ready retry", () => {
   const blocked = { status: "blocked", lastError: "needs input" } as never;
   assert.equal(

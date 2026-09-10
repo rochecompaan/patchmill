@@ -795,11 +795,7 @@ function artifactEvidence(
         !phase.base.artifactCandidates[artifact.kind].includes(artifact.path)
       )
         fail("remote-artifact-mismatch", `${path}.artifacts[${index}]`);
-    } else if (
-      !("workspace" in phase) ||
-      (phase.kind !== "implementation" &&
-        artifact.commitOid !== phase.workspace.headOid)
-    )
+    } else if (!("workspace" in phase))
       fail("workspace-artifact-mismatch", `${path}.artifacts[${index}]`);
   }
 }
