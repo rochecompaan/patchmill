@@ -3,19 +3,8 @@ import { runImplementationAgent } from "./implementation-agent.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
 import { createStepAccounting, progress } from "./pipeline-progress.ts";
 import type { PlanningImplementationInput } from "./planning-implementation.ts";
-import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
+import { artifactPath } from "./planning-runtime-state.ts";
 import type { AgentIssueConfig, CommandRunner, IssueSummary } from "./types.ts";
-
-function planPath(state: PlanningStateV1): string {
-  for (const phase of state.phases)
-    if ("artifacts" in phase) {
-      const path = phase.artifacts.find(
-        (artifact) => artifact.kind === "plan",
-      )?.path;
-      if (path) return path;
-    }
-  throw new Error("Planning implementation requires a durable plan path");
-}
 
 export type PlanningImplementationAdapterInput = {
   runner: CommandRunner;
@@ -60,7 +49,7 @@ export function createPlanningImplementationAdapter(
         config: input.config,
         issue: input.issue,
         labels: input.labels,
-        planPath: planPath(state),
+        planPath: artifactPath(state, "plan"),
         branch: phase.workspace.identity.branch,
         worktreePath: phase.workspace.identity.worktreePath,
         worktree: {

@@ -76,7 +76,7 @@ type RunnerConfig = {
   projectPolicy: PatchmillProjectPolicy;
   skills: PatchmillSkillsConfig;
   triageLabels: PromptTriageLabels;
-  workspaceIdentity?: (phase: PlannedPhase) => {
+  workspaceIdentity: (phase: PlannedPhase) => {
     branch: string;
     worktreePath: string;
   };
@@ -145,6 +145,45 @@ export function blocked(reason: string): AgentIssueBlockedResult {
     commits: [],
     validation: [],
   };
+}
+
+export async function runWorkspaceArtifacts(
+  input: PlanningPhaseRunnerInput,
+  state: PlanningStateV1,
+): Promise<
+  | PlanningPhaseRunnerOutcome
+  | { kind: "workspace-ready"; state: PlanningStateV1 }
+> {
+  const current = state.phases[input.phaseIndex];
+  if (current?.status !== "workspace-ready")
+    throw new RangeError("Planning phase workspace is not ready");
+  await input.workspaces.resume({
+    runId: state.runId,
+    phase: current.kind,
+    identity: current.workspace.identity,
+    base: current.base,
+    saved: current.workspace,
+  });
+  const artifacts = await operations(input).runArtifacts({
+    issue: input.issue,
+    phase: input.phase,
+    current,
+    repoRoot: input.config.repoRoot,
+    specsDir: input.config.specsDir,
+    plansDir: input.config.plansDir,
+    artifactDate: input.artifactDate ?? (input.now ?? (() => new Date()))(),
+    agent: input.artifactAgent,
+    git: input.publicationGit,
+    checkpoint: async (next) => {
+      state = await replacePhase(input, state, next);
+    },
+    projectPolicy: input.config.projectPolicy,
+    skills: input.config.skills,
+    triageLabels: input.config.triageLabels,
+  });
+  return artifacts.kind === "blocked"
+    ? { kind: "blocked", state, result: artifacts.result }
+    : { kind: "workspace-ready", state };
 }
 
 export async function replacePhase(

@@ -1,4 +1,3 @@
-import { phaseWorkspaceIdentity } from "../../../workflow/planning-pull-requests.ts";
 import type {
   PlanningStateV1,
   WorkspaceReadyPlanningPhase,
@@ -8,30 +7,10 @@ import {
   blocked,
   operations,
   replacePhase,
+  runWorkspaceArtifacts,
   type PlanningPhaseRunnerInput,
   type PlanningPhaseRunnerOutcome,
 } from "./planning-phase-runner-shared.ts";
-
-function workspaceIdentity(input: PlanningPhaseRunnerInput) {
-  return (
-    input.config.workspaceIdentity?.(input.phase) ??
-    phaseWorkspaceIdentity({
-      issueNumber: input.issue.number,
-      title: input.issue.title,
-      phase: input.phase.kind,
-      strategy: {
-        baseBranch: input.config.baseBranch,
-        baseRef: input.config.baseBranch,
-        remote: input.config.remote,
-        branchPrefix: "agent/issue",
-        worktreeDir: ".worktrees",
-        worktreePrefix: "issue",
-        slugLength: 48,
-        allowDirectLand: false,
-      },
-    })
-  );
-}
 
 async function reconcile(
   input: PlanningPhaseRunnerInput,
@@ -96,7 +75,7 @@ async function prepare(
   const prepared = await input.workspaces.prepare({
     runId: state.runId,
     phase: input.phase.kind,
-    identity: workspaceIdentity(input),
+    identity: input.config.workspaceIdentity(input.phase),
     base,
   });
   const phase: WorkspaceReadyPlanningPhase = {
@@ -107,48 +86,6 @@ async function prepare(
     artifacts: resolution.artifacts,
   };
   return { state: await replacePhase(input, state, phase), satisfied: false };
-}
-
-async function runArtifacts(
-  input: PlanningPhaseRunnerInput,
-  state: PlanningStateV1,
-): Promise<
-  | PlanningPhaseRunnerOutcome
-  | { kind: "workspace-ready"; state: PlanningStateV1 }
-> {
-  const current = state.phases[input.phaseIndex];
-  if (
-    current?.kind === "implementation" ||
-    current?.status !== "workspace-ready"
-  )
-    throw new RangeError("Planning phase workspace is not ready");
-  await input.workspaces.resume({
-    runId: state.runId,
-    phase: current.kind,
-    identity: current.workspace.identity,
-    base: current.base,
-    saved: current.workspace,
-  });
-  const artifacts = await operations(input).runArtifacts({
-    issue: input.issue,
-    phase: input.phase,
-    current,
-    repoRoot: input.config.repoRoot,
-    specsDir: input.config.specsDir,
-    plansDir: input.config.plansDir,
-    artifactDate: input.artifactDate ?? (input.now ?? (() => new Date()))(),
-    agent: input.artifactAgent,
-    git: input.publicationGit,
-    checkpoint: async (next) => {
-      state = await replacePhase(input, state, next);
-    },
-    projectPolicy: input.config.projectPolicy,
-    skills: input.config.skills,
-    triageLabels: input.config.triageLabels,
-  });
-  return artifacts.kind === "blocked"
-    ? { kind: "blocked", state, result: artifacts.result }
-    : { kind: "workspace-ready", state };
 }
 
 export async function runPlanningSpecPlanPhase(
@@ -182,7 +119,7 @@ export async function runPlanningSpecPlanPhase(
       throw error;
     }
   }
-  const artifacts = await runArtifacts(input, state);
+  const artifacts = await runWorkspaceArtifacts(input, state);
   if (artifacts.kind !== "workspace-ready") return artifacts;
   const published = await operations(input).publish({
     state: artifacts.state,

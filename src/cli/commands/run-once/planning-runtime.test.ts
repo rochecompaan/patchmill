@@ -44,8 +44,11 @@ test("finish effects deduplicate a durable implementation handoff", async () => 
     phases: [
       {
         kind: "implementation",
+        status: "pull-request-open",
         workspace: { identity: { worktreePath: ".worktrees/issue-189" } },
         artifacts: [{ kind: "plan", path: "docs/plans/issue-189.md" }],
+        pullRequest: {},
+        implementation: { visualEvidence: [] },
       },
     ],
   } as never;
