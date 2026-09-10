@@ -317,8 +317,10 @@ test("finishes implementation only after the implementation runner validates it"
   const result = await runPlanningPhase(
     input({
       state: initial,
-      implementationInput: {} as never,
-      finishInput: {} as never,
+      implementation: {
+        implementation: {} as never,
+        finish: () => ({}) as never,
+      },
       operations: {
         runImplementation: async () => ({
           kind: "validated",

@@ -193,214 +193,220 @@ export function createPlanningRuntime(
                 };
               },
             },
-            implementationInput: {
-              configuredGit: git,
-              runAgent: async ({
-                state: durable,
-                phase: implementation,
-                git: policy,
-                requiredPullRequestMarker,
-                workspaceCreated,
-              }) => {
-                const durablePlan = planPath(durable);
-                const result = await runImplementationAgent({
-                  runner: input.runner,
-                  config: input.config,
-                  issue: input.issue,
-                  labels: input.labels,
-                  planPath: durablePlan,
-                  branch: implementation.workspace.identity.branch,
-                  worktreePath: implementation.workspace.identity.worktreePath,
-                  worktree: {
+            implementation: {
+              implementation: {
+                configuredGit: git,
+                runAgent: async ({
+                  state: durable,
+                  phase: implementation,
+                  git: policy,
+                  requiredPullRequestMarker,
+                  workspaceCreated,
+                }) => {
+                  const durablePlan = planPath(durable);
+                  const result = await runImplementationAgent({
+                    runner: input.runner,
+                    config: input.config,
+                    issue: input.issue,
+                    labels: input.labels,
+                    planPath: durablePlan,
                     branch: implementation.workspace.identity.branch,
                     worktreePath:
                       implementation.workspace.identity.worktreePath,
-                    created: workspaceCreated,
-                    hasExistingCommits:
-                      implementation.workspace.headOid !==
-                      implementation.workspace.baseOid,
-                    existingCommits:
-                      implementation.workspace.headOid !==
-                      implementation.workspace.baseOid
-                        ? [implementation.workspace.headOid]
-                        : [],
-                  },
-                  git: policy as typeof git,
-                  resume: {
-                    resumed: !workspaceCreated,
-                  },
-                  piAgentDir: input.piAgentDir,
-                  tokenUsageState: input.tokenUsageState,
-                  completedAt: (
-                    input.now ?? (() => new Date())
-                  )().toISOString(),
-                  progressReporter: input.progressReporter,
-                  streamPiOutput: input.streamPiOutput,
-                  verbosePiOutput: input.verbosePiOutput,
-                  heartbeatMs: input.heartbeatMs,
-                  piSessionPath: input.piSessionPath,
-                  requiredPullRequestMarker,
-                  progress: (level, stage, message, extras) =>
-                    progress(
-                      { progress: input.progressReporter },
-                      level,
-                      stage,
-                      message,
-                      { issueNumber: input.issue.number, ...extras },
-                    ),
-                  runStep: steps.run,
-                  stepStart: steps.start,
-                  stepComplete: steps.complete,
-                  observePi: (stage) => async (observation) =>
-                    steps.observe(stage, observation),
-                });
-                if (result.kind === "implemented") return result.result;
-                if (result.kind === "blocked") return result.result;
-                return {
-                  status: "blocked",
-                  reason: result.result.reason,
-                  questions: [],
-                  commits: [],
-                  validation: [],
-                };
-              },
-              resolveRunCost: () =>
-                resolvePipelineRunCost({
-                  implementationKind: "implemented",
-                  implementationStatus: "pr-created",
-                  ...(input.piSessionPath === undefined
-                    ? {}
-                    : { piSessionPath: input.piSessionPath }),
-                  warn: (message, error) =>
-                    progress(
-                      { progress: input.progressReporter },
-                      "warning",
-                      "run-cost",
-                      message,
-                      {
-                        issueNumber: input.issue.number,
-                        data:
-                          error instanceof Error
-                            ? error.message
-                            : String(error ?? ""),
-                      },
-                    ),
-                }),
-              ...(input.now === undefined ? {} : { now: input.now }),
-            },
-            finishInputForState: (durable) => ({
-              effects: {
-                publishCost: async () => {
-                  const implementation = durable.phases[phaseIndex];
-                  if (
-                    implementation?.kind !== "implementation" ||
-                    !("implementation" in implementation) ||
-                    implementation.implementation.runCostReport === undefined ||
-                    !("pullRequest" in implementation)
-                  )
-                    return;
-                  const report = implementation.implementation.runCostReport;
-                  await publishPlanningPrRunCost({
-                    host,
-                    prUrl: implementation.pullRequest.url,
-                    marker: renderPlanningPullRequestMarker({
-                      issueNumber: durable.issueNumber,
-                      phase: "implementation",
-                    }),
-                    report: {
-                      stages: report.stages.map((stage) => ({
-                        stage: stage.stage,
-                        models: stage.models.map((model) => ({ ...model })),
-                        promptTokens: stage.promptTokens,
-                        outputTokens: stage.outputTokens,
-                        estimatedCostUsd: stage.estimatedCostUsd,
-                      })),
-                      promptTokens: report.promptTokens,
-                      outputTokens: report.outputTokens,
-                      estimatedCostUsd: report.estimatedCostUsd,
-                    },
-                  });
-                },
-                validateVisualEvidence: async () => {
-                  const implementation = durable.phases[phaseIndex];
-                  if (
-                    implementation?.kind === "implementation" &&
-                    "implementation" in implementation
-                  )
-                    await validateVisualEvidenceReferences({
-                      repoRoot: resolve(
-                        input.config.repoRoot,
+                    worktree: {
+                      branch: implementation.workspace.identity.branch,
+                      worktreePath:
                         implementation.workspace.identity.worktreePath,
+                      created: workspaceCreated,
+                      hasExistingCommits:
+                        implementation.workspace.headOid !==
+                        implementation.workspace.baseOid,
+                      existingCommits:
+                        implementation.workspace.headOid !==
+                        implementation.workspace.baseOid
+                          ? [implementation.workspace.headOid]
+                          : [],
+                    },
+                    git: policy as typeof git,
+                    resume: {
+                      resumed: !workspaceCreated,
+                    },
+                    piAgentDir: input.piAgentDir,
+                    tokenUsageState: input.tokenUsageState,
+                    completedAt: (
+                      input.now ?? (() => new Date())
+                    )().toISOString(),
+                    progressReporter: input.progressReporter,
+                    streamPiOutput: input.streamPiOutput,
+                    verbosePiOutput: input.verbosePiOutput,
+                    heartbeatMs: input.heartbeatMs,
+                    piSessionPath: input.piSessionPath,
+                    requiredPullRequestMarker,
+                    progress: (level, stage, message, extras) =>
+                      progress(
+                        { progress: input.progressReporter },
+                        level,
+                        stage,
+                        message,
+                        { issueNumber: input.issue.number, ...extras },
                       ),
-                      evidence:
-                        implementation.implementation.visualEvidence.map(
-                          (item) => ({
-                            screenshotPath: item.screenshotPath,
-                            ...(item.caption === undefined
-                              ? {}
-                              : { caption: item.caption }),
-                            ...(item.referencePaths === undefined
-                              ? {}
-                              : { referencePaths: [...item.referencePaths] }),
-                            ...(item.url === undefined
-                              ? {}
-                              : { url: item.url }),
-                          }),
-                        ),
-                      runner: input.runner,
-                      referenceScreenshotPaths:
-                        input.config.projectPolicy.visualEvidence
-                          .referenceScreenshotPaths,
+                    runStep: steps.run,
+                    stepStart: steps.start,
+                    stepComplete: steps.complete,
+                    observePi: (stage) => async (observation) =>
+                      steps.observe(stage, observation),
+                  });
+                  if (result.kind === "implemented") return result.result;
+                  if (result.kind === "blocked") return result.result;
+                  return {
+                    status: "blocked",
+                    reason: result.result.reason,
+                    questions: [],
+                    commits: [],
+                    validation: [],
+                  };
+                },
+                resolveRunCost: () =>
+                  resolvePipelineRunCost({
+                    implementationKind: "implemented",
+                    implementationStatus: "pr-created",
+                    ...(input.piSessionPath === undefined
+                      ? {}
+                      : { piSessionPath: input.piSessionPath }),
+                    warn: (message, error) =>
+                      progress(
+                        { progress: input.progressReporter },
+                        "warning",
+                        "run-cost",
+                        message,
+                        {
+                          issueNumber: input.issue.number,
+                          data:
+                            error instanceof Error
+                              ? error.message
+                              : String(error ?? ""),
+                        },
+                      ),
+                  }),
+                ...(input.now === undefined ? {} : { now: input.now }),
+              },
+              finish: (durable) => ({
+                effects: {
+                  publishCost: async () => {
+                    const implementation = durable.phases[phaseIndex];
+                    if (
+                      implementation?.kind !== "implementation" ||
+                      !("implementation" in implementation) ||
+                      implementation.implementation.runCostReport ===
+                        undefined ||
+                      !("pullRequest" in implementation)
+                    )
+                      return;
+                    const report = implementation.implementation.runCostReport;
+                    await publishPlanningPrRunCost({
+                      host,
+                      prUrl: implementation.pullRequest.url,
+                      marker: renderPlanningPullRequestMarker({
+                        issueNumber: durable.issueNumber,
+                        phase: "implementation",
+                      }),
+                      report: {
+                        stages: report.stages.map((stage) => ({
+                          stage: stage.stage,
+                          models: stage.models.map((model) => ({ ...model })),
+                          promptTokens: stage.promptTokens,
+                          outputTokens: stage.outputTokens,
+                          estimatedCostUsd: stage.estimatedCostUsd,
+                        })),
+                        promptTokens: report.promptTokens,
+                        outputTokens: report.outputTokens,
+                        estimatedCostUsd: report.estimatedCostUsd,
+                      },
                     });
-                },
-                postHandoff: async (result) => {
-                  const body = handoffComment(
-                    planPath(durable),
-                    result,
-                    input.config.baseBranch,
-                  );
-                  const current = await host.viewIssue(input.issue.number);
-                  if (
-                    !current.comments?.some((comment) => comment.body === body)
-                  )
-                    await host.commentIssue(input.issue.number, body);
-                },
-                cleanupHook: async () => {
-                  const implementation = durable.phases[phaseIndex];
-                  if (
-                    implementation?.kind !== "implementation" ||
-                    !("workspace" in implementation)
-                  )
-                    return;
-                  const results = await runCleanupHookScript(
-                    input.runner,
-                    input.config.repoRoot,
-                    implementation.workspace.identity.worktreePath,
-                    input.config.cleanupHook,
-                  );
-                  if (results.some((result) => result.status === "failed"))
-                    throw new Error("Planning cleanup hook failed");
-                },
-                ensureDoneLabel: async () =>
-                  ensureAutomationLabel(host, input.config, input.doneLabel),
-                applyDoneLabels: async () =>
-                  host.applyLabels(
-                    planLabelChange(
-                      input.issue.number,
-                      input.labels,
-                      nextLabels(
-                        cleanupLabelsForImplementation(input.labels, {
-                          readyLabel: input.readyLabel,
-                          policy: input.config.approvalPolicy,
-                        }),
-                        [input.inProgressLabel, input.needsInfoLabel],
-                        [input.doneLabel],
+                  },
+                  validateVisualEvidence: async () => {
+                    const implementation = durable.phases[phaseIndex];
+                    if (
+                      implementation?.kind === "implementation" &&
+                      "implementation" in implementation
+                    )
+                      await validateVisualEvidenceReferences({
+                        repoRoot: resolve(
+                          input.config.repoRoot,
+                          implementation.workspace.identity.worktreePath,
+                        ),
+                        evidence:
+                          implementation.implementation.visualEvidence.map(
+                            (item) => ({
+                              screenshotPath: item.screenshotPath,
+                              ...(item.caption === undefined
+                                ? {}
+                                : { caption: item.caption }),
+                              ...(item.referencePaths === undefined
+                                ? {}
+                                : { referencePaths: [...item.referencePaths] }),
+                              ...(item.url === undefined
+                                ? {}
+                                : { url: item.url }),
+                            }),
+                          ),
+                        runner: input.runner,
+                        referenceScreenshotPaths:
+                          input.config.projectPolicy.visualEvidence
+                            .referenceScreenshotPaths,
+                      });
+                  },
+                  postHandoff: async (result) => {
+                    const body = handoffComment(
+                      planPath(durable),
+                      result,
+                      input.config.baseBranch,
+                    );
+                    const current = await host.viewIssue(input.issue.number);
+                    if (
+                      !current.comments?.some(
+                        (comment) => comment.body === body,
+                      )
+                    )
+                      await host.commentIssue(input.issue.number, body);
+                  },
+                  cleanupHook: async () => {
+                    const implementation = durable.phases[phaseIndex];
+                    if (
+                      implementation?.kind !== "implementation" ||
+                      !("workspace" in implementation)
+                    )
+                      return;
+                    const results = await runCleanupHookScript(
+                      input.runner,
+                      input.config.repoRoot,
+                      implementation.workspace.identity.worktreePath,
+                      input.config.cleanupHook,
+                    );
+                    if (results.some((result) => result.status === "failed"))
+                      throw new Error("Planning cleanup hook failed");
+                  },
+                  ensureDoneLabel: async () =>
+                    ensureAutomationLabel(host, input.config, input.doneLabel),
+                  applyDoneLabels: async () =>
+                    host.applyLabels(
+                      planLabelChange(
+                        input.issue.number,
+                        input.labels,
+                        nextLabels(
+                          cleanupLabelsForImplementation(input.labels, {
+                            readyLabel: input.readyLabel,
+                            policy: input.config.approvalPolicy,
+                          }),
+                          [input.inProgressLabel, input.needsInfoLabel],
+                          [input.doneLabel],
+                        ),
                       ),
                     ),
-                  ),
-              },
-              ...(input.now === undefined ? {} : { now: input.now }),
-            }),
+                },
+                ...(input.now === undefined ? {} : { now: input.now }),
+              }),
+            },
             ...(input.now === undefined ? {} : { now: input.now }),
           }),
       }),
