@@ -285,6 +285,13 @@ export async function runPlanningWorkflow(input: {
     });
   const stateStore = new PlanningStateStore(input.config.runStateDir);
   const labels = lifecycleLabels(input.config);
+  const attemptTimestamp = (input.options.now ?? new Date()).toISOString();
+  const piSessionPath = runPiSessionPath(
+    input.config.runStateDir,
+    attemptTimestamp,
+    input.issue.number,
+  );
+  const runOptions = { ...input.options, piSessionPath };
   const planning = await runPlanningIssue({
     issue: input.issue,
     state: input.state,
@@ -345,11 +352,7 @@ export async function runPlanningWorkflow(input: {
         streamPiOutput: input.options.streamPiOutput,
         verbosePiOutput: input.options.verbosePiOutput,
         heartbeatMs: input.options.heartbeatMs,
-        piSessionPath: runPiSessionPath(
-          input.config.runStateDir,
-          (input.options.now ?? new Date()).toISOString(),
-          issue.number,
-        ),
+        piSessionPath,
         host,
         ...(input.options.now === undefined
           ? {}
@@ -376,12 +379,12 @@ export async function runPlanningWorkflow(input: {
   if (planning.status === "coordinated")
     return withLogPath(
       mapOutcome(planning.issue, planning.outcome),
-      input.options,
+      runOptions,
     );
   if (planning.status === "blocked")
     return withLogPath(
       { issue: planning.issue, ...planning.result },
-      input.options,
+      runOptions,
     );
-  return withLogPath(planning, input.options);
+  return withLogPath(planning, runOptions);
 }

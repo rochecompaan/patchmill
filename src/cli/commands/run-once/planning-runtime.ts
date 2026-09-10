@@ -107,6 +107,24 @@ export function createPlanningRuntime(
     skills: input.config.skills,
     taskContract: input.config.projectPolicy.pi.taskContract,
     issueNumber: input.issue.number,
+    runOptions: {
+      ...(input.piSessionPath === undefined
+        ? {}
+        : { sessionRoot: input.piSessionPath }),
+      ...(input.progressReporter === undefined
+        ? {}
+        : { progress: input.progressReporter }),
+      ...(input.streamPiOutput === undefined
+        ? {}
+        : { streamOutput: input.streamPiOutput }),
+      ...(input.verbosePiOutput === undefined
+        ? {}
+        : { verbosePiOutput: input.verbosePiOutput }),
+      ...(input.heartbeatMs === undefined
+        ? {}
+        : { heartbeatMs: input.heartbeatMs }),
+      tokenUsageState: input.tokenUsageState,
+    },
   });
   const git = {
     baseBranch: input.config.baseBranch,
