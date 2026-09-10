@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import { runPlanningImplementation } from "./planning-implementation.ts";
 
 const oid = (value: string) => value.repeat(40);
@@ -134,6 +135,37 @@ test("checkpoints clean committed blocker progress for resumption", async () => 
   );
   assert.equal(result.kind, "blocked");
   assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
+});
+
+test("blocks a resumed blocker when its saved head is not an ancestor", async () => {
+  const checkpoints: unknown[] = [];
+  const result = await runPlanningImplementation(
+    input({
+      runAgent: async () => ({
+        status: "blocked",
+        reason: "pause",
+        questions: [],
+        commits: [],
+        validation: [],
+      }),
+      git: {
+        inspectRemoteHead: async () => ({ state: "missing" as const }),
+        assertAncestor: async () => {
+          throw new PlanningPublicationGitError("merge-base", "not-ancestor");
+        },
+      },
+      stateStore: {
+        replace: async ({ next }: { next: unknown }) => {
+          checkpoints.push(next);
+          return next;
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked")
+    assert.equal(result.result.reason, "implementation-workspace");
+  assert.deepEqual(checkpoints, []);
 });
 
 test("refuses dirty blocker progress without checkpointing", async () => {

@@ -6,15 +6,17 @@ import { createMockRunner } from "../../../../test-support/run-once/mock-runner.
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import { runImplementationAgent } from "./implementation-agent.ts";
 
-test("returns a merged Pi result without applying direct-land policy", async () => {
+test("keeps planning implementation todos in the primary repository", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const worktreePath = ".worktrees/issue-189";
   await mkdir(join(config.repoRoot, worktreePath), { recursive: true });
   const planPath = "docs/plans/issue-189.md";
   await mkdir(join(config.repoRoot, "docs/plans"), { recursive: true });
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  let todoPath: string | undefined;
   const runner = createMockRunner(async (call) => {
-    if (call.command === "pi")
+    if (call.command === "pi") {
+      todoPath = call.env?.PI_TODO_PATH;
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -26,6 +28,7 @@ test("returns a merged Pi result without applying direct-land policy", async () 
         }),
         stderr: "",
       };
+    }
     throw new Error(`unexpected ${call.command}`);
   });
   const outcome = await runImplementationAgent({
@@ -54,4 +57,5 @@ test("returns a merged Pi result without applying direct-land policy", async () 
   assert.equal(outcome.kind, "implemented");
   if (outcome.kind === "implemented")
     assert.equal(outcome.result.status, "merged");
+  assert.equal(todoPath, join(config.repoRoot, ".pi/todos"));
 });

@@ -112,7 +112,15 @@ export async function runImplementationAgent(
       issueNumber: input.issue.number,
     },
   );
-  const taskContract = input.config.projectPolicy.pi.taskContract;
+  // Pi runs in the owned phase worktree, while operator todos stay in the
+  // primary repository so ignored task files cannot make that worktree dirty.
+  const taskContract = {
+    ...input.config.projectPolicy.pi.taskContract,
+    todoRoot: resolve(
+      input.config.repoRoot,
+      input.config.projectPolicy.pi.taskContract.todoRoot,
+    ),
+  };
   const taskProgress = await createImplementationTaskProgress({
     repoRoot: input.config.repoRoot,
     worktreeRoot,
@@ -127,6 +135,7 @@ export async function runImplementationAgent(
     await taskProgress.start();
     const projectPolicy = {
       ...input.config.projectPolicy,
+      pi: { ...input.config.projectPolicy.pi, taskContract },
       directLand: {
         ...input.config.projectPolicy.directLand,
         targetBranch: input.git.baseBranch,
