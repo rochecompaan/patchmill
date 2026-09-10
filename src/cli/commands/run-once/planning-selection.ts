@@ -4,6 +4,10 @@ import {
 } from "../../../workflow/planning-state.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
+import {
+  hasBlockedRunRecoveryState,
+  lifecycleLabels,
+} from "./pipeline-lifecycle.ts";
 import { compareIssuesByPriority } from "./selection.ts";
 import type { AgentIssueConfig, IssueSummary } from "./types.ts";
 
@@ -43,7 +47,13 @@ export async function selectRunOnceWorkflow(
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
-    if (state && active(state) && legacy && isResumableRunState(legacy))
+    const legacyActive = Boolean(
+      legacy &&
+      (isResumableRunState(legacy) ||
+        (hasBlockedRunRecoveryState(legacy) &&
+          issue.labels.includes(lifecycleLabels(config).ready))),
+    );
+    if (state && active(state) && legacyActive)
       return {
         kind: "invalid-planning-state",
         issue,
@@ -52,9 +62,9 @@ export async function selectRunOnceWorkflow(
     if (state && active(state))
       choices.push({ kind: "planning", issue, state });
     else if (
-      legacy &&
-      isResumableRunState(legacy) &&
-      issue.labels.includes("in-progress")
+      legacyActive &&
+      (issue.labels.includes("in-progress") ||
+        issue.labels.includes(lifecycleLabels(config).ready))
     )
       choices.push({ kind: "legacy", issue });
     else if (issue.labels.includes(config.readyLabel))

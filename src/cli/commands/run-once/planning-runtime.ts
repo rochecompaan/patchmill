@@ -19,6 +19,7 @@ import { cleanupLabelsForImplementation } from "./workflow-state.ts";
 import { nextLabels } from "./pipeline-lifecycle.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
+import { phaseWorkspaceIdentity } from "../../../workflow/planning-pull-requests.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
 import type { AgentIssueConfig, CommandRunner, IssueSummary } from "./types.ts";
@@ -54,14 +55,14 @@ export type PlanningRuntimeInput = {
 };
 
 function planPath(state: PlanningStateV1): string {
-  const phase = state.phases.find((item) => item.kind === "implementation");
-  const path =
-    phase && "artifacts" in phase
-      ? phase.artifacts.find((artifact) => artifact.kind === "plan")?.path
-      : undefined;
-  if (!path)
-    throw new Error("Planning implementation requires a durable plan path");
-  return path;
+  for (const phase of state.phases)
+    if ("artifacts" in phase) {
+      const path = phase.artifacts.find(
+        (artifact) => artifact.kind === "plan",
+      )?.path;
+      if (path) return path;
+    }
+  throw new Error("Planning implementation requires a durable plan path");
 }
 
 /** Builds the production planning coordinator callback without legacy run state. */
@@ -151,10 +152,13 @@ export function createPlanningRuntime(
                 ready: input.readyLabel,
                 needsInfo: input.needsInfoLabel,
               },
-              workspaceIdentity: (planned) => ({
-                branch: `${input.config.branchPrefix}-${input.issue.number}-${planned.kind}`,
-                worktreePath: `${input.config.worktreePrefix}-${input.issue.number}-${planned.kind}`,
-              }),
+              workspaceIdentity: (planned) =>
+                phaseWorkspaceIdentity({
+                  issueNumber: input.issue.number,
+                  title: input.issue.title,
+                  phase: planned.kind,
+                  strategy: git,
+                }),
             },
             implementationInput: {
               configuredGit: git,

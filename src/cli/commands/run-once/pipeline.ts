@@ -3,6 +3,7 @@ import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import {
   runLegacyOneIssue,
   runLegacyOneIssueAfterReset,
+  runLegacyOneIssueForSelection,
   type RunOneIssueOptions,
 } from "./pipeline-legacy.ts";
 import { runPlanningWorkflow } from "./planning-pipeline.ts";
@@ -44,7 +45,12 @@ export async function runOneIssue(
         `Planning workflow state for issue #${selected.issue.number} is invalid: ${selected.reason}`,
       );
     case "legacy":
-      return runLegacyOneIssue(runner, config, options);
+      return runLegacyOneIssueForSelection(
+        runner,
+        config,
+        selected.issue.number,
+        options,
+      );
     case "planning":
       return runPlanningWorkflow({
         runner,

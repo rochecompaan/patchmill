@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { runOneIssue } from "./pipeline.ts";
+import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { readRunState, writeRunState } from "./run-state.ts";
 import {
   blockedRecoveryRunner,
