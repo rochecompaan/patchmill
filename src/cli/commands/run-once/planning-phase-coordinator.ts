@@ -5,6 +5,7 @@ import type {
   AgentIssuePrCreatedResult,
   IssueSummary,
 } from "./types.ts";
+import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
 
 export type PlanningCoordinatorOutcome =
   | {
@@ -26,16 +27,6 @@ export type PlanningCoordinatorOutcome =
       result: AgentIssuePrCreatedResult;
     };
 
-export type PlanningPhaseRunnerOutcome =
-  | { kind: "review-pending"; state: PlanningStateV1; prUrl: string }
-  | { kind: "blocked"; state: PlanningStateV1; result: AgentIssueBlockedResult }
-  | {
-      kind: "complete";
-      state: PlanningStateV1;
-      result: AgentIssuePrCreatedResult;
-    }
-  | { kind: "advanced"; state: PlanningStateV1 };
-
 export type PlanningPhaseCoordinatorInput = {
   state: PlanningStateV1;
   issue: IssueSummary;
@@ -50,6 +41,7 @@ export type PlanningPhaseCoordinatorInput = {
     state: PlanningStateV1;
     phaseIndex: number;
     phase: ReturnType<typeof planningPhasePlan>[number];
+    planOnly: boolean;
   }): Promise<PlanningPhaseRunnerOutcome>;
 };
 
@@ -67,15 +59,12 @@ export async function coordinatePlanningPhases(
     const phase = plan[phaseIndex];
     if (phase === undefined)
       throw new Error("Planning phase plan is inconsistent");
-    if (phase.kind === "implementation" && input.planOnly) {
-      return {
-        kind: "stopped",
-        state,
-        reason: "plan-only",
-        nextPhase: "implementation",
-      };
-    }
-    const outcome = await input.runPlanningPhase({ state, phaseIndex, phase });
+    const outcome = await input.runPlanningPhase({
+      state,
+      phaseIndex,
+      phase,
+      planOnly: input.planOnly === true,
+    });
     if (outcome.kind === "review-pending") {
       if (phase.kind === "implementation")
         throw new Error("Implementation pull request cannot be review-pending");
@@ -87,6 +76,13 @@ export async function coordinatePlanningPhases(
       };
     }
     if (outcome.kind === "blocked") return outcome;
+    if (outcome.kind === "stopped")
+      return {
+        kind: "stopped",
+        state: outcome.state,
+        reason: outcome.reason,
+        nextPhase: "implementation",
+      };
     if (outcome.kind === "complete") return outcome;
     state = outcome.state;
   }

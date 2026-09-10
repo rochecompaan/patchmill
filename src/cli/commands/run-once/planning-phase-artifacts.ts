@@ -14,6 +14,7 @@ import type {
   PlanningArtifactKind,
 } from "../../../workflow/planning-pull-requests.ts";
 import type {
+  ImplementationWorkspaceReadyPlanningPhase,
   PlanningArtifactEvidence,
   WorkspaceReadyPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
@@ -50,8 +51,11 @@ export interface PlanningArtifactAgent {
     prompt: string;
   }): Promise<AgentIssuePiResult>;
 }
+export type PlanningArtifactWorkspacePhase =
+  | WorkspaceReadyPlanningPhase
+  | ImplementationWorkspaceReadyPlanningPhase;
 export type PlanningArtifactCheckpoint = (
-  phase: WorkspaceReadyPlanningPhase,
+  phase: PlanningArtifactWorkspacePhase,
 ) => Promise<void>;
 
 export function createPlanningArtifactAgent(input: {
@@ -122,7 +126,7 @@ export function resolvePlanningPhaseArtifacts(input: {
     : { kind: "workspace-required", artifacts, missing };
 }
 function mergedBaseSpecPath(
-  current: WorkspaceReadyPlanningPhase,
+  current: PlanningArtifactWorkspacePhase,
 ): string | undefined {
   const candidates = current.base.artifactCandidates.spec;
   return candidates.length === 1 ? candidates[0] : undefined;
@@ -130,7 +134,7 @@ function mergedBaseSpecPath(
 function reviewContext(
   phase: PlannedPhase,
   kind: PlanningArtifactKind,
-  current: WorkspaceReadyPlanningPhase,
+  current: PlanningArtifactWorkspacePhase,
 ) {
   return phase.kind === "implementation"
     ? ("implementation-pull-request" as const)
@@ -173,7 +177,7 @@ function resultFor(
 export async function runPlanningPhaseArtifacts(input: {
   issue: IssueSummary;
   phase: PlannedPhase;
-  current: WorkspaceReadyPlanningPhase;
+  current: PlanningArtifactWorkspacePhase;
   repoRoot: string;
   specsDir: string;
   plansDir: string;
@@ -185,7 +189,7 @@ export async function runPlanningPhaseArtifacts(input: {
   skills: PatchmillSkillsConfig;
   triageLabels: PromptTriageLabels;
 }): Promise<
-  | { kind: "workspace-ready"; phase: WorkspaceReadyPlanningPhase }
+  | { kind: "workspace-ready"; phase: PlanningArtifactWorkspacePhase }
   | { kind: "blocked"; result: AgentIssueBlockedResult }
 > {
   let current = input.current;

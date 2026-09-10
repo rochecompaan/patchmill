@@ -55,17 +55,22 @@ test("coordinates every gate plan in order and stops at an open planning review"
   }
 });
 
-test("stops before implementation for plan-only", async () => {
+test("delegates plan-only implementation artifacts to the phase runner", async () => {
   let calls = 0;
   const result = await coordinatePlanningPhases({
     state: state({ specRequired: false, planRequired: false }),
     issue: { number: 189 } as never,
     planOnly: true,
-    runPlanningPhase: async () => {
+    runPlanningPhase: async ({ planOnly }) => {
       calls += 1;
-      throw new Error("unreachable");
+      assert.equal(planOnly, true);
+      return {
+        kind: "stopped",
+        state: state({ specRequired: false, planRequired: false }),
+        reason: "plan-only",
+      };
     },
   });
   assert.equal(result.kind, "stopped");
-  assert.equal(calls, 0);
+  assert.equal(calls, 1);
 });
