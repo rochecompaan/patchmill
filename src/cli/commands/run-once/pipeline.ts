@@ -58,6 +58,7 @@ export async function runOneIssue(
         options,
         issue: selected.issue,
         state: selected.state,
+        expectedStatePresence: "present",
         host,
       });
     case "fresh-planning":
@@ -67,6 +68,7 @@ export async function runOneIssue(
         options,
         issue: selected.issue,
         state: selected.initialState,
+        expectedStatePresence: "absent",
         host,
       });
   }

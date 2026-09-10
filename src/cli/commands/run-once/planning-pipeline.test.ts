@@ -13,6 +13,7 @@ test("returns stopped without mutation for an active planning lock", async () =>
       labels: [],
     } as never,
     state: { runId: "123e4567-e89b-42d3-a456-426614174000" } as never,
+    expectedStatePresence: "present",
     runStateDir: "/tmp/state",
     stateStore: {} as never,
     readIssue: async () => {
@@ -35,4 +36,53 @@ test("returns stopped without mutation for an active planning lock", async () =>
   });
   assert.equal(result.status, "stopped");
   assert.equal(mutated, false);
+});
+
+test("blocks an active selection whose authoritative state disappears after locking", async () => {
+  let initialized = false;
+  let mutated = false;
+  let coordinated = false;
+  const result = await runPlanningIssue({
+    issue: {
+      number: 189,
+      title: "Example",
+      state: "open",
+      labels: ["agent-in-progress"],
+    } as never,
+    state: {
+      runId: "123e4567-e89b-42d3-a456-426614174000",
+      phases: [{ status: "pending" }],
+    } as never,
+    expectedStatePresence: "present",
+    runStateDir: "/tmp/state",
+    stateStore: {
+      read: async () => undefined,
+      initialize: async () => {
+        initialized = true;
+      },
+    },
+    readIssue: async () =>
+      ({
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: ["agent-in-progress"],
+      }) as never,
+    readLegacy: async () => undefined,
+    mutate: async () => {
+      mutated = true;
+      return [];
+    },
+    coordinate: async () => {
+      coordinated = true;
+      return {} as never;
+    },
+    acquire: async () =>
+      ({ record: { runId: "123e4567-e89b-42d3-a456-426614174000" } }) as never,
+    release: async () => {},
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(initialized, false);
+  assert.equal(mutated, false);
+  assert.equal(coordinated, false);
 });

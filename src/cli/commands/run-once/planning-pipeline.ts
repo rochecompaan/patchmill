@@ -45,6 +45,8 @@ type PlanningIssueInput = {
   issue: IssueSummary;
   config: AgentIssueConfig;
   state: PlanningStateV1;
+  /** Whether selection observed durable planning state before acquiring the lock. */
+  expectedStatePresence: "present" | "absent";
   runStateDir: string;
   stateStore: Pick<PlanningStateStore, "read" | "initialize">;
   readIssue: () => Promise<IssueSummary>;
@@ -137,6 +139,13 @@ export async function runPlanningIssue(
         input.stateStore.read(input.issue.number),
         input.readLegacy(),
       ]);
+      // A planning selection owns a concrete durable state.  Never turn a
+      // disappeared active selection into a fresh attempt after locking.
+      if (
+        (input.expectedStatePresence === "present" && saved === undefined) ||
+        (retriedAuthoritativeRun && saved === undefined)
+      )
+        return blocked(input.issue, "planning-identity-changed");
       const current = saved ?? input.state;
       const planningActive = current.phases.some(
         (phase) => phase.status !== "complete",
@@ -289,6 +298,7 @@ export async function runPlanningWorkflow(input: {
   options: RunOneIssueOptions;
   issue: IssueSummary;
   state: PlanningStateV1;
+  expectedStatePresence: "present" | "absent";
   host?: RunOnceHostProvider;
 }): Promise<AgentIssuePipelineResult> {
   const host =
@@ -311,6 +321,7 @@ export async function runPlanningWorkflow(input: {
     issue: input.issue,
     config: input.config,
     state: input.state,
+    expectedStatePresence: input.expectedStatePresence,
     runStateDir: input.config.runStateDir,
     stateStore,
     readIssue: () => host.viewIssue(input.issue.number),
