@@ -87,6 +87,62 @@ test("resolves mixed base candidates in planner order", () => {
     missing: ["plan"],
   });
 });
+test("runs a missing earlier artifact after a later base artifact", async () => {
+  const result = await runPlanningPhaseArtifacts({
+    issue,
+    phase: {
+      kind: "plan",
+      artifactKinds: ["spec", "plan"],
+      pullRequestRequired: true,
+    },
+    current: {
+      kind: "plan",
+      status: "workspace-ready",
+      base: {
+        ...base,
+        artifactCandidates: {
+          spec: [],
+          plan: ["docs/plans/example-issue-188.md"],
+        },
+      },
+      workspace,
+      artifacts: [
+        {
+          kind: "plan",
+          path: "docs/plans/example-issue-188.md",
+          source: "remote-base",
+          commitOid: oid("a"),
+        },
+      ],
+    },
+    repoRoot: "/repo",
+    specsDir: "/repo/docs/specs",
+    plansDir: "/repo/docs/plans",
+    artifactDate: new Date("2026-09-08"),
+    agent: {
+      async run({ kind }) {
+        assert.equal(kind, "spec");
+        return {
+          status: "spec-created",
+          specPath: "docs/specs/2026-09-08-issue-188-example-design.md",
+          commit: oid("b"),
+        };
+      },
+    },
+    git: { async verifyArtifactCommit() {} },
+    checkpoint: async () => {},
+    projectPolicy: DEFAULT_PATCHMILL_POLICY,
+    skills: DEFAULT_PATCHMILL_SKILLS,
+    triageLabels: { ready: "agent-ready", needsInfo: "needs-info" },
+  });
+  assert.equal(result.kind, "workspace-ready");
+  if (result.kind === "workspace-ready")
+    assert.deepEqual(
+      result.phase.artifacts.map((artifact) => artifact.kind),
+      ["spec", "plan"],
+    );
+});
+
 test("blocks ambiguous base artifacts before agent execution", () => {
   assert.throws(
     () =>

@@ -1,7 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlanningIssueLockConflictError } from "../../../workflow/planning-issue-lock.ts";
-import { runPlanningIssue } from "./planning-pipeline.ts";
+import {
+  planningIssueNeedsClaim,
+  runPlanningIssue,
+} from "./planning-pipeline.ts";
+
+test("does not reclaim an issue after its done-label checkpoint", () => {
+  assert.equal(
+    planningIssueNeedsClaim({
+      issue: {
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: ["agent-done"],
+      } as never,
+      fresh: false,
+      state: {
+        phases: [
+          {
+            kind: "implementation",
+            status: "pull-request-open",
+            finish: { doneLabelApplied: true },
+          },
+        ],
+      } as never,
+      labels: { ready: "agent-ready", inProgress: "agent-in-progress" },
+    }),
+    false,
+  );
+});
 
 test("returns stopped without mutation for an active planning lock", async () => {
   let mutated = false;

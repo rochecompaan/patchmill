@@ -157,10 +157,9 @@ function assertArtifacts(
     (!allowAppend && next.length !== current.length)
   )
     fail("immutable-evidence", index);
-  for (let offset = 0; offset < current.length; offset += 1) {
-    const left = current[offset]!;
-    const right = next[offset]!;
-    if (left.kind !== right.kind || left.path !== right.path)
+  for (const left of current) {
+    const right = next.find((artifact) => artifact.kind === left.kind);
+    if (right === undefined || left.path !== right.path)
       fail("immutable-evidence", index);
     if (allowMergeConversion) continue;
     if (left.source !== right.source) fail("immutable-evidence", index);

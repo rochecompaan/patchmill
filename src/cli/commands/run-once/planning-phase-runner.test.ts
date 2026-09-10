@@ -105,6 +105,55 @@ function input(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
+test("keeps a later base artifact while preparing implementation work", async () => {
+  let artifacts: string[] | undefined;
+  const result = await runPlanningPhase(
+    input({
+      planOnly: true,
+      phase: {
+        kind: "implementation",
+        artifactKinds: ["spec", "plan"],
+        pullRequestRequired: true,
+      },
+      remoteBase: {
+        fetch: async () => ({
+          ...base,
+          artifactCandidates: {
+            spec: [],
+            plan: ["docs/plans/example.md"],
+          },
+        }),
+      },
+      operations: {
+        resolveArtifacts: () => ({
+          kind: "workspace-required",
+          artifacts: [
+            {
+              kind: "plan",
+              path: "docs/plans/example.md",
+              source: "remote-base",
+              commitOid: oid("a"),
+            },
+          ],
+          missing: ["spec"],
+        }),
+        runArtifacts: async ({
+          current,
+        }: {
+          current: { artifacts: unknown[] };
+        }) => {
+          artifacts = current.artifacts.map(
+            (artifact) => (artifact as { kind: string }).kind,
+          );
+          return { kind: "workspace-ready", phase: current };
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "stopped");
+  assert.deepEqual(artifacts, ["plan"]);
+});
+
 test("reconciles a published planning branch before any workspace effect", async () => {
   const published = state({ kind: "spec", status: "branch-pushed" });
   let prepared = false;

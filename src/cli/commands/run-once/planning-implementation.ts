@@ -193,6 +193,25 @@ export async function runPlanningImplementation(
         state,
         result: blocked("implementation-workspace"),
       };
+    if (workspace.headOid !== phase.workspace.headOid) {
+      try {
+        await input.git.assertAncestor({
+          ancestorOid: phase.workspace.headOid,
+          descendantOid: workspace.headOid,
+        });
+      } catch (error) {
+        if (
+          error instanceof PlanningPublicationGitError &&
+          error.reason === "not-ancestor"
+        )
+          return {
+            kind: "blocked",
+            state,
+            result: blocked("implementation-workspace"),
+          };
+        throw error;
+      }
+    }
     const remote = await input.git.inspectRemoteHead({
       remote: phase.workspace.remote,
       branch: phase.workspace.identity.branch,

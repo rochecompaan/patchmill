@@ -770,11 +770,15 @@ function artifactEvidence(
 ): void {
   if (!("artifacts" in phase)) return;
   const complete = phase.status !== "workspace-ready";
-  if (
-    (complete && phase.artifacts.length !== assigned.length) ||
-    phase.artifacts.some((artifact, index) => artifact.kind !== assigned[index])
-  )
+  if (complete && phase.artifacts.length !== assigned.length)
     fail("artifact-kinds", `${path}.artifacts`);
+  let previousAssignedIndex = -1;
+  for (const artifact of phase.artifacts) {
+    const assignedIndex = assigned.indexOf(artifact.kind);
+    if (assignedIndex <= previousAssignedIndex)
+      fail("artifact-kinds", `${path}.artifacts`);
+    previousAssignedIndex = assignedIndex;
+  }
   for (const [index, artifact] of phase.artifacts.entries()) {
     if (
       phase.status === "complete" &&

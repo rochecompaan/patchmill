@@ -65,6 +65,7 @@ import {
   loadSelectionIssues,
   selectResumableIssue,
 } from "./pipeline-selection.ts";
+import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { withIssueRunLease } from "./recovery-lease.ts";
 import { formatRunRecoveryDecision } from "./recovery.ts";
@@ -104,17 +105,6 @@ type LeasedRunOneIssueOptions = RunOneIssueOptions & {
   leasedIssueNumber?: number;
   reset?: { seed: import("./types.ts").RunResetSeed };
 };
-
-function hasFinishedPlanningWorkspaceState(
-  state: AgentIssueRunState | undefined,
-): boolean {
-  return (
-    state?.status === "finished" &&
-    state.implementationStatus === undefined &&
-    !!(state.specPath || state.planPath) &&
-    !!(state.branch || state.worktreePath)
-  );
-}
 
 export async function runLegacyOneIssue(
   runner: CommandRunner,

@@ -66,16 +66,30 @@ export function planningIssueEligible(input: {
   );
 }
 
+export function hasFinishedPlanningWorkspaceState(
+  state: Awaited<ReturnType<typeof readRunState>>,
+): boolean {
+  return Boolean(
+    state?.status === "finished" &&
+    state.implementationStatus === undefined &&
+    (state.specPath || state.planPath) &&
+    (state.branch || state.worktreePath),
+  );
+}
+
+/** Matches the legacy entry point's routing and explicit blocked-retry policy. */
 export function legacyActiveForIssue(
   issue: IssueSummary,
   config: AgentIssueConfig,
   legacy: Awaited<ReturnType<typeof readRunState>>,
 ): boolean {
-  return Boolean(
-    legacy &&
-    (isResumableRunState(legacy) ||
-      (hasBlockedRunRecoveryState(legacy) &&
-        issue.labels.includes(lifecycleLabels(config).ready))),
+  if (!legacy) return false;
+  if (isResumableRunState(legacy) || hasFinishedPlanningWorkspaceState(legacy))
+    return true;
+  return (
+    config.issueNumber !== undefined &&
+    hasBlockedRunRecoveryState(legacy) &&
+    issue.labels.includes(lifecycleLabels(config).ready)
   );
 }
 

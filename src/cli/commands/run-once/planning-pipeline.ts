@@ -57,7 +57,11 @@ type PlanningIssueInput = {
     issue: IssueSummary,
     state: PlanningStateV1 | undefined,
   ) => boolean;
-  mutate: (issue: IssueSummary, fresh: boolean) => Promise<string[]>;
+  mutate: (
+    issue: IssueSummary,
+    fresh: boolean,
+    state: PlanningStateV1,
+  ) => Promise<string[]>;
   coordinate: (
     state: PlanningStateV1,
     lock: PlanningIssueLock,
@@ -80,6 +84,23 @@ function blocked(issue: IssueSummary, reason: string): PlanningPipelineResult {
       validation: [],
     },
   };
+}
+
+export function planningIssueNeedsClaim(input: {
+  issue: IssueSummary;
+  fresh: boolean;
+  state: PlanningStateV1;
+  labels: Pick<ReturnType<typeof lifecycleLabels>, "ready" | "inProgress">;
+}): boolean {
+  const doneLabelApplied = input.state.phases.some(
+    (phase) => "finish" in phase && phase.finish.doneLabelApplied === true,
+  );
+  return (
+    !doneLabelApplied &&
+    (input.fresh ||
+      input.issue.labels.includes(input.labels.ready) ||
+      !input.issue.labels.includes(input.labels.inProgress))
+  );
 }
 
 async function releaseOwnedPlanningLock(input: {
@@ -205,7 +226,7 @@ export async function runPlanningIssue(
         return blocked(input.issue, "planning-run-id-mismatch");
       const fresh = saved === undefined;
       if (fresh) await input.stateStore.initialize({ state: current, lock });
-      const labels = await input.mutate(issue, fresh);
+      const labels = await input.mutate(issue, fresh, current);
       return {
         status: "coordinated",
         issue,
@@ -336,11 +357,13 @@ export async function runPlanningWorkflow(input: {
         activeOwnedWorkflow: state !== undefined,
       }) &&
       (state !== undefined || issue.labels.includes(input.config.readyLabel)),
-    mutate: async (issue, fresh) => {
-      const mustClaim =
-        fresh ||
-        issue.labels.includes(labels.ready) ||
-        !issue.labels.includes(labels.inProgress);
+    mutate: async (issue, fresh, state) => {
+      const mustClaim = planningIssueNeedsClaim({
+        issue,
+        fresh,
+        state,
+        labels,
+      });
       const claimedLabels = mustClaim
         ? [
             ...issue.labels.filter(

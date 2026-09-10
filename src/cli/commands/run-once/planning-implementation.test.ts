@@ -232,6 +232,37 @@ test("persists a sanitized fresh implementation run-cost report", async () => {
   });
 });
 
+test("blocks a successful retry when its saved workspace head was rewritten", async () => {
+  let validated = false;
+  const result = await runPlanningImplementation(
+    input({
+      git: {
+        inspectRemoteHead: async () => ({
+          state: "present" as const,
+          headOid: oid("b"),
+        }),
+        assertAncestor: async ({ ancestorOid, descendantOid }) => {
+          if (ancestorOid === oid("a") && descendantOid === oid("b"))
+            throw new PlanningPublicationGitError("ancestry", "not-ancestor");
+        },
+      },
+      host: {
+        id: "github-gh" as const,
+        resolveTargetRepositoryIdentity: async () => repository,
+        resolveRemoteRepositoryIdentity: async () => repository,
+        getPullRequest: async () => {
+          validated = true;
+          throw new Error("must not validate rewritten workspace");
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked")
+    assert.equal(result.result.reason, "implementation-workspace");
+  assert.equal(validated, false);
+});
+
 test("propagates host transport failures instead of converting them to validation blockers", async () => {
   await assert.rejects(
     runPlanningImplementation(input()),

@@ -73,6 +73,68 @@ function state(phase: object, revision = 0) {
   };
 }
 
+test("accepts and preserves a non-prefix remote-base artifact subset", () => {
+  const planWorkspace = {
+    ...workspace(),
+    phase: "plan",
+    identity: {
+      branch: "planning/plan",
+      worktreePath: ".worktrees/188-plan",
+    },
+    headOid: oid("a"),
+  };
+  const current = validatePlanningState({
+    version: 1,
+    workflowVersion: "planning-pr-v1",
+    runId,
+    issueNumber: 188,
+    issueTitle: "Example",
+    gates: { specRequired: false, planRequired: true },
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+    phases: [
+      {
+        kind: "plan",
+        status: "workspace-ready",
+        base,
+        workspace: planWorkspace,
+        artifacts: [
+          {
+            kind: "plan",
+            path: "docs/plans/example-issue-188.md",
+            source: "remote-base",
+            commitOid: oid("a"),
+          },
+        ],
+      },
+      { kind: "implementation", status: "pending" },
+    ],
+  });
+  const next = validatePlanningState({
+    ...current,
+    revision: 1,
+    updatedAt: "2026-09-08T12:00:01.000Z",
+    phases: [
+      {
+        ...current.phases[0],
+        workspace: { ...planWorkspace, headOid: oid("b") },
+        artifacts: [
+          {
+            kind: "spec",
+            path: "docs/specs/example-issue-188.md",
+            source: "workspace",
+            commitOid: oid("b"),
+          },
+          ...current.phases[0].artifacts,
+        ],
+      },
+      current.phases[1],
+    ],
+  });
+  assert.doesNotThrow(() => assertPlanningStateReplacement(current, next));
+});
+
 test("round trips every durable planning publication checkpoint", () => {
   const documents = [
     { kind: "spec", status: "pending" },

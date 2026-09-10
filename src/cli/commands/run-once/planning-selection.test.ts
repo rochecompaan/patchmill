@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { selectRunOnceWorkflow } from "./planning-selection.ts";
+import {
+  legacyActiveForIssue,
+  selectRunOnceWorkflow,
+} from "./planning-selection.ts";
+import { writeRunState } from "./run-state.ts";
 
 const issue = (number: number, labels: string[]) => ({
   number,
@@ -57,6 +64,85 @@ test("excludes blocked fresh work and honors configured legacy in-progress label
     { path: () => "state", read: async () => undefined } as never,
   );
   assert.equal(result.kind, "none");
+});
+
+test("keeps a finished legacy planning workspace on the legacy route", () => {
+  assert.equal(
+    legacyActiveForIssue(issue(3, ["agent-ready"]), config, {
+      status: "finished",
+      specPath: "docs/specs/issue-3.md",
+      branch: "agent/issue-3",
+    } as never),
+    true,
+  );
+});
+
+test("selects a finished legacy planning workspace over fresh planning", async () => {
+  const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
+  try {
+    await writeRunState(runStateDir, {
+      issueNumber: 3,
+      title: "Issue 3",
+      status: "finished",
+      specPath: "docs/specs/issue-3.md",
+      branch: "agent/issue-3",
+    });
+    const result = await selectRunOnceWorkflow(
+      [issue(3, ["agent-ready"]), issue(4, ["agent-ready"])],
+      { ...config, runStateDir },
+      { path: () => "state", read: async () => undefined } as never,
+    );
+    assert.equal(result.kind, "legacy");
+    if (result.kind === "legacy") assert.equal(result.issue.number, 3);
+  } finally {
+    await rm(runStateDir, { recursive: true, force: true });
+  }
+});
+
+test("reserves blocked legacy recovery for an explicit ready retry", () => {
+  const blocked = { status: "blocked", lastError: "needs input" } as never;
+  assert.equal(
+    legacyActiveForIssue(issue(3, ["agent-ready"]), config, blocked),
+    false,
+  );
+  assert.equal(
+    legacyActiveForIssue(
+      issue(3, ["agent-ready"]),
+      { ...config, issueNumber: 3 },
+      blocked,
+    ),
+    true,
+  );
+});
+
+test("does not let an automatic blocked legacy retry outrank fresh work", async () => {
+  const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
+  try {
+    await writeRunState(runStateDir, {
+      issueNumber: 3,
+      title: "Issue 3",
+      status: "blocked",
+      lastError: "needs input",
+    });
+    const blockedIssue = issue(3, ["agent-ready", "needs-info"]);
+    const freshIssue = issue(4, ["agent-ready"]);
+    const automatic = await selectRunOnceWorkflow(
+      [blockedIssue, freshIssue],
+      { ...config, runStateDir },
+      { path: () => "state", read: async () => undefined } as never,
+    );
+    assert.equal(automatic.kind, "fresh-planning");
+    if (automatic.kind === "fresh-planning")
+      assert.equal(automatic.issue.number, 4);
+    const explicit = await selectRunOnceWorkflow(
+      [blockedIssue, freshIssue],
+      { ...config, runStateDir, issueNumber: 3 },
+      { path: () => "state", read: async () => undefined } as never,
+    );
+    assert.equal(explicit.kind, "legacy");
+  } finally {
+    await rm(runStateDir, { recursive: true, force: true });
+  }
 });
 
 test("returns malformed planning state rather than selecting fresh work", async () => {
