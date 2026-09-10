@@ -1,5 +1,6 @@
 import {
   createPlanningState,
+  PlanningStateValidationError,
   type PlanningStateV1,
 } from "../../../workflow/planning-state.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
@@ -22,6 +23,15 @@ export type RunOnceWorkflowSelection =
       issue: IssueSummary;
       initialState: PlanningStateV1;
     };
+
+export function planningStateDiagnostic(
+  error: unknown,
+  fallbackPath: string,
+): string {
+  if (error instanceof PlanningStateValidationError)
+    return `${error.statePath ?? fallbackPath}: ${error.reason} at ${error.path}`;
+  return `${fallbackPath}: planning state read failed`;
+}
 
 function active(state: PlanningStateV1): boolean {
   return state.phases.some((phase) => phase.status !== "complete");
@@ -111,13 +121,19 @@ export async function selectRunOnceWorkflow(
       return {
         kind: "invalid-planning-state",
         issue,
-        reason: `${planningState.path(issue.number)}: ${
-          error instanceof Error ? error.message : "invalid planning state"
-        }`,
+        reason: planningStateDiagnostic(
+          error,
+          planningState.path(issue.number),
+        ),
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
     const legacyActive = legacyActiveForIssue(issue, config, legacy);
+    const ordinaryLegacyResume = Boolean(
+      legacy &&
+      isResumableRunState(legacy) &&
+      issue.labels.includes(lifecycleLabels(config).inProgress),
+    );
     if (state && active(state) && legacyActive)
       return {
         kind: "invalid-planning-state",
@@ -137,11 +153,12 @@ export async function selectRunOnceWorkflow(
       choices.push({ kind: "planning", issue, state });
     else if (
       legacyActive &&
-      planningIssueEligible({
-        issue,
-        config,
-        activeOwnedWorkflow: true,
-      }) &&
+      (ordinaryLegacyResume ||
+        planningIssueEligible({
+          issue,
+          config,
+          activeOwnedWorkflow: true,
+        })) &&
       (issue.labels.includes(lifecycleLabels(config).inProgress) ||
         issue.labels.includes(lifecycleLabels(config).ready))
     )

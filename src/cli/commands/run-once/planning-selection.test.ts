@@ -66,6 +66,35 @@ test("excludes blocked fresh work and honors configured legacy in-progress label
   assert.equal(result.kind, "none");
 });
 
+test("selects an ordinary in-progress legacy run despite configured exclusions", async () => {
+  const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
+  try {
+    await writeRunState(runStateDir, {
+      issueNumber: 3,
+      title: "Issue 3",
+      status: "planning",
+    });
+    const result = await selectRunOnceWorkflow(
+      [issue(3, ["in-progress", "unsuitable"]), issue(4, ["agent-ready"])],
+      {
+        ...config,
+        runStateDir,
+        triagePolicy: {
+          runOnceSelection: {
+            priorityOrder: [],
+            excludedLabels: ["unsuitable"],
+          },
+        },
+      } as never,
+      { path: () => "state", read: async () => undefined } as never,
+    );
+    assert.equal(result.kind, "legacy");
+    if (result.kind === "legacy") assert.equal(result.issue.number, 3);
+  } finally {
+    await rm(runStateDir, { recursive: true, force: true });
+  }
+});
+
 test("keeps a finished legacy planning workspace on the legacy route", () => {
   assert.equal(
     legacyActiveForIssue(issue(3, ["agent-ready"]), config, {
@@ -158,5 +187,5 @@ test("returns malformed planning state rather than selecting fresh work", async 
   );
   assert.equal(result.kind, "invalid-planning-state");
   if (result.kind === "invalid-planning-state")
-    assert.match(result.reason, /state: invalid-json/);
+    assert.match(result.reason, /state: planning state read failed/);
 });

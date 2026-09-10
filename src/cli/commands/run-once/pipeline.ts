@@ -41,8 +41,16 @@ export async function runOneIssue(
     case "none":
       return withLogPath({ status: "no-issue" }, options);
     case "invalid-planning-state":
-      throw new Error(
-        `Planning workflow state for issue #${selected.issue.number} is invalid: ${selected.reason}`,
+      return withLogPath(
+        {
+          status: "blocked",
+          issue: selected.issue,
+          reason: `planning-state-invalid: ${selected.reason}`,
+          questions: [],
+          commits: [],
+          validation: [],
+        },
+        options,
       );
     case "legacy":
       return runLegacyOneIssueForSelection(

@@ -8,15 +8,23 @@ import {
   releasePlanningIssueLock,
   type PlanningIssueLock,
 } from "../../../workflow/planning-issue-lock.ts";
-import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
-import type { PlanningStateV1 } from "../../../workflow/planning-state.ts";
+import {
+  PlanningStateStore,
+  planningStatePath,
+} from "../../../workflow/planning-state-store.ts";
+import {
+  PlanningStateValidationError,
+  type PlanningStateV1,
+} from "../../../workflow/planning-state.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { blockerComment, startedComment } from "./pipeline-comments.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
+import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
 import {
   legacyActiveForIssue,
   planningIssueEligible,
+  planningStateDiagnostic,
 } from "./planning-selection.ts";
 import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts";
 import { readRunState } from "./run-state.ts";
@@ -155,11 +163,26 @@ export async function runPlanningIssue(
     }
     let retriedAuthoritativeRun = false;
     while (true) {
-      const [issue, saved, legacy] = await Promise.all([
-        input.readIssue(),
-        input.stateStore.read(input.issue.number),
-        input.readLegacy(),
-      ]);
+      let issue: IssueSummary;
+      let saved: PlanningStateV1 | undefined;
+      let legacy: Awaited<ReturnType<PlanningIssueInput["readLegacy"]>>;
+      try {
+        [issue, saved, legacy] = await Promise.all([
+          input.readIssue(),
+          input.stateStore.read(input.issue.number),
+          input.readLegacy(),
+        ]);
+      } catch (error) {
+        if (error instanceof PlanningStateValidationError)
+          return blocked(
+            input.issue,
+            `planning-state-invalid: ${planningStateDiagnostic(
+              error,
+              planningStatePath(input.runStateDir, input.issue.number),
+            )}`,
+          );
+        throw error;
+      }
       // A planning selection owns a concrete durable state.  Never turn a
       // disappeared active selection into a fresh attempt after locking.
       if (
@@ -411,14 +434,15 @@ export async function runPlanningWorkflow(input: {
         if (!issue.comments?.some((comment) => comment.body === body))
           await host.commentIssue(issue.number, body);
         await ensureAutomationLabel(host, input.config, labels.needsInfo);
-        await host.applyLabels(
-          planLabelChange(issue.number, currentLabels, [
-            ...currentLabels.filter(
-              (label) => label !== labels.ready && label !== labels.inProgress,
-            ),
-            labels.needsInfo,
-          ]),
-        );
+        await applyPlanningBlockedLabels({
+          host,
+          issueNumber: issue.number,
+          labels: {
+            ready: labels.ready,
+            inProgress: labels.inProgress,
+            needsInfo: labels.needsInfo,
+          },
+        });
       }
       return outcome;
     },
