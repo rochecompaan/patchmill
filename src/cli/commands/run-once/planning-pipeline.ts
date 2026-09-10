@@ -43,11 +43,14 @@ export type PlanningPipelineResult =
 
 type PlanningIssueInput = {
   issue: IssueSummary;
+  config: AgentIssueConfig;
   state: PlanningStateV1;
   runStateDir: string;
   stateStore: Pick<PlanningStateStore, "read" | "initialize">;
   readIssue: () => Promise<IssueSummary>;
-  readLegacy: () => Promise<boolean>;
+  readLegacy: () => Promise<
+    import("./types.ts").AgentIssueRunState | undefined
+  >;
   eligible?: (
     issue: IssueSummary,
     state: PlanningStateV1 | undefined,
@@ -134,11 +137,24 @@ export async function runPlanningIssue(
         input.stateStore.read(input.issue.number),
         input.readLegacy(),
       ]);
+      const current = saved ?? input.state;
+      const planningActive = current.phases.some(
+        (phase) => phase.status !== "complete",
+      );
+      const legacyActive = legacyActiveForIssue(issue, input.config, legacy);
+      const eligible = planningIssueEligible({
+        issue,
+        config: input.config,
+        state: current,
+        activeOwnedWorkflow: saved !== undefined && planningActive,
+      });
       if (
         issue.number !== input.issue.number ||
         issue.title !== input.issue.title ||
         issue.state !== "open" ||
-        legacy ||
+        !planningActive ||
+        legacyActive ||
+        !eligible ||
         (input.eligible !== undefined && !input.eligible(issue, saved))
       )
         return blocked(input.issue, "planning-identity-changed");
@@ -175,7 +191,6 @@ export async function runPlanningIssue(
         }
         continue;
       }
-      const current = saved ?? input.state;
       if (current.runId !== lock.record.runId)
         return blocked(input.issue, "planning-run-id-mismatch");
       const fresh = saved === undefined;
@@ -294,16 +309,13 @@ export async function runPlanningWorkflow(input: {
   const runOptions = { ...input.options, piSessionPath };
   const planning = await runPlanningIssue({
     issue: input.issue,
+    config: input.config,
     state: input.state,
     runStateDir: input.config.runStateDir,
     stateStore,
     readIssue: () => host.viewIssue(input.issue.number),
-    readLegacy: async () =>
-      legacyActiveForIssue(
-        input.issue,
-        input.config,
-        await readRunState(input.config.runStateDir, input.issue.number),
-      ),
+    readLegacy: () =>
+      readRunState(input.config.runStateDir, input.issue.number),
     eligible: (issue, state) =>
       planningIssueEligible({
         issue,
