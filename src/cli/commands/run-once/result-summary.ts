@@ -54,6 +54,22 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         landingDecision?: string | undefined;
       }
     | {
+        status: "review-pending";
+        issueNumber: number;
+        phase: "spec" | "plan";
+        prUrl: string;
+      }
+    | {
+        status: "stopped";
+        issueNumber: number;
+        reason: "plan-only" | "issue-locked";
+        nextPhase?: "implementation";
+        specPath?: string;
+        planPath?: string;
+        branch?: string;
+        worktreePath?: string;
+      }
+    | {
         status: "approval-required";
         issueNumber: number;
         approvalKind: "spec" | "plan";
@@ -157,6 +173,30 @@ export function summarizeResult(
         validation: result.validation,
         reviewSummary: result.reviewSummary,
         landingDecision: result.landingDecision,
+        ...withLogPath,
+      };
+    case "review-pending":
+      return {
+        status: result.status,
+        issueNumber: result.issue.number,
+        phase: result.phase,
+        prUrl: result.prUrl,
+        ...withLogPath,
+      };
+    case "stopped":
+      return {
+        status: result.status,
+        issueNumber: result.issue.number,
+        reason: result.reason,
+        ...(result.nextPhase !== undefined
+          ? { nextPhase: result.nextPhase }
+          : {}),
+        ...(result.specPath !== undefined ? { specPath: result.specPath } : {}),
+        ...(result.planPath !== undefined ? { planPath: result.planPath } : {}),
+        ...(result.branch !== undefined ? { branch: result.branch } : {}),
+        ...(result.worktreePath !== undefined
+          ? { worktreePath: result.worktreePath }
+          : {}),
         ...withLogPath,
       };
     case "approval-required":

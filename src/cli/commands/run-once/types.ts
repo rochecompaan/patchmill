@@ -265,6 +265,23 @@ export type AgentIssuePrCreatedResult = {
   visualEvidence?: AgentIssueVisualEvidence[] | undefined;
 };
 
+export type AgentIssueReviewPendingResult = {
+  status: "review-pending";
+  issue: IssueSummary;
+  phase: "spec" | "plan";
+  prUrl: string;
+};
+export type AgentIssueStoppedResult = {
+  status: "stopped";
+  issue: IssueSummary;
+  reason: "plan-only" | "issue-locked";
+  nextPhase?: "implementation" | undefined;
+  specPath?: string | undefined;
+  planPath?: string | undefined;
+  branch?: string | undefined;
+  worktreePath?: string | undefined;
+};
+
 export type AgentIssueMergedResult = {
   status: "merged";
   branch: string;
@@ -303,6 +320,8 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         planPath: string;
       }
     | AgentIssueApprovalRequiredResult
+    | AgentIssueReviewPendingResult
+    | AgentIssueStoppedResult
     | {
         status: "development-environment-not-ready";
         issue: IssueSummary;

@@ -28,6 +28,8 @@ const STATUS = {
   "plan-found": { label: "Implementation plan found", severity: "success" },
   "pr-created": { label: "PR created", severity: "success" },
   merged: { label: "Merged", severity: "success" },
+  "review-pending": { label: "Review pending", severity: "warning" },
+  stopped: { label: "Stopped", severity: "warning" },
   "approval-required": { label: "Approval required", severity: "warning" },
   "development-environment-not-ready": {
     label: "Development environment not ready",
@@ -110,6 +112,31 @@ export function formatTerminalResult(
         {
           kind: "fields",
           fields: [{ label: "Transition", value: value(summary.transition) }],
+        },
+      ],
+    });
+  if (summary.status === "review-pending")
+    sections.push({
+      heading: "Review pending",
+      blocks: [
+        {
+          kind: "fields",
+          fields: [{ label: "Phase", value: value(summary.phase) }],
+        },
+      ],
+    });
+  if (summary.status === "stopped")
+    sections.push({
+      heading: "Stopped",
+      blocks: [
+        {
+          kind: "fields",
+          fields: [
+            { label: "Reason", value: value(summary.reason) },
+            ...(summary.nextPhase !== undefined
+              ? [{ label: "Next phase", value: value(summary.nextPhase) }]
+              : []),
+          ],
         },
       ],
     });
