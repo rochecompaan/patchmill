@@ -109,6 +109,12 @@ export type PlanningPhaseRunnerInput = {
     PlanningFinishInput,
     "state" | "phaseIndex" | "lock" | "stateStore" | "workspaces"
   >;
+  finishInputForState?: (
+    state: PlanningStateV1,
+  ) => Omit<
+    PlanningFinishInput,
+    "state" | "phaseIndex" | "lock" | "stateStore" | "workspaces"
+  >;
   planOnly?: boolean;
   artifactDate?: Date;
   now?: () => Date;
@@ -379,10 +385,11 @@ async function implementation(
   }
   if (phase?.kind !== "implementation" || phase.status !== "pull-request-open")
     throw new RangeError("Planning implementation is not validated");
-  if (input.finishInput === undefined)
+  const finishInput = input.finishInputForState?.(state) ?? input.finishInput;
+  if (finishInput === undefined)
     throw new Error("Planning implementation finish runner is not configured");
   const finished = await run.finishImplementation({
-    ...input.finishInput,
+    ...finishInput,
     state,
     phaseIndex: input.phaseIndex,
     lock: input.lock,
