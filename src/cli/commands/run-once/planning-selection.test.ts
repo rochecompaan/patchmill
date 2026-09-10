@@ -35,6 +35,30 @@ test("prioritizes active planning over fresh ready work and reuses label orderin
   if (result.kind === "planning") assert.equal(result.issue.number, 3);
 });
 
+test("excludes blocked fresh work and honors configured legacy in-progress labels", async () => {
+  const custom = {
+    ...config,
+    triagePolicy: {
+      labels: {
+        ready: "queued",
+        inProgress: "claimed",
+        done: "closed",
+        needsInfo: "blocked",
+      },
+      runOnceSelection: {
+        priorityOrder: [],
+        excludedLabels: ["unsuitable"],
+      },
+    },
+  } as never;
+  const result = await selectRunOnceWorkflow(
+    [issue(1, ["queued", "unsuitable"]), issue(2, ["claimed"])],
+    custom,
+    { path: () => "state", read: async () => undefined } as never,
+  );
+  assert.equal(result.kind, "none");
+});
+
 test("returns malformed planning state rather than selecting fresh work", async () => {
   const result = await selectRunOnceWorkflow(
     [issue(3, ["agent-ready"])],

@@ -1,4 +1,6 @@
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
+import { runPiSessionPath } from "./progress.ts";
+import { withLogPath } from "./pipeline-progress.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import {
   PlanningIssueLockConflictError,
@@ -9,7 +11,7 @@ import {
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
-import { startedComment } from "./pipeline-comments.ts";
+import { blockerComment, startedComment } from "./pipeline-comments.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
 import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts";
@@ -46,10 +48,12 @@ type PlanningIssueInput = {
     issue: IssueSummary,
     state: PlanningStateV1 | undefined,
   ) => boolean;
-  mutate: (issue: IssueSummary, fresh: boolean) => Promise<void>;
+  mutate: (issue: IssueSummary, fresh: boolean) => Promise<string[]>;
   coordinate: (
     state: PlanningStateV1,
     lock: PlanningIssueLock,
+    issue: IssueSummary,
+    labels: string[],
   ) => Promise<PlanningCoordinatorOutcome>;
   acquire?: typeof acquirePlanningIssueLock;
   release?: typeof releasePlanningIssueLock;
@@ -119,31 +123,66 @@ export async function runPlanningIssue(
       }
       throw error;
     }
-    const [issue, saved, legacy] = await Promise.all([
-      input.readIssue(),
-      input.stateStore.read(input.issue.number),
-      input.readLegacy(),
-    ]);
-    if (
-      issue.number !== input.issue.number ||
-      issue.title !== input.issue.title ||
-      issue.state !== "open" ||
-      legacy ||
-      (saved !== undefined && saved.runId !== lock.record.runId) ||
-      (input.eligible !== undefined && !input.eligible(issue, saved))
-    )
-      return blocked(input.issue, "planning-identity-changed");
-    const current = saved ?? input.state;
-    if (current.runId !== lock.record.runId)
-      return blocked(input.issue, "planning-run-id-mismatch");
-    const fresh = saved === undefined;
-    if (fresh) await input.stateStore.initialize({ state: current, lock });
-    await input.mutate(issue, fresh);
-    return {
-      status: "coordinated",
-      issue,
-      outcome: await input.coordinate(current, lock),
-    };
+    let retriedAuthoritativeRun = false;
+    while (true) {
+      const [issue, saved, legacy] = await Promise.all([
+        input.readIssue(),
+        input.stateStore.read(input.issue.number),
+        input.readLegacy(),
+      ]);
+      if (
+        issue.number !== input.issue.number ||
+        issue.title !== input.issue.title ||
+        issue.state !== "open" ||
+        legacy ||
+        (input.eligible !== undefined && !input.eligible(issue, saved))
+      )
+        return blocked(input.issue, "planning-identity-changed");
+      if (saved !== undefined && saved.runId !== lock.record.runId) {
+        if (retriedAuthoritativeRun)
+          return blocked(input.issue, "planning-identity-changed");
+        const provisionalLock = lock;
+        lock = undefined;
+        await releaseOwnedPlanningLock({
+          lock: provisionalLock,
+          release,
+          workFailure: undefined,
+        });
+        retriedAuthoritativeRun = true;
+        try {
+          lock = await acquire(input.runStateDir, {
+            issueNumber: input.issue.number,
+            runId: saved.runId,
+          });
+        } catch (error) {
+          if (error instanceof PlanningIssueLockConflictError) {
+            if (error.diagnostic.classification === "active")
+              return {
+                status: "stopped",
+                issue: input.issue,
+                reason: "issue-locked",
+              };
+            return blocked(
+              input.issue,
+              `issue-lock-${error.diagnostic.classification}`,
+            );
+          }
+          throw error;
+        }
+        continue;
+      }
+      const current = saved ?? input.state;
+      if (current.runId !== lock.record.runId)
+        return blocked(input.issue, "planning-run-id-mismatch");
+      const fresh = saved === undefined;
+      if (fresh) await input.stateStore.initialize({ state: current, lock });
+      const labels = await input.mutate(issue, fresh);
+      return {
+        status: "coordinated",
+        issue,
+        outcome: await input.coordinate(current, lock, issue, labels),
+      };
+    }
   } catch (error) {
     workFailure = error;
     throw error;
@@ -258,27 +297,35 @@ export async function runPlanningWorkflow(input: {
     eligible: (issue, state) =>
       state !== undefined || issue.labels.includes(input.config.readyLabel),
     mutate: async (issue, fresh) => {
-      if (fresh) {
-        await ensureAutomationLabel(host, input.config, labels.inProgress);
-        await host.applyLabels(
-          planLabelChange(issue.number, issue.labels, [
+      const mustClaim =
+        fresh ||
+        issue.labels.includes(labels.ready) ||
+        !issue.labels.includes(labels.inProgress);
+      const claimedLabels = mustClaim
+        ? [
             ...issue.labels.filter(
               (label) => label !== labels.ready && label !== labels.needsInfo,
             ),
             labels.inProgress,
-          ]),
+          ]
+        : [...issue.labels];
+      if (mustClaim) {
+        await ensureAutomationLabel(host, input.config, labels.inProgress);
+        await host.applyLabels(
+          planLabelChange(issue.number, issue.labels, claimedLabels),
         );
       }
       const body = startedComment(issue);
       if (!issue.comments?.some((comment) => comment.body === body))
         await host.commentIssue(issue.number, body);
+      return claimedLabels;
     },
-    coordinate: async (state, lock) => {
+    coordinate: async (state, lock, issue, currentLabels) => {
       const runtime = createPlanningRuntime({
         runner: input.runner,
         config: input.config,
-        issue: input.issue,
-        labels: input.issue.labels,
+        issue,
+        labels: currentLabels,
         readyLabel: labels.ready,
         inProgressLabel: labels.inProgress,
         doneLabel: labels.done,
@@ -289,6 +336,11 @@ export async function runPlanningWorkflow(input: {
         streamPiOutput: input.options.streamPiOutput,
         verbosePiOutput: input.options.verbosePiOutput,
         heartbeatMs: input.options.heartbeatMs,
+        piSessionPath: runPiSessionPath(
+          input.config.runStateDir,
+          (input.options.now ?? new Date()).toISOString(),
+          issue.number,
+        ),
         host,
         ...(input.options.now === undefined
           ? {}
@@ -296,10 +348,13 @@ export async function runPlanningWorkflow(input: {
       });
       const outcome = await runtime.coordinate(state, lock);
       if (outcome.kind === "blocked") {
+        const body = blockerComment(outcome.result);
+        if (!issue.comments?.some((comment) => comment.body === body))
+          await host.commentIssue(issue.number, body);
         await ensureAutomationLabel(host, input.config, labels.needsInfo);
         await host.applyLabels(
-          planLabelChange(input.issue.number, input.issue.labels, [
-            ...input.issue.labels.filter(
+          planLabelChange(issue.number, currentLabels, [
+            ...currentLabels.filter(
               (label) => label !== labels.ready && label !== labels.inProgress,
             ),
             labels.needsInfo,
@@ -310,8 +365,14 @@ export async function runPlanningWorkflow(input: {
     },
   });
   if (planning.status === "coordinated")
-    return mapOutcome(planning.issue, planning.outcome);
+    return withLogPath(
+      mapOutcome(planning.issue, planning.outcome),
+      input.options,
+    );
   if (planning.status === "blocked")
-    return { issue: planning.issue, ...planning.result };
-  return planning;
+    return withLogPath(
+      { issue: planning.issue, ...planning.result },
+      input.options,
+    );
+  return withLogPath(planning, input.options);
 }

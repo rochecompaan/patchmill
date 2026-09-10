@@ -9,6 +9,7 @@ import {
 import { runPlanningWorkflow } from "./planning-pipeline.ts";
 import { selectRunOnceWorkflow } from "./planning-selection.ts";
 import { loadSelectionIssues } from "./pipeline-selection.ts";
+import { withLogPath } from "./pipeline-progress.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
@@ -38,8 +39,7 @@ export async function runOneIssue(
   );
   switch (selected.kind) {
     case "none":
-      // The legacy facade retains the established no-issue diagnostics.
-      return runLegacyOneIssue(runner, config, options);
+      return withLogPath({ status: "no-issue" }, options);
     case "invalid-planning-state":
       throw new Error(
         `Planning workflow state for issue #${selected.issue.number} is invalid: ${selected.reason}`,

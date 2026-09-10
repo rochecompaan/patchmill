@@ -8,6 +8,7 @@ import {
   hasBlockedRunRecoveryState,
   lifecycleLabels,
 } from "./pipeline-lifecycle.ts";
+import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { compareIssuesByPriority } from "./selection.ts";
 import type { AgentIssueConfig, IssueSummary } from "./types.ts";
 
@@ -24,6 +25,31 @@ export type RunOnceWorkflowSelection =
 
 function active(state: PlanningStateV1): boolean {
   return state.phases.some((phase) => phase.status !== "complete");
+}
+
+function eligibleLabels(
+  issue: IssueSummary,
+  config: AgentIssueConfig,
+  activePlanning: boolean,
+): boolean {
+  const lifecycle = lifecycleLabels(config);
+  const excluded =
+    config.triagePolicy?.runOnceSelection?.excludedLabels ??
+    DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
+  const blocked = issue.labels.filter(
+    (label) =>
+      label === lifecycle.done ||
+      label === lifecycle.needsInfo ||
+      excluded.includes(label),
+  );
+  if (blocked.length === 0) return true;
+  // A targeted retry may acknowledge only the lifecycle blocker with ready.
+  return (
+    activePlanning &&
+    config.issueNumber === issue.number &&
+    issue.labels.includes(lifecycle.ready) &&
+    blocked.every((label) => label === lifecycle.needsInfo)
+  );
 }
 
 export async function selectRunOnceWorkflow(
@@ -59,15 +85,19 @@ export async function selectRunOnceWorkflow(
         issue,
         reason: "planning and legacy state are both active",
       };
-    if (state && active(state))
+    if (state && active(state) && eligibleLabels(issue, config, true))
       choices.push({ kind: "planning", issue, state });
     else if (
       legacyActive &&
-      (issue.labels.includes("in-progress") ||
+      eligibleLabels(issue, config, true) &&
+      (issue.labels.includes(lifecycleLabels(config).inProgress) ||
         issue.labels.includes(lifecycleLabels(config).ready))
     )
       choices.push({ kind: "legacy", issue });
-    else if (issue.labels.includes(config.readyLabel))
+    else if (
+      issue.labels.includes(config.readyLabel) &&
+      eligibleLabels(issue, config, false)
+    )
       choices.push({
         kind: "fresh-planning",
         issue,
