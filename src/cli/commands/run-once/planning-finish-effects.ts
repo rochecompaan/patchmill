@@ -4,10 +4,9 @@ import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { handoffComment } from "./pipeline-comments.ts";
 import { progress } from "./pipeline-progress.ts";
-import { nextLabels } from "./pipeline-lifecycle.ts";
+import { applyPlanningDoneLabels } from "./planning-lifecycle-labels.ts";
 import { publishPlanningPrRunCost } from "./pr-cost-publication.ts";
 import { validateVisualEvidenceReferences } from "./visual-evidence.ts";
-import { planLabelChange } from "../triage/labels.ts";
 import type { PlanningFinishInput } from "./planning-finish.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
@@ -116,17 +115,16 @@ export function createPlanningFinishEffects(
         ensureDoneLabel: () =>
           ensureAutomationLabel(input.host, input.config, input.doneLabel),
         applyDoneLabels: () =>
-          input.host.applyLabels(
-            planLabelChange(
-              input.issue.number,
-              input.labels,
-              nextLabels(
-                input.labels,
-                [input.readyLabel, input.inProgressLabel, input.needsInfoLabel],
-                [input.doneLabel],
-              ),
-            ),
-          ),
+          applyPlanningDoneLabels({
+            host: input.host,
+            issueNumber: input.issue.number,
+            labels: {
+              ready: input.readyLabel,
+              inProgress: input.inProgressLabel,
+              needsInfo: input.needsInfoLabel,
+              done: input.doneLabel,
+            },
+          }),
       },
       onCostPublicationFailure: async (error) =>
         progress(

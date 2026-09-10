@@ -31,11 +31,6 @@ test("constructs a production planning coordinator callback without legacy state
 test("planning finish preserves legacy approval and review labels", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const applied: string[][] = [];
-  const host = {
-    applyLabels: async (change: { newLabels: string[] }) => {
-      applied.push(change.newLabels);
-    },
-  } as never;
   const labels = [
     "agent-ready",
     "agent-in-progress",
@@ -46,6 +41,12 @@ test("planning finish preserves legacy approval and review labels", async () => 
     config.approvalPolicy.planApproval.approvedLabel,
     "bug",
   ];
+  const host = {
+    viewIssue: async () => ({ labels }),
+    applyLabels: async (change: { newLabels: string[] }) => {
+      applied.push(change.newLabels);
+    },
+  } as never;
   const state = {
     issueNumber: 189,
     phases: [
@@ -70,6 +71,69 @@ test("planning finish preserves legacy approval and review labels", async () => 
       state: "open",
     },
     labels,
+    readyLabel: "agent-ready",
+    inProgressLabel: "agent-in-progress",
+    doneLabel: "agent-done",
+    needsInfoLabel: "needs-info",
+    host,
+    phaseIndex: 0,
+  })(state);
+  await effects.effects.applyDoneLabels();
+  assert.deepEqual(applied, [
+    [
+      config.approvalPolicy.specApproval.reviewLabel,
+      config.approvalPolicy.specApproval.approvedLabel,
+      config.approvalPolicy.planApproval.reviewLabel,
+      config.approvalPolicy.planApproval.approvedLabel,
+      "bug",
+      "agent-done",
+    ].sort(),
+  ]);
+});
+
+test("planning finish removes lifecycle labels added after runtime construction", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const applied: string[][] = [];
+  const currentLabels = [
+    "agent-ready",
+    "agent-in-progress",
+    "needs-info",
+    config.approvalPolicy.specApproval.reviewLabel,
+    config.approvalPolicy.specApproval.approvedLabel,
+    config.approvalPolicy.planApproval.reviewLabel,
+    config.approvalPolicy.planApproval.approvedLabel,
+    "bug",
+  ];
+  const host = {
+    viewIssue: async () => ({ labels: currentLabels }),
+    applyLabels: async (change: { newLabels: string[] }) => {
+      applied.push(change.newLabels);
+    },
+  } as never;
+  const state = {
+    issueNumber: 189,
+    phases: [
+      {
+        kind: "implementation",
+        status: "pull-request-open",
+        workspace: { identity: { worktreePath: ".worktrees/issue-189" } },
+        artifacts: [{ kind: "plan", path: "docs/plans/issue-189.md" }],
+        pullRequest: {},
+        implementation: { visualEvidence: [] },
+      },
+    ],
+  } as never;
+  const effects = createPlanningFinishEffects({
+    runner: createMockRunner(async () => ({ code: 0, stdout: "", stderr: "" })),
+    config,
+    issue: {
+      number: 189,
+      title: "Runtime",
+      body: "",
+      labels: [],
+      state: "open",
+    },
+    labels: ["stale-label"],
     readyLabel: "agent-ready",
     inProgressLabel: "agent-in-progress",
     doneLabel: "agent-done",
