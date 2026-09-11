@@ -55,6 +55,29 @@ export function pullRequestNumber(prUrl: string, pathSegment: string): number {
   return parsePullRequestUrl(prUrl, pathSegment).number;
 }
 
+/** Requires one canonical provider URL to identify its durable reference. */
+export function pullRequestUrlMatchesReference(
+  prUrl: string,
+  reference: import("./pull-requests.ts").PullRequestReference,
+): boolean {
+  const segment =
+    reference.targetRepository.provider === "github-gh" ? "pull" : "pulls";
+  try {
+    const parsed = parsePullRequestUrl(prUrl, segment);
+    const authority = /^https?:\/\/([^/?#]+)/u.exec(prUrl)?.[1];
+    return (
+      authority !== undefined &&
+      !authority.includes(":") &&
+      parsed.hostname === reference.targetRepository.host &&
+      parsed.owner === reference.targetRepository.owner &&
+      parsed.repository === reference.targetRepository.repository &&
+      parsed.number === reference.number
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function sameCanonicalUrl(left: string, right: string): boolean {
   const a = parse(left),
     b = parse(right);

@@ -8,6 +8,7 @@ import type {
   PlanningWorkspaceIdentity,
   PlanningWorkspaceOwnership,
 } from "../git/planning-workspaces.ts";
+import { pullRequestUrlMatchesReference } from "../host/pull-request-reference.ts";
 import {
   sameRepositoryIdentity,
   type PullRequestReference,
@@ -911,10 +912,14 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
       fail("publication-mismatch", `${path}.publication`);
     if (
       "pullRequest" in item &&
-      !sameRepositoryIdentity(
+      (!sameRepositoryIdentity(
         item.pullRequest.reference.targetRepository,
         item.publication.targetRepository,
-      )
+      ) ||
+        !pullRequestUrlMatchesReference(
+          item.pullRequest.url,
+          item.pullRequest.reference,
+        ))
     )
       fail("pull-request-mismatch", `${path}.pullRequest`);
     if (

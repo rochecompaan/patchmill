@@ -346,6 +346,22 @@ test("rejects artifact, publication, cleanup, pull request, and phase-order cont
   invalid(outOfOrder, "progress-order", "$.phases[1]");
 });
 
+test("requires durable pull request URLs to identify their exact reference", () => {
+  for (const [name, url] of [
+    ["number", "https://github.com/acme/patchmill/pull/189"],
+    ["repository", "https://github.com/acme/other/pull/188"],
+  ]) {
+    const value = structuredClone(phase("pull-request-open"));
+    (value.pullRequest as { url: string }).url = url;
+    invalid(
+      document(value),
+      "pull-request-mismatch",
+      "$.phases[0].pullRequest",
+    );
+    assert.ok(name);
+  }
+});
+
 test("requires planner artifact order and source-specific commit evidence", () => {
   const planBase = {
     ...base,
