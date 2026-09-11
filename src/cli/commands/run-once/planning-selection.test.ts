@@ -195,7 +195,7 @@ test("does not let an automatic blocked legacy retry outrank fresh work", async 
       status: "blocked",
       lastError: "needs input",
     });
-    const blockedIssue = issue(3, ["agent-ready", "needs-info"]);
+    const blockedIssue = issue(3, ["agent-ready"]);
     const freshIssue = issue(4, ["agent-ready"]);
     const automatic = await selectRunOnceWorkflow(
       [blockedIssue, freshIssue],

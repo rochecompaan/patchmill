@@ -184,6 +184,7 @@ export async function selectRunOnceWorkflow(
     )
       choices.push({ kind: "legacy", issue });
     else if (
+      !hasBlockedRunRecoveryState(legacy) &&
       issue.labels.includes(config.readyLabel) &&
       planningIssueEligible({
         issue,
