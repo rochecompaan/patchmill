@@ -92,3 +92,29 @@ export function phase(value: unknown, path: string): PlanningPhaseKind {
     ? parsed
     : fail("invalid-phase", path);
 }
+
+export function safeUrl(value: unknown, path: string): string {
+  const url = string(value, path);
+  try {
+    const parsedUrl = new URL(url);
+    if (
+      (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") ||
+      parsedUrl.username ||
+      parsedUrl.password ||
+      parsedUrl.search ||
+      parsedUrl.hash ||
+      /[\r\n]/u.test(url)
+    )
+      fail("invalid-url", path);
+  } catch (error) {
+    if (error instanceof PlanningStateValidationError) throw error;
+    fail("invalid-url", path);
+  }
+  return url;
+}
+
+export function nonnegativeFinite(value: unknown, path: string): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : fail("invalid-nonnegative-number", path);
+}
