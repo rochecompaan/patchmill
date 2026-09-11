@@ -385,6 +385,23 @@ test("requires planner artifact order and source-specific commit evidence", () =
     phases: [planPhase, { kind: "implementation", status: "pending" }],
   };
   assert.doesNotThrow(() => validatePlanningState(value));
+  const distinctWorkspaceArtifacts = structuredClone(value);
+  distinctWorkspaceArtifacts.phases[0].workspace.headOid = oid("d");
+  distinctWorkspaceArtifacts.phases[0].artifacts = [
+    {
+      kind: "spec",
+      path: "docs/specs/a.md",
+      source: "workspace",
+      commitOid: oid("c"),
+    },
+    {
+      kind: "plan",
+      path: "docs/plans/a.md",
+      source: "workspace",
+      commitOid: oid("d"),
+    },
+  ];
+  assert.doesNotThrow(() => validatePlanningState(distinctWorkspaceArtifacts));
   const reversed = structuredClone(value);
   reversed.phases[0].artifacts.reverse();
   invalid(reversed, "artifact-kinds", "$.phases[0].artifacts");
