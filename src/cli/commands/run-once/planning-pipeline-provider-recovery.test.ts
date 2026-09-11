@@ -166,10 +166,32 @@ function assertMonotonicStateHistory(
   ]);
 }
 
+type SnapshotPhaseExpectation = Readonly<{
+  kind: PlanningStateSnapshot["phases"][number]["kind"];
+  status: PlanningStateSnapshot["phases"][number]["status"];
+  cleanupState?: NonNullable<
+    PlanningStateSnapshot["phases"][number]["ownership"]
+  >["cleanupState"];
+  finish?: readonly string[];
+}>;
 type SnapshotExpectation = Readonly<{
   revision: number;
-  phases: readonly string[];
+  phases: readonly SnapshotPhaseExpectation[];
 }>;
+
+function phase(
+  kind: SnapshotPhaseExpectation["kind"],
+  status: SnapshotPhaseExpectation["status"],
+  cleanupState?: SnapshotPhaseExpectation["cleanupState"],
+  finish?: readonly string[],
+): SnapshotPhaseExpectation {
+  return {
+    kind,
+    status,
+    ...(cleanupState === undefined ? {} : { cleanupState }),
+    ...(finish === undefined ? {} : { finish }),
+  };
+}
 
 const interruptionStateExpectations: Readonly<
   Record<
@@ -184,17 +206,17 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 2,
       phases: [
-        "spec/workspace-ready/ready/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "workspace-ready", "ready"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
     firstRetry: {
       revision: 3,
       phases: [
-        "spec/branch-pushed/ready/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "branch-pushed", "ready"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
   },
@@ -202,17 +224,17 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 3,
       phases: [
-        "spec/branch-pushed/ready/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "branch-pushed", "ready"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
     firstRetry: {
       revision: 4,
       phases: [
-        "spec/pull-request-open/ready/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "pull-request-open", "ready"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
   },
@@ -220,17 +242,17 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 4,
       phases: [
-        "spec/pull-request-open/ready/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "pull-request-open", "ready"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
     firstRetry: {
       revision: 5,
       phases: [
-        "spec/pull-request-open/worktree-removed/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "pull-request-open", "worktree-removed"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
   },
@@ -238,17 +260,17 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 5,
       phases: [
-        "spec/pull-request-open/worktree-removed/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "pull-request-open", "worktree-removed"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
     firstRetry: {
       revision: 6,
       phases: [
-        "spec/pull-request-open/removed/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "pull-request-open", "removed"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
   },
@@ -256,17 +278,17 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 6,
       phases: [
-        "spec/pull-request-open/removed/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "pull-request-open", "removed"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
     firstRetry: {
       revision: 7,
       phases: [
-        "spec/complete/removed/",
-        "plan/pending/-/",
-        "implementation/pending/-/",
+        phase("spec", "complete", "removed"),
+        phase("plan", "pending"),
+        phase("implementation", "pending"),
       ],
     },
   },
@@ -274,17 +296,17 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 17,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/branch-pushed/ready/",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "branch-pushed", "ready"),
       ],
     },
     firstRetry: {
       revision: 18,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/ready/",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "ready", []),
       ],
     },
   },
@@ -292,17 +314,24 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 20,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/ready/costPublicationCompleted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "ready", [
+          "costPublicationCompleted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
     firstRetry: {
       revision: 21,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/ready/costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "ready", [
+          "costPublicationCompleted",
+          "handoffCommentPosted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
   },
@@ -310,17 +339,26 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 21,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/ready/costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "ready", [
+          "costPublicationCompleted",
+          "handoffCommentPosted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
     firstRetry: {
       revision: 22,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/ready/cleanupHookCompleted,costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "ready", [
+          "cleanupHookCompleted",
+          "costPublicationCompleted",
+          "handoffCommentPosted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
   },
@@ -328,17 +366,27 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 22,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/ready/cleanupHookCompleted,costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "ready", [
+          "cleanupHookCompleted",
+          "costPublicationCompleted",
+          "handoffCommentPosted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
     firstRetry: {
       revision: 23,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/worktree-removed/cleanupHookCompleted,costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "worktree-removed", [
+          "cleanupHookCompleted",
+          "costPublicationCompleted",
+          "handoffCommentPosted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
   },
@@ -346,17 +394,30 @@ const interruptionStateExpectations: Readonly<
     preDeniedWrite: {
       revision: 25,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/removed/cleanupHookCompleted,costPublicationCompleted,doneLabelEnsured,handoffCommentPosted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "removed", [
+          "cleanupHookCompleted",
+          "costPublicationCompleted",
+          "doneLabelEnsured",
+          "handoffCommentPosted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
     firstRetry: {
       revision: 26,
       phases: [
-        "spec/complete/removed/",
-        "plan/complete/removed/",
-        "implementation/pull-request-open/removed/cleanupHookCompleted,costPublicationCompleted,doneLabelApplied,doneLabelEnsured,handoffCommentPosted,visualEvidenceValidated",
+        phase("spec", "complete", "removed"),
+        phase("plan", "complete", "removed"),
+        phase("implementation", "pull-request-open", "removed", [
+          "cleanupHookCompleted",
+          "costPublicationCompleted",
+          "doneLabelApplied",
+          "doneLabelEnsured",
+          "handoffCommentPosted",
+          "visualEvidenceValidated",
+        ]),
       ],
     },
   },
@@ -368,9 +429,8 @@ function assertExactSnapshot(
 ) {
   assert.equal(actual.revision, expected.revision);
   assert.deepEqual(
-    actual.phases.map(
-      (phase) =>
-        `${phase.kind}/${phase.status}/${phase.ownership?.cleanupState ?? "-"}/${phase.finish?.join(",") ?? ""}`,
+    actual.phases.map((item) =>
+      phase(item.kind, item.status, item.ownership?.cleanupState, item.finish),
     ),
     expected.phases,
   );
