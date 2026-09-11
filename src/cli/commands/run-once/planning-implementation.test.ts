@@ -266,6 +266,68 @@ test("blocks runner pre-validation failures without a pull-request-open checkpoi
   }
 });
 
+test("blocks direct merged agent results regardless configured landing policy", async () => {
+  for (const allowDirectLand of [true, false]) {
+    let replacements = 0;
+    let validations = 0;
+    const result = await runPlanningImplementation(
+      input({
+        configuredGit: {
+          remote: "origin",
+          baseBranch: "main",
+          allowDirectLand,
+        },
+        stateStore: {
+          replace: async ({ next }: { next: unknown }) => {
+            replacements += 1;
+            return next;
+          },
+        },
+        host: {
+          ...input().host,
+          getPullRequest: async () => {
+            validations += 1;
+            throw new Error("unexpected validation");
+          },
+        },
+        runAgent: async () => ({ status: "merged" as const }),
+      }),
+    );
+    assert.equal(result.kind, "blocked");
+    if (result.kind === "blocked")
+      assert.equal(result.result.reason, "implementation-direct-merge");
+    assert.equal(replacements, 0);
+    assert.equal(validations, 0);
+  }
+});
+
+test("propagates a branch-pushed checkpoint conflict without host continuation", async () => {
+  let validations = 0;
+  let replacements = 0;
+  await assert.rejects(
+    runPlanningImplementation(
+      input({
+        stateStore: {
+          replace: async () => {
+            replacements += 1;
+            throw new Error("state conflict");
+          },
+        },
+        host: {
+          ...input().host,
+          getPullRequest: async () => {
+            validations += 1;
+            throw new Error("unexpected validation");
+          },
+        },
+      }),
+    ),
+    /state conflict/u,
+  );
+  assert.equal(replacements, 1);
+  assert.equal(validations, 0);
+});
+
 test("blocks invalid successful agent evidence before PR validation", async () => {
   let hostReads = 0;
   const result = await runPlanningImplementation(
