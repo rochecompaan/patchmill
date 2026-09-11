@@ -1,3 +1,5 @@
+import { markdownTopLevelLines } from "./planning-markdown-top-level-lines.ts";
+
 export const PLANNING_PR_WORKFLOW_VERSION = "planning-pr-v1" as const;
 
 export type PlanningPhaseKind = "spec" | "plan" | "implementation";
@@ -31,73 +33,15 @@ export function renderPlanningPullRequestMarker(input: {
 const markerPrefix = "<!-- patchmill:planning-pr-";
 const validMarkerPattern =
   /^<!-- patchmill:(planning-pr-v1) issue=([1-9]\d*) phase=(spec|plan|implementation) -->$/u;
-const openingFencePattern = /^(`{3,}|~{3,})(.*)$/u;
-const closingFencePattern = /^(`+|~+)[ \t]*$/u;
-const rawHtmlBlockOpening =
-  /^<(?<tag>script|style|pre|textarea|div)(?:[ \t][^>]*)?>/iu;
 
 type MarkerLine = { line: string; index: number };
 
-function openingFence(line: string): string | undefined {
-  const match = line.match(openingFencePattern);
-  if (match === null) return undefined;
-  const delimiter = match[1]!;
-  return delimiter[0] === "`" && match[2]!.includes("`")
-    ? undefined
-    : delimiter;
-}
-
-function rawHtmlBlockEnds(tag: string, line: string): boolean {
-  return new RegExp(`</${tag}[ \t]*>`, "iu").test(line);
-}
-
-function topLevelMarkerLines(lines: readonly string[]): MarkerLine[] {
-  const markers: MarkerLine[] = [];
-  let fence: string | undefined;
-  let htmlComment = false;
-  let htmlBlock: string | undefined;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]!;
-    // CommonMark permits up to three spaces before fenced code blocks. Markers
-    // themselves remain column-zero ownership evidence.
-    const fencedLine = line.replace(/^[ ]{0,3}/u, "");
-    if (fence !== undefined) {
-      const closingFence = fencedLine.match(closingFencePattern)?.[1];
-      if (
-        closingFence !== undefined &&
-        closingFence[0] === fence[0] &&
-        closingFence.length >= fence.length
-      ) {
-        fence = undefined;
-      }
-      continue;
-    }
-    if (htmlComment) {
-      if (line.includes("-->")) htmlComment = false;
-      continue;
-    }
-    if (htmlBlock !== undefined) {
-      if (rawHtmlBlockEnds(htmlBlock, fencedLine)) htmlBlock = undefined;
-      continue;
-    }
-    const opener = openingFence(fencedLine);
-    if (opener !== undefined) {
-      fence = opener;
-      continue;
-    }
-    const htmlOpening = rawHtmlBlockOpening.exec(fencedLine);
-    if (htmlOpening?.groups?.tag !== undefined) {
-      if (!rawHtmlBlockEnds(htmlOpening.groups.tag, fencedLine))
-        htmlBlock = htmlOpening.groups.tag;
-      continue;
-    }
-    if (line.startsWith(markerPrefix)) {
-      markers.push({ line, index });
-      continue;
-    }
-    if (line.includes("<!--") && !line.includes("-->")) htmlComment = true;
-  }
-  return markers;
+function topLevelMarkerLines(body: string): MarkerLine[] {
+  return markdownTopLevelLines(body, {
+    includeStandaloneLine: (line) => line.startsWith(markerPrefix),
+  }).flatMap(({ line, index }) =>
+    line.startsWith(markerPrefix) ? [{ line, index }] : [],
+  );
 }
 
 function finalNonblankLineIndex(lines: readonly string[]): number {
@@ -115,7 +59,7 @@ export function parsePlanningPullRequestMarker(body: string):
     }
   | undefined {
   const lines = body.replaceAll("\r\n", "\n").split("\n");
-  const markers = topLevelMarkerLines(lines);
+  const markers = topLevelMarkerLines(body);
   if (markers.length === 0) return undefined;
   if (markers.length !== 1) {
     throw new PlanningPullRequestMarkerError("multiple markers", body);

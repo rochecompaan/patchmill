@@ -235,13 +235,38 @@ test("marker parser keeps markers inside a top-level fence after container text"
   );
 });
 
-test("marker parser ignores markers nested in a multiline HTML comment", () => {
+test("marker parser ignores markers nested in raw HTML blocks", () => {
   const marker = renderPlanningPullRequestMarker({
     issueNumber: 184,
     phase: "implementation",
   });
 
-  assert.equal(parsePlanningPullRequestMarker(`<!--\n${marker}`), undefined);
+  for (const body of [
+    `<!--\n${marker}`,
+    `<details>\n${marker}`,
+    `<table>\n${marker}`,
+    `<section>\n${marker}`,
+    `<?instruction\n${marker}`,
+    `<![CDATA[\n${marker}`,
+    `<!DOCTYPE html\n${marker}`,
+    `<pre>example\n${marker}\n</pre>`,
+  ])
+    assert.equal(parsePlanningPullRequestMarker(body), undefined);
+
+  for (const body of [
+    `<!--\n-->\n${marker}`,
+    `<details>\ncontent\n\n${marker}`,
+    `<?instruction\n?>\n${marker}`,
+    `<![CDATA[\n]]>\n${marker}`,
+    `<!DOCTYPE html\n>\n${marker}`,
+    `<pre>example\n</pre>\n${marker}`,
+  ]) {
+    assert.deepEqual(parsePlanningPullRequestMarker(body), {
+      workflowVersion: "planning-pr-v1",
+      issueNumber: 184,
+      phase: "implementation",
+    });
+  }
 });
 
 test("marker parser rejects duplicate and invalid planning markers", () => {

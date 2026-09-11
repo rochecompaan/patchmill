@@ -1,3 +1,5 @@
+import { markdownTopLevelLines } from "./planning-markdown-top-level-lines.ts";
+
 export class PlanningImplementationBodyError extends Error {
   readonly reason = "closing-reference" as const;
 
@@ -20,60 +22,13 @@ function lazyContainer(line: string): boolean {
   return /^(?:[ ]{0,3}>|[ ]{0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+)/u.test(line);
 }
 
-const rawHtmlBlockOpening =
-  /^<(?<tag>script|style|pre|textarea|div)(?:[ \t][^>]*)?>/iu;
-
-function rawHtmlBlockEnds(tag: string, line: string): boolean {
-  return new RegExp(`</${tag}[ \t]*>`, "iu").test(line);
-}
-
 function effectiveTopLevelLines(body: string): readonly string[] {
-  const lines = body.replaceAll("\r\n", "\n").split("\n");
   const output: string[] = [];
-  let fence: string | undefined;
-  let htmlComment = false;
-  let htmlBlock: string | undefined;
   let inLazyContainer = false;
-  for (const line of lines) {
-    const topLevel = line.replace(/^[ ]{0,3}/u, "");
+  for (const { line } of markdownTopLevelLines(body)) {
     if (line.trim() === "") {
       inLazyContainer = false;
       output.push(line);
-      continue;
-    }
-    if (fence !== undefined) {
-      const closing = /^(?<fence>`+|~+)[ \t]*$/u.exec(topLevel)?.groups?.fence;
-      if (
-        closing !== undefined &&
-        closing[0] === fence[0] &&
-        closing.length >= fence.length
-      )
-        fence = undefined;
-      continue;
-    }
-    if (htmlComment) {
-      if (line.includes("-->")) htmlComment = false;
-      continue;
-    }
-    if (line.includes("<!--")) {
-      if (!line.includes("-->")) htmlComment = true;
-      continue;
-    }
-    if (htmlBlock !== undefined) {
-      if (rawHtmlBlockEnds(htmlBlock, topLevel)) htmlBlock = undefined;
-      continue;
-    }
-    const htmlOpening = rawHtmlBlockOpening.exec(topLevel);
-    if (htmlOpening?.groups?.tag !== undefined) {
-      if (!rawHtmlBlockEnds(htmlOpening.groups.tag, topLevel))
-        htmlBlock = htmlOpening.groups.tag;
-      continue;
-    }
-    const openingMatch = /^(?<fence>`{3,}|~{3,})(?<info>.*)$/u.exec(topLevel);
-    const opening = openingMatch?.groups?.fence;
-    const info = openingMatch?.groups?.info;
-    if (opening !== undefined && (opening[0] !== "`" || !info!.includes("`"))) {
-      fence = opening;
       continue;
     }
     if (/^(?:[ \t]{4}|\t)/u.test(line)) continue;

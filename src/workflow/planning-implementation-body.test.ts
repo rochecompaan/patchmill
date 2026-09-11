@@ -28,6 +28,13 @@ test("requires one effective top-level implementation closing reference", () => 
     "<script>\nCloses #189\n</script>",
     "<div>\nCloses #189\n</div>",
     "<pre>example\nCloses #189\n</pre>",
+    "<details>\nCloses #189",
+    "<table>\nCloses #189",
+    "<section>\nCloses #189",
+    "<!-- comment\nCloses #189",
+    "<?instruction\nCloses #189",
+    "<![CDATA[\nCloses #189",
+    "<!DOCTYPE html\nCloses #189",
     "Closes #190",
     "Refs #189",
   ])
@@ -37,6 +44,16 @@ test("requires one effective top-level implementation closing reference", () => 
         error instanceof PlanningImplementationBodyError &&
         error.reason === "closing-reference",
     );
-  for (const body of ["- - -\nCloses #189", "  ***\nCloses #189"])
+  for (const body of [
+    "- - -\nCloses #189",
+    "  ***\nCloses #189",
+    "<details>\nCloses #189\n\nCloses #189",
+    "<table>\nCloses #189\n\nCloses #189",
+    "<!-- comment\nCloses #189\n-->\nCloses #189",
+    "<?instruction\nCloses #189\n?>\nCloses #189",
+    "<![CDATA[\nCloses #189\n]]>\nCloses #189",
+    "<!DOCTYPE html\n>\nCloses #189",
+    "<pre>example\nCloses #189\n</pre>\nCloses #189",
+  ])
     assert.doesNotThrow(() => assertImplementationClosingReference(body, 189));
 });
