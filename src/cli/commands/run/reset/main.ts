@@ -23,6 +23,7 @@ import {
   writeRunOnceResult,
 } from "../../run-once/result-output.ts";
 import { resetIssueRun } from "./reset.ts";
+import { legacyPlanningDeprecation } from "../../../legacy-planning-deprecations.ts";
 
 export async function runResetCommand(
   args: string[],
@@ -38,7 +39,7 @@ export async function runResetCommand(
 ): Promise<number> {
   if (args.includes("--help") || args.includes("-h")) {
     (dependencies.stdout ?? process.stdout).write(
-      "Usage: patchmill run reset --issue <number> [run-once options]\n",
+      `Usage: patchmill run reset --issue <number> [run-once options]\n${legacyPlanningDeprecation("--plan-only").help}\n`,
     );
     return 0;
   }
@@ -47,6 +48,9 @@ export async function runResetCommand(
   const stdout = dependencies.stdout ?? process.stdout;
   const stderr = dependencies.stderr ?? process.stderr;
   const env = dependencies.env ?? process.env;
+  if (args.includes("--plan-only")) {
+    stderr.write(`${legacyPlanningDeprecation("--plan-only").warning}\n`);
+  }
   try {
     const runner = dependencies.runner ?? createCommandRunner();
     const config = await (dependencies.loadConfig ?? loadCliConfig)(
