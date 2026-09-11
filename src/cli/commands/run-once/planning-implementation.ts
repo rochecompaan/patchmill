@@ -138,6 +138,15 @@ export async function runPlanningImplementation(
   if (phase?.kind !== "implementation")
     throw new RangeError("Invalid implementation phase");
   if (phase.status === "workspace-ready") {
+    if (
+      input.configuredGit.remote !== phase.workspace.remote ||
+      input.configuredGit.baseBranch !== phase.base.baseBranch
+    )
+      return {
+        kind: "blocked",
+        state,
+        result: blocked("implementation-configuration"),
+      };
     const result = await input.runAgent({
       state,
       phase,

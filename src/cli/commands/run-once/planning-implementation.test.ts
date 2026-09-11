@@ -73,7 +73,11 @@ function input(overrides: Record<string, unknown> = {}) {
       }),
       assertAncestor: async () => {},
     },
-    configuredGit: { baseBranch: "main", allowDirectLand: true },
+    configuredGit: {
+      remote: "origin",
+      baseBranch: "main",
+      allowDirectLand: true,
+    },
     runAgent: async () => ({
       status: "pr-created" as const,
       prUrl: "https://github.com/acme/patchmill/pull/189",
@@ -112,51 +116,73 @@ test("passes the post-prepare durable state and implementation workspace to the 
   assert.equal(received?.git.allowDirectLand, false);
 });
 
-test("uses durable workspace ownership for resumed implementation agent targets", async () => {
-  let received: { git: Record<string, unknown> } | undefined;
-  const durable = input({
-    configuredGit: {
-      remote: "changed-origin",
-      baseBranch: "changed-main",
-      baseRef: "refs/remotes/changed-origin/changed-main",
-      allowDirectLand: true,
-    },
-    state: {
-      ...input().state,
-      phases: [
-        {
-          ...input().state.phases[0],
-          base: {
-            ...input().state.phases[0].base,
-            baseBranch: "durable-main",
-          },
-          workspace: {
-            ...input().state.phases[0].workspace,
-            remote: "durable-origin",
-            baseBranch: "durable-main",
-          },
+test("blocks remote and base configuration drift before invoking a resumed implementation agent", async () => {
+  for (const configuredGit of [
+    { remote: "changed-origin", baseBranch: "main", allowDirectLand: true },
+    { remote: "origin", baseBranch: "changed-main", allowDirectLand: true },
+  ]) {
+    let agentRuns = 0;
+    const result = await runPlanningImplementation(
+      input({
+        configuredGit,
+        runAgent: async () => {
+          agentRuns += 1;
+          throw new Error("unexpected agent");
         },
-      ],
-    },
-    runAgent: async (agentInput: typeof received) => {
-      received = agentInput;
-      return {
-        status: "blocked",
-        reason: "stop",
-        questions: [],
-        commits: [],
-        validation: [],
-      };
-    },
-  });
-  const result = await runPlanningImplementation(durable);
-  assert.equal(result.kind, "blocked");
-  assert.deepEqual(received?.git, {
-    remote: "durable-origin",
-    baseBranch: "durable-main",
-    baseRef: "refs/remotes/changed-origin/changed-main",
-    allowDirectLand: false,
-  });
+      }),
+    );
+    assert.equal(result.kind, "blocked");
+    if (result.kind === "blocked")
+      assert.equal(result.result.reason, "implementation-configuration");
+    assert.equal(agentRuns, 0);
+  }
+});
+
+test("validates a matching resumed implementation pull request with the host", async () => {
+  let agentRuns = 0;
+  let hostReads = 0;
+  const result = await runPlanningImplementation(
+    input({
+      configuredGit: {
+        remote: "origin",
+        baseBranch: "main",
+        allowDirectLand: true,
+      },
+      runAgent: async () => {
+        agentRuns += 1;
+        return {
+          status: "pr-created",
+          prUrl: "https://github.com/acme/patchmill/pull/189",
+          branch: "agent/189",
+          commits: [oid("b")],
+          validation: [],
+        };
+      },
+      host: {
+        id: "github-gh",
+        resolveTargetRepositoryIdentity: async () => repository,
+        resolveRemoteRepositoryIdentity: async () => repository,
+        getPullRequest: async () => {
+          hostReads += 1;
+          return {
+            number: 189,
+            url: "https://github.com/acme/patchmill/pull/189",
+            targetRepository: repository,
+            baseBranch: "main",
+            headRepository: repository,
+            headBranch: "agent/189",
+            headSha: oid("b"),
+            body: "Closes #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+            status: "open",
+          };
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "validated");
+  assert.equal(result.state.phases[0]?.status, "pull-request-open");
+  assert.equal(agentRuns, 1);
+  assert.equal(hostReads, 1);
 });
 
 test("checkpoints clean committed blocker progress for resumption", async () => {
