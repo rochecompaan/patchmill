@@ -3,11 +3,17 @@ import test from "node:test";
 import {
   createPlanningProviderScenario,
   type PlanningProviderScenario,
+  type PlanningScenarioEffect,
   type PlanningScenarioFailurePoint,
   type PlanningScenarioProvider,
+  type PlanningStateSnapshot,
 } from "../../../../test-support/run-once/planning-provider-scenario.ts";
 
 const bothGates = { specRequired: true, planRequired: true };
+const providers = [
+  "github-gh",
+  "forgejo-tea",
+] as const satisfies readonly PlanningScenarioProvider[];
 const interruptionPoints: readonly PlanningScenarioFailurePoint[] = [
   "after-phase-push",
   "after-planning-pull-request-create",
@@ -61,77 +67,113 @@ function requiresImplementation(point: PlanningScenarioFailurePoint) {
   ].includes(point);
 }
 
-function countMatchingEffects(effects: readonly string[], expression: RegExp) {
-  return effects.filter((effect) => expression.test(effect)).length;
+function writeEffects(effects: readonly PlanningScenarioEffect[]) {
+  return effects.filter((effect) => effect.kind === "write");
 }
 
-test("known provider-write effects exclude recovery reads", () => {
-  assert.deepEqual(
-    [
-      "gh pr create --body body",
-      "gh pr edit 1 --body body",
-      "gh issue comment 190 --body body",
-      "gh issue edit 190 --add-label agent-done",
-      "tea comment 190 -- body",
-      "tea issues edit 190 --add-labels agent-done",
-      "tea api /repos/acme/patchmill/pulls --method POST",
-      "tea api /repos/acme/patchmill/pulls/1 --method PATCH",
-      "git push --porcelain --no-force -- origin head:branch",
-      "git worktree remove -- workspace",
-      "git branch -D issue-190",
-      "git update-ref -d refs/heads/issue-190",
-      "pi -p @prompt",
-      "bash cleanup.sh",
-      "fixture implementation-push agent/issue-190",
-      "gh pr view 1 --json number",
-      "tea api /repos/acme/patchmill/pulls/1 --include",
-      "git ls-remote --exit-code --heads -- origin branch",
-      "git worktree list --porcelain -z",
-    ].map((effect) => [effect, isKnownHostWriteEffect(effect)]),
-    [
-      ["gh pr create --body body", true],
-      ["gh pr edit 1 --body body", true],
-      ["gh issue comment 190 --body body", true],
-      ["gh issue edit 190 --add-label agent-done", true],
-      ["tea comment 190 -- body", true],
-      ["tea issues edit 190 --add-labels agent-done", true],
-      ["tea api /repos/acme/patchmill/pulls --method POST", true],
-      ["tea api /repos/acme/patchmill/pulls/1 --method PATCH", true],
-      ["git push --porcelain --no-force -- origin head:branch", true],
-      ["git worktree remove -- workspace", true],
-      ["git branch -D issue-190", true],
-      ["git update-ref -d refs/heads/issue-190", true],
-      ["pi -p @prompt", true],
-      ["bash cleanup.sh", true],
-      ["fixture implementation-push agent/issue-190", true],
-      ["gh pr view 1 --json number", false],
-      ["tea api /repos/acme/patchmill/pulls/1 --include", false],
-      ["git ls-remote --exit-code --heads -- origin branch", false],
-      ["git worktree list --porcelain -z", false],
-    ],
-  );
-});
-
-function isKnownHostWriteEffect(effect: string) {
-  return /^(?:fixture implementation-push |pi |bash |git (?:push|worktree (?:remove|prune)|branch (?:-D|--delete)|update-ref -d|clean|reset --hard)|gh (?:pr (?:create|edit)|issue (?:comment|edit))|tea (?:comment|issues edit|api .*--method (?:POST|PATCH)(?:\s|$)))/u.test(
-    effect,
-  );
+for (const provider of providers) {
+  test(`${provider} records provider-neutral process effects`, async () => {
+    const scenario = await createPlanningProviderScenario({
+      provider,
+      gates: bothGates,
+    });
+    try {
+      assert.equal((await scenario.run()).status, "review-pending");
+      const effects = scenario.effects();
+      assert.ok(effects.some((effect) => effect.kind === "read"));
+      assert.deepEqual(
+        writeEffects(effects)
+          .map((effect) => effect.operation)
+          .filter((operation) =>
+            [
+              "agent-run",
+              "issue-label-edit",
+              "issue-comment",
+              "phase-push",
+              "planning-pull-request-create",
+            ].includes(operation),
+          ),
+        [
+          "issue-label-edit",
+          "issue-comment",
+          "agent-run",
+          "phase-push",
+          "planning-pull-request-create",
+        ],
+      );
+    } finally {
+      await scenario.cleanup();
+    }
+  });
 }
 
-function durableEffects(effects: readonly string[]) {
-  return effects.filter(isKnownHostWriteEffect);
+const allowedPhaseTransitions = {
+  pending: [
+    "pending",
+    "workspace-ready",
+    "branch-pushed",
+    "pull-request-open",
+    "complete",
+  ],
+  "workspace-ready": [
+    "workspace-ready",
+    "branch-pushed",
+    "pull-request-open",
+    "complete",
+  ],
+  "branch-pushed": ["branch-pushed", "pull-request-open", "complete"],
+  "pull-request-open": ["pull-request-open", "complete"],
+  complete: ["complete"],
+} as const;
+
+function assertMonotonicStateHistory(
+  history: readonly PlanningStateSnapshot[],
+) {
+  assert.ok(history.length >= 2, "recovery records multiple durable states");
+  for (let index = 1; index < history.length; index += 1) {
+    const previous = history[index - 1]!;
+    const current = history[index]!;
+    assert.ok(
+      current.revision > previous.revision,
+      `revision ${current.revision} follows ${previous.revision}`,
+    );
+    for (const phase of current.phases) {
+      const prior = previous.phases.find((item) => item.kind === phase.kind);
+      if (prior === undefined) continue;
+      assert.ok(
+        allowedPhaseTransitions[prior.status].includes(phase.status),
+        `${phase.kind} transitions from ${prior.status} to ${phase.status}`,
+      );
+      for (const checkpoint of prior.finish ?? [])
+        assert.ok(
+          phase.finish?.includes(checkpoint),
+          `${phase.kind} retains ${checkpoint}`,
+        );
+    }
+  }
+  const implementation = history
+    .at(-1)
+    ?.phases.find((phase) => phase.kind === "implementation");
+  assert.equal(implementation?.status, "complete");
+  assert.deepEqual(implementation?.finish, [
+    "cleanupHookCompleted",
+    "costPublicationCompleted",
+    "doneLabelApplied",
+    "doneLabelEnsured",
+    "handoffCommentPosted",
+    "visualEvidenceValidated",
+  ]);
 }
 
 function assertOnePublicationPerPhase(scenario: PlanningProviderScenario) {
-  const effects = scenario.effects();
+  const effects = writeEffects(scenario.effects());
   for (const phase of ["spec", "plan", "implementation"] as const) {
-    const pushes =
-      phase === "implementation"
-        ? countMatchingEffects(effects, /^fixture implementation-push /u)
-        : countMatchingEffects(
-            effects,
-            new RegExp(`:refs/heads/[^ ]*-${phase}(?:\\s|$)`, "u"),
-          );
+    const pushes = effects.filter(
+      (effect) =>
+        effect.phase === phase &&
+        (effect.operation === "phase-push" ||
+          effect.operation === "implementation-push"),
+    ).length;
     assert.equal(pushes, 1, `${phase} has one remote branch update`);
     assert.equal(
       scenario.pulls().filter((pull) => pull.phase === phase).length,
@@ -141,19 +183,27 @@ function assertOnePublicationPerPhase(scenario: PlanningProviderScenario) {
   }
 }
 
-function assertNoEffectsAfterInterruption(scenario: PlanningProviderScenario) {
+function assertNoEffectsAfterInterruption(
+  scenario: PlanningProviderScenario,
+  point: PlanningScenarioFailurePoint,
+) {
   const effects = scenario.effects();
-  const interruption = effects.findLastIndex((effect) =>
-    effect.startsWith("fixture interrupt "),
+  const interruption = effects.findLastIndex(
+    (effect) => effect.kind === "interrupt",
   );
   assert.notEqual(
     interruption,
     -1,
     "the requested effect interrupted state persistence",
   );
+  assert.deepEqual(effects[interruption], {
+    kind: "interrupt",
+    operation: "persistence-interrupt",
+    point,
+  });
   const laterEffects = effects.slice(interruption + 1);
   assert.equal(
-    laterEffects.some(isKnownHostWriteEffect),
+    laterEffects.some((effect) => effect.kind === "write"),
     false,
     "no later host write, next phase, destructive Git, cleanup, handoff, or label effect runs after persistence fails",
   );
@@ -179,10 +229,7 @@ async function assertReviewedArtifactsSurvive(
   }
 }
 
-for (const provider of [
-  "github-gh",
-  "forgejo-tea",
-] as const satisfies readonly PlanningScenarioProvider[]) {
+for (const provider of providers) {
   for (const point of interruptionPoints) {
     test(`${provider} adopts completed effects after ${point}`, async () => {
       const scenario = await createPlanningProviderScenario({
@@ -202,9 +249,9 @@ for (const provider of [
         await assert.rejects(scenario.run());
         const interrupted = await scenario.state();
         assert.ok(interrupted);
-        assertNoEffectsAfterInterruption(scenario);
+        assertNoEffectsAfterInterruption(scenario, point);
         const pullsBeforeRetry = scenario.pulls();
-        const effectsBeforeRetry = scenario.effects();
+        const historyBeforeRetry = scenario.stateHistory().slice();
         const refsBeforeRetry = await scenario.remoteRefs();
         await scenario.restorePersistence();
         const finished = await finish(scenario);
@@ -252,14 +299,15 @@ for (const provider of [
             assert.equal(refsAfterRetry[ref], oid, `retry preserves ${ref}`);
         }
         assert.ok(
-          scenario.effects().length >= effectsBeforeRetry.length,
-          "recovery may only append effects after persistence is restored",
+          scenario.stateHistory().length > historyBeforeRetry.length,
+          "retry persists a later durable state",
         );
+        assertMonotonicStateHistory(scenario.stateHistory());
         await assertReviewedArtifactsSurvive(scenario);
         const terminal = await scenario.state();
         const terminalPulls = scenario.pulls();
         const terminalRefs = await scenario.remoteRefs();
-        const terminalEffects = durableEffects(scenario.effects());
+        const terminalEffects = writeEffects(scenario.effects());
         const terminalRerun = await scenario.run();
         assert.ok(
           terminalRerun.status === "pr-created" ||
@@ -270,18 +318,21 @@ for (const provider of [
         assert.deepEqual(await scenario.state(), terminal);
         assert.deepEqual(scenario.pulls(), terminalPulls);
         assert.deepEqual(await scenario.remoteRefs(), terminalRefs);
-        assert.deepEqual(durableEffects(scenario.effects()), terminalEffects);
+        assert.deepEqual(writeEffects(scenario.effects()), terminalEffects);
         assert.equal(
-          countMatchingEffects(terminalEffects, /Automation handoff ready/u),
+          terminalEffects.filter(
+            (effect) => effect.operation === "handoff-comment",
+          ).length,
           1,
           "handoff is idempotent",
         );
         assert.ok(
-          countMatchingEffects(terminalEffects, /^bash cleanup\.sh$/u) >= 1,
+          terminalEffects.some((effect) => effect.operation === "cleanup-hook"),
           "cleanup hook completed before terminal state",
         );
         assert.equal(
-          countMatchingEffects(terminalEffects, /agent-done/u),
+          terminalEffects.filter((effect) => effect.operation === "done-label")
+            .length,
           1,
           "done label is idempotent",
         );

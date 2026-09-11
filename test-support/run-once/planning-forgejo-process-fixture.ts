@@ -1,7 +1,9 @@
+import type { CommandResult } from "../../src/cli/commands/run-once/types.ts";
+import { issueListPayload, labelListPayload } from "./issue-fixtures.ts";
 import type {
-  CommandResult,
-  IssueSummary,
-} from "../../src/cli/commands/run-once/types.ts";
+  PlanningProviderFixtureInput,
+  PlanningScenarioPull,
+} from "./planning-provider-scenario-types.ts";
 
 export type PlanningForgejoPull = Readonly<{
   number: number;
@@ -14,34 +16,7 @@ export type PlanningForgejoPull = Readonly<{
   mergeOid?: string;
 }>;
 
-type MutablePlanningForgejoPull = {
-  number: number;
-  branch: string;
-  body: string;
-  headOid: string;
-  headRepository: string;
-  merged?: boolean;
-  closed?: boolean;
-  mergeOid?: string;
-};
-
-export type ForgejoProcessFixtureInput = {
-  issue: IssueSummary;
-  pulls: MutablePlanningForgejoPull[];
-  nextPull(): number;
-  headOid(branch: string): Promise<string>;
-  implementationFinish(): Promise<boolean>;
-  interrupt(
-    point:
-      | "after-planning-pull-request-create"
-      | "after-implementation-pull-request-validation"
-      | "after-handoff-comment"
-      | "after-done-label",
-  ): Promise<void>;
-  consumeHostReadFailure(): boolean;
-  addIssueComment(body: string): void;
-  updateIssueLabels(add: readonly string[], remove: readonly string[]): void;
-};
+export type ForgejoProcessFixtureInput = PlanningProviderFixtureInput;
 
 function fixtureError(args: readonly string[]): never {
   throw new Error(`unexpected tea command: ${args.join(" ")}`);
@@ -62,7 +37,9 @@ function repository(name = "patchmill") {
   };
 }
 
-export function forgejoPullPayload(pull: PlanningForgejoPull) {
+export function forgejoPullPayload(
+  pull: PlanningForgejoPull | PlanningScenarioPull,
+) {
   const headRepository = {
     name: pull.headRepository.split("/").at(-1)!,
     full_name: pull.headRepository,
@@ -90,36 +67,31 @@ export function createForgejoProcessFixture(input: ForgejoProcessFixtureInput) {
   return async (args: string[]): Promise<CommandResult> => {
     const [group, action] = args;
     if (group === "comment") {
-      if (await input.implementationFinish())
-        await input.interrupt("after-handoff-comment");
+      const handoff = await input.implementationFinish();
+      input.record({
+        kind: "write",
+        operation: handoff ? "handoff-comment" : "issue-comment",
+      });
+      if (handoff) await input.interrupt("after-handoff-comment");
       input.addIssueComment(args.at(-1)!);
       return { code: 0, stdout: "", stderr: "" };
     }
     if (group === "issues" && action === "list") {
+      input.record({ kind: "read", operation: "issue-read" });
       const page = argument(args, "--page");
       return {
         code: 0,
-        stdout:
-          page === "1"
-            ? JSON.stringify([
-                {
-                  index: input.issue.number,
-                  title: input.issue.title,
-                  body: input.issue.body,
-                  state: input.issue.state,
-                  labels: input.issue.labels.map((name) => ({ name })),
-                  author: { login: input.issue.author },
-                  updated: input.issue.updated,
-                  comments: input.issue.comments,
-                },
-              ])
-            : "[]",
+        stdout: page === "1" ? issueListPayload([input.issue]) : "[]",
         stderr: "",
       };
     }
     if (group === "issues" && action === "edit") {
-      if (await input.implementationFinish())
-        await input.interrupt("after-done-label");
+      const done = await input.implementationFinish();
+      input.record({
+        kind: "write",
+        operation: done ? "done-label" : "issue-label-edit",
+      });
+      if (done) await input.interrupt("after-done-label");
       input.updateIssueLabels(
         args.flatMap((value, index) =>
           value === "--add-labels" ? [args[index + 1]!] : [],
@@ -130,35 +102,17 @@ export function createForgejoProcessFixture(input: ForgejoProcessFixtureInput) {
       );
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (group === "labels" && action === "list")
-      return forgejoResult(
-        [
-          "agent-ready",
-          "needs-info",
-          "agent-unsuitable",
-          "in-progress",
-          "agent-done",
-          "bug",
-          "enhancement",
-          "docs",
-          "chore",
-          "test",
-          "priority:low",
-          "priority:medium",
-          "priority:high",
-          "priority:critical",
-          "spec-review",
-          "spec-approved",
-          "plan-review",
-          "plan-approved",
-        ].map((name) => ({ name })),
-      );
+    if (group === "labels" && action === "list") {
+      input.record({ kind: "read", operation: "repository-read" });
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
     if (group !== "api") return fixtureError(args);
     if (input.consumeHostReadFailure())
       return { code: 1, stdout: "", stderr: "transient host failure" };
     const path = args.find((value) => value.startsWith("/repos/"));
     if (path === undefined) return fixtureError(args);
     if (path.endsWith("/repos/{owner}/{repo}")) {
+      input.record({ kind: "read", operation: "repository-read" });
       const repo = argument(args, "--repo");
       return forgejoResult(
         repository(
@@ -166,9 +120,12 @@ export function createForgejoProcessFixture(input: ForgejoProcessFixtureInput) {
         ),
       );
     }
-    if (path.includes("/pulls?"))
+    if (path.includes("/pulls?")) {
+      input.record({ kind: "read", operation: "pull-request-read" });
       return forgejoResult(input.pulls.map(forgejoPullPayload));
+    }
     if (/\/pulls\/\d+$/u.test(path)) {
+      input.record({ kind: "read", operation: "pull-request-read" });
       const number = Number(path.split("/").at(-1));
       const pull = input.pulls.find((item) => item.number === number);
       if (pull === undefined)
@@ -190,6 +147,10 @@ export function createForgejoProcessFixture(input: ForgejoProcessFixtureInput) {
         headRepository: "acme/patchmill-head",
       };
       input.pulls.push(pull);
+      input.record({
+        kind: "write",
+        operation: "planning-pull-request-create",
+      });
       await input.interrupt("after-planning-pull-request-create");
       return forgejoResult(forgejoPullPayload(pull));
     }

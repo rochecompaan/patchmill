@@ -1,7 +1,9 @@
+import type { CommandResult } from "../../src/cli/commands/run-once/types.ts";
+import { labelListPayload } from "./issue-fixtures.ts";
 import type {
-  CommandResult,
-  IssueSummary,
-} from "../../src/cli/commands/run-once/types.ts";
+  PlanningProviderFixtureInput,
+  PlanningScenarioPull,
+} from "./planning-provider-scenario-types.ts";
 
 export type PlanningGithubPull = Readonly<{
   number: number;
@@ -13,34 +15,7 @@ export type PlanningGithubPull = Readonly<{
   mergeOid?: string;
 }>;
 
-type MutablePlanningGithubPull = {
-  number: number;
-  branch: string;
-  body: string;
-  headOid: string;
-  headRepository: string;
-  merged?: boolean;
-  closed?: boolean;
-  mergeOid?: string;
-};
-
-export type GithubProcessFixtureInput = {
-  issue: IssueSummary;
-  pulls: MutablePlanningGithubPull[];
-  nextPull(): number;
-  headOid(branch: string): Promise<string>;
-  implementationFinish(): Promise<boolean>;
-  interrupt(
-    point:
-      | "after-planning-pull-request-create"
-      | "after-implementation-pull-request-validation"
-      | "after-handoff-comment"
-      | "after-done-label",
-  ): Promise<void>;
-  consumeHostReadFailure(): boolean;
-  addIssueComment(body: string): void;
-  updateIssueLabels(add: readonly string[], remove: readonly string[]): void;
-};
+export type GithubProcessFixtureInput = PlanningProviderFixtureInput;
 
 function fixtureError(args: readonly string[]): never {
   throw new Error(`unexpected gh command: ${args.join(" ")}`);
@@ -52,7 +27,9 @@ function argument(args: readonly string[], flag: string) {
   return value;
 }
 
-export function githubPullPayload(pull: PlanningGithubPull) {
+export function githubPullPayload(
+  pull: PlanningGithubPull | PlanningScenarioPull,
+) {
   return {
     number: pull.number,
     url: `https://github.test/acme/patchmill/pull/${pull.number}`,
@@ -87,40 +64,35 @@ export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
       comments: input.issue.comments,
       url: "https://github.test/acme/patchmill/issues/190",
     };
-    if (group === "issue" && action === "list") return githubResult([issue]);
-    if (group === "issue" && action === "view") return githubResult(issue);
-    if (group === "label" && action === "list")
-      return githubResult(
-        [
-          "agent-ready",
-          "needs-info",
-          "agent-unsuitable",
-          "in-progress",
-          "agent-done",
-          "bug",
-          "enhancement",
-          "docs",
-          "chore",
-          "test",
-          "priority:low",
-          "priority:medium",
-          "priority:high",
-          "priority:critical",
-          "spec-review",
-          "spec-approved",
-          "plan-review",
-          "plan-approved",
-        ].map((name) => ({ name })),
-      );
+    if (group === "issue" && action === "list") {
+      input.record({ kind: "read", operation: "issue-read" });
+      return githubResult([issue]);
+    }
+    if (group === "issue" && action === "view") {
+      input.record({ kind: "read", operation: "issue-read" });
+      return githubResult(issue);
+    }
+    if (group === "label" && action === "list") {
+      input.record({ kind: "read", operation: "repository-read" });
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
     if (group === "issue" && action === "comment") {
-      if (await input.implementationFinish())
-        await input.interrupt("after-handoff-comment");
+      const handoff = await input.implementationFinish();
+      input.record({
+        kind: "write",
+        operation: handoff ? "handoff-comment" : "issue-comment",
+      });
+      if (handoff) await input.interrupt("after-handoff-comment");
       input.addIssueComment(argument(args, "--body"));
       return { code: 0, stdout: "", stderr: "" };
     }
     if (group === "issue" && action === "edit") {
-      if (await input.implementationFinish())
-        await input.interrupt("after-done-label");
+      const done = await input.implementationFinish();
+      input.record({
+        kind: "write",
+        operation: done ? "done-label" : "issue-label-edit",
+      });
+      if (done) await input.interrupt("after-done-label");
       input.updateIssueLabels(
         args.flatMap((value, index) =>
           value === "--add-label" ? [args[index + 1]!] : [],
@@ -131,12 +103,15 @@ export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
       );
       return { code: 0, stdout: "", stderr: "" };
     }
-    if (group === "repo" && action === "view")
+    if (group === "repo" && action === "view") {
+      input.record({ kind: "read", operation: "repository-read" });
       return githubResult({
         nameWithOwner: "acme/patchmill",
         url: "https://github.test/acme/patchmill",
       });
+    }
     if (group === "api" && action === "graphql") {
+      input.record({ kind: "read", operation: "pull-request-read" });
       const number = Number(
         args.find((value) => value.startsWith("number="))?.slice(7),
       );
@@ -162,6 +137,7 @@ export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
       };
     }
     if (group === "pr" && action === "list") {
+      input.record({ kind: "read", operation: "pull-request-read" });
       const branch = argument(args, "--head");
       return githubResult(
         input.pulls
@@ -170,6 +146,7 @@ export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
       );
     }
     if (group === "pr" && action === "view") {
+      input.record({ kind: "read", operation: "pull-request-read" });
       const number = Number(args[2]);
       const pull = input.pulls.find((item) => item.number === number);
       if (pull === undefined)
@@ -188,6 +165,10 @@ export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
         headRepository: "acme/patchmill",
       };
       input.pulls.push(pull);
+      input.record({
+        kind: "write",
+        operation: "planning-pull-request-create",
+      });
       await input.interrupt("after-planning-pull-request-create");
       return {
         code: 0,
@@ -195,8 +176,10 @@ export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
         stderr: "",
       };
     }
-    if (group === "pr" && action === "edit")
+    if (group === "pr" && action === "edit") {
+      input.record({ kind: "write", operation: "pull-request-edit" });
       return { code: 0, stdout: "", stderr: "" };
+    }
     return fixtureError(args);
   };
 }
