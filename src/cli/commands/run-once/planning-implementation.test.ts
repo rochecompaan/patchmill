@@ -186,6 +186,86 @@ test("validates a matching resumed implementation pull request with the host", a
   assert.equal(hostReads, 1);
 });
 
+test("blocks runner pre-validation failures without a pull-request-open checkpoint", async () => {
+  for (const [name, overrides] of [
+    [
+      "missing workspace",
+      {
+        workspaces: { inspect: async () => ({ state: "missing" as const }) },
+      },
+    ],
+    [
+      "dirty workspace",
+      {
+        workspaces: {
+          inspect: async () => ({
+            state: "ready" as const,
+            identity: { branch: "agent/189", worktreePath: "/worktrees/189" },
+            headOid: oid("b"),
+            clean: false,
+          }),
+        },
+      },
+    ],
+    [
+      "missing remote head",
+      {
+        git: {
+          inspectRemoteHead: async () => ({ state: "missing" as const }),
+          assertAncestor: async () => {},
+        },
+      },
+    ],
+    [
+      "changed remote head",
+      {
+        git: {
+          inspectRemoteHead: async () => ({
+            state: "present" as const,
+            headOid: oid("c"),
+          }),
+          assertAncestor: async () => {},
+        },
+      },
+    ],
+    [
+      "wrong result branch",
+      {
+        runAgent: async () => ({
+          status: "pr-created" as const,
+          prUrl: "https://github.com/acme/patchmill/pull/189",
+          branch: "other",
+          commits: [oid("b")],
+          validation: [],
+        }),
+      },
+    ],
+  ] as const) {
+    const replacements: unknown[] = [];
+    const result = await runPlanningImplementation(
+      input({
+        ...overrides,
+        stateStore: {
+          replace: async ({ next }: { next: unknown }) => {
+            replacements.push(next);
+            return next;
+          },
+        },
+      }),
+    );
+    assert.equal(result.kind, "blocked", name);
+    assert.equal(
+      replacements.some(
+        (next) =>
+          (next as { phases?: Array<{ status?: string }> }).phases?.[0]
+            ?.status === "pull-request-open",
+      ),
+      false,
+      name,
+    );
+  }
+});
+
 test("blocks invalid successful agent evidence before PR validation", async () => {
   let hostReads = 0;
   const result = await runPlanningImplementation(
