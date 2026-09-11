@@ -14,10 +14,8 @@ import {
   type PlanningArtifactKind,
   type PlanningGateSnapshot,
 } from "./planning-pull-requests.ts";
-import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
 import type {
   PlanningArtifactEvidence,
-  PlanningImplementationFinishCheckpoints,
   PlanningPhaseStateV1,
   PlanningStateV1,
 } from "./planning-state-types.ts";
@@ -26,10 +24,7 @@ import {
   PlanningPublicationRepositoryError,
 } from "./planning-publication-repositories.ts";
 
-import {
-  implementationEvidence,
-  implementationFinish,
-} from "./planning-state-implementation-codec.ts";
+import { implementationPhaseState } from "./planning-state-implementation-codec.ts";
 import {
   UUID,
   artifactPath,
@@ -251,15 +246,30 @@ function pullRequest(value: unknown, path: string) {
   };
 }
 function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    object(value, [], path);
   const raw = value as Record<string, unknown>;
-  const status = raw?.status;
-  const implementation = raw?.kind === "implementation";
+  const kind = phase(raw.kind, `${path}.kind`);
+  const status = string(raw.status, `${path}.status`);
+  if (status === "pending") {
+    object(value, ["kind", "status"], path);
+    return { kind, status };
+  }
+  if (kind === "implementation")
+    return implementationPhaseState(value, status, path, {
+      base,
+      workspace,
+      artifacts,
+      publication,
+      pullRequest,
+      fail,
+    });
   const keys =
-    status === "pending"
-      ? ["kind", "status"]
-      : status === "workspace-ready"
-        ? ["kind", "status", "base", "workspace", "artifacts"]
-        : status === "branch-pushed"
+    status === "workspace-ready"
+      ? ["kind", "status", "base", "workspace", "artifacts"]
+      : status === "branch-pushed"
+        ? ["kind", "status", "base", "workspace", "artifacts", "publication"]
+        : status === "pull-request-open"
           ? [
               "kind",
               "status",
@@ -267,10 +277,12 @@ function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
               "workspace",
               "artifacts",
               "publication",
-              ...(implementation ? ["implementation"] : []),
+              "pullRequest",
             ]
-          : status === "pull-request-open"
-            ? [
+          : raw.completion &&
+              (raw.completion as Record<string, unknown>).kind === "remote-base"
+            ? ["kind", "status", "base", "artifacts", "completion"]
+            : [
                 "kind",
                 "status",
                 "base",
@@ -278,30 +290,13 @@ function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
                 "artifacts",
                 "publication",
                 "pullRequest",
-                ...(implementation ? ["implementation", "finish"] : []),
-              ]
-            : raw?.completion &&
-                (raw.completion as Record<string, unknown>).kind ===
-                  "remote-base"
-              ? ["kind", "status", "base", "artifacts", "completion"]
-              : [
-                  "kind",
-                  "status",
-                  "base",
-                  "workspace",
-                  "artifacts",
-                  "publication",
-                  "pullRequest",
-                  ...(implementation ? ["implementation", "finish"] : []),
-                  "completion",
-                ];
+                "completion",
+              ];
   const parsed = object(value, keys, path);
-  const kind = phase(parsed.kind, `${path}.kind`);
-  if (parsed.status === "pending") return { kind, status: "pending" };
-  if (parsed.status === "workspace-ready")
+  if (status === "workspace-ready")
     return {
       kind,
-      status: "workspace-ready",
+      status,
       base: base(parsed.base, `${path}.base`),
       workspace: workspace(
         parsed.workspace,
@@ -309,146 +304,42 @@ function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
       ) as PlanningWorkspaceOwnership<{ state: "ready" }>,
       artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
     };
-  if (parsed.status === "branch-pushed") {
+  if (status === "branch-pushed") {
     const workspaceEvidence = workspace(
       parsed.workspace,
       `${path}.workspace`,
     ) as PlanningWorkspaceOwnership<{ state: "ready" }>;
-    const publicationEvidence = publication(
-      parsed.publication,
-      `${path}.publication`,
-    );
-    if (kind === "implementation") {
-      const evidence = implementationEvidence(
-        parsed.implementation,
-        `${path}.implementation`,
-      );
-      if (
-        evidence.branch !== workspaceEvidence.identity.branch ||
-        publicationEvidence.headOid !== workspaceEvidence.headOid
-      )
-        fail("implementation-mismatch", `${path}.implementation`);
-      return {
-        kind,
-        status: "branch-pushed",
-        base: base(parsed.base, `${path}.base`),
-        workspace: workspaceEvidence,
-        artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
-        publication: publicationEvidence,
-        implementation: evidence,
-      };
-    }
     return {
       kind,
-      status: "branch-pushed",
+      status,
       base: base(parsed.base, `${path}.base`),
       workspace: workspaceEvidence,
       artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
-      publication: publicationEvidence,
+      publication: publication(parsed.publication, `${path}.publication`),
     };
   }
-  if (parsed.status === "pull-request-open") {
+  if (status === "pull-request-open") {
     const workspaceEvidence = workspace(parsed.workspace, `${path}.workspace`);
-    const publicationEvidence = publication(
-      parsed.publication,
-      `${path}.publication`,
-    );
-    const pullRequestEvidence = pullRequest(
-      parsed.pullRequest,
-      `${path}.pullRequest`,
-    );
-    if (kind === "implementation") {
-      const evidence = implementationEvidence(
-        parsed.implementation,
-        `${path}.implementation`,
-      );
-      if (
-        evidence.branch !== workspaceEvidence.identity.branch ||
-        evidence.prUrl !== pullRequestEvidence.url ||
-        publicationEvidence.headOid !== workspaceEvidence.headOid
-      )
-        fail("implementation-mismatch", `${path}.implementation`);
-      return {
-        kind,
-        status: "pull-request-open",
-        base: base(parsed.base, `${path}.base`),
-        workspace: workspaceEvidence,
-        artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
-        publication: publicationEvidence,
-        pullRequest: pullRequestEvidence,
-        implementation: evidence,
-        finish: implementationFinish(parsed.finish, `${path}.finish`),
-      };
-    }
     return {
       kind,
-      status: "pull-request-open",
+      status,
       base: base(parsed.base, `${path}.base`),
       workspace: workspaceEvidence,
       artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
-      publication: publicationEvidence,
-      pullRequest: pullRequestEvidence,
+      publication: publication(parsed.publication, `${path}.publication`),
+      pullRequest: pullRequest(parsed.pullRequest, `${path}.pullRequest`),
     };
   }
-  if (parsed.status !== "complete") fail("invalid-status", `${path}.status`);
+  if (status !== "complete") fail("invalid-status", `${path}.status`);
   const completion = parsed.completion as Record<string, unknown>;
   if (completion?.kind === "remote-base") {
-    if (kind === "implementation")
-      fail("implementation-completion", `${path}.completion.kind`);
     object(completion, ["kind"], `${path}.completion`);
     return {
-      kind: kind as "spec" | "plan",
+      kind,
       status: "complete",
       base: base(parsed.base, `${path}.base`),
       artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
       completion: { kind: "remote-base" },
-    };
-  }
-  if (kind === "implementation") {
-    const terminal = object(completion, ["kind"], `${path}.completion`);
-    if (terminal.kind !== "implementation-pull-request")
-      fail("implementation-completion", `${path}.completion.kind`);
-    const workspaceEvidence = workspace(
-      parsed.workspace,
-      `${path}.workspace`,
-    ) as PlanningWorkspaceOwnership<{
-      state: "removed";
-      pushedHeadOid: string;
-    }>;
-    const publicationEvidence = publication(
-      parsed.publication,
-      `${path}.publication`,
-    );
-    const pullRequestEvidence = pullRequest(
-      parsed.pullRequest,
-      `${path}.pullRequest`,
-    );
-    const evidence = implementationEvidence(
-      parsed.implementation,
-      `${path}.implementation`,
-    );
-    const finish = implementationFinish(parsed.finish, `${path}.finish`);
-    if (
-      workspaceEvidence.cleanup.state !== "removed" ||
-      evidence.branch !== workspaceEvidence.identity.branch ||
-      evidence.prUrl !== pullRequestEvidence.url ||
-      publicationEvidence.headOid !== workspaceEvidence.headOid ||
-      !planningImplementationFinishCheckpointKeys.every(
-        (checkpoint) => finish[checkpoint] === true,
-      )
-    )
-      fail("implementation-mismatch", path);
-    return {
-      kind,
-      status: "complete",
-      base: base(parsed.base, `${path}.base`),
-      workspace: workspaceEvidence,
-      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
-      publication: publicationEvidence,
-      pullRequest: pullRequestEvidence,
-      implementation: evidence,
-      finish: finish as Required<PlanningImplementationFinishCheckpoints>,
-      completion: { kind: "implementation-pull-request" },
     };
   }
   const merged = object(
@@ -459,7 +350,7 @@ function phaseState(value: unknown, path: string): PlanningPhaseStateV1 {
   if (merged.kind !== "merged-pull-request")
     fail("invalid-completion", `${path}.completion.kind`);
   return {
-    kind: kind as "spec" | "plan",
+    kind,
     status: "complete",
     base: base(parsed.base, `${path}.base`),
     workspace: workspace(

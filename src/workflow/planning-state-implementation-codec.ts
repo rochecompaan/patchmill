@@ -1,5 +1,16 @@
+import type { PlanningWorkspaceOwnership } from "../git/planning-workspaces.ts";
 import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
-import type { PlanningImplementationFinishCheckpoints } from "./planning-state-types.ts";
+import type {
+  ImplementationBranchPushedPlanningPhase,
+  ImplementationCompletePlanningPhase,
+  ImplementationPullRequestOpenPlanningPhase,
+  ImplementationWorkspaceReadyPlanningPhase,
+  PlanningArtifactEvidence,
+  PlanningBaseEvidence,
+  PlanningImplementationFinishCheckpoints,
+  PlanningPublicationEvidence,
+  PlanningPullRequestEvidence,
+} from "./planning-state-types.ts";
 import {
   artifactPath,
   branch,
@@ -196,4 +207,207 @@ export function implementationFinish(value: unknown, path: string) {
     )
       fail("skipped-finish-checkpoint", `${path}.${allowed[index]}`);
   return parsed as PlanningImplementationFinishCheckpoints;
+}
+
+/** Shared state decoders and failure behavior owned by the main state codec. */
+type PlanningImplementationPhaseCodecDependencies = Readonly<{
+  base: (value: unknown, path: string) => PlanningBaseEvidence;
+  workspace: (value: unknown, path: string) => PlanningWorkspaceOwnership;
+  artifacts: (
+    value: unknown,
+    path: string,
+  ) => readonly PlanningArtifactEvidence[];
+  publication: (value: unknown, path: string) => PlanningPublicationEvidence;
+  pullRequest: (value: unknown, path: string) => PlanningPullRequestEvidence;
+  fail: (reason: string, path: string) => never;
+}>;
+
+export function implementationPhaseState(
+  value: unknown,
+  status: string,
+  path: string,
+  dependencies: PlanningImplementationPhaseCodecDependencies,
+):
+  | ImplementationWorkspaceReadyPlanningPhase
+  | ImplementationBranchPushedPlanningPhase
+  | ImplementationPullRequestOpenPlanningPhase
+  | ImplementationCompletePlanningPhase {
+  const {
+    artifacts,
+    base,
+    fail: failState,
+    publication,
+    pullRequest,
+    workspace,
+  } = dependencies;
+  if (status === "workspace-ready") {
+    const parsed = object(
+      value,
+      ["kind", "status", "base", "workspace", "artifacts"],
+      path,
+    );
+    return {
+      kind: "implementation",
+      status,
+      base: base(parsed.base, `${path}.base`),
+      workspace: workspace(
+        parsed.workspace,
+        `${path}.workspace`,
+      ) as PlanningWorkspaceOwnership<{ state: "ready" }>,
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+    };
+  }
+  if (status === "branch-pushed") {
+    const parsed = object(
+      value,
+      [
+        "kind",
+        "status",
+        "base",
+        "workspace",
+        "artifacts",
+        "publication",
+        "implementation",
+      ],
+      path,
+    );
+    const workspaceEvidence = workspace(
+      parsed.workspace,
+      `${path}.workspace`,
+    ) as PlanningWorkspaceOwnership<{ state: "ready" }>;
+    const publicationEvidence = publication(
+      parsed.publication,
+      `${path}.publication`,
+    );
+    const evidence = implementationEvidence(
+      parsed.implementation,
+      `${path}.implementation`,
+    );
+    if (
+      evidence.branch !== workspaceEvidence.identity.branch ||
+      publicationEvidence.headOid !== workspaceEvidence.headOid
+    )
+      failState("implementation-mismatch", `${path}.implementation`);
+    return {
+      kind: "implementation",
+      status,
+      base: base(parsed.base, `${path}.base`),
+      workspace: workspaceEvidence,
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+      publication: publicationEvidence,
+      implementation: evidence,
+    };
+  }
+  if (status === "pull-request-open") {
+    const parsed = object(
+      value,
+      [
+        "kind",
+        "status",
+        "base",
+        "workspace",
+        "artifacts",
+        "publication",
+        "pullRequest",
+        "implementation",
+        "finish",
+      ],
+      path,
+    );
+    const workspaceEvidence = workspace(parsed.workspace, `${path}.workspace`);
+    const publicationEvidence = publication(
+      parsed.publication,
+      `${path}.publication`,
+    );
+    const pullRequestEvidence = pullRequest(
+      parsed.pullRequest,
+      `${path}.pullRequest`,
+    );
+    const evidence = implementationEvidence(
+      parsed.implementation,
+      `${path}.implementation`,
+    );
+    if (
+      evidence.branch !== workspaceEvidence.identity.branch ||
+      evidence.prUrl !== pullRequestEvidence.url ||
+      publicationEvidence.headOid !== workspaceEvidence.headOid
+    )
+      failState("implementation-mismatch", `${path}.implementation`);
+    return {
+      kind: "implementation",
+      status,
+      base: base(parsed.base, `${path}.base`),
+      workspace: workspaceEvidence,
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+      publication: publicationEvidence,
+      pullRequest: pullRequestEvidence,
+      implementation: evidence,
+      finish: implementationFinish(parsed.finish, `${path}.finish`),
+    };
+  }
+  if (status !== "complete") failState("invalid-status", `${path}.status`);
+  const completion = (value as Record<string, unknown>).completion as Record<
+    string,
+    unknown
+  >;
+  const parsed = object(
+    value,
+    completion?.kind === "remote-base"
+      ? ["kind", "status", "base", "artifacts", "completion"]
+      : [
+          "kind",
+          "status",
+          "base",
+          "workspace",
+          "artifacts",
+          "publication",
+          "pullRequest",
+          "implementation",
+          "finish",
+          "completion",
+        ],
+    path,
+  );
+  const terminal = object(parsed.completion, ["kind"], `${path}.completion`);
+  if (terminal.kind !== "implementation-pull-request")
+    failState("implementation-completion", `${path}.completion.kind`);
+  const workspaceEvidence = workspace(
+    parsed.workspace,
+    `${path}.workspace`,
+  ) as PlanningWorkspaceOwnership<{ state: "removed"; pushedHeadOid: string }>;
+  const publicationEvidence = publication(
+    parsed.publication,
+    `${path}.publication`,
+  );
+  const pullRequestEvidence = pullRequest(
+    parsed.pullRequest,
+    `${path}.pullRequest`,
+  );
+  const evidence = implementationEvidence(
+    parsed.implementation,
+    `${path}.implementation`,
+  );
+  const finish = implementationFinish(parsed.finish, `${path}.finish`);
+  if (
+    workspaceEvidence.cleanup.state !== "removed" ||
+    evidence.branch !== workspaceEvidence.identity.branch ||
+    evidence.prUrl !== pullRequestEvidence.url ||
+    publicationEvidence.headOid !== workspaceEvidence.headOid ||
+    !planningImplementationFinishCheckpointKeys.every(
+      (checkpoint) => finish[checkpoint] === true,
+    )
+  )
+    failState("implementation-mismatch", path);
+  return {
+    kind: "implementation",
+    status: "complete",
+    base: base(parsed.base, `${path}.base`),
+    workspace: workspaceEvidence,
+    artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+    publication: publicationEvidence,
+    pullRequest: pullRequestEvidence,
+    implementation: evidence,
+    finish: finish as Required<PlanningImplementationFinishCheckpoints>,
+    completion: { kind: "implementation-pull-request" },
+  };
 }
