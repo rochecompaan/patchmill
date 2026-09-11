@@ -56,6 +56,7 @@ type Pull = {
   body: string;
   headOid: string;
   merged?: boolean;
+  closed?: boolean;
   mergeOid?: string;
 };
 
@@ -139,6 +140,7 @@ export async function createPlanningProviderScenario(input: {
   const selected = issue(190, ["agent-ready"], "Provider scenario");
   const pulls: Pull[] = [];
   let nextPull = 1;
+  let failHostRead = false;
   const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
   const runner = {
     calls,
@@ -222,6 +224,10 @@ export async function createPlanningProviderScenario(input: {
         };
       }
       if (call.command === "gh") {
+        if (failHostRead && (call.args[0] === "pr" || call.args[0] === "api")) {
+          failHostRead = false;
+          return { code: 1, stdout: "", stderr: "transient host failure" };
+        }
         const githubIssue = {
           number: selected.number,
           title: selected.title,
@@ -254,17 +260,26 @@ export async function createPlanningProviderScenario(input: {
           const number = Number(
             call.args.find((value) => value.startsWith("number="))?.slice(7),
           );
+          const found = pulls.some((pull) => pull.number === number);
           return {
-            code: pulls.some((pull) => pull.number === number) ? 0 : 1,
+            code: found ? 0 : 1,
             stdout: JSON.stringify({
               data: {
                 repository: {
                   nameWithOwner: "acme/patchmill",
-                  pullRequest: pulls.some((pull) => pull.number === number)
-                    ? { number }
-                    : null,
+                  pullRequest: found ? { number } : null,
                 },
               },
+              ...(found
+                ? {}
+                : {
+                    errors: [
+                      {
+                        type: "NOT_FOUND",
+                        path: ["repository", "pullRequest"],
+                      },
+                    ],
+                  }),
             }),
             stderr: "",
           };
@@ -325,6 +340,10 @@ export async function createPlanningProviderScenario(input: {
       if (call.command === "tea" && !call.args.includes("api"))
         return { code: 0, stdout: "", stderr: "" };
       if (call.command === "tea") {
+        if (failHostRead && call.args.includes("api")) {
+          failHostRead = false;
+          return { code: 1, stdout: "", stderr: "transient host failure" };
+        }
         const path =
           call.args.find((value) => value.startsWith("/repos/")) ?? "";
         if (path.endsWith("/repos/{owner}/{repo}"))
@@ -337,11 +356,12 @@ export async function createPlanningProviderScenario(input: {
           };
         if (/\/pulls\/\d+$/u.test(path)) {
           const number = Number(path.split("/").at(-1));
+          const pull = pulls.find((item) => item.number === number);
+          if (!pull)
+            return { code: 1, stdout: "", stderr: "HTTP/1.1 404 Not Found" };
           return {
             code: 0,
-            stdout: JSON.stringify(
-              pullPayload(pulls.find((pull) => pull.number === number)!),
-            ),
+            stdout: JSON.stringify(pullPayload(pull)),
             stderr: "",
           };
         }
@@ -405,7 +425,7 @@ export async function createPlanningProviderScenario(input: {
       headBranch: pull.branch,
       headOid: pull.headOid,
       body: pull.body,
-      status: pull.merged ? "merged" : "open",
+      status: pull.merged ? "merged" : pull.closed ? "closed-unmerged" : "open",
       ...(pull.mergeOid ? { mergeOid: pull.mergeOid } : {}),
     }));
   return {
@@ -421,7 +441,7 @@ export async function createPlanningProviderScenario(input: {
     mergeOpenPlanningPull: async () => mergePlanningPull(),
     closeOpenPlanningPull: () => {
       const pull = pulls.find((item) => item.number !== 99 && !item.merged);
-      if (pull) pull.merged = false;
+      if (pull) pull.closed = true;
     },
     removeSavedPlanningPull: () => {
       const index = pulls.findIndex(
@@ -433,7 +453,9 @@ export async function createPlanningProviderScenario(input: {
       const pull = pulls.find((item) => item.number !== 99 && !item.merged);
       if (pull) pulls.push({ ...pull, number: nextPull++ });
     },
-    failNextHostRead: () => undefined,
+    failNextHostRead: () => {
+      failHostRead = true;
+    },
     interruptAt: () => undefined,
     restorePersistence: async () => undefined,
     archiveExactStaleLock: async () => ({ fingerprint: "", archivePath: "" }),

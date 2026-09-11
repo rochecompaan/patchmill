@@ -6,6 +6,7 @@ export type PlanningGithubPull = Readonly<{
   body: string;
   headOid: string;
   merged?: boolean;
+  closed?: boolean;
   mergeOid?: string;
 }>;
 
@@ -14,7 +15,7 @@ export function githubPullPayload(pull: PlanningGithubPull) {
     number: pull.number,
     url: `https://github.test/acme/patchmill/pull/${pull.number}`,
     body: pull.body,
-    state: pull.merged ? "MERGED" : "OPEN",
+    state: pull.merged ? "MERGED" : pull.closed ? "CLOSED" : "OPEN",
     mergeCommit: pull.mergeOid ? { oid: pull.mergeOid } : null,
     baseRefName: "main",
     headRefName: pull.branch,

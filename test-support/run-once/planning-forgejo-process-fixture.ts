@@ -6,6 +6,7 @@ export type PlanningForgejoPull = Readonly<{
   body: string;
   headOid: string;
   merged?: boolean;
+  closed?: boolean;
   mergeOid?: string;
 }>;
 
@@ -20,7 +21,7 @@ export function forgejoPullPayload(pull: PlanningForgejoPull) {
     number: pull.number,
     html_url: `https://forge.test/acme/patchmill/pulls/${pull.number}`,
     body: pull.body,
-    state: pull.merged ? "closed" : "open",
+    state: pull.merged || pull.closed ? "closed" : "open",
     merged: pull.merged === true,
     merge_commit_sha: pull.mergeOid ?? null,
     base: { ref: "main", repo: repository },
