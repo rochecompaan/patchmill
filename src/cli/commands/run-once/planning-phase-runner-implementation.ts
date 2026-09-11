@@ -102,6 +102,7 @@ export async function runPlanningImplementationPhase(
   phase = state.phases[input.phaseIndex];
   if (phase?.kind !== "implementation")
     throw new RangeError("Planning implementation state changed");
+  if (input.planOnly) return { kind: "stopped", state, reason: "plan-only" };
   if (phase.status === "workspace-ready" || phase.status === "branch-pushed") {
     const implemented = await operations(input).runImplementation({
       ...input.implementation.implementation,

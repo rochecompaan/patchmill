@@ -637,6 +637,123 @@ test("checkpoints implementation planning artifacts then stops before implementa
   assert.equal(implementations, 0);
 });
 
+test("plan-only stops resumed branch-pushed and pull-request-open implementation phases", async () => {
+  for (const [name, phase] of [
+    [
+      "branch-pushed",
+      {
+        kind: "implementation",
+        status: "branch-pushed",
+        base,
+        workspace,
+        artifacts: [],
+        publication: {},
+        implementation: {},
+      },
+    ],
+    [
+      "pull-request-open",
+      {
+        kind: "implementation",
+        status: "pull-request-open",
+        base,
+        workspace,
+        artifacts: [],
+        publication: {},
+        pullRequest: {},
+        implementation: {},
+        finish: {},
+      },
+    ],
+  ] as const) {
+    const initial = state(phase);
+    let implementationRuns = 0;
+    let finishRuns = 0;
+    const result = await runPlanningPhase(
+      input({
+        state: initial,
+        planOnly: true,
+        operations: {
+          runImplementation: async () => {
+            implementationRuns += 1;
+            throw new Error("unexpected implementation");
+          },
+          finishImplementation: async () => {
+            finishRuns += 1;
+            throw new Error("unexpected finish");
+          },
+        },
+      }),
+    );
+    assert.deepEqual(
+      result,
+      { kind: "stopped", state: initial, reason: "plan-only" },
+      name,
+    );
+    assert.equal(implementationRuns, 0, name);
+    assert.equal(finishRuns, 0, name);
+  }
+});
+
+test("resumes branch-pushed and pull-request-open implementation phases without plan-only", async () => {
+  for (const [name, phase, expectedImplementationRuns] of [
+    [
+      "branch-pushed",
+      {
+        kind: "implementation",
+        status: "branch-pushed",
+        base,
+        workspace,
+        artifacts: [],
+        publication: {},
+        implementation: {},
+      },
+      1,
+    ],
+    [
+      "pull-request-open",
+      {
+        kind: "implementation",
+        status: "pull-request-open",
+        base,
+        workspace,
+        artifacts: [],
+        publication: {},
+        pullRequest: {},
+        implementation: {},
+        finish: {},
+      },
+      0,
+    ],
+  ] as const) {
+    const initial = state(phase);
+    let implementationRuns = 0;
+    let finishRuns = 0;
+    const result = await runPlanningPhase(
+      input({
+        state: initial,
+        implementation: {
+          implementation: {} as never,
+          finish: () => ({}) as never,
+        },
+        operations: {
+          runImplementation: async () => {
+            implementationRuns += 1;
+            return { kind: "validated", state: initial };
+          },
+          finishImplementation: async () => {
+            finishRuns += 1;
+            return { state: initial, result: { status: "pr-created" } };
+          },
+        },
+      }),
+    );
+    assert.equal(result.kind, "complete", name);
+    assert.equal(implementationRuns, expectedImplementationRuns, name);
+    assert.equal(finishRuns, 1, name);
+  }
+});
+
 test("finishes implementation only after the implementation runner validates it", async () => {
   const initial = state({
     kind: "implementation",
