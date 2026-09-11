@@ -104,11 +104,12 @@ async function writeMetadata(
 
 function oldMetadata(
   files: Array<{ path: string; sha256: string }>,
+  version = "2026.04",
 ): SkillPackMetadataFile {
   return {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.04",
+      version,
       source: {
         type: "github-release",
         repository: "obra/superpowers",
@@ -242,6 +243,66 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
       sha256: hashText("new wrapper policy\n"),
     },
   ]);
+});
+
+test("updateProjectSkills reports only the planning-pull-request notice from 2026.07.2", async () => {
+  const repoRoot = await tempRoot("patchmill-skills-boundary-repo-");
+  const patchmillSource = await tempRoot(
+    "patchmill-skills-boundary-patchmill-",
+  );
+  const superpowersSource = await tempRoot(
+    "patchmill-skills-boundary-superpowers-",
+  );
+  await writeSkill(patchmillSource, "patchmill-planning", {
+    "SKILL.md": newPatchmillPlanning,
+  });
+  await writeFileEnsuringParent(
+    join(repoRoot, ".patchmill", "skills", "patchmill-planning", "SKILL.md"),
+    oldPatchmillPlanning,
+  );
+  await writeMetadata(
+    repoRoot,
+    oldMetadata(
+      [
+        {
+          path: ".patchmill/skills/patchmill-planning/SKILL.md",
+          sha256: hashText(oldPatchmillPlanning),
+        },
+      ],
+      "2026.07.2",
+    ),
+  );
+
+  const first = await updateProjectSkills({
+    repoRoot,
+    sourceRoots: {
+      patchmillSkillsDir: patchmillSource,
+      superpowersSkillsDir: superpowersSource,
+    },
+    packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
+    dependencies,
+  });
+  assert.deepEqual(first.notices, [
+    {
+      version: "2026.09.1",
+      message:
+        "Fresh Run-once review gates now use planning pull requests whose verified merge advances the Issue run. Legacy set-spec, set-plan, and --plan-only controls remain available but are deprecated.",
+    },
+  ]);
+
+  const second = await updateProjectSkills({
+    repoRoot,
+    sourceRoots: {
+      patchmillSkillsDir: patchmillSource,
+      superpowersSkillsDir: superpowersSource,
+    },
+    packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
+    dependencies,
+  });
+  assert.deepEqual(second, {
+    status: "up-to-date",
+    version: PATCHMILL_RECOMMENDED_SKILL_PACK.version,
+  });
 });
 
 test("updateProjectSkills reports already current packs", async () => {

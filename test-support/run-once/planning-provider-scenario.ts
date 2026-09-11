@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import {
   PlanningStateStore,
   type PlanningStateV1,
 } from "../../src/workflow/planning-state-store.ts";
+import { planningIssueLockPath } from "../../src/workflow/planning-issue-lock.ts";
 import { approvalPolicy, makeConfig } from "./pipeline-fixtures.ts";
 import {
   issue,
@@ -41,12 +51,12 @@ async function git(cwd: string, args: string[]) {
   }
 }
 
-function repository() {
+function repository(name = "patchmill") {
   return {
-    name: "patchmill",
-    full_name: "acme/patchmill",
+    name,
+    full_name: `acme/${name}`,
     owner: { login: "acme" },
-    html_url: "https://forge.test/acme/patchmill",
+    html_url: `https://forge.test/acme/${name}`,
   };
 }
 
@@ -55,6 +65,7 @@ type Pull = {
   branch: string;
   body: string;
   headOid: string;
+  headRepository: string;
   merged?: boolean;
   closed?: boolean;
   mergeOid?: string;
@@ -106,6 +117,8 @@ export type PlanningProviderScenario = {
     fingerprint: string;
     archivePath: string;
   }>;
+  installDeadProcessLock(): Promise<{ fingerprint: string }>;
+  remoteArtifactContents(): Promise<Readonly<Record<string, string>>>;
   cleanup(): Promise<void>;
 };
 
@@ -121,6 +134,7 @@ export async function createPlanningProviderScenario(input: {
     allowDirectLand: true,
     approvalPolicy: approvalPolicy(gates),
     host: { provider, login: "" },
+    cleanupHook: "cleanup.sh",
   });
   // The public facade owns a real remote/base/worktree lifecycle; only Forgejo
   // and Pi are recorded at their process boundary.
@@ -141,7 +155,36 @@ export async function createPlanningProviderScenario(input: {
   const pulls: Pull[] = [];
   let nextPull = 1;
   let failHostRead = false;
+  let pendingInterrupt: PlanningScenarioFailurePoint | undefined;
+  let persistenceDenied = false;
+  const issueStateDirectory = join(
+    config.runStateDir,
+    "planning-pr-v1",
+    "issues",
+  );
   const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+  const state = () => new PlanningStateStore(config.runStateDir).read(190);
+  const implementationPhase = async () =>
+    (await state())?.phases.find((phase) => phase.kind === "implementation");
+  const planningPhaseMerged = async () => {
+    const current = await state();
+    return current?.phases.some(
+      (phase) =>
+        phase.kind !== "implementation" &&
+        phase.status === "pull-request-open" &&
+        pulls.some(
+          (pull) =>
+            pull.merged && pull.branch === phase.workspace.identity.branch,
+        ),
+    );
+  };
+  const interruptAfter = async (point: PlanningScenarioFailurePoint) => {
+    if (pendingInterrupt !== point || persistenceDenied) return;
+    await chmod(issueStateDirectory, 0o500);
+    persistenceDenied = true;
+    pendingInterrupt = undefined;
+    calls.push({ command: "fixture", args: ["interrupt", point] });
+  };
   const runner = {
     calls,
     async run(command: string, args: string[], options: { cwd?: string } = {}) {
@@ -154,7 +197,7 @@ export async function createPlanningProviderScenario(input: {
         if (call.args[0] === "remote" && call.args[1] === "get-url")
           return {
             code: 0,
-            stdout: `https://${provider === "github-gh" ? "github.test" : "forge.test"}/acme/patchmill.git\n`,
+            stdout: `https://${provider === "github-gh" ? "github.test/acme/patchmill" : "forge.test/acme/patchmill-head"}.git\n`,
             stderr: "",
           };
         const result = await git(call.cwd ?? config.repoRoot, call.args);
@@ -164,6 +207,24 @@ export async function createPlanningProviderScenario(input: {
           result.code !== 0
         )
           throw new Error(result.stderr);
+        if (call.args[0] === "push" && call.args.includes("--porcelain"))
+          await interruptAfter("after-phase-push");
+        if (call.args[0] === "worktree" && call.args[1] === "remove") {
+          const implementation = await implementationPhase();
+          await interruptAfter(
+            implementation?.kind === "implementation" &&
+              implementation.status === "pull-request-open"
+              ? "after-implementation-worktree-remove"
+              : "after-worktree-remove",
+          );
+        }
+        if (
+          (call.args[0] === "branch" && call.args.includes("-D")) ||
+          (call.args[0] === "update-ref" && call.args[1] === "-d")
+        )
+          await interruptAfter("after-local-branch-remove");
+        if (call.args[0] === "fetch" && (await planningPhaseMerged()))
+          await interruptAfter("after-planning-merge-observation");
         return result;
       }
       if (call.command === "pi") {
@@ -207,6 +268,10 @@ export async function createPlanningProviderScenario(input: {
           number: 99,
           branch,
           headOid,
+          headRepository:
+            provider === "forgejo-tea"
+              ? "acme/patchmill-head"
+              : "acme/patchmill",
           body: invalidImplementation
             ? "Closes #189"
             : "Closes #190\n\n<!-- patchmill:planning-pr-v1 issue=190 phase=implementation -->",
@@ -224,6 +289,23 @@ export async function createPlanningProviderScenario(input: {
         };
       }
       if (call.command === "gh") {
+        const implementation = await implementationPhase();
+        const inImplementationFinish =
+          implementation?.kind === "implementation" &&
+          implementation.status === "pull-request-open";
+        if (
+          call.args[0] === "issue" &&
+          call.args[1] === "comment" &&
+          inImplementationFinish
+        )
+          await interruptAfter("after-handoff-comment");
+        if (
+          call.args[0] === "issue" &&
+          call.args[1] === "edit" &&
+          inImplementationFinish &&
+          implementation.finish.doneLabelEnsured === true
+        )
+          await interruptAfter("after-done-label");
         if (failHostRead && (call.args[0] === "pr" || call.args[0] === "api")) {
           failHostRead = false;
           return { code: 1, stdout: "", stderr: "transient host failure" };
@@ -298,11 +380,14 @@ export async function createPlanningProviderScenario(input: {
         }
         if (call.args[0] === "pr" && call.args[1] === "view") {
           const number = Number(call.args[2]);
+          const pull = pulls.find((item) => item.number === number)!;
+          if (number === 99)
+            await interruptAfter(
+              "after-implementation-pull-request-validation",
+            );
           return {
             code: 0,
-            stdout: JSON.stringify(
-              githubPullPayload(pulls.find((pull) => pull.number === number)!),
-            ),
+            stdout: JSON.stringify(githubPullPayload(pull)),
             stderr: "",
           };
         }
@@ -313,8 +398,15 @@ export async function createPlanningProviderScenario(input: {
           const headOid = (
             await git(config.repoRoot, ["rev-parse", `refs/heads/${branch}`])
           ).stdout.trim();
-          const pull = { number: nextPull++, branch, body, headOid };
+          const pull = {
+            number: nextPull++,
+            branch,
+            body,
+            headOid,
+            headRepository: "acme/patchmill",
+          };
           pulls.push(pull);
+          await interruptAfter("after-planning-pull-request-create");
           return {
             code: 0,
             stdout: `https://github.test/acme/patchmill/pull/${pull.number}\n`,
@@ -324,7 +416,28 @@ export async function createPlanningProviderScenario(input: {
         if (call.args[0] === "pr" && call.args[1] === "edit")
           return { code: 0, stdout: "", stderr: "" };
       }
+      if (call.command === "tea" && call.args[0] === "comment") {
+        const implementation = await implementationPhase();
+        if (
+          implementation?.kind === "implementation" &&
+          implementation.status === "pull-request-open"
+        )
+          await interruptAfter("after-handoff-comment");
+        return { code: 0, stdout: "", stderr: "" };
+      }
       if (call.command === "tea" && call.args[0] === "issues") {
+        const implementation = await implementationPhase();
+        const inImplementationFinish =
+          implementation?.kind === "implementation" &&
+          implementation.status === "pull-request-open";
+        if (call.args.includes("comment") && inImplementationFinish)
+          await interruptAfter("after-handoff-comment");
+        if (
+          call.args.includes("edit") &&
+          inImplementationFinish &&
+          implementation.finish.doneLabelEnsured === true
+        )
+          await interruptAfter("after-done-label");
         if (call.args[1] === "list") {
           const page = call.args[call.args.indexOf("--page") + 1];
           return {
@@ -337,6 +450,10 @@ export async function createPlanningProviderScenario(input: {
       }
       if (call.command === "tea" && call.args[0] === "labels")
         return { code: 0, stdout: labelListPayload(), stderr: "" };
+      if (call.command === "bash") {
+        await interruptAfter("after-cleanup-hook");
+        return { code: 0, stdout: "", stderr: "" };
+      }
       if (call.command === "tea" && !call.args.includes("api"))
         return { code: 0, stdout: "", stderr: "" };
       if (call.command === "tea") {
@@ -346,8 +463,18 @@ export async function createPlanningProviderScenario(input: {
         }
         const path =
           call.args.find((value) => value.startsWith("/repos/")) ?? "";
-        if (path.endsWith("/repos/{owner}/{repo}"))
-          return { code: 0, stdout: JSON.stringify(repository()), stderr: "" };
+        if (path.endsWith("/repos/{owner}/{repo}")) {
+          const repo = call.args[call.args.indexOf("--repo") + 1];
+          return {
+            code: 0,
+            stdout: JSON.stringify(
+              repository(
+                repo === "acme/patchmill-head" ? "patchmill-head" : "patchmill",
+              ),
+            ),
+            stderr: "",
+          };
+        }
         if (path.includes("/pulls?"))
           return {
             code: 0,
@@ -359,6 +486,10 @@ export async function createPlanningProviderScenario(input: {
           const pull = pulls.find((item) => item.number === number);
           if (!pull)
             return { code: 1, stdout: "", stderr: "HTTP/1.1 404 Not Found" };
+          if (number === 99)
+            await interruptAfter(
+              "after-implementation-pull-request-validation",
+            );
           return {
             code: 0,
             stdout: JSON.stringify(pullPayload(pull)),
@@ -377,8 +508,15 @@ export async function createPlanningProviderScenario(input: {
           const headOid = (
             await git(config.repoRoot, ["rev-parse", `refs/heads/${head}`])
           ).stdout.trim();
-          const pull = { number: nextPull++, branch: head, body, headOid };
+          const pull = {
+            number: nextPull++,
+            branch: head,
+            body,
+            headOid,
+            headRepository: "acme/patchmill-head",
+          };
           pulls.push(pull);
+          await interruptAfter("after-planning-pull-request-create");
           return {
             code: 0,
             stdout: JSON.stringify(pullPayload(pull)),
@@ -392,7 +530,11 @@ export async function createPlanningProviderScenario(input: {
     },
   };
   const pullPayload = forgejoPullPayload;
-  async function mergePlanningPull() {
+  async function mergePlanningPull(
+    input: {
+      editArtifact?: (content: string) => string;
+    } = {},
+  ) {
     const pull = pulls.find((item) => item.number !== 99 && !item.merged)!;
     const merged = await git(config.repoRoot, [
       "merge",
@@ -402,6 +544,33 @@ export async function createPlanningProviderScenario(input: {
       "merge planning",
     ]);
     assert.equal(merged.code, 0, merged.stderr);
+    if (input.editArtifact !== undefined) {
+      const paths = (
+        await git(config.repoRoot, ["diff", "--name-only", "HEAD^1", "HEAD"])
+      ).stdout
+        .split("\n")
+        .filter((path) =>
+          pull.body.includes("phase=spec")
+            ? path.startsWith("docs/specs/")
+            : path.startsWith("docs/plans/"),
+        );
+      assert.equal(paths.length, 1, "planning pull must contain one artifact");
+      const path = paths[0]!;
+      const before = await readFile(join(config.repoRoot, path), "utf8");
+      await writeFile(
+        join(config.repoRoot, path),
+        input.editArtifact(before),
+        "utf8",
+      );
+      const added = await git(config.repoRoot, ["add", path]);
+      assert.equal(added.code, 0, added.stderr);
+      const amended = await git(config.repoRoot, [
+        "commit",
+        "--amend",
+        "--no-edit",
+      ]);
+      assert.equal(amended.code, 0, amended.stderr);
+    }
     pull.mergeOid = (
       await git(config.repoRoot, ["rev-parse", "HEAD"])
     ).stdout.trim();
@@ -420,7 +589,7 @@ export async function createPlanningProviderScenario(input: {
             ? "spec"
             : "plan",
       targetRepository: "acme/patchmill",
-      headRepository: "acme/patchmill",
+      headRepository: pull.headRepository,
       baseBranch: "main",
       headBranch: pull.branch,
       headOid: pull.headOid,
@@ -435,10 +604,10 @@ export async function createPlanningProviderScenario(input: {
         { ...config, planOnly: options.planOnly ?? false },
         { now },
       ),
-    state: () => new PlanningStateStore(config.runStateDir).read(190),
+    state,
     pulls: recorded,
     effects,
-    mergeOpenPlanningPull: async () => mergePlanningPull(),
+    mergeOpenPlanningPull: mergePlanningPull,
     closeOpenPlanningPull: () => {
       const pull = pulls.find((item) => item.number !== 99 && !item.merged);
       if (pull) pull.closed = true;
@@ -456,9 +625,92 @@ export async function createPlanningProviderScenario(input: {
     failNextHostRead: () => {
       failHostRead = true;
     },
-    interruptAt: () => undefined,
-    restorePersistence: async () => undefined,
-    archiveExactStaleLock: async () => ({ fingerprint: "", archivePath: "" }),
-    cleanup: async () => rm(config.repoRoot, { recursive: true, force: true }),
+    interruptAt: (point) => {
+      if (pendingInterrupt !== undefined)
+        throw new Error(
+          `persistence interruption already armed: ${pendingInterrupt}`,
+        );
+      pendingInterrupt = point;
+    },
+    restorePersistence: async () => {
+      if (!persistenceDenied) return;
+      await chmod(issueStateDirectory, 0o700);
+      persistenceDenied = false;
+    },
+    installDeadProcessLock: async () => {
+      const current = await state();
+      assert.ok(
+        current,
+        "planning state must exist before a stale lock is installed",
+      );
+      const path = planningIssueLockPath(config.runStateDir, 190);
+      await mkdir(dirname(path), { recursive: true });
+      const bytes = Buffer.from(
+        `${JSON.stringify({
+          version: 1,
+          issueNumber: 190,
+          runId: current.runId,
+          ownershipId: "11111111-1111-4111-8111-111111111111",
+          pid: 999999,
+          hostname: hostname(),
+          acquiredAt: now.toISOString(),
+        })}\n`,
+        "utf8",
+      );
+      await writeFile(path, bytes, { mode: 0o600 });
+      return { fingerprint: createHash("sha256").update(bytes).digest("hex") };
+    },
+    archiveExactStaleLock: async () => {
+      const path = planningIssueLockPath(config.runStateDir, 190);
+      const bytes = await readFile(path);
+      const fingerprint = createHash("sha256").update(bytes).digest("hex");
+      const archivePath = join(
+        config.runStateDir,
+        "planning-pr-v1",
+        "archives",
+        `issue-190.${fingerprint}.lock`,
+      );
+      await mkdir(dirname(archivePath), { recursive: true });
+      await rename(path, archivePath);
+      assert.deepEqual(await readFile(archivePath), bytes);
+      return { fingerprint, archivePath };
+    },
+    remoteArtifactContents: async () => {
+      const completed = await state();
+      const artifacts =
+        completed?.phases.flatMap((phase) =>
+          "artifacts" in phase ? phase.artifacts : [],
+        ) ?? [];
+      const contents = await Promise.all(
+        artifacts.flatMap((artifact) => {
+          const phase = artifact.path.startsWith("docs/specs/")
+            ? "spec"
+            : "plan";
+          const pull = pulls.find(
+            (candidate) =>
+              candidate.mergeOid !== undefined &&
+              (phase === "spec"
+                ? candidate.body.includes("phase=spec")
+                : candidate.body.includes("phase=plan")),
+          );
+          if (pull?.mergeOid === undefined) return [];
+          return [
+            (async () => {
+              const result = await git(config.repoRoot, [
+                "show",
+                `${pull.mergeOid}:${artifact.path}`,
+              ]);
+              assert.equal(result.code, 0, result.stderr);
+              return [artifact.path, result.stdout] as const;
+            })(),
+          ];
+        }),
+      );
+      return Object.fromEntries(contents);
+    },
+    cleanup: async () => {
+      await chmod(issueStateDirectory, 0o700).catch(() => undefined);
+      await rm(config.repoRoot, { recursive: true, force: true });
+    },
   };
 }

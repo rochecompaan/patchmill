@@ -50,7 +50,9 @@ for (const provider of [
             scenario.pulls().filter((pull) => pull.phase === phase).length,
             1,
           );
-          await scenario.mergeOpenPlanningPull();
+          await scenario.mergeOpenPlanningPull({
+            editArtifact: (content) => `${content}reviewed by a human\n`,
+          });
         }
         const result = await scenario.run();
         assert.equal(result.status, "pr-created", JSON.stringify(result));
@@ -60,12 +62,23 @@ for (const provider of [
           scenario.pulls().map((pull) => pull.phase),
           entry.phases,
         );
+        const artifacts = await scenario.remoteArtifactContents();
+        for (const [path, content] of Object.entries(artifacts)) {
+          assert.match(content, /reviewed by a human/u, path);
+        }
         const implementation = scenario.pulls().at(-1)!;
         assert.match(implementation.body, /Closes #190/u);
         assert.match(implementation.body, /phase=implementation/u);
         for (const pull of scenario.pulls().slice(0, -1)) {
           assert.match(pull.body, /phase=(spec|plan)/u);
           assert.doesNotMatch(pull.body, /Closes #190/u);
+          if (provider === "github-gh") {
+            assert.equal(pull.targetRepository, "acme/patchmill");
+            assert.equal(pull.headRepository, "acme/patchmill");
+          } else {
+            assert.equal(pull.targetRepository, "acme/patchmill");
+            assert.equal(pull.headRepository, "acme/patchmill-head");
+          }
         }
       } finally {
         await scenario.cleanup();
