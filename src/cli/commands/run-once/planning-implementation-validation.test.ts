@@ -94,6 +94,79 @@ test("validates an exact open implementation pull request before finish", async 
   assert.equal(result.pullRequest.url, phase.implementation.prUrl);
 });
 
+test("fails closed for workspace, remote, and repository preconditions", async () => {
+  for (const [reason, configure] of [
+    [
+      "workspace",
+      (value: ReturnType<typeof input>) => {
+        value.workspaces.inspect = async () => ({ state: "missing" as const });
+      },
+    ],
+    [
+      "workspace",
+      (value: ReturnType<typeof input>) => {
+        value.workspaces.inspect = async () => ({
+          state: "ready" as const,
+          identity: phase.workspace.identity,
+          headOid: oid("b"),
+          clean: false,
+        });
+      },
+    ],
+    [
+      "local-head",
+      (value: ReturnType<typeof input>) => {
+        value.phase = {
+          ...phase,
+          publication: { ...phase.publication, headOid: oid("c") },
+        };
+      },
+    ],
+    [
+      "remote-head",
+      (value: ReturnType<typeof input>) => {
+        value.git.inspectRemoteHead = async () => ({
+          state: "missing" as const,
+        });
+      },
+    ],
+    [
+      "remote-head",
+      (value: ReturnType<typeof input>) => {
+        value.git.inspectRemoteHead = async () => ({
+          state: "present" as const,
+          headOid: oid("c"),
+        });
+      },
+    ],
+    [
+      "target-repository",
+      (value: ReturnType<typeof input>) => {
+        value.host.resolveTargetRepositoryIdentity = async () => ({
+          ...repository,
+          repository: "other",
+        });
+      },
+    ],
+    [
+      "head-repository",
+      (value: ReturnType<typeof input>) => {
+        value.host.resolveRemoteRepositoryIdentity = async () => ({
+          ...repository,
+          repository: "other",
+        });
+      },
+    ],
+  ] as const) {
+    const value = input();
+    configure(value);
+    await assert.rejects(
+      validatePlanningImplementation(value),
+      new RegExp(reason, "u"),
+    );
+  }
+});
+
 test("rejects a trailing-slash agent URL that differs from host readback", async () => {
   const validation = input();
   validation.phase = {
