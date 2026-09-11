@@ -158,6 +158,10 @@ export async function selectRunOnceWorkflow(
       isResumableRunState(legacy) &&
       issue.labels.includes(lifecycleLabels(config).inProgress),
     );
+    const blockedLegacyRetryAcknowledged =
+      !hasBlockedRunRecoveryState(legacy) ||
+      (config.issueNumber === issue.number &&
+        issue.labels.includes(lifecycleLabels(config).ready));
     if (state && active(state) && legacyConflict)
       return {
         kind: "invalid-planning-state",
@@ -177,6 +181,7 @@ export async function selectRunOnceWorkflow(
       choices.push({ kind: "planning", issue, state });
     else if (
       legacyActive &&
+      blockedLegacyRetryAcknowledged &&
       (ordinaryLegacyResume ||
         planningIssueEligible({
           issue,

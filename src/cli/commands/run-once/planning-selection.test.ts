@@ -207,6 +207,12 @@ test("does not let an automatic blocked legacy retry outrank fresh work", async 
       { path: () => "state", read: async () => undefined } as never,
     );
     assert.equal(explicit.kind, "legacy");
+    const unacknowledged = await selectRunOnceWorkflow(
+      [issue(3, ["in-progress"])],
+      { ...config, runStateDir, issueNumber: 3 },
+      { path: () => "state", read: async () => undefined } as never,
+    );
+    assert.equal(unacknowledged.kind, "none");
   } finally {
     await rm(runStateDir, { recursive: true, force: true });
   }
