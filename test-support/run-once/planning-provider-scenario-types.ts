@@ -1,5 +1,5 @@
-import type { PlanningStateV1 } from "../../src/workflow/planning-state-store.ts";
 import type { IssueSummary } from "../../src/cli/commands/run-once/types.ts";
+import type { PlanningStateV1 } from "../../src/workflow/planning-state-store.ts";
 
 export type PlanningScenarioProvider = "github-gh" | "forgejo-tea";
 export type PlanningScenarioGates = Readonly<{
@@ -18,29 +18,67 @@ export type PlanningScenarioFailurePoint =
   | "after-implementation-worktree-remove"
   | "after-done-label";
 export type PlanningScenarioPhase = "spec" | "plan" | "implementation";
-export type PlanningScenarioEffectOperation =
-  | "agent-run"
-  | "branch-remove"
-  | "cleanup-hook"
-  | "done-label"
-  | "handoff-comment"
-  | "implementation-push"
-  | "issue-comment"
-  | "issue-label-edit"
-  | "issue-read"
-  | "phase-push"
-  | "planning-pull-request-create"
-  | "pull-request-edit"
-  | "pull-request-read"
-  | "remote-fetch"
-  | "repository-read"
-  | "workspace-remove";
-export type PlanningScenarioEffect = Readonly<{
-  kind: "read" | "write" | "interrupt";
-  operation: PlanningScenarioEffectOperation | "persistence-interrupt";
-  phase?: PlanningScenarioPhase;
-  point?: PlanningScenarioFailurePoint;
+export type PlanningScenarioOwnership = Readonly<{
+  phase: PlanningScenarioPhase;
+  branch: string;
+  worktreePath: string;
 }>;
+
+type PlanningScenarioReadEffect = Readonly<{
+  kind: "read";
+  operation:
+    | "issue-read"
+    | "pull-request-read"
+    | "remote-fetch"
+    | "repository-read";
+}>;
+type PlanningScenarioIssueWriteEffect = Readonly<{
+  kind: "write";
+  operation:
+    | "done-label"
+    | "handoff-comment"
+    | "issue-comment"
+    | "issue-label-edit"
+    | "pull-request-edit";
+}>;
+type PlanningScenarioPublicationWriteEffect = Readonly<{
+  kind: "write";
+  operation:
+    | "implementation-push"
+    | "phase-push"
+    | "planning-pull-request-create";
+  phase: PlanningScenarioPhase;
+  branch: string;
+  ref: string;
+}>;
+type PlanningScenarioWorkspaceWriteEffect = Readonly<{
+  kind: "write";
+  operation: "agent-run" | "cleanup-hook" | "workspace-remove";
+  phase: PlanningScenarioPhase;
+  branch: string;
+  worktreePath: string;
+}>;
+type PlanningScenarioBranchWriteEffect = Readonly<{
+  kind: "write";
+  operation: "branch-remove";
+  phase: PlanningScenarioPhase;
+  branch: string;
+}>;
+type PlanningScenarioInterruptEffect = Readonly<{
+  kind: "interrupt";
+  operation: "persistence-interrupt";
+  point: PlanningScenarioFailurePoint;
+}>;
+
+/** Semantic effects recorded at the provider scenario's process boundary. */
+export type PlanningScenarioEffect =
+  | PlanningScenarioReadEffect
+  | PlanningScenarioIssueWriteEffect
+  | PlanningScenarioPublicationWriteEffect
+  | PlanningScenarioWorkspaceWriteEffect
+  | PlanningScenarioBranchWriteEffect
+  | PlanningScenarioInterruptEffect;
+
 export type PlanningScenarioPull = {
   number: number;
   branch: string;
@@ -69,6 +107,7 @@ export type PlanningProviderFixtureInput = {
   pulls: PlanningScenarioPull[];
   nextPull(): number;
   headOid(branch: string): Promise<string>;
+  ownershipForBranch(branch: string): Promise<PlanningScenarioOwnership>;
   implementationFinish(): Promise<boolean>;
   interrupt(point: PlanningScenarioFailurePoint): Promise<void>;
   consumeHostReadFailure(): boolean;
@@ -83,5 +122,10 @@ export type PlanningStateSnapshot = Readonly<{
     kind: PlanningScenarioPhase;
     status: PlanningStateV1["phases"][number]["status"];
     finish?: readonly string[];
+    ownership?: Readonly<{
+      branch: string;
+      worktreePath: string;
+      cleanupState: "ready" | "worktree-removed" | "removed";
+    }>;
   }>[];
 }>;

@@ -5,30 +5,21 @@ import { git, recordCarriedArtifacts } from "./planning-provider-git.ts";
 import type {
   PlanningScenarioEffect,
   PlanningScenarioFailurePoint,
-  PlanningScenarioPhase,
+  PlanningScenarioOwnership,
   PlanningScenarioProvider,
   PlanningScenarioPull,
 } from "./planning-provider-scenario-types.ts";
 
-type ScenarioRunnerConfig = Readonly<{
-  repoRoot: string;
-}>;
-
-function phaseForBranch(branch: string): PlanningScenarioPhase | undefined {
-  if (branch.endsWith("-spec")) return "spec";
-  if (branch.endsWith("-plan")) return "plan";
-  if (branch.endsWith("-implementation")) return "implementation";
-  return undefined;
-}
-
 /** Owns process-boundary effects while the scenario composes provider and Git fixtures. */
 export function createPlanningProviderRunner(input: {
   provider: PlanningScenarioProvider;
-  config: ScenarioRunnerConfig;
+  repoRoot: string;
   pulls: PlanningScenarioPull[];
   carriedArtifacts: Map<string, string>;
-  state(): Promise<unknown>;
-  implementationPullRequestOpen(): Promise<boolean>;
+  ownershipForBranch(branch: string): Promise<PlanningScenarioOwnership>;
+  ownershipForWorktree(
+    worktreePath: string,
+  ): Promise<PlanningScenarioOwnership>;
   planningPhaseMerged(): Promise<boolean>;
   interruptAfter(point: PlanningScenarioFailurePoint): Promise<void>;
   github(
@@ -52,7 +43,7 @@ export function createPlanningProviderRunner(input: {
             stderr: "",
           };
         }
-        const result = await git(options.cwd ?? input.config.repoRoot, values);
+        const result = await git(options.cwd ?? input.repoRoot, values);
         if (
           values[0] === "worktree" &&
           values[1] === "add" &&
@@ -60,23 +51,34 @@ export function createPlanningProviderRunner(input: {
         )
           throw new Error(result.stderr);
         if (values[0] === "push" && values.includes("--porcelain")) {
-          const phase = phaseForBranch(values.at(-1)?.split(":").at(-1) ?? "");
+          const branch = values
+            .at(-1)
+            ?.split(":")
+            .at(-1)
+            ?.replace(/^refs\/heads\//u, "");
+          if (branch === undefined) throw new Error("push branch is missing");
+          const ownership = await input.ownershipForBranch(branch);
           input.record({
             kind: "write",
             operation: "phase-push",
-            ...(phase ? { phase } : {}),
+            phase: ownership.phase,
+            branch: ownership.branch,
+            ref: `refs/heads/${ownership.branch}`,
           });
           await input.interruptAfter("after-phase-push");
         }
         if (values[0] === "worktree" && values[1] === "remove") {
-          const implementation = await input.implementationPullRequestOpen();
+          const worktreePath = values.at(-1);
+          if (worktreePath === undefined)
+            throw new Error("worktree removal target is missing");
+          const ownership = await input.ownershipForWorktree(worktreePath);
           input.record({
             kind: "write",
             operation: "workspace-remove",
-            phase: implementation ? "implementation" : "spec",
+            ...ownership,
           });
           await input.interruptAfter(
-            implementation
+            ownership.phase === "implementation"
               ? "after-implementation-worktree-remove"
               : "after-worktree-remove",
           );
@@ -85,7 +87,19 @@ export function createPlanningProviderRunner(input: {
           (values[0] === "branch" && values.includes("-D")) ||
           (values[0] === "update-ref" && values[1] === "-d")
         ) {
-          input.record({ kind: "write", operation: "branch-remove" });
+          const branch =
+            values[0] === "update-ref"
+              ? values[2]?.replace(/^refs\/heads\//u, "")
+              : values.at(-1);
+          if (branch === undefined)
+            throw new Error("branch removal target is missing");
+          const ownership = await input.ownershipForBranch(branch);
+          input.record({
+            kind: "write",
+            operation: "branch-remove",
+            phase: ownership.phase,
+            branch: ownership.branch,
+          });
           await input.interruptAfter("after-local-branch-remove");
         }
         if (values[0] === "fetch") {
@@ -96,8 +110,9 @@ export function createPlanningProviderRunner(input: {
         return result;
       }
       if (name === "pi") {
-        input.record({ kind: "write", operation: "agent-run" });
         const cwd = options.cwd!;
+        const ownership = await input.ownershipForWorktree(cwd);
+        input.record({ kind: "write", operation: "agent-run", ...ownership });
         await recordCarriedArtifacts(cwd, input.carriedArtifacts);
         const prompt = await readFile(promptPath(values), "utf8");
         const path = /"(?:specPath|planPath)"\s*:\s*"([^"]+)"/u.exec(
@@ -133,10 +148,13 @@ export function createPlanningProviderRunner(input: {
         ).stdout.trim();
         const headOid = (await git(cwd, ["rev-parse", "HEAD"])).stdout.trim();
         await git(cwd, ["push", "origin", `HEAD:${branch}`]);
+        const publicationOwnership = await input.ownershipForBranch(branch);
         input.record({
           kind: "write",
           operation: "implementation-push",
-          phase: "implementation",
+          phase: publicationOwnership.phase,
+          branch: publicationOwnership.branch,
+          ref: `refs/heads/${publicationOwnership.branch}`,
         });
         input.pulls.push({
           number: 99,
@@ -163,7 +181,15 @@ export function createPlanningProviderRunner(input: {
       if (name === "gh") return input.github(values);
       if (name === "tea") return input.forgejo(values);
       if (name === "bash") {
-        input.record({ kind: "write", operation: "cleanup-hook" });
+        const cwd = options.cwd;
+        if (cwd === undefined)
+          throw new Error("cleanup hook worktree is missing");
+        const ownership = await input.ownershipForWorktree(cwd);
+        input.record({
+          kind: "write",
+          operation: "cleanup-hook",
+          ...ownership,
+        });
         await input.interruptAfter("after-cleanup-hook");
         return { code: 0, stdout: "", stderr: "" };
       }

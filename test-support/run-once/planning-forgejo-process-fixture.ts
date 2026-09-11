@@ -5,19 +5,6 @@ import type {
   PlanningScenarioPull,
 } from "./planning-provider-scenario-types.ts";
 
-export type PlanningForgejoPull = Readonly<{
-  number: number;
-  branch: string;
-  body: string;
-  headOid: string;
-  headRepository: string;
-  merged?: boolean;
-  closed?: boolean;
-  mergeOid?: string;
-}>;
-
-export type ForgejoProcessFixtureInput = PlanningProviderFixtureInput;
-
 function fixtureError(args: readonly string[]): never {
   throw new Error(`unexpected tea command: ${args.join(" ")}`);
 }
@@ -37,9 +24,7 @@ function repository(name = "patchmill") {
   };
 }
 
-export function forgejoPullPayload(
-  pull: PlanningForgejoPull | PlanningScenarioPull,
-) {
+export function forgejoPullPayload(pull: PlanningScenarioPull) {
   const headRepository = {
     name: pull.headRepository.split("/").at(-1)!,
     full_name: pull.headRepository,
@@ -63,7 +48,9 @@ export function forgejoResult(stdout: unknown): CommandResult {
 }
 
 /** Parses only the tea commands emitted by ForgejoTeaPullRequestHost. */
-export function createForgejoProcessFixture(input: ForgejoProcessFixtureInput) {
+export function createForgejoProcessFixture(
+  input: PlanningProviderFixtureInput,
+) {
   return async (args: string[]): Promise<CommandResult> => {
     const [group, action] = args;
     if (group === "comment") {
@@ -147,9 +134,13 @@ export function createForgejoProcessFixture(input: ForgejoProcessFixtureInput) {
         headRepository: "acme/patchmill-head",
       };
       input.pulls.push(pull);
+      const ownership = await input.ownershipForBranch(pull.branch);
       input.record({
         kind: "write",
         operation: "planning-pull-request-create",
+        phase: ownership.phase,
+        branch: ownership.branch,
+        ref: `refs/heads/${ownership.branch}`,
       });
       await input.interrupt("after-planning-pull-request-create");
       return forgejoResult(forgejoPullPayload(pull));

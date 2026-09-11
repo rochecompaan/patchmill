@@ -2,6 +2,7 @@ import {
   PlanningStateStore,
   type PlanningStateV1,
 } from "../../src/workflow/planning-state-store.ts";
+import { resolve } from "node:path";
 import { approvalPolicy, makeConfig } from "./pipeline-fixtures.ts";
 import { issue } from "./issue-fixtures.ts";
 import { runOneIssue } from "../../src/cli/commands/run-once/pipeline.ts";
@@ -16,6 +17,7 @@ import {
 } from "./planning-provider-git.ts";
 import { createPlanningRecoveryControl } from "./planning-provider-recovery-control.ts";
 import { createPlanningProviderRunner } from "./planning-provider-runner.ts";
+import { observePlanningStateReplacements } from "./planning-provider-state-observer.ts";
 import type {
   PlanningScenarioEffect,
   PlanningScenarioFailurePoint,
@@ -74,6 +76,15 @@ function snapshot(state: PlanningStateV1): PlanningStateSnapshot {
       ...("finish" in phase
         ? { finish: Object.keys(phase.finish).sort() }
         : {}),
+      ...("workspace" in phase
+        ? {
+            ownership: {
+              branch: phase.workspace.identity.branch,
+              worktreePath: phase.workspace.identity.worktreePath,
+              cleanupState: phase.workspace.cleanup.state,
+            },
+          }
+        : {}),
     })),
   };
 }
@@ -120,11 +131,23 @@ export async function createPlanningProviderScenario(input: {
   const stateStore = new PlanningStateStore(config.runStateDir);
   const state = () => stateStore.read(190);
   const record = (effect: PlanningScenarioEffect) => effects.push(effect);
-  const rememberState = async () => {
-    const current = await state();
-    if (current === undefined) return;
-    if (history.at(-1)?.revision !== current.revision)
-      history.push(snapshot(current));
+  const stopObservingState = observePlanningStateReplacements(
+    config.runStateDir,
+    (current) => history.push(snapshot(current)),
+  );
+  const ownershipForBranch = async (branch: string) => {
+    const phase = (await state())?.phases.find(
+      (candidate) =>
+        "workspace" in candidate &&
+        candidate.workspace.identity.branch === branch,
+    );
+    if (phase === undefined || !("workspace" in phase))
+      throw new Error(`saved workspace ownership missing for ${branch}`);
+    return {
+      phase: phase.kind,
+      branch: phase.workspace.identity.branch,
+      worktreePath: phase.workspace.identity.worktreePath,
+    };
   };
   const recovery = createPlanningRecoveryControl({
     runStateDir: config.runStateDir,
@@ -145,6 +168,22 @@ export async function createPlanningProviderScenario(input: {
       .filter((label) => !remove.includes(label))
       .concat(add.filter((label) => !selected.labels.includes(label)));
   };
+  const ownershipForWorktree = async (worktreePath: string) => {
+    const resolvedPath = resolve(config.repoRoot, worktreePath);
+    const phase = (await state())?.phases.find(
+      (candidate) =>
+        "workspace" in candidate &&
+        resolve(config.repoRoot, candidate.workspace.identity.worktreePath) ===
+          resolvedPath,
+    );
+    if (phase === undefined || !("workspace" in phase))
+      throw new Error(`saved workspace ownership missing for ${worktreePath}`);
+    return {
+      phase: phase.kind,
+      branch: phase.workspace.identity.branch,
+      worktreePath: phase.workspace.identity.worktreePath,
+    };
+  };
   const implementationFinish = async () => {
     const implementation = (await state())?.phases.find(
       (phase) => phase.kind === "implementation",
@@ -162,6 +201,7 @@ export async function createPlanningProviderScenario(input: {
       (
         await git(config.repoRoot, ["rev-parse", `refs/heads/${branch}`])
       ).stdout.trim(),
+    ownershipForBranch,
     implementationFinish,
     interrupt: recovery.interruptAfter,
     consumeHostReadFailure: () => {
@@ -189,31 +229,23 @@ export async function createPlanningProviderScenario(input: {
   };
   const runner = createPlanningProviderRunner({
     provider: input.provider,
-    config,
+    repoRoot: config.repoRoot,
     pulls,
     carriedArtifacts,
-    state,
-    implementationPullRequestOpen: implementationFinish,
+    ownershipForBranch,
+    ownershipForWorktree,
     planningPhaseMerged,
     interruptAfter: recovery.interruptAfter,
     github,
     forgejo,
     record,
   });
-  const run = async (options = {}) => {
-    try {
-      const result = await runOneIssue(
-        runner,
-        { ...config, planOnly: options.planOnly ?? false },
-        { now },
-      );
-      await rememberState();
-      return result;
-    } catch (error) {
-      await rememberState();
-      throw error;
-    }
-  };
+  const run = async (options = {}) =>
+    runOneIssue(
+      runner,
+      { ...config, planOnly: options.planOnly ?? false },
+      { now },
+    );
   return {
     run,
     state,
@@ -223,7 +255,6 @@ export async function createPlanningProviderScenario(input: {
     remoteRefs: repository.remoteRefs,
     mergeOpenPlanningPull: async (merge) => {
       await mergePlanningPull({ repoRoot: config.repoRoot, pulls, ...merge });
-      await rememberState();
     },
     closeOpenPlanningPull: () => {
       const pull = pulls.find((item) => item.number !== 99 && !item.merged);
@@ -251,6 +282,7 @@ export async function createPlanningProviderScenario(input: {
     remoteArtifactContents: async () =>
       remoteArtifactContents(config.repoRoot, await state()),
     cleanup: async () => {
+      stopObservingState();
       await recovery.cleanup();
       await repository.cleanup();
     },

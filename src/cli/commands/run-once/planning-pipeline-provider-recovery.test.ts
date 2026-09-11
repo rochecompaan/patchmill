@@ -133,9 +133,10 @@ function assertMonotonicStateHistory(
   for (let index = 1; index < history.length; index += 1) {
     const previous = history[index - 1]!;
     const current = history[index]!;
-    assert.ok(
-      current.revision > previous.revision,
-      `revision ${current.revision} follows ${previous.revision}`,
+    assert.equal(
+      current.revision,
+      previous.revision + 1,
+      `revision ${current.revision} immediately follows ${previous.revision}`,
     );
     for (const phase of current.phases) {
       const prior = previous.phases.find((item) => item.kind === phase.kind);
@@ -165,6 +166,216 @@ function assertMonotonicStateHistory(
   ]);
 }
 
+type SnapshotExpectation = Readonly<{
+  revision: number;
+  phases: readonly string[];
+}>;
+
+const interruptionStateExpectations: Readonly<
+  Record<
+    PlanningScenarioFailurePoint,
+    Readonly<{
+      preDeniedWrite: SnapshotExpectation;
+      firstRetry: SnapshotExpectation;
+    }>
+  >
+> = {
+  "after-phase-push": {
+    preDeniedWrite: {
+      revision: 2,
+      phases: [
+        "spec/workspace-ready/ready/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+    firstRetry: {
+      revision: 3,
+      phases: [
+        "spec/branch-pushed/ready/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+  },
+  "after-planning-pull-request-create": {
+    preDeniedWrite: {
+      revision: 3,
+      phases: [
+        "spec/branch-pushed/ready/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+    firstRetry: {
+      revision: 4,
+      phases: [
+        "spec/pull-request-open/ready/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+  },
+  "after-worktree-remove": {
+    preDeniedWrite: {
+      revision: 4,
+      phases: [
+        "spec/pull-request-open/ready/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+    firstRetry: {
+      revision: 5,
+      phases: [
+        "spec/pull-request-open/worktree-removed/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+  },
+  "after-local-branch-remove": {
+    preDeniedWrite: {
+      revision: 5,
+      phases: [
+        "spec/pull-request-open/worktree-removed/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+    firstRetry: {
+      revision: 6,
+      phases: [
+        "spec/pull-request-open/removed/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+  },
+  "after-planning-merge-observation": {
+    preDeniedWrite: {
+      revision: 6,
+      phases: [
+        "spec/pull-request-open/removed/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+    firstRetry: {
+      revision: 7,
+      phases: [
+        "spec/complete/removed/",
+        "plan/pending/-/",
+        "implementation/pending/-/",
+      ],
+    },
+  },
+  "after-implementation-pull-request-validation": {
+    preDeniedWrite: {
+      revision: 17,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/branch-pushed/ready/",
+      ],
+    },
+    firstRetry: {
+      revision: 18,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/ready/",
+      ],
+    },
+  },
+  "after-handoff-comment": {
+    preDeniedWrite: {
+      revision: 20,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/ready/costPublicationCompleted,visualEvidenceValidated",
+      ],
+    },
+    firstRetry: {
+      revision: 21,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/ready/costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+      ],
+    },
+  },
+  "after-cleanup-hook": {
+    preDeniedWrite: {
+      revision: 21,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/ready/costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+      ],
+    },
+    firstRetry: {
+      revision: 22,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/ready/cleanupHookCompleted,costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+      ],
+    },
+  },
+  "after-implementation-worktree-remove": {
+    preDeniedWrite: {
+      revision: 22,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/ready/cleanupHookCompleted,costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+      ],
+    },
+    firstRetry: {
+      revision: 23,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/worktree-removed/cleanupHookCompleted,costPublicationCompleted,handoffCommentPosted,visualEvidenceValidated",
+      ],
+    },
+  },
+  "after-done-label": {
+    preDeniedWrite: {
+      revision: 25,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/removed/cleanupHookCompleted,costPublicationCompleted,doneLabelEnsured,handoffCommentPosted,visualEvidenceValidated",
+      ],
+    },
+    firstRetry: {
+      revision: 26,
+      phases: [
+        "spec/complete/removed/",
+        "plan/complete/removed/",
+        "implementation/pull-request-open/removed/cleanupHookCompleted,costPublicationCompleted,doneLabelApplied,doneLabelEnsured,handoffCommentPosted,visualEvidenceValidated",
+      ],
+    },
+  },
+};
+
+function assertExactSnapshot(
+  actual: PlanningStateSnapshot,
+  expected: SnapshotExpectation,
+) {
+  assert.equal(actual.revision, expected.revision);
+  assert.deepEqual(
+    actual.phases.map(
+      (phase) =>
+        `${phase.kind}/${phase.status}/${phase.ownership?.cleanupState ?? "-"}/${phase.finish?.join(",") ?? ""}`,
+    ),
+    expected.phases,
+  );
+}
+
 function assertOnePublicationPerPhase(scenario: PlanningProviderScenario) {
   const effects = writeEffects(scenario.effects());
   for (const phase of ["spec", "plan", "implementation"] as const) {
@@ -181,6 +392,41 @@ function assertOnePublicationPerPhase(scenario: PlanningProviderScenario) {
       `${phase} has one pull request`,
     );
   }
+}
+
+function assertEffectUsesSavedOwnership(
+  effect: PlanningScenarioEffect,
+  snapshot: PlanningStateSnapshot,
+) {
+  if (effect.kind !== "write" || !("phase" in effect)) return;
+  const saved = snapshot.phases.find((phase) => phase.kind === effect.phase);
+  assert.ok(saved?.ownership, `${effect.operation} has saved ownership`);
+  assert.equal(effect.branch, saved.ownership.branch);
+  if ("worktreePath" in effect)
+    assert.equal(effect.worktreePath, saved.ownership.worktreePath);
+  if ("ref" in effect)
+    assert.equal(effect.ref, `refs/heads/${saved.ownership.branch}`);
+}
+
+function assertCleanupEffectsUseSavedOwnership(
+  scenario: PlanningProviderScenario,
+) {
+  const terminal = scenario.stateHistory().at(-1)!;
+  const cleanupEffects = writeEffects(scenario.effects()).filter(
+    (effect) =>
+      effect.operation === "workspace-remove" ||
+      effect.operation === "branch-remove" ||
+      effect.operation === "cleanup-hook",
+  );
+  for (const effect of cleanupEffects)
+    assertEffectUsesSavedOwnership(effect, terminal);
+  assert.deepEqual(
+    cleanupEffects
+      .filter((effect) => effect.operation === "workspace-remove")
+      .map((effect) => effect.phase),
+    ["spec", "plan", "implementation"],
+    "worktree cleanup retains each saved phase instead of classifying plan as spec",
+  );
 }
 
 function assertNoEffectsAfterInterruption(
@@ -201,12 +447,15 @@ function assertNoEffectsAfterInterruption(
     operation: "persistence-interrupt",
     point,
   });
+  const preceding = effects[interruption - 1];
+  assert.ok(preceding, "the interrupted write has a preceding effect record");
   const laterEffects = effects.slice(interruption + 1);
   assert.equal(
     laterEffects.some((effect) => effect.kind === "write"),
     false,
     "no later host write, next phase, destructive Git, cleanup, handoff, or label effect runs after persistence fails",
   );
+  return preceding;
 }
 
 async function assertReviewedArtifactsSurvive(
@@ -249,9 +498,18 @@ for (const provider of providers) {
         await assert.rejects(scenario.run());
         const interrupted = await scenario.state();
         assert.ok(interrupted);
-        assertNoEffectsAfterInterruption(scenario, point);
-        const pullsBeforeRetry = scenario.pulls();
         const historyBeforeRetry = scenario.stateHistory().slice();
+        const preDeniedWrite = historyBeforeRetry.at(-1);
+        assert.ok(preDeniedWrite, "a durable state precedes the denied write");
+        assertExactSnapshot(
+          preDeniedWrite,
+          interruptionStateExpectations[point].preDeniedWrite,
+        );
+        assertEffectUsesSavedOwnership(
+          assertNoEffectsAfterInterruption(scenario, point),
+          preDeniedWrite,
+        );
+        const pullsBeforeRetry = scenario.pulls();
         const refsBeforeRetry = await scenario.remoteRefs();
         await scenario.restorePersistence();
         const finished = await finish(scenario);
@@ -302,7 +560,12 @@ for (const provider of providers) {
           scenario.stateHistory().length > historyBeforeRetry.length,
           "retry persists a later durable state",
         );
+        assertExactSnapshot(
+          scenario.stateHistory()[historyBeforeRetry.length]!,
+          interruptionStateExpectations[point].firstRetry,
+        );
         assertMonotonicStateHistory(scenario.stateHistory());
+        assertCleanupEffectsUseSavedOwnership(scenario);
         await assertReviewedArtifactsSurvive(scenario);
         const terminal = await scenario.state();
         const terminalPulls = scenario.pulls();

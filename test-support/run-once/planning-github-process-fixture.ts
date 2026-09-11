@@ -5,18 +5,6 @@ import type {
   PlanningScenarioPull,
 } from "./planning-provider-scenario-types.ts";
 
-export type PlanningGithubPull = Readonly<{
-  number: number;
-  branch: string;
-  body: string;
-  headOid: string;
-  merged?: boolean;
-  closed?: boolean;
-  mergeOid?: string;
-}>;
-
-export type GithubProcessFixtureInput = PlanningProviderFixtureInput;
-
 function fixtureError(args: readonly string[]): never {
   throw new Error(`unexpected gh command: ${args.join(" ")}`);
 }
@@ -27,9 +15,7 @@ function argument(args: readonly string[], flag: string) {
   return value;
 }
 
-export function githubPullPayload(
-  pull: PlanningGithubPull | PlanningScenarioPull,
-) {
+export function githubPullPayload(pull: PlanningScenarioPull) {
   return {
     number: pull.number,
     url: `https://github.test/acme/patchmill/pull/${pull.number}`,
@@ -48,7 +34,9 @@ export function githubResult(stdout: unknown): CommandResult {
 }
 
 /** Parses only the gh commands emitted by GitHubGhPullRequestHost. */
-export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
+export function createGithubProcessFixture(
+  input: PlanningProviderFixtureInput,
+) {
   return async (args: string[]): Promise<CommandResult> => {
     const [group, action] = args;
     if ((group === "pr" || group === "api") && input.consumeHostReadFailure())
@@ -165,9 +153,13 @@ export function createGithubProcessFixture(input: GithubProcessFixtureInput) {
         headRepository: "acme/patchmill",
       };
       input.pulls.push(pull);
+      const ownership = await input.ownershipForBranch(branch);
       input.record({
         kind: "write",
         operation: "planning-pull-request-create",
+        phase: ownership.phase,
+        branch: ownership.branch,
+        ref: `refs/heads/${ownership.branch}`,
       });
       await input.interrupt("after-planning-pull-request-create");
       return {
