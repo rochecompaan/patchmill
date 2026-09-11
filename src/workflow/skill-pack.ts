@@ -64,7 +64,7 @@ export function requiredSkillFiles(skillName: string): string[] {
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
-  version: "2026.07.2",
+  version: "2026.09.1",
   source: {
     type: "github-release",
     repository: "obra/superpowers",

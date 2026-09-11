@@ -80,7 +80,7 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.07.2");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.09.1");
   assert.deepEqual(
     PATCHMILL_RECOMMENDED_SKILL_PACK.source,
     expectedSuperpowersSource,
@@ -166,7 +166,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.07.2",
+      version: "2026.09.1",
       source: expectedSuperpowersSource,
     },
     installedAt: "<generated-by-init>",

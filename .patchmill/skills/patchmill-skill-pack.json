@@ -1,7 +1,7 @@
 {
   "pack": {
     "name": "patchmill-recommended",
-    "version": "2026.07.2",
+    "version": "2026.09.1",
     "source": {
       "type": "github-release",
       "repository": "obra/superpowers",
@@ -9,7 +9,7 @@
       "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v6.3.0.tar.gz"
     }
   },
-  "installedAt": "2026-08-15T07:00:42.951Z",
+  "installedAt": "2026-09-11T17:01:19.605Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -67,7 +67,7 @@
     },
     {
       "path": ".patchmill/skills/patchmill-planning/SKILL.md",
-      "sha256": "f96979dcb298f940a8219844fc392965a56fabeba5b4742f9dd5978d2aa8d7ba"
+      "sha256": "e0a9df3b102ae2174abfe3fa90fbbff39733e65994ce8b5169d8098ab0ecad84"
     },
     {
       "path": ".patchmill/skills/patchmill-visual-evidence/SKILL.md",

@@ -57,6 +57,28 @@ docs/plans/YYYY-MM-DD-<feature-name>.md
 
 Do not save Patchmill plans under `docs/superpowers/`.
 
+### Unattended Run-once phases
+
+When Patchmill invokes this skill for unattended Run-once work, the prompt names
+the review context: a dedicated planning pull request, a spec and plan sharing
+the same phase, a verified merged-base artifact, or an artifact carried by the
+implementation pull request.
+
+In that phase:
+
+1. Edit and commit only the requested spec or plan artifact in the active phase
+   workspace.
+2. Self-review the complete document against the issue, approved source
+   material, project instructions, and Testing Value Gate.
+3. Return only the terminal JSON contract requested by the prompt.
+
+Run-once owns push, pull request creation, review stops, merge reconciliation,
+labels, and cleanup. Do not call `set-spec` or `set-plan`, create or merge a
+pull request, or treat an approval label as review evidence.
+
+After an issue has been declared ready, a stricter automation prompt may skip an
+interactive approval ceremony. It does not skip document self-review.
+
 ### Testing Value Gate
 
 Before planning a new automated test, apply Patchmill's Testing Value Gate:
