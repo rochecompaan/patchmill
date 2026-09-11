@@ -8,6 +8,7 @@ import type { PullRequestHost } from "../../../host/pull-requests.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
+import { PlanningStateValidationError } from "../../../workflow/planning-state.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
@@ -309,7 +310,17 @@ export async function runPlanningImplementation(
         state,
         result: blocked("implementation-branch"),
       };
-    state = await replace(input, state, branchPushed);
+    try {
+      state = await replace(input, state, branchPushed);
+    } catch (error) {
+      if (error instanceof PlanningStateValidationError)
+        return {
+          kind: "blocked",
+          state,
+          result: blocked("implementation-evidence"),
+        };
+      throw error;
+    }
     phase = state.phases[input.phaseIndex];
   }
   if (phase?.kind !== "implementation" || phase.status !== "branch-pushed")

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
+import { validatePlanningState } from "../../../workflow/planning-state.ts";
 import { runPlanningImplementation } from "./planning-implementation.ts";
 
 const oid = (value: string) => value.repeat(40);
@@ -183,6 +184,36 @@ test("validates a matching resumed implementation pull request with the host", a
   assert.equal(result.state.phases[0]?.status, "pull-request-open");
   assert.equal(agentRuns, 1);
   assert.equal(hostReads, 1);
+});
+
+test("blocks invalid successful agent evidence before PR validation", async () => {
+  let hostReads = 0;
+  const result = await runPlanningImplementation(
+    input({
+      runAgent: async () => ({
+        status: "pr-created",
+        prUrl: "https://github.com/acme/patchmill/pull/189",
+        branch: "agent/189",
+        commits: [],
+        validation: [],
+      }),
+      stateStore: {
+        replace: async ({ next }: { next: unknown }) =>
+          validatePlanningState(next),
+      },
+      host: {
+        ...input().host,
+        getPullRequest: async () => {
+          hostReads += 1;
+          throw new Error("unexpected host read");
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked")
+    assert.equal(result.result.reason, "implementation-evidence");
+  assert.equal(hostReads, 0);
 });
 
 test("checkpoints clean committed blocker progress for resumption", async () => {

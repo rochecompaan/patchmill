@@ -110,9 +110,7 @@ export function legacyActiveForIssue(
   if (isResumableRunState(legacy) || hasFinishedPlanningWorkspaceState(legacy))
     return true;
   return (
-    config.issueNumber !== undefined &&
-    hasBlockedRunRecoveryState(legacy) &&
-    issue.labels.includes(lifecycleLabels(config).ready)
+    config.issueNumber === issue.number && hasBlockedRunRecoveryState(legacy)
   );
 }
 

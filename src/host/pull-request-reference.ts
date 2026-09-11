@@ -65,10 +65,12 @@ export function pullRequestUrlMatchesReference(
   try {
     const parsed = parsePullRequestUrl(prUrl, segment);
     const authority = /^https?:\/\/([^/?#]+)/u.exec(prUrl)?.[1];
+    const parsedAuthority = `${parsed.hostname}${
+      parsed.port === "" ? "" : `:${parsed.port}`
+    }`;
     return (
-      authority !== undefined &&
-      !authority.includes(":") &&
-      parsed.hostname === reference.targetRepository.host &&
+      authority === reference.targetRepository.host &&
+      parsedAuthority === reference.targetRepository.host &&
       parsed.owner === reference.targetRepository.owner &&
       parsed.repository === reference.targetRepository.repository &&
       parsed.number === reference.number

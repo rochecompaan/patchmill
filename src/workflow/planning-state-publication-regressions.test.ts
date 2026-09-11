@@ -362,6 +362,35 @@ test("requires durable pull request URLs to identify their exact reference", () 
   }
 });
 
+test("accepts a non-default-port Forgejo durable pull request reference", () => {
+  const value = structuredClone(phase("pull-request-open"));
+  const forgejo = {
+    provider: "forgejo-tea",
+    host: "forge.test:8443",
+    owner: "acme",
+    repository: "patchmill",
+  };
+  (
+    value.publication as { targetRepository: unknown; headRepository: unknown }
+  ).targetRepository = forgejo;
+  (
+    value.publication as { targetRepository: unknown; headRepository: unknown }
+  ).headRepository = forgejo;
+  (
+    value.pullRequest as {
+      reference: { targetRepository: unknown };
+      url: string;
+    }
+  ).reference.targetRepository = forgejo;
+  (
+    value.pullRequest as {
+      reference: { targetRepository: unknown };
+      url: string;
+    }
+  ).url = "https://forge.test:8443/acme/patchmill/pulls/188";
+  assert.doesNotThrow(() => validatePlanningState(document(value)));
+});
+
 test("requires planner artifact order and source-specific commit evidence", () => {
   const planBase = {
     ...base,

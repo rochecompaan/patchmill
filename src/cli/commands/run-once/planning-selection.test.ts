@@ -177,11 +177,7 @@ test("reserves blocked legacy recovery for an explicit ready retry", () => {
     false,
   );
   assert.equal(
-    legacyActiveForIssue(
-      issue(3, ["agent-ready"]),
-      { ...config, issueNumber: 3 },
-      blocked,
-    ),
+    legacyActiveForIssue(issue(3, []), { ...config, issueNumber: 3 }, blocked),
     true,
   );
 });
