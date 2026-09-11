@@ -1,9 +1,3 @@
-import {
-  isPlanningArtifactPath,
-  isPlanningBranch,
-  isPlanningSingleLine,
-  planningOid,
-} from "../git/planning-git-validation.ts";
 import type {
   PlanningWorkspaceIdentity,
   PlanningWorkspaceOwnership,
@@ -14,10 +8,7 @@ import {
   type PullRequestReference,
   type RepositoryIdentity,
 } from "../host/pull-requests.ts";
-import {
-  PLANNING_PR_WORKFLOW_VERSION,
-  type PlanningPhaseKind,
-} from "./planning-pull-request-markers.ts";
+import { PLANNING_PR_WORKFLOW_VERSION } from "./planning-pull-request-markers.ts";
 import {
   planningPhasePlan,
   type PlanningArtifactKind,
@@ -35,92 +26,25 @@ import {
   PlanningPublicationRepositoryError,
 } from "./planning-publication-repositories.ts";
 
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-export class PlanningStateValidationError extends Error {
-  readonly reason: string;
-  readonly path: string;
-  readonly statePath?: string;
-  constructor(reason: string, path: string, statePath?: string) {
-    super(`Planning state is invalid: ${reason} at ${path}`);
-    this.name = "PlanningStateValidationError";
-    this.reason = reason;
-    this.path = path;
-    if (statePath !== undefined) this.statePath = statePath;
-  }
-}
-const fail = (reason: string, path: string): never => {
-  throw new PlanningStateValidationError(reason, path);
-};
-const object = (
-  value: unknown,
-  keys: readonly string[],
-  path: string,
-): Record<string, unknown> => objectWithOptionalKeys(value, keys, [], path);
-const objectWithOptionalKeys = (
-  value: unknown,
-  requiredKeys: readonly string[],
-  optionalKeys: readonly string[],
-  path: string,
-): Record<string, unknown> => {
-  if (value === null || typeof value !== "object" || Array.isArray(value))
-    fail("expected-object", path);
-  const result = value as Record<string, unknown>;
-  const allowedKeys = [...requiredKeys, ...optionalKeys];
-  for (const key of Object.keys(result))
-    if (!allowedKeys.includes(key)) fail("unknown-key", `${path}.${key}`);
-  for (const key of requiredKeys)
-    if (!(key in result)) fail("missing-key", `${path}.${key}`);
-  return result;
-};
-const string = (
-  value: unknown,
-  path: string,
-  reason = "invalid-string",
-): string => (typeof value === "string" ? value : fail(reason, path));
-const positive = (value: unknown, path: string): number =>
-  Number.isSafeInteger(value) && (value as number) > 0
-    ? (value as number)
-    : fail("invalid-positive-integer", path);
-const nonnegative = (value: unknown, path: string): number =>
-  Number.isSafeInteger(value) && (value as number) >= 0
-    ? (value as number)
-    : fail("invalid-nonnegative-integer", path);
-const oid = (value: unknown, path: string): string => {
-  const parsed = string(value, path);
-  return planningOid.test(parsed) ? parsed : fail("invalid-oid", path);
-};
-const singleLine = (value: unknown, path: string): string => {
-  const parsed = string(value, path);
-  return isPlanningSingleLine(parsed) ? parsed : fail("invalid-string", path);
-};
-const nonblankSingleLine = (value: unknown, path: string): string => {
-  const parsed = singleLine(value, path);
-  return parsed.trim().length > 0 ? parsed : fail("invalid-string", path);
-};
-const branch = (value: unknown, path: string): string => {
-  const parsed = string(value, path);
-  return isPlanningBranch(parsed) ? parsed : fail("invalid-branch", path);
-};
-const artifactPath = (value: unknown, path: string): string => {
-  const parsed = string(value, path);
-  return isPlanningArtifactPath(parsed) ? parsed : fail("invalid-path", path);
-};
-function timestamp(value: unknown, path: string): string {
-  const parsed = string(value, path);
-  return ISO_TIMESTAMP.test(parsed) &&
-    !Number.isNaN(Date.parse(parsed)) &&
-    new Date(parsed).toISOString() === parsed
-    ? parsed
-    : fail("invalid-timestamp", path);
-}
-function phase(value: unknown, path: string): PlanningPhaseKind {
-  const parsed = string(value, path);
-  return parsed === "spec" || parsed === "plan" || parsed === "implementation"
-    ? parsed
-    : fail("invalid-phase", path);
-}
+import {
+  UUID,
+  artifactPath,
+  branch,
+  fail,
+  nonblankSingleLine,
+  nonnegative,
+  object,
+  objectWithOptionalKeys,
+  oid,
+  phase,
+  PlanningStateValidationError,
+  positive,
+  singleLine,
+  string,
+  timestamp,
+} from "./planning-state-codec.ts";
+export { PlanningStateValidationError } from "./planning-state-codec.ts";
+
 function repository(value: unknown, path: string): RepositoryIdentity {
   const parsed = object(
     value,
