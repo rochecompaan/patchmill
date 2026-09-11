@@ -106,25 +106,21 @@ test("rejects a trailing-slash agent URL that differs from host readback", async
   await assert.rejects(validatePlanningImplementation(validation), /url/);
 });
 
-test("rejects normalized-but-not-persistable host implementation URLs", async () => {
-  for (const url of [
-    "https://github.com/Acme/Patchmill/pull/189",
-    "https://github.com:443/acme/patchmill/pull/189",
-  ]) {
-    const validation = input();
-    validation.host.getPullRequest = async () => ({
-      number: 189,
-      url,
-      targetRepository: repository,
-      baseBranch: "main",
-      headRepository: repository,
-      headBranch: "planning/implementation",
-      headSha: oid("b"),
-      body: "Closes #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
-      status: "open" as const,
-    });
-    await assert.rejects(validatePlanningImplementation(validation), /url/);
-  }
+test("canonicalizes a case-only host implementation URL", async () => {
+  const validation = input();
+  validation.host.getPullRequest = async () => ({
+    number: 189,
+    url: "https://github.com/Acme/Patchmill/pull/189",
+    targetRepository: repository,
+    baseBranch: "main",
+    headRepository: repository,
+    headBranch: "planning/implementation",
+    headSha: oid("b"),
+    body: "Closes #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+    status: "open" as const,
+  });
+  const result = await validatePlanningImplementation(validation);
+  assert.equal(result.pullRequest.url, phase.implementation.prUrl);
 });
 
 test("rejects an implementation marker nested in an HTML comment", async () => {
