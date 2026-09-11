@@ -1,3 +1,5 @@
+import { sameRepositoryIdentity } from "./pull-requests.ts";
+
 export type ParsedPullRequestUrl = Readonly<{
   protocol: "http:" | "https:";
   hostname: string;
@@ -69,10 +71,16 @@ export function pullRequestUrlMatchesReference(
       parsed.port === "" ? "" : `:${parsed.port}`
     }`;
     return (
-      authority === reference.targetRepository.host &&
-      parsedAuthority === reference.targetRepository.host &&
-      parsed.owner === reference.targetRepository.owner &&
-      parsed.repository === reference.targetRepository.repository &&
+      authority?.toLowerCase() === parsedAuthority.toLowerCase() &&
+      sameRepositoryIdentity(
+        {
+          provider: reference.targetRepository.provider,
+          host: parsedAuthority,
+          owner: parsed.owner,
+          repository: parsed.repository,
+        },
+        reference.targetRepository,
+      ) &&
       parsed.number === reference.number
     );
   } catch {

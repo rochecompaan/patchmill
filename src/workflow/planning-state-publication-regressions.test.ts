@@ -389,6 +389,9 @@ test("accepts a non-default-port Forgejo durable pull request reference", () => 
     }
   ).url = "https://forge.test:8443/acme/patchmill/pulls/188";
   assert.doesNotThrow(() => validatePlanningState(document(value)));
+  (value.pullRequest as { url: string }).url =
+    "https://FORGE.TEST:8443/Acme/Patchmill/pulls/188";
+  assert.doesNotThrow(() => validatePlanningState(document(value)));
 });
 
 test("requires planner artifact order and source-specific commit evidence", () => {
