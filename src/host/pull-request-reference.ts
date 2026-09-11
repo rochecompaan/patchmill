@@ -57,37 +57,56 @@ export function pullRequestNumber(prUrl: string, pathSegment: string): number {
   return parsePullRequestUrl(prUrl, pathSegment).number;
 }
 
+export type CanonicalPullRequestUrl = Readonly<{
+  reference: import("./pull-requests.ts").PullRequestReference;
+  url: string;
+}>;
+
+/** Parses and canonicalizes a provider URL for one durable repository identity. */
+export function parseCanonicalPullRequestUrl(
+  prUrl: string,
+  targetRepository: import("./pull-requests.ts").RepositoryIdentity,
+): CanonicalPullRequestUrl | undefined {
+  const segment = targetRepository.provider === "github-gh" ? "pull" : "pulls";
+  try {
+    const parsed = parsePullRequestUrl(prUrl, segment);
+    const parsedAuthority = `${parsed.hostname}${
+      parsed.port === "" ? "" : `:${parsed.port}`
+    }`;
+    if (
+      !sameRepositoryIdentity(
+        {
+          provider: targetRepository.provider,
+          host: parsedAuthority,
+          owner: parsed.owner,
+          repository: parsed.repository,
+        },
+        targetRepository,
+      )
+    )
+      return undefined;
+    const reference = { targetRepository, number: parsed.number };
+    return {
+      reference,
+      url: `${parsed.protocol}//${targetRepository.host.toLowerCase()}/${targetRepository.owner.toLowerCase()}/${targetRepository.repository.toLowerCase()}/${segment}/${parsed.number}`,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /** Canonicalizes one provider URL only when it identifies its durable reference. */
 export function canonicalPullRequestUrl(
   prUrl: string,
   reference: import("./pull-requests.ts").PullRequestReference,
 ): string | undefined {
-  const segment =
-    reference.targetRepository.provider === "github-gh" ? "pull" : "pulls";
-  try {
-    const parsed = parsePullRequestUrl(prUrl, segment);
-    const authority = /^https?:\/\/([^/?#]+)/u.exec(prUrl)?.[1];
-    const parsedAuthority = `${parsed.hostname}${
-      parsed.port === "" ? "" : `:${parsed.port}`
-    }`;
-    if (
-      authority?.toLowerCase() !== parsedAuthority.toLowerCase() ||
-      !sameRepositoryIdentity(
-        {
-          provider: reference.targetRepository.provider,
-          host: parsedAuthority,
-          owner: parsed.owner,
-          repository: parsed.repository,
-        },
-        reference.targetRepository,
-      ) ||
-      parsed.number !== reference.number
-    )
-      return undefined;
-    return `${parsed.protocol}//${reference.targetRepository.host.toLowerCase()}/${reference.targetRepository.owner.toLowerCase()}/${reference.targetRepository.repository.toLowerCase()}/${segment}/${reference.number}`;
-  } catch {
-    return undefined;
-  }
+  const canonical = parseCanonicalPullRequestUrl(
+    prUrl,
+    reference.targetRepository,
+  );
+  return canonical?.reference.number === reference.number
+    ? canonical.url
+    : undefined;
 }
 
 export function pullRequestUrlMatchesReference(

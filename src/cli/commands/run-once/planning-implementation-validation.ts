@@ -5,7 +5,7 @@ import {
   sameRepositoryIdentity,
   type PullRequestHost,
 } from "../../../host/pull-requests.ts";
-import { parsePullRequestUrl } from "../../../host/pull-request-reference.ts";
+import { parseCanonicalPullRequestUrl } from "../../../host/pull-request-reference.ts";
 import { assertImplementationClosingReference } from "../../../workflow/planning-implementation-body.ts";
 import {
   assertPlanningImplementationAncestry,
@@ -87,23 +87,12 @@ export async function validatePlanningImplementation(
   if (!sameRepositoryIdentity(headRepository, phase.publication.headRepository))
     fail("head-repository");
   assertPlanningPublicationRepositories(phase.publication);
-  const segment = targetRepository.provider === "github-gh" ? "pull" : "pulls";
-  let number: number;
-  try {
-    const parsed = parsePullRequestUrl(phase.implementation.prUrl, segment);
-    const host = `${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`;
-    if (
-      host.toLowerCase() !== targetRepository.host.toLowerCase() ||
-      parsed.owner.toLowerCase() !== targetRepository.owner.toLowerCase() ||
-      parsed.repository.toLowerCase() !==
-        targetRepository.repository.toLowerCase()
-    )
-      fail("url");
-    number = parsed.number;
-  } catch (error) {
-    if (error instanceof PlanningImplementationValidationError) throw error;
-    fail("url");
-  }
+  const canonical = parseCanonicalPullRequestUrl(
+    phase.implementation.prUrl,
+    targetRepository,
+  );
+  if (canonical === undefined) fail("url");
+  const { number } = canonical.reference;
   let validated: ReturnType<typeof validatePlanningPullRequestSummary>;
   try {
     const summary = await input.host.getPullRequest({

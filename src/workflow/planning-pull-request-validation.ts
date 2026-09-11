@@ -3,10 +3,7 @@ import {
   type PullRequestReference,
   type PullRequestSummary,
 } from "../host/pull-requests.ts";
-import {
-  canonicalPullRequestUrl,
-  parsePullRequestUrl,
-} from "../host/pull-request-reference.ts";
+import { parseCanonicalPullRequestUrl } from "../host/pull-request-reference.ts";
 import {
   parsePlanningPullRequestMarker,
   PlanningPullRequestMarkerError,
@@ -79,23 +76,16 @@ export function validatePlanningPullRequestSummary(input: {
       marker.phase !== input.phase
     )
       fail("ownership-marker");
-    const segment =
-      summary.targetRepository.provider === "github-gh" ? "pull" : "pulls";
-    const parsed = parsePullRequestUrl(summary.url, segment);
+    const canonical = parseCanonicalPullRequestUrl(
+      summary.url,
+      summary.targetRepository,
+    );
     if (
-      `${parsed.hostname}${parsed.port === "" ? "" : `:${parsed.port}`}`.toLowerCase() !==
-        summary.targetRepository.host.toLowerCase() ||
-      parsed.owner.toLowerCase() !==
-        summary.targetRepository.owner.toLowerCase() ||
-      parsed.repository.toLowerCase() !==
-        summary.targetRepository.repository.toLowerCase() ||
-      parsed.number !== summary.number
+      canonical === undefined ||
+      canonical.reference.number !== summary.number
     )
       fail("url");
-    const reference = {
-      targetRepository: summary.targetRepository,
-      number: summary.number,
-    };
+    const reference = canonical.reference;
     if (
       input.expectedReference !== undefined &&
       (!sameRepositoryIdentity(
@@ -105,9 +95,7 @@ export function validatePlanningPullRequestSummary(input: {
         reference.number !== input.expectedReference.number)
     )
       fail("reference");
-    const url = canonicalPullRequestUrl(summary.url, reference);
-    if (url === undefined) fail("url");
-    return { summary, reference, url };
+    return { summary, reference, url: canonical.url };
   } catch (error) {
     if (error instanceof PlanningPullRequestValidationError) throw error;
     if (error instanceof PlanningPullRequestMarkerError)

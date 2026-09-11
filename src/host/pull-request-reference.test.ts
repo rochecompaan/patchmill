@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  parseCanonicalPullRequestUrl,
   parsePullRequestUrl,
   pullRequestNumber,
   sameCanonicalUrl,
@@ -57,6 +58,57 @@ test("parsePullRequestUrl exposes canonical URL parts without accepting unsafe f
     "https://github.com/acme/repo/pull/9007199254740992",
   ])
     assert.throws(() => parsePullRequestUrl(value, "pull"));
+});
+
+test("parseCanonicalPullRequestUrl normalizes default ports and preserves Forgejo ports", () => {
+  const github = {
+    provider: "github-gh" as const,
+    host: "github.com",
+    owner: "acme",
+    repository: "repo",
+  };
+  assert.deepEqual(
+    parseCanonicalPullRequestUrl(
+      "https://GITHUB.COM:443/Acme/Repo/pull/42/",
+      github,
+    ),
+    {
+      reference: { targetRepository: github, number: 42 },
+      url: "https://github.com/acme/repo/pull/42",
+    },
+  );
+  const forgejo = {
+    provider: "forgejo-tea" as const,
+    host: "forge.example:8443",
+    owner: "acme",
+    repository: "repo",
+  };
+  assert.equal(
+    parseCanonicalPullRequestUrl(
+      "https://FORGE.EXAMPLE:8443/Acme/Repo/pulls/42/",
+      forgejo,
+    )?.url,
+    "https://forge.example:8443/acme/repo/pulls/42",
+  );
+  assert.equal(
+    parseCanonicalPullRequestUrl(
+      "https://github.com/acme/repo/pulls/42",
+      github,
+    ),
+    undefined,
+  );
+  assert.equal(
+    parseCanonicalPullRequestUrl(
+      "https://github.com/other/repo/pull/42",
+      github,
+    ),
+    undefined,
+  );
+  assert.equal(
+    parseCanonicalPullRequestUrl("https://github.com/acme/repo/pull/43", github)
+      ?.reference.number,
+    43,
+  );
 });
 
 test("sameCanonicalUrl accepts canonical case-only repository URLs", () => {
