@@ -1,4 +1,4 @@
-import { createHash, type BinaryLike } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   BUNDLED_PATCHMILL_SKILLS,
   bundledSkillByKey,
@@ -152,7 +152,10 @@ export function buildRecommendedProjectSkillConfig(
   };
 }
 
-export function hashContent(content: BinaryLike): string {
+/** Matches the byte-view input accepted by createHash.update. */
+type HashContentInput = Parameters<ReturnType<typeof createHash>["update"]>[0];
+
+export function hashContent(content: HashContentInput): string {
   return createHash("sha256").update(content).digest("hex");
 }
 

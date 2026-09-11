@@ -9,7 +9,7 @@ import {
 } from "../../../workflow/skill-pack.ts";
 import { bundledVisualEvidenceSkillPath } from "../../../workflow/skills.ts";
 import { runStatePath } from "./run-state.ts";
-import { runOneIssue } from "./pipeline.ts";
+import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { assertNoLegacyProjectText } from "../../../../test-support/legacy-project-text.ts";
 import {
   DEFAULT_LABEL_NAMES,

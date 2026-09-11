@@ -125,6 +125,28 @@ test("writes severity-specific complete JSONL result events", async () => {
       },
       "warning",
     ],
+    [
+      {
+        status: "review-pending",
+        issueNumber: 174,
+        phase: "spec",
+        prUrl: "https://example.test/pulls/174",
+      },
+      "warning",
+    ],
+    [
+      {
+        status: "stopped",
+        issueNumber: 174,
+        reason: "plan-only",
+        nextPhase: "implementation",
+        specPath: "docs/specs/174.md",
+        planPath: "docs/plans/174.md",
+        branch: "agent/issue-174",
+        worktreePath: ".worktrees/174",
+      },
+      "warning",
+    ],
     [{ status: "error", error: "failed" }, "error"],
   ];
   for (const [result, level] of cases) {
@@ -158,6 +180,17 @@ test("preserves the exit-code contract for every status", () => {
     [{ status: "plan-found", issueNumber: 1, planPath: "plan.md" }, 0],
     [summary, 0],
     [{ ...summary, status: "merged", mergeCommit: "abc" }, 0],
+    [
+      {
+        status: "review-pending",
+        issueNumber: 1,
+        phase: "plan",
+        prUrl: "https://example.test/pulls/1",
+      },
+      0,
+    ],
+    [{ status: "stopped", issueNumber: 1, reason: "plan-only" }, 0],
+    [{ status: "stopped", issueNumber: 1, reason: "issue-locked" }, 0],
     [
       {
         status: "approval-required",

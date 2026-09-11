@@ -3,12 +3,13 @@ import {
   type PullRequestReference,
   type PullRequestSummary,
 } from "../host/pull-requests.ts";
-import { parsePullRequestUrl } from "../host/pull-request-reference.ts";
+import { parseCanonicalPullRequestUrl } from "../host/pull-request-reference.ts";
 import {
   parsePlanningPullRequestMarker,
   PlanningPullRequestMarkerError,
 } from "./planning-pull-request-markers.ts";
 import type { PlanningPublicationEvidence } from "./planning-state-types.ts";
+import type { PlanningPhaseKind } from "./planning-pull-request-markers.ts";
 import {
   assertPlanningPublicationRepositories as assertPublicationRepositories,
   PlanningPublicationRepositoryError,
@@ -44,7 +45,7 @@ export function assertPlanningPublicationRepositories(input: {
 export function validatePlanningPullRequestSummary(input: {
   summary: PullRequestSummary;
   issueNumber: number;
-  phase: "spec" | "plan";
+  phase: PlanningPhaseKind;
   publication: PlanningPublicationEvidence;
   expectedReference?: PullRequestReference;
 }): ValidatedPlanningPullRequest {
@@ -75,23 +76,16 @@ export function validatePlanningPullRequestSummary(input: {
       marker.phase !== input.phase
     )
       fail("ownership-marker");
-    const segment =
-      summary.targetRepository.provider === "github-gh" ? "pull" : "pulls";
-    const parsed = parsePullRequestUrl(summary.url, segment);
+    const canonical = parseCanonicalPullRequestUrl(
+      summary.url,
+      summary.targetRepository,
+    );
     if (
-      `${parsed.hostname}${parsed.port === "" ? "" : `:${parsed.port}`}`.toLowerCase() !==
-        summary.targetRepository.host.toLowerCase() ||
-      parsed.owner.toLowerCase() !==
-        summary.targetRepository.owner.toLowerCase() ||
-      parsed.repository.toLowerCase() !==
-        summary.targetRepository.repository.toLowerCase() ||
-      parsed.number !== summary.number
+      canonical === undefined ||
+      canonical.reference.number !== summary.number
     )
       fail("url");
-    const reference = {
-      targetRepository: summary.targetRepository,
-      number: summary.number,
-    };
+    const reference = canonical.reference;
     if (
       input.expectedReference !== undefined &&
       (!sameRepositoryIdentity(
@@ -101,7 +95,7 @@ export function validatePlanningPullRequestSummary(input: {
         reference.number !== input.expectedReference.number)
     )
       fail("reference");
-    return { summary, reference, url: summary.url };
+    return { summary, reference, url: canonical.url };
   } catch (error) {
     if (error instanceof PlanningPullRequestValidationError) throw error;
     if (error instanceof PlanningPullRequestMarkerError)

@@ -1099,3 +1099,26 @@ test("buildImplementationRepairPrompt identifies when no unresolved subagent run
   });
   assert.match(prompt, /No unresolved async subagent runs were detected/);
 });
+
+test("buildImplementationPrompt renders an optional planning pull request marker", () => {
+  const prompt = buildImplementationPrompt({
+    issue: { ...issue, number: 189 },
+    planPath: "docs/plans/issue-189.md",
+    branch: "agent/issue-189-implementation",
+    worktreePath: ".worktrees/issue-189-implementation",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    projectPolicy: examplePolicy,
+    requiredPullRequestMarker:
+      "<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+  });
+  assert.match(prompt, /Direct landing is disabled for this planning workflow/);
+  assert.match(prompt, /Closes #189/);
+  assert.match(
+    prompt,
+    /<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->/,
+  );
+  assert.match(
+    prompt,
+    /Closes #189\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->\n```/,
+  );
+});

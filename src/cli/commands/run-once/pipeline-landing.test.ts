@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { runStatePath } from "./run-state.ts";
-import { runOneIssue } from "./pipeline.ts";
+import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import {
   issue,
   issueListPayload,

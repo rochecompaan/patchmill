@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { runOneIssue } from "./pipeline.ts";
+import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import { writeRunState } from "./run-state.ts";
 import {

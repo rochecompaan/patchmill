@@ -346,6 +346,54 @@ test("rejects artifact, publication, cleanup, pull request, and phase-order cont
   invalid(outOfOrder, "progress-order", "$.phases[1]");
 });
 
+test("requires durable pull request URLs to identify their exact reference", () => {
+  for (const [name, url] of [
+    ["number", "https://github.com/acme/patchmill/pull/189"],
+    ["repository", "https://github.com/acme/other/pull/188"],
+  ]) {
+    const value = structuredClone(phase("pull-request-open"));
+    (value.pullRequest as { url: string }).url = url;
+    invalid(
+      document(value),
+      "pull-request-mismatch",
+      "$.phases[0].pullRequest",
+    );
+    assert.ok(name);
+  }
+});
+
+test("accepts a non-default-port Forgejo durable pull request reference", () => {
+  const value = structuredClone(phase("pull-request-open"));
+  const forgejo = {
+    provider: "forgejo-tea",
+    host: "forge.test:8443",
+    owner: "acme",
+    repository: "patchmill",
+  };
+  (
+    value.publication as { targetRepository: unknown; headRepository: unknown }
+  ).targetRepository = forgejo;
+  (
+    value.publication as { targetRepository: unknown; headRepository: unknown }
+  ).headRepository = forgejo;
+  (
+    value.pullRequest as {
+      reference: { targetRepository: unknown };
+      url: string;
+    }
+  ).reference.targetRepository = forgejo;
+  (
+    value.pullRequest as {
+      reference: { targetRepository: unknown };
+      url: string;
+    }
+  ).url = "https://forge.test:8443/acme/patchmill/pulls/188";
+  assert.doesNotThrow(() => validatePlanningState(document(value)));
+  (value.pullRequest as { url: string }).url =
+    "https://FORGE.TEST:8443/Acme/Patchmill/pulls/188";
+  assert.doesNotThrow(() => validatePlanningState(document(value)));
+});
+
 test("requires planner artifact order and source-specific commit evidence", () => {
   const planBase = {
     ...base,
@@ -385,6 +433,23 @@ test("requires planner artifact order and source-specific commit evidence", () =
     phases: [planPhase, { kind: "implementation", status: "pending" }],
   };
   assert.doesNotThrow(() => validatePlanningState(value));
+  const distinctWorkspaceArtifacts = structuredClone(value);
+  distinctWorkspaceArtifacts.phases[0].workspace.headOid = oid("d");
+  distinctWorkspaceArtifacts.phases[0].artifacts = [
+    {
+      kind: "spec",
+      path: "docs/specs/a.md",
+      source: "workspace",
+      commitOid: oid("c"),
+    },
+    {
+      kind: "plan",
+      path: "docs/plans/a.md",
+      source: "workspace",
+      commitOid: oid("d"),
+    },
+  ];
+  assert.doesNotThrow(() => validatePlanningState(distinctWorkspaceArtifacts));
   const reversed = structuredClone(value);
   reversed.phases[0].artifacts.reverse();
   invalid(reversed, "artifact-kinds", "$.phases[0].artifacts");

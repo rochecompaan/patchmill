@@ -137,16 +137,25 @@ function rejectionForIssue(
   };
 }
 
+export function compareIssuesByPriority(
+  left: IssueSummary,
+  right: IssueSummary,
+  priorityLabels: readonly string[],
+): number {
+  const priorityDifference =
+    priorityRank(left.labels, priorityLabels) -
+    priorityRank(right.labels, priorityLabels);
+  return priorityDifference !== 0
+    ? priorityDifference
+    : left.number - right.number;
+}
+
 function compareIssues(
   left: IssueSummary,
   right: IssueSummary,
   options: ResolvedIssueSelectionOptions,
 ): number {
-  const priorityDifference =
-    priorityRank(left.labels, options.priorityLabels) -
-    priorityRank(right.labels, options.priorityLabels);
-  if (priorityDifference !== 0) return priorityDifference;
-  return left.number - right.number;
+  return compareIssuesByPriority(left, right, options.priorityLabels);
 }
 
 export function selectIssueWithDiagnostics(

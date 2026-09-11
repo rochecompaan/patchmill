@@ -16,7 +16,8 @@ import {
 } from "./planning-pull-request-validation.ts";
 import { renderPlanningPullRequestMarker } from "./planning-pull-request-markers.ts";
 
-const oid = "a".repeat(40);
+const oid = "b".repeat(40);
+const baseOid = "a".repeat(40);
 const github = {
   provider: "github-gh" as const,
   host: "github.com",
@@ -98,7 +99,7 @@ test("state parsing and pull request validation agree on publication repositorie
           base: {
             remote: "origin",
             baseBranch: "main",
-            baseOid: oid,
+            baseOid,
             artifactCandidates: { spec: ["docs/specs/a.md"], plan: [] },
           },
           workspace: {
@@ -110,7 +111,7 @@ test("state parsing and pull request validation agree on publication repositorie
             },
             remote: "origin",
             baseBranch: "main",
-            baseOid: oid,
+            baseOid,
             headOid: oid,
             cleanup: { state: "ready" },
           },

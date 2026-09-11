@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { AgentIssueConsoleProgressReporter } from "./console-progress.ts";
-import { runOneIssue } from "./pipeline.ts";
+import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { compositeProgressReporter } from "./progress.ts";
 import { writeRunOnceResult } from "./result-output.ts";
 import { summarizeResult } from "./result-summary.ts";

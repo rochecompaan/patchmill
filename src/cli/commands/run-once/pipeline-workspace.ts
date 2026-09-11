@@ -1,4 +1,4 @@
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   buildIssueBranchName,
   buildIssueWorktreePath,
@@ -52,7 +52,7 @@ export function resumePlanningArtifactPolicy(input: {
   existingState: NonNullable<Awaited<ReturnType<typeof readRunState>>>;
   resolvedArtifacts: ResolvedIssueArtifactSources;
 }): PlanningArtifactPolicy {
-  const worktreeRoot = join(input.config.repoRoot, input.worktreePath);
+  const worktreeRoot = resolve(input.config.repoRoot, input.worktreePath);
   return {
     kind: "implementation-resume",
     primary: {
@@ -122,7 +122,7 @@ export function planningArtifactPolicyForWorkspace(input: {
     resolvedArtifacts: input.resolvedArtifacts,
     allowGeneratedSpec: input.allowGeneratedSpec,
     allowGeneratedPlan: input.allowGeneratedPlan,
-    workspaceRoot: join(input.config.repoRoot, input.worktreePath),
+    workspaceRoot: resolve(input.config.repoRoot, input.worktreePath),
   });
 }
 
@@ -137,7 +137,7 @@ export function freshPlanningArtifactPolicy(input: {
   const worktreeRoot =
     input.workspaceRoot ??
     (input.existingState?.worktreePath
-      ? join(input.config.repoRoot, input.existingState.worktreePath)
+      ? resolve(input.config.repoRoot, input.existingState.worktreePath)
       : undefined);
   const primaryRoot = worktreeRoot ?? input.config.repoRoot;
 

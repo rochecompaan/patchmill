@@ -5,7 +5,7 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../src/config/defaults.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { createPatchmillLabelCatalog } from "../../src/policy/label-catalog.ts";
 import { createWorkflowApprovalPolicy } from "../../src/workflow/approval-policy.ts";
-import { runOneIssue } from "../../src/cli/commands/run-once/pipeline.ts";
+import { runLegacyOneIssue as runOneIssue } from "../../src/cli/commands/run-once/pipeline-legacy.ts";
 import {
   runStatePath,
   writeRunState,

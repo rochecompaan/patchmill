@@ -1,0 +1,233 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  assertPlanningStateReplacement,
+  validatePlanningState,
+  type PlanningImplementationFinishCheckpoints,
+  type PlanningStateV1,
+} from "../../../workflow/planning-state.ts";
+import { finishPlanningImplementation } from "./planning-finish.ts";
+
+const oid = (v: string) => v.repeat(40);
+function state(
+  finish: PlanningImplementationFinishCheckpoints = {},
+  cleanup: "ready" | "worktree-removed" | "removed" = "ready",
+): PlanningStateV1 {
+  const workspace = {
+    runId: "123e4567-e89b-42d3-a456-426614174000",
+    phase: "implementation" as const,
+    identity: { branch: "agent/189", worktreePath: ".worktrees/189" },
+    remote: "origin",
+    baseBranch: "main",
+    baseOid: oid("a"),
+    headOid: oid("b"),
+    cleanup:
+      cleanup === "ready"
+        ? { state: "ready" as const }
+        : { state: cleanup, pushedHeadOid: oid("b") },
+  };
+  return validatePlanningState({
+    version: 1,
+    workflowVersion: "planning-pr-v1",
+    runId: workspace.runId,
+    issueNumber: 189,
+    issueTitle: "Finish",
+    gates: { specRequired: false, planRequired: false },
+    revision: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    phases: [
+      {
+        kind: "implementation" as const,
+        status: "pull-request-open" as const,
+        base: {
+          remote: "origin",
+          baseBranch: "main",
+          baseOid: oid("a"),
+          artifactCandidates: { spec: [], plan: [] },
+        },
+        workspace,
+        artifacts: [
+          {
+            kind: "spec" as const,
+            path: "docs/specs/2026-01-01-issue-189-finish.md",
+            source: "workspace" as const,
+            commitOid: oid("b"),
+          },
+          {
+            kind: "plan" as const,
+            path: "docs/plans/2026-01-01-issue-189-finish.md",
+            source: "workspace" as const,
+            commitOid: oid("b"),
+          },
+        ],
+        publication: {
+          targetRepository: {
+            provider: "github-gh" as const,
+            host: "github.com",
+            owner: "a",
+            repository: "b",
+          },
+          headRepository: {
+            provider: "github-gh" as const,
+            host: "github.com",
+            owner: "a",
+            repository: "b",
+          },
+          baseBranch: "main",
+          headBranch: "agent/189",
+          headOid: oid("b"),
+        },
+        pullRequest: {
+          reference: {
+            targetRepository: {
+              provider: "github-gh" as const,
+              host: "github.com",
+              owner: "a",
+              repository: "b",
+            },
+            number: 1,
+          },
+          url: "https://github.com/a/b/pull/1",
+        },
+        implementation: {
+          status: "pr-created" as const,
+          prUrl: "https://github.com/a/b/pull/1",
+          branch: "agent/189",
+          commits: [oid("b")],
+          validation: ["npm test passed"],
+          visualEvidence: [],
+        },
+        finish,
+      },
+    ],
+  });
+}
+function input(initial = state(), fail?: string) {
+  const events: string[] = [];
+  const warnings: string[] = [];
+  const checkpoints: PlanningStateV1[] = [];
+  let current = initial;
+  return {
+    events,
+    warnings,
+    checkpoints,
+    state: () => current,
+    value: {
+      state: initial,
+      phaseIndex: 0,
+      lock: {} as never,
+      stateStore: {
+        replace: async ({ next }: { next: PlanningStateV1 }) => {
+          const validated = validatePlanningState(next);
+          assertPlanningStateReplacement(current, validated);
+          current = validated;
+          checkpoints.push(validated);
+          return validated;
+        },
+      },
+      workspaces: {
+        removeWorktree: async () => {
+          events.push("worktree");
+        },
+        removeBranch: async () => {
+          events.push("branch");
+        },
+      },
+      effects: Object.fromEntries(
+        [
+          "publishCost",
+          "validateVisualEvidence",
+          "postHandoff",
+          "cleanupHook",
+          "ensureDoneLabel",
+          "applyDoneLabels",
+        ].map((name) => [
+          name,
+          async () => {
+            events.push(name);
+            if (name === fail) throw new Error(name);
+          },
+        ]),
+      ) as never,
+      // The cost publication failure is intentionally warning-only.
+      onCostPublicationFailure: async () => {
+        warnings.push("cost-publication");
+      },
+    },
+  };
+}
+test("finishes in durable external-effect and cleanup order", async () => {
+  const run = input();
+  const result = await finishPlanningImplementation(run.value);
+  assert.equal(result.state.phases[0]?.status, "complete");
+  assert.deepEqual(run.events, [
+    "publishCost",
+    "validateVisualEvidence",
+    "postHandoff",
+    "cleanupHook",
+    "worktree",
+    "branch",
+    "ensureDoneLabel",
+    "applyDoneLabels",
+  ]);
+  assert.equal(run.checkpoints.length, 9);
+});
+test("warns before checkpointing a best-effort cost publication failure", async () => {
+  const run = input(state(), "publishCost");
+  await finishPlanningImplementation(run.value);
+  assert.deepEqual(run.warnings, ["cost-publication"]);
+  assert.equal(run.checkpoints[0]?.phases[0]?.status, "pull-request-open");
+  assert.equal(
+    (
+      run.checkpoints[0]?.phases[0] as {
+        finish?: { costPublicationCompleted?: boolean };
+      }
+    ).finish?.costPublicationCompleted,
+    true,
+  );
+});
+
+test("retries a failed cleanup hook from the last completed checkpoint", async () => {
+  const run = input();
+  let attempts = 0;
+  run.value.effects.cleanupHook = async () => {
+    run.events.push("cleanupHook");
+    if (attempts++ === 0) throw new Error("cleanup hook failed");
+  };
+  await assert.rejects(
+    finishPlanningImplementation(run.value),
+    /cleanup hook failed/,
+  );
+  assert.deepEqual(run.events, [
+    "publishCost",
+    "validateVisualEvidence",
+    "postHandoff",
+    "cleanupHook",
+  ]);
+
+  const resumed = await finishPlanningImplementation({
+    ...run.value,
+    state: run.state(),
+  });
+  assert.equal(resumed.state.phases[0]?.status, "complete");
+  assert.deepEqual(run.events, [
+    "publishCost",
+    "validateVisualEvidence",
+    "postHandoff",
+    "cleanupHook",
+    "cleanupHook",
+    "worktree",
+    "branch",
+    "ensureDoneLabel",
+    "applyDoneLabels",
+  ]);
+});
+test("effect failure prevents later effects", async () => {
+  const run = input(state(), "validateVisualEvidence");
+  await assert.rejects(
+    finishPlanningImplementation(run.value),
+    /validateVisualEvidence/,
+  );
+  assert.deepEqual(run.events, ["publishCost", "validateVisualEvidence"]);
+});

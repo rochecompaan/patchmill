@@ -76,3 +76,49 @@ test("summarizeErrorResult preserves aggregate causes and resolved log path", ()
     },
   );
 });
+
+test("summarizes planning review and explicit stops without leaking the issue", () => {
+  const issue = {
+    number: 189,
+    title: "Title",
+    body: "",
+    labels: [],
+    state: "open" as const,
+  };
+  assert.deepEqual(
+    summarizeResult({
+      status: "review-pending",
+      issue,
+      phase: "spec",
+      prUrl: "https://example.test/owner/repo/pull/12",
+    }),
+    {
+      status: "review-pending",
+      issueNumber: 189,
+      phase: "spec",
+      prUrl: "https://example.test/owner/repo/pull/12",
+    },
+  );
+  assert.deepEqual(
+    summarizeResult({
+      status: "stopped",
+      issue,
+      reason: "plan-only",
+      nextPhase: "implementation",
+      specPath: "docs/specs/issue-189.md",
+      planPath: "docs/plans/issue-189.md",
+      branch: "agent/issue-189-implementation",
+      worktreePath: ".worktrees/issue-189-implementation",
+    }),
+    {
+      status: "stopped",
+      issueNumber: 189,
+      reason: "plan-only",
+      nextPhase: "implementation",
+      specPath: "docs/specs/issue-189.md",
+      planPath: "docs/plans/issue-189.md",
+      branch: "agent/issue-189-implementation",
+      worktreePath: ".worktrees/issue-189-implementation",
+    },
+  );
+});

@@ -20,12 +20,28 @@ export type WriteRunOnceResultOptions = {
   time?: Date | undefined;
 };
 export function exitCodeForRunOnceResult(summary: RunOnceResultSummary): 0 | 1 {
-  return summary.status === "approval-required" ||
-    summary.status === "development-environment-not-ready" ||
-    summary.status === "blocked" ||
-    summary.status === "error"
-    ? 1
-    : 0;
+  switch (summary.status) {
+    case "no-issue":
+    case "dry-run":
+    case "spec-created":
+    case "spec-found":
+    case "plan-created":
+    case "plan-found":
+    case "pr-created":
+    case "merged":
+    case "review-pending":
+    case "stopped":
+      return 0;
+    case "approval-required":
+    case "development-environment-not-ready":
+    case "blocked":
+    case "error":
+      return 1;
+    default: {
+      const exhaustive: never = summary;
+      return exhaustive;
+    }
+  }
 }
 
 export async function writeRunOnceResult(

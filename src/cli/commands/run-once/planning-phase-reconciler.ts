@@ -8,6 +8,7 @@ import {
   type PullRequestSummary,
 } from "../../../host/pull-requests.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
+import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
   PlanningArtifactEvidence,
@@ -28,21 +29,6 @@ export type PlanningPhaseReconciliation =
   | { kind: "closed-unmerged"; pullRequest: PullRequestSummary }
   | { kind: "missing"; reference?: PullRequestReference }
   | { kind: "ambiguous"; pullRequests: readonly PullRequestSummary[] };
-function nextState(
-  state: PlanningStateV1,
-  index: number,
-  phase: PlanningPhaseStateV1,
-  now: () => Date,
-): PlanningStateV1 {
-  return {
-    ...state,
-    revision: state.revision + 1,
-    updatedAt: now().toISOString(),
-    phases: state.phases.map((item, offset) =>
-      offset === index ? phase : item,
-    ),
-  };
-}
 async function replace(
   state: PlanningStateV1,
   index: number,
@@ -51,13 +37,13 @@ async function replace(
   stateStore: Pick<PlanningStateStore, "replace">,
   now: () => Date,
 ): Promise<PlanningStateV1> {
-  const next = nextState(state, index, phase, now);
-  return stateStore.replace({
-    issueNumber: state.issueNumber,
-    expectedRunId: state.runId,
-    expectedRevision: state.revision,
-    next,
+  return replacePlanningPhase({
+    stateStore,
     lock,
+    state,
+    phaseIndex: index,
+    phase,
+    now,
   });
 }
 export async function reconcilePlanningPhase(input: {

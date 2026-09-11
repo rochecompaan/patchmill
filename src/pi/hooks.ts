@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { resolve } from "node:path";
 import type { CommandRunner } from "../cli/commands/triage/types.ts";
 
 export type PiHookResult = {
@@ -35,7 +35,7 @@ export async function runCleanupHookScript(
   }
 
   const result = await runner.run("bash", [cleanupHook], {
-    cwd: join(repoRoot, worktreePath),
+    cwd: resolve(repoRoot, worktreePath),
   });
 
   if (result.code !== 0) {

@@ -62,12 +62,16 @@ export function lifecycleLabels(
   done: string;
   needsInfo: string;
 } {
-  const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
   return {
-    ready: config.triagePolicy?.labels.ready ?? config.readyLabel,
-    inProgress: triagePolicy.labels.inProgress,
-    done: triagePolicy.labels.done,
-    needsInfo: triagePolicy.labels.needsInfo,
+    ready: config.triagePolicy?.labels?.ready ?? config.readyLabel,
+    inProgress:
+      config.triagePolicy?.labels?.inProgress ??
+      DEFAULT_TRIAGE_POLICY.labels.inProgress,
+    done:
+      config.triagePolicy?.labels?.done ?? DEFAULT_TRIAGE_POLICY.labels.done,
+    needsInfo:
+      config.triagePolicy?.labels?.needsInfo ??
+      DEFAULT_TRIAGE_POLICY.labels.needsInfo,
   };
 }
 

@@ -40,7 +40,7 @@ test("Forgejo PR body adapter reads the configured PR body", async () => {
           code: 0,
           stdout: JSON.stringify({
             body: "Summary\n",
-            html_url: "https://git.example/acme/repo/pulls/42",
+            html_url: "https://GIT.EXAMPLE/Acme/Repo/pulls/42/",
           }),
           stderr: "",
         };

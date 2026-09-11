@@ -10,6 +10,7 @@ import {
   planningPullRequestTitle,
 } from "../../../workflow/planning-pull-requests.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
+import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
   PlanningPhaseStateV1,
@@ -32,21 +33,6 @@ export type PlanningPhasePublicationResult =
       state: PlanningStateV1;
       pullRequests: readonly PullRequestSummary[];
     }>;
-function nextState(
-  state: PlanningStateV1,
-  phaseIndex: number,
-  phase: PlanningPhaseStateV1,
-  now: () => Date,
-): PlanningStateV1 {
-  return {
-    ...state,
-    revision: state.revision + 1,
-    updatedAt: now().toISOString(),
-    phases: state.phases.map((item, index) =>
-      index === phaseIndex ? phase : item,
-    ),
-  };
-}
 async function replace(input: {
   state: PlanningStateV1;
   phaseIndex: number;
@@ -55,14 +41,7 @@ async function replace(input: {
   stateStore: Pick<PlanningStateStore, "replace">;
   now: () => Date;
 }): Promise<PlanningStateV1> {
-  const next = nextState(input.state, input.phaseIndex, input.phase, input.now);
-  return input.stateStore.replace({
-    issueNumber: input.state.issueNumber,
-    expectedRunId: input.state.runId,
-    expectedRevision: input.state.revision,
-    next,
-    lock: input.lock,
-  });
+  return replacePlanningPhase(input);
 }
 export async function publishPlanningPhase(input: {
   state: PlanningStateV1;
