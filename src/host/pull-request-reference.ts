@@ -98,13 +98,38 @@ export function pullRequestUrlMatchesReference(
 }
 
 export function sameCanonicalUrl(left: string, right: string): boolean {
-  const a = parse(left),
-    b = parse(right);
-  if (!a || !b) return false;
-  const path = (url: URL) => url.pathname.replace(/\/$/u, "");
+  const parseReference = (url: string) => {
+    for (const [provider, segment] of [
+      ["github-gh", "pull"],
+      ["forgejo-tea", "pulls"],
+    ] as const) {
+      try {
+        return { provider, parsed: parsePullRequestUrl(url, segment) };
+      } catch {
+        // Try the other supported provider shape.
+      }
+    }
+    return undefined;
+  };
+  const a = parseReference(left);
+  const b = parseReference(right);
+  if (!a || !b || a.provider !== b.provider) return false;
   return (
-    a.protocol === b.protocol &&
-    a.host.toLowerCase() === b.host.toLowerCase() &&
-    path(a) === path(b)
+    a.parsed.protocol === b.parsed.protocol &&
+    a.parsed.number === b.parsed.number &&
+    sameRepositoryIdentity(
+      {
+        provider: a.provider,
+        host: `${a.parsed.hostname}${a.parsed.port ? `:${a.parsed.port}` : ""}`,
+        owner: a.parsed.owner,
+        repository: a.parsed.repository,
+      },
+      {
+        provider: b.provider,
+        host: `${b.parsed.hostname}${b.parsed.port ? `:${b.parsed.port}` : ""}`,
+        owner: b.parsed.owner,
+        repository: b.parsed.repository,
+      },
+    )
   );
 }

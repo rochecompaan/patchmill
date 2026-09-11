@@ -20,7 +20,7 @@ test("GitHub PR body adapter reads the configured PR body", async () => {
         code: 0,
         stdout: JSON.stringify({
           body: "Summary\n",
-          url: "https://github.com/acme/repo/pull/42",
+          url: "https://GITHUB.COM/Acme/Repo/pull/42/",
         }),
         stderr: "",
       };

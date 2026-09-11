@@ -59,6 +59,23 @@ test("parsePullRequestUrl exposes canonical URL parts without accepting unsafe f
     assert.throws(() => parsePullRequestUrl(value, "pull"));
 });
 
+test("sameCanonicalUrl accepts canonical case-only repository URLs", () => {
+  assert.equal(
+    sameCanonicalUrl(
+      "https://github.com/acme/repo/pull/42",
+      "https://GITHUB.COM/Acme/Repo/pull/42/",
+    ),
+    true,
+  );
+  assert.equal(
+    sameCanonicalUrl(
+      "https://forge.example:8443/acme/repo/pulls/42",
+      "https://FORGE.EXAMPLE:8443/Acme/Repo/pulls/42/",
+    ),
+    true,
+  );
+});
+
 test("sameCanonicalUrl rejects a different repository but permits one trailing slash", () => {
   assert.equal(
     sameCanonicalUrl(
