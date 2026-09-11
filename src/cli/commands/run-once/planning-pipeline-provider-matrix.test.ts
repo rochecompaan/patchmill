@@ -63,8 +63,14 @@ for (const provider of [
           entry.phases,
         );
         const artifacts = await scenario.remoteArtifactContents();
+        const carried = scenario.carriedArtifactContents();
         for (const [path, content] of Object.entries(artifacts)) {
           assert.match(content, /reviewed by a human/u, path);
+          assert.equal(
+            carried[path],
+            content,
+            `${path} carried to a later phase`,
+          );
         }
         const implementation = scenario.pulls().at(-1)!;
         assert.match(implementation.body, /Closes #190/u);

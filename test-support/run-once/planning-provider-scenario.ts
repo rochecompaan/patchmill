@@ -119,6 +119,7 @@ export type PlanningProviderScenario = {
   }>;
   installDeadProcessLock(): Promise<{ fingerprint: string }>;
   remoteArtifactContents(): Promise<Readonly<Record<string, string>>>;
+  carriedArtifactContents(): Readonly<Record<string, string>>;
   cleanup(): Promise<void>;
 };
 
@@ -163,6 +164,16 @@ export async function createPlanningProviderScenario(input: {
     "issues",
   );
   const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+  const carriedArtifacts = new Map<string, string>();
+  const recordCarriedArtifacts = async (cwd: string) => {
+    const paths = (
+      await git(cwd, ["ls-files", "docs/specs", "docs/plans"])
+    ).stdout
+      .split("\n")
+      .filter((path) => path !== "" && !path.endsWith(".gitkeep"));
+    for (const path of paths)
+      carriedArtifacts.set(path, await readFile(join(cwd, path), "utf8"));
+  };
   const state = () => new PlanningStateStore(config.runStateDir).read(190);
   const implementationPhase = async () =>
     (await state())?.phases.find((phase) => phase.kind === "implementation");
@@ -228,6 +239,7 @@ export async function createPlanningProviderScenario(input: {
         return result;
       }
       if (call.command === "pi") {
+        await recordCarriedArtifacts(call.cwd!);
         const prompt = await readFile(promptPath(call.args), "utf8");
         const path = /"(?:specPath|planPath)"\s*:\s*"([^"]+)"/u.exec(
           prompt,
@@ -675,6 +687,7 @@ export async function createPlanningProviderScenario(input: {
       assert.deepEqual(await readFile(archivePath), bytes);
       return { fingerprint, archivePath };
     },
+    carriedArtifactContents: () => Object.fromEntries(carriedArtifacts),
     remoteArtifactContents: async () => {
       const completed = await state();
       const artifacts =
