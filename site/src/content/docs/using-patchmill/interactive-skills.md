@@ -1,73 +1,42 @@
 ---
 title: Interactive skills
-description: >-
-  Install and use Patchmill's human-controlled coding-agent skills for planning,
-  publication, labels, and issue-worktree cleanup.
+description:
+  Use Patchmill's human-controlled skills without confusing them with Run-once.
 ---
 
-Patchmill ships four human-invoked, user-global coding-agent skills for the
-parts of an issue workflow that need distinct authorization.
-
-## User-global, not project-local
-
 `patchmill-plan`, `patchmill-upload`, `patchmill-label`, and `patchmill-cleanup`
-are not `patchmill.config.json` workflow entry points. They are separate human
-tools. `patchmill init` and `patchmill skills update` neither install nor update
-them. In particular, `patchmill-plan` is the interactive orchestrator, while
-project-local `patchmill-planning` supplies the configured planning workflow it
-uses.
+are human-invoked skills. They are not `patchmill.config.json` workflow entry
+points, and `patchmill init` or `patchmill skills update` does not install them
+as global agent skills.
 
-## Install and invoke
+## Human-controlled planning
 
-The npm package ships `skills/patchmill-plan`, `skills/patchmill-upload`,
-`skills/patchmill-label`, and `skills/patchmill-cleanup`. An operator or
-configuration manager must expose those directories through the active coding
-agent's user-global skill mechanism; Patchmill does not provide an installer.
-The exact installation path depends on the coding agent.
+Use `patchmill-plan` when a human intentionally wants local planning without
+automated implementation. It may use an interactive review ceremony because a
+human invoked it. It does not represent a Run-once planning review, create or
+merge a planning pull request, or supply an approval label to fresh state.
 
-For example, Pi discovers user-global skills under `~/.pi/agent/skills/`. Place
-or link the four packaged directories there when Pi is the active agent.
-
-Invocation syntax also depends on the coding agent. With Pi, use its built-in
-command names:
+Expose the packaged skill through the active coding agent's global skill
+mechanism. For Pi, a linked directory under `~/.pi/agent/skills/` can be invoked
+as:
 
 ```text
 /skill:patchmill-plan 123
-
-# Review and revise the local spec and plan as long as needed.
-
-/skill:patchmill-upload
-/skill:patchmill-label 123 +spec-approved +plan-approved +agent-ready -needs-info
-/skill:patchmill-cleanup
 ```
 
-Skill handoffs may use abbreviated text such as `/patchmill-upload 123` to name
-the next skill. The active coding agent determines how to invoke it. When Pi is
-the active agent, `/patchmill-upload 123` maps to Pi's stock
-`/skill:patchmill-upload 123` command. Explicit positive issue numbers override
-conversational context. In one repository conversation, a later skill can omit
-its number when exactly one issue remains unambiguous, as upload and cleanup do
-above; explicitly supplying `123` remains valid.
+The human can review and revise the local artifact as long as needed. For fresh
+automated work, use ordinary `patchmill run-once --issue N` instead; Run-once
+owns phase workspaces, push, pull-request creation, review stops, merge
+reconciliation, labels, and cleanup.
 
-## Review-first handoffs
+## Legacy/manual tooling
 
-`patchmill-plan` creates and reviews local specification and implementation-plan
-artifacts, then stops before implementation. Its `/patchmill-upload` suggestion
-is a later option, not a claim that review is complete or publication-ready.
-Review and revise artifacts for as long as needed before invoking upload.
+`patchmill-upload` and `patchmill-label` remain useful for manual workflows and
+unfinished legacy Issue runs. Their published comments and approval labels do
+not authorize a fresh planning phase. Do not hand them off after a fresh
+Run-once planning phase; review or merge the exact planning pull request and
+rerun Run-once instead.
 
-On success, planning suggests upload. Upload publishes every available changed
-artifact without a further confirmation, skips current attachments, and suggests
-a complete configured label command only when no artifact is failed or
-ambiguous. Missing artifacts do not suppress that suggestion. `patchmill-label`
-accepts requested label changes without workflow warnings or another
-confirmation, and suggests cleanup only after every request verifies as applied
-or a no-op. It suppresses cleanup after skipped, failed, or ambiguous results.
-
-## Cleanup authority and risk
-
-`patchmill-cleanup` is never automatic. It inspects the selected issue worktree
-and branch, including likely lost work, then requires one confirmation naming
-both. Informed confirmation can delete dirty files, untracked files, unmerged
-commits, or apparently active work. Cleanup intentionally does not check whether
-artifacts were published.
+`patchmill-cleanup` is always human-authorized. It inspects the selected issue
+worktree and branch, including possible lost work, and requires confirmation
+before destructive cleanup.

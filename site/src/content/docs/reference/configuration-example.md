@@ -53,7 +53,7 @@ skills, and git policy from defaults.
   },
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
-    "planning": ".patchmill/skills/writing-plans",
+    "planning": ".patchmill/skills/patchmill-planning",
     "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     "toolchain": ".patchmill/skills/project-toolchain",
     "review": ".patchmill/skills/project-review",
@@ -112,6 +112,9 @@ skills, and git policy from defaults.
 - Path-like skill values must resolve to a `SKILL.md` file. For example,
   `.patchmill/skills/project-review` resolves to
   `.patchmill/skills/project-review/SKILL.md`.
+- `workflow.*Approval.required` values are planning review-gate settings that
+  Run-once snapshots for fresh Issue runs. Their label fields are retained for
+  unfinished legacy runs only.
 - `projectPolicy.pi.taskContract` exists for advanced workflow coordination, but
   most repositories should keep the default task contract.
 - Run `patchmill doctor` after configuration changes.

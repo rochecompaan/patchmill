@@ -38,8 +38,16 @@ Advance one ready issue through the production line:
 patchmill run-once
 ```
 
-Patchmill can use published issue artifacts when your workflow requires them, or
-create missing artifacts under your approval policy.
+A fresh ready issue initializes strict planning state. If the result is
+`review-pending`, review and merge the exact planning pull request, then rerun:
+
+```sh
+# If the result is review-pending, review and merge the exact planning PR.
+patchmill run-once --issue N
+```
+
+`review-pending` exits `0`; labels and comments do not approve a fresh phase. A
+successful implementation ends in an open issue-closing pull request.
 
 ## Try Patchmill on a disposable demo repository
 
@@ -86,5 +94,8 @@ npx patchmill@latest skills update
 ```
 
 The update command only changes Patchmill-managed project-local skills. It stops
-if managed skill files were edited locally. After a successful update, run
-`git diff` and commit the skill changes with the repository.
+if managed skill files were edited locally. Crossing the `2026.09.1` pack
+boundary prints the planning-pull-request and deprecated-controls notice once;
+an already-current pack retains the ordinary up-to-date result. After a
+successful update, run `git diff` and commit the skill changes with the
+repository.

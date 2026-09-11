@@ -28,6 +28,11 @@ default for meaningful behavior and use direct verification for static docs,
 workflow YAML, lockfiles, dependency versions, and similar low-value-test
 changes.
 
+For unattended Run-once planning, the prompt identifies dedicated, same-phase,
+merged-base, or implementation-carried review context. The agent edits, commits,
+and self-reviews only the requested artifact in its phase workspace; Run-once
+owns push, pull requests, review, merge reconciliation, labels, and cleanup.
+
 `patchmill init` installs the recommended skill pack by default when you choose
 project-local skills. The installed
 `.patchmill/skills/patchmill-skill-pack.json` metadata records the pack name,
@@ -127,7 +132,9 @@ Patchmill accepts a `merged` result only when both conditions are true:
 - `skills.landing` is configured.
 
 Otherwise direct landing is rejected as a safety error and the agent must create
-a pull request.
+a pull request. `planning-pr-v1` is stricter: its implementation phase always
+requires a validated implementation pull request, even when legacy direct
+landing is configured.
 
 ```json
 {
