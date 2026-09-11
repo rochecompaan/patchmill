@@ -9,9 +9,12 @@ import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.
 import {
   issue,
   issueListPayload,
+  issueViewPayload,
+  labelListPayload,
 } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { createMockRunner } from "../../../../test-support/run-once/mock-runner.ts";
 import { runOneIssue } from "./pipeline.ts";
+import { writeRunState } from "./run-state.ts";
 import { exitCodeForRunOnceResult } from "./result-output.ts";
 import { summarizeResult } from "./result-summary.ts";
 
@@ -55,6 +58,74 @@ test("facade dispatches fresh planning selection to the planning lock boundary",
       assert.equal(result.reason, "issue-locked");
     assert.equal(
       runner.calls.some((call) => call.args.includes("edit")),
+      false,
+    );
+  } finally {
+    await rm(config.repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("facade routes an unfinished in-progress legacy run through legacy planning", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const selected = issue(189, ["in-progress"], "Legacy planning selection");
+  const planPath = "docs/plans/issue-189-legacy.md";
+  await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
+  await writeRunState(config.runStateDir, {
+    issueNumber: selected.number,
+    title: selected.title,
+    status: "planning",
+    planPath,
+    checkpoints: { claimed: true, startedCommentPosted: true },
+  });
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      if (call.args[1] === "list") {
+        const page = call.args[call.args.indexOf("--page") + 1];
+        return {
+          code: 0,
+          stdout: page === "1" ? issueListPayload([selected]) : "[]",
+          stderr: "",
+        };
+      }
+      return { code: 0, stdout: issueViewPayload(selected), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    )
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    if (call.command === "tea" && call.args[0] === "comment")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "status")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "worktree")
+      return { code: 0, stdout: "", stderr: "" };
+    if (call.command === "git" && call.args[0] === "show-ref")
+      return { code: 1, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  try {
+    const result = await runOneIssue(runner, config);
+    assert.match(result.status, /^plan-(created|found)$/);
+    assert.equal(result.issue.number, selected.number);
+    assert.equal(
+      runner.calls.some(
+        (call) =>
+          call.command === "tea" &&
+          call.args[0] === "issues" &&
+          call.args[1] !== "list",
+      ),
+      true,
+    );
+    assert.equal(
+      runner.calls.some((call) => call.args.includes("planning-pr-v1")),
       false,
     );
   } finally {
