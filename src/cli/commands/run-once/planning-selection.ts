@@ -100,6 +100,18 @@ export function hasFinishedPlanningWorkspaceState(
   );
 }
 
+/** Identifies legacy recovery that must not coexist with active planning state. */
+export function legacyConflictsWithPlanning(
+  legacy: Awaited<ReturnType<typeof readRunState>>,
+): boolean {
+  return Boolean(
+    legacy &&
+    (isResumableRunState(legacy) ||
+      hasFinishedPlanningWorkspaceState(legacy) ||
+      hasBlockedRunRecoveryState(legacy)),
+  );
+}
+
 /** Matches the legacy entry point's routing and explicit blocked-retry policy. */
 export function legacyActiveForIssue(
   issue: IssueSummary,
@@ -140,12 +152,13 @@ export async function selectRunOnceWorkflow(
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
     const legacyActive = legacyActiveForIssue(issue, config, legacy);
+    const legacyConflict = legacyConflictsWithPlanning(legacy);
     const ordinaryLegacyResume = Boolean(
       legacy &&
       isResumableRunState(legacy) &&
       issue.labels.includes(lifecycleLabels(config).inProgress),
     );
-    if (state && active(state) && legacyActive)
+    if (state && active(state) && legacyConflict)
       return {
         kind: "invalid-planning-state",
         issue,

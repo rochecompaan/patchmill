@@ -212,6 +212,31 @@ test("does not let an automatic blocked legacy retry outrank fresh work", async 
   }
 });
 
+test("rejects active planning state that conflicts with blocked legacy recovery during automatic selection", async () => {
+  const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
+  try {
+    await writeRunState(runStateDir, {
+      issueNumber: 3,
+      title: "Issue 3",
+      status: "blocked",
+      lastError: "needs input",
+    });
+    const result = await selectRunOnceWorkflow(
+      [issue(3, ["in-progress"])],
+      { ...config, runStateDir },
+      {
+        path: () => "state",
+        read: async () => ({ phases: [{ status: "pending" }] }),
+      } as never,
+    );
+    assert.equal(result.kind, "invalid-planning-state");
+    if (result.kind === "invalid-planning-state")
+      assert.equal(result.reason, "planning and legacy state are both active");
+  } finally {
+    await rm(runStateDir, { recursive: true, force: true });
+  }
+});
+
 test("returns malformed planning state rather than selecting fresh work", async () => {
   const result = await selectRunOnceWorkflow(
     [issue(3, ["agent-ready"])],

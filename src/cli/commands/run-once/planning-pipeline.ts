@@ -22,7 +22,7 @@ import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
 import {
-  legacyActiveForIssue,
+  legacyConflictsWithPlanning,
   planningFinishReachedDoneLabelBoundary,
   planningIssueEligible,
   planningStateDiagnostic,
@@ -198,7 +198,7 @@ export async function runPlanningIssue(
       const planningActive = current.phases.some(
         (phase) => phase.status !== "complete",
       );
-      const legacyActive = legacyActiveForIssue(issue, input.config, legacy);
+      const legacyConflict = legacyConflictsWithPlanning(legacy);
       const eligible = planningIssueEligible({
         issue,
         config: input.config,
@@ -211,7 +211,7 @@ export async function runPlanningIssue(
         current.issueNumber !== input.issue.number ||
         issue.state !== "open" ||
         !planningActive ||
-        legacyActive ||
+        legacyConflict ||
         !eligible ||
         (input.eligible !== undefined && !input.eligible(issue, saved))
       )

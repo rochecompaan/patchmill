@@ -152,6 +152,52 @@ test("maps malformed post-lock planning state to a no-mutation blocker", async (
   assert.equal(mutated, false);
 });
 
+test("blocks active planning state that conflicts with blocked legacy recovery after locking", async () => {
+  let mutated = false;
+  let coordinated = false;
+  const active = {
+    runId: "123e4567-e89b-42d3-a456-426614174000",
+    issueNumber: 189,
+    phases: [{ status: "pending" }],
+  } as never;
+  const result = await runPlanningIssue({
+    issue: {
+      number: 189,
+      title: "Example",
+      state: "open",
+      labels: ["agent-in-progress"],
+    } as never,
+    config: {} as never,
+    state: active,
+    expectedStatePresence: "present",
+    runStateDir: "/tmp/state",
+    stateStore: { read: async () => active, initialize: async () => {} },
+    readIssue: async () =>
+      ({
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: ["agent-in-progress"],
+      }) as never,
+    readLegacy: async () =>
+      ({ status: "blocked", lastError: "needs input" }) as never,
+    mutate: async () => {
+      mutated = true;
+      return [];
+    },
+    coordinate: async () => {
+      coordinated = true;
+      return {} as never;
+    },
+    acquire: async () =>
+      ({ record: { runId: "123e4567-e89b-42d3-a456-426614174000" } }) as never,
+    release: async () => {},
+  });
+  assert.equal(result.status, "blocked");
+  assert.equal(mutated, false);
+  assert.equal(coordinated, false);
+});
+
 test("blocks an active selection whose authoritative state disappears after locking", async () => {
   let initialized = false;
   let mutated = false;
