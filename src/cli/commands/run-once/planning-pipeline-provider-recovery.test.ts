@@ -65,12 +65,61 @@ function countMatchingEffects(effects: readonly string[], expression: RegExp) {
   return effects.filter((effect) => expression.test(effect)).length;
 }
 
-function durableEffects(effects: readonly string[]) {
-  return effects.filter((effect) =>
-    /^(?:fixture implementation-push |git push|gh pr create|gh issue (?:comment|edit)|tea comment|tea issues edit|tea api .*--method POST|bash )/u.test(
-      effect,
-    ),
+test("known provider-write effects exclude recovery reads", () => {
+  assert.deepEqual(
+    [
+      "gh pr create --body body",
+      "gh pr edit 1 --body body",
+      "gh issue comment 190 --body body",
+      "gh issue edit 190 --add-label agent-done",
+      "tea comment 190 -- body",
+      "tea issues edit 190 --add-labels agent-done",
+      "tea api /repos/acme/patchmill/pulls --method POST",
+      "tea api /repos/acme/patchmill/pulls/1 --method PATCH",
+      "git push --porcelain --no-force -- origin head:branch",
+      "git worktree remove -- workspace",
+      "git branch -D issue-190",
+      "git update-ref -d refs/heads/issue-190",
+      "pi -p @prompt",
+      "bash cleanup.sh",
+      "fixture implementation-push agent/issue-190",
+      "gh pr view 1 --json number",
+      "tea api /repos/acme/patchmill/pulls/1 --include",
+      "git ls-remote --exit-code --heads -- origin branch",
+      "git worktree list --porcelain -z",
+    ].map((effect) => [effect, isKnownHostWriteEffect(effect)]),
+    [
+      ["gh pr create --body body", true],
+      ["gh pr edit 1 --body body", true],
+      ["gh issue comment 190 --body body", true],
+      ["gh issue edit 190 --add-label agent-done", true],
+      ["tea comment 190 -- body", true],
+      ["tea issues edit 190 --add-labels agent-done", true],
+      ["tea api /repos/acme/patchmill/pulls --method POST", true],
+      ["tea api /repos/acme/patchmill/pulls/1 --method PATCH", true],
+      ["git push --porcelain --no-force -- origin head:branch", true],
+      ["git worktree remove -- workspace", true],
+      ["git branch -D issue-190", true],
+      ["git update-ref -d refs/heads/issue-190", true],
+      ["pi -p @prompt", true],
+      ["bash cleanup.sh", true],
+      ["fixture implementation-push agent/issue-190", true],
+      ["gh pr view 1 --json number", false],
+      ["tea api /repos/acme/patchmill/pulls/1 --include", false],
+      ["git ls-remote --exit-code --heads -- origin branch", false],
+      ["git worktree list --porcelain -z", false],
+    ],
   );
+});
+
+function isKnownHostWriteEffect(effect: string) {
+  return /^(?:fixture implementation-push |pi |bash |git (?:push|worktree (?:remove|prune)|branch (?:-D|--delete)|update-ref -d|clean|reset --hard)|gh (?:pr (?:create|edit)|issue (?:comment|edit))|tea (?:comment|issues edit|api .*--method (?:POST|PATCH)(?:\s|$)))/u.test(
+    effect,
+  );
+}
+
+function durableEffects(effects: readonly string[]) {
+  return effects.filter(isKnownHostWriteEffect);
 }
 
 function assertOnePublicationPerPhase(scenario: PlanningProviderScenario) {
@@ -104,11 +153,7 @@ function assertNoEffectsAfterInterruption(scenario: PlanningProviderScenario) {
   );
   const laterEffects = effects.slice(interruption + 1);
   assert.equal(
-    laterEffects.some((effect) =>
-      /^(?:pi |git (?:push|worktree remove|branch -D|update-ref -d)|gh (?:pr create|issue (?:comment|edit))|tea .*--method POST|bash )/u.test(
-        effect,
-      ),
-    ),
+    laterEffects.some(isKnownHostWriteEffect),
     false,
     "no later host write, next phase, destructive Git, cleanup, handoff, or label effect runs after persistence fails",
   );
