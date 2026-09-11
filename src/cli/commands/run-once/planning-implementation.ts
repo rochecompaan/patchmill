@@ -141,7 +141,12 @@ export async function runPlanningImplementation(
     const result = await input.runAgent({
       state,
       phase,
-      git: { ...input.configuredGit, allowDirectLand: false },
+      git: {
+        ...input.configuredGit,
+        remote: phase.workspace.remote,
+        baseBranch: phase.base.baseBranch,
+        allowDirectLand: false,
+      },
       workspaceCreated: input.workspaceCreated ?? false,
       requiredPullRequestMarker: renderPlanningPullRequestMarker({
         issueNumber: state.issueNumber,

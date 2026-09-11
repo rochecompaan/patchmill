@@ -112,6 +112,53 @@ test("passes the post-prepare durable state and implementation workspace to the 
   assert.equal(received?.git.allowDirectLand, false);
 });
 
+test("uses durable workspace ownership for resumed implementation agent targets", async () => {
+  let received: { git: Record<string, unknown> } | undefined;
+  const durable = input({
+    configuredGit: {
+      remote: "changed-origin",
+      baseBranch: "changed-main",
+      baseRef: "refs/remotes/changed-origin/changed-main",
+      allowDirectLand: true,
+    },
+    state: {
+      ...input().state,
+      phases: [
+        {
+          ...input().state.phases[0],
+          base: {
+            ...input().state.phases[0].base,
+            baseBranch: "durable-main",
+          },
+          workspace: {
+            ...input().state.phases[0].workspace,
+            remote: "durable-origin",
+            baseBranch: "durable-main",
+          },
+        },
+      ],
+    },
+    runAgent: async (agentInput: typeof received) => {
+      received = agentInput;
+      return {
+        status: "blocked",
+        reason: "stop",
+        questions: [],
+        commits: [],
+        validation: [],
+      };
+    },
+  });
+  const result = await runPlanningImplementation(durable);
+  assert.equal(result.kind, "blocked");
+  assert.deepEqual(received?.git, {
+    remote: "durable-origin",
+    baseBranch: "durable-main",
+    baseRef: "refs/remotes/changed-origin/changed-main",
+    allowDirectLand: false,
+  });
+});
+
 test("checkpoints clean committed blocker progress for resumption", async () => {
   const checkpoints: Array<{
     phases: Array<{ workspace: { headOid: string } }>;
