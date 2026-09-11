@@ -3,7 +3,10 @@ import {
   type PullRequestReference,
   type PullRequestSummary,
 } from "../host/pull-requests.ts";
-import { parsePullRequestUrl } from "../host/pull-request-reference.ts";
+import {
+  canonicalPullRequestUrl,
+  parsePullRequestUrl,
+} from "../host/pull-request-reference.ts";
 import {
   parsePlanningPullRequestMarker,
   PlanningPullRequestMarkerError,
@@ -102,7 +105,9 @@ export function validatePlanningPullRequestSummary(input: {
         reference.number !== input.expectedReference.number)
     )
       fail("reference");
-    return { summary, reference, url: summary.url };
+    const url = canonicalPullRequestUrl(summary.url, reference);
+    if (url === undefined) fail("url");
+    return { summary, reference, url };
   } catch (error) {
     if (error instanceof PlanningPullRequestValidationError) throw error;
     if (error instanceof PlanningPullRequestMarkerError)

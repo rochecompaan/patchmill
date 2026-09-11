@@ -57,11 +57,11 @@ export function pullRequestNumber(prUrl: string, pathSegment: string): number {
   return parsePullRequestUrl(prUrl, pathSegment).number;
 }
 
-/** Requires one canonical provider URL to identify its durable reference. */
-export function pullRequestUrlMatchesReference(
+/** Canonicalizes one provider URL only when it identifies its durable reference. */
+export function canonicalPullRequestUrl(
   prUrl: string,
   reference: import("./pull-requests.ts").PullRequestReference,
-): boolean {
+): string | undefined {
   const segment =
     reference.targetRepository.provider === "github-gh" ? "pull" : "pulls";
   try {
@@ -70,9 +70,9 @@ export function pullRequestUrlMatchesReference(
     const parsedAuthority = `${parsed.hostname}${
       parsed.port === "" ? "" : `:${parsed.port}`
     }`;
-    return (
-      authority?.toLowerCase() === parsedAuthority.toLowerCase() &&
-      sameRepositoryIdentity(
+    if (
+      authority?.toLowerCase() !== parsedAuthority.toLowerCase() ||
+      !sameRepositoryIdentity(
         {
           provider: reference.targetRepository.provider,
           host: parsedAuthority,
@@ -80,12 +80,21 @@ export function pullRequestUrlMatchesReference(
           repository: parsed.repository,
         },
         reference.targetRepository,
-      ) &&
-      parsed.number === reference.number
-    );
+      ) ||
+      parsed.number !== reference.number
+    )
+      return undefined;
+    return `${parsed.protocol}//${reference.targetRepository.host.toLowerCase()}/${reference.targetRepository.owner.toLowerCase()}/${reference.targetRepository.repository.toLowerCase()}/${segment}/${reference.number}`;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+export function pullRequestUrlMatchesReference(
+  prUrl: string,
+  reference: import("./pull-requests.ts").PullRequestReference,
+): boolean {
+  return canonicalPullRequestUrl(prUrl, reference) !== undefined;
 }
 
 export function sameCanonicalUrl(left: string, right: string): boolean {

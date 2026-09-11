@@ -1,4 +1,5 @@
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
+import { canonicalPullRequestUrl } from "../../../host/pull-request-reference.ts";
 import {
   PlanningPublicationGitError,
   type PlanningPublicationOperations,
@@ -263,6 +264,26 @@ export async function runPlanningImplementation(
       input.host.resolveTargetRepositoryIdentity(),
       input.host.resolveRemoteRepositoryIdentity(phase.workspace.remote),
     ]);
+    const prUrl = canonicalPullRequestUrl(result.prUrl, {
+      targetRepository,
+      number: (() => {
+        try {
+          return new URL(result.prUrl).pathname.match(
+            /\/(?:pull|pulls)\/(\d+)\/?$/u,
+          )?.[1]
+            ? Number(
+                new URL(result.prUrl).pathname.match(
+                  /\/(?:pull|pulls)\/(\d+)\/?$/u,
+                )![1],
+              )
+            : NaN;
+        } catch {
+          return NaN;
+        }
+      })(),
+    });
+    if (prUrl === undefined)
+      return { kind: "blocked", state, result: blocked("implementation-url") };
     const branchPushed: ImplementationBranchPushedPlanningPhase = {
       ...phase,
       status: "branch-pushed",
@@ -276,7 +297,7 @@ export async function runPlanningImplementation(
       },
       implementation: {
         status: "pr-created",
-        prUrl: result.prUrl,
+        prUrl,
         branch: result.branch,
         commits: result.commits,
         validation: result.validation,
