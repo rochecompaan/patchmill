@@ -46,7 +46,9 @@ test("runSetArtifactCommand publishes a spec file as a deterministic issue comme
   );
 
   assert.equal(code, 0);
-  assert.deepEqual(stderr, []);
+  assert.deepEqual(stderr, [
+    "Deprecated: set-spec publishes artifact comments consumed only by unfinished legacy Issue runs. For fresh runs, use ordinary patchmill run-once --issue N to create a planning pull request, or commit the spec under the configured spec directory on the target base before Run-once starts.",
+  ]);
   assert.deepEqual(stdout, [
     "Set spec for issue #99 from docs/specs/design.md.",
   ]);
@@ -60,13 +62,14 @@ test("runSetArtifactCommand publishes a spec file as a deterministic issue comme
 test("runSetArtifactCommand publishes a plan file as a deterministic issue comment", async () => {
   const repoRoot = await repoFixture();
   const published: PublishedComment[] = [];
+  const stderr: string[] = [];
 
   const code = await runSetArtifactCommand(
     "plan",
     ["--issue", "99", "docs/plans/work.md"],
     {
       repoRoot,
-      output: { stdout: () => undefined, stderr: () => undefined },
+      output: { stdout: () => undefined, stderr: (line) => stderr.push(line) },
       publishComment: async (issueNumber, body) => {
         published.push({ issueNumber, body });
       },
@@ -74,6 +77,10 @@ test("runSetArtifactCommand publishes a plan file as a deterministic issue comme
   );
 
   assert.equal(code, 0);
+  assert.equal(
+    stderr.filter((line) => line.startsWith("Deprecated:")).length,
+    1,
+  );
   assert.match(
     published[0]?.body ?? "",
     /## Implementation plan attached to this issue/,
@@ -113,5 +120,9 @@ test("runSetArtifactCommand prints command-specific help", async () => {
   );
 
   assert.match(stdout[0] ?? "", /patchmill set-spec --issue <number> <path>/);
+  assert.match(
+    stdout[0] ?? "",
+    /Deprecated; legacy Issue-run comment compatibility/u,
+  );
   assert.deepEqual(stderr, []);
 });

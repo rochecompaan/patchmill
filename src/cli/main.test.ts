@@ -147,11 +147,11 @@ test("createCliMain prints top-level help", async () => {
   assert.match(HELP_TEXT, /skills\s+Manage Patchmill project-local skills\./);
   assert.match(
     HELP_TEXT,
-    /set-spec\s+Set the authoritative spec for an issue\./,
+    /set-spec\s+Deprecated; legacy Issue-run comment compatibility only\./,
   );
   assert.match(
     HELP_TEXT,
-    /set-plan\s+Set the authoritative implementation plan for an issue\./,
+    /set-plan\s+Deprecated; legacy Issue-run comment compatibility only\./,
   );
   assert.match(HELP_TEXT, /version\s+Print the Patchmill CLI version\./);
   assert.match(
