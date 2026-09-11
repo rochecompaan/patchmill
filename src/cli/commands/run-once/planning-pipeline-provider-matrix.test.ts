@@ -64,8 +64,17 @@ for (const provider of [
         );
         const artifacts = await scenario.remoteArtifactContents();
         const carried = scenario.carriedArtifactContents();
+        assert.deepEqual(
+          Object.keys(artifacts)
+            .map((path) => (path.startsWith("docs/specs/") ? "spec" : "plan"))
+            .sort(),
+          ["plan", "spec"],
+          "every gate cell completes one spec and one plan artifact",
+        );
         for (const [path, content] of Object.entries(artifacts)) {
-          assert.match(content, /reviewed by a human/u, path);
+          const phase = path.startsWith("docs/specs/") ? "spec" : "plan";
+          if (entry.gates[`${phase}Required`])
+            assert.match(content, /reviewed by a human/u, path);
           assert.equal(
             carried[path],
             content,

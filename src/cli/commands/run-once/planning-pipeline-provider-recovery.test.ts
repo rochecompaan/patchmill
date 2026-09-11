@@ -61,6 +61,79 @@ function requiresImplementation(point: PlanningScenarioFailurePoint) {
   ].includes(point);
 }
 
+function countMatchingEffects(effects: readonly string[], expression: RegExp) {
+  return effects.filter((effect) => expression.test(effect)).length;
+}
+
+function durableEffects(effects: readonly string[]) {
+  return effects.filter((effect) =>
+    /^(?:fixture implementation-push |git push|gh pr create|gh issue (?:comment|edit)|tea comment|tea issues edit|tea api .*--method POST|bash )/u.test(
+      effect,
+    ),
+  );
+}
+
+function assertOnePublicationPerPhase(scenario: PlanningProviderScenario) {
+  const effects = scenario.effects();
+  for (const phase of ["spec", "plan", "implementation"] as const) {
+    const pushes =
+      phase === "implementation"
+        ? countMatchingEffects(effects, /^fixture implementation-push /u)
+        : countMatchingEffects(
+            effects,
+            new RegExp(`:refs/heads/[^ ]*-${phase}(?:\\s|$)`, "u"),
+          );
+    assert.equal(pushes, 1, `${phase} has one remote branch update`);
+    assert.equal(
+      scenario.pulls().filter((pull) => pull.phase === phase).length,
+      1,
+      `${phase} has one pull request`,
+    );
+  }
+}
+
+function assertNoEffectsAfterInterruption(scenario: PlanningProviderScenario) {
+  const effects = scenario.effects();
+  const interruption = effects.findLastIndex((effect) =>
+    effect.startsWith("fixture interrupt "),
+  );
+  assert.notEqual(
+    interruption,
+    -1,
+    "the requested effect interrupted state persistence",
+  );
+  const laterEffects = effects.slice(interruption + 1);
+  assert.equal(
+    laterEffects.some((effect) =>
+      /^(?:pi |git (?:push|worktree remove|branch -D|update-ref -d)|gh (?:pr create|issue (?:comment|edit))|tea .*--method POST|bash )/u.test(
+        effect,
+      ),
+    ),
+    false,
+    "no later host write, next phase, destructive Git, cleanup, handoff, or label effect runs after persistence fails",
+  );
+}
+
+async function assertReviewedArtifactsSurvive(
+  scenario: PlanningProviderScenario,
+) {
+  const artifacts = await scenario.remoteArtifactContents();
+  assert.deepEqual(
+    Object.keys(artifacts)
+      .map((path) => (path.startsWith("docs/specs/") ? "spec" : "plan"))
+      .sort(),
+    ["plan", "spec"],
+  );
+  for (const [path, content] of Object.entries(artifacts)) {
+    assert.match(content, /reviewed by a human/u, path);
+    assert.equal(
+      scenario.carriedArtifactContents()[path],
+      content,
+      `${path} survives into a later phase`,
+    );
+  }
+}
+
 for (const provider of [
   "github-gh",
   "forgejo-tea",
@@ -84,7 +157,10 @@ for (const provider of [
         await assert.rejects(scenario.run());
         const interrupted = await scenario.state();
         assert.ok(interrupted);
+        assertNoEffectsAfterInterruption(scenario);
         const pullsBeforeRetry = scenario.pulls();
+        const effectsBeforeRetry = scenario.effects();
+        const refsBeforeRetry = await scenario.remoteRefs();
         await scenario.restorePersistence();
         const finished = await finish(scenario);
         assert.equal(finished.status, "pr-created");
@@ -96,30 +172,74 @@ for (const provider of [
           scenario.pulls().map((pull) => pull.phase),
           ["spec", "plan", "implementation"],
         );
-        assert.equal(
-          scenario.pulls().filter((pull) => pull.phase === "spec").length,
-          1,
+        assertOnePublicationPerPhase(scenario);
+        for (const pull of pullsBeforeRetry) {
+          const adopted = scenario
+            .pulls()
+            .find((candidate) => candidate.number === pull.number);
+          assert.deepEqual(
+            adopted && {
+              number: adopted.number,
+              phase: adopted.phase,
+              targetRepository: adopted.targetRepository,
+              headRepository: adopted.headRepository,
+              baseBranch: adopted.baseBranch,
+              headBranch: adopted.headBranch,
+              headOid: adopted.headOid,
+              body: adopted.body,
+            },
+            {
+              number: pull.number,
+              phase: pull.phase,
+              targetRepository: pull.targetRepository,
+              headRepository: pull.headRepository,
+              baseBranch: pull.baseBranch,
+              headBranch: pull.headBranch,
+              headOid: pull.headOid,
+              body: pull.body,
+            },
+            `retry adopts pull #${pull.number} without replacing it`,
+          );
+        }
+        const refsAfterRetry = await scenario.remoteRefs();
+        for (const [ref, oid] of Object.entries(refsBeforeRetry)) {
+          if (ref !== "main")
+            assert.equal(refsAfterRetry[ref], oid, `retry preserves ${ref}`);
+        }
+        assert.ok(
+          scenario.effects().length >= effectsBeforeRetry.length,
+          "recovery may only append effects after persistence is restored",
         );
-        assert.equal(
-          scenario.pulls().filter((pull) => pull.phase === "plan").length,
-          1,
-        );
-        assert.equal(
-          scenario.pulls().filter((pull) => pull.phase === "implementation")
-            .length,
-          1,
-        );
-        assert.ok(pullsBeforeRetry.length <= scenario.pulls().length);
+        await assertReviewedArtifactsSurvive(scenario);
         const terminal = await scenario.state();
         const terminalPulls = scenario.pulls();
+        const terminalRefs = await scenario.remoteRefs();
+        const terminalEffects = durableEffects(scenario.effects());
         const terminalRerun = await scenario.run();
         assert.ok(
           terminalRerun.status === "pr-created" ||
-            terminalRerun.status === "blocked",
+            terminalRerun.status === "blocked" ||
+            terminalRerun.status === "no-issue",
           JSON.stringify(terminalRerun),
         );
         assert.deepEqual(await scenario.state(), terminal);
         assert.deepEqual(scenario.pulls(), terminalPulls);
+        assert.deepEqual(await scenario.remoteRefs(), terminalRefs);
+        assert.deepEqual(durableEffects(scenario.effects()), terminalEffects);
+        assert.equal(
+          countMatchingEffects(terminalEffects, /Automation handoff ready/u),
+          1,
+          "handoff is idempotent",
+        );
+        assert.ok(
+          countMatchingEffects(terminalEffects, /^bash cleanup\.sh$/u) >= 1,
+          "cleanup hook completed before terminal state",
+        );
+        assert.equal(
+          countMatchingEffects(terminalEffects, /agent-done/u),
+          1,
+          "done label is idempotent",
+        );
       } finally {
         await scenario.cleanup();
       }

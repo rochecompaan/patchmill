@@ -195,7 +195,7 @@ tolerate resources that are already absent, and leave Patchmill's Git worktree
 and branch intact.
 
 The hook runs only after a successful PR or merge handoff. See
-[Cleanup after successful handoff](/using-patchmill/run-once/#cleanup-after-successful-handoff)
+[recovery and operator safety](/using-patchmill/run-once/#recovery-and-operator-safety)
 for ordering, retry, failure-reporting, and workspace-ownership details.
 
 ## Configure visual evidence paths

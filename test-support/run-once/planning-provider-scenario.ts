@@ -18,17 +18,12 @@ import {
 } from "../../src/workflow/planning-state-store.ts";
 import { planningIssueLockPath } from "../../src/workflow/planning-issue-lock.ts";
 import { approvalPolicy, makeConfig } from "./pipeline-fixtures.ts";
-import {
-  issue,
-  issueListPayload,
-  issueViewPayload,
-  labelListPayload,
-} from "./issue-fixtures.ts";
+import { issue } from "./issue-fixtures.ts";
 import { promptPath } from "./mock-runner.ts";
 import { runOneIssue } from "../../src/cli/commands/run-once/pipeline.ts";
 import type { AgentIssuePipelineResult } from "../../src/cli/commands/run-once/types.ts";
-import { githubPullPayload } from "./planning-github-process-fixture.ts";
-import { forgejoPullPayload } from "./planning-forgejo-process-fixture.ts";
+import { createGithubProcessFixture } from "./planning-github-process-fixture.ts";
+import { createForgejoProcessFixture } from "./planning-forgejo-process-fixture.ts";
 
 const run = promisify(execFile);
 const now = new Date("2099-01-01T00:00:00.000Z");
@@ -49,15 +44,6 @@ async function git(cwd: string, args: string[]) {
       stderr: failure.stderr ?? "",
     };
   }
-}
-
-function repository(name = "patchmill") {
-  return {
-    name,
-    full_name: `acme/${name}`,
-    owner: { login: "acme" },
-    html_url: `https://forge.test/acme/${name}`,
-  };
 }
 
 type Pull = {
@@ -104,6 +90,7 @@ export type PlanningProviderScenario = {
   state(): Promise<PlanningStateV1 | undefined>;
   pulls(): readonly RecordedScenarioPullRequest[];
   effects(): readonly string[];
+  remoteRefs(): Promise<Readonly<Record<string, string>>>;
   mergeOpenPlanningPull(input?: {
     editArtifact?: (content: string) => string;
   }): Promise<void>;
@@ -137,8 +124,8 @@ export async function createPlanningProviderScenario(input: {
     host: { provider, login: "" },
     cleanupHook: "cleanup.sh",
   });
-  // The public facade owns a real remote/base/worktree lifecycle; only Forgejo
-  // and Pi are recorded at their process boundary.
+  // The public facade owns a real remote/base/worktree lifecycle; provider
+  // commands and Pi are recorded only at their process boundaries.
   const remote = join(config.repoRoot, "remote.git");
   await mkdir(config.worktreeDir, { recursive: true });
   await git(config.repoRoot, ["init", "--initial-branch=main"]);
@@ -153,6 +140,17 @@ export async function createPlanningProviderScenario(input: {
   await git(config.repoRoot, ["remote", "add", "origin", remote]);
   await git(config.repoRoot, ["push", "-u", "origin", "main"]);
   const selected = issue(190, ["agent-ready"], "Provider scenario");
+  const addIssueComment = (body: string) => {
+    selected.comments?.push({ author: { login: "patchmill" }, body });
+  };
+  const updateIssueLabels = (
+    add: readonly string[],
+    remove: readonly string[],
+  ) => {
+    selected.labels = selected.labels
+      .filter((label) => !remove.includes(label))
+      .concat(add.filter((label) => !selected.labels.includes(label)));
+  };
   const pulls: Pull[] = [];
   let nextPull = 1;
   let failHostRead = false;
@@ -196,6 +194,36 @@ export async function createPlanningProviderScenario(input: {
     pendingInterrupt = undefined;
     calls.push({ command: "fixture", args: ["interrupt", point] });
   };
+  const nextPullNumber = () => nextPull++;
+  const headOid = async (branch: string) =>
+    (
+      await git(config.repoRoot, ["rev-parse", `refs/heads/${branch}`])
+    ).stdout.trim();
+  const implementationFinish = async () => {
+    const implementation = await implementationPhase();
+    return (
+      implementation?.kind === "implementation" &&
+      implementation.status === "pull-request-open"
+    );
+  };
+  const consumeHostReadFailure = () => {
+    if (!failHostRead) return false;
+    failHostRead = false;
+    return true;
+  };
+  const fixtureInput = {
+    issue: selected,
+    pulls,
+    nextPull: nextPullNumber,
+    headOid,
+    implementationFinish,
+    interrupt: interruptAfter,
+    consumeHostReadFailure,
+    addIssueComment,
+    updateIssueLabels,
+  };
+  const githubFixture = createGithubProcessFixture(fixtureInput);
+  const forgejoFixture = createForgejoProcessFixture(fixtureInput);
   const runner = {
     calls,
     async run(command: string, args: string[], options: { cwd?: string } = {}) {
@@ -276,6 +304,10 @@ export async function createPlanningProviderScenario(input: {
           await git(call.cwd!, ["rev-parse", "HEAD"])
         ).stdout.trim();
         await git(call.cwd!, ["push", "origin", `HEAD:${branch}`]);
+        calls.push({
+          command: "fixture",
+          args: ["implementation-push", branch],
+        });
         pulls.push({
           number: 99,
           branch,
@@ -300,248 +332,17 @@ export async function createPlanningProviderScenario(input: {
           stderr: "",
         };
       }
-      if (call.command === "gh") {
-        const implementation = await implementationPhase();
-        const inImplementationFinish =
-          implementation?.kind === "implementation" &&
-          implementation.status === "pull-request-open";
-        if (
-          call.args[0] === "issue" &&
-          call.args[1] === "comment" &&
-          inImplementationFinish
-        )
-          await interruptAfter("after-handoff-comment");
-        if (
-          call.args[0] === "issue" &&
-          call.args[1] === "edit" &&
-          inImplementationFinish &&
-          implementation.finish.doneLabelEnsured === true
-        )
-          await interruptAfter("after-done-label");
-        if (failHostRead && (call.args[0] === "pr" || call.args[0] === "api")) {
-          failHostRead = false;
-          return { code: 1, stdout: "", stderr: "transient host failure" };
-        }
-        const githubIssue = {
-          number: selected.number,
-          title: selected.title,
-          body: selected.body,
-          state: selected.state,
-          labels: selected.labels.map((name) => ({ name })),
-          author: { login: selected.author },
-          updatedAt: selected.updated,
-          comments: selected.comments,
-          url: "https://github.test/acme/patchmill/issues/190",
-        };
-        if (call.args[0] === "issue" && call.args[1] === "list")
-          return { code: 0, stdout: JSON.stringify([githubIssue]), stderr: "" };
-        if (call.args[0] === "issue" && call.args[1] === "view")
-          return { code: 0, stdout: JSON.stringify(githubIssue), stderr: "" };
-        if (call.args[0] === "label" && call.args[1] === "list")
-          return { code: 0, stdout: labelListPayload(), stderr: "" };
-        if (call.args[0] === "issue")
-          return { code: 0, stdout: "", stderr: "" };
-        if (call.args[0] === "repo" && call.args[1] === "view")
-          return {
-            code: 0,
-            stdout: JSON.stringify({
-              nameWithOwner: "acme/patchmill",
-              url: "https://github.test/acme/patchmill",
-            }),
-            stderr: "",
-          };
-        if (call.args[0] === "api" && call.args[1] === "graphql") {
-          const number = Number(
-            call.args.find((value) => value.startsWith("number="))?.slice(7),
-          );
-          const found = pulls.some((pull) => pull.number === number);
-          return {
-            code: found ? 0 : 1,
-            stdout: JSON.stringify({
-              data: {
-                repository: {
-                  nameWithOwner: "acme/patchmill",
-                  pullRequest: found ? { number } : null,
-                },
-              },
-              ...(found
-                ? {}
-                : {
-                    errors: [
-                      {
-                        type: "NOT_FOUND",
-                        path: ["repository", "pullRequest"],
-                      },
-                    ],
-                  }),
-            }),
-            stderr: "",
-          };
-        }
-        if (call.args[0] === "pr" && call.args[1] === "list") {
-          const branch = call.args[call.args.indexOf("--head") + 1];
-          return {
-            code: 0,
-            stdout: JSON.stringify(
-              pulls
-                .filter((pull) => pull.branch === branch)
-                .map(githubPullPayload),
-            ),
-            stderr: "",
-          };
-        }
-        if (call.args[0] === "pr" && call.args[1] === "view") {
-          const number = Number(call.args[2]);
-          const pull = pulls.find((item) => item.number === number)!;
-          if (number === 99)
-            await interruptAfter(
-              "after-implementation-pull-request-validation",
-            );
-          return {
-            code: 0,
-            stdout: JSON.stringify(githubPullPayload(pull)),
-            stderr: "",
-          };
-        }
-        if (call.args[0] === "pr" && call.args[1] === "create") {
-          const branch =
-            call.args[call.args.indexOf("--head") + 1]!.split(":").at(-1)!;
-          const body = call.args[call.args.indexOf("--body") + 1]!;
-          const headOid = (
-            await git(config.repoRoot, ["rev-parse", `refs/heads/${branch}`])
-          ).stdout.trim();
-          const pull = {
-            number: nextPull++,
-            branch,
-            body,
-            headOid,
-            headRepository: "acme/patchmill",
-          };
-          pulls.push(pull);
-          await interruptAfter("after-planning-pull-request-create");
-          return {
-            code: 0,
-            stdout: `https://github.test/acme/patchmill/pull/${pull.number}\n`,
-            stderr: "",
-          };
-        }
-        if (call.args[0] === "pr" && call.args[1] === "edit")
-          return { code: 0, stdout: "", stderr: "" };
-      }
-      if (call.command === "tea" && call.args[0] === "comment") {
-        const implementation = await implementationPhase();
-        if (
-          implementation?.kind === "implementation" &&
-          implementation.status === "pull-request-open"
-        )
-          await interruptAfter("after-handoff-comment");
-        return { code: 0, stdout: "", stderr: "" };
-      }
-      if (call.command === "tea" && call.args[0] === "issues") {
-        const implementation = await implementationPhase();
-        const inImplementationFinish =
-          implementation?.kind === "implementation" &&
-          implementation.status === "pull-request-open";
-        if (call.args.includes("comment") && inImplementationFinish)
-          await interruptAfter("after-handoff-comment");
-        if (
-          call.args.includes("edit") &&
-          inImplementationFinish &&
-          implementation.finish.doneLabelEnsured === true
-        )
-          await interruptAfter("after-done-label");
-        if (call.args[1] === "list") {
-          const page = call.args[call.args.indexOf("--page") + 1];
-          return {
-            code: 0,
-            stdout: page === "1" ? issueListPayload([selected]) : "[]",
-            stderr: "",
-          };
-        }
-        return { code: 0, stdout: issueViewPayload(selected), stderr: "" };
-      }
-      if (call.command === "tea" && call.args[0] === "labels")
-        return { code: 0, stdout: labelListPayload(), stderr: "" };
+      if (call.command === "gh") return githubFixture(call.args);
+      if (call.command === "tea") return forgejoFixture(call.args);
       if (call.command === "bash") {
         await interruptAfter("after-cleanup-hook");
         return { code: 0, stdout: "", stderr: "" };
-      }
-      if (call.command === "tea" && !call.args.includes("api"))
-        return { code: 0, stdout: "", stderr: "" };
-      if (call.command === "tea") {
-        if (failHostRead && call.args.includes("api")) {
-          failHostRead = false;
-          return { code: 1, stdout: "", stderr: "transient host failure" };
-        }
-        const path =
-          call.args.find((value) => value.startsWith("/repos/")) ?? "";
-        if (path.endsWith("/repos/{owner}/{repo}")) {
-          const repo = call.args[call.args.indexOf("--repo") + 1];
-          return {
-            code: 0,
-            stdout: JSON.stringify(
-              repository(
-                repo === "acme/patchmill-head" ? "patchmill-head" : "patchmill",
-              ),
-            ),
-            stderr: "",
-          };
-        }
-        if (path.includes("/pulls?"))
-          return {
-            code: 0,
-            stdout: JSON.stringify(pulls.map(pullPayload)),
-            stderr: "",
-          };
-        if (/\/pulls\/\d+$/u.test(path)) {
-          const number = Number(path.split("/").at(-1));
-          const pull = pulls.find((item) => item.number === number);
-          if (!pull)
-            return { code: 1, stdout: "", stderr: "HTTP/1.1 404 Not Found" };
-          if (number === 99)
-            await interruptAfter(
-              "after-implementation-pull-request-validation",
-            );
-          return {
-            code: 0,
-            stdout: JSON.stringify(pullPayload(pull)),
-            stderr: "",
-          };
-        }
-        if (path.endsWith("/pulls")) {
-          const head = call.args
-            .find((value) => value.startsWith("head="))!
-            .slice(5)
-            .split(":")
-            .at(-1)!;
-          const body = call.args
-            .find((value) => value.startsWith("body="))!
-            .slice(5);
-          const headOid = (
-            await git(config.repoRoot, ["rev-parse", `refs/heads/${head}`])
-          ).stdout.trim();
-          const pull = {
-            number: nextPull++,
-            branch: head,
-            body,
-            headOid,
-            headRepository: "acme/patchmill-head",
-          };
-          pulls.push(pull);
-          await interruptAfter("after-planning-pull-request-create");
-          return {
-            code: 0,
-            stdout: JSON.stringify(pullPayload(pull)),
-            stderr: "",
-          };
-        }
       }
       throw new Error(
         `unexpected command: ${call.command} ${call.args.join(" ")}`,
       );
     },
   };
-  const pullPayload = forgejoPullPayload;
   async function mergePlanningPull(
     input: {
       editArtifact?: (content: string) => string;
@@ -591,6 +392,21 @@ export async function createPlanningProviderScenario(input: {
   }
   const effects = () =>
     calls.map((call) => `${call.command} ${call.args.join(" ")}`);
+  const remoteRefs = async () => {
+    const result = await git(remote, [
+      "for-each-ref",
+      "--format=%(refname:strip=2) %(objectname)",
+      "refs/heads",
+    ]);
+    assert.equal(result.code, 0, result.stderr);
+    return Object.fromEntries(
+      result.stdout
+        .trim()
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => line.split(" ") as [string, string]),
+    );
+  };
   const recorded = (): readonly RecordedScenarioPullRequest[] =>
     pulls.map((pull) => ({
       number: pull.number,
@@ -619,6 +435,7 @@ export async function createPlanningProviderScenario(input: {
     state,
     pulls: recorded,
     effects,
+    remoteRefs,
     mergeOpenPlanningPull: mergePlanningPull,
     closeOpenPlanningPull: () => {
       const pull = pulls.find((item) => item.number !== 99 && !item.merged);
@@ -694,29 +511,19 @@ export async function createPlanningProviderScenario(input: {
         completed?.phases.flatMap((phase) =>
           "artifacts" in phase ? phase.artifacts : [],
         ) ?? [];
+      assert.equal(
+        new Set(artifacts.map((artifact) => artifact.kind)).size,
+        artifacts.length,
+        "each artifact kind must have one durable source",
+      );
       const contents = await Promise.all(
-        artifacts.flatMap((artifact) => {
-          const phase = artifact.path.startsWith("docs/specs/")
-            ? "spec"
-            : "plan";
-          const pull = pulls.find(
-            (candidate) =>
-              candidate.mergeOid !== undefined &&
-              (phase === "spec"
-                ? candidate.body.includes("phase=spec")
-                : candidate.body.includes("phase=plan")),
-          );
-          if (pull?.mergeOid === undefined) return [];
-          return [
-            (async () => {
-              const result = await git(config.repoRoot, [
-                "show",
-                `${pull.mergeOid}:${artifact.path}`,
-              ]);
-              assert.equal(result.code, 0, result.stderr);
-              return [artifact.path, result.stdout] as const;
-            })(),
-          ];
+        artifacts.map(async (artifact) => {
+          const result = await git(config.repoRoot, [
+            "show",
+            `${artifact.commitOid}:${artifact.path}`,
+          ]);
+          assert.equal(result.code, 0, result.stderr);
+          return [artifact.path, result.stdout] as const;
         }),
       );
       return Object.fromEntries(contents);

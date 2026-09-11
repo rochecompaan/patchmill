@@ -29,6 +29,7 @@ test("runSetArtifactCommand publishes a spec file as a deterministic issue comme
   const published: PublishedComment[] = [];
   const stdout: string[] = [];
   const stderr: string[] = [];
+  const events: string[] = [];
 
   const code = await runSetArtifactCommand(
     "spec",
@@ -36,16 +37,28 @@ test("runSetArtifactCommand publishes a spec file as a deterministic issue comme
     {
       repoRoot,
       output: {
-        stdout: (line) => stdout.push(line),
-        stderr: (line) => stderr.push(line),
+        stdout: (line) => {
+          events.push("stdout:confirmation");
+          stdout.push(line);
+        },
+        stderr: (line) => {
+          events.push("stderr:deprecation");
+          stderr.push(line);
+        },
       },
       publishComment: async (issueNumber, body) => {
+        events.push("publish:issue-comment");
         published.push({ issueNumber, body });
       },
     },
   );
 
   assert.equal(code, 0);
+  assert.deepEqual(events, [
+    "stderr:deprecation",
+    "publish:issue-comment",
+    "stdout:confirmation",
+  ]);
   assert.deepEqual(stderr, [
     "Deprecated: set-spec publishes artifact comments consumed only by unfinished legacy Issue runs. For fresh runs, use ordinary patchmill run-once --issue N to create a planning pull request, or commit the spec under the configured spec directory on the target base before Run-once starts.",
   ]);

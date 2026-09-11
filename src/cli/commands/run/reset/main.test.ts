@@ -8,7 +8,10 @@ import { ResetIssueRunRecoveryError } from "./reset.ts";
 import { runLogPath } from "../../run-once/progress.ts";
 import { runResetCommand } from "./main.ts";
 
-function output(isTTY = false) {
+function output(
+  isTTY = false,
+  onWrite?: (stream: "stdout" | "stderr", value: string) => void,
+) {
   let stdout = "";
   let stderr = "";
   return {
@@ -16,12 +19,14 @@ function output(isTTY = false) {
       stdout: {
         isTTY,
         write: (value: string) => {
+          onWrite?.("stdout", value);
           stdout += value;
           return true;
         },
       } as never,
       stderr: {
         write: (value: string) => {
+          onWrite?.("stderr", value);
           stderr += value;
           return true;
         },
@@ -44,13 +49,19 @@ function config(runStateDir: string) {
 }
 
 test("reset warns once before forwarding plan-only to the reset route", async () => {
-  const captured = output();
+  const events: string[] = [];
+  const captured = output(false, (stream, value) => {
+    if (stream === "stderr" && value.startsWith("Deprecated:"))
+      events.push("stderr:deprecation");
+    if (stream === "stdout") events.push("stdout:result");
+  });
   const runStateDir = await mkdtemp(join(tmpdir(), "patchmill-reset-main-"));
   let planOnly: boolean | undefined;
   const code = await runResetCommand(["--issue", "45", "--plan-only"], {
     loadConfig: async () =>
       ({ ...config(runStateDir), planOnly: true }) as never,
     executeReset: async (_runner, receivedConfig) => {
+      events.push("execute:reset");
       planOnly = (receivedConfig as { planOnly?: boolean }).planOnly;
       return {
         status: "reset-started",
@@ -66,6 +77,11 @@ test("reset warns once before forwarding plan-only to the reset route", async ()
   });
   assert.equal(code, 0);
   assert.equal(planOnly, true);
+  assert.deepEqual(events, [
+    "stderr:deprecation",
+    "execute:reset",
+    "stdout:result",
+  ]);
   assert.equal(
     (captured.read().stderr.match(/Deprecated: --plan-only/gu) ?? []).length,
     1,
