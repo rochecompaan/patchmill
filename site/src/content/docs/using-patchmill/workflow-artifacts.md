@@ -1,121 +1,48 @@
 ---
 title: Workflow artifacts
 description:
-  Publish approved specs and plans so Patchmill can reuse them
-  deterministically.
+  Use verified repository artifacts and planning pull requests in fresh
+  workflows.
 ---
 
-Workflow artifacts are the approved documents that tell Patchmill what an issue
-means before implementation starts:
+A spec describes design and constraints; a plan describes implementation work.
+For a fresh `planning-pr-v1` Issue run, an artifact is authoritative only when
+it is either:
 
-- a **spec** describes the design, scope, and constraints;
-- a **plan** describes the implementation tasks Patchmill should execute.
+- one unambiguous regular file committed under the configured spec or plan
+  directory on the freshly fetched target base; or
+- an artifact committed in its assigned phase workspace and reviewed in its
+  planning or implementation pull request.
 
-Developers often create these documents while discussing an issue.
-Human-authored or pre-existing artifacts can be reused after publication in
-Patchmill's deterministic issue comment format.
+The saved planning review-gate snapshot assigns each artifact to a phase. Zero
+matching files means that phase creates the artifact; more than one match blocks
+rather than guessing. A merged planning pull request becomes part of the fetched
+base for the next phase, so reviewer edits are carried forward.
 
-## Publish specs and plans
+## Fresh workflow
 
-Use `set-spec` and `set-plan` to publish local Markdown files to an issue:
-
-```sh
-patchmill set-spec --issue 99 docs/specs/log-entries-ui-design.md
-patchmill set-plan --issue 99 docs/plans/log-entries-ui.md
-```
-
-Each command reads the local file and posts a Patchmill-owned issue comment
-containing the artifact kind, source path, full body, and a SHA-256 checksum of
-the normalized body.
-
-When `patchmill run-once` later loads the issue, it parses those deterministic
-comments directly. It does not ask a model to find, copy, or summarize artifacts
-from arbitrary issue prose.
-
-## What does not count
-
-These issue contents can still help human reviewers, but Patchmill will not use
-them as authoritative workflow artifacts:
-
-- a regular comment saying "here is the spec";
-- Markdown headings such as `# Spec` or `## Implementation Plan`;
-- a hand-pasted `<details>` block;
-- an edited issue comment containing a long plan;
-- a link to an external document;
-- a custom issue-template section.
-
-If Patchmill must implement from a specific spec or plan, save it as a local
-file and publish it with `set-spec` or `set-plan`.
-
-## Recommended workflow
-
-1. Write the spec locally under the configured specs directory, usually
-   `docs/specs/`.
-2. Publish it with `patchmill set-spec --issue <number> <path>`.
-3. Write the plan locally under the configured plans directory, usually
-   `docs/plans/`.
-4. Publish it with `patchmill set-plan --issue <number> <path>`.
-5. Apply the required approval labels, such as `spec-approved` or
-   `plan-approved`, according to the repository workflow policy.
-6. Run `patchmill run-once --issue <number>`.
-
-An approval label asserts that the corresponding artifact has been published or
-otherwise resolves unambiguously and is the artifact Patchmill must reuse. Do
-not apply `spec-approved` before a spec resolves or `plan-approved` before a
-plan resolves. Patchmill fails safely rather than synthesizing a replacement for
-a missing approved artifact.
-
-`set-spec` and `set-plan` publish file contents to the issue. They do not commit
-the local files. Commit source spec and plan files through the normal repository
-workflow when your team wants those files in git.
-
-## Automatic publication for required reviews
-
-When `run-once` creates a spec or plan whose approval gate is required, it:
-
-1. commits the artifact in the local issue worktree;
-2. publishes the committed file to the issue in the same deterministic format as
-   `set-spec` or `set-plan`;
-3. posts the concise ready comment;
-4. applies the configured review label; and
-5. stops for manual approval.
-
-The issue comment is the review surface because the planning branch remains
-local until implementation creates or lands a pull request. If publication
-fails, Patchmill preserves the committed workspace and does not request review.
-
-Automatic publication is limited to the artifact whose approval gate is
-required. Continue using `set-spec` and `set-plan` for human-authored or
-pre-existing artifacts.
-
-## Updating an artifact
-
-Before revising or replacing an approved spec, withdraw its `spec-approved`
-label and any downstream `plan-approved` label. Before revising or replacing an
-approved plan, withdraw its `plan-approved` label. Then run `set-spec` or
-`set-plan` again when a developer revises an artifact before implementation:
+Let ordinary Run-once own artifact publication and review:
 
 ```sh
-patchmill set-plan --issue 99 docs/plans/log-entries-ui-v2.md
+patchmill run-once --issue N
 ```
 
-Patchmill leaves older artifact comments in the issue history, but `run-once`
-uses the latest valid artifact comment of each kind.
+An agent changes and commits only the requested artifact. When its phase has a
+planning review gate, Patchmill creates the non-closing planning pull request,
+returns `review-pending`, and waits for a human to merge that exact pull
+request. The implementation pull request carries remaining artifacts and code,
+closes the issue, and is validated before terminal cleanup. See
+[Run-once](/using-patchmill/run-once/) for the gate matrix and recovery steps.
 
-## How run-once uses artifacts
+## Legacy compatibility
 
-In execute mode, `run-once` handles published artifacts before it mutates the
-issue:
+`patchmill set-spec` and `patchmill set-plan` still publish deterministic issue
+comments containing artifact kind, source path, normalized body, and SHA-256
+checksum. Those comments are consumed only by unfinished legacy Issue runs; the
+commands preserve their history and checksum behavior but are deprecated for
+fresh work.
 
-1. Load the issue body and comments.
-2. Parse Patchmill-owned deterministic artifact comments.
-3. Validate each artifact checksum.
-4. Claim the issue and create the issue worktree.
-5. Materialize published artifacts under their recorded docs paths in that
-   worktree.
-6. Use those published specs and plans as source-provided workflow artifacts.
-7. Generate only the missing artifacts that the repository approval policy
-   requires.
-
-Patchmill never treats free-form issue comments, hand-edited artifact comments,
-external links, or issue-template sections as authoritative workflow artifacts.
+Likewise, upload handoffs and approval labels remain legacy compatibility data.
+They do not authorize a fresh planning phase. For a fresh workflow, commit the
+human-authored artifact to the target base before Run-once starts or allow the
+assigned phase workspace to create it.
