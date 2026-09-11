@@ -1,9 +1,6 @@
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { parseCanonicalPullRequestUrl } from "../../../host/pull-request-reference.ts";
-import {
-  PlanningPublicationGitError,
-  type PlanningPublicationOperations,
-} from "../../../git/planning-publication-git.ts";
+import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import type { PullRequestHost } from "../../../host/pull-requests.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
@@ -30,6 +27,7 @@ import {
   PlanningImplementationValidationError,
   validatePlanningImplementation,
 } from "./planning-implementation-validation.ts";
+import { recoverPostAgentWorkspace } from "./planning-implementation-workspace-recovery.ts";
 
 export type PlanningImplementationOutcome =
   | { kind: "validated"; state: PlanningStateV1 }
@@ -149,56 +147,52 @@ export async function runPlanningImplementation(
         state,
         result: blocked("implementation-configuration"),
       };
-    const result = await input.runAgent({
-      state,
-      phase,
-      git: {
-        ...input.configuredGit,
-        remote: phase.workspace.remote,
-        baseBranch: phase.base.baseBranch,
-        allowDirectLand: false,
-      },
-      workspaceCreated: input.workspaceCreated ?? false,
-      requiredPullRequestMarker: renderPlanningPullRequestMarker({
-        issueNumber: state.issueNumber,
-        phase: "implementation",
-      }),
-    });
-    if (result.status === "blocked") {
-      const workspace = await input.workspaces.inspect(
-        phase.workspace.identity,
-      );
-      if (workspace.state !== "ready" || !workspace.clean)
-        return {
-          kind: "blocked",
-          state,
-          result: blocked("implementation-workspace"),
-        };
-      if (workspace.headOid !== phase.workspace.headOid) {
-        try {
-          await input.git.assertAncestor({
-            ancestorOid: phase.workspace.headOid,
-            descendantOid: workspace.headOid,
-          });
-        } catch (error) {
-          if (
-            error instanceof PlanningPublicationGitError &&
-            error.reason === "not-ancestor"
-          )
-            return {
-              kind: "blocked",
-              state,
-              result: blocked("implementation-workspace"),
-            };
-          throw error;
-        }
-        state = await replace(input, state, {
-          ...phase,
-          workspace: { ...phase.workspace, headOid: workspace.headOid },
-        });
-      }
-      return { kind: "blocked", state, result };
+    let result: Awaited<ReturnType<PlanningImplementationInput["runAgent"]>>;
+    try {
+      result = await input.runAgent({
+        state,
+        phase,
+        git: {
+          ...input.configuredGit,
+          remote: phase.workspace.remote,
+          baseBranch: phase.base.baseBranch,
+          allowDirectLand: false,
+        },
+        workspaceCreated: input.workspaceCreated ?? false,
+        requiredPullRequestMarker: renderPlanningPullRequestMarker({
+          issueNumber: state.issueNumber,
+          phase: "implementation",
+        }),
+      });
+    } catch (error) {
+      await recoverPostAgentWorkspace({
+        state,
+        phaseIndex: input.phaseIndex,
+        phase,
+        workspaces: input.workspaces,
+        git: input.git,
+        checkpoint: (nextPhase) => replace(input, state, nextPhase),
+      });
+      throw error;
     }
+    const recovered = await recoverPostAgentWorkspace({
+      state,
+      phaseIndex: input.phaseIndex,
+      phase,
+      workspaces: input.workspaces,
+      git: input.git,
+      checkpoint: (nextPhase) => replace(input, state, nextPhase),
+    });
+    if (recovered.kind === "unsafe")
+      return {
+        kind: "blocked",
+        state: recovered.state,
+        result: blocked("implementation-workspace"),
+      };
+    state = recovered.state;
+    phase = recovered.phase;
+    const workspace = recovered.workspace;
+    if (result.status === "blocked") return { kind: "blocked", state, result };
     if (result.status === "merged")
       return {
         kind: "blocked",
@@ -206,32 +200,6 @@ export async function runPlanningImplementation(
         result: blocked("implementation-direct-merge"),
       };
     const runCostReport = await input.resolveRunCost?.();
-    const workspace = await input.workspaces.inspect(phase.workspace.identity);
-    if (workspace.state !== "ready" || !workspace.clean)
-      return {
-        kind: "blocked",
-        state,
-        result: blocked("implementation-workspace"),
-      };
-    if (workspace.headOid !== phase.workspace.headOid) {
-      try {
-        await input.git.assertAncestor({
-          ancestorOid: phase.workspace.headOid,
-          descendantOid: workspace.headOid,
-        });
-      } catch (error) {
-        if (
-          error instanceof PlanningPublicationGitError &&
-          error.reason === "not-ancestor"
-        )
-          return {
-            kind: "blocked",
-            state,
-            result: blocked("implementation-workspace"),
-          };
-        throw error;
-      }
-    }
     try {
       await assertPlanningImplementationAncestry({
         state,

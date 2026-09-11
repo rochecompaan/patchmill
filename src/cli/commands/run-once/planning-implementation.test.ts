@@ -296,7 +296,7 @@ test("blocks direct merged agent results regardless configured landing policy", 
     assert.equal(result.kind, "blocked");
     if (result.kind === "blocked")
       assert.equal(result.result.reason, "implementation-direct-merge");
-    assert.equal(replacements, 0);
+    assert.equal(replacements, 1);
     assert.equal(validations, 0);
   }
 });
@@ -480,7 +480,7 @@ test("blocks unproven reported commits before branch-pushed evidence", async () 
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked")
     assert.equal(result.result.reason, "implementation-ancestry");
-  assert.deepEqual(checkpoints, []);
+  assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
   assert.equal(inspectedRemote, false);
 });
 
@@ -507,12 +507,16 @@ test("persists a sanitized fresh implementation run-cost report", async () => {
     ),
     /host transport failure/,
   );
-  assert.deepEqual(checkpoints[0]?.phases[0]?.implementation.runCostReport, {
-    stages: [],
-    promptTokens: 2,
-    outputTokens: 3,
-    estimatedCostUsd: 0.4,
-  });
+  assert.deepEqual(
+    checkpoints.find((checkpoint) => checkpoint.phases[0]?.implementation)
+      ?.phases[0]?.implementation.runCostReport,
+    {
+      stages: [],
+      promptTokens: 2,
+      outputTokens: 3,
+      estimatedCostUsd: 0.4,
+    },
+  );
 });
 
 test("blocks a successful retry when its saved workspace head was rewritten", async () => {
@@ -544,6 +548,164 @@ test("blocks a successful retry when its saved workspace head was rewritten", as
   if (result.kind === "blocked")
     assert.equal(result.result.reason, "implementation-workspace");
   assert.equal(validated, false);
+});
+
+test("checkpoints clean post-agent workspace progress before recoverable publication failures", async () => {
+  for (const [name, failure] of [
+    ["wrong URL", "url"],
+    ["wrong branch", "branch"],
+    ["changed remote head", "remote-head"],
+  ] as const) {
+    let durable = input().state;
+    let attempts = 0;
+    const receivedHeads: string[] = [];
+    let pullRequestReads = 0;
+    const checkpoints: unknown[] = [];
+    const run = () =>
+      runPlanningImplementation(
+        input({
+          state: durable,
+          stateStore: {
+            replace: async ({ next }: { next: typeof durable }) => {
+              checkpoints.push(next);
+              durable = next;
+              return next;
+            },
+          },
+          git: {
+            inspectRemoteHead: async () =>
+              failure === "remote-head" && attempts === 1
+                ? { state: "present" as const, headOid: oid("c") }
+                : { state: "present" as const, headOid: oid("b") },
+            assertAncestor: async () => {},
+          },
+          host: {
+            ...input().host,
+            getPullRequest: async () => {
+              pullRequestReads += 1;
+              return {
+                number: 189,
+                url: "https://github.com/acme/patchmill/pull/189",
+                targetRepository: repository,
+                baseBranch: "main",
+                headRepository: repository,
+                headBranch: "agent/189",
+                headSha: oid("b"),
+                body: "Closes #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+                status: "open" as const,
+              };
+            },
+          },
+          runAgent: async ({
+            phase,
+          }: {
+            phase: { workspace: { headOid: string } };
+          }) => {
+            receivedHeads.push(phase.workspace.headOid);
+            attempts += 1;
+            return {
+              status: "pr-created" as const,
+              prUrl:
+                failure === "url" && attempts === 1
+                  ? "https://github.com/acme/other/pull/189"
+                  : "https://github.com/acme/patchmill/pull/189",
+              branch:
+                failure === "branch" && attempts === 1 ? "other" : "agent/189",
+              commits: [oid("b")],
+              validation: [],
+            };
+          },
+        }),
+      );
+    const failed = await run();
+    assert.equal(failed.kind, "blocked", name);
+    assert.equal(durable.phases[0]?.status, "workspace-ready", name);
+    assert.equal(durable.phases[0]?.workspace.headOid, oid("b"), name);
+    assert.equal(
+      checkpoints.some(
+        (state) =>
+          (state as { phases: Array<{ status: string }> }).phases[0]?.status ===
+          "pull-request-open",
+      ),
+      false,
+      name,
+    );
+    assert.equal(pullRequestReads, 0, name);
+    const repaired = await run();
+    assert.equal(repaired.kind, "validated", name);
+    assert.equal(repaired.state.phases[0]?.status, "pull-request-open", name);
+    assert.deepEqual(receivedHeads, [oid("a"), oid("b")], name);
+  }
+});
+
+test("checkpoints clean workspace progress when the implementation agent throws", async () => {
+  let durable = input().state;
+  let attempts = 0;
+  const receivedHeads: string[] = [];
+  let pullRequestReads = 0;
+  const checkpoints: unknown[] = [];
+  const run = () =>
+    runPlanningImplementation(
+      input({
+        state: durable,
+        stateStore: {
+          replace: async ({ next }: { next: typeof durable }) => {
+            checkpoints.push(next);
+            durable = next;
+            return next;
+          },
+        },
+        host: {
+          ...input().host,
+          getPullRequest: async () => {
+            pullRequestReads += 1;
+            return {
+              number: 189,
+              url: "https://github.com/acme/patchmill/pull/189",
+              targetRepository: repository,
+              baseBranch: "main",
+              headRepository: repository,
+              headBranch: "agent/189",
+              headSha: oid("b"),
+              body: "Closes #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+              status: "open" as const,
+            };
+          },
+        },
+        runAgent: async ({
+          phase,
+        }: {
+          phase: { workspace: { headOid: string } };
+        }) => {
+          receivedHeads.push(phase.workspace.headOid);
+          attempts += 1;
+          if (attempts === 1) throw new Error("todo completeness failed");
+          return {
+            status: "pr-created" as const,
+            prUrl: "https://github.com/acme/patchmill/pull/189",
+            branch: "agent/189",
+            commits: [oid("b")],
+            validation: [],
+          };
+        },
+      }),
+    );
+  await assert.rejects(run(), /todo completeness failed/u);
+  assert.equal(durable.phases[0]?.status, "workspace-ready");
+  assert.equal(durable.phases[0]?.workspace.headOid, oid("b"));
+  assert.equal(
+    checkpoints.some(
+      (state) =>
+        (state as { phases: Array<{ status: string }> }).phases[0]?.status ===
+        "pull-request-open",
+    ),
+    false,
+  );
+  assert.equal(pullRequestReads, 0);
+  const repaired = await run();
+  assert.equal(repaired.kind, "validated");
+  assert.deepEqual(receivedHeads, [oid("a"), oid("b")]);
+  assert.equal(repaired.state.phases[0]?.status, "pull-request-open");
 });
 
 test("propagates host transport failures instead of converting them to validation blockers", async () => {
