@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PlanningImplementationBaseError } from "./planning-implementation-base.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
+import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 
 const oid = (character: string) => character.repeat(40);
@@ -352,6 +354,262 @@ test("plan-only stops before creating an implementation workspace when its artif
   );
   assert.equal(result.kind, "stopped");
   assert.equal(prepared, false);
+});
+
+function stateWithCompletedSpec() {
+  const artifactPath = "docs/specs/2026-09-10-issue-189-planning-runner.md";
+  return {
+    ...state({ kind: "implementation", status: "pending" }),
+    gates: { specRequired: true, planRequired: false },
+    phases: [
+      {
+        kind: "spec",
+        status: "complete",
+        base: {
+          ...base,
+          artifactCandidates: { spec: [artifactPath], plan: [] },
+        },
+        artifacts: [
+          {
+            kind: "spec",
+            path: artifactPath,
+            commitOid: oid("c"),
+            source: "remote-base",
+          },
+        ],
+        completion: {
+          kind: "merged-pull-request",
+          mergeOid: oid("b"),
+          mergedBaseOid: oid("c"),
+        },
+      },
+      { kind: "implementation", status: "pending" },
+    ],
+  } as never;
+}
+
+test("fails closed before plan-only pause when a reviewed artifact is deleted, renamed, or ambiguous", async () => {
+  const artifactPath = "docs/specs/2026-09-10-issue-189-planning-runner.md";
+  for (const [name, candidates, reason] of [
+    ["deleted", [], "prior-artifact-missing"],
+    [
+      "renamed",
+      ["docs/specs/2026-09-10-issue-189-renamed.md"],
+      "prior-artifact-mismatch",
+    ],
+    [
+      "ambiguous",
+      [artifactPath, "docs/specs/2026-09-10-issue-189-competing.md"],
+      "prior-artifact-ambiguous",
+    ],
+  ] as const) {
+    let prepared = false;
+    await assert.rejects(
+      runPlanningPhase(
+        input({
+          state: stateWithCompletedSpec(),
+          phaseIndex: 1,
+          planOnly: true,
+          remoteBase: {
+            fetch: async () => ({
+              ...base,
+              baseOid: oid("d"),
+              artifactCandidates: { spec: candidates, plan: [] },
+            }),
+          },
+          publicationGit: {
+            assertAncestor: async () => undefined,
+            assertRegularFiles: async () => undefined,
+          },
+          workspaces: {
+            prepare: async () => ((prepared = true), { workspace, base }),
+          },
+        }),
+      ),
+      (error: unknown) =>
+        error instanceof PlanningImplementationBaseError &&
+        error.reason === reason,
+      name,
+    );
+    assert.equal(prepared, false, name);
+  }
+});
+
+test("fails closed when reviewed planning base history is rewritten before implementation", async () => {
+  let prepared = false;
+  const ancestors: string[] = [];
+  await assert.rejects(
+    runPlanningPhase(
+      input({
+        state: stateWithCompletedSpec(),
+        phaseIndex: 1,
+        remoteBase: {
+          fetch: async () => ({
+            ...base,
+            baseOid: oid("d"),
+            artifactCandidates: {
+              spec: ["docs/specs/2026-09-10-issue-189-planning-runner.md"],
+              plan: [],
+            },
+          }),
+        },
+        publicationGit: {
+          assertAncestor: async ({ ancestorOid }: { ancestorOid: string }) => {
+            ancestors.push(ancestorOid);
+            if (ancestorOid === oid("c"))
+              throw new PlanningPublicationGitError("ancestry", "not-ancestor");
+          },
+          assertRegularFiles: async () => {
+            throw new Error("unexpected artifact verification");
+          },
+        },
+        workspaces: {
+          prepare: async () => ((prepared = true), { workspace, base }),
+        },
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof PlanningPublicationGitError &&
+      error.reason === "not-ancestor",
+  );
+  assert.deepEqual(ancestors, [oid("a"), oid("b"), oid("c")]);
+  assert.equal(prepared, false);
+});
+
+test("fails closed when a plan-only workspace resumes after planning artifact deletion", async () => {
+  const paused = stateWithCompletedSpec();
+  paused.phases[1] = {
+    kind: "implementation",
+    status: "workspace-ready",
+    base,
+    workspace,
+    artifacts: [],
+  };
+  let resumed = false;
+  await assert.rejects(
+    runPlanningPhase(
+      input({
+        state: paused,
+        phaseIndex: 1,
+        remoteBase: {
+          fetch: async () => ({
+            ...base,
+            baseOid: oid("d"),
+            artifactCandidates: { spec: [], plan: [] },
+          }),
+        },
+        publicationGit: {
+          assertAncestor: async () => {
+            throw new Error("unexpected ancestry verification");
+          },
+          assertRegularFiles: async () => {
+            throw new Error("unexpected artifact verification");
+          },
+        },
+        workspaces: {
+          resume: async () => ((resumed = true), { clean: true }),
+        },
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof PlanningImplementationBaseError &&
+      error.reason === "prior-artifact-missing",
+  );
+  assert.equal(resumed, false);
+});
+
+test("rechecks planning anchors before implementation resumes after a plan-only pause", async () => {
+  const paused = stateWithCompletedSpec();
+  paused.phases[1] = {
+    kind: "implementation",
+    status: "workspace-ready",
+    base,
+    workspace,
+    artifacts: [],
+  };
+  let resumed = false;
+  let implementationRuns = 0;
+  await assert.rejects(
+    runPlanningPhase(
+      input({
+        state: paused,
+        phaseIndex: 1,
+        remoteBase: {
+          fetch: async () => ({
+            ...base,
+            baseOid: oid("d"),
+            artifactCandidates: {
+              spec: ["docs/specs/2026-09-10-issue-189-planning-runner.md"],
+              plan: [],
+            },
+          }),
+        },
+        publicationGit: {
+          assertAncestor: async ({ ancestorOid }: { ancestorOid: string }) => {
+            if (ancestorOid === oid("c"))
+              throw new PlanningPublicationGitError("ancestry", "not-ancestor");
+          },
+          assertRegularFiles: async () => undefined,
+        },
+        workspaces: {
+          resume: async () => ((resumed = true), { clean: true }),
+        },
+        operations: {
+          runImplementation: async () => {
+            implementationRuns += 1;
+            throw new Error("unexpected implementation");
+          },
+        },
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof PlanningPublicationGitError &&
+      error.reason === "not-ancestor",
+  );
+  assert.equal(resumed, false);
+  assert.equal(implementationRuns, 0);
+});
+
+test("verifies reviewed planning evidence before a plan-only implementation pause", async () => {
+  const calls: Array<{ kind: string; value: string | string[] }> = [];
+  const result = await runPlanningPhase(
+    input({
+      state: stateWithCompletedSpec(),
+      phaseIndex: 1,
+      planOnly: true,
+      remoteBase: {
+        fetch: async () => ({
+          ...base,
+          baseOid: oid("d"),
+          artifactCandidates: {
+            spec: ["docs/specs/2026-09-10-issue-189-planning-runner.md"],
+            plan: [],
+          },
+        }),
+      },
+      publicationGit: {
+        assertAncestor: async ({ ancestorOid }: { ancestorOid: string }) => {
+          calls.push({ kind: "ancestor", value: ancestorOid });
+        },
+        assertRegularFiles: async ({ paths }: { paths: string[] }) => {
+          calls.push({ kind: "regular", value: paths });
+        },
+      },
+      operations: {
+        resolveArtifacts: () => ({ kind: "satisfied-by-base", artifacts: [] }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "stopped");
+  assert.deepEqual(calls, [
+    { kind: "ancestor", value: oid("a") },
+    { kind: "ancestor", value: oid("b") },
+    { kind: "ancestor", value: oid("c") },
+    {
+      kind: "regular",
+      value: ["docs/specs/2026-09-10-issue-189-planning-runner.md"],
+    },
+  ]);
 });
 
 test("checkpoints implementation planning artifacts then stops before implementation code", async () => {

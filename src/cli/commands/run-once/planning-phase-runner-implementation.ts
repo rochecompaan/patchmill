@@ -2,6 +2,7 @@ import type {
   ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
+import { assertPlanningImplementationBase } from "./planning-implementation-base.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { durableImplementationResult } from "./planning-runtime-state.ts";
 import {
@@ -13,15 +14,29 @@ import {
   type PlanningPhaseRunnerOutcome,
 } from "./planning-phase-runner-shared.ts";
 
-async function prepare(
+async function fetchVerifiedBase(
   input: PlanningPhaseRunnerInput,
   state: PlanningStateV1,
-): Promise<PlanningStateV1> {
+) {
   const base = await input.remoteBase.fetch({
     issueNumber: state.issueNumber,
     remote: input.config.remote,
     baseBranch: input.config.baseBranch,
   });
+  await assertPlanningImplementationBase({
+    state,
+    phaseIndex: input.phaseIndex,
+    base,
+    git: input.publicationGit,
+  });
+  return base;
+}
+
+async function prepare(
+  input: PlanningPhaseRunnerInput,
+  state: PlanningStateV1,
+): Promise<PlanningStateV1> {
+  const base = await fetchVerifiedBase(input, state);
   const resolution = operations(input).resolveArtifacts({
     phase: input.phase,
     base,
@@ -78,6 +93,7 @@ export async function runPlanningImplementationPhase(
   if (phase?.kind !== "implementation")
     throw new RangeError("Planning implementation state changed");
   if (phase.status === "workspace-ready") {
+    await fetchVerifiedBase(input, state);
     const result = await runWorkspaceArtifacts(input, state);
     if (result.kind !== "workspace-ready") return result;
     state = result.state;
