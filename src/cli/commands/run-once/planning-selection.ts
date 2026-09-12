@@ -15,7 +15,8 @@ import {
   resolveWorkflowState,
 } from "./workflow-state.ts";
 import { compareIssuesByPriority } from "./selection.ts";
-import type { AgentIssueConfig, IssueSummary } from "./types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
+import type { AgentIssueConfig } from "./types.ts";
 
 export type RunOnceWorkflowSelection =
   | { kind: "none" }

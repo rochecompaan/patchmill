@@ -1,10 +1,10 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { findIssueArtifacts } from "./artifacts.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { pathExists, pathIsRegularFile } from "./paths.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
 import { buildSpecPath, findIssueSpec } from "./specs.ts";
-import type { IssueSummary } from "./types.ts";
 
 export type PlanningArtifactRoot = {
   repoRoot: string;

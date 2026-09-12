@@ -1,3 +1,4 @@
+import type { HumanDecisionQuestion } from "../../../workflow/decisions.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
@@ -6,9 +7,9 @@ import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
 export type {
   CommandResult,
-  CommandRunner,
   CommandRunOptions,
-} from "../../../process/command.ts";
+  CommandRunner,
+} from "../../../command/types.ts";
 
 export type TriageProgressEvent =
   | { type: "selected"; total: number }
@@ -48,37 +49,16 @@ export type TriageConfig = {
   onToolCall?: TriageToolCallHandler;
 };
 
-export type IssueCommentSummary = {
-  body: string;
-  authorLogin?: string;
-  created?: string;
-};
-
-export type IssueSummary = {
-  number: number;
-  title: string;
-  body: string;
-  labels: string[];
-  state: string;
-  url?: string | undefined;
-  author?: string | undefined;
-  created?: string | undefined;
-  updated?: string | undefined;
-  comments?: IssueCommentSummary[] | undefined;
-};
-
-export type LabelDefinition = {
-  name: string;
-  color: string;
-  description: string;
-};
+export type {
+  IssueCommentSummary,
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../../../issue/types.ts";
 
 export type PrimaryBucket = PatchmillTriageCanonicalBucket;
 
-export type HumanDecisionQuestion = {
-  question: string;
-  recommendedAnswer: string;
-};
+export type { HumanDecisionQuestion } from "../../../workflow/decisions.ts";
 
 export type TriageQuestion = string | HumanDecisionQuestion;
 
@@ -108,14 +88,6 @@ export type TriagePreview = {
   wouldComment: string | null;
   wouldClose: boolean;
   questions: string[];
-};
-
-export type LabelChangePlan = {
-  issueNumber: number;
-  oldLabels: string[];
-  newLabels: string[];
-  addLabels: string[];
-  removeLabels: string[];
 };
 
 export type TriageLogIssueEntry = {

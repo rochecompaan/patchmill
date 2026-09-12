@@ -1,6 +1,6 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CommandRunner } from "../triage/types.ts";
 import { runPiSmokeTest } from "./pi-smoke-test.ts";
 
 const FAKE_PI_COMMAND = { command: "pi", argsPrefix: [] };

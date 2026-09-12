@@ -1,7 +1,7 @@
+import type { CommandRunner } from "../command/types.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import {
   pullRequestNumber,
   sameCanonicalUrl,

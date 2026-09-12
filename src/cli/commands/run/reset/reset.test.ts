@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../../issue/types.ts";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -18,7 +19,6 @@ const NOW = new Date("2026-06-20T12:00:00.000Z");
 import type {
   AgentIssueConfig,
   AgentIssueRunState,
-  IssueSummary,
 } from "../../run-once/types.ts";
 const config = {
   readyLabel: "agent-ready",

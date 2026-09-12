@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import { createHash } from "node:crypto";
 
 import {
@@ -23,7 +24,6 @@ import {
 import type {
   AgentIssueConfig,
   AgentIssueRunState,
-  CommandRunner,
   IssueRunLease,
   RunRecoveryDecision,
 } from "./types.ts";

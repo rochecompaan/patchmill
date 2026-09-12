@@ -1,9 +1,9 @@
+import type { LabelChangePlan } from "../../../issue/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import {
   createPatchmillLabelCatalog,
   type PatchmillLabelCatalog,
 } from "../../../policy/label-catalog.ts";
-import type { LabelChangePlan } from "./types.ts";
 
 export const DEFAULT_LABEL_CATALOG = createPatchmillLabelCatalog(
   DEFAULT_PATCHMILL_CONFIG,

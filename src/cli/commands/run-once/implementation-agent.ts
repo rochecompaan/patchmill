@@ -13,16 +13,16 @@ import {
   buildImplementationRepairPrompt,
 } from "./prompts.ts";
 import type { IssueWorktreeResult } from "./git.ts";
+import type { CommandRunner } from "../../../command/types.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssueDevelopmentEnvironmentNotReadyResult,
   AgentIssueMergedResult,
   AgentIssuePiResult,
   AgentIssuePrCreatedResult,
-  AgentIssueRunState,
-  CommandRunner,
-  IssueSummary,
-} from "./types.ts";
+} from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
+import type { AgentIssueRunState } from "./types.ts";
 import type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
 import type { AgentIssueConfig } from "./types.ts";
 

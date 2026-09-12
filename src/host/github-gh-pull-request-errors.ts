@@ -1,4 +1,4 @@
-import type { CommandResult } from "../process/command.ts";
+import type { CommandResult } from "../command/types.ts";
 
 export type GitHubPullRequestInputReason =
   | "blank-push-remote"

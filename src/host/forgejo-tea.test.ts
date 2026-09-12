@@ -1,15 +1,12 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
-import { ForgejoTeaHostProvider } from "./forgejo-tea.ts";
 import type {
   LabelChangePlan,
   LabelDefinition,
   IssueSummary,
-} from "./types.ts";
-import type {
-  CommandResult,
-  CommandRunner,
-} from "../cli/commands/triage/types.ts";
+} from "../issue/types.ts";
+import type { CommandResult, CommandRunner } from "../command/types.ts";
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { ForgejoTeaHostProvider } from "./forgejo-tea.ts";
 
 type RecordedCall = {
   command: string;

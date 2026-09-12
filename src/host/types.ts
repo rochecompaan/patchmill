@@ -1,29 +1,16 @@
 import type { PatchmillHostProviderId } from "../config/types.ts";
+import type {
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../issue/types.ts";
 
-export type IssueCommentSummary = {
-  body: string;
-  authorLogin?: string;
-  created?: string;
-};
-
-export type IssueSummary = {
-  number: number;
-  title: string;
-  body: string;
-  labels: string[];
-  state: string;
-  author?: string | undefined;
-  created?: string | undefined;
-  updated?: string | undefined;
-  url?: string | undefined;
-  comments?: IssueCommentSummary[] | undefined;
-};
-
-export type LabelDefinition = {
-  name: string;
-  color: string;
-  description: string;
-};
+export type {
+  IssueCommentSummary,
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../issue/types.ts";
 
 export type RepositoryTarget = {
   owner: string;
@@ -56,14 +43,6 @@ export type RepositorySetupHostProvider = {
     target: RepositoryTarget,
     issue: HostIssueCreateInput,
   ): Promise<void>;
-};
-
-export type LabelChangePlan = {
-  issueNumber: number;
-  oldLabels: string[];
-  newLabels: string[];
-  addLabels: string[];
-  removeLabels: string[];
 };
 
 export type HostCliCheck =

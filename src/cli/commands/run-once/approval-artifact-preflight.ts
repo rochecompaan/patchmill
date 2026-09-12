@@ -1,3 +1,5 @@
+import type { IssueSummary } from "../../../issue/types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
 import { join } from "node:path";
 import {
   assertIssueArtifactSourcesMaterializable,
@@ -19,12 +21,7 @@ import {
   hasSavedPlanningArtifactWorkspace,
   planningArtifactPolicyForWorkspace,
 } from "./pipeline-workspace.ts";
-import type {
-  AgentIssueConfig,
-  AgentIssueRunState,
-  CommandRunner,
-  IssueSummary,
-} from "./types.ts";
+import type { AgentIssueConfig, AgentIssueRunState } from "./types.ts";
 import type { ReadOnlyIssueWorkspace } from "./git.ts";
 
 export type ApprovedArtifactPreflightOptions = {

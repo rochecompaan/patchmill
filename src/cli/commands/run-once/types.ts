@@ -1,4 +1,3 @@
-import type { CommandRunner, IssueSummary } from "../triage/types.ts";
 import type { PatchmillHostConfig } from "../../../config/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
@@ -6,15 +5,44 @@ import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 import type { RunCostReport } from "./run-cost.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
+import type {
+  AgentIssueBlockedResult,
+  AgentIssueBlockerQuestion,
+  AgentIssueMergedResult,
+  AgentIssuePrCreatedResult,
+  AgentIssueVisualEvidence,
+} from "../../../issue-run/types.ts";
 
 export type {
   CommandResult,
   CommandRunOptions,
   CommandRunner,
-  HumanDecisionQuestion,
+} from "../../../command/types.ts";
+export type {
+  IssueCommentSummary,
   IssueSummary,
-} from "../triage/types.ts";
+  LabelChangePlan,
+  LabelDefinition,
+} from "../../../issue/types.ts";
 export type { AgentIssueProgressEvent, ProgressReporter } from "./progress.ts";
+export type {
+  AgentIssueBlockedResult,
+  AgentIssueBlockerQuestion,
+  AgentIssueDevelopmentEnvironmentHandoff,
+  AgentIssueDevelopmentEnvironmentNotReadyResult,
+  AgentIssueDevelopmentEnvironmentReadyResult,
+  AgentIssueDevelopmentEnvironmentResult,
+  AgentIssueImplementationResumeContext,
+  AgentIssueMergedResult,
+  AgentIssuePiResult,
+  AgentIssuePlanCreatedResult,
+  AgentIssuePrCreatedResult,
+  AgentIssueSpecCreatedResult,
+  AgentIssueVisualEvidence,
+} from "../../../issue-run/types.ts";
+export type { HumanDecisionQuestion } from "../../../workflow/decisions.ts";
 
 export type AgentIssueConfig = {
   repoRoot: string;
@@ -184,85 +212,11 @@ export type AgentIssueRunStateUpdate = {
   clearBlockerQuestions?: boolean | undefined;
 };
 
-export type AgentIssueImplementationResumeContext = {
-  resumed: boolean;
-  worktreeCreated: boolean;
-  existingCommits: string[];
-  priorBlockerReason?: string | undefined;
-  priorBlockerQuestions?: AgentIssueBlockerQuestion[] | undefined;
-  priorValidation?: string[] | undefined;
-};
-
-export type AgentIssueBlockerQuestion =
-  | string
-  | import("../triage/types.ts").HumanDecisionQuestion;
-
-export type AgentIssueBlockedResult = {
-  status: "blocked";
-  reason: string;
-  questions: AgentIssueBlockerQuestion[];
-  commits: string[];
-  validation: string[];
-};
-
-export type AgentIssueSpecCreatedResult = {
-  status: "spec-created";
-  specPath: string;
-  commit?: string | undefined;
-};
-
-export type AgentIssuePlanCreatedResult = {
-  status: "plan-created";
-  planPath: string;
-  commit?: string | undefined;
-};
-
 export type AgentIssueApprovalRequiredResult = {
   status: "approval-required";
   issue: IssueSummary;
   approvalKind: "spec" | "plan";
   missingLabel: string;
-};
-
-export type AgentIssueDevelopmentEnvironmentReadyResult = {
-  status: "ready";
-  summary: string;
-  evidence: string[];
-  environment?: Record<string, string> | undefined;
-};
-
-export type AgentIssueDevelopmentEnvironmentNotReadyResult = {
-  status: "not-ready";
-  reason: string;
-  evidence: string[];
-  remediation: string[];
-};
-
-export type AgentIssueDevelopmentEnvironmentResult =
-  | AgentIssueDevelopmentEnvironmentReadyResult
-  | AgentIssueDevelopmentEnvironmentNotReadyResult;
-
-export type AgentIssueDevelopmentEnvironmentHandoff =
-  AgentIssueDevelopmentEnvironmentReadyResult & {
-    completedAt: string;
-  };
-
-export type AgentIssueVisualEvidence = {
-  screenshotPath: string;
-  caption?: string | undefined;
-  referencePaths?: string[] | undefined;
-  url?: string | undefined;
-};
-
-export type AgentIssuePrCreatedResult = {
-  status: "pr-created";
-  prUrl: string;
-  branch: string;
-  commits: string[];
-  validation: string[];
-  reviewSummary?: string | undefined;
-  landingDecision?: string | undefined;
-  visualEvidence?: AgentIssueVisualEvidence[] | undefined;
 };
 
 export type AgentIssueReviewPendingResult = {
@@ -281,23 +235,6 @@ export type AgentIssueStoppedResult = {
   branch?: string | undefined;
   worktreePath?: string | undefined;
 };
-
-export type AgentIssueMergedResult = {
-  status: "merged";
-  branch: string;
-  mergeCommit: string;
-  commits: string[];
-  validation: string[];
-  reviewSummary?: string | undefined;
-  landingDecision?: string | undefined;
-};
-
-export type AgentIssuePiResult =
-  | AgentIssueBlockedResult
-  | AgentIssueSpecCreatedResult
-  | AgentIssuePlanCreatedResult
-  | AgentIssuePrCreatedResult
-  | AgentIssueMergedResult;
 
 type AgentIssuePipelineResultLog = {
   logPath?: string | undefined;

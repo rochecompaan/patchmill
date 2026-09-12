@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
@@ -7,7 +8,6 @@ import {
   resolvePlanningArtifacts,
   type PlanningArtifactPolicy,
 } from "./planning-artifacts.ts";
-import type { IssueSummary } from "./types.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
 

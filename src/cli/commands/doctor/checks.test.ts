@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -5,7 +6,6 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
 import { installProjectSkills } from "../init/skill-installer.ts";
-import type { CommandRunner } from "../triage/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   bundledVisualEvidenceSkillPath,

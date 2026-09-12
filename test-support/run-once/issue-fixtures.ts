@@ -1,4 +1,4 @@
-import type { IssueSummary } from "../../src/cli/commands/run-once/types.ts";
+import type { IssueSummary } from "../../src/issue/types.ts";
 
 export function issue(
   number: number,

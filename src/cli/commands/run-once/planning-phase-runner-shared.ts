@@ -30,12 +30,12 @@ import {
   runPlanningPhaseArtifacts,
 } from "./planning-phase-artifacts.ts";
 import type { PlanningArtifactAgent } from "./planning-phase-artifacts.ts";
-import type { PromptTriageLabels } from "./prompts.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssuePrCreatedResult,
-  IssueSummary,
-} from "./types.ts";
+  PromptTriageLabels,
+} from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 
 export type PlanningPhaseRunnerOutcome =
   | { kind: "review-pending"; state: PlanningStateV1; prUrl: string }

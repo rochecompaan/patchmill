@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type { CommandRunner } from "../../../command/types.ts";
 import {
   stdin as defaultStdin,
   stdout as defaultStdout,
@@ -9,7 +10,6 @@ import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.ts";
 import { createCommandRunner } from "../triage/command.ts";
-import type { CommandRunner } from "../triage/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { GLOBAL_PATCHMILL_SKILLS } from "../../../workflow/skills.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";

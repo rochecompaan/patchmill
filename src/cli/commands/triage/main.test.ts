@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
@@ -12,7 +13,7 @@ import {
   main,
   type TriageCliDependencies,
 } from "./main.ts";
-import type { CommandRunner, TriageConfig, TriageResult } from "./types.ts";
+import type { TriageConfig, TriageResult } from "./types.ts";
 
 function triageConfig(overrides: Partial<TriageConfig> = {}): TriageConfig {
   return {

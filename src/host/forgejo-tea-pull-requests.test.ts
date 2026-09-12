@@ -3,10 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type {
-  CommandResult,
-  CommandRunner,
-} from "../cli/commands/triage/types.ts";
+import type { CommandResult, CommandRunner } from "../command/types.ts";
 import { createStaticCommandRunner } from "../../test-support/command-runner.ts";
 import { ForgejoTeaPullRequestError } from "./forgejo-tea-pull-request-errors.ts";
 import { PullRequestIdentityError } from "./pull-requests.ts";

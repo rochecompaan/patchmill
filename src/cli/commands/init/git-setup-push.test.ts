@@ -1,6 +1,6 @@
+import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CommandResult, CommandRunner } from "../triage/types.ts";
 import { maybeOfferInitSetupPush } from "./git-setup-push.ts";
 
 type ScriptedResult = Partial<CommandResult>;

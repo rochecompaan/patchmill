@@ -1,5 +1,5 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { WorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
-import type { IssueSummary } from "./types.ts";
 
 export class ApprovalRequiredError extends Error {
   override readonly name = "ApprovalRequiredError";

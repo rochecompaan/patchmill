@@ -1,4 +1,4 @@
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
+import type { CommandRunner } from "../command/types.ts";
 import { ForgejoTeaPullRequestCommands } from "./forgejo-tea-pull-request-commands.ts";
 import {
   validateForgejoBranchName,

@@ -1,3 +1,5 @@
+import type { IssueSummary } from "../issue/types.ts";
+import type { CommandResult, CommandRunner } from "../command/types.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,11 +12,6 @@ import type {
   AgentIssueProgressEvent,
   ProgressReporter,
 } from "../cli/commands/run-once/progress.ts";
-import type {
-  CommandResult,
-  CommandRunner,
-  IssueSummary,
-} from "../cli/commands/triage/types.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
   bundledVisualEvidenceSkillPath,

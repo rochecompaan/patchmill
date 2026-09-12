@@ -1,10 +1,10 @@
-import type { RunPiPromptOptions } from "../cli/commands/run-once/pi.ts";
 import type {
   AgentIssueImplementationResumeContext,
   AgentIssuePiResult,
-  IssueSummary,
-} from "../cli/commands/run-once/types.ts";
-import type { PromptTriageLabels } from "../cli/commands/run-once/prompts.ts";
+  PromptTriageLabels,
+} from "../issue-run/types.ts";
+import type { IssueSummary } from "../issue/types.ts";
+import type { RunPiPromptOptions } from "../cli/commands/run-once/pi.ts";
 import type { GitWorktreeStrategyConfig } from "../git/types.ts";
 import type { PatchmillProjectPolicy } from "../policy/types.ts";
 import type { PatchmillSkillsConfig } from "../workflow/skills.ts";

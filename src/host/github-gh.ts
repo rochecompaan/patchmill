@@ -1,19 +1,18 @@
+import type {
+  IssueCommentSummary,
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../issue/types.ts";
+import type { CommandResult, CommandRunner } from "../command/types.ts";
 import {
   readGitHubPullRequestBody,
   updateGitHubPullRequestBody,
 } from "./github-pr-body.ts";
 import type {
-  CommandResult,
-  CommandRunner,
-} from "../cli/commands/triage/types.ts";
-import type {
   HostCliCheck,
   HostIssueCreateInput,
-  IssueCommentSummary,
   IssueHostProvider,
-  IssueSummary,
-  LabelChangePlan,
-  LabelDefinition,
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,

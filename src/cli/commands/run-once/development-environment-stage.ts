@@ -1,3 +1,9 @@
+import type {
+  AgentIssueDevelopmentEnvironmentHandoff,
+  AgentIssueDevelopmentEnvironmentResult,
+} from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { runDevelopmentEnvironmentAgent } from "./development-environment-agent.ts";
@@ -5,12 +11,8 @@ import { writeRunState } from "./run-state.ts";
 import { retryableLabelsAfterDevelopmentEnvironmentFailure } from "./workflow-state.ts";
 import type {
   AgentIssueConfig,
-  AgentIssueDevelopmentEnvironmentHandoff,
-  AgentIssueDevelopmentEnvironmentResult,
   AgentIssuePipelineResult,
   AgentIssueProgressEvent,
-  CommandRunner,
-  IssueSummary,
   ProgressReporter,
 } from "./types.ts";
 

@@ -1,10 +1,12 @@
+import type {
+  AgentIssuePiResult,
+  AgentIssueVisualEvidence,
+} from "../../../issue-run/types.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import type { RunOnceWorkflowState } from "./workflow-state.ts";
 import type {
   AgentIssueConfig,
-  AgentIssuePiResult,
   AgentIssueRunCheckpoints,
-  AgentIssueVisualEvidence,
   RunResetSeed,
 } from "./types.ts";
 import type { readRunState } from "./run-state.ts";

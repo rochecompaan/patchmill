@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CommandResult } from "../process/command.ts";
+import type { CommandResult } from "../command/types.ts";
 import {
   IncompletePullRequestSearchError,
   PullRequestIdentityError,

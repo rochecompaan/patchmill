@@ -1,3 +1,9 @@
+import type {
+  IssueSummary,
+  LabelChangePlan,
+  LabelDefinition,
+} from "../issue/types.ts";
+import type { CommandRunner } from "../command/types.ts";
 import {
   readForgejoPullRequestBody,
   updateForgejoPullRequestBody,
@@ -11,14 +17,10 @@ import {
   listOpenIssues,
   viewIssue as viewIssueWithTea,
 } from "../cli/commands/triage/forgejo.ts";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
 import type {
   HostCliCheck,
   HostIssueCreateInput,
   IssueHostProvider,
-  IssueSummary,
-  LabelChangePlan,
-  LabelDefinition,
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,

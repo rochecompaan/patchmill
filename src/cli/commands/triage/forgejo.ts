@@ -1,11 +1,11 @@
-import { withTeaContext } from "../../../host/forgejo-tea-context.ts";
 import type {
-  CommandRunner,
   IssueCommentSummary,
   IssueSummary,
   LabelChangePlan,
   LabelDefinition,
-} from "./types.ts";
+} from "../../../issue/types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import { withTeaContext } from "../../../host/forgejo-tea-context.ts";
 
 const ISSUE_PAGE_SIZE = 1000;
 const COMMENT_PAGE_SIZE = 1000;

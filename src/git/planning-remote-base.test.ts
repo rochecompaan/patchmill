@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type { CommandRunner } from "../process/command.ts";
+import type { CommandRunner } from "../command/types.ts";
 import { PlanningRemoteBaseGit } from "./planning-remote-base.ts";
 const oid = "a".repeat(40);
 function runner(tree: string): CommandRunner {

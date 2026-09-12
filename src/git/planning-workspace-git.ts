@@ -1,4 +1,4 @@
-import type { CommandRunner } from "../process/command.ts";
+import type { CommandRunner } from "../command/types.ts";
 import type { PlanningPhaseKind } from "../workflow/planning-pull-request-markers.ts";
 import { PlanningWorkspaceCleanupGit } from "./planning-workspace-cleanup.ts";
 import { PlanningWorkspaceRepositoryGit } from "./planning-workspace-inspection.ts";

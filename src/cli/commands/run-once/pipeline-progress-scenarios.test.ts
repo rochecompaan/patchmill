@@ -1,3 +1,4 @@
+import type { CommandResult } from "../../../command/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -30,7 +31,6 @@ import {
   collectProgressEvents,
   commentBody,
 } from "../../../../test-support/run-once/assertions.ts";
-import type { CommandResult } from "./types.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
 const MINIMAL_PNG_BYTES = Buffer.from([

@@ -1,14 +1,14 @@
+import type { LabelDefinition } from "../../../issue/types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { HELP_TEXT, runSetupTestRepo } from "./main.ts";
-import type { CommandRunner } from "../triage/types.ts";
 import type {
   HostCliCheck,
   HostIssueCreateInput,
-  LabelDefinition,
   RepositoryInfo,
   RepositorySetupHostProvider,
   RepositoryTarget,

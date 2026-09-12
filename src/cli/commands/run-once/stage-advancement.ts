@@ -1,3 +1,6 @@
+import type { AgentIssueBlockedResult } from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
 import { isAbsolute, join, relative } from "node:path";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { publishWorkflowArtifact } from "../../../workflow/artifacts/publish-artifact.ts";
@@ -18,13 +21,10 @@ import {
 } from "./planning-artifacts.ts";
 import type { AgentIssueProgressEvent } from "./progress.ts";
 import type {
-  AgentIssueBlockedResult,
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueRunCheckpoints,
   AgentIssueRunStateStatus,
-  CommandRunner,
-  IssueSummary,
 } from "./types.ts";
 import { mirrorConfiguredPathInWorktree } from "./pipeline-workspace.ts";
 import {

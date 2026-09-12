@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,7 +12,6 @@ import {
   type ApprovedArtifactPreflightOptions,
 } from "./approval-artifact-preflight.ts";
 import type { ResolvedIssueArtifactSource } from "./artifact-sources.ts";
-import type { IssueSummary } from "./types.ts";
 
 const now = new Date("2026-08-02T12:00:00Z");
 

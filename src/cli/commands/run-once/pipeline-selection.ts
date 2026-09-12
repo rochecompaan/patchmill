@@ -1,14 +1,11 @@
+import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { assertExplicitWorkflowState } from "./workflow-state.ts";
-import type {
-  AgentIssueConfig,
-  AgentIssueVisualEvidence,
-  IssueSelectionRejection,
-  IssueSummary,
-} from "./types.ts";
+import type { AgentIssueConfig, IssueSelectionRejection } from "./types.ts";
 import {
   lifecycleLabels,
   hasBlockedRunRecoveryState,

@@ -18,7 +18,7 @@ import type {
   AgentIssueBlockedResult,
   AgentIssueMergedResult,
   AgentIssuePrCreatedResult,
-} from "./types.ts";
+} from "../../../issue-run/types.ts";
 import {
   assertPlanningImplementationAncestry,
   PlanningImplementationAncestryError,

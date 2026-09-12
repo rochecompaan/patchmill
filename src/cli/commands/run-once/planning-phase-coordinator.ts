@@ -3,8 +3,8 @@ import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts"
 import type {
   AgentIssueBlockedResult,
   AgentIssuePrCreatedResult,
-  IssueSummary,
-} from "./types.ts";
+} from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
 
 export type PlanningCoordinatorOutcome =

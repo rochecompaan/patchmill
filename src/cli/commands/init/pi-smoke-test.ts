@@ -1,4 +1,4 @@
-import type { CommandRunner } from "../triage/types.ts";
+import type { CommandRunner } from "../../../command/types.ts";
 import {
   piAgentCommandEnv,
   piCommandArgs,

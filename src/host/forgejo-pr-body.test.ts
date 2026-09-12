@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../command/types.ts";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,7 +9,6 @@ import {
   readForgejoPullRequestBody,
   updateForgejoPullRequestBody,
 } from "./forgejo-pr-body.ts";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
 
 async function withRepo(
   fn: (repoRoot: string) => Promise<void>,

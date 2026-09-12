@@ -5,11 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { formatRunRecoveryDecision, planRunRecovery } from "./recovery.ts";
 import { decideRunRecovery } from "./recovery-policy.ts";
-import type {
-  CommandResult,
-  CommandRunner,
-  RunRecoveryAssessment,
-} from "./types.ts";
+import type { CommandResult, CommandRunner } from "../../../command/types.ts";
+import type { RunRecoveryAssessment } from "./types.ts";
 
 type Call = { command: string; args: string[]; cwd?: string };
 

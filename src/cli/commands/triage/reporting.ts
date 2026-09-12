@@ -1,13 +1,10 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import {
   canonicalBucketForLabels,
   type PatchmillTriageStateMap,
 } from "../../../policy/triage-state.ts";
 import { blockedByFromIssue } from "./blocked.ts";
-import type {
-  IssueSummary,
-  TriageLogIssueEntry,
-  TriagePreview,
-} from "./types.ts";
+import type { TriageLogIssueEntry, TriagePreview } from "./types.ts";
 
 function issueByNumber(issues: IssueSummary[]): Map<number, IssueSummary> {
   return new Map(issues.map((issue) => [issue.number, issue]));

@@ -1,3 +1,8 @@
+import type { IssueSummary } from "../../../issue/types.ts";
+import type {
+  CommandRunOptions,
+  CommandRunner,
+} from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,11 +23,6 @@ import {
   runTriageDryRunAgent,
   validateTriagePreviewDocument,
 } from "./dry-run-agent.ts";
-import type {
-  CommandRunOptions,
-  CommandRunner,
-  IssueSummary,
-} from "./types.ts";
 
 const issues: IssueSummary[] = [
   {

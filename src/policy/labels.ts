@@ -1,5 +1,5 @@
+import type { LabelDefinition } from "../issue/types.ts";
 import type { PatchmillLabelsConfig } from "../config/types.ts";
-import type { LabelDefinition } from "../host/types.ts";
 
 const DEFAULT_TYPE_LABELS: LabelDefinition[] = [
   { name: "bug", color: "#d73a4a", description: "Something is broken" },

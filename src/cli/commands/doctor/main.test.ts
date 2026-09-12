@@ -1,7 +1,7 @@
+import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { HELP_TEXT, runDoctor } from "./main.ts";
-import type { CommandRunner } from "../triage/types.ts";
 import type { DoctorCheckResult } from "./checks.ts";
 import type { DoctorPiResourceReport } from "./pi-resources.ts";
 

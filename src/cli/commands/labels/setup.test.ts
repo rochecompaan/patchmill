@@ -1,13 +1,12 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
-import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import type {
-  HostCliCheck,
-  IssueHostProvider,
   IssueSummary,
   LabelChangePlan,
   LabelDefinition,
-} from "../../../host/types.ts";
+} from "../../../issue/types.ts";
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import type { HostCliCheck, IssueHostProvider } from "../../../host/types.ts";
 import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import { ensureRequiredLabels } from "./setup.ts";
 

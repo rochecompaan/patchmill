@@ -1,3 +1,4 @@
+import type { CommandRunner } from "../command/types.ts";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
@@ -5,7 +6,6 @@ import {
   readGitHubPullRequestBody,
   updateGitHubPullRequestBody,
 } from "./github-pr-body.ts";
-import type { CommandRunner } from "../cli/commands/triage/types.ts";
 
 test("GitHub PR body adapter reads the configured PR body", async () => {
   const calls: Array<{

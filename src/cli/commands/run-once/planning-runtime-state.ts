@@ -1,4 +1,4 @@
-import type { AgentIssuePrCreatedResult } from "./types.ts";
+import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
 import type {
   ImplementationCompletePlanningPhase,
   ImplementationPullRequestOpenPlanningPhase,

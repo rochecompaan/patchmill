@@ -1,5 +1,12 @@
-import { renderLandingResultContracts } from "./implementation-landing-prompt.ts";
+import type {
+  AgentIssueBlockerQuestion,
+  AgentIssueDevelopmentEnvironmentHandoff,
+  AgentIssueImplementationResumeContext,
+  PromptTriageLabels,
+} from "../../../issue-run/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
+import { renderLandingResultContracts } from "./implementation-landing-prompt.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PiRepairPromptInput } from "./pi-session-repair.ts";
 import {
@@ -16,12 +23,6 @@ import {
   renderIssueTodoTitlePattern,
   type PatchmillPiTaskContract,
 } from "../../../policy/task-contract.ts";
-import type {
-  AgentIssueBlockerQuestion,
-  AgentIssueDevelopmentEnvironmentHandoff,
-  AgentIssueImplementationResumeContext,
-  IssueSummary,
-} from "./types.ts";
 import {
   renderDevelopmentEnvironmentSkillStep,
   renderImplementationSkillSteps,
@@ -58,10 +59,7 @@ export type PlanCreationPromptInput = {
   reviewContext?: PlanningReviewContext;
 };
 
-export type PromptTriageLabels = {
-  ready: string;
-  needsInfo: string;
-};
+export type { PromptTriageLabels } from "../../../issue-run/types.ts";
 
 export type ImplementationPromptInput = {
   issue: IssueSummary;

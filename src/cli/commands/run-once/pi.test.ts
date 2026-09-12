@@ -1,3 +1,4 @@
+import type { CommandRunner, CommandResult } from "../../../command/types.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Stats } from "node:fs";
@@ -23,11 +24,7 @@ import {
   sessionEntryToObservations,
   sessionEntryToStreamText,
 } from "./pi-session-stream.ts";
-import type {
-  AgentIssueProgressEvent,
-  CommandRunner,
-  CommandResult,
-} from "./types.ts";
+import type { AgentIssueProgressEvent } from "./types.ts";
 
 type Call = {
   command: string;

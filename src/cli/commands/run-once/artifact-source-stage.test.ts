@@ -1,3 +1,4 @@
+import type { IssueSummary } from "../../../issue/types.ts";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,7 +8,7 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
-import type { AgentIssueConfig, IssueSummary } from "./types.ts";
+import type { AgentIssueConfig } from "./types.ts";
 
 async function makeConfig(): Promise<AgentIssueConfig> {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-artifact-stage-"));

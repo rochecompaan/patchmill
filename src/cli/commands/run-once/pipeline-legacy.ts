@@ -81,12 +81,12 @@ import {
   type AgentIssueProgressEvent,
   type ProgressReporter,
 } from "./progress.ts";
+import type { CommandRunner } from "../../../command/types.ts";
+import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
   AgentIssueRunState,
-  CommandRunner,
-  IssueSummary,
 } from "./types.ts";
 
 type PiOutputStream = (chunk: string) => void;
