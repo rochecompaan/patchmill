@@ -44,6 +44,10 @@ through any resumptions to a terminal outcome. _Avoid_: Run attempt
 **Run attempt**: One process entry into the run-once workflow for an Issue run.
 A later Run attempt may resume the same Issue run. _Avoid_: Issue run
 
+**Normalized run outcome**: The small coordinator-facing result of one Run
+attempt — completed, no work, deferred, cancelled, or failed — produced from a
+rich Run-once workflow result. _Avoid_: Pipeline status
+
 **Run recovery state**: The durable current checkpoint needed to resume one
 run-once workflow. It is authoritative for resume mechanics, not coordinator
 policy or audit history. _Avoid_: Event ledger, Coordinator activity
@@ -59,6 +63,10 @@ limits. _Avoid_: Billing period
 **Budget wait**: Coordinator activity in which desired mode remains running but
 Patchmill cannot select another Issue run because a Budget window has reached a
 limit. _Avoid_: Pause, Drain
+
+**Selection gate**: The pre-run check that desired mode, Budget windows, and
+host-retry state allow one Run-once workflow to start. _Avoid_: Budget check,
+throttle
 
 **Operator control**: A maintainer instruction that changes coordinator intent,
 such as pause, resume, drain, or shutdown. _Avoid_: Workflow action
