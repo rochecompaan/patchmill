@@ -11,10 +11,7 @@ import { runPlanningWorkflow } from "./planning-pipeline.ts";
 import { selectRunOnceWorkflow } from "./planning-selection.ts";
 import { loadSelectionIssues } from "./pipeline-selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
-import type {
-  AgentIssueConfig,
-  AgentIssuePipelineResult,
-} from "./types.ts";
+import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 

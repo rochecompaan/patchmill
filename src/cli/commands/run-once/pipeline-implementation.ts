@@ -1,5 +1,4 @@
 import type {
-  AgentIssueDevelopmentEnvironmentHandoff,
   AgentIssueMergedResult,
   AgentIssuePiResult,
   AgentIssuePrCreatedResult,

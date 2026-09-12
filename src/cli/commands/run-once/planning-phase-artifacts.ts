@@ -19,10 +19,7 @@ import type {
   WorkspaceReadyPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
 import { buildPlanPath } from "./plans.ts";
-import {
-  buildSpecCreationPrompt,
-  buildPlanCreationPrompt,
-} from "./prompts.ts";
+import { buildSpecCreationPrompt, buildPlanCreationPrompt } from "./prompts.ts";
 import { configuredPathRelativeToRepo } from "./pipeline-workspace.ts";
 import { buildSpecPath } from "./specs.ts";
 import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
