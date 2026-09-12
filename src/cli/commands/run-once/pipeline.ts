@@ -33,6 +33,7 @@ export async function runOneIssue(
     issues,
     config,
     new PlanningStateStore(config.runStateDir),
+    options.now?.toISOString(),
   );
   switch (selected.kind) {
     case "none":

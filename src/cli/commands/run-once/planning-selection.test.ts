@@ -8,6 +8,7 @@ import {
   selectRunOnceWorkflow,
 } from "./planning-selection.ts";
 import { writeRunState } from "./run-state.ts";
+import { assertPlanningStateReplacement } from "../../../workflow/planning-state.ts";
 
 const issue = (number: number, labels: string[]) => ({
   number,
@@ -257,4 +258,25 @@ test("returns malformed planning state rather than selecting fresh work", async 
   assert.equal(result.kind, "invalid-planning-state");
   if (result.kind === "invalid-planning-state")
     assert.match(result.reason, /state: planning state read failed/);
+});
+
+test("stamps fresh planning state with the run clock so the first revision edge validates", async () => {
+  // Production freezes options.now at process start; state creation happens
+  // later, so a live clock here makes the first update fail timestamp-order.
+  const runStart = "2026-09-12T19:35:15.658Z";
+  const result = await selectRunOnceWorkflow(
+    [issue(4, ["agent-ready"])],
+    config,
+    { path: () => "state", read: async () => undefined } as never,
+    runStart,
+  );
+  assert.equal(result.kind, "fresh-planning");
+  if (result.kind !== "fresh-planning") return;
+  assert.equal(result.initialState.createdAt, runStart);
+  assert.equal(result.initialState.updatedAt, runStart);
+  assertPlanningStateReplacement(result.initialState, {
+    ...result.initialState,
+    revision: 1,
+    updatedAt: runStart,
+  });
 });

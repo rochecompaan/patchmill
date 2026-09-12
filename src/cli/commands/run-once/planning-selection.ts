@@ -131,6 +131,7 @@ export async function selectRunOnceWorkflow(
   issues: readonly IssueSummary[],
   config: AgentIssueConfig,
   planningState: Pick<PlanningStateStore, "read" | "path">,
+  now?: string,
 ): Promise<RunOnceWorkflowSelection> {
   const choices: Array<Exclude<RunOnceWorkflowSelection, { kind: "none" }>> =
     [];
@@ -219,6 +220,7 @@ export async function selectRunOnceWorkflow(
             specRequired: config.approvalPolicy.specApproval.required,
             planRequired: config.approvalPolicy.planApproval.required,
           },
+          ...(now === undefined ? {} : { now }),
         }),
       });
   }
