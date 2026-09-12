@@ -198,6 +198,41 @@ test("blocks dirty resumed workspaces before planning or implementation agents",
   }
 });
 
+test("open planning review takes precedence over plan-only without state mutation", async () => {
+  const initial = state({ kind: "spec", status: "pull-request-open" });
+  let laterEffect = false;
+  const result = await runPlanningPhase(
+    input({
+      state: initial,
+      planOnly: true,
+      phase: {
+        kind: "spec",
+        artifactKinds: ["spec"],
+        pullRequestRequired: true,
+      },
+      operations: {
+        reconcile: async () => ({
+          state: initial,
+          outcome: {
+            kind: "review-pending",
+            pullRequest: { status: "open", url: "https://example.test/pr/1" },
+          },
+        }),
+        runArtifacts: async () => {
+          laterEffect = true;
+          throw new Error("unexpected artifact run");
+        },
+      },
+    }),
+  );
+  assert.deepEqual(result, {
+    kind: "review-pending",
+    state: initial,
+    prUrl: "https://example.test/pr/1",
+  });
+  assert.equal(laterEffect, false);
+});
+
 test("reconciles a published planning branch before any workspace effect", async () => {
   const published = state({ kind: "spec", status: "branch-pushed" });
   let prepared = false;

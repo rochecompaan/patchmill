@@ -5,6 +5,18 @@ safety, policy, and human-control boundaries.
 
 ## Language
 
+**Planning review gate**: An immutable per-Issue-run decision that a spec or
+plan phase requires human review through a planning pull request. _Avoid_:
+Approval label, plan-only stop.
+
+**Planning pull request**: A non-closing pull request containing one spec or
+plan phase. Its verified merge unlocks the next phase. _Avoid_: Artifact
+comment, approval comment.
+
+**Phase workspace**: The owned worktree and branch for one spec, plan, or
+implementation phase, pinned to saved remote-base evidence. _Avoid_: Shared
+issue worktree.
+
 **Run-once workflow**: The atomic processing of one selected issue from claim
 through its terminal or resumable outcome. _Avoid_: Run loop, coordinator
 

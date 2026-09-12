@@ -60,8 +60,10 @@ logins, which is useful when local machines need different credentials.
 
 ## Decide when humans approve work
 
-`workflow.specApproval` and `workflow.planApproval` control whether `run-once`
-stops for human approval before continuing.
+`workflow.specApproval.required` and `workflow.planApproval.required` choose
+planning review gates for a fresh Issue run. Run-once snapshots the values at
+initialization; a required gate creates a planning pull request and waits for
+its verified merge.
 
 ```json
 {
@@ -88,9 +90,13 @@ Good starting points:
 - Require spec approval when issues often need product, UX, or architecture
   clarification before planning.
 
-When approval is required, Patchmill writes the artifact, applies the review
-label, and stops. Add the corresponding approved label to let the next
-`patchmill run-once` continue.
+The field names remain stable. Their label values are compatibility data for
+unfinished legacy runs; adding an approved label never advances fresh state.
+Review and merge the exact planning pull request, then rerun Run-once. See the
+[gate matrix](/using-patchmill/run-once/#gate-matrix) for every sequence.
+
+`git.allowDirectLand` can still govern legacy behavior, but `planning-pr-v1`
+always requires a validated implementation pull request.
 
 ## Teach agents how to work in this repository
 
@@ -101,7 +107,7 @@ Patchmill gives agents at each workflow stage.
 {
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
-    "planning": ".patchmill/skills/writing-plans",
+    "planning": ".patchmill/skills/patchmill-planning",
     "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   }
@@ -109,8 +115,11 @@ Patchmill gives agents at each workflow stage.
 ```
 
 Start with the generated `triage`, `planning`, `implementation`, and
-`visualEvidence` skills. Then add optional hooks only after the referenced skill
-exists in the repository:
+`visualEvidence` skills. `patchmill-planning` is the unattended planning entry
+point: it preserves sibling Superpowers guidance while requiring phase
+workspaces, artifact-only commits, self-review, and the requested terminal JSON.
+Then add optional hooks only after the referenced skill exists in the
+repository:
 
 ```json
 {
@@ -186,7 +195,7 @@ tolerate resources that are already absent, and leave Patchmill's Git worktree
 and branch intact.
 
 The hook runs only after a successful PR or merge handoff. See
-[Cleanup after successful handoff](/using-patchmill/run-once/#cleanup-after-successful-handoff)
+[recovery and operator safety](/using-patchmill/run-once/#recovery-and-operator-safety)
 for ordering, retry, failure-reporting, and workspace-ownership details.
 
 ## Configure visual evidence paths

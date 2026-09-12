@@ -11,6 +11,7 @@ import {
 import { main as skillsMain } from "./commands/skills/main.ts";
 import { main as triageMain } from "./commands/triage/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
+import { legacyPlanningDeprecation } from "./legacy-planning-deprecations.ts";
 
 export const HELP_TEXT = `Usage:
   patchmill <command> [options]
@@ -23,8 +24,8 @@ Commands:
   run-once    Claim and process one agent-ready issue.
   run         Recovery commands (reset and lease repair).
   skills      Manage Patchmill project-local skills.
-  set-spec    Set the authoritative spec for an issue.
-  set-plan    Set the authoritative implementation plan for an issue.
+  set-spec    ${legacyPlanningDeprecation("set-spec").help}
+  set-plan    ${legacyPlanningDeprecation("set-plan").help}
   version     Print the Patchmill CLI version.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;

@@ -22,6 +22,7 @@ import {
 } from "./result-output.ts";
 import type { WriteRunOnceResultOptions } from "./result-output.ts";
 import type { AgentIssuePipelineResult, CommandRunner } from "./types.ts";
+import { legacyPlanningDeprecation } from "../../legacy-planning-deprecations.ts";
 
 export { summarizeResult } from "./result-summary.ts";
 
@@ -39,7 +40,7 @@ Run logs are written under the configured run state directory (default: .patchmi
 Options:
   --help, -h          Show this help and exit.
   --dry-run, --dryrun Preview the next actionable issue without mutations.
-  --plan-only         Run spec and plan stages as needed, then stop before implementation.
+  --plan-only         ${legacyPlanningDeprecation("--plan-only").help}
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
   --issue <number>    Process one specific open actionable issue.
@@ -137,6 +138,11 @@ export async function loadCliConfig(
 }
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
+  if (!isHelpOnlyInvocation(args) && args.includes("--plan-only")) {
+    process.stderr.write(
+      `${legacyPlanningDeprecation("--plan-only").warning}\n`,
+    );
+  }
   const startedAt = new Date();
   const timestamp = startedAt.toISOString();
 

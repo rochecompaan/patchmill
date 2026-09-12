@@ -10,6 +10,7 @@ import {
 } from "../../../workflow/artifacts/publish-artifact.ts";
 export type { PublishComment } from "../../../workflow/artifacts/publish-artifact.ts";
 import { createCommandRunner } from "../triage/command.ts";
+import { legacyPlanningDeprecation } from "../../legacy-planning-deprecations.ts";
 
 export type SetArtifactOutput = {
   stdout: (line: string) => void;
@@ -44,11 +45,13 @@ function artifactDescription(kind: WorkflowArtifactKind): string {
 
 export function helpText(kind: WorkflowArtifactKind): string {
   const command = kind === "spec" ? "set-spec" : "set-plan";
+  const deprecation = legacyPlanningDeprecation(command);
   return `Usage:
   patchmill ${command} --issue <number> <path>
 
 Set the authoritative ${artifactDescription(kind)} for an issue from a local file.
 The file is published to the issue in Patchmill's deterministic artifact format.
+${deprecation.help}
 
 Options:
   --help, -h          Show this help and exit.
@@ -133,6 +136,9 @@ export async function runSetArtifactCommand(
   options: SetArtifactCommandOptions = {},
 ): Promise<number> {
   const output = options.output ?? DEFAULT_OUTPUT;
+  const command = kind === "spec" ? "set-spec" : "set-plan";
+  const isHelp = args.includes("--help") || args.includes("-h");
+  if (!isHelp) output.stderr(legacyPlanningDeprecation(command).warning);
   const parsed = parseArgs(args);
   if (parsed.showHelp) {
     output.stdout(helpText(kind));

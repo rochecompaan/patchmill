@@ -18,8 +18,12 @@ import { writeRunState } from "./run-state.ts";
 import { exitCodeForRunOnceResult } from "./result-output.ts";
 import { summarizeResult } from "./result-summary.ts";
 
-test("facade dispatches fresh planning selection to the planning lock boundary", async () => {
-  const config = await makeConfig({ dryRun: false, execute: true });
+test("facade dispatches fresh plan-only selection to the planning lock boundary", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
   const selected = issue(189, ["agent-ready"], "Fresh planning selection");
   const lockPath = planningIssueLockPath(config.runStateDir, selected.number);
   await mkdir(join(config.runStateDir, "planning-pr-v1", "locks"), {

@@ -91,6 +91,11 @@ const VERSION_NOTICES: SkillPackUpdateNotice[] = [
       "To opt in, update patchmill.config.json:\n" +
       '  "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks"',
   },
+  {
+    version: "2026.09.1",
+    message:
+      "Fresh Run-once review gates now use planning pull requests whose verified merge advances the Issue run. Legacy set-spec, set-plan, and --plan-only controls remain available but are deprecated.",
+  },
 ];
 
 async function readInstalledMetadata(
