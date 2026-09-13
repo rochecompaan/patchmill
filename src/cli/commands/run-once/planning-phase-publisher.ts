@@ -136,6 +136,7 @@ export async function publishPlanningPhase(input: {
       summary = await input.host.createPullRequest({
         title: planningPullRequestTitle({
           issueNumber: state.issueNumber,
+          issueTitle: state.issueTitle,
           phase: phaseKind,
         }),
         body: planningPullRequestBody({
