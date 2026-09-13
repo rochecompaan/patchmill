@@ -67,7 +67,15 @@ export function validatePlanningPullRequestSummary(input: {
     )
       fail("head-repository");
     if (summary.baseBranch !== publication.baseBranch) fail("base-branch");
-    if (summary.headBranch !== publication.headBranch) fail("head-branch");
+    // A merged or closed pull request may outlive its head branch: Forgejo
+    // reports the server-side pull ref once the branch is deleted. Identity
+    // stays pinned by the number, head object, marker, and URL checks.
+    if (
+      summary.headBranch !== publication.headBranch &&
+      (summary.status === "open" ||
+        summary.headBranch !== `refs/pull/${summary.number}/head`)
+    )
+      fail("head-branch");
     if (summary.headSha !== publication.headOid) fail("head-oid");
     const marker = parsePlanningPullRequestMarker(summary.body);
     if (

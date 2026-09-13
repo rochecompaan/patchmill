@@ -295,3 +295,58 @@ test("accepts implementation ownership identity without changing status semantic
     }),
   );
 });
+
+test("accepts a server pull ref for a merged pull request whose head branch was deleted", () => {
+  assert.equal(
+    validatePlanningPullRequestSummary({
+      summary: {
+        ...summary,
+        headBranch: "refs/pull/188/head",
+        status: "merged" as const,
+        mergeCommit: "c".repeat(40),
+      },
+      issueNumber: 188,
+      phase: "spec",
+      publication,
+    }).reference.number,
+    188,
+  );
+});
+
+test("rejects a substituted or misnumbered head on a merged pull request", () => {
+  for (const headBranch of ["agent/other", "refs/pull/189/head"]) {
+    assert.throws(
+      () =>
+        validatePlanningPullRequestSummary({
+          summary: {
+            ...summary,
+            headBranch,
+            status: "merged" as const,
+            mergeCommit: "c".repeat(40),
+          },
+          issueNumber: 188,
+          phase: "spec",
+          publication,
+        }),
+      (error: unknown) =>
+        error instanceof PlanningPullRequestValidationError &&
+        error.reason === "head-branch",
+      headBranch,
+    );
+  }
+});
+
+test("still rejects a server pull ref head while the pull request is open", () => {
+  assert.throws(
+    () =>
+      validatePlanningPullRequestSummary({
+        summary: { ...summary, headBranch: "refs/pull/188/head" },
+        issueNumber: 188,
+        phase: "spec",
+        publication,
+      }),
+    (error: unknown) =>
+      error instanceof PlanningPullRequestValidationError &&
+      error.reason === "head-branch",
+  );
+});
