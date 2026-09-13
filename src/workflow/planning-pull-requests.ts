@@ -116,13 +116,46 @@ function assertPositiveIssueNumber(issueNumber: number): void {
   }
 }
 
+const CONVENTIONAL_TYPE_PREFIX = /^[A-Za-z]+(?:\([^)]*\))?!?:\s*/u;
+const CLOSING_KEYWORD_REFERENCE =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?=#\d+)/giu;
+/** Keeps the longest scope prefix ("docs(specs): ") within 72 characters. */
+const TITLE_SUMMARY_MAX_LENGTH = 59;
+
+function planningTitleSummary(input: {
+  issueNumber: number;
+  issueTitle: string;
+}): string {
+  const withoutPrefix = input.issueTitle
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(CONVENTIONAL_TYPE_PREFIX, "");
+  const withoutClosing = withoutPrefix
+    .replace(CLOSING_KEYWORD_REFERENCE, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!withoutClosing) return `issue #${input.issueNumber}`;
+  if (withoutClosing.length <= TITLE_SUMMARY_MAX_LENGTH) return withoutClosing;
+  const words = withoutClosing.split(" ");
+  let summary = "";
+  for (const word of words) {
+    const candidate = summary === "" ? word : `${summary} ${word}`;
+    if (candidate.length > TITLE_SUMMARY_MAX_LENGTH - 1) break;
+    summary = candidate;
+  }
+  if (summary === "")
+    summary = withoutClosing.slice(0, TITLE_SUMMARY_MAX_LENGTH - 1);
+  return `${summary}…`;
+}
+
 export function planningPullRequestTitle(input: {
   issueNumber: number;
+  issueTitle: string;
   phase: PlanningArtifactKind;
 }): string {
   assertPositiveIssueNumber(input.issueNumber);
-  const label = input.phase === "spec" ? "Spec" : "Plan";
-  return `${label} for #${input.issueNumber}`;
+  const scope = input.phase === "spec" ? "specs" : "plans";
+  return `docs(${scope}): ${planningTitleSummary(input)}`;
 }
 
 function markdownCodeSpan(value: string): string {

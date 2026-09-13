@@ -303,20 +303,57 @@ test("marker parser rejects a malformed marker alongside a valid marker", () => 
 
 const closingKeyword = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d+/iu;
 
-test("planning title identifies the phase and issue without untrusted issue text", () => {
+test("planning title is conventional, sanitized, and non-closing", () => {
   const specTitle = planningPullRequestTitle({
     issueNumber: 184,
+    issueTitle: "bug: packhouse intake net weight stays stale",
     phase: "spec",
   });
   const planTitle = planningPullRequestTitle({
     issueNumber: 184,
+    issueTitle: "feature: customer and packaging master data",
     phase: "plan",
   });
 
-  assert.equal(specTitle, "Spec for #184");
-  assert.equal(planTitle, "Plan for #184");
+  assert.equal(
+    specTitle,
+    "docs(specs): packhouse intake net weight stays stale",
+  );
+  assert.equal(planTitle, "docs(plans): customer and packaging master data");
   assert.doesNotMatch(specTitle, closingKeyword);
   assert.doesNotMatch(planTitle, closingKeyword);
+});
+
+test("planning title neutralizes closing keywords and extra whitespace", () => {
+  const title = planningPullRequestTitle({
+    issueNumber: 184,
+    issueTitle: "backport\n fixes   #99\tregression",
+    phase: "spec",
+  });
+  assert.equal(title, "docs(specs): backport #99 regression");
+  assert.doesNotMatch(title, closingKeyword);
+});
+
+test("planning title truncates long summaries at a word boundary", () => {
+  const title = planningPullRequestTitle({
+    issueNumber: 184,
+    issueTitle:
+      "bug: packhouse intake net weight stays stale after removing pallet from crates",
+    phase: "spec",
+  });
+  assert.equal(title.length <= 72, true, title);
+  assert.match(title, /^docs\(specs\): .+…$/u);
+  assert.doesNotMatch(title, closingKeyword);
+});
+
+test("planning title falls back to the issue number for empty summaries", () => {
+  const title = planningPullRequestTitle({
+    issueNumber: 184,
+    issueTitle: "fix:",
+    phase: "plan",
+  });
+  assert.equal(title, "docs(plans): issue #184");
+  assert.doesNotMatch(title, closingKeyword);
 });
 
 test("planning body is non-closing and lists each artifact path once", () => {
