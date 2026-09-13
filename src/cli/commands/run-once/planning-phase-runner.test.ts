@@ -3,6 +3,7 @@ import test from "node:test";
 import { PlanningImplementationBaseError } from "./planning-implementation-base.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
+import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 
 const oid = (character: string) => character.repeat(40);
@@ -196,6 +197,202 @@ test("blocks dirty resumed workspaces before planning or implementation agents",
     assert.equal(artifactRuns, 0);
     assert.equal(implementationRuns, 0);
   }
+});
+
+test("adopts committed implementation progress a blocked agent left uncheckpointed", async () => {
+  const checkpoints: Array<{
+    phases: Array<{ workspace: { headOid: string } }>;
+  }> = [];
+  let ancestorChecked = false;
+  let implementationRan = false;
+  const initial = state({
+    kind: "implementation",
+    status: "workspace-ready",
+    base,
+    workspace,
+    artifacts: [],
+  });
+  const result = await runPlanningPhase(
+    input({
+      state: initial,
+      implementation: { implementation: {}, finish: () => ({}) },
+      workspaces: {
+        resume: async ({ saved }: { saved: { headOid: string } }) => {
+          if (saved.headOid === oid("a"))
+            throw new PlanningWorkspaceConflictError(
+              "head-oid-mismatch",
+              workspace.identity,
+            );
+          return {
+            state: "ready",
+            identity: workspace.identity,
+            headOid: oid("b"),
+            clean: true,
+          };
+        },
+        inspect: async () => ({
+          state: "ready",
+          identity: workspace.identity,
+          headOid: oid("b"),
+          clean: true,
+        }),
+      } as never,
+      publicationGit: {
+        assertAncestor: async ({
+          ancestorOid,
+          descendantOid,
+        }: {
+          ancestorOid: string;
+          descendantOid: string;
+        }) => {
+          assert.equal(ancestorOid, oid("a"));
+          assert.equal(descendantOid, oid("b"));
+          ancestorChecked = true;
+        },
+      } as never,
+      stateStore: {
+        replace: async ({ next }: { next: (typeof checkpoints)[number] }) => {
+          checkpoints.push(next);
+          return next;
+        },
+      },
+      operations: {
+        runArtifacts: async ({ current }: { current: unknown }) => ({
+          kind: "workspace-ready",
+          phase: current,
+        }),
+        runImplementation: async ({ state: current }: { state: unknown }) => {
+          implementationRan = true;
+          return { kind: "validated", state: current };
+        },
+        finishImplementation: async ({
+          state: current,
+        }: {
+          state: unknown;
+        }) => ({
+          state: current,
+          result: { status: "pr-created" },
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "complete");
+  assert.equal(ancestorChecked, true);
+  assert.equal(implementationRan, true);
+  assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
+});
+
+test("refuses rewritten implementation progress left by a blocked agent", async () => {
+  const checkpoints: unknown[] = [];
+  let implementationRan = false;
+  await assert.rejects(
+    runPlanningPhase(
+      input({
+        state: state({
+          kind: "implementation",
+          status: "workspace-ready",
+          base,
+          workspace,
+          artifacts: [],
+        }),
+        workspaces: {
+          resume: async () => {
+            throw new PlanningWorkspaceConflictError(
+              "head-oid-mismatch",
+              workspace.identity,
+            );
+          },
+          inspect: async () => ({
+            state: "ready",
+            identity: workspace.identity,
+            headOid: oid("b"),
+            clean: true,
+          }),
+        } as never,
+        publicationGit: {
+          assertAncestor: async () => {
+            throw new PlanningPublicationGitError("ancestry", "not-ancestor");
+          },
+        } as never,
+        stateStore: {
+          replace: async ({ next }: { next: unknown }) => {
+            checkpoints.push(next);
+            return next;
+          },
+        },
+        operations: {
+          runImplementation: async () => {
+            implementationRan = true;
+            throw new Error("unexpected implementation agent");
+          },
+        },
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof PlanningWorkspaceConflictError &&
+      error.reason === "head-oid-mismatch",
+  );
+  assert.equal(implementationRan, false);
+  assert.deepEqual(checkpoints, []);
+});
+
+test("adopts blocked-agent commits before the dirty workspace block", async () => {
+  const checkpoints: Array<{
+    phases: Array<{ workspace: { headOid: string } }>;
+  }> = [];
+  let artifactRuns = 0;
+  const result = await runPlanningPhase(
+    input({
+      state: state({
+        kind: "implementation",
+        status: "workspace-ready",
+        base,
+        workspace,
+        artifacts: [],
+      }),
+      workspaces: {
+        resume: async ({ saved }: { saved: { headOid: string } }) => {
+          if (saved.headOid === oid("a"))
+            throw new PlanningWorkspaceConflictError(
+              "head-oid-mismatch",
+              workspace.identity,
+            );
+          return {
+            state: "ready",
+            identity: workspace.identity,
+            headOid: oid("b"),
+            clean: false,
+          };
+        },
+        inspect: async () => ({
+          state: "ready",
+          identity: workspace.identity,
+          headOid: oid("b"),
+          clean: false,
+        }),
+      } as never,
+      publicationGit: {
+        assertAncestor: async () => {},
+      } as never,
+      stateStore: {
+        replace: async ({ next }: { next: (typeof checkpoints)[number] }) => {
+          checkpoints.push(next);
+          return next;
+        },
+      },
+      operations: {
+        runArtifacts: async () => {
+          artifactRuns += 1;
+          throw new Error("unexpected artifact agent");
+        },
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked")
+    assert.equal(result.result.reason, "planning-workspace-dirty");
+  assert.equal(artifactRuns, 0);
+  assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
 });
 
 test("open planning review takes precedence over plan-only without state mutation", async () => {

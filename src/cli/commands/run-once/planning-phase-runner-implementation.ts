@@ -2,6 +2,8 @@ import type {
   ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
+import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
+import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
 import { assertPlanningImplementationBase } from "./planning-implementation-base.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { durableImplementationResult } from "./planning-runtime-state.ts";
@@ -58,6 +60,62 @@ async function prepare(
   return replacePhase(input, state, phase);
 }
 
+/**
+ * Adopts committed progress a blocked implementation agent left behind.
+ * Post-agent recovery refuses to checkpoint a dirty workspace, so the saved
+ * head can lag the live branch; strict resume must still pass afterwards.
+ */
+async function adoptResumedImplementationHead(
+  input: PlanningPhaseRunnerInput,
+  state: PlanningStateV1,
+): Promise<PlanningStateV1> {
+  const phase = state.phases[input.phaseIndex];
+  if (phase?.kind !== "implementation" || phase.status !== "workspace-ready")
+    throw new RangeError("Planning implementation state changed");
+  try {
+    await input.workspaces.resume({
+      runId: state.runId,
+      phase: phase.kind,
+      identity: phase.workspace.identity,
+      base: phase.base,
+      saved: phase.workspace,
+    });
+    return state;
+  } catch (error) {
+    if (
+      !(error instanceof PlanningWorkspaceConflictError) ||
+      error.reason !== "head-oid-mismatch"
+    )
+      throw error;
+  }
+  const workspace = await input.workspaces.inspect(phase.workspace.identity);
+  if (workspace.state !== "ready")
+    throw new PlanningWorkspaceConflictError(
+      "head-oid-mismatch",
+      phase.workspace.identity,
+    );
+  try {
+    await input.publicationGit.assertAncestor({
+      ancestorOid: phase.workspace.headOid,
+      descendantOid: workspace.headOid,
+    });
+  } catch (error) {
+    if (
+      error instanceof PlanningPublicationGitError &&
+      error.reason === "not-ancestor"
+    )
+      throw new PlanningWorkspaceConflictError(
+        "head-oid-mismatch",
+        phase.workspace.identity,
+      );
+    throw error;
+  }
+  return replacePhase(input, state, {
+    ...phase,
+    workspace: { ...phase.workspace, headOid: workspace.headOid },
+  });
+}
+
 export async function runPlanningImplementationPhase(
   input: PlanningPhaseRunnerInput,
 ): Promise<PlanningPhaseRunnerOutcome> {
@@ -94,6 +152,7 @@ export async function runPlanningImplementationPhase(
     throw new RangeError("Planning implementation state changed");
   if (phase.status === "workspace-ready") {
     await fetchVerifiedBase(input, state);
+    state = await adoptResumedImplementationHead(input, state);
     const result = await runWorkspaceArtifacts(input, state);
     if (result.kind !== "workspace-ready") return result;
     state = result.state;
