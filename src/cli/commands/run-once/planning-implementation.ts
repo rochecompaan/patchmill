@@ -183,12 +183,25 @@ export async function runPlanningImplementation(
       git: input.git,
       checkpoint: (nextPhase) => replace(input, state, nextPhase),
     });
-    if (recovered.kind === "unsafe")
+    if (recovered.kind === "unsafe") {
+      // The agent's own blocker explains why it stopped; the unsafe
+      // workspace is evidence it left behind. Surface both rather than
+      // masking the agent's reason behind a generic workspace code.
+      if (result.status === "blocked")
+        return {
+          kind: "blocked",
+          state: recovered.state,
+          result: {
+            ...result,
+            reason: `${result.reason}\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.`,
+          },
+        };
       return {
         kind: "blocked",
         state: recovered.state,
         result: blocked("implementation-workspace"),
       };
+    }
     state = recovered.state;
     phase = recovered.phase;
     const workspace = recovered.workspace;

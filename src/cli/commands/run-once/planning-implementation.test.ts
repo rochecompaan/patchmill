@@ -409,8 +409,10 @@ test("blocks a resumed blocker when its saved head is not an ancestor", async ()
     }),
   );
   assert.equal(result.kind, "blocked");
-  if (result.kind === "blocked")
-    assert.equal(result.result.reason, "implementation-workspace");
+  if (result.kind === "blocked") {
+    assert.match(result.result.reason, /^pause/);
+    assert.match(result.result.reason, /workspace was left dirty or unproven/);
+  }
   assert.deepEqual(checkpoints, []);
 });
 
@@ -421,7 +423,7 @@ test("refuses dirty blocker progress without checkpointing", async () => {
       runAgent: async () => ({
         status: "blocked",
         reason: "pause",
-        questions: [],
+        questions: [{ question: "which file?" }],
         commits: [],
         validation: [],
       }),
@@ -442,8 +444,11 @@ test("refuses dirty blocker progress without checkpointing", async () => {
     }),
   );
   assert.equal(result.kind, "blocked");
-  if (result.kind === "blocked")
-    assert.equal(result.result.reason, "implementation-workspace");
+  if (result.kind === "blocked") {
+    assert.match(result.result.reason, /^pause/);
+    assert.match(result.result.reason, /workspace was left dirty or unproven/);
+    assert.deepEqual(result.result.questions, [{ question: "which file?" }]);
+  }
   assert.deepEqual(checkpoints, []);
 });
 
