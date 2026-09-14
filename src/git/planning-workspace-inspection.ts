@@ -132,20 +132,22 @@ export class PlanningWorkspaceRepositoryGit {
     return oid;
   }
 
-  private async clean(path: string): Promise<boolean> {
-    const result = await this.run(
-      [
-        "--no-optional-locks",
-        "-C",
-        path,
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-        "--ignored=matching",
-      ],
+  async contentSafeToRemove(path: string): Promise<boolean> {
+    return this.clean(path, true);
+  }
+
+  private async clean(path: string, includeIgnored = false): Promise<boolean> {
+    const args = [
+      "--no-optional-locks",
+      "-C",
+      path,
       "status",
-    );
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+    ];
+    if (includeIgnored) args.push("--ignored=matching");
+    const result = await this.run(args, "status");
     return result.stdout === "";
   }
 }

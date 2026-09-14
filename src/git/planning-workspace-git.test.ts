@@ -588,6 +588,20 @@ test(
         } else {
           await writeFile(join(dirtyPath, `${dirty}.txt`), `${dirty}\n`);
         }
+        if (dirty === "ignored") {
+          const resumed = await workspace.resume({
+            runId: dirtyPrepared.workspace.runId,
+            phase: "spec",
+            identity: dirtyIdentity,
+            base: snapshot,
+            saved: dirtyPrepared.workspace,
+          });
+          assert.equal(
+            resumed.clean,
+            true,
+            "ignored files do not dirty resumed workspaces",
+          );
+        }
         await assert.rejects(
           workspace.removeWorktree({
             runId: dirtyPrepared.workspace.runId,
