@@ -34,7 +34,7 @@ export class PlanningWorkspaceCleanupGit {
       return snapshot;
     }
     this.assertHead(snapshot.headOid, workspace);
-    if (!snapshot.clean) {
+    if (!snapshot.clean || !(await this.repository.contentSafeToRemove(path))) {
       throw new PlanningWorkspaceConflictError(
         "dirty-worktree",
         workspace.identity,
