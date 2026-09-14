@@ -63,6 +63,8 @@ test(
       git(seed, "remote", "add", "origin", remote);
       git(seed, "push", "-u", "origin", "main");
       execFileSync("git", ["clone", remote, repo]);
+      git(repo, "config", "user.name", "Patchmill Test");
+      git(repo, "config", "user.email", "patchmill@example.test");
       await mkdir(worktreeRoot);
 
       const base = {
