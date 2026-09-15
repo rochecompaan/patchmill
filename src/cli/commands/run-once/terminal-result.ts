@@ -1,3 +1,4 @@
+import { formatPlanningCleanupPath } from "./planning-cleanup-pending.ts";
 import type {
   RunOnceResultStatus,
   RunOnceResultSummary,
@@ -29,6 +30,7 @@ const STATUS = {
   "pr-created": { label: "PR created", severity: "success" },
   merged: { label: "Merged", severity: "success" },
   "review-pending": { label: "Review pending", severity: "warning" },
+  "cleanup-pending": { label: "Cleanup pending", severity: "warning" },
   stopped: { label: "Stopped", severity: "warning" },
   "approval-required": { label: "Approval required", severity: "warning" },
   "development-environment-not-ready": {
@@ -127,6 +129,33 @@ export function formatTerminalResult(
         {
           kind: "fields",
           fields: [{ label: "Transition", value: value(summary.transition) }],
+        },
+      ],
+    });
+  if (summary.status === "cleanup-pending")
+    sections.push({
+      heading: "Cleanup pending",
+      blocks: [
+        {
+          kind: "fields",
+          fields: [
+            { label: "Phase", value: value(summary.phase) },
+            { label: "Reason", value: value(summary.reason) },
+          ],
+        },
+        {
+          kind: "list",
+          marker: "!",
+          markerSeverity: "warning",
+          items: summary.ignoredPaths.map((path) => ({
+            value: value(formatPlanningCleanupPath(path), "path"),
+          })),
+        },
+        {
+          kind: "list",
+          marker: "→",
+          markerSeverity: "warning",
+          items: summary.remediation.map((text) => ({ value: value(text) })),
         },
       ],
     });

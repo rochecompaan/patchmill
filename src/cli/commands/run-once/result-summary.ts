@@ -52,6 +52,21 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         landingDecision?: string | undefined;
       }
     | {
+        status: "cleanup-pending";
+        issueNumber: number;
+        phase: "spec" | "plan" | "implementation";
+        prUrl: string;
+        branch: string;
+        worktreePath: string;
+        reason: "ignored-worktree-content";
+        ignoredPaths: string[];
+        remediation: string[];
+        specPath?: string;
+        planPath?: string;
+        commits?: string[];
+        validation?: string[];
+      }
+    | {
         status: "review-pending";
         issueNumber: number;
         phase: "spec" | "plan";
@@ -171,6 +186,27 @@ export function summarizeResult(
         validation: result.validation,
         reviewSummary: result.reviewSummary,
         landingDecision: result.landingDecision,
+        ...withLogPath,
+      };
+    case "cleanup-pending":
+      return {
+        status: result.status,
+        issueNumber: result.issue.number,
+        phase: result.phase,
+        prUrl: result.prUrl,
+        branch: result.branch,
+        worktreePath: result.worktreePath,
+        reason: result.reason,
+        ignoredPaths: [...result.ignoredPaths],
+        remediation: [...result.remediation],
+        ...(result.specPath === undefined ? {} : { specPath: result.specPath }),
+        ...(result.planPath === undefined ? {} : { planPath: result.planPath }),
+        ...(result.commits === undefined
+          ? {}
+          : { commits: [...result.commits] }),
+        ...(result.validation === undefined
+          ? {}
+          : { validation: [...result.validation] }),
         ...withLogPath,
       };
     case "review-pending":
