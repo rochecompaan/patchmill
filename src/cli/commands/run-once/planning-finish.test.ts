@@ -129,6 +129,14 @@ function input(initial = state(), fail?: string) {
       workspaces: {
         removeWorktree: async () => {
           events.push("worktree");
+          return {
+            kind: "removed" as const,
+            snapshot: {
+              state: "branch-only" as const,
+              identity: initial.phases[0]!.workspace.identity,
+              headOid: oid("b"),
+            },
+          };
         },
         removeBranch: async () => {
           events.push("branch");
@@ -230,4 +238,103 @@ test("effect failure prevents later effects", async () => {
     /validateVisualEvidence/,
   );
   assert.deepEqual(run.events, ["publishCost", "validateVisualEvidence"]);
+});
+
+test("refreshes cleanup pending without replaying finish effects and completes after blockers clear", async () => {
+  const run = input();
+  let assessment = 0;
+  run.value.workspaces = {
+    removeWorktree: async () => {
+      run.events.push("worktree");
+      assessment += 1;
+      if (assessment < 3)
+        return {
+          kind: "cleanup-pending" as const,
+          reason: "ignored-worktree-content" as const,
+          ignoredPaths: assessment === 1 ? [".env"] : [".env", "build/"],
+        };
+      return {
+        kind: "removed" as const,
+        snapshot: {
+          state: "branch-only" as const,
+          identity: {
+            branch: "agent/189",
+            worktreePath: ".worktrees/189",
+          },
+          headOid: oid("b"),
+        },
+      };
+    },
+    removeBranch: async () => run.events.push("branch"),
+  } as never;
+
+  const first = await finishPlanningImplementation(run.value);
+  assert.equal(first.kind, "cleanup-pending");
+  const afterFirst = run.checkpoints.length;
+  const second = await finishPlanningImplementation({
+    ...run.value,
+    state: run.state(),
+  });
+  assert.equal(second.kind, "cleanup-pending");
+  assert.equal(run.checkpoints.length, afterFirst + 1);
+  const complete = await finishPlanningImplementation({
+    ...run.value,
+    state: run.state(),
+  });
+  assert.equal(complete.kind, "complete");
+  assert.equal(run.events.filter((event) => event === "cleanupHook").length, 1);
+  assert.equal(run.events.filter((event) => event === "publishCost").length, 1);
+  assert.equal(run.events.filter((event) => event === "worktree").length, 3);
+});
+
+test("invalid worktree removal outcome cannot checkpoint or delete a branch", async () => {
+  const run = input();
+  run.value.workspaces = {
+    removeWorktree: async () => ({ kind: "unexpected" }),
+    removeBranch: async () => run.events.push("branch"),
+  } as never;
+
+  await assert.rejects(
+    finishPlanningImplementation(run.value),
+    /Invalid planning worktree removal outcome/,
+  );
+  assert.equal(run.state().phases[0]?.workspace?.cleanup.state, "ready");
+  assert.equal(
+    run.checkpoints.some(
+      (checkpoint) =>
+        checkpoint.phases[0]?.workspace?.cleanup.state === "worktree-removed",
+    ),
+    false,
+  );
+  assert.equal(run.events.includes("branch"), false);
+});
+
+test("checkpoints ignored cleanup pending after one successful cleanup hook", async () => {
+  const run = input();
+  run.value.workspaces = {
+    removeWorktree: async () => ({
+      kind: "cleanup-pending" as const,
+      reason: "ignored-worktree-content" as const,
+      ignoredPaths: [".env", "build/"],
+    }),
+    removeBranch: async () => assert.fail("branch must not be removed"),
+  } as never;
+  const result = await finishPlanningImplementation(run.value);
+  assert.equal(result.kind, "cleanup-pending");
+  if (result.kind !== "cleanup-pending")
+    assert.fail("expected cleanup pending");
+  assert.deepEqual(result.ignoredPaths, [".env", "build/"]);
+  assert.equal(run.state().phases[0]?.status, "pull-request-open");
+  assert.deepEqual(
+    (run.state().phases[0] as { workspace: { cleanup: unknown } }).workspace
+      .cleanup,
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [".env", "build/"],
+    },
+  );
+  assert.equal(run.events.includes("cleanupHook"), true);
+  assert.equal(run.events.includes("branch"), false);
+  assert.equal(run.events.includes("applyDoneLabels"), false);
 });

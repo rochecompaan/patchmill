@@ -10,6 +10,7 @@ import {
   lifecycleLabels,
 } from "./pipeline-lifecycle.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import { needsPlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
   isActionableWorkflowState,
   resolveWorkflowState,
@@ -40,6 +41,16 @@ export function planningStateDiagnostic(
 
 function active(state: PlanningStateV1): boolean {
   return state.phases.some((phase) => phase.status !== "complete");
+}
+
+function cleanupPending(state: PlanningStateV1 | undefined): boolean {
+  return Boolean(
+    state?.phases.some(
+      (phase) =>
+        "workspace" in phase &&
+        phase.workspace.cleanup.state === "cleanup-pending",
+    ),
+  );
 }
 
 /** Identifies finish recovery after the live done label may precede its checkpoint. */
@@ -81,7 +92,8 @@ export function planningIssueEligible(input: {
       excluded.includes(label)
     );
   });
-  if (blocked.length === 0) return true;
+  if (blocked.length === 0)
+    return !cleanupPending(state) || issue.labels.includes(lifecycle.ready);
   // Ready acknowledges only the lifecycle needs-info blocker for both retries.
   return (
     activeOwnedWorkflow &&
@@ -173,12 +185,18 @@ export async function selectRunOnceWorkflow(
     if (
       state &&
       active(state) &&
-      planningIssueEligible({
+      (planningIssueEligible({
         issue,
         config,
         state,
         activeOwnedWorkflow: true,
-      })
+      }) ||
+        needsPlanningCleanupPendingPublication({
+          state,
+          labels: issue.labels,
+          readyLabel: lifecycleLabels(config).ready,
+          needsInfoLabel: lifecycleLabels(config).needsInfo,
+        }))
     )
       choices.push({ kind: "planning", issue, state });
     else if (

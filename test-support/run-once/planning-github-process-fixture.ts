@@ -65,13 +65,19 @@ export function createGithubProcessFixture(
       return { code: 0, stdout: labelListPayload(), stderr: "" };
     }
     if (group === "issue" && action === "comment") {
+      const body = argument(args, "--body");
       const handoff = await input.implementationFinish();
       input.record({
         kind: "write",
         operation: handoff ? "handoff-comment" : "issue-comment",
       });
       if (handoff) await input.interrupt("after-handoff-comment");
-      input.addIssueComment(argument(args, "--body"));
+      if (
+        body.startsWith("Patchmill cleanup pending") &&
+        input.consumeCleanupPendingCommentFailure()
+      )
+        return { code: 1, stdout: "", stderr: "transient comment failure" };
+      input.addIssueComment(body);
       return { code: 0, stdout: "", stderr: "" };
     }
     if (group === "issue" && action === "edit") {
@@ -83,10 +89,10 @@ export function createGithubProcessFixture(
       if (done) await input.interrupt("after-done-label");
       input.updateIssueLabels(
         args.flatMap((value, index) =>
-          value === "--add-label" ? [args[index + 1]!] : [],
+          value === "--add-label" ? args[index + 1]!.split(",") : [],
         ),
         args.flatMap((value, index) =>
-          value === "--remove-label" ? [args[index + 1]!] : [],
+          value === "--remove-label" ? args[index + 1]!.split(",") : [],
         ),
       );
       return { code: 0, stdout: "", stderr: "" };

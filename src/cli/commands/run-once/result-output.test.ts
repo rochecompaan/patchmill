@@ -22,6 +22,17 @@ const summary: RunOnceResultSummary = {
   commits: ["abc123"],
   validation: ["npm test passed"],
 };
+const cleanupPendingSummary: RunOnceResultSummary = {
+  status: "cleanup-pending",
+  issueNumber: 174,
+  phase: "implementation",
+  prUrl: "https://example.test/pulls/174",
+  branch: "agent/issue-174",
+  worktreePath: ".worktrees/issue-174",
+  reason: "ignored-worktree-content",
+  ignoredPaths: [".env"],
+  remediation: ["Remove or preserve .env."],
+};
 test("writes human TTY output but exact compact JSON when redirected", async () => {
   const interactive: string[] = [];
   await writeRunOnceResult(summary, {
@@ -134,6 +145,7 @@ test("writes severity-specific complete JSONL result events", async () => {
       },
       "warning",
     ],
+    [cleanupPendingSummary, "warning"],
     [
       {
         status: "stopped",
@@ -189,6 +201,7 @@ test("preserves the exit-code contract for every status", () => {
       },
       0,
     ],
+    [cleanupPendingSummary, 0],
     [{ status: "stopped", issueNumber: 1, reason: "plan-only" }, 0],
     [{ status: "stopped", issueNumber: 1, reason: "issue-locked" }, 0],
     [

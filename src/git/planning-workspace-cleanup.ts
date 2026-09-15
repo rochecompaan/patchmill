@@ -2,7 +2,9 @@ import type { PlanningPhaseKind } from "../workflow/planning-pull-request-marker
 import { PlanningWorkspaceRepositoryGit } from "./planning-workspace-inspection.ts";
 import {
   PlanningWorkspaceConflictError,
+  type PlanningWorkspaceCleanupPending,
   type PlanningWorkspaceOwnership,
+  type PlanningWorkspaceRemovalOutcome,
   type PlanningWorkspaceSnapshot,
 } from "./planning-workspaces.ts";
 
@@ -16,30 +18,43 @@ export class PlanningWorkspaceCleanupGit {
   async removeWorktree(input: {
     runId: string;
     phase: PlanningPhaseKind;
-    workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
-  }): Promise<
-    Extract<PlanningWorkspaceSnapshot, { state: "branch-only" | "missing" }>
-  > {
+    workspace: PlanningWorkspaceOwnership<
+      { state: "ready" } | PlanningWorkspaceCleanupPending
+    >;
+  }): Promise<PlanningWorkspaceRemovalOutcome> {
     const { workspace } = input;
     this.assertOwner(input.runId, input.phase, workspace);
     const snapshot = await this.repository.inspect(workspace.identity);
     const path = this.repository.path(workspace.identity);
     if (snapshot.state === "missing") {
       await this.assertPathAbsent(path, workspace);
-      return snapshot;
+      return { kind: "removed", snapshot };
     }
     if (snapshot.state === "branch-only") {
       await this.assertPathAbsent(path, workspace);
       this.assertHead(snapshot.headOid, workspace);
-      return snapshot;
+      return { kind: "removed", snapshot };
     }
     this.assertHead(snapshot.headOid, workspace);
-    if (!snapshot.clean || !(await this.repository.contentSafeToRemove(path))) {
+    if (!snapshot.clean) {
       throw new PlanningWorkspaceConflictError(
         "dirty-worktree",
         workspace.identity,
       );
     }
+    const content = await this.repository.removalStatus(path);
+    if (content.ordinaryDirty) {
+      throw new PlanningWorkspaceConflictError(
+        "dirty-worktree",
+        workspace.identity,
+      );
+    }
+    if (content.ignoredPaths.length > 0)
+      return {
+        kind: "cleanup-pending",
+        reason: "ignored-worktree-content",
+        ignoredPaths: content.ignoredPaths,
+      };
     await this.repository.run(
       ["worktree", "remove", "--", path],
       "worktree-remove",
@@ -51,7 +66,7 @@ export class PlanningWorkspaceCleanupGit {
         workspace.identity,
       );
     }
-    return after;
+    return { kind: "removed", snapshot: after };
   }
 
   async removeBranch(input: {

@@ -55,6 +55,36 @@ test("coordinates every gate plan in order and stops at an open planning review"
   }
 });
 
+test("passes planning cleanup pending through without advancing phases", async () => {
+  const gates = { specRequired: true, planRequired: false };
+  const initial = state(gates);
+  let calls = 0;
+  const result = await coordinatePlanningPhases({
+    state: initial,
+    issue: { number: 189 } as never,
+    runPlanningPhase: async () => {
+      calls += 1;
+      return {
+        kind: "cleanup-pending",
+        state: initial,
+        phase: "spec",
+        prUrl: "https://example.test/pr/1",
+        reason: "ignored-worktree-content",
+        ignoredPaths: [".env"],
+      };
+    },
+  });
+  assert.deepEqual(result, {
+    kind: "cleanup-pending",
+    state: initial,
+    phase: "spec",
+    prUrl: "https://example.test/pr/1",
+    reason: "ignored-worktree-content",
+    ignoredPaths: [".env"],
+  });
+  assert.equal(calls, 1);
+});
+
 test("delegates plan-only implementation artifacts to the phase runner", async () => {
   let calls = 0;
   const result = await coordinatePlanningPhases({

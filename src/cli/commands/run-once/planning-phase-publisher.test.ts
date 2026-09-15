@@ -10,6 +10,14 @@ const repository = {
   owner: "acme",
   repository: "patchmill",
 };
+const removedWorktree = () => ({
+  kind: "removed" as const,
+  snapshot: {
+    state: "missing" as const,
+    identity: { branch: "planning/spec", worktreePath: "/repo/worktree" },
+  },
+});
+
 const state = {
   version: 1 as const,
   workflowVersion: "planning-pr-v1" as const,
@@ -215,6 +223,7 @@ test("creates, checkpoints, and cleans up one discovered-missing pull request", 
     workspaces: {
       async removeWorktree() {
         events.push("worktree");
+        return removedWorktree();
       },
       async removeBranch() {
         events.push("branch");
@@ -237,6 +246,57 @@ test("creates, checkpoints, and cleans up one discovered-missing pull request", 
     "get",
   ]);
 });
+test("returns cleanup pending before a second planning pull-request classification", async () => {
+  const pending = structuredClone(state);
+  pending.phases[0] = {
+    ...pending.phases[0],
+    status: "pull-request-open",
+    pullRequest: {
+      reference: { targetRepository: repository, number: 188 },
+      url: "https://github.com/acme/patchmill/pull/188",
+    },
+  };
+  const events: string[] = [];
+  const result = await publishPlanningPhase({
+    state: pending,
+    phaseIndex: 0,
+    lock: {} as never,
+    stateStore: {
+      async replace({ next }) {
+        events.push("replace");
+        return next;
+      },
+    },
+    host: {
+      async getPullRequest() {
+        events.push("get");
+        return pullRequest();
+      },
+    } as never,
+    git: {
+      async inspectRemoteHead() {
+        events.push("inspect");
+        return { state: "present" as const, headOid: oid };
+      },
+    } as never,
+    workspaces: {
+      async removeWorktree() {
+        events.push("worktree");
+        return {
+          kind: "cleanup-pending" as const,
+          reason: "ignored-worktree-content" as const,
+          ignoredPaths: [".env"],
+        };
+      },
+      async removeBranch() {
+        throw new Error("branch cleanup must not run");
+      },
+    } as never,
+  });
+  assert.equal(result.kind, "cleanup-pending");
+  assert.deepEqual(events, ["get", "inspect", "worktree", "replace"]);
+});
+
 test("adopts one exact pull request without creating or rewriting it", async () => {
   const events: string[] = [];
   const adopted = pullRequest();
@@ -268,7 +328,12 @@ test("adopts one exact pull request without creating or rewriting it", async () 
         return { state: "present" as const, headOid: oid };
       },
     } as never,
-    workspaces: { async removeWorktree() {}, async removeBranch() {} } as never,
+    workspaces: {
+      async removeWorktree() {
+        return removedWorktree();
+      },
+      async removeBranch() {},
+    } as never,
   });
   assert.deepEqual(events, ["find", "get", "get", "get"]);
 });
@@ -383,6 +448,7 @@ test("recovers an interrupted create by adopting the exact discovered pull reque
     workspaces: {
       async removeWorktree() {
         retryEvents.push("worktree");
+        return removedWorktree();
       },
       async removeBranch() {
         retryEvents.push("branch");
@@ -443,6 +509,7 @@ test("resumes cleanup from worktree-removed without removing the worktree again"
     workspaces: {
       async removeWorktree() {
         events.push("worktree");
+        return removedWorktree();
       },
       async removeBranch() {
         events.push("branch");

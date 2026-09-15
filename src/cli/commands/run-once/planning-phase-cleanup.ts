@@ -2,29 +2,62 @@ import type {
   PlanningWorkspaceLifecycle,
   PlanningWorkspaceOwnership,
 } from "../../../git/planning-workspaces.ts";
-import type {
-  BranchPushedPlanningPhase,
+import type { PullRequestOpenPlanningPhase } from "../../../workflow/planning-state-types.ts";
+
+type PlanningPhaseCleanupCandidate = Pick<
   PullRequestOpenPlanningPhase,
-} from "../../../workflow/planning-state-types.ts";
+  "base" | "publication" | "workspace"
+>;
+
+export type PlanningPhaseCleanupOutcome =
+  | Readonly<{
+      kind: "cleanup-pending";
+      phase: PullRequestOpenPlanningPhase;
+      reason: "ignored-worktree-content";
+      ignoredPaths: readonly string[];
+    }>
+  | Readonly<{ kind: "cleaned"; phase: PullRequestOpenPlanningPhase }>;
 
 export async function finishPlanningPhaseCleanup(input: {
   phase: PullRequestOpenPlanningPhase;
   workspaces: PlanningWorkspaceLifecycle;
-  remoteHead: (phase: BranchPushedPlanningPhase) => Promise<void>;
+  remoteHead: (phase: PlanningPhaseCleanupCandidate) => Promise<void>;
   checkpoint: (phase: PullRequestOpenPlanningPhase) => Promise<void>;
-}): Promise<PullRequestOpenPlanningPhase> {
+}): Promise<PlanningPhaseCleanupOutcome> {
   let phase = input.phase;
-  if (phase.workspace.cleanup.state === "ready") {
-    await input.remoteHead({
-      ...phase,
-      status: "branch-pushed",
-      workspace: phase.workspace as BranchPushedPlanningPhase["workspace"],
-    });
-    await input.workspaces.removeWorktree({
+  const cleanup = phase.workspace.cleanup;
+  if (cleanup.state === "ready" || cleanup.state === "cleanup-pending") {
+    await input.remoteHead(phase);
+    const removal = await input.workspaces.removeWorktree({
       runId: phase.workspace.runId,
       phase: phase.kind,
-      workspace: phase.workspace as BranchPushedPlanningPhase["workspace"],
+      workspace: { ...phase.workspace, cleanup },
     });
+    switch (removal?.kind) {
+      case "cleanup-pending": {
+        const cleanup = {
+          state: "cleanup-pending" as const,
+          reason: removal.reason,
+          ignoredPaths: [...removal.ignoredPaths],
+        };
+        if (
+          JSON.stringify(phase.workspace.cleanup) !== JSON.stringify(cleanup)
+        ) {
+          phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
+          await input.checkpoint(phase);
+        }
+        return {
+          kind: "cleanup-pending",
+          phase,
+          reason: cleanup.reason,
+          ignoredPaths: cleanup.ignoredPaths,
+        };
+      }
+      case "removed":
+        break;
+      default:
+        throw new TypeError("Invalid planning worktree removal outcome");
+    }
     phase = {
       ...phase,
       workspace: {
@@ -55,5 +88,5 @@ export async function finishPlanningPhaseCleanup(input: {
     };
     await input.checkpoint(phase);
   }
-  return phase;
+  return { kind: "cleaned", phase };
 }

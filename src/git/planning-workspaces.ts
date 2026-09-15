@@ -18,10 +18,31 @@ export type PlanningRemoteBaseSnapshot = Readonly<{
   artifactCandidates: PlanningArtifactCandidates;
 }>;
 
+export type PlanningWorkspaceCleanupPending = Readonly<{
+  state: "cleanup-pending";
+  reason: "ignored-worktree-content";
+  ignoredPaths: readonly string[];
+}>;
+
 export type PlanningWorkspaceCleanup =
   | Readonly<{ state: "ready" }>
+  | PlanningWorkspaceCleanupPending
   | Readonly<{ state: "worktree-removed"; pushedHeadOid: string }>
   | Readonly<{ state: "removed"; pushedHeadOid: string }>;
+
+export type PlanningWorkspaceRemovalOutcome =
+  | Readonly<{
+      kind: "removed";
+      snapshot: Extract<
+        PlanningWorkspaceSnapshot,
+        { state: "branch-only" | "missing" }
+      >;
+    }>
+  | Readonly<{
+      kind: "cleanup-pending";
+      reason: "ignored-worktree-content";
+      ignoredPaths: readonly string[];
+    }>;
 
 export type PlanningWorkspaceOwnership<
   Cleanup extends PlanningWorkspaceCleanup = PlanningWorkspaceCleanup,
@@ -149,10 +170,10 @@ export interface PlanningWorkspaceLifecycle {
   removeWorktree(input: {
     runId: string;
     phase: PlanningPhaseKind;
-    workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
-  }): Promise<
-    Extract<PlanningWorkspaceSnapshot, { state: "branch-only" | "missing" }>
-  >;
+    workspace: PlanningWorkspaceOwnership<
+      { state: "ready" } | PlanningWorkspaceCleanupPending
+    >;
+  }): Promise<PlanningWorkspaceRemovalOutcome>;
   removeBranch(input: {
     runId: string;
     phase: PlanningPhaseKind;

@@ -6,8 +6,10 @@ import type {
 } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
+import type { PlanningCleanupPendingOutcome } from "./planning-phase-runner-shared.ts";
 
 export type PlanningCoordinatorOutcome =
+  | PlanningCleanupPendingOutcome
   | {
       kind: "review-pending";
       state: PlanningStateV1;
@@ -65,6 +67,7 @@ export async function coordinatePlanningPhases(
       phase,
       planOnly: input.planOnly === true,
     });
+    if (outcome.kind === "cleanup-pending") return outcome;
     if (outcome.kind === "review-pending") {
       if (phase.kind === "implementation")
         throw new Error("Implementation pull request cannot be review-pending");

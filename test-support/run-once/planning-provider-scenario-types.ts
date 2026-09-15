@@ -6,6 +6,11 @@ export type PlanningScenarioGates = Readonly<{
   specRequired: boolean;
   planRequired: boolean;
 }>;
+export type PlanningScenarioIgnoredArtifact = Readonly<{
+  path: string;
+  contents: string | Uint8Array;
+}>;
+
 export type PlanningScenarioFailurePoint =
   | "after-phase-push"
   | "after-planning-pull-request-create"
@@ -111,6 +116,7 @@ export type PlanningProviderFixtureInput = {
   implementationFinish(): Promise<boolean>;
   interrupt(point: PlanningScenarioFailurePoint): Promise<void>;
   consumeHostReadFailure(): boolean;
+  consumeCleanupPendingCommentFailure(): boolean;
   addIssueComment(body: string): void;
   updateIssueLabels(add: readonly string[], remove: readonly string[]): void;
   record(effect: PlanningScenarioEffect): void;
@@ -125,7 +131,11 @@ export type PlanningStateSnapshot = Readonly<{
     ownership?: Readonly<{
       branch: string;
       worktreePath: string;
-      cleanupState: "ready" | "worktree-removed" | "removed";
+      cleanupState:
+        | "ready"
+        | "cleanup-pending"
+        | "worktree-removed"
+        | "removed";
     }>;
   }>[];
 }>;

@@ -6,8 +6,10 @@ import { assertPlanningWorkspacePrepareInput } from "./planning-workspace-input.
 import {
   PlanningWorkspaceConflictError,
   type PlanningRemoteBaseSnapshot,
+  type PlanningWorkspaceCleanupPending,
   type PlanningWorkspaceIdentity,
   type PlanningWorkspaceLifecycle,
+  type PlanningWorkspaceRemovalOutcome,
   type PlanningWorkspaceOwnership,
   type PlanningWorkspaceSnapshot,
   type PreparedPlanningWorkspace,
@@ -135,10 +137,10 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   removeWorktree(input: {
     runId: string;
     phase: PlanningPhaseKind;
-    workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
-  }): Promise<
-    Extract<PlanningWorkspaceSnapshot, { state: "branch-only" | "missing" }>
-  > {
+    workspace: PlanningWorkspaceOwnership<
+      { state: "ready" } | PlanningWorkspaceCleanupPending
+    >;
+  }): Promise<PlanningWorkspaceRemovalOutcome> {
     return this.cleanup.removeWorktree(input);
   }
 

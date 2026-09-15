@@ -30,6 +30,7 @@ export function exitCodeForRunOnceResult(summary: RunOnceResultSummary): 0 | 1 {
     case "pr-created":
     case "merged":
     case "review-pending":
+    case "cleanup-pending":
     case "stopped":
       return 0;
     case "approval-required":

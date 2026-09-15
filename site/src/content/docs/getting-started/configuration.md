@@ -179,8 +179,11 @@ remove:
 ```
 
 Patchmill invokes the configured path through `bash` from the issue worktree.
-For example, a repository using a worktree-scoped Docker Compose project could
-provide:
+The hook owns external resources, not deletion of worktree-local files. If it
+succeeds and ignored local paths later require operator cleanup, Patchmill
+checkpoints that successful hook and does not rerun it on the acknowledged
+retry. For example, a repository using a worktree-scoped Docker Compose project
+could provide:
 
 ```bash
 #!/usr/bin/env bash

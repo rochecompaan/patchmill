@@ -54,13 +54,19 @@ export function createForgejoProcessFixture(
   return async (args: string[]): Promise<CommandResult> => {
     const [group, action] = args;
     if (group === "comment") {
+      const body = args.at(-1)!;
       const handoff = await input.implementationFinish();
       input.record({
         kind: "write",
         operation: handoff ? "handoff-comment" : "issue-comment",
       });
       if (handoff) await input.interrupt("after-handoff-comment");
-      input.addIssueComment(args.at(-1)!);
+      if (
+        body.startsWith("Patchmill cleanup pending") &&
+        input.consumeCleanupPendingCommentFailure()
+      )
+        return { code: 1, stdout: "", stderr: "transient comment failure" };
+      input.addIssueComment(body);
       return { code: 0, stdout: "", stderr: "" };
     }
     if (group === "issues" && action === "list") {
@@ -81,10 +87,10 @@ export function createForgejoProcessFixture(
       if (done) await input.interrupt("after-done-label");
       input.updateIssueLabels(
         args.flatMap((value, index) =>
-          value === "--add-labels" ? [args[index + 1]!] : [],
+          value === "--add-labels" ? args[index + 1]!.split(",") : [],
         ),
         args.flatMap((value, index) =>
-          value === "--remove-labels" ? [args[index + 1]!] : [],
+          value === "--remove-labels" ? args[index + 1]!.split(",") : [],
         ),
       );
       return { code: 0, stdout: "", stderr: "" };

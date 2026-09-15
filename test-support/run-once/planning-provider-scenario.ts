@@ -2,10 +2,12 @@ import {
   PlanningStateStore,
   type PlanningStateV1,
 } from "../../src/workflow/planning-state-store.ts";
-import { resolve } from "node:path";
+import { readFile, rm, rmdir } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { approvalPolicy, makeConfig } from "./pipeline-fixtures.ts";
 import { issue } from "./issue-fixtures.ts";
 import { runOneIssue } from "../../src/cli/commands/run-once/pipeline.ts";
+import type { IssueSummary } from "../../src/issue/types.ts";
 import type { AgentIssuePipelineResult } from "../../src/cli/commands/run-once/types.ts";
 import { createForgejoProcessFixture } from "./planning-forgejo-process-fixture.ts";
 import { createGithubProcessFixture } from "./planning-github-process-fixture.ts";
@@ -22,6 +24,7 @@ import type {
   PlanningScenarioEffect,
   PlanningScenarioFailurePoint,
   PlanningScenarioGates,
+  PlanningScenarioIgnoredArtifact,
   PlanningScenarioProvider,
   PlanningScenarioPull,
   PlanningStateSnapshot,
@@ -32,6 +35,7 @@ export type {
   PlanningScenarioEffect,
   PlanningScenarioFailurePoint,
   PlanningScenarioGates,
+  PlanningScenarioIgnoredArtifact,
   PlanningScenarioProvider,
   PlanningStateSnapshot,
   RecordedScenarioPullRequest,
@@ -55,6 +59,7 @@ export type PlanningProviderScenario = {
   removeSavedPlanningPull(): void;
   duplicateOpenPlanningPull(): void;
   failNextHostRead(): void;
+  failNextCleanupPendingComment(): void;
   interruptAt(point: PlanningScenarioFailurePoint): void;
   restorePersistence(): Promise<void>;
   archiveExactStaleLock(): Promise<{
@@ -64,6 +69,13 @@ export type PlanningProviderScenario = {
   installDeadProcessLock(): Promise<{ fingerprint: string }>;
   remoteArtifactContents(): Promise<Readonly<Record<string, string>>>;
   carriedArtifactContents(): Readonly<Record<string, string>>;
+  ignoredImplementationArtifactContents(): Promise<
+    Readonly<Record<string, Uint8Array>>
+  >;
+  removeIgnoredImplementationArtifacts(): Promise<void>;
+  applyReadyLabel(): void;
+  applyReadyOnlyLabel(): void;
+  issueSnapshot(): IssueSummary;
   cleanup(): Promise<void>;
 };
 
@@ -113,6 +125,7 @@ function recordedPull(pull: PlanningScenarioPull): RecordedScenarioPullRequest {
 export async function createPlanningProviderScenario(input: {
   provider: PlanningScenarioProvider;
   gates: PlanningScenarioGates;
+  ignoredImplementationArtifacts?: readonly PlanningScenarioIgnoredArtifact[];
 }): Promise<PlanningProviderScenario> {
   const config = await makeConfig({
     dryRun: false,
@@ -122,7 +135,18 @@ export async function createPlanningProviderScenario(input: {
     host: { provider: input.provider, login: "" },
     cleanupHook: "cleanup.sh",
   });
-  const repository = await createPlanningScenarioRepository(config);
+  const ignoredImplementationArtifacts =
+    input.ignoredImplementationArtifacts ?? [];
+  const ignoredArtifactPatterns = ignoredImplementationArtifacts.map(
+    ({ path }) => {
+      const separator = path.lastIndexOf("/");
+      return separator === -1 ? path : path.slice(0, separator + 1);
+    },
+  );
+  const repository = await createPlanningScenarioRepository(
+    config,
+    ignoredArtifactPatterns,
+  );
   const selected = issue(190, ["agent-ready"], "Provider scenario");
   const pulls: PlanningScenarioPull[] = [];
   const effects: PlanningScenarioEffect[] = [];
@@ -157,6 +181,7 @@ export async function createPlanningProviderScenario(input: {
   });
   let nextPull = 1;
   let failHostRead = false;
+  let failCleanupPendingComment = false;
   const addIssueComment = (body: string) => {
     selected.comments?.push({ author: { login: "patchmill" }, body });
   };
@@ -167,6 +192,14 @@ export async function createPlanningProviderScenario(input: {
     selected.labels = selected.labels
       .filter((label) => !remove.includes(label))
       .concat(add.filter((label) => !selected.labels.includes(label)));
+  };
+  const implementationWorktreePath = async () => {
+    const implementation = (await state())?.phases.find(
+      (phase) => phase.kind === "implementation",
+    );
+    if (implementation === undefined || !("workspace" in implementation))
+      throw new Error("saved implementation workspace ownership is missing");
+    return implementation.workspace.identity.worktreePath;
   };
   const ownershipForWorktree = async (worktreePath: string) => {
     const resolvedPath = resolve(config.repoRoot, worktreePath);
@@ -209,6 +242,11 @@ export async function createPlanningProviderScenario(input: {
       failHostRead = false;
       return true;
     },
+    consumeCleanupPendingCommentFailure: () => {
+      if (!failCleanupPendingComment) return false;
+      failCleanupPendingComment = false;
+      return true;
+    },
     addIssueComment,
     updateIssueLabels,
     record,
@@ -232,6 +270,7 @@ export async function createPlanningProviderScenario(input: {
     repoRoot: config.repoRoot,
     pulls,
     carriedArtifacts,
+    ignoredImplementationArtifacts,
     ownershipForBranch,
     ownershipForWorktree,
     planningPhaseMerged,
@@ -273,12 +312,53 @@ export async function createPlanningProviderScenario(input: {
     failNextHostRead: () => {
       failHostRead = true;
     },
+    failNextCleanupPendingComment: () => {
+      failCleanupPendingComment = true;
+    },
     interruptAt: recovery.interruptAt,
     restorePersistence: recovery.restorePersistence,
     installDeadProcessLock: async () =>
       recovery.installDeadProcessLock(await state()),
     archiveExactStaleLock: recovery.archiveExactStaleLock,
     carriedArtifactContents: () => Object.fromEntries(carriedArtifacts),
+    ignoredImplementationArtifactContents: async () => {
+      const worktreePath = await implementationWorktreePath();
+      return Object.fromEntries(
+        await Promise.all(
+          ignoredImplementationArtifacts.map(async ({ path }) => [
+            path,
+            new Uint8Array(await readFile(join(worktreePath, path))),
+          ]),
+        ),
+      );
+    },
+    removeIgnoredImplementationArtifacts: async () => {
+      const worktreePath = await implementationWorktreePath();
+      for (const { path } of ignoredImplementationArtifacts) {
+        const artifactPath = join(worktreePath, path);
+        await rm(artifactPath, { force: true });
+        for (
+          let directory = dirname(artifactPath);
+          directory !== worktreePath;
+          directory = dirname(directory)
+        ) {
+          try {
+            await rmdir(directory);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOTEMPTY") break;
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          }
+        }
+      }
+    },
+    applyReadyLabel: () => {
+      if (!selected.labels.includes(config.readyLabel))
+        selected.labels.push(config.readyLabel);
+    },
+    applyReadyOnlyLabel: () => {
+      selected.labels = [config.readyLabel];
+    },
+    issueSnapshot: () => structuredClone(selected),
     remoteArtifactContents: async () =>
       remoteArtifactContents(config.repoRoot, await state()),
     cleanup: async () => {

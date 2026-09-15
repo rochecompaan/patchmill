@@ -67,21 +67,27 @@ result:
 patchmill run-once --issue N > result.json
 ```
 
-`review-pending` and `stopped` with reason `plan-only` are exit-zero nonfailure
-results. An open planning review takes precedence over a plan-only stop; a later
-invocation without the option resumes the saved phase and gate snapshot.
+`review-pending`, `cleanup-pending`, and `stopped` with reason `plan-only` are
+exit-zero nonfailure results. `cleanup-pending` preserves a valid planning or
+implementation pull request while its Issue run remains incomplete. An open
+planning review takes precedence over a plan-only stop; a later invocation
+without the option resumes the saved phase and gate snapshot.
 
 ## Recovery and operator safety
 
 A retry observes durable state, the remote, and the host before repeating an
 effect. It can adopt an exact pushed head or created pull request, complete a
-checkpointed cleanup, return the same open review, or verify a merge. It never
-force-updates a conflicting branch or replaces a missing, ambiguous, or
-closed-unmerged planning pull request.
+checkpointed cleanup, return the same open review, or verify a merge. Ignored
+paths are never classified as disposable by name: familiar agent, environment,
+build, and unknown files receive the same preservation rule. Ordinary tracked or
+untracked changes remain hard failures. Patchmill never force-cleans a phase
+workspace, force-updates a conflicting branch, or replaces a missing, ambiguous,
+or closed-unmerged planning pull request.
 
 | Situation                                            | Operator action                                                                                                                                      |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Open review                                          | Review or merge the same pull request, then rerun Run-once.                                                                                          |
+| Cleanup pending                                      | Inspect and preserve or remove every reported ignored path in the phase workspace, apply the configured ready label, then rerun the same issue.      |
 | Closed-unmerged, proven missing, or ambiguous review | Repair the host state manually; Patchmill does not replace the pull request.                                                                         |
 | Dirty or uncheckpointed phase workspace              | Inspect and preserve local work before retrying.                                                                                                     |
 | Transient host failure                               | Repair authentication or connectivity, then retry.                                                                                                   |

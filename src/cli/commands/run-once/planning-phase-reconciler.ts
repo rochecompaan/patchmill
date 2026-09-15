@@ -20,6 +20,12 @@ import { validatePlanningPullRequestSummary } from "../../../workflow/planning-p
 import { finishPlanningPhaseCleanup } from "./planning-phase-cleanup.ts";
 
 export type PlanningPhaseReconciliation =
+  | {
+      kind: "cleanup-pending";
+      prUrl: string;
+      reason: "ignored-worktree-content";
+      ignoredPaths: readonly string[];
+    }
   | { kind: "review-pending"; pullRequest: PullRequestSummary }
   | { kind: "merged"; pullRequest: PullRequestSummary; baseOid: string }
   | {
@@ -149,7 +155,7 @@ export async function reconcilePlanningPhase(input: {
     publication: phase.publication,
     expectedReference: phase.pullRequest.reference,
   });
-  phase = await finishPlanningPhaseCleanup({
+  const cleanup = await finishPlanningPhaseCleanup({
     phase: phase as PullRequestOpenPlanningPhase,
     workspaces: input.workspaces,
     remoteHead: async (published) => {
@@ -174,6 +180,17 @@ export async function reconcilePlanningPhase(input: {
       );
     },
   });
+  if (cleanup.kind === "cleanup-pending")
+    return {
+      state,
+      outcome: {
+        kind: "cleanup-pending",
+        prUrl: phase.pullRequest.url,
+        reason: cleanup.reason,
+        ignoredPaths: cleanup.ignoredPaths,
+      },
+    };
+  phase = cleanup.phase;
   if (pullRequest.status === "open")
     return { state, outcome: { kind: "review-pending", pullRequest } };
   if (pullRequest.status === "closed-unmerged")

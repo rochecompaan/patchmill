@@ -523,17 +523,15 @@ test(
         phase: "spec",
         workspace: prepared.workspace,
       });
-      assert.equal(branchOnly.state, "branch-only");
-      assert.equal(
-        (
-          await workspace.removeWorktree({
-            runId: prepared.workspace.runId,
-            phase: "spec",
-            workspace: prepared.workspace,
-          })
-        ).state,
-        "branch-only",
-      );
+      assert.equal(branchOnly.kind, "removed");
+      assert.equal(branchOnly.snapshot.state, "branch-only");
+      const repeated = await workspace.removeWorktree({
+        runId: prepared.workspace.runId,
+        phase: "spec",
+        workspace: prepared.workspace,
+      });
+      assert.equal(repeated.kind, "removed");
+      assert.equal(repeated.snapshot.state, "branch-only");
       const pushed: PlanningWorkspaceOwnership<{
         state: "worktree-removed";
         pushedHeadOid: string;
@@ -602,15 +600,28 @@ test(
             "ignored files do not dirty resumed workspaces",
           );
         }
-        await assert.rejects(
-          workspace.removeWorktree({
+        if (dirty === "ignored") {
+          const pending = await workspace.removeWorktree({
             runId: dirtyPrepared.workspace.runId,
             phase: "spec",
             workspace: dirtyPrepared.workspace,
-          }),
-          /dirty-worktree/,
-          dirty,
-        );
+          });
+          assert.deepEqual(pending, {
+            kind: "cleanup-pending",
+            reason: "ignored-worktree-content",
+            ignoredPaths: ["ignored.txt"],
+          });
+        } else {
+          await assert.rejects(
+            workspace.removeWorktree({
+              runId: dirtyPrepared.workspace.runId,
+              phase: "spec",
+              workspace: dirtyPrepared.workspace,
+            }),
+            /dirty-worktree/,
+            dirty,
+          );
+        }
         git(dirtyPath, "reset", "--hard", "HEAD");
         if (dirty === "untracked" || dirty === "ignored") {
           await rm(join(dirtyPath, `${dirty}.txt`), { force: true });

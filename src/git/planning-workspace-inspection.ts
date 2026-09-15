@@ -16,6 +16,36 @@ import {
   type PlanningWorkspaceSnapshot,
 } from "./planning-workspaces.ts";
 
+export type PlanningWorkspaceRemovalStatus = Readonly<{
+  ordinaryDirty: boolean;
+  ignoredPaths: readonly string[];
+}>;
+
+/** Parses complete NUL-delimited porcelain without altering Git path spelling. */
+export function parsePlanningWorkspaceRemovalStatus(
+  stdout: string,
+): PlanningWorkspaceRemovalStatus {
+  if (stdout !== "" && !stdout.endsWith("\0"))
+    throw new PlanningWorkspaceResponseError("status", "missing-trailing-nul");
+  const ignored = new Set<string>();
+  let ordinaryDirty = false;
+  for (const record of stdout.split("\0")) {
+    if (record === "") continue;
+    if (record.startsWith("!! ")) {
+      const path = record.slice(3);
+      if (path === "")
+        throw new PlanningWorkspaceResponseError(
+          "status",
+          "empty-ignored-path",
+        );
+      ignored.add(path);
+    } else {
+      ordinaryDirty = true;
+    }
+  }
+  return { ordinaryDirty, ignoredPaths: [...ignored].sort() };
+}
+
 export class PlanningWorkspaceRepositoryGit {
   readonly runner: CommandRunner;
   readonly repoRoot: string;
@@ -132,11 +162,24 @@ export class PlanningWorkspaceRepositoryGit {
     return oid;
   }
 
-  async contentSafeToRemove(path: string): Promise<boolean> {
-    return this.clean(path, true);
+  async removalStatus(path: string): Promise<PlanningWorkspaceRemovalStatus> {
+    const result = await this.run(
+      [
+        "--no-optional-locks",
+        "-C",
+        path,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignored=matching",
+      ],
+      "status",
+    );
+    return parsePlanningWorkspaceRemovalStatus(result.stdout);
   }
 
-  private async clean(path: string, includeIgnored = false): Promise<boolean> {
+  private async clean(path: string): Promise<boolean> {
     const args = [
       "--no-optional-locks",
       "-C",
@@ -146,7 +189,6 @@ export class PlanningWorkspaceRepositoryGit {
       "-z",
       "--untracked-files=all",
     ];
-    if (includeIgnored) args.push("--ignored=matching");
     const result = await this.run(args, "status");
     return result.stdout === "";
   }

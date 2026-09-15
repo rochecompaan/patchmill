@@ -12,6 +12,7 @@ type PhaseName =
   | "workspace-ready"
   | "branch-pushed"
   | "pull-request-open-ready"
+  | "pull-request-open-cleanup-pending"
   | "pull-request-open-worktree-removed"
   | "pull-request-open-removed"
   | "complete-remote-base"
@@ -19,6 +20,7 @@ type PhaseName =
   | "implementation-workspace-ready"
   | "implementation-branch-pushed"
   | "implementation-pull-request-open-ready"
+  | "implementation-pull-request-open-cleanup-pending"
   | "implementation-pull-request-open-worktree-removed"
   | "implementation-pull-request-open-removed"
   | "implementation-complete";
@@ -49,6 +51,11 @@ const allowed: Readonly<Record<PhaseName, readonly PhaseName[]>> = {
   "branch-pushed": ["branch-pushed", "pull-request-open-ready"],
   "pull-request-open-ready": [
     "pull-request-open-ready",
+    "pull-request-open-cleanup-pending",
+    "pull-request-open-worktree-removed",
+  ],
+  "pull-request-open-cleanup-pending": [
+    "pull-request-open-cleanup-pending",
     "pull-request-open-worktree-removed",
   ],
   "pull-request-open-worktree-removed": [
@@ -68,6 +75,11 @@ const allowed: Readonly<Record<PhaseName, readonly PhaseName[]>> = {
   ],
   "implementation-pull-request-open-ready": [
     "implementation-pull-request-open-ready",
+    "implementation-pull-request-open-cleanup-pending",
+    "implementation-pull-request-open-worktree-removed",
+  ],
+  "implementation-pull-request-open-cleanup-pending": [
+    "implementation-pull-request-open-cleanup-pending",
     "implementation-pull-request-open-worktree-removed",
   ],
   "implementation-pull-request-open-worktree-removed": [
@@ -106,12 +118,26 @@ function assertWorkspace(
   );
   if (!allowHeadAdvance && current.headOid !== next.headOid)
     fail("immutable-evidence", index);
+  if (
+    current.cleanup.state === "cleanup-pending" &&
+    next.cleanup.state === "cleanup-pending"
+  ) {
+    if (current.cleanup.reason !== next.cleanup.reason)
+      fail("immutable-evidence", index, ".workspace.cleanup.reason");
+    return;
+  }
   if (current.cleanup.state === next.cleanup.state) {
     same(current.cleanup, next.cleanup, index);
     return;
   }
   if (
     current.cleanup.state === "ready" &&
+    next.cleanup.state === "cleanup-pending"
+  )
+    return;
+  if (
+    (current.cleanup.state === "ready" ||
+      current.cleanup.state === "cleanup-pending") &&
     next.cleanup.state === "worktree-removed" &&
     next.cleanup.pushedHeadOid === current.headOid
   )

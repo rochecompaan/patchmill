@@ -36,8 +36,16 @@ state blocks without fallback.
 5. Checkpointed handoff, cleanup hook, workspace cleanup, and done labels occur
    only after implementation pull-request validation.
 
-`review-pending` and `stopped` with reason `plan-only` are exit-zero nonfailure
-results. Normal recovery is an ordinary rerun:
+When ordinary Git status is clean but ignored phase-workspace paths remain,
+Patchmill checkpoints `cleanup-pending` before removing the worktree. It posts
+an actionable comment, applies `needs-info`, and removes ready/in-progress, so
+automatic selection stops. After an operator handles every reported path and
+applies the configured ready label, the next Run attempt refreshes cleanup only;
+it does not replay a successful cleanup hook or other checkpointed finish
+effects. Once cleanup succeeds, the existing done-label transition completes.
+
+`review-pending`, `cleanup-pending`, and `stopped` with reason `plan-only` are
+exit-zero nonfailure results. Normal recovery is an ordinary rerun:
 
 ```sh
 patchmill run-once --issue N

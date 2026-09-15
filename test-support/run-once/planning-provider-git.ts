@@ -35,16 +35,31 @@ export async function git(cwd: string, args: string[]): Promise<GitResult> {
 }
 
 /** Owns the temporary repository and bare remote used by provider scenarios. */
-export async function createPlanningScenarioRepository(paths: ScenarioPaths) {
+export async function createPlanningScenarioRepository(
+  paths: ScenarioPaths,
+  ignoredArtifactPaths: readonly string[] = [],
+) {
   const remote = join(paths.repoRoot, "remote.git");
   await mkdir(paths.worktreeDir, { recursive: true });
   await git(paths.repoRoot, ["init", "--initial-branch=main"]);
   await git(paths.repoRoot, ["config", "user.email", "test@example.test"]);
   await git(paths.repoRoot, ["config", "user.name", "Test"]);
   await writeFile(join(paths.repoRoot, "README.md"), "# test\n", "utf8");
+  if (ignoredArtifactPaths.length > 0) {
+    const patterns = [...new Set(ignoredArtifactPaths)].sort();
+    await writeFile(
+      join(paths.repoRoot, ".gitignore"),
+      `${patterns.join("\n")}\n`,
+    );
+  }
   await writeFile(join(paths.specsDir, ".gitkeep"), "", "utf8");
   await writeFile(join(paths.plansDir, ".gitkeep"), "", "utf8");
-  await git(paths.repoRoot, ["add", "README.md", "docs"]);
+  await git(paths.repoRoot, [
+    "add",
+    "README.md",
+    "docs",
+    ...(ignoredArtifactPaths.length > 0 ? [".gitignore"] : []),
+  ]);
   await git(paths.repoRoot, ["commit", "-m", "initial"]);
   await git(paths.repoRoot, ["init", "--bare", remote]);
   await git(paths.repoRoot, ["remote", "add", "origin", remote]);

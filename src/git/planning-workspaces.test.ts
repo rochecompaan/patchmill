@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   PlanningWorkspaceConflictError,
   type PlanningRemoteBaseSnapshot,
+  type PlanningWorkspaceCleanupPending,
   type PlanningWorkspaceIdentity,
   type PlanningWorkspaceLifecycle,
+  type PlanningWorkspaceRemovalOutcome,
   type PlanningWorkspaceOwnership,
   type PlanningWorkspaceSnapshot,
   type PreparedPlanningWorkspace,
@@ -83,10 +85,10 @@ class FakePlanningWorkspace implements PlanningWorkspaceLifecycle {
   async removeWorktree(input: {
     runId: string;
     phase: "spec" | "plan" | "implementation";
-    workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
-  }): Promise<
-    Extract<PlanningWorkspaceSnapshot, { state: "branch-only" | "missing" }>
-  > {
+    workspace: PlanningWorkspaceOwnership<
+      { state: "ready" } | PlanningWorkspaceCleanupPending
+    >;
+  }): Promise<PlanningWorkspaceRemovalOutcome> {
     this.events.push("remove-worktree");
     assert.equal(input.runId, input.workspace.runId);
     assert.equal(input.phase, input.workspace.phase);
@@ -97,7 +99,7 @@ class FakePlanningWorkspace implements PlanningWorkspaceLifecycle {
       identity,
       headOid: this.snapshot.headOid,
     };
-    return this.snapshot;
+    return { kind: "removed", snapshot: this.snapshot };
   }
 
   async removeBranch(input: {
@@ -138,7 +140,9 @@ test("a coordinator uses pinned base and saved workspace ownership", async () =>
     phase: "spec",
     workspace: prepared.workspace,
   });
-  assert.equal(branchOnly.state, "branch-only");
+  if (branchOnly.kind === "removed")
+    assert.equal(branchOnly.snapshot.state, "branch-only");
+  else throw new Error("expected removed outcome");
   const missing = await workspace.removeBranch({
     runId: prepared.workspace.runId,
     phase: "spec",
