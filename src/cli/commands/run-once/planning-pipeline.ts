@@ -446,7 +446,6 @@ export async function runPlanningWorkflow(input: {
           outcome,
           labels.ready,
         );
-        await ensureAutomationLabel(host, input.config, labels.needsInfo);
         await publishPlanningCleanupPending({
           host,
           config: input.config,

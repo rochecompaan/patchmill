@@ -84,13 +84,13 @@ test("persists raw cleanup-pending ignored paths and permits their refresh", () 
     state({
       state: "cleanup-pending",
       reason: "ignored-worktree-content",
-      ignoredPaths: [".env", "build/output\nname.bin"],
+      ignoredPaths: [".env", "build/output\nname.bin", "safe\\..\\artifact"],
     }),
   );
   assert.deepEqual(current.phases[0]?.workspace?.cleanup, {
     state: "cleanup-pending",
     reason: "ignored-worktree-content",
-    ignoredPaths: [".env", "build/output\nname.bin"],
+    ignoredPaths: [".env", "build/output\nname.bin", "safe\\..\\artifact"],
   });
   const next = validatePlanningState(
     state(
@@ -109,7 +109,7 @@ test("rejects unsafe and empty cleanup-pending inventories", () => {
   for (const ignoredPaths of [
     [],
     ["../outside"],
-    ["\\\\server\\share"],
+    ["/outside"],
     [".env", ".env"],
   ])
     assert.throws(

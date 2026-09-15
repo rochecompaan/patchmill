@@ -12,13 +12,15 @@ test("cleanup path diagnostics escape terminal control characters", () => {
   assert.doesNotMatch(path, /\n|\t|\u001b/u);
 });
 
-test("cleanup-pending publication removes a ready label added with its comment", async () => {
+test("cleanup-pending publication comments before ensuring its label and clearing retry labels", async () => {
   const calls: Array<{ oldLabels: string[]; newLabels: string[] }> = [];
+  const effects: string[] = [];
   let reads = 0;
   await publishPlanningCleanupPending({
     host: {
       viewIssue: async () => {
         reads += 1;
+        effects.push("view");
         return {
           labels:
             reads === 1
@@ -27,8 +29,16 @@ test("cleanup-pending publication removes a ready label added with its comment",
           comments: [],
         };
       },
-      commentIssue: async () => undefined,
-      applyLabels: async (change) => calls.push(change),
+      commentIssue: async () => effects.push("comment"),
+      listLabels: async () => {
+        effects.push("list-labels");
+        return [];
+      },
+      createLabel: async () => effects.push("create-label"),
+      applyLabels: async (change) => {
+        effects.push("apply-labels");
+        calls.push(change);
+      },
     } as never,
     config: {} as never,
     result: {
@@ -55,6 +65,14 @@ test("cleanup-pending publication removes a ready label added with its comment",
     },
   });
   assert.equal(reads, 2);
+  assert.deepEqual(effects, [
+    "view",
+    "comment",
+    "list-labels",
+    "create-label",
+    "view",
+    "apply-labels",
+  ]);
   assert.deepEqual(calls, [
     {
       issueNumber: 243,

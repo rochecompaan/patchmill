@@ -1,4 +1,5 @@
 import type { RunOnceHostProvider } from "../../../host/types.ts";
+import { ensureAutomationLabel } from "./automation-labels.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
 import { applyPlanningCleanupPendingLabels } from "./planning-lifecycle-labels.ts";
@@ -78,7 +79,10 @@ function cleanupPendingComment(result: AgentIssueCleanupPendingResult): string {
 }
 
 export async function publishPlanningCleanupPending(input: {
-  host: Pick<RunOnceHostProvider, "viewIssue" | "applyLabels" | "commentIssue">;
+  host: Pick<
+    RunOnceHostProvider,
+    "viewIssue" | "applyLabels" | "commentIssue" | "listLabels" | "createLabel"
+  >;
   config: AgentIssueConfig;
   result: AgentIssueCleanupPendingResult;
   labels: { ready: string; inProgress: string; needsInfo: string };
@@ -87,6 +91,7 @@ export async function publishPlanningCleanupPending(input: {
   const body = cleanupPendingComment(input.result);
   if (!current.comments?.some((comment) => comment.body === body))
     await input.host.commentIssue(input.result.issue.number, body);
+  await ensureAutomationLabel(input.host, input.config, input.labels.needsInfo);
   await applyPlanningCleanupPendingLabels({
     host: input.host,
     issueNumber: input.result.issue.number,
