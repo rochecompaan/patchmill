@@ -22,6 +22,10 @@ import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
 import {
+  planningCleanupPendingResult,
+  publishPlanningCleanupPending,
+} from "./planning-cleanup-pending.ts";
+import {
   legacyConflictsWithPlanning,
   planningFinishReachedDoneLabelBoundary,
   planningIssueEligible,
@@ -301,12 +305,15 @@ function statePaths(state: PlanningStateV1) {
   };
 }
 
-function mapOutcome(
+export function mapPlanningOutcome(
   issue: IssueSummary,
   outcome: PlanningCoordinatorOutcome,
+  readyLabel: string,
 ): AgentIssuePipelineResult {
   const paths = statePaths(outcome.state);
   switch (outcome.kind) {
+    case "cleanup-pending":
+      return planningCleanupPendingResult(issue, outcome, readyLabel);
     case "review-pending":
       return {
         status: "review-pending",
@@ -433,6 +440,24 @@ export async function runPlanningWorkflow(input: {
           : { now: () => input.options.now! }),
       });
       const outcome = await runtime.coordinate(state, lock);
+      if (outcome.kind === "cleanup-pending") {
+        const result = planningCleanupPendingResult(
+          issue,
+          outcome,
+          labels.ready,
+        );
+        await ensureAutomationLabel(host, input.config, labels.needsInfo);
+        await publishPlanningCleanupPending({
+          host,
+          config: input.config,
+          result,
+          labels: {
+            ready: labels.ready,
+            inProgress: labels.inProgress,
+            needsInfo: labels.needsInfo,
+          },
+        });
+      }
       if (outcome.kind === "blocked") {
         const body = blockerComment(outcome.result);
         if (!issue.comments?.some((comment) => comment.body === body))
@@ -453,7 +478,7 @@ export async function runPlanningWorkflow(input: {
   });
   if (planning.status === "coordinated")
     return withLogPath(
-      mapOutcome(planning.issue, planning.outcome),
+      mapPlanningOutcome(planning.issue, planning.outcome, labels.ready),
       runOptions,
     );
   if (planning.status === "blocked")
