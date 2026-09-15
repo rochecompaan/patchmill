@@ -1,7 +1,4 @@
-import type {
-  PlanningWorkspaceIdentity,
-  PlanningWorkspaceOwnership,
-} from "../git/planning-workspaces.ts";
+import type {} from "../git/planning-workspaces.ts";
 import { pullRequestUrlMatchesReference } from "../host/pull-request-reference.ts";
 import {
   sameRepositoryIdentity,
@@ -25,6 +22,7 @@ import {
 } from "./planning-publication-repositories.ts";
 
 import { implementationPhaseState } from "./planning-state-implementation-codec.ts";
+import { planningWorkspaceEvidence as workspace } from "./planning-state-workspace-codec.ts";
 import {
   UUID,
   artifactPath,
@@ -91,74 +89,6 @@ function base(value: unknown, path: string) {
       `${path}.artifactCandidates`,
     ),
   };
-}
-function workspace(value: unknown, path: string): PlanningWorkspaceOwnership {
-  const parsed = object(
-    value,
-    [
-      "runId",
-      "phase",
-      "identity",
-      "remote",
-      "baseBranch",
-      "baseOid",
-      "headOid",
-      "cleanup",
-    ],
-    path,
-  );
-  const identity = object(
-    parsed.identity,
-    ["branch", "worktreePath"],
-    `${path}.identity`,
-  );
-  const worktreePath = string(
-    identity.worktreePath,
-    `${path}.identity.worktreePath`,
-  );
-  if (
-    worktreePath.length === 0 ||
-    worktreePath.length > 4096 ||
-    /[\0\r\n]/u.test(worktreePath)
-  )
-    fail("invalid-worktree-path", `${path}.identity.worktreePath`);
-  const cleanupRaw = parsed.cleanup as Record<string, unknown>;
-  const cleanup = object(
-    cleanupRaw,
-    cleanupRaw?.state === "ready" ? ["state"] : ["state", "pushedHeadOid"],
-    `${path}.cleanup`,
-  );
-  const cleanupState = string(cleanup.state, `${path}.cleanup.state`);
-  if (
-    cleanupState !== "ready" &&
-    cleanupState !== "worktree-removed" &&
-    cleanupState !== "removed"
-  )
-    fail("invalid-cleanup", `${path}.cleanup.state`);
-  const runId = string(parsed.runId, `${path}.runId`);
-  if (!UUID.test(runId)) fail("invalid-uuid", `${path}.runId`);
-  return {
-    runId,
-    phase: phase(parsed.phase, `${path}.phase`),
-    identity: {
-      branch: branch(identity.branch, `${path}.identity.branch`),
-      worktreePath,
-    } as PlanningWorkspaceIdentity,
-    remote: singleLine(parsed.remote, `${path}.remote`),
-    baseBranch: branch(parsed.baseBranch, `${path}.baseBranch`),
-    baseOid: oid(parsed.baseOid, `${path}.baseOid`),
-    headOid: oid(parsed.headOid, `${path}.headOid`),
-    cleanup:
-      cleanupState === "ready"
-        ? { state: "ready" }
-        : {
-            state: cleanupState,
-            pushedHeadOid: oid(
-              cleanup.pushedHeadOid,
-              `${path}.cleanup.pushedHeadOid`,
-            ),
-          },
-  } as PlanningWorkspaceOwnership;
 }
 function artifacts(
   value: unknown,
@@ -508,7 +438,8 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
     )
       fail("invalid-cleanup-progress", `${path}.workspace.cleanup`);
     if (
-      item.workspace.cleanup.state !== "ready" &&
+      (item.workspace.cleanup.state === "worktree-removed" ||
+        item.workspace.cleanup.state === "removed") &&
       item.workspace.cleanup.pushedHeadOid !== item.workspace.headOid
     )
       fail("cleanup-head-mismatch", `${path}.workspace.cleanup.pushedHeadOid`);
