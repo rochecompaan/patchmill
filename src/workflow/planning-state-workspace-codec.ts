@@ -20,6 +20,7 @@ function ignoredPath(value: unknown, path: string): string {
     parsed.length > 4096 ||
     parsed.includes("\0") ||
     parsed.startsWith("/") ||
+    parsed.startsWith("\\") ||
     /^[A-Za-z]:[\\/]/u.test(parsed) ||
     parsed.split(/[\\/]/u).includes("..")
   )

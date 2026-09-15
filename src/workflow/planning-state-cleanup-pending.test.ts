@@ -106,7 +106,12 @@ test("persists raw cleanup-pending ignored paths and permits their refresh", () 
 });
 
 test("rejects unsafe and empty cleanup-pending inventories", () => {
-  for (const ignoredPaths of [[], ["../outside"], [".env", ".env"]])
+  for (const ignoredPaths of [
+    [],
+    ["../outside"],
+    ["\\\\server\\share"],
+    [".env", ".env"],
+  ])
     assert.throws(
       () =>
         validatePlanningState(
