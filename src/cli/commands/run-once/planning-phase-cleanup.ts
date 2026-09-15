@@ -1,4 +1,5 @@
 import type {
+  PlanningWorkspaceCleanupPending,
   PlanningWorkspaceLifecycle,
   PlanningWorkspaceOwnership,
 } from "../../../git/planning-workspaces.ts";
@@ -35,7 +36,9 @@ export async function finishPlanningPhaseCleanup(input: {
     const removal = await input.workspaces.removeWorktree({
       runId: phase.workspace.runId,
       phase: phase.kind,
-      workspace: phase.workspace,
+      workspace: phase.workspace as PlanningWorkspaceOwnership<
+        { state: "ready" } | PlanningWorkspaceCleanupPending
+      >,
     });
     if (removal?.kind === "cleanup-pending") {
       const cleanup = {

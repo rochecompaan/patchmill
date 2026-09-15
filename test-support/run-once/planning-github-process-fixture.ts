@@ -83,10 +83,10 @@ export function createGithubProcessFixture(
       if (done) await input.interrupt("after-done-label");
       input.updateIssueLabels(
         args.flatMap((value, index) =>
-          value === "--add-label" ? [args[index + 1]!] : [],
+          value === "--add-label" ? args[index + 1]!.split(",") : [],
         ),
         args.flatMap((value, index) =>
-          value === "--remove-label" ? [args[index + 1]!] : [],
+          value === "--remove-label" ? args[index + 1]!.split(",") : [],
         ),
       );
       return { code: 0, stdout: "", stderr: "" };

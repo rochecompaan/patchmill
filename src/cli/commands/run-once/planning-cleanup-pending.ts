@@ -1,7 +1,7 @@
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
-import { planLabelChange } from "../triage/labels.ts";
+import { applyPlanningCleanupPendingLabels } from "./planning-lifecycle-labels.ts";
 import type { PlanningCleanupPendingOutcome } from "./planning-phase-runner-shared.ts";
 import type {
   AgentIssueConfig,
@@ -87,13 +87,9 @@ export async function publishPlanningCleanupPending(input: {
   const body = cleanupPendingComment(input.result);
   if (!current.comments?.some((comment) => comment.body === body))
     await input.host.commentIssue(input.result.issue.number, body);
-  const labels = current.labels.filter(
-    (label) =>
-      label !== input.labels.ready && label !== input.labels.inProgress,
-  );
-  if (!labels.includes(input.labels.needsInfo))
-    labels.push(input.labels.needsInfo);
-  await input.host.applyLabels(
-    planLabelChange(input.result.issue.number, current.labels, labels),
-  );
+  await applyPlanningCleanupPendingLabels({
+    host: input.host,
+    issueNumber: input.result.issue.number,
+    labels: input.labels,
+  });
 }

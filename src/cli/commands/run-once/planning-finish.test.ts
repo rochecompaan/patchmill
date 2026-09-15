@@ -232,6 +232,53 @@ test("effect failure prevents later effects", async () => {
   assert.deepEqual(run.events, ["publishCost", "validateVisualEvidence"]);
 });
 
+test("refreshes cleanup pending without replaying finish effects and completes after blockers clear", async () => {
+  const run = input();
+  let assessment = 0;
+  run.value.workspaces = {
+    removeWorktree: async () => {
+      run.events.push("worktree");
+      assessment += 1;
+      if (assessment < 3)
+        return {
+          kind: "cleanup-pending" as const,
+          reason: "ignored-worktree-content" as const,
+          ignoredPaths: assessment === 1 ? [".env"] : [".env", "build/"],
+        };
+      return {
+        kind: "removed" as const,
+        snapshot: {
+          state: "branch-only" as const,
+          identity: {
+            branch: "agent/189",
+            worktreePath: ".worktrees/189",
+          },
+          headOid: oid("b"),
+        },
+      };
+    },
+    removeBranch: async () => run.events.push("branch"),
+  } as never;
+
+  const first = await finishPlanningImplementation(run.value);
+  assert.equal(first.kind, "cleanup-pending");
+  const afterFirst = run.checkpoints.length;
+  const second = await finishPlanningImplementation({
+    ...run.value,
+    state: run.state(),
+  });
+  assert.equal(second.kind, "cleanup-pending");
+  assert.equal(run.checkpoints.length, afterFirst + 1);
+  const complete = await finishPlanningImplementation({
+    ...run.value,
+    state: run.state(),
+  });
+  assert.equal(complete.kind, "complete");
+  assert.equal(run.events.filter((event) => event === "cleanupHook").length, 1);
+  assert.equal(run.events.filter((event) => event === "publishCost").length, 1);
+  assert.equal(run.events.filter((event) => event === "worktree").length, 3);
+});
+
 test("checkpoints ignored cleanup pending after one successful cleanup hook", async () => {
   const run = input();
   run.value.workspaces = {

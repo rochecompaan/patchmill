@@ -81,10 +81,10 @@ export function createForgejoProcessFixture(
       if (done) await input.interrupt("after-done-label");
       input.updateIssueLabels(
         args.flatMap((value, index) =>
-          value === "--add-labels" ? [args[index + 1]!] : [],
+          value === "--add-labels" ? args[index + 1]!.split(",") : [],
         ),
         args.flatMap((value, index) =>
-          value === "--remove-labels" ? [args[index + 1]!] : [],
+          value === "--remove-labels" ? args[index + 1]!.split(",") : [],
         ),
       );
       return { code: 0, stdout: "", stderr: "" };

@@ -73,15 +73,16 @@ export function planningWorkspaceEvidence(
     `${path}.cleanup`,
   );
   const state = string(cleanup.state, `${path}.cleanup.state`);
-  let cleanupEvidence: PlanningWorkspaceCleanup;
+  let cleanupEvidence!: PlanningWorkspaceCleanup;
   if (state === "ready") cleanupEvidence = { state: "ready" };
   else if (state === "cleanup-pending") {
     if (cleanup.reason !== "ignored-worktree-content")
       fail("invalid-cleanup", `${path}.cleanup.reason`);
     if (!Array.isArray(cleanup.ignoredPaths))
       fail("expected-array", `${path}.cleanup.ignoredPaths`);
-    const ignoredPaths = cleanup.ignoredPaths.map((item, index) =>
-      ignoredPath(item, `${path}.cleanup.ignoredPaths[${index}]`),
+    const ignoredPaths = (cleanup.ignoredPaths as unknown[]).map(
+      (item, index) =>
+        ignoredPath(item, `${path}.cleanup.ignoredPaths[${index}]`),
     );
     if (
       ignoredPaths.length === 0 ||

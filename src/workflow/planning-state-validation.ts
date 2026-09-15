@@ -1,4 +1,4 @@
-import type {} from "../git/planning-workspaces.ts";
+import type { PlanningWorkspaceOwnership } from "../git/planning-workspaces.ts";
 import { pullRequestUrlMatchesReference } from "../host/pull-request-reference.ts";
 import {
   sameRepositoryIdentity,

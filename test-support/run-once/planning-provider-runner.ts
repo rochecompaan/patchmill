@@ -5,6 +5,7 @@ import { git, recordCarriedArtifacts } from "./planning-provider-git.ts";
 import type {
   PlanningScenarioEffect,
   PlanningScenarioFailurePoint,
+  PlanningScenarioIgnoredArtifact,
   PlanningScenarioOwnership,
   PlanningScenarioProvider,
   PlanningScenarioPull,
@@ -16,6 +17,7 @@ export function createPlanningProviderRunner(input: {
   repoRoot: string;
   pulls: PlanningScenarioPull[];
   carriedArtifacts: Map<string, string>;
+  ignoredImplementationArtifacts: readonly PlanningScenarioIgnoredArtifact[];
   ownershipForBranch(branch: string): Promise<PlanningScenarioOwnership>;
   ownershipForWorktree(
     worktreePath: string,
@@ -149,6 +151,11 @@ export function createPlanningProviderRunner(input: {
         const headOid = (await git(cwd, ["rev-parse", "HEAD"])).stdout.trim();
         await git(cwd, ["push", "origin", `HEAD:${branch}`]);
         const publicationOwnership = await input.ownershipForBranch(branch);
+        for (const artifact of input.ignoredImplementationArtifacts) {
+          const artifactPath = join(cwd, artifact.path);
+          await mkdir(dirname(artifactPath), { recursive: true });
+          await writeFile(artifactPath, artifact.contents);
+        }
         input.record({
           kind: "write",
           operation: "implementation-push",

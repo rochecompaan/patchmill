@@ -12,7 +12,7 @@ function nextLabels(
   return next;
 }
 
-export async function applyPlanningBlockedLabels(input: {
+async function applyPlanningNeedsInfoLabels(input: {
   host: Pick<RunOnceHostProvider, "viewIssue" | "applyLabels">;
   issueNumber: number;
   labels: { ready: string; inProgress: string; needsInfo: string };
@@ -29,6 +29,23 @@ export async function applyPlanningBlockedLabels(input: {
       ),
     ),
   );
+}
+
+export async function applyPlanningBlockedLabels(input: {
+  host: Pick<RunOnceHostProvider, "viewIssue" | "applyLabels">;
+  issueNumber: number;
+  labels: { ready: string; inProgress: string; needsInfo: string };
+}): Promise<void> {
+  await applyPlanningNeedsInfoLabels(input);
+}
+
+/** Re-reads labels immediately before clearing retry eligibility. */
+export async function applyPlanningCleanupPendingLabels(input: {
+  host: Pick<RunOnceHostProvider, "viewIssue" | "applyLabels">;
+  issueNumber: number;
+  labels: { ready: string; inProgress: string; needsInfo: string };
+}): Promise<void> {
+  await applyPlanningNeedsInfoLabels(input);
 }
 
 export async function applyPlanningDoneLabels(input: {

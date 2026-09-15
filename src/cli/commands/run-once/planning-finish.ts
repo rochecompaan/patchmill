@@ -1,5 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
-import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
+import type {
+  PlanningWorkspaceCleanupPending,
+  PlanningWorkspaceLifecycle,
+  PlanningWorkspaceOwnership,
+} from "../../../git/planning-workspaces.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
@@ -129,7 +133,9 @@ export async function finishPlanningImplementation(
     const removal = await input.workspaces.removeWorktree({
       runId: state.runId,
       phase: "implementation",
-      workspace: phase.workspace,
+      workspace: phase.workspace as PlanningWorkspaceOwnership<
+        { state: "ready" } | PlanningWorkspaceCleanupPending
+      >,
     });
     if (removal?.kind === "cleanup-pending") {
       const cleanup = {
