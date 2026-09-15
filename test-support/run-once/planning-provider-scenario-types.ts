@@ -116,6 +116,7 @@ export type PlanningProviderFixtureInput = {
   implementationFinish(): Promise<boolean>;
   interrupt(point: PlanningScenarioFailurePoint): Promise<void>;
   consumeHostReadFailure(): boolean;
+  consumeCleanupPendingCommentFailure(): boolean;
   addIssueComment(body: string): void;
   updateIssueLabels(add: readonly string[], remove: readonly string[]): void;
   record(effect: PlanningScenarioEffect): void;

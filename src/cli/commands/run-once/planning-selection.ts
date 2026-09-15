@@ -10,6 +10,7 @@ import {
   lifecycleLabels,
 } from "./pipeline-lifecycle.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import { needsPlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
   isActionableWorkflowState,
   resolveWorkflowState,
@@ -184,12 +185,17 @@ export async function selectRunOnceWorkflow(
     if (
       state &&
       active(state) &&
-      planningIssueEligible({
+      (planningIssueEligible({
         issue,
         config,
         state,
         activeOwnedWorkflow: true,
-      })
+      }) ||
+        needsPlanningCleanupPendingPublication({
+          state,
+          labels: issue.labels,
+          needsInfoLabel: lifecycleLabels(config).needsInfo,
+        }))
     )
       choices.push({ kind: "planning", issue, state });
     else if (

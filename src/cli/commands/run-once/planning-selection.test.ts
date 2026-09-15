@@ -43,19 +43,20 @@ test("prioritizes active planning over fresh ready work and reuses label orderin
   if (result.kind === "planning") assert.equal(result.issue.number, 3);
 });
 
-test("requires ready acknowledgement for active cleanup-pending selection", async () => {
+test("selects pending publication reconciliation but requires ready for cleanup retry", async () => {
   const pending = {
     phases: [
       {
         kind: "implementation",
         status: "pull-request-open",
         workspace: { cleanup: { state: "cleanup-pending" } },
+        pullRequest: { url: "https://example.test/pr/1" },
       },
     ],
   } as never;
   for (const [labels, kind] of [
-    [[], "none"],
-    [["in-progress"], "none"],
+    [[], "planning"],
+    [["in-progress"], "planning"],
     [["in-progress", "needs-info"], "none"],
     [["agent-ready"], "planning"],
     [["agent-ready", "needs-info"], "planning"],

@@ -11,6 +11,78 @@ const artifacts = [
   { path: ".unknown/unique.txt", contents: "preserve me\n" },
 ] as const;
 
+test("reconciles failed cleanup-pending publication before coordinator retry", async () => {
+  const scenario = await createPlanningProviderScenario({
+    provider: "github-gh",
+    gates: { specRequired: false, planRequired: false },
+    ignoredImplementationArtifacts: artifacts,
+  });
+  try {
+    scenario.failNextCleanupPendingComment();
+    await assert.rejects(scenario.run(), /transient comment failure/);
+    const pendingStateCount = scenario
+      .stateHistory()
+      .filter((state) =>
+        state.phases.some(
+          (phase) => phase.ownership?.cleanupState === "cleanup-pending",
+        ),
+      ).length;
+    const agentRuns = scenario
+      .effects()
+      .filter((effect) => effect.operation === "agent-run").length;
+    assert.deepEqual(scenario.issueSnapshot().labels, ["in-progress"]);
+
+    const recovered = await scenario.run();
+    assert.equal(
+      recovered.status,
+      "cleanup-pending",
+      JSON.stringify(recovered),
+    );
+    assert.deepEqual(scenario.issueSnapshot().labels, ["needs-info"]);
+    assert.equal(
+      scenario
+        .issueSnapshot()
+        .comments?.filter((comment) =>
+          comment.body.includes("Patchmill cleanup pending"),
+        ).length,
+      1,
+    );
+    assert.equal(
+      scenario
+        .stateHistory()
+        .filter((state) =>
+          state.phases.some(
+            (phase) => phase.ownership?.cleanupState === "cleanup-pending",
+          ),
+        ).length,
+      pendingStateCount,
+    );
+    assert.equal(
+      scenario.effects().filter((effect) => effect.operation === "cleanup-hook")
+        .length,
+      1,
+    );
+    assert.equal(
+      scenario
+        .effects()
+        .some((effect) => effect.operation === "workspace-remove"),
+      false,
+    );
+    assert.equal(
+      scenario.effects().some((effect) => effect.operation === "branch-remove"),
+      false,
+    );
+    assert.equal(
+      scenario.effects().filter((effect) => effect.operation === "agent-run")
+        .length,
+      agentRuns,
+    );
+    assert.equal((await scenario.run()).status, "no-issue");
+  } finally {
+    await scenario.cleanup();
+  }
+});
+
 test("an implementation cleanup pending preserves ignored artifacts through an acknowledged retry", async () => {
   const scenario = await createPlanningProviderScenario({
     provider: "github-gh",

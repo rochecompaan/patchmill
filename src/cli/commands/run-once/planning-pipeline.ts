@@ -25,6 +25,7 @@ import {
   planningCleanupPendingResult,
   publishPlanningCleanupPending,
 } from "./planning-cleanup-pending.ts";
+import { reconcilePlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
   legacyConflictsWithPlanning,
   planningFinishReachedDoneLabelBoundary,
@@ -70,6 +71,10 @@ type PlanningIssueInput = {
     issue: IssueSummary,
     state: PlanningStateV1 | undefined,
   ) => boolean;
+  reconcileCleanupPendingPublication?: (input: {
+    issue: IssueSummary;
+    state: PlanningStateV1;
+  }) => Promise<PlanningCoordinatorOutcome | undefined>;
   mutate: (
     issue: IssueSummary,
     fresh: boolean,
@@ -203,21 +208,13 @@ export async function runPlanningIssue(
         (phase) => phase.status !== "complete",
       );
       const legacyConflict = legacyConflictsWithPlanning(legacy);
-      const eligible = planningIssueEligible({
-        issue,
-        config: input.config,
-        state: current,
-        activeOwnedWorkflow: saved !== undefined && planningActive,
-      });
       if (
         issue.number !== input.issue.number ||
         issue.title !== input.issue.title ||
         current.issueNumber !== input.issue.number ||
         issue.state !== "open" ||
         !planningActive ||
-        legacyConflict ||
-        !eligible ||
-        (input.eligible !== undefined && !input.eligible(issue, saved))
+        legacyConflict
       )
         return blocked(input.issue, "planning-identity-changed");
       if (saved !== undefined && saved.runId !== lock.record.runId) {
@@ -255,6 +252,23 @@ export async function runPlanningIssue(
       }
       if (current.runId !== lock.record.runId)
         return blocked(input.issue, "planning-run-id-mismatch");
+      const reconciled = await input.reconcileCleanupPendingPublication?.({
+        issue,
+        state: current,
+      });
+      if (reconciled !== undefined)
+        return { status: "coordinated", issue, outcome: reconciled };
+      const eligible = planningIssueEligible({
+        issue,
+        config: input.config,
+        state: current,
+        activeOwnedWorkflow: saved !== undefined && planningActive,
+      });
+      if (
+        !eligible ||
+        (input.eligible !== undefined && !input.eligible(issue, saved))
+      )
+        return blocked(input.issue, "planning-identity-changed");
       const fresh = saved === undefined;
       if (fresh) await input.stateStore.initialize({ state: current, lock });
       const labels = await input.mutate(issue, fresh, current);
@@ -391,6 +405,18 @@ export async function runPlanningWorkflow(input: {
         activeOwnedWorkflow: state !== undefined,
       }) &&
       (state !== undefined || issue.labels.includes(input.config.readyLabel)),
+    reconcileCleanupPendingPublication: ({ issue, state }) =>
+      reconcilePlanningCleanupPendingPublication({
+        host,
+        config: input.config,
+        issue,
+        state,
+        labels: {
+          ready: labels.ready,
+          inProgress: labels.inProgress,
+          needsInfo: labels.needsInfo,
+        },
+      }),
     mutate: async (issue, fresh, state) => {
       const mustClaim = planningIssueNeedsClaim({
         issue,

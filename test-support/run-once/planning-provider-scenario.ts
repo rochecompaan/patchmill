@@ -59,6 +59,7 @@ export type PlanningProviderScenario = {
   removeSavedPlanningPull(): void;
   duplicateOpenPlanningPull(): void;
   failNextHostRead(): void;
+  failNextCleanupPendingComment(): void;
   interruptAt(point: PlanningScenarioFailurePoint): void;
   restorePersistence(): Promise<void>;
   archiveExactStaleLock(): Promise<{
@@ -179,6 +180,7 @@ export async function createPlanningProviderScenario(input: {
   });
   let nextPull = 1;
   let failHostRead = false;
+  let failCleanupPendingComment = false;
   const addIssueComment = (body: string) => {
     selected.comments?.push({ author: { login: "patchmill" }, body });
   };
@@ -237,6 +239,11 @@ export async function createPlanningProviderScenario(input: {
     consumeHostReadFailure: () => {
       if (!failHostRead) return false;
       failHostRead = false;
+      return true;
+    },
+    consumeCleanupPendingCommentFailure: () => {
+      if (!failCleanupPendingComment) return false;
+      failCleanupPendingComment = false;
       return true;
     },
     addIssueComment,
@@ -303,6 +310,9 @@ export async function createPlanningProviderScenario(input: {
     },
     failNextHostRead: () => {
       failHostRead = true;
+    },
+    failNextCleanupPendingComment: () => {
+      failCleanupPendingComment = true;
     },
     interruptAt: recovery.interruptAt,
     restorePersistence: recovery.restorePersistence,
