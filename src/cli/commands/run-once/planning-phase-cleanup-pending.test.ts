@@ -62,7 +62,10 @@ test("planning cleanup refreshes ignored inventory and resumes branch cleanup af
   const run = async () => {
     const outcome = await finishPlanningPhaseCleanup({
       phase: current,
-      remoteHead: async () => events.push("remote-head"),
+      remoteHead: async (candidate) => {
+        assert.equal(candidate.workspace, current.workspace);
+        events.push("remote-head");
+      },
       workspaces: {
         removeWorktree: async () => {
           events.push("remove-worktree");

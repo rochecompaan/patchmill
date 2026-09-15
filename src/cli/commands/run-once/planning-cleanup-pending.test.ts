@@ -83,3 +83,61 @@ test("cleanup-pending publication comments before ensuring its label and clearin
     },
   ]);
 });
+
+test("cleanup-pending publication completes after each transient operator effect failure", async () => {
+  for (const failure of ["comment", "label-ensure", "label-apply"] as const) {
+    let labels = ["agent-in-progress"];
+    const comments: Array<{ body: string }> = [];
+    let fail = true;
+    const result = {
+      status: "cleanup-pending" as const,
+      issue: {
+        number: 243,
+        title: "Cleanup",
+        body: "",
+        labels,
+        state: "open" as const,
+      },
+      phase: "implementation" as const,
+      prUrl: "https://github.com/acme/patchmill/pull/243",
+      branch: "agent/issue-243",
+      worktreePath: "/worktree",
+      reason: "ignored-worktree-content" as const,
+      ignoredPaths: [".env"],
+      remediation: ["preserve .env"],
+    } satisfies AgentIssueCleanupPendingResult;
+    const host = {
+      viewIssue: async () => ({ labels, comments }),
+      commentIssue: async (_issueNumber: number, body: string) => {
+        if (failure === "comment" && fail) throw new Error("comment failed");
+        comments.push({ body });
+      },
+      listLabels: async () => [],
+      createLabel: async () => {
+        if (failure === "label-ensure" && fail)
+          throw new Error("label ensure failed");
+      },
+      applyLabels: async (change: { newLabels: string[] }) => {
+        if (failure === "label-apply" && fail)
+          throw new Error("label apply failed");
+        labels = change.newLabels;
+      },
+    };
+    const input = {
+      host: host as never,
+      config: {} as never,
+      result,
+      labels: {
+        ready: "agent-ready",
+        inProgress: "agent-in-progress",
+        needsInfo: "needs-info",
+      },
+    };
+
+    await assert.rejects(publishPlanningCleanupPending(input));
+    fail = false;
+    await publishPlanningCleanupPending(input);
+    assert.deepEqual(labels, ["needs-info"], failure);
+    assert.equal(comments.length, 1, failure);
+  }
+});

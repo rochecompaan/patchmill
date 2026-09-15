@@ -55,8 +55,10 @@ test("requires ready acknowledgement for active cleanup-pending selection", asyn
   } as never;
   for (const [labels, kind] of [
     [[], "none"],
-    [["agent-in-progress"], "none"],
+    [["in-progress"], "planning"],
+    [["in-progress", "needs-info"], "none"],
     [["agent-ready"], "planning"],
+    [["agent-ready", "needs-info"], "planning"],
   ] as const) {
     const result = await selectRunOnceWorkflow([issue(3, labels)], config, {
       path: () => "state",

@@ -1,12 +1,13 @@
 import type {
-  PlanningWorkspaceCleanupPending,
   PlanningWorkspaceLifecycle,
   PlanningWorkspaceOwnership,
 } from "../../../git/planning-workspaces.ts";
-import type {
-  BranchPushedPlanningPhase,
+import type { PullRequestOpenPlanningPhase } from "../../../workflow/planning-state-types.ts";
+
+type PlanningPhaseCleanupCandidate = Pick<
   PullRequestOpenPlanningPhase,
-} from "../../../workflow/planning-state-types.ts";
+  "base" | "publication" | "workspace"
+>;
 
 export type PlanningPhaseCleanupOutcome =
   | Readonly<{
@@ -20,25 +21,17 @@ export type PlanningPhaseCleanupOutcome =
 export async function finishPlanningPhaseCleanup(input: {
   phase: PullRequestOpenPlanningPhase;
   workspaces: PlanningWorkspaceLifecycle;
-  remoteHead: (phase: BranchPushedPlanningPhase) => Promise<void>;
+  remoteHead: (phase: PlanningPhaseCleanupCandidate) => Promise<void>;
   checkpoint: (phase: PullRequestOpenPlanningPhase) => Promise<void>;
 }): Promise<PlanningPhaseCleanupOutcome> {
   let phase = input.phase;
-  if (
-    phase.workspace.cleanup.state === "ready" ||
-    phase.workspace.cleanup.state === "cleanup-pending"
-  ) {
-    await input.remoteHead({
-      ...phase,
-      status: "branch-pushed",
-      workspace: { ...phase.workspace, cleanup: { state: "ready" } },
-    });
+  const cleanup = phase.workspace.cleanup;
+  if (cleanup.state === "ready" || cleanup.state === "cleanup-pending") {
+    await input.remoteHead(phase);
     const removal = await input.workspaces.removeWorktree({
       runId: phase.workspace.runId,
       phase: phase.kind,
-      workspace: phase.workspace as PlanningWorkspaceOwnership<
-        { state: "ready" } | PlanningWorkspaceCleanupPending
-      >,
+      workspace: { ...phase.workspace, cleanup },
     });
     switch (removal?.kind) {
       case "cleanup-pending": {
