@@ -43,6 +43,29 @@ test("prioritizes active planning over fresh ready work and reuses label orderin
   if (result.kind === "planning") assert.equal(result.issue.number, 3);
 });
 
+test("requires ready acknowledgement for active cleanup-pending selection", async () => {
+  const pending = {
+    phases: [
+      {
+        kind: "implementation",
+        status: "pull-request-open",
+        workspace: { cleanup: { state: "cleanup-pending" } },
+      },
+    ],
+  } as never;
+  for (const [labels, kind] of [
+    [[], "none"],
+    [["agent-in-progress"], "none"],
+    [["agent-ready"], "planning"],
+  ] as const) {
+    const result = await selectRunOnceWorkflow([issue(3, labels)], config, {
+      path: () => "state",
+      read: async () => pending,
+    } as never);
+    assert.equal(result.kind, kind);
+  }
+});
+
 test("excludes blocked fresh work and honors configured legacy in-progress labels", async () => {
   const custom = {
     ...config,

@@ -42,6 +42,16 @@ function active(state: PlanningStateV1): boolean {
   return state.phases.some((phase) => phase.status !== "complete");
 }
 
+function cleanupPending(state: PlanningStateV1 | undefined): boolean {
+  return Boolean(
+    state?.phases.some(
+      (phase) =>
+        "workspace" in phase &&
+        phase.workspace.cleanup.state === "cleanup-pending",
+    ),
+  );
+}
+
 /** Identifies finish recovery after the live done label may precede its checkpoint. */
 export function planningFinishReachedDoneLabelBoundary(
   state: PlanningStateV1 | undefined,
@@ -81,7 +91,11 @@ export function planningIssueEligible(input: {
       excluded.includes(label)
     );
   });
-  if (blocked.length === 0) return true;
+  if (blocked.length === 0)
+    return (
+      !cleanupPending(state) ||
+      (activeOwnedWorkflow && issue.labels.includes(lifecycle.ready))
+    );
   // Ready acknowledges only the lifecycle needs-info blocker for both retries.
   return (
     activeOwnedWorkflow &&
