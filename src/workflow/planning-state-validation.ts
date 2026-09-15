@@ -443,6 +443,19 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
       item.workspace.cleanup.pushedHeadOid !== item.workspace.headOid
     )
       fail("cleanup-head-mismatch", `${path}.workspace.cleanup.pushedHeadOid`);
+    if (item.kind === "implementation" && item.status === "pull-request-open") {
+      if (
+        item.workspace.cleanup.state !== "ready" &&
+        item.finish.cleanupHookCompleted !== true
+      )
+        fail("invalid-cleanup-progress", `${path}.workspace.cleanup`);
+      if (
+        (item.finish.doneLabelEnsured === true ||
+          item.finish.doneLabelApplied === true) &&
+        item.workspace.cleanup.state !== "removed"
+      )
+        fail("invalid-cleanup-progress", `${path}.workspace.cleanup`);
+    }
     if (
       "publication" in item &&
       (item.publication.baseBranch !== item.base.baseBranch ||

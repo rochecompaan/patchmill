@@ -79,6 +79,61 @@ const state = (cleanup: unknown, revision = 0) => ({
   updatedAt: revision === 0 ? now : "2026-09-15T00:00:01.000Z",
 });
 
+const implementationState = (cleanup: unknown, finish: unknown) => ({
+  version: 1,
+  workflowVersion: "planning-pr-v1",
+  runId: "123e4567-e89b-42d3-a456-426614174000",
+  issueNumber: 243,
+  issueTitle: "Cleanup",
+  gates: { specRequired: false, planRequired: false },
+  phases: [
+    {
+      ...phase(cleanup),
+      kind: "implementation",
+      artifacts: [
+        ...phase(cleanup).artifacts,
+        {
+          kind: "plan",
+          path: "docs/plans/issue.md",
+          commitOid: oid("b"),
+          source: "workspace",
+        },
+      ],
+      workspace: {
+        ...workspace(cleanup),
+        phase: "implementation",
+        identity: {
+          branch: "planning/implementation",
+          worktreePath: ".worktrees/243-implementation",
+        },
+      },
+      publication: {
+        ...phase(cleanup).publication,
+        headBranch: "planning/implementation",
+      },
+      pullRequest: {
+        reference: {
+          targetRepository: phase(cleanup).publication.targetRepository,
+          number: 244,
+        },
+        url: "https://github.com/acme/patchmill/pull/244",
+      },
+      implementation: {
+        status: "pr-created",
+        prUrl: "https://github.com/acme/patchmill/pull/244",
+        branch: "planning/implementation",
+        commits: [oid("b")],
+        validation: ["npm test"],
+        visualEvidence: [],
+      },
+      finish,
+    },
+  ],
+  revision: 0,
+  createdAt: now,
+  updatedAt: now,
+});
+
 test("persists raw cleanup-pending ignored paths and permits their refresh", () => {
   const current = validatePlanningState(
     state({
@@ -103,6 +158,46 @@ test("persists raw cleanup-pending ignored paths and permits their refresh", () 
     ),
   );
   assert.doesNotThrow(() => assertPlanningStateReplacement(current, next));
+});
+
+test("rejects implementation cleanup pending before its cleanup hook", () => {
+  assert.throws(
+    () =>
+      validatePlanningState(
+        implementationState(
+          {
+            state: "cleanup-pending",
+            reason: "ignored-worktree-content",
+            ignoredPaths: [".env"],
+          },
+          {},
+        ),
+      ),
+    PlanningStateValidationError,
+  );
+});
+
+test("rejects implementation done-label checkpoints before cleanup is removed", () => {
+  assert.throws(
+    () =>
+      validatePlanningState(
+        implementationState(
+          {
+            state: "cleanup-pending",
+            reason: "ignored-worktree-content",
+            ignoredPaths: [".env"],
+          },
+          {
+            costPublicationCompleted: true,
+            visualEvidenceValidated: true,
+            handoffCommentPosted: true,
+            cleanupHookCompleted: true,
+            doneLabelEnsured: true,
+          },
+        ),
+      ),
+    PlanningStateValidationError,
+  );
 });
 
 test("rejects unsafe and empty cleanup-pending inventories", () => {
