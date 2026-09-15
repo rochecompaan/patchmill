@@ -37,7 +37,17 @@ import type {
 } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 
+export type PlanningCleanupPendingOutcome = Readonly<{
+  kind: "cleanup-pending";
+  state: PlanningStateV1;
+  phase: "spec" | "plan" | "implementation";
+  prUrl: string;
+  reason: "ignored-worktree-content";
+  ignoredPaths: readonly string[];
+}>;
+
 export type PlanningPhaseRunnerOutcome =
+  | PlanningCleanupPendingOutcome
   | { kind: "review-pending"; state: PlanningStateV1; prUrl: string }
   | { kind: "stopped"; state: PlanningStateV1; reason: "plan-only" }
   | { kind: "blocked"; state: PlanningStateV1; result: AgentIssueBlockedResult }

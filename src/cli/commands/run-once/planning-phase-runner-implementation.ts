@@ -190,5 +190,14 @@ export async function runPlanningImplementationPhase(
     stateStore: input.stateStore,
     workspaces: input.workspaces,
   });
+  if (finished.kind === "cleanup-pending")
+    return {
+      kind: "cleanup-pending",
+      state: finished.state,
+      phase: "implementation",
+      prUrl: finished.result.prUrl,
+      reason: finished.reason,
+      ignoredPaths: finished.ignoredPaths,
+    };
   return { kind: "complete", state: finished.state, result: finished.result };
 }

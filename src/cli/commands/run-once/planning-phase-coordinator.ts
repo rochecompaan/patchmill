@@ -9,6 +9,14 @@ import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
 
 export type PlanningCoordinatorOutcome =
   | {
+      kind: "cleanup-pending";
+      state: PlanningStateV1;
+      phase: "spec" | "plan" | "implementation";
+      prUrl: string;
+      reason: "ignored-worktree-content";
+      ignoredPaths: readonly string[];
+    }
+  | {
       kind: "review-pending";
       state: PlanningStateV1;
       phase: "spec" | "plan";
@@ -65,6 +73,7 @@ export async function coordinatePlanningPhases(
       phase,
       planOnly: input.planOnly === true,
     });
+    if (outcome.kind === "cleanup-pending") return outcome;
     if (outcome.kind === "review-pending") {
       if (phase.kind === "implementation")
         throw new Error("Implementation pull request cannot be review-pending");

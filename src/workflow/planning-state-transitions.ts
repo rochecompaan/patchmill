@@ -131,6 +131,11 @@ function assertWorkspace(
     return;
   }
   if (
+    current.cleanup.state === "ready" &&
+    next.cleanup.state === "cleanup-pending"
+  )
+    return;
+  if (
     (current.cleanup.state === "ready" ||
       current.cleanup.state === "cleanup-pending") &&
     next.cleanup.state === "worktree-removed" &&

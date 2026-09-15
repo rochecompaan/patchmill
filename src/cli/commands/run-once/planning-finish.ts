@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
@@ -10,6 +11,20 @@ import type {
 } from "../../../workflow/planning-state-types.ts";
 import { durableImplementationResult } from "./planning-runtime-state.ts";
 import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
+
+export type PlanningImplementationFinishOutcome =
+  | Readonly<{
+      kind: "complete";
+      state: PlanningStateV1;
+      result: AgentIssuePrCreatedResult;
+    }>
+  | Readonly<{
+      kind: "cleanup-pending";
+      state: PlanningStateV1;
+      result: AgentIssuePrCreatedResult;
+      reason: "ignored-worktree-content";
+      ignoredPaths: readonly string[];
+    }>;
 
 export type PlanningFinishInput = {
   state: PlanningStateV1;
@@ -50,13 +65,17 @@ async function checkpoint(
 /** Applies one strict durable checkpoint after each finish effect. */
 export async function finishPlanningImplementation(
   input: PlanningFinishInput,
-): Promise<{ state: PlanningStateV1; result: AgentIssuePrCreatedResult }> {
+): Promise<PlanningImplementationFinishOutcome> {
   let state = input.state;
   const initial = state.phases[input.phaseIndex];
   if (initial?.kind !== "implementation")
     throw new RangeError("Invalid implementation phase");
   if (initial.status === "complete")
-    return { state, result: durableImplementationResult(initial) };
+    return {
+      kind: "complete",
+      state,
+      result: durableImplementationResult(initial),
+    };
   if (initial.status !== "pull-request-open")
     throw new RangeError("Implementation pull request has not been validated");
   let phase: ImplementationPullRequestOpenPlanningPhase = initial;
@@ -103,12 +122,36 @@ export async function finishPlanningImplementation(
       input.phaseIndex
     ] as ImplementationPullRequestOpenPlanningPhase;
   }
-  if (phase.workspace.cleanup.state === "ready") {
-    await input.workspaces.removeWorktree({
+  if (
+    phase.workspace.cleanup.state === "ready" ||
+    phase.workspace.cleanup.state === "cleanup-pending"
+  ) {
+    const removal = await input.workspaces.removeWorktree({
       runId: state.runId,
       phase: "implementation",
-      workspace: { ...phase.workspace, cleanup: { state: "ready" } },
+      workspace: phase.workspace,
     });
+    if (removal?.kind === "cleanup-pending") {
+      const cleanup = {
+        state: "cleanup-pending" as const,
+        reason: removal.reason,
+        ignoredPaths: [...removal.ignoredPaths],
+      };
+      if (!isDeepStrictEqual(phase.workspace.cleanup, cleanup)) {
+        phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
+        state = await checkpoint(input, state, phase);
+        phase = state.phases[
+          input.phaseIndex
+        ] as ImplementationPullRequestOpenPlanningPhase;
+      }
+      return {
+        kind: "cleanup-pending",
+        state,
+        result: durableImplementationResult(phase),
+        reason: cleanup.reason,
+        ignoredPaths: cleanup.ignoredPaths,
+      };
+    }
     phase = {
       ...phase,
       workspace: {
@@ -169,5 +212,9 @@ export async function finishPlanningImplementation(
     completion: { kind: "implementation-pull-request" as const },
   } as ImplementationCompletePlanningPhase;
   state = await checkpoint(input, state, complete);
-  return { state, result: durableImplementationResult(complete) };
+  return {
+    kind: "complete",
+    state,
+    result: durableImplementationResult(complete),
+  };
 }

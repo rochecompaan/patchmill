@@ -7,24 +7,53 @@ import type {
   PullRequestOpenPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
 
+export type PlanningPhaseCleanupOutcome =
+  | Readonly<{
+      kind: "cleanup-pending";
+      phase: PullRequestOpenPlanningPhase;
+      reason: "ignored-worktree-content";
+      ignoredPaths: readonly string[];
+    }>
+  | Readonly<{ kind: "cleaned"; phase: PullRequestOpenPlanningPhase }>;
+
 export async function finishPlanningPhaseCleanup(input: {
   phase: PullRequestOpenPlanningPhase;
   workspaces: PlanningWorkspaceLifecycle;
   remoteHead: (phase: BranchPushedPlanningPhase) => Promise<void>;
   checkpoint: (phase: PullRequestOpenPlanningPhase) => Promise<void>;
-}): Promise<PullRequestOpenPlanningPhase> {
+}): Promise<PlanningPhaseCleanupOutcome> {
   let phase = input.phase;
-  if (phase.workspace.cleanup.state === "ready") {
+  if (
+    phase.workspace.cleanup.state === "ready" ||
+    phase.workspace.cleanup.state === "cleanup-pending"
+  ) {
     await input.remoteHead({
       ...phase,
       status: "branch-pushed",
-      workspace: phase.workspace as BranchPushedPlanningPhase["workspace"],
+      workspace: { ...phase.workspace, cleanup: { state: "ready" } },
     });
-    await input.workspaces.removeWorktree({
+    const removal = await input.workspaces.removeWorktree({
       runId: phase.workspace.runId,
       phase: phase.kind,
-      workspace: phase.workspace as BranchPushedPlanningPhase["workspace"],
+      workspace: phase.workspace,
     });
+    if (removal?.kind === "cleanup-pending") {
+      const cleanup = {
+        state: "cleanup-pending" as const,
+        reason: removal.reason,
+        ignoredPaths: [...removal.ignoredPaths],
+      };
+      if (JSON.stringify(phase.workspace.cleanup) !== JSON.stringify(cleanup)) {
+        phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
+        await input.checkpoint(phase);
+      }
+      return {
+        kind: "cleanup-pending",
+        phase,
+        reason: cleanup.reason,
+        ignoredPaths: cleanup.ignoredPaths,
+      };
+    }
     phase = {
       ...phase,
       workspace: {
@@ -55,5 +84,5 @@ export async function finishPlanningPhaseCleanup(input: {
     };
     await input.checkpoint(phase);
   }
-  return phase;
+  return { kind: "cleaned", phase };
 }

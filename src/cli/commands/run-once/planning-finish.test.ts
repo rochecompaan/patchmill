@@ -231,3 +231,33 @@ test("effect failure prevents later effects", async () => {
   );
   assert.deepEqual(run.events, ["publishCost", "validateVisualEvidence"]);
 });
+
+test("checkpoints ignored cleanup pending after one successful cleanup hook", async () => {
+  const run = input();
+  run.value.workspaces = {
+    removeWorktree: async () => ({
+      kind: "cleanup-pending" as const,
+      reason: "ignored-worktree-content" as const,
+      ignoredPaths: [".env", "build/"],
+    }),
+    removeBranch: async () => assert.fail("branch must not be removed"),
+  } as never;
+  const result = await finishPlanningImplementation(run.value);
+  assert.equal(result.kind, "cleanup-pending");
+  if (result.kind !== "cleanup-pending")
+    assert.fail("expected cleanup pending");
+  assert.deepEqual(result.ignoredPaths, [".env", "build/"]);
+  assert.equal(run.state().phases[0]?.status, "pull-request-open");
+  assert.deepEqual(
+    (run.state().phases[0] as { workspace: { cleanup: unknown } }).workspace
+      .cleanup,
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [".env", "build/"],
+    },
+  );
+  assert.equal(run.events.includes("cleanupHook"), true);
+  assert.equal(run.events.includes("branch"), false);
+  assert.equal(run.events.includes("applyDoneLabels"), false);
+});
