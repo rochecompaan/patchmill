@@ -430,6 +430,45 @@ test("open planning review takes precedence over plan-only without state mutatio
   assert.equal(laterEffect, false);
 });
 
+test("passes planning cleanup pending through without later phase work", async () => {
+  const initial = state({ kind: "spec", status: "pull-request-open" });
+  let laterEffect = false;
+  const result = await runPlanningPhase(
+    input({
+      state: initial,
+      phase: {
+        kind: "spec",
+        artifactKinds: ["spec"],
+        pullRequestRequired: true,
+      },
+      operations: {
+        reconcile: async () => ({
+          state: initial,
+          outcome: {
+            kind: "cleanup-pending",
+            prUrl: "https://example.test/pr/1",
+            reason: "ignored-worktree-content",
+            ignoredPaths: [".env"],
+          },
+        }),
+        runArtifacts: async () => {
+          laterEffect = true;
+          throw new Error("unexpected artifact run");
+        },
+      },
+    }),
+  );
+  assert.deepEqual(result, {
+    kind: "cleanup-pending",
+    state: initial,
+    phase: "spec",
+    prUrl: "https://example.test/pr/1",
+    reason: "ignored-worktree-content",
+    ignoredPaths: [".env"],
+  });
+  assert.equal(laterEffect, false);
+});
+
 test("reconciles a published planning branch before any workspace effect", async () => {
   const published = state({ kind: "spec", status: "branch-pushed" });
   let prepared = false;

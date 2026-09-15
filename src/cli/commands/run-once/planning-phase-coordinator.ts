@@ -6,16 +6,10 @@ import type {
 } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
+import type { PlanningCleanupPendingOutcome } from "./planning-phase-runner-shared.ts";
 
 export type PlanningCoordinatorOutcome =
-  | {
-      kind: "cleanup-pending";
-      state: PlanningStateV1;
-      phase: "spec" | "plan" | "implementation";
-      prUrl: string;
-      reason: "ignored-worktree-content";
-      ignoredPaths: readonly string[];
-    }
+  | PlanningCleanupPendingOutcome
   | {
       kind: "review-pending";
       state: PlanningStateV1;

@@ -164,6 +164,7 @@ function fixture(
     getError?: Error;
     findError?: Error;
     removeWorktreeError?: Error;
+    cleanupPending?: boolean;
     removeBranchError?: Error;
     replaceErrorAt?: number;
     fetchError?: Error;
@@ -233,6 +234,12 @@ function fixture(
         async removeWorktree() {
           events.push("remove-worktree");
           if (input.removeWorktreeError) throw input.removeWorktreeError;
+          if (input.cleanupPending)
+            return {
+              kind: "cleanup-pending" as const,
+              reason: "ignored-worktree-content" as const,
+              ignoredPaths: [".env"],
+            };
           return {
             kind: "removed" as const,
             snapshot: {
@@ -275,6 +282,18 @@ test("classifies open and closed pull requests only after both cleanup checkpoin
     ]);
     assert.equal(result.state.phases[0]!.workspace!.cleanup.state, "removed");
   }
+});
+
+test("returns cleanup pending before a second planning pull-request classification", async () => {
+  const testFixture = fixture({ cleanupPending: true });
+  const result = await reconcilePlanningPhase(testFixture.input);
+  assert.equal(result.outcome.kind, "cleanup-pending");
+  assert.deepEqual(testFixture.events, [
+    "get",
+    "remote-head",
+    "remove-worktree",
+    "replace:pull-request-open:cleanup-pending",
+  ]);
 });
 
 test("classifies branch-pushed discovery outcomes without replacement creation", async () => {
