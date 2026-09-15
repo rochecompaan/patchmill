@@ -3,6 +3,7 @@ import test from "node:test";
 import type { AgentIssueCleanupPendingResult } from "./types.ts";
 import {
   formatPlanningCleanupPath,
+  planningCleanupPendingResult,
   publishPlanningCleanupPending,
 } from "./planning-cleanup-pending.ts";
 
@@ -10,6 +11,94 @@ test("cleanup path diagnostics escape terminal control characters", () => {
   const path = formatPlanningCleanupPath("line\nbreak\t\u001b[31m\u007f\u0080");
   assert.equal(path, '"line\\nbreak\\t\\u001b[31m\\u007f\\u0080"');
   assert.doesNotMatch(path, /\n|\t|\u001b/u);
+});
+
+test("cleanup-pending result preserves phase-specific evidence", () => {
+  const issue = {
+    number: 243,
+    title: "Cleanup",
+    body: "",
+    labels: [],
+    state: "open" as const,
+  };
+  for (const [phase, expected] of [
+    ["spec", { specPath: "docs/specs/issue.md" }],
+    [
+      "plan",
+      {
+        specPath: "docs/specs/issue.md",
+        planPath: "docs/plans/issue.md",
+      },
+    ],
+    [
+      "implementation",
+      {
+        specPath: "docs/specs/issue.md",
+        planPath: "docs/plans/issue.md",
+        commits: ["a".repeat(40)],
+        validation: ["npm test"],
+      },
+    ],
+  ] as const) {
+    const artifacts = [
+      { kind: "spec", path: "docs/specs/issue.md" },
+      ...(phase === "spec"
+        ? []
+        : [{ kind: "plan", path: "docs/plans/issue.md" }]),
+    ];
+    const result = planningCleanupPendingResult(
+      issue,
+      {
+        kind: "cleanup-pending",
+        state: {
+          phases: [
+            {
+              kind: phase,
+              artifacts,
+              workspace: {
+                identity: {
+                  branch: `agent/issue-243-${phase}`,
+                  worktreePath: `.worktrees/243-${phase}`,
+                },
+              },
+              pullRequest: {
+                url: `https://github.com/acme/patchmill/pull/${phase}`,
+              },
+              ...(phase === "implementation"
+                ? {
+                    implementation: {
+                      commits: ["a".repeat(40)],
+                      validation: ["npm test"],
+                    },
+                  }
+                : {}),
+            },
+          ],
+        } as never,
+        phase,
+        prUrl: `https://github.com/acme/patchmill/pull/${phase}`,
+        reason: "ignored-worktree-content",
+        ignoredPaths: [".env"],
+      },
+      "agent-ready",
+    );
+    assert.deepEqual(result, {
+      status: "cleanup-pending",
+      issue,
+      phase,
+      prUrl: `https://github.com/acme/patchmill/pull/${phase}`,
+      branch: `agent/issue-243-${phase}`,
+      worktreePath: `.worktrees/243-${phase}`,
+      reason: "ignored-worktree-content",
+      ignoredPaths: [".env"],
+      remediation: [
+        `Inspect and preserve or remove the listed ignored paths in .worktrees/243-${phase}.`,
+        "After every blocker is handled, apply `agent-ready` to issue #243.",
+        "Rerun `patchmill run-once --issue 243`.",
+      ],
+      ...expected,
+    });
+  }
 });
 
 test("cleanup-pending publication comments before ensuring its label and clearing retry labels", async () => {

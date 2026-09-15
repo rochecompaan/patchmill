@@ -200,22 +200,151 @@ test("rejects implementation done-label checkpoints before cleanup is removed", 
   );
 });
 
-test("rejects unsafe and empty cleanup-pending inventories", () => {
-  for (const ignoredPaths of [
-    [],
-    ["../outside"],
-    ["/outside"],
-    [".env", ".env"],
+test("rejects malformed cleanup-pending reasons, keys, and paths", () => {
+  for (const cleanup of [
+    {
+      state: "cleanup-pending",
+      reason: "unexpected-reason",
+      ignoredPaths: [".env"],
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [".env"],
+      extra: true,
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [undefined],
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [""],
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: ["contains\0nul"],
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [],
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: ["../outside"],
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: ["/outside"],
+    },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [".env", ".env"],
+    },
   ])
     assert.throws(
-      () =>
-        validatePlanningState(
-          state({
-            state: "cleanup-pending",
-            reason: "ignored-worktree-content",
-            ignoredPaths,
-          }),
-        ),
+      () => validatePlanningState(state(cleanup)),
       PlanningStateValidationError,
     );
+});
+
+test("permits only forward cleanup-pending checkpoints", () => {
+  const ready = validatePlanningState(state({ state: "ready" }));
+  const pending = validatePlanningState(
+    state(
+      {
+        state: "cleanup-pending",
+        reason: "ignored-worktree-content",
+        ignoredPaths: [".env"],
+      },
+      1,
+    ),
+  );
+  const pendingReplacement = validatePlanningState(
+    state(
+      {
+        state: "cleanup-pending",
+        reason: "ignored-worktree-content",
+        ignoredPaths: [".env"],
+      },
+      2,
+    ),
+  );
+  const worktreeRemoved = validatePlanningState(
+    state({ state: "worktree-removed", pushedHeadOid: oid("b") }, 3),
+  );
+  const removed = validatePlanningState(
+    state({ state: "removed", pushedHeadOid: oid("b") }, 4),
+  );
+  for (const [current, next] of [
+    [ready, pending],
+    [pending, pendingReplacement],
+    [pendingReplacement, worktreeRemoved],
+    [worktreeRemoved, removed],
+  ] as const)
+    assert.doesNotThrow(() => assertPlanningStateReplacement(current, next));
+});
+
+test("rejects cleanup-pending rollback, evidence rewrites, and completion", () => {
+  const pending = validatePlanningState(
+    state(
+      {
+        state: "cleanup-pending",
+        reason: "ignored-worktree-content",
+        ignoredPaths: [".env"],
+      },
+      1,
+    ),
+  );
+  const ready = validatePlanningState(state({ state: "ready" }, 2));
+  const changedOwnership = structuredClone(
+    state(pending.phases[0]!.workspace!.cleanup, 2),
+  );
+  changedOwnership.phases[0]!.workspace!.identity.worktreePath =
+    ".worktrees/243-other";
+  const changedHead = structuredClone(
+    state(pending.phases[0]!.workspace!.cleanup, 2),
+  );
+  changedHead.phases[0]!.workspace!.headOid = oid("c");
+  changedHead.phases[0]!.publication.headOid = oid("c");
+  const complete = structuredClone(
+    state(pending.phases[0]!.workspace!.cleanup, 2),
+  );
+  complete.phases[0] = {
+    ...complete.phases[0]!,
+    status: "complete",
+    artifacts: [
+      {
+        kind: "spec",
+        path: "docs/specs/issue.md",
+        commitOid: oid("c"),
+        source: "remote-base",
+      },
+    ],
+    completion: {
+      kind: "merged-pull-request",
+      mergeOid: oid("d"),
+      mergedBaseOid: oid("c"),
+    },
+  };
+  for (const next of [
+    ready,
+    validatePlanningState(changedOwnership),
+    validatePlanningState(changedHead),
+  ])
+    assert.throws(
+      () => assertPlanningStateReplacement(pending, next),
+      PlanningStateValidationError,
+    );
+  assert.throws(
+    () => validatePlanningState(complete),
+    PlanningStateValidationError,
+  );
 });
