@@ -74,6 +74,7 @@ export type PlanningProviderScenario = {
   >;
   removeIgnoredImplementationArtifacts(): Promise<void>;
   applyReadyLabel(): void;
+  applyReadyOnlyLabel(): void;
   issueSnapshot(): IssueSummary;
   cleanup(): Promise<void>;
 };
@@ -353,6 +354,9 @@ export async function createPlanningProviderScenario(input: {
     applyReadyLabel: () => {
       if (!selected.labels.includes(config.readyLabel))
         selected.labels.push(config.readyLabel);
+    },
+    applyReadyOnlyLabel: () => {
+      selected.labels = [config.readyLabel];
     },
     issueSnapshot: () => structuredClone(selected),
     remoteArtifactContents: async () =>

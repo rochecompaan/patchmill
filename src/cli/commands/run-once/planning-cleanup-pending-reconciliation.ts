@@ -44,12 +44,17 @@ export async function reconcilePlanningCleanupPendingPublication(input: {
   state: PlanningStateV1;
   labels: { ready: string; inProgress: string; needsInfo: string };
 }): Promise<PlanningCleanupPendingOutcome | undefined> {
-  const outcome = cleanupPendingOutcome(input.state);
   if (
-    outcome === undefined ||
-    input.issue.labels.includes(input.labels.needsInfo)
+    !needsPlanningCleanupPendingPublication({
+      state: input.state,
+      labels: input.issue.labels,
+      readyLabel: input.labels.ready,
+      needsInfoLabel: input.labels.needsInfo,
+    })
   )
     return undefined;
+  const outcome = cleanupPendingOutcome(input.state);
+  if (outcome === undefined) return undefined;
   const result = planningCleanupPendingResult(
     input.issue,
     outcome,
@@ -67,10 +72,12 @@ export async function reconcilePlanningCleanupPendingPublication(input: {
 export function needsPlanningCleanupPendingPublication(input: {
   state: PlanningStateV1 | undefined;
   labels: readonly string[];
+  readyLabel: string;
   needsInfoLabel: string;
 }): boolean {
   return (
     input.state !== undefined &&
+    !input.labels.includes(input.readyLabel) &&
     !input.labels.includes(input.needsInfoLabel) &&
     cleanupPendingOutcome(input.state) !== undefined
   );

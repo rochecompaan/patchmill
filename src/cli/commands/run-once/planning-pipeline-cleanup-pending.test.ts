@@ -83,6 +83,32 @@ test("reconciles failed cleanup-pending publication before coordinator retry", a
   }
 });
 
+test("a ready-only cleanup acknowledgement resumes cleared pending cleanup", async () => {
+  const scenario = await createPlanningProviderScenario({
+    provider: "github-gh",
+    gates: { specRequired: false, planRequired: false },
+    ignoredImplementationArtifacts: artifacts,
+  });
+  try {
+    assert.equal((await scenario.run()).status, "cleanup-pending");
+    await scenario.removeIgnoredImplementationArtifacts();
+    scenario.applyReadyOnlyLabel();
+
+    const complete = await scenario.run();
+    assert.equal(complete.status, "pr-created", JSON.stringify(complete));
+    assert.deepEqual(scenario.issueSnapshot().labels, ["agent-done"]);
+    assert.equal((await scenario.state())?.phases.at(-1)?.status, "complete");
+    assert.equal(
+      scenario
+        .effects()
+        .filter((effect) => effect.operation === "workspace-remove").length,
+      1,
+    );
+  } finally {
+    await scenario.cleanup();
+  }
+});
+
 test("an implementation cleanup pending preserves ignored artifacts through an acknowledged retry", async () => {
   const scenario = await createPlanningProviderScenario({
     provider: "github-gh",
