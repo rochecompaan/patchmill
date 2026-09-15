@@ -137,26 +137,32 @@ export async function finishPlanningImplementation(
         { state: "ready" } | PlanningWorkspaceCleanupPending
       >,
     });
-    if (removal?.kind === "cleanup-pending") {
-      const cleanup = {
-        state: "cleanup-pending" as const,
-        reason: removal.reason,
-        ignoredPaths: [...removal.ignoredPaths],
-      };
-      if (!isDeepStrictEqual(phase.workspace.cleanup, cleanup)) {
-        phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
-        state = await checkpoint(input, state, phase);
-        phase = state.phases[
-          input.phaseIndex
-        ] as ImplementationPullRequestOpenPlanningPhase;
+    switch (removal?.kind) {
+      case "cleanup-pending": {
+        const cleanup = {
+          state: "cleanup-pending" as const,
+          reason: removal.reason,
+          ignoredPaths: [...removal.ignoredPaths],
+        };
+        if (!isDeepStrictEqual(phase.workspace.cleanup, cleanup)) {
+          phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
+          state = await checkpoint(input, state, phase);
+          phase = state.phases[
+            input.phaseIndex
+          ] as ImplementationPullRequestOpenPlanningPhase;
+        }
+        return {
+          kind: "cleanup-pending",
+          state,
+          result: durableImplementationResult(phase),
+          reason: cleanup.reason,
+          ignoredPaths: cleanup.ignoredPaths,
+        };
       }
-      return {
-        kind: "cleanup-pending",
-        state,
-        result: durableImplementationResult(phase),
-        reason: cleanup.reason,
-        ignoredPaths: cleanup.ignoredPaths,
-      };
+      case "removed":
+        break;
+      default:
+        throw new TypeError("Invalid planning worktree removal outcome");
     }
     phase = {
       ...phase,

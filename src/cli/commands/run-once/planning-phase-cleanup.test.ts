@@ -73,9 +73,12 @@ test("retries an uncheckpointed worktree removal from ready and durably removes 
             commands.push(["worktree", "remove", "--", "/workspace"]);
           worktreePresent = false;
           return {
-            state: "branch-only",
-            identity: durable.workspace.identity,
-            headOid: oid,
+            kind: "removed" as const,
+            snapshot: {
+              state: "branch-only" as const,
+              identity: durable.workspace.identity,
+              headOid: oid,
+            },
           };
         },
         async removeBranch() {
@@ -181,6 +184,31 @@ test("retries an uncheckpointed branch removal from worktree-removed without for
     ["update-ref", "-d", "refs/heads/planning/spec", oid],
   ]);
   assert.ok(commands.every((command) => !command.includes("--force")));
+});
+
+test("invalid worktree removal outcome cannot checkpoint or delete a planning branch", async () => {
+  const events: string[] = [];
+  const checkpoints: PullRequestOpenPlanningPhase[] = [];
+
+  await assert.rejects(
+    finishPlanningPhaseCleanup({
+      phase: readyPhase(),
+      remoteHead: async () => events.push("remote-head"),
+      workspaces: {
+        async removeWorktree() {
+          events.push("remove-worktree");
+          return { kind: "unexpected" } as never;
+        },
+        async removeBranch() {
+          events.push("remove-branch");
+        },
+      } as never,
+      checkpoint: async (next) => checkpoints.push(next),
+    }),
+    /Invalid planning worktree removal outcome/,
+  );
+  assert.deepEqual(events, ["remote-head", "remove-worktree"]);
+  assert.deepEqual(checkpoints, []);
 });
 
 test("preserves ready cleanup state when an existing workspace is dirty or has a changed head", async () => {

@@ -233,6 +233,13 @@ function fixture(
         async removeWorktree() {
           events.push("remove-worktree");
           if (input.removeWorktreeError) throw input.removeWorktreeError;
+          return {
+            kind: "removed" as const,
+            snapshot: {
+              state: "missing" as const,
+              identity: workspace().identity,
+            },
+          };
         },
         async removeBranch() {
           events.push("remove-branch");

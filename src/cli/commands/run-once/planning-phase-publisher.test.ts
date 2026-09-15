@@ -10,6 +10,14 @@ const repository = {
   owner: "acme",
   repository: "patchmill",
 };
+const removedWorktree = () => ({
+  kind: "removed" as const,
+  snapshot: {
+    state: "missing" as const,
+    identity: { branch: "planning/spec", worktreePath: "/repo/worktree" },
+  },
+});
+
 const state = {
   version: 1 as const,
   workflowVersion: "planning-pr-v1" as const,
@@ -215,6 +223,7 @@ test("creates, checkpoints, and cleans up one discovered-missing pull request", 
     workspaces: {
       async removeWorktree() {
         events.push("worktree");
+        return removedWorktree();
       },
       async removeBranch() {
         events.push("branch");
@@ -268,7 +277,12 @@ test("adopts one exact pull request without creating or rewriting it", async () 
         return { state: "present" as const, headOid: oid };
       },
     } as never,
-    workspaces: { async removeWorktree() {}, async removeBranch() {} } as never,
+    workspaces: {
+      async removeWorktree() {
+        return removedWorktree();
+      },
+      async removeBranch() {},
+    } as never,
   });
   assert.deepEqual(events, ["find", "get", "get", "get"]);
 });
@@ -383,6 +397,7 @@ test("recovers an interrupted create by adopting the exact discovered pull reque
     workspaces: {
       async removeWorktree() {
         retryEvents.push("worktree");
+        return removedWorktree();
       },
       async removeBranch() {
         retryEvents.push("branch");
@@ -443,6 +458,7 @@ test("resumes cleanup from worktree-removed without removing the worktree again"
     workspaces: {
       async removeWorktree() {
         events.push("worktree");
+        return removedWorktree();
       },
       async removeBranch() {
         events.push("branch");

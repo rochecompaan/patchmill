@@ -40,22 +40,30 @@ export async function finishPlanningPhaseCleanup(input: {
         { state: "ready" } | PlanningWorkspaceCleanupPending
       >,
     });
-    if (removal?.kind === "cleanup-pending") {
-      const cleanup = {
-        state: "cleanup-pending" as const,
-        reason: removal.reason,
-        ignoredPaths: [...removal.ignoredPaths],
-      };
-      if (JSON.stringify(phase.workspace.cleanup) !== JSON.stringify(cleanup)) {
-        phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
-        await input.checkpoint(phase);
+    switch (removal?.kind) {
+      case "cleanup-pending": {
+        const cleanup = {
+          state: "cleanup-pending" as const,
+          reason: removal.reason,
+          ignoredPaths: [...removal.ignoredPaths],
+        };
+        if (
+          JSON.stringify(phase.workspace.cleanup) !== JSON.stringify(cleanup)
+        ) {
+          phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
+          await input.checkpoint(phase);
+        }
+        return {
+          kind: "cleanup-pending",
+          phase,
+          reason: cleanup.reason,
+          ignoredPaths: cleanup.ignoredPaths,
+        };
       }
-      return {
-        kind: "cleanup-pending",
-        phase,
-        reason: cleanup.reason,
-        ignoredPaths: cleanup.ignoredPaths,
-      };
+      case "removed":
+        break;
+      default:
+        throw new TypeError("Invalid planning worktree removal outcome");
     }
     phase = {
       ...phase,

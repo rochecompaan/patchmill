@@ -129,6 +129,14 @@ function input(initial = state(), fail?: string) {
       workspaces: {
         removeWorktree: async () => {
           events.push("worktree");
+          return {
+            kind: "removed" as const,
+            snapshot: {
+              state: "branch-only" as const,
+              identity: initial.phases[0]!.workspace.identity,
+              headOid: oid("b"),
+            },
+          };
         },
         removeBranch: async () => {
           events.push("branch");
@@ -277,6 +285,28 @@ test("refreshes cleanup pending without replaying finish effects and completes a
   assert.equal(run.events.filter((event) => event === "cleanupHook").length, 1);
   assert.equal(run.events.filter((event) => event === "publishCost").length, 1);
   assert.equal(run.events.filter((event) => event === "worktree").length, 3);
+});
+
+test("invalid worktree removal outcome cannot checkpoint or delete a branch", async () => {
+  const run = input();
+  run.value.workspaces = {
+    removeWorktree: async () => ({ kind: "unexpected" }),
+    removeBranch: async () => run.events.push("branch"),
+  } as never;
+
+  await assert.rejects(
+    finishPlanningImplementation(run.value),
+    /Invalid planning worktree removal outcome/,
+  );
+  assert.equal(run.state().phases[0]?.workspace?.cleanup.state, "ready");
+  assert.equal(
+    run.checkpoints.some(
+      (checkpoint) =>
+        checkpoint.phases[0]?.workspace?.cleanup.state === "worktree-removed",
+    ),
+    false,
+  );
+  assert.equal(run.events.includes("branch"), false);
 });
 
 test("checkpoints ignored cleanup pending after one successful cleanup hook", async () => {
