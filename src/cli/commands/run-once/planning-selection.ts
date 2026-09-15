@@ -91,17 +91,8 @@ export function planningIssueEligible(input: {
       excluded.includes(label)
     );
   });
-  const pendingPublicationRetry =
-    activeOwnedWorkflow &&
-    cleanupPending(state) &&
-    issue.labels.includes(lifecycle.inProgress) &&
-    !issue.labels.includes(lifecycle.needsInfo);
   if (blocked.length === 0)
-    return (
-      !cleanupPending(state) ||
-      issue.labels.includes(lifecycle.ready) ||
-      pendingPublicationRetry
-    );
+    return !cleanupPending(state) || issue.labels.includes(lifecycle.ready);
   // Ready acknowledges only the lifecycle needs-info blocker for both retries.
   return (
     activeOwnedWorkflow &&

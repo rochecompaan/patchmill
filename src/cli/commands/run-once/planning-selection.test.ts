@@ -55,7 +55,7 @@ test("requires ready acknowledgement for active cleanup-pending selection", asyn
   } as never;
   for (const [labels, kind] of [
     [[], "none"],
-    [["in-progress"], "planning"],
+    [["in-progress"], "none"],
     [["in-progress", "needs-info"], "none"],
     [["agent-ready"], "planning"],
     [["agent-ready", "needs-info"], "planning"],
