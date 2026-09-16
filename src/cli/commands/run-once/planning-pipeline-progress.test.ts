@@ -403,25 +403,51 @@ test("planning and implementation steps share one attempt-wide token total", asy
         )
         .map((step) => ({
           label: step.label,
+          toolCalls: step.toolCalls,
           taskOutputTokens: step.taskOutputTokens,
           totalOutputTokens: step.totalOutputTokens,
         })),
       [
-        { label: "create spec", taskOutputTokens: 100, totalOutputTokens: 100 },
-        { label: "create plan", taskOutputTokens: 200, totalOutputTokens: 300 },
+        {
+          label: "create spec",
+          toolCalls: 1,
+          taskOutputTokens: 100,
+          totalOutputTokens: 100,
+        },
+        {
+          label: "create plan",
+          toolCalls: 1,
+          taskOutputTokens: 200,
+          totalOutputTokens: 300,
+        },
         {
           label: "final review and landing",
+          toolCalls: 1,
           taskOutputTokens: 300,
           totalOutputTokens: 600,
         },
       ],
     );
-    const implementationTool = harness.events.find(
+    const finalStepStart = harness.events.findIndex(
+      (event) =>
+        event.step?.type === "step-start" &&
+        event.step.label === "final review and landing",
+    );
+    const finalStepComplete = harness.events.findIndex(
+      (event) =>
+        event.step?.type === "step-complete" &&
+        event.step.label === "final review and landing",
+    );
+    const implementationTool = harness.events.findIndex(
       (event) =>
         event.stage === "pi-implementation" &&
         event.observation?.type === "tool-call",
     );
-    assert.ok(implementationTool, JSON.stringify(harness.events));
+    assert.ok(
+      finalStepStart < implementationTool &&
+        implementationTool < finalStepComplete,
+      JSON.stringify(harness.events),
+    );
   } finally {
     await scenario.cleanup();
   }
