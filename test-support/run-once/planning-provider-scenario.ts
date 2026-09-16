@@ -7,8 +7,10 @@ import { dirname, join, resolve } from "node:path";
 import { approvalPolicy, makeConfig } from "./pipeline-fixtures.ts";
 import { issue } from "./issue-fixtures.ts";
 import { runOneIssue } from "../../src/cli/commands/run-once/pipeline.ts";
+import type { CommandRunner } from "../../src/command/types.ts";
 import type { IssueSummary } from "../../src/issue/types.ts";
 import type { AgentIssuePipelineResult } from "../../src/cli/commands/run-once/types.ts";
+import type { AgentIssueConfig } from "../../src/cli/commands/run-once/types.ts";
 import { createForgejoProcessFixture } from "./planning-forgejo-process-fixture.ts";
 import { createGithubProcessFixture } from "./planning-github-process-fixture.ts";
 import {
@@ -47,6 +49,11 @@ type ScenarioState = ReturnType<PlanningStateStore["read"]>;
 
 export type PlanningProviderScenario = {
   run(options?: { planOnly?: boolean }): Promise<AgentIssuePipelineResult>;
+  invocation(): Readonly<{
+    runner: CommandRunner;
+    config: AgentIssueConfig;
+    now: Date;
+  }>;
   state(): ScenarioState;
   stateHistory(): readonly PlanningStateSnapshot[];
   pulls(): readonly RecordedScenarioPullRequest[];
@@ -287,6 +294,7 @@ export async function createPlanningProviderScenario(input: {
     );
   return {
     run,
+    invocation: () => ({ runner, config, now }),
     state,
     stateHistory: () => history,
     pulls: () => pulls.map(recordedPull),

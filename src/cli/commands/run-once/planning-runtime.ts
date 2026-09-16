@@ -10,11 +10,15 @@ import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import { phaseWorkspaceIdentity } from "../../../workflow/planning-pull-requests.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
-import { createPlanningArtifactAgent } from "./planning-phase-artifacts.ts";
+import {
+  createPlanningArtifactAgent,
+  type PlanningArtifactAgent,
+} from "./planning-phase-artifacts.ts";
 import { coordinatePlanningPhases } from "./planning-phase-coordinator.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 import { createPlanningFinishEffects } from "./planning-finish-effects.ts";
 import { createPlanningImplementationAdapter } from "./planning-implementation-adapter.ts";
+import { createStepAccounting } from "./pipeline-progress.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
@@ -52,6 +56,13 @@ export type PlanningRuntimeInput = {
 export function createPlanningRuntime(
   input: PlanningRuntimeInput,
 ): PlanningRuntime {
+  const steps = createStepAccounting({
+    progress: input.progressReporter,
+    issueNumber: input.issue.number,
+    ...(input.now === undefined
+      ? {}
+      : { runStartedAtMs: input.now().getTime() }),
+  });
   const stateStore = new PlanningStateStore(input.config.runStateDir);
   const remoteBase = new PlanningRemoteBaseGit({
     runner: input.runner,
@@ -81,7 +92,7 @@ export function createPlanningRuntime(
       repoRoot: input.config.repoRoot,
       host: input.config.host,
     });
-  const artifactAgent = createPlanningArtifactAgent({
+  const rawArtifactAgent = createPlanningArtifactAgent({
     runner: input.runner,
     repoRoot: input.config.repoRoot,
     skills: input.config.skills,
@@ -104,8 +115,13 @@ export function createPlanningRuntime(
         ? {}
         : { heartbeatMs: input.heartbeatMs }),
       tokenUsageState: input.tokenUsageState,
+      onObservation: (observation) => steps.observe("pi-plan", observation),
     },
   });
+  const artifactAgent: PlanningArtifactAgent = {
+    run: (request) =>
+      steps.run(`create ${request.kind}`, () => rawArtifactAgent.run(request)),
+  };
   const git = {
     baseBranch: input.config.baseBranch,
     baseRef: input.config.baseRef,
@@ -179,6 +195,7 @@ export function createPlanningRuntime(
                 heartbeatMs: input.heartbeatMs,
                 piSessionPath: input.piSessionPath,
                 now: input.now,
+                stepAccounting: steps,
               }),
               finish: createPlanningFinishEffects({
                 runner: input.runner,
