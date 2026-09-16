@@ -119,6 +119,29 @@ function completions(
   );
 }
 
+function assertProviderScenarioRunStart(
+  events: ReturnType<typeof collectProgressEvents>["events"],
+  now: Date,
+) {
+  assert.deepEqual(
+    events.filter((event) => event.step?.type === "run-start"),
+    [
+      {
+        time: now.toISOString(),
+        level: "info",
+        stage: "run",
+        message: "issue #190 · Provider scenario",
+        issueNumber: 190,
+        step: {
+          type: "run-start",
+          issueNumber: 190,
+          title: "Provider scenario",
+        },
+      },
+    ],
+  );
+}
+
 test("planning facade announces an attempt before an active lock stops it", async () => {
   const config = await makeConfig({
     dryRun: false,
@@ -208,6 +231,7 @@ test("planning facade streams exact spec-agent observations inside its create st
 
     assert.equal(result.status, "review-pending", JSON.stringify(result));
     if (result.status === "review-pending") assert.equal(result.phase, "spec");
+    assertProviderScenarioRunStart(harness.events, now);
     assert.deepEqual(
       harness.events
         .filter(
@@ -296,6 +320,7 @@ test("planning reconciliation has no phantom steps and merged spec resumes with 
       progress: resumed.progress,
     });
     assert.equal(reviewResult.status, "review-pending");
+    assertProviderScenarioRunStart(resumed.events, now);
     assert.deepEqual(startedLabels(resumed.events), []);
     assert.equal(
       resumed.events.some((event) => event.message === "pi session path"),
