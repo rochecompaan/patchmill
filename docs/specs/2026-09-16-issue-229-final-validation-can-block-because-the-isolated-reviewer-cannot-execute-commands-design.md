@@ -24,11 +24,14 @@ configured policy. Patchmill—not the implementation parent—loads that manife
 The implementation prompt, all three wrapper skills, and the shared final
 validation prompt will name the same policy and role. The validator will return
 a structured exact-head command report. Patchmill will derive a trusted receipt
-from the actual `subagent` result and child `bash` calls in the Pi session, then
-reject a successful implementation result unless that receipt covers the
-manifest and passes a shared decision function for the final worktree head.
+from the actual `subagent` result and child `bash` calls in the Pi session.
+Validation requires a clean, committed implementation tree before and after the
+commands. Patchmill will persist a minimal verification record bound to the
+head, manifest digest, and policy version. A shared finalization gate will
+require that record for fresh and recovered results before completion effects.
+It will also verify that the tree remains clean at the same head before handoff.
 Prior parent, worker, or CI summaries remain context only and cannot substitute
-for the receipt.
+for verified evidence.
 
 ## Context
 
@@ -72,6 +75,9 @@ contract and weakening the contract to accept indirect evidence.
   configured final-validation policy cannot be satisfied.
 - Bind a reviewed, machine-readable command manifest to a structured exact-head
   validator report and machine-enforced receipt gate.
+- Require a clean, committed tree throughout final validation and handoff.
+- Preserve verified evidence across recovery and reject unverifiable legacy
+  checkpoints before completion effects.
 - Prevent direct landing from bypassing receipt verification.
 - Keep canonical skills, installed project-local copies, metadata, tests, and
   documentation synchronized.
@@ -100,9 +106,10 @@ Patchmill owns a `patchmill-validator` agent with read/search tools plus `bash`.
 The three wrappers use it only for final validation and continue to use
 `reviewer` for review-only passes.
 
-This directly satisfies the existing execution contract, keeps role authority
-narrow, and requires no evidence-storage protocol. It also gives init, doctor,
-and run-once one stable capability target to resolve.
+This directly satisfies the existing execution contract and keeps role authority
+narrow. Init, doctor, and run-once share one capability target. Recovery
+requires a durable verification record, but not a separate executor-to-reviewer
+evidence protocol.
 
 ### Override the bundled reviewer
 
@@ -133,15 +140,18 @@ to:
 ```ts
 {
   kind: "validator-executes-commands";
+  version: 1;
   agent: "patchmill-validator";
   requiredTools: ["read", "grep", "find", "ls", "bash"];
   forbiddenTools: ["edit", "write", "subagent"];
 }
 ```
 
-This is a Patchmill runtime invariant, not a new user configuration surface. The
-policy applies when the configured implementation skill resolves to one of
-Patchmill's three final-validation wrapper names:
+This is a Patchmill runtime invariant, not a new user configuration surface.
+Changes to the required verification semantics increment the policy version and
+invalidate records from earlier versions. The policy applies when the configured
+implementation skill resolves to one of Patchmill's three final-validation
+wrapper names:
 
 - `subagent-dev-with-validation-and-pr-checks`;
 - `subagent-dev-with-codex-and-thermo-reviews`; or
@@ -188,8 +198,13 @@ There is no permissive legacy fallback.
 
 At implementation start, Patchmill reads the manifest directly from the
 materialized plan before launching Pi, retains the parsed value outside model
-context, and renders a copy plus its digest into the implementation prompt. The
-parent must pass the same IDs and command text to `patchmill-validator`.
+context, and renders a copy plus its digest into the implementation prompt.
+Finalization reloads the authoritative manifest on both fresh and recovered
+paths. Its source remains the approved plan artifact and commit, not saved
+`validation` strings. Recovery can read that artifact from its commit after
+worktree removal. A missing or invalid manifest blocks finalization too.
+
+The parent must pass the same IDs and command text to `patchmill-validator`.
 Validator-discovered extra focused commands may be reported, but they do not
 replace or remove a manifest command. If implementation scope changes enough to
 require a different minimum command set, the plan must be updated through the
@@ -218,9 +233,11 @@ The generated role will:
 - state that it may execute supplied validation and Git-inspection commands but
   may not manually modify source, commit, push, land, or repair findings.
 
-A command may create normal build or test outputs. The validator records final
-`git status --short`, and unexpected repository changes make the validation
-report fail rather than authorizing cleanup or repair.
+A command can create ignored build or test outputs. The validator records
+NUL-safe porcelain status before and after validation. Both snapshots must be
+empty, and both head SHAs must match the expected committed head. Any tracked
+change or ordinary untracked path fails validation. The validator cannot clean
+or repair the tree to manufacture a passing report.
 
 The generated definition is ignored runtime state, like local Pi settings. The
 canonical source remains in the published Patchmill package so init and repair
@@ -287,8 +304,9 @@ parent model gets an opportunity to downgrade the final-validation task.
 
 Workspace and planning artifacts may already exist because they are prepared by
 the phase coordinator, but no development-environment setup or implementation
-work runs after a failed capability preflight. Resumption repeats the probe and
-continues normally once the effective role is ready.
+work runs after a failed capability preflight. Any resumed agent execution
+repeats the probe. Recovery that skips agent execution still passes the shared
+finalization gate described below.
 
 ### Final-validation handoff
 
@@ -309,12 +327,17 @@ retaining its complete base-to-head scope and failure-classification rules. The
 validator receives the expected base SHA, head SHA, worktree, plan/spec paths,
 required commands, and prior summaries.
 
+Before validator dispatch, the worker commits the complete implementation and
+leaves a clean tree. Dirty scope blocks validation, even when its porcelain
+status would remain unchanged. The parent must not discard uncommitted fixes
+after validation and claim that the unchanged head was validated.
+
 The validator dispatch is foreground (`async: false`) because landing depends on
 it, uses fresh context, and supplies the shared JSON Schema through
 `outputSchema`. Its task contains one bounded machine-readable scope envelope
-with the expected base/head, worktree, manifest digest, and unchanged ordered
-manifest entries. The envelope is a transport copy; the out-of-model manifest
-loaded by Patchmill remains authoritative.
+with the expected base/head, worktree, manifest digest, policy version, and
+unchanged ordered manifest entries. The envelope is a transport copy; the
+out-of-model manifest loaded by Patchmill remains authoritative.
 
 The structured result contains:
 
@@ -327,12 +350,17 @@ The structured result contains:
   or `blocked`; and
 - concise reasoning.
 
-The repository snapshots use NUL-safe porcelain status including staged,
-tracked, and all ordinary untracked paths. The before and after snapshots must
-be byte-equivalent. Existing dirty implementation scope is allowed, but a
-validator command may not change it. Ignored build/test outputs remain outside
-that ordinary status comparison; tracked or ordinary untracked generated changes
-fail the receipt and must be handled by a worker.
+The repository snapshots use
+`git status --porcelain=v1 -z --untracked-files=all` and include staged,
+tracked, and all ordinary untracked paths. Both snapshots must be empty.
+Equality between two non-empty snapshots is not content-integrity evidence. Head
+probes before and after validation must equal the expected committed head.
+
+Ignored build/test outputs remain outside this cleanliness requirement. Tracked
+or ordinary untracked generated changes fail the receipt. A worker must resolve
+them before a new full validation pass. After Pi exits and immediately before
+handoff, Patchmill independently requires an empty status and the same head. A
+clean tree only at handoff is insufficient without clean validation snapshots.
 
 ### Trusted receipt gate
 
@@ -355,14 +383,15 @@ decision function receives the out-of-model parsed manifest and rejects:
   candidate results;
 - absent or invalid structured output;
 - a scope-envelope digest or command set that differs from the authoritative
-  manifest;
+  manifest, or a policy version that differs from the active policy;
 - missing, duplicate, reordered, or text-mismatched manifest command entries;
 - a command with no matching child `bash` execution/result;
 - non-zero, failed, or blocked commands;
 - non-passing verdicts;
-- before/after head mismatch or repository-status drift; and
-- a receipt whose final head differs from the worktree head that Patchmill
-  observes after the Pi process exits.
+- a non-empty before/after repository status or a head that differs from the
+  expected committed head; and
+- a dirty worktree after Pi exits, or a receipt whose final head differs from
+  the head that Patchmill independently observes.
 
 When multiple validator passes exist, only the newest complete receipt matching
 the final observed head and authoritative manifest can satisfy the gate. A later
@@ -378,10 +407,98 @@ not accept the handoff, apply completion effects, or clean the worktree; it
 returns the existing blocked result and resumes against the preserved branch.
 Planning workflows already require this pull-request behavior.
 
-This adds an internal receipt to the implementation-stage result, not to the
-public terminal JSON or durable planning schema. Successful command summaries
-continue to populate the existing `validation` array after the trusted receipt
-passes.
+### Durable verification and shared finalization
+
+Receipt collection belongs to the agent execution path. Authorization to finish
+belongs to one shared finalization gate for both legacy and planning workflows.
+`runImplementationAgent` cannot be the only enforcement boundary because
+recovery can skip it.
+
+After receipt verification, Patchmill creates a minimal internal verification
+record with:
+
+- the verification-record schema version;
+- the issue-run and phase/workspace identity;
+- the verified base and head SHAs;
+- the authoritative manifest digest;
+- the policy kind and version; and
+- the accepted verdict and verified clean-tree result.
+
+Only Patchmill's receipt decision function can create this record. Neither model
+output nor public terminal JSON can supply it. Full command transcripts remain
+session evidence, not durable run-state payloads. Successful command summaries
+continue to populate the existing display-only `validation` array.
+
+Both legacy run state and durable planning state retain the record in a separate
+internal `finalValidationVerification` field. The state write that first marks
+implementation complete or `branch-pushed` must also save it atomically. Later
+transitions, including `pull-request-open`, preserve it. Persistence failure
+blocks completion effects. State readers accept older state for recovery, but
+missing, malformed, or unsupported records never authorize success. Internal
+state schemas and serializers change; public `pr-created` and `blocked` JSON
+shapes do not.
+
+The shared gate accepts a newly verified record or a saved record with the same
+bindings. It reloads the authoritative manifest and compares the record with the
+active policy, run identity, and observed head. It requires a clean tree at that
+head before handoff, cleanup, or other pending completion effects. Existing
+remote-head and PR checks remain required. Each resumed finish attempt passes
+this gate before it can use completion checkpoints to skip work.
+
+All fresh and recovered success paths use this gate:
+
+- Legacy `runPipelineImplementationStage` can reconstruct a saved result through
+  `successfulImplementationFromState`, but reconstruction does not authorize
+  `runPipelineFinishStage` to perform effects.
+- Planning recovery from `branch-pushed` can validate PR facts without rerunning
+  the agent, but it cannot advance without a matching verification record.
+- Planning recovery from `pull-request-open` must pass the gate before
+  `finishPlanningImplementation` resumes handoff, cleanup, or done-label
+  effects.
+
+A missing, legacy, or stale record returns a `final-validation-evidence` blocker
+and preserves the branch/worktree. It invalidates the checkpoint's authority to
+finish without erasing completed-effect history. Recovery must obtain a fresh
+validator receipt and atomically replace the record before finalization resumes.
+Legacy `validation` strings, matching head SHAs alone, and completed-effect
+flags cannot substitute for the record. An already-applied direct merge cannot
+be undone by this gate and must not be retroactively certified.
+
+The phase runner owns a shared `runFinalValidationRecovery` operation for
+recoverable evidence blockers. On the next attempt, both adapters call it before
+retrying finalization. It accepts legacy completed-implementation checkpoints
+and planning `branch-pushed` or `pull-request-open` checkpoints without
+regressing their status. The original owned phase worktree must still exist in
+`ready` or `cleanup-pending` state. It performs capability and manifest
+preflight, then launches a validation-only Pi session against the saved
+committed head. That session only dispatches the designated validator and uses
+the same envelope, collector, and receipt decision function. It does not rerun
+implementation, environment setup, PR creation, or completed finish effects.
+Command failures remain blockers, not permission to repair source in this
+operation.
+
+A successful recovery receipt permits an atomic evidence-upgrade transition
+under the existing issue lock and state revision check. Planning transition
+validation must allow same-status replacement of `finalValidationVerification`
+for `branch-pushed` and `pull-request-open`. Legacy checkpoint updates use the
+same rule. The upgrade preserves phase status, implementation result, base/head,
+artifacts, publication, PR identity, finish flags, and cleanup history. It does
+not relax the current immutability rules for those fields. A changed head or
+required source repair needs the existing explicit reset/manual recovery path,
+not an evidence-only upgrade. The shared gate runs again after the new record
+persists.
+
+If cleanup already removed the worktree, recovery requires the saved
+verification record and durable cleanup evidence for the same verified head. It
+reloads the manifest from the approved plan commit and verifies the published
+branch/PR head. Without matching evidence, recovery returns an operator blocker
+that requires explicit reset or manual recovery. In-place revalidation after
+worktree removal is not supported. `runFinalValidationRecovery` cannot recreate
+a removed phase workspace, accept a replacement worktree, or rewind cleanup
+checkpoints. This avoids a second workspace lifecycle that conflicts with
+pending branch deletion. A missing worktree is not an exemption. Fully terminal
+historical runs with no pending effects remain history, not newly verified
+executions.
 
 ### Error and repair behavior
 
@@ -395,8 +512,12 @@ passes.
 - A validator launch, structured-output, session-receipt, or receipt-decision
   failure after implementation: return the existing blocked contract and
   preserve the branch/worktree for resumption.
-- A repository-fixable command failure: use the existing worker repair loop and
-  rerun all final validation at the updated head.
+- Missing, legacy, or stale durable evidence: block finalization and obtain a
+  fresh validator receipt. Do not fall back to saved `validation` strings.
+- A dirty tree before validation, after validation, or before handoff: fail the
+  gate and preserve the worktree for worker repair.
+- A repository-fixable command failure: use the existing worker repair loop,
+  commit the repair, and rerun all final validation from a clean tree.
 - An external tooling, credential, quota, or infrastructure failure: return the
   existing operator blocker with command evidence.
 
@@ -412,8 +533,17 @@ passes.
   versioned final-validation manifest before managed implementation.
 - `src/cli/commands/run-once/implementation-agent.ts`, Pi session parsing, and
   prompt rendering/tests — load the authoritative manifest outside model
-  context, gate before implementation, validate the trusted receipt against it
-  and final HEAD, and force PR-only landing for managed wrappers.
+  context, gate before implementation, validate the trusted receipt against a
+  clean committed tree, and force PR-only landing for managed wrappers.
+- Legacy implementation/recovery/finish paths and planning
+  implementation/recovery/finish paths — use one finalization gate and one
+  validation-only recovery operation before completion effects.
+- Legacy run-state and durable planning-state types, readers, serializers, and
+  reconstruction helpers — preserve the verification record atomically and
+  reject missing, legacy, or stale evidence as authorization to finish.
+- `src/workflow/planning-state-transitions.ts` and legacy checkpoint updates —
+  permit same-status evidence upgrades without changing implementation facts,
+  completed effects, or cleanup history.
 - `skills/subagent-dev-with-validation-and-pr-checks/`,
   `skills/subagent-dev-with-codex-and-thermo-reviews/`, and
   `skills/single-subagent-dev-with-codex-and-thermo-reviews/` — dispatch the
@@ -483,19 +613,64 @@ wrapper with the same scenarios:
   envelope digest, or fabricated top-level `validation` strings do not satisfy
   the gate;
 - wrong agent/context, missing child `bash` calls, command omission/duplication,
-  failed exit, blocked command, malformed output, head drift, or repository
-  status drift prevents handoff;
+  failed exit, blocked command, malformed output, head drift, or any non-empty
+  repository status prevents handoff;
+- staged changes, tracked modifications, and ordinary untracked paths block
+  validation before manifest commands run;
+- changing an already-dirty file cannot pass through equal porcelain snapshots
+  because the initial dirty snapshot rejects the pass;
+- validation against an uncommitted fix remains invalid after that fix is
+  discarded, even when final HEAD and cleanliness checks pass;
+- validation commands that modify tracked or ordinary untracked files fail,
+  while ignored build/test outputs remain permitted;
+- a dirty tree or changed head after validator completion, after Pi exits, or
+  between receipt collection and handoff prevents completion effects;
 - a complete exact-head report backed by matching child command calls permits
-  the existing PR handoff path; and
+  the existing PR handoff path only while the committed tree remains clean; and
 - a worker or PR-check repair invalidates the prior receipt and causes a fresh
-  validator pass.
+  validator pass after the worker commits the repair.
+
+### Recovery and finalization verification
+
+Exercise the shared gate through both workflow adapters, not only through
+`runImplementationAgent`:
+
+- A legacy `implementationCompleted` checkpoint with only `validation` strings
+  cannot reach handoff, done-label effects, cleanup, or terminal success.
+- Planning `branch-pushed` and `pull-request-open` checkpoints without verified
+  evidence cannot advance, even when remote-head and PR checks pass.
+- Missing, malformed, and unsupported records, changed heads, changed manifest
+  digests, changed policy versions, and mismatched run identities block
+  recovery.
+- State round-trips retain the record. Interrupted writes cannot save a
+  successful implementation checkpoint without its verification record.
+- A valid saved record permits recovery without another validator pass, after
+  the gate verifies the current manifest, policy, head, and clean tree.
+- Validation-only recovery from legacy completed-implementation,
+  `branch-pushed`, and `pull-request-open` checkpoints acquires and persists a
+  fresh receipt without rerunning implementation or completed effects.
+- Same-status evidence upgrades preserve immutable implementation facts, finish
+  flags, and cleanup history. Stale revisions and unrelated field changes fail.
+- No completion effect runs before the evidence upgrade persists and passes the
+  shared gate. A failed upgrade leaves the prior checkpoint recoverable.
+- A crash after a completion effect but before its checkpoint does not bypass
+  the gate on the next attempt. Existing effect-idempotency rules still apply.
+- Worktree-removal recovery requires matching verification, cleanup, manifest,
+  and published-head evidence. Missing evidence requires explicit reset/manual
+  recovery instead of skipping verification because the tree is absent.
+- Validation-only recovery refuses removed or replacement worktrees. It creates
+  no recovery worktree, rewinds no cleanup checkpoint, and cannot obstruct
+  pending branch deletion.
+- Historical terminal state is not relabeled as verified. Managed wrappers never
+  accept a legacy `merged` result as new verified success.
 
 Do not add brittle tests that only search for individual Markdown sentences.
 Directly compare canonical and installed skill files, validate skill-pack hashes
 and required sidecars, and run Markdown formatting/lint for the prose contract.
 
 Implementation verification should run focused init, doctor, capability, prompt,
-run-once, and skill-pack tests, followed by:
+run-once, state-persistence, recovery, finalization, and skill-pack tests,
+followed by:
 
 ```sh
 npm test
@@ -510,10 +685,10 @@ implementation, rerun the Nix build as required by repository policy.
 
 ## Acceptance mapping
 
-| Acceptance criterion                                                         | Design response                                                                                                                                                                                                                            |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Fresh initialization has a supported path without overlays                   | Init copies the packaged `patchmill-validator` into the isolated agent directory and verifies its effective launch contract.                                                                                                               |
-| Every feasible command runs through the designated validator                 | Reviewed planning supplies the authoritative manifest; all three wrappers dispatch only `patchmill-validator`; the trusted receipt matches every manifest entry to an actual child `bash` call/result at the final head.                   |
-| Missing command capability is detected before implementation                 | A shared effective-tool probe runs before development-environment setup, todo creation, or the implementation Pi session.                                                                                                                  |
-| Identical configuration cannot fail open or fail closed by parent discretion | The implementation parent cannot shrink the out-of-model manifest; the fixed policy forbids evidence fallback, PR-only landing prevents an unchecked merge, and the outer gate rejects success without a matching session-derived receipt. |
-| Regression coverage checks capability and handoff                            | Real resolver fixtures cover effective tools and isolation; receipt/session tests cover command execution, exact-head/state binding, repair invalidation, and handoff refusal.                                                             |
+| Acceptance criterion                                                         | Design response                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fresh initialization has a supported path without overlays                   | Init copies the packaged `patchmill-validator` into the isolated agent directory and verifies its effective launch contract.                                                                                                                                  |
+| Every feasible command runs through the designated validator                 | Reviewed planning supplies the authoritative manifest; all three wrappers dispatch only `patchmill-validator`; the trusted receipt matches every manifest entry to a child `bash` call/result on a clean committed tree.                                      |
+| Missing command capability is detected before implementation                 | A shared effective-tool probe runs before development-environment setup, todo creation, or the implementation Pi session.                                                                                                                                     |
+| Identical configuration cannot fail open or fail closed by parent discretion | The implementation parent cannot shrink the out-of-model manifest; the fixed policy forbids evidence fallback, PR-only landing prevents an unchecked merge, and shared finalization rejects fresh or recovered success without matching durable verification. |
+| Regression coverage checks capability and handoff                            | Real resolver fixtures cover effective tools and isolation; receipt/session and recovery tests cover clean committed-tree binding, durable evidence, repair invalidation, and handoff refusal.                                                                |
