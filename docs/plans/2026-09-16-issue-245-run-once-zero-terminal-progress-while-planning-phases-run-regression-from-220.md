@@ -1,8 +1,8 @@
 # Restore Planning-Phase Run-Once Progress Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `subagent-driven-development` (recommended) or `executing-plans` to implement
-> this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development`
+> (recommended) or `executing-plans` to implement this plan task-by-task. Steps
+> use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Restore immediate, step-scoped terminal progress for planning-path
 `patchmill run-once` attempts without changing planning workflow results,
@@ -14,8 +14,8 @@ workflow boundary, then create one `createStepAccounting` instance in
 plan artifact-agent calls with `create spec`/`create plan` steps, route their
 exact Pi session observations through that accounting object, and inject the
 same object into the existing implementation adapter so cumulative token totals
-do not reset. Existing console and JSONL reporters remain unchanged consumers
-of the restored event stream.
+do not reset. Existing console and JSONL reporters remain unchanged consumers of
+the restored event stream.
 
 **Tech Stack:** TypeScript ESM, Node.js and `node:test`, the existing
 `ProgressReporter`/`PiSessionObservation` contracts, real-Git planning provider
@@ -34,7 +34,8 @@ fixtures, Prettier, ESLint, and the TypeScript build; no new dependency.
 - Use the attempt timestamp already computed by `runPlanningWorkflow`; do not
   introduce another run clock or event type.
 - Create exactly one `createStepAccounting` object per production planning
-  runtime and reuse it across spec authoring, plan authoring, and implementation.
+  runtime and reuse it across spec authoring, plan authoring, and
+  implementation.
 - Wrap only actual `PlanningArtifactAgent.run()` calls. Reconciliation,
   already-satisfied remote/base artifacts, recovered workspace artifacts,
   publication, and review stops must not emit synthetic `create` steps.
@@ -55,8 +56,8 @@ fixtures, Prettier, ESLint, and the TypeScript build; no new dependency.
   progress decoration belongs at its artifact-agent boundary; do not move
   orchestration into `planning-phase-artifacts.ts`.
 - Do not change `package.json`, `package-lock.json`, or `npm-shrinkwrap.json`.
-  If implementation unexpectedly retains an npm dependency metadata change,
-  run the Nix build required by `AGENTS.md`.
+  If implementation unexpectedly retains an npm dependency metadata change, run
+  the Nix build required by `AGENTS.md`.
 
 ---
 
@@ -116,9 +117,7 @@ export type PlanningImplementationAdapterInput = {
 const steps = createStepAccounting({
   progress: input.progressReporter,
   issueNumber: input.issue.number,
-  ...(input.now === undefined
-    ? {}
-    : { runStartedAtMs: input.now().getTime() }),
+  ...(input.now === undefined ? {} : { runStartedAtMs: input.now().getTime() }),
 });
 ```
 
@@ -135,9 +134,7 @@ const rawArtifactAgent = createPlanningArtifactAgent({
 
 const artifactAgent: PlanningArtifactAgent = {
   run: (request) =>
-    steps.run(`create ${request.kind}`, () =>
-      rawArtifactAgent.run(request),
-    ),
+    steps.run(`create ${request.kind}`, () => rawArtifactAgent.run(request)),
 };
 ```
 
@@ -180,15 +177,15 @@ final diff.
 - Consumes: the selected `IssueSummary`, `attemptTimestamp`, and optional
   `RunOneIssueOptions.progress` reporter already owned by
   `runPlanningWorkflow()`.
-- Produces: exactly one existing `run-start` event before
-  `runPlanningIssue()` attempts lock acquisition.
+- Produces: exactly one existing `run-start` event before `runPlanningIssue()`
+  attempts lock acquisition.
 
 - [ ] **Step 1: Write the failing public-facade lock-boundary regression**
 
   In the new test module, import `runOneIssue` from `./pipeline.ts`, never the
-  legacy alias. Reuse `makeConfig()`, issue fixtures,
-  `planningIssueLockPath()`, and `collectProgressEvents()` to create a fresh
-  planning selection with an active lock owned by the current process.
+  legacy alias. Reuse `makeConfig()`, issue fixtures, `planningIssueLockPath()`,
+  and `collectProgressEvents()` to create a fresh planning selection with an
+  active lock owned by the current process.
 
   Call:
 
@@ -368,12 +365,10 @@ final diff.
   tool call, one subagent observation, and `outputTokens: 4200`.
 
   Assert:
-
   - the result is `review-pending` for phase `spec`;
   - exactly one `run-start` event identifies issue `#190`;
-  - event order is `step-start:create spec`, then tool-call,
-    subagent-progress, assistant-usage observations, then
-    `step-complete:create spec`;
+  - event order is `step-start:create spec`, then tool-call, subagent-progress,
+    assistant-usage observations, then `step-complete:create spec`;
   - every observation has stage `pi-plan`;
   - completion reports `toolCalls: 1`, `taskOutputTokens: 4200`, and
     `totalOutputTokens: 4200`;
@@ -385,21 +380,20 @@ final diff.
 
 - [ ] **Step 4: Write failing resume and plan-authoring regressions**
 
-  Re-run the same scenario while its spec pull request remains open with a
-  fresh progress harness. Assert one banner but no `step-start`, no Pi session,
-  and no observation: review reconciliation did not perform artifact authoring.
-  Then merge that spec pull request and call the public facade with a copied
-  config whose `planOnly` is `true`. Seed the assigned plan-agent session and
-  assert the only creation label is `create plan`: the spec now satisfied by
+  Re-run the same scenario while its spec pull request remains open with a fresh
+  progress harness. Assert one banner but no `step-start`, no Pi session, and no
+  observation: review reconciliation did not perform artifact authoring. Then
+  merge that spec pull request and call the public facade with a copied config
+  whose `planOnly` is `true`. Seed the assigned plan-agent session and assert
+  the only creation label is `create plan`: the spec now satisfied by
   merged-base evidence must not emit `create spec` again.
 
-  Add a second scenario with
-  `{ specRequired: false, planRequired: true }`. Seed two exact `pi-plan`
-  sessions with 100 and 200 output tokens. Assert the actual calls emit exactly
-  these starts in order:
+  Add a second scenario with `{ specRequired: false, planRequired: true }`. Seed
+  two exact `pi-plan` sessions with 100 and 200 output tokens. Assert the actual
+  calls emit exactly these starts in order:
 
   ```ts
-  ["create spec", "create plan"]
+  ["create spec", "create plan"];
   ```
 
   Assert their completion totals are respectively:
@@ -408,7 +402,7 @@ final diff.
   [
     { label: "create spec", taskOutputTokens: 100, totalOutputTokens: 100 },
     { label: "create plan", taskOutputTokens: 200, totalOutputTokens: 300 },
-  ]
+  ];
   ```
 
   The open-review rerun proves durable/reconciled work does not create phantom
@@ -459,7 +453,7 @@ final diff.
       taskOutputTokens: 300,
       totalOutputTokens: 600,
     },
-  ]
+  ];
   ```
 
   Also assert the implementation tool call belongs to the active final step.
@@ -653,8 +647,8 @@ final diff.
 
   Expected: `git diff --check` and the final quiet diff command exit `0`; the
   worktree is clean; production changes are limited to banner and accounting
-  wiring; test support only exposes the existing public scenario invocation;
-  no schema, renderer, parser, dependency, or legacy-pipeline change is present.
+  wiring; test support only exposes the existing public scenario invocation; no
+  schema, renderer, parser, dependency, or legacy-pipeline change is present.
 
   Review the captured progress evidence and confirm all acceptance points:
   exactly one immediate banner, actual-only spec/plan steps, exact-session tool
