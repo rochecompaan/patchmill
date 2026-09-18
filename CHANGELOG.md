@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.21.0](https://github.com/rochecompaan/patchmill/compare/v0.20.0...v0.21.0) (2026-09-18)
+
+
+### Features
+
+* **host:** implement Forgejo planning pull request adapter ([#215](https://github.com/rochecompaan/patchmill/issues/215)) ([6055479](https://github.com/rochecompaan/patchmill/commit/60554799e124830f83049eddcc2663eca78e9a41))
+* **host:** implement GitHub planning pull request adapter ([#213](https://github.com/rochecompaan/patchmill/issues/213)) ([2981fd4](https://github.com/rochecompaan/patchmill/commit/2981fd45af0b38708905188a840712342a40bb2b))
+* **run-once:** integrate planning phases and require implementation pull requests ([#220](https://github.com/rochecompaan/patchmill/issues/220)) ([9efb136](https://github.com/rochecompaan/patchmill/commit/9efb136dc284bf8bc0da4baddf77282d359668c5))
+* **run-once:** publish planning pull request phases ([#217](https://github.com/rochecompaan/patchmill/issues/217)) ([dc22d38](https://github.com/rochecompaan/patchmill/commit/dc22d38bae5fd70a4ed3e05385c23b2ab5b8b5ce))
+* **run-once:** recover or reset blocked run-once runs ([#204](https://github.com/rochecompaan/patchmill/issues/204)) ([0b27041](https://github.com/rochecompaan/patchmill/commit/0b27041e69d9fe5bb1b86aaf8999468998722423))
+* **workflow:** Add durable planning state and pull request workspaces ([#216](https://github.com/rochecompaan/patchmill/issues/216)) ([7b4856f](https://github.com/rochecompaan/patchmill/commit/7b4856f22655afee463c9a44ea19cf2433117852))
+* **workflow:** define provider-neutral planning pull request foundations ([#209](https://github.com/rochecompaan/patchmill/issues/209)) ([470891c](https://github.com/rochecompaan/patchmill/commit/470891c2cc57190b68ad82a578c06175fdfe6295))
+* **workflow:** migrate planning pull request workflow ([#223](https://github.com/rochecompaan/patchmill/issues/223)) ([82955e3](https://github.com/rochecompaan/patchmill/commit/82955e3b0a89f8c3224eeeb5ee9e0e1babe44da6))
+* **workflow:** use conventional titles for planning pull requests ([#228](https://github.com/rochecompaan/patchmill/issues/228)) ([2aa4024](https://github.com/rochecompaan/patchmill/commit/2aa40240e3b0283798d44e343612142d6e9154f2))
+
+
+### Bug Fixes
+
+* **deps:** fail fast on stale runtime dependencies ([#200](https://github.com/rochecompaan/patchmill/issues/200)) ([69bab32](https://github.com/rochecompaan/patchmill/commit/69bab325467d042565f6592232eace51020af5d4))
+* **deps:** reuse pi-subagents upgrade PR ([#202](https://github.com/rochecompaan/patchmill/issues/202)) ([8a98c2d](https://github.com/rochecompaan/patchmill/commit/8a98c2db28047076e1fc83a7ebf5068cc4cac2e3))
+* **git:** ignore artifacts in planning workspace checks ([#241](https://github.com/rochecompaan/patchmill/issues/241)) ([d38514f](https://github.com/rochecompaan/patchmill/commit/d38514f598074b7dc5385e76be7313f1b28a9187))
+* **run-once:** adopt blocked-agent commits when resuming implementation ([e57ef2c](https://github.com/rochecompaan/patchmill/commit/e57ef2c089a8ce0d95528263bc6d5d6d4ee73906))
+* **run-once:** make pending planning cleanup recoverable ([#246](https://github.com/rochecompaan/patchmill/issues/246)) ([e43dce4](https://github.com/rochecompaan/patchmill/commit/e43dce4367c0f4cac1e6fb2ac5359d7a44a3cb62))
+* **run-once:** preserve ignored state during blocked retry ([#212](https://github.com/rochecompaan/patchmill/issues/212)) ([cd94670](https://github.com/rochecompaan/patchmill/commit/cd946704b7cd49f317c8feebef95b19f761b9a4d))
+* **run-once:** restore planning phase terminal progress ([#251](https://github.com/rochecompaan/patchmill/issues/251)) ([932d9de](https://github.com/rochecompaan/patchmill/commit/932d9de2c9ee994b91d5fc597a11847ce5f1cf84))
+* **run-once:** stamp fresh planning state with the frozen run clock ([736afa7](https://github.com/rochecompaan/patchmill/commit/736afa7743d793942ba545d61f192489d9e75548))
+* **run-once:** surface the agent blocker when its workspace is unsafe ([d24172a](https://github.com/rochecompaan/patchmill/commit/d24172adcb30d91d7287d088b04a141d740ec9fe))
+* **site:** remediate dependency advisories ([#214](https://github.com/rochecompaan/patchmill/issues/214)) ([#218](https://github.com/rochecompaan/patchmill/issues/218)) ([da9b143](https://github.com/rochecompaan/patchmill/commit/da9b1437eb48505a7799e8fdfb94bde85988952d))
+* **site:** update smol-toml to remediate avisory GHSA-7w5x-hrqm-74c2 ([#221](https://github.com/rochecompaan/patchmill/issues/221)) ([4c39619](https://github.com/rochecompaan/patchmill/commit/4c3961905ad447ddb2b64c69dc72eb01acd637c7))
+* **validation:** restore baseline quality gates ([#208](https://github.com/rochecompaan/patchmill/issues/208)) ([7a51191](https://github.com/rochecompaan/patchmill/commit/7a511913f6836f401b98052d62af1127721a7085))
+* **workflow:** accept server pull ref for merged planning pull requests ([af1ef7c](https://github.com/rochecompaan/patchmill/commit/af1ef7c4dc81ed303486a877b550479b7e35a9ad))
+
 ## [0.20.0](https://github.com/rochecompaan/patchmill/compare/v0.19.0...v0.20.0) (2026-08-28)
 
 
