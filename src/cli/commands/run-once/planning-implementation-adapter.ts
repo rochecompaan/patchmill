@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { runImplementationAgent } from "./implementation-agent.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
-import { createStepAccounting, progress } from "./pipeline-progress.ts";
+import { progress, type createStepAccounting } from "./pipeline-progress.ts";
 import type { PlanningImplementationInput } from "./planning-implementation.ts";
 import { artifactPath } from "./planning-runtime-state.ts";
 import type { CommandRunner } from "../../../command/types.ts";
@@ -17,6 +17,7 @@ export type PlanningImplementationAdapterInput = {
   git: GitWorktreeStrategyConfig;
   piAgentDir: string;
   tokenUsageState: { total: number };
+  stepAccounting: ReturnType<typeof createStepAccounting>;
   progressReporter?: Parameters<
     typeof runImplementationAgent
   >[0]["progressReporter"];
@@ -34,10 +35,7 @@ export function createPlanningImplementationAdapter(
   PlanningImplementationInput,
   "state" | "phaseIndex" | "lock" | "stateStore" | "host" | "workspaces" | "git"
 > {
-  const steps = createStepAccounting({
-    progress: input.progressReporter,
-    issueNumber: input.issue.number,
-  });
+  const steps = input.stepAccounting;
   return {
     configuredGit: input.git,
     runAgent: async ({

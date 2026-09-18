@@ -387,6 +387,18 @@ export async function runPlanningWorkflow(input: {
     input.issue.number,
   );
   const runOptions = { ...input.options, piSessionPath };
+  await input.options.progress?.event({
+    time: attemptTimestamp,
+    level: "info",
+    stage: "run",
+    message: `issue #${input.issue.number} · ${input.issue.title}`,
+    issueNumber: input.issue.number,
+    step: {
+      type: "run-start",
+      issueNumber: input.issue.number,
+      title: input.issue.title,
+    },
+  });
   const planning = await runPlanningIssue({
     issue: input.issue,
     config: input.config,
