@@ -14,6 +14,7 @@ import {
 } from "../../../../test-support/legacy-seed.ts";
 import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
 import { parseArgs } from "./args.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 
 test("parseArgs executes by default when no args are provided", () => {
   const config = parseArgs([], cwd(), {});
@@ -254,6 +255,16 @@ test("summarizeResult normalizes development-environment diagnostics", () => {
     reason: "Kubernetes API unavailable",
     evidence: ["localhost:8080 refused connection"],
     remediation: ["Run devenv shell -- just tilt-up"],
+    publicFailure: runOnceFailure("development-environment-not-ready", {
+      issueNumber: 47,
+      status: "development-environment-not-ready",
+      phase: "implementation",
+      branch: "agent/issue-47-runtime-missing",
+      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
+      reportedReason: "Kubernetes API unavailable",
+      evidence: ["localhost:8080 refused connection"],
+      reportedRemediation: ["Run devenv shell -- just tilt-up"],
+    }),
     logPath: ".patchmill/runs/run.jsonl",
   });
   assert.equal(summary.reason, "development-environment-not-ready");

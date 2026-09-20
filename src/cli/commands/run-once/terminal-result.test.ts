@@ -601,8 +601,13 @@ test("counts only values that remain renderable after terminal sanitization", ()
   const summary: RunOnceResultSummary = {
     status: "blocked",
     issueNumber: 1,
-    reason: "blocked",
+    reason: "agent-blocked",
     questions: ["\u001b[31m\u001b[0m", "question"],
+    diagnostic: diagnosticFor("agent-blocked", {
+      issueNumber: 1,
+      reportedReason: "blocked",
+      questions: ["\u001b[31m\u001b[0m", "question"],
+    }),
   };
   const output = formatTerminalResult(summary, { width: 100, color: false });
   assert.match(output, /Questions \(1\)/u);
