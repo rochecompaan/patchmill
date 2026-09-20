@@ -46,20 +46,19 @@ export async function runOneIssue(
       options.now?.toISOString(),
     );
     switch (selected.kind) {
-      case "none":
-        if (config.issueNumber === undefined) {
-          const diagnostics = selectIssueWithDiagnostics(issues, {
-            readyLabel: labels.ready,
-            triagePolicy: config.triagePolicy,
-            approvalPolicy: config.approvalPolicy,
-          });
-          await emitSelectionDiagnostics(
-            diagnostics.rejections,
-            options,
-            labels.ready,
-          );
-        }
+      case "none": {
+        const diagnostics = selectIssueWithDiagnostics(issues, {
+          readyLabel: labels.ready,
+          triagePolicy: config.triagePolicy,
+          approvalPolicy: config.approvalPolicy,
+        });
+        await emitSelectionDiagnostics(
+          diagnostics.rejections,
+          options,
+          labels.ready,
+        );
         return withLogPath({ status: "no-issue" }, options);
+      }
       case "invalid-planning-state":
         return withLogPath(
           {

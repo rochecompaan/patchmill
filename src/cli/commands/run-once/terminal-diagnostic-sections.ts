@@ -74,7 +74,7 @@ export function diagnosticSections(
                     isRepeatedIssueWorkspaceDetail(summary, entry.key) ||
                     (summary.status === "blocked" &&
                       entry.key === "questions") ||
-                    (summary.status === "error" && entry.key === "logPath")
+                    entry.key === "logPath"
                   )
                     return [];
                   const role = detailRole(entry.key);

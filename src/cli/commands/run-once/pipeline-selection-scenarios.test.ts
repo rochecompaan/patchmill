@@ -492,6 +492,43 @@ test("runOneIssue returns no-issue when no eligible issue exists and performs no
   assert.equal(runner.calls.length, 2);
 });
 
+test("runOneIssue dry-run logs diagnostics for an explicitly requested ineligible Issue", async () => {
+  const config = await makeConfig({ issueNumber: 2 });
+  const rejected = issue(2, ["needs-info"], "Needs more detail");
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([rejected]) : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  await assert.rejects(
+    () => runOneIssue(runner, config, { now: NOW, progress }),
+    /not eligible because it has needs-info/,
+  );
+  const rejection = events.find((event) => event.level === "debug");
+  assert.equal(rejection?.message, "skipped #2: blocking labels");
+  assert.match(
+    String(
+      (rejection?.data as { diagnostic?: { explanation?: unknown } }).diagnostic
+        ?.explanation,
+    ),
+    /blocking labels/u,
+  );
+});
+
 test("runOneIssue dry-run logs skip diagnostics when automatic selection finds no eligible issue", async () => {
   const config = await makeConfig();
   const runner = createMockRunner((call) => {

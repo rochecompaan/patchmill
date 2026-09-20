@@ -242,12 +242,7 @@ async function runLegacyOneIssueInternal(
         options,
       );
     }
-    throw error;
-  }
-  const issue = selected?.issue;
-
-  if (!issue) {
-    if (config.issueNumber === undefined) {
+    if (config.issueNumber !== undefined) {
       const diagnostics = selectIssueWithDiagnostics(diagnosticIssues, {
         readyLabel: lifecycleLabels(config).ready,
         triagePolicy: config.triagePolicy,
@@ -258,6 +253,23 @@ async function runLegacyOneIssueInternal(
         options,
         lifecycleLabels(config).ready,
       );
+    }
+    throw error;
+  }
+  const issue = selected?.issue;
+
+  if (!issue) {
+    const diagnostics = selectIssueWithDiagnostics(diagnosticIssues, {
+      readyLabel: lifecycleLabels(config).ready,
+      triagePolicy: config.triagePolicy,
+      approvalPolicy: config.approvalPolicy,
+    });
+    await emitSelectionDiagnostics(
+      diagnostics.rejections,
+      options,
+      lifecycleLabels(config).ready,
+    );
+    if (config.issueNumber === undefined) {
       await progress(
         options,
         "info",

@@ -52,6 +52,46 @@ test("runOneIssue facade returns no-issue when no eligible issue exists", async 
   assert.deepEqual(result, { status: "no-issue" });
 });
 
+test("runOneIssue emits diagnostics for explicitly requested ineligible selection", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 2,
+  });
+  const rejected = issue(2, ["needs-info"], "Needs input");
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([rejected]) : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  const result = await runCurrentOneIssue(runner, config, {
+    now: NOW,
+    progress,
+  });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  const rejection = events.find((event) => event.level === "debug");
+  assert.equal(rejection?.message, "skipped #2: blocking labels");
+  assert.equal(
+    (rejection?.data as { diagnostic?: unknown }).diagnostic === undefined,
+    false,
+  );
+});
+
 test("runOneIssue emits diagnostics for default non-dry all-rejected selection", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const runner = createMockRunner((call) => {

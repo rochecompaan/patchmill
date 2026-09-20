@@ -61,6 +61,27 @@ test("renders common issue and workspace details only once", () => {
   assert.equal(output.match(new RegExp(worktreePath, "gu"))?.length, 1);
 });
 
+test("renders an unexpected-error log path once for blocked output", () => {
+  const logPath = "/tmp/blocked-issue-242.jsonl";
+  const output = formatTerminalResult(
+    {
+      status: "blocked",
+      issueNumber: 242,
+      reason: "unexpected-error",
+      questions: [],
+      logPath,
+      diagnostic: diagnosticFor("unexpected-error", {
+        issueNumber: 242,
+        error: "Unexpected failure",
+        logPath,
+      }),
+    },
+    { width: 100, color: false },
+  );
+  assert.equal(output.match(/\/tmp\/blocked-issue-242\.jsonl/gu)?.length, 1);
+  assert.match(output, /Run files/u);
+});
+
 test("renders an error log path only in Run files", () => {
   const logPath = "/tmp/issue-242.jsonl";
   const output = formatTerminalResult(
