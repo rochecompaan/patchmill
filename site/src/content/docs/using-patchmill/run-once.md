@@ -98,23 +98,50 @@ same structured diagnostic written to JSONL:
   "reason": "planning-workspace-dirty",
   "diagnostic": {
     "summary": "Planning workspace has local changes",
-    "explanation": "Patchmill stopped because the saved phase workspace is not clean and continuing could overwrite unreviewed work.",
+    "explanation": "The phase workspace contains local changes and cannot be resumed or published safely.",
     "details": [
+      {
+        "key": "issueNumber",
+        "label": "Issue",
+        "value": 242
+      },
+      {
+        "key": "phase",
+        "label": "Phase",
+        "value": "plan"
+      },
+      {
+        "key": "branch",
+        "label": "Branch",
+        "value": "agent/issue-242-plan"
+      },
       {
         "key": "worktreePath",
         "label": "Worktree",
         "value": ".worktrees/patchmill-issue-242-plan"
+      },
+      {
+        "key": "workspaceState",
+        "label": "Workspace state",
+        "value": "ready-dirty"
+      },
+      {
+        "key": "statusEvidence",
+        "label": "Status",
+        "value": " M docs/plans/issue-242.md"
       }
     ],
     "actions": [
       {
-        "description": "Inspect and preserve the reported workspace changes before retrying."
+        "description": "Inspect the reported phase, branch, path, state, and status evidence; preserve the work before retrying."
       }
     ],
-    "safety": ["Do not clean, reset, or delete the phase workspace."],
+    "safety": [
+      "Do not run git clean, destructive reset, or delete the phase workspace."
+    ],
     "retry": {
       "kind": "same-result",
-      "guidance": "An immediate retry will stop at the same workspace check."
+      "guidance": "An immediate retry will give the same result."
     }
   },
   "questions": []
@@ -141,16 +168,16 @@ untracked changes remain hard failures. Patchmill never force-cleans a phase
 workspace, force-updates a conflicting branch, or replaces a missing, ambiguous,
 or closed-unmerged planning pull request.
 
-| Situation                                            | Operator action                                                                                                                                      |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Open review                                          | Review or merge the same pull request, then rerun Run-once.                                                                                          |
-| Cleanup pending                                      | Inspect and preserve or remove every reported ignored path in the phase workspace, apply the configured ready label, then rerun the same issue.      |
-| Closed-unmerged, proven missing, or ambiguous review | Repair the host state manually; Patchmill does not replace the pull request.                                                                         |
-| Dirty or uncheckpointed phase workspace              | Inspect and preserve local work before retrying.                                                                                                     |
-| Transient host failure                               | Repair authentication or connectivity, then retry.                                                                                                   |
-| Active lock                                          | Wait for its owner; never remove it.                                                                                                                 |
-| Stale lock                                           | Prove the recorded process stopped, record its SHA-256 fingerprint, archive or move the exact `planning-pr-v1/locks/issue-N.lock` bytes, then rerun. |
-| Unverifiable or malformed lock                       | Coordinate with the recorded host/operator or inspect archived bytes before manual removal; age alone proves nothing.                                |
+| Situation                                            | Operator action                                                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Open review                                          | Review or merge the same pull request, then rerun Run-once.                                                                                                                    |
+| Cleanup pending                                      | Inspect and preserve or remove every reported ignored path in the phase workspace, apply the configured ready label, then rerun the same issue.                                |
+| Closed-unmerged, proven missing, or ambiguous review | Repair the host state manually; Patchmill does not replace the pull request.                                                                                                   |
+| Dirty or uncheckpointed phase workspace              | Inspect and preserve local work before retrying.                                                                                                                               |
+| Transient host failure                               | Repair authentication or connectivity, then retry.                                                                                                                             |
+| Active lock                                          | Wait for its owner; never remove it.                                                                                                                                           |
+| Stale lock                                           | Prove the recorded process stopped, record its SHA-256 fingerprint, preserve the exact lock bytes as recovery evidence, and coordinate a safe reconciliation before rerunning. |
+| Unverifiable or malformed lock                       | Coordinate with the recorded host/operator and inspect the preserved bytes before retrying; age alone proves nothing.                                                          |
 
 `patchmill run lease repair` and `patchmill run reset` do not authorize deleting
 a `planning-pr-v1` lock, state file, branch, or workspace. They retain their

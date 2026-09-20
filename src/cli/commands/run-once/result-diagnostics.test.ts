@@ -16,6 +16,13 @@ test("catalog exhaustively defines nonblank actionable policy for every public r
     const definition = CATALOG[reason];
     assert.ok(definition.summary.trim(), reason);
     assert.ok(definition.explanation.trim(), reason);
+    const actions = definition.actions({} as never);
+    assert.ok(actions.length, reason);
+    assert.ok(
+      actions.every((action) => action.description.trim()),
+      reason,
+    );
+    assert.ok(definition.safety.length, reason);
     assert.ok(
       definition.safety.every((warning) => warning.trim()),
       reason,

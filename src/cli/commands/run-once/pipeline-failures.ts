@@ -17,6 +17,7 @@ import {
   unexpectedFailureCommentKey,
 } from "./pipeline-comments.ts";
 import { lifecycleLabels, nextLabels } from "./pipeline-lifecycle.ts";
+import { formatErrorWithCauses } from "./pi-errors.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import {
   emitSimpleStep,
@@ -45,6 +46,7 @@ export async function unexpectedFailure(
   options: PipelineProgressOptions,
 ): Promise<AgentIssuePipelineResult> {
   const reason = errorMessage(error);
+  const formatted = formatErrorWithCauses(error);
   const status =
     checkpoints.worktreeReady || checkpoints.implementationCompleted
       ? "implementing"
@@ -114,7 +116,9 @@ export async function unexpectedFailure(
       publicFailure: runOnceFailure("unexpected-error", {
         issueNumber: issue.number,
         status: "blocked",
-        error: reason,
+        error: formatted.message,
+        ...(formatted.causes ? { causes: formatted.causes } : {}),
+        ...(options.logPath ? { logPath: options.logPath } : {}),
       }),
       questions: [],
       commits: [],
