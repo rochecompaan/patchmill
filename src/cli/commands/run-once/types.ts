@@ -222,6 +222,7 @@ export type AgentIssueApprovalRequiredResult = {
 
 export type AgentIssueCleanupPendingResult = {
   status: "cleanup-pending";
+  publicFailure?: AnyRunOnceFailure | undefined;
   issue: IssueSummary;
   phase: "spec" | "plan" | "implementation";
   prUrl: string;
@@ -244,6 +245,7 @@ export type AgentIssueReviewPendingResult = {
 };
 export type AgentIssueStoppedResult = {
   status: "stopped";
+  publicFailure?: AnyRunOnceFailure | undefined;
   issue: IssueSummary;
   reason: "plan-only" | "issue-locked";
   nextPhase?: "implementation" | undefined;

@@ -11,6 +11,7 @@ import { runPlanningWorkflow } from "./planning-pipeline.ts";
 import { selectRunOnceWorkflow } from "./planning-selection.ts";
 import { loadSelectionIssues } from "./pipeline-selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
@@ -46,7 +47,13 @@ export async function runOneIssue(
           {
             status: "blocked",
             issue: selected.issue,
-            reason: `planning-state-invalid: ${selected.reason}`,
+            reason: "planning-state-invalid",
+            publicFailure: runOnceFailure("planning-state-invalid", {
+              issueNumber: selected.issue.number,
+              status: "blocked",
+              statePath: planningState.path(selected.issue.number),
+              validation: selected.reason,
+            }),
             questions: [],
             commits: [],
             validation: [],

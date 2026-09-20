@@ -147,8 +147,18 @@ test("maps malformed post-lock planning state to a no-mutation blocker", async (
     release: async () => {},
   });
   assert.equal(result.status, "blocked");
-  if (result.status === "blocked")
-    assert.match(result.result.reason, /issue-189\.json.*invalid-json/);
+  if (result.status === "blocked") {
+    assert.equal(result.result.reason, "planning-state-invalid");
+    assert.deepEqual(result.result.publicFailure, {
+      reason: "planning-state-invalid",
+      diagnosticContext: {
+        issueNumber: 189,
+        status: "blocked",
+        statePath: "/tmp/state/issue-189.json",
+        validation: "invalid-json at $",
+      },
+    });
+  }
   assert.equal(mutated, false);
 });
 

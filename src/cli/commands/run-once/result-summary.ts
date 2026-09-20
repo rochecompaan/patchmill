@@ -258,17 +258,22 @@ export function summarizeResult(
         ...(result.worktreePath !== undefined
           ? { worktreePath: result.worktreePath }
           : {}),
-        ...summarizeFailure(result.reason, {
-          ...workspaceContext({
-            issueNumber: result.issue.number,
-            branch: result.branch,
-            worktreePath: result.worktreePath,
-            status: result.status,
-          }),
-          ...(result.reason === "plan-only"
-            ? { nextPhase: result.nextPhase }
-            : { lockPath: "planning lock", fingerprint: "unavailable" }),
-        } as never),
+        ...(result.publicFailure
+          ? summarizeFailure(
+              result.publicFailure.reason,
+              result.publicFailure.diagnosticContext as never,
+            )
+          : summarizeFailure(result.reason, {
+              ...workspaceContext({
+                issueNumber: result.issue.number,
+                branch: result.branch,
+                worktreePath: result.worktreePath,
+                status: result.status,
+              }),
+              ...(result.reason === "plan-only"
+                ? { nextPhase: result.nextPhase }
+                : { lockPath: "planning lock", fingerprint: "unavailable" }),
+            } as never)),
         ...withLogPath,
       };
     case "approval-required":

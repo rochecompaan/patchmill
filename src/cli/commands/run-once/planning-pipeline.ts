@@ -30,7 +30,6 @@ import {
   legacyConflictsWithPlanning,
   planningFinishReachedDoneLabelBoundary,
   planningIssueEligible,
-  planningStateDiagnostic,
 } from "./planning-selection.ts";
 import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts";
 import { readRunState } from "./run-state.ts";
@@ -38,6 +37,7 @@ import { planLabelChange } from "../triage/labels.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { AgentIssueBlockedResult } from "../../../issue-run/types.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueConfig,
@@ -90,18 +90,40 @@ type PlanningIssueInput = {
   release?: typeof releasePlanningIssueLock;
 };
 
-function blocked(issue: IssueSummary, reason: string): PlanningPipelineResult {
+function blocked(
+  issue: IssueSummary,
+  reason: string,
+  publicFailure?: import("./result-diagnostics.ts").AnyRunOnceFailure,
+): PlanningPipelineResult {
   return {
     status: "blocked",
     issue,
     result: {
       status: "blocked",
       reason,
+      ...(publicFailure ? { publicFailure } : {}),
       questions: [],
       commits: [],
       validation: [],
     },
   };
+}
+
+function planningLockFailure(
+  issue: IssueSummary,
+  diagnostic: PlanningIssueLockConflictError["diagnostic"],
+) {
+  const reason =
+    diagnostic.classification === "active"
+      ? "issue-locked"
+      : (`issue-lock-${diagnostic.classification}` as const);
+  return runOnceFailure(reason, {
+    issueNumber: issue.number,
+    status: "blocked",
+    lockPath: diagnostic.path,
+    fingerprint: diagnostic.fingerprint,
+    ...(diagnostic.owner ? { owner: diagnostic.owner } : {}),
+  } as never);
 }
 
 export function planningIssueNeedsClaim(input: {
@@ -161,16 +183,18 @@ export async function runPlanningIssue(
       });
     } catch (error) {
       if (error instanceof PlanningIssueLockConflictError) {
+        const publicFailure = planningLockFailure(
+          input.issue,
+          error.diagnostic,
+        );
         if (error.diagnostic.classification === "active")
           return {
             status: "stopped",
             issue: input.issue,
             reason: "issue-locked",
+            publicFailure,
           };
-        return blocked(
-          input.issue,
-          `issue-lock-${error.diagnostic.classification}`,
-        );
+        return blocked(input.issue, publicFailure.reason, publicFailure);
       }
       throw error;
     }
@@ -189,10 +213,15 @@ export async function runPlanningIssue(
         if (error instanceof PlanningStateValidationError)
           return blocked(
             input.issue,
-            `planning-state-invalid: ${planningStateDiagnostic(
-              error,
-              planningStatePath(input.runStateDir, input.issue.number),
-            )}`,
+            "planning-state-invalid",
+            runOnceFailure("planning-state-invalid", {
+              issueNumber: input.issue.number,
+              status: "blocked",
+              statePath:
+                error.statePath ??
+                planningStatePath(input.runStateDir, input.issue.number),
+              validation: `${error.reason} at ${error.path}`,
+            }),
           );
         throw error;
       }
@@ -235,23 +264,35 @@ export async function runPlanningIssue(
           });
         } catch (error) {
           if (error instanceof PlanningIssueLockConflictError) {
+            const publicFailure = planningLockFailure(
+              input.issue,
+              error.diagnostic,
+            );
             if (error.diagnostic.classification === "active")
               return {
                 status: "stopped",
                 issue: input.issue,
                 reason: "issue-locked",
+                publicFailure,
               };
-            return blocked(
-              input.issue,
-              `issue-lock-${error.diagnostic.classification}`,
-            );
+            return blocked(input.issue, publicFailure.reason, publicFailure);
           }
           throw error;
         }
         continue;
       }
       if (current.runId !== lock.record.runId)
-        return blocked(input.issue, "planning-run-id-mismatch");
+        return blocked(
+          input.issue,
+          "planning-run-id-mismatch",
+          runOnceFailure("planning-run-id-mismatch", {
+            issueNumber: input.issue.number,
+            status: "blocked",
+            statePath: planningStatePath(input.runStateDir, input.issue.number),
+            savedRunId: current.runId,
+            lockRunId: lock.record.runId,
+          }),
+        );
       const reconciled = await input.reconcileCleanupPendingPublication?.({
         issue,
         state: current,
