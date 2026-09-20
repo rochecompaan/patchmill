@@ -528,7 +528,15 @@ test("runOneIssue dry-run logs skip diagnostics when automatic selection finds n
     skipEvents.map((event) => ({
       message: event.message,
       issueNumber: event.issueNumber,
-      data: event.data,
+      data:
+        event.data &&
+        (() => {
+          const { diagnostic: _diagnostic, ...data } = event.data as Record<
+            string,
+            unknown
+          >;
+          return data;
+        })(),
     })),
     [
       {
@@ -606,7 +614,15 @@ test("runOneIssue dry-run retains approval-wait skip diagnostics after selection
       .map((event) => ({
         message: event.message,
         issueNumber: event.issueNumber,
-        data: event.data,
+        data:
+          event.data &&
+          (() => {
+            const { diagnostic: _diagnostic, ...data } = event.data as Record<
+              string,
+              unknown
+            >;
+            return data;
+          })(),
       })),
     [
       {

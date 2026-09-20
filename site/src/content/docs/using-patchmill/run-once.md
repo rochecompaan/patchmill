@@ -73,6 +73,26 @@ implementation pull request while its Issue run remains incomplete. An open
 planning review takes precedence over a plan-only stop; a later invocation
 without the option resumes the saved phase and gate snapshot.
 
+### Failure diagnostics
+
+Every reason-bearing blocked, stopped, cleanup, environment, and error result
+keeps its stable `reason` code and adds a `diagnostic` object. The object has a
+short `summary`, plain-language `explanation`, attributed `details`, safe
+`actions`, `safety` warnings, and `retry` guidance. Redirected stdout and the
+final JSONL `result` event contain the same object; terminal output renders the
+same fields as Reason, Explanation, Details, Recommended action, Safety, and
+Retry.
+
+`retry.kind` is `retry-now`, `after-action`, `same-result`, or `inspect-first`.
+Selection rejection JSONL events also include a diagnostic beside their reason.
+A final `no-issue` result intentionally has no aggregate reason because its
+per-Issue rejection events are the source of that information.
+
+Commands in diagnostics are limited to supported commands with a positive Issue
+number: `patchmill run-once --issue N`, and, only for Issue run lease/fence
+recovery, `patchmill run lease repair --issue N`. A `planning-pr-v1` planning
+lock is not an Issue run lease: lock diagnostics never recommend lease repair.
+
 ## Recovery and operator safety
 
 A retry observes durable state, the remote, and the host before repeating an
