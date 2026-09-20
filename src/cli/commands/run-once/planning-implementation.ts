@@ -28,13 +28,18 @@ import {
   validatePlanningImplementation,
 } from "./planning-implementation-validation.ts";
 import { recoverPostAgentWorkspace } from "./planning-implementation-workspace-recovery.ts";
+import {
+  runOnceFailure,
+  type AnyRunOnceFailure,
+} from "./result-diagnostics.ts";
+import type { AgentIssueInternalBlockedResult } from "./types.ts";
 
 export type PlanningImplementationOutcome =
   | { kind: "validated"; state: PlanningStateV1 }
   | {
       kind: "blocked";
       state: PlanningStateV1;
-      result: AgentIssueBlockedResult;
+      result: AgentIssueInternalBlockedResult;
     };
 
 export type PlanningImplementationInput = {
@@ -63,10 +68,14 @@ export type PlanningImplementationInput = {
   now?: () => Date;
 };
 
-function blocked(reason: string): AgentIssueBlockedResult {
+function blocked(
+  reason: string,
+  publicFailure?: AnyRunOnceFailure,
+): AgentIssueInternalBlockedResult {
   return {
     status: "blocked",
     reason,
+    ...(publicFailure ? { publicFailure } : {}),
     questions: [],
     commits: [],
     validation: [],
@@ -145,7 +154,20 @@ export async function runPlanningImplementation(
       return {
         kind: "blocked",
         state,
-        result: blocked("implementation-configuration"),
+        result: blocked(
+          "implementation-configuration",
+          runOnceFailure("implementation-configuration", {
+            issueNumber: state.issueNumber,
+            status: "blocked",
+            phase: "implementation",
+            branch: phase.workspace.identity.branch,
+            worktreePath: phase.workspace.identity.worktreePath,
+            expectedRemote: phase.workspace.remote,
+            observedRemote: input.configuredGit.remote,
+            expectedBaseBranch: phase.base.baseBranch,
+            observedBaseBranch: input.configuredGit.baseBranch,
+          }),
+        ),
       };
     let result: Awaited<ReturnType<PlanningImplementationInput["runAgent"]>>;
     try {
@@ -199,7 +221,18 @@ export async function runPlanningImplementation(
       return {
         kind: "blocked",
         state: recovered.state,
-        result: blocked("implementation-workspace"),
+        result: blocked(
+          "implementation-workspace",
+          runOnceFailure("implementation-workspace", {
+            issueNumber: state.issueNumber,
+            status: "blocked",
+            phase: "implementation",
+            branch: phase.workspace.identity.branch,
+            worktreePath: phase.workspace.identity.worktreePath,
+            workspaceState: "unsafe",
+            expectedHeadOid: phase.workspace.headOid,
+          }),
+        ),
       };
     }
     state = recovered.state;
@@ -210,7 +243,18 @@ export async function runPlanningImplementation(
       return {
         kind: "blocked",
         state,
-        result: blocked("implementation-direct-merge"),
+        result: blocked(
+          "implementation-direct-merge",
+          runOnceFailure("implementation-direct-merge", {
+            issueNumber: state.issueNumber,
+            status: "blocked",
+            phase: "implementation",
+            branch: phase.workspace.identity.branch,
+            worktreePath: phase.workspace.identity.worktreePath,
+            reportedBranch: result.branch,
+            mergeCommit: result.mergeCommit,
+          }),
+        ),
       };
     const runCostReport = await input.resolveRunCost?.();
     try {

@@ -133,8 +133,13 @@ test("blocks remote and base configuration drift before invoking a resumed imple
       }),
     );
     assert.equal(result.kind, "blocked");
-    if (result.kind === "blocked")
+    if (result.kind === "blocked") {
       assert.equal(result.result.reason, "implementation-configuration");
+      assert.equal(
+        result.result.publicFailure?.reason,
+        "implementation-configuration",
+      );
+    }
     assert.equal(agentRuns, 0);
   }
 });
