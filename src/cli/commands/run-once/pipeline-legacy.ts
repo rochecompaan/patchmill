@@ -208,7 +208,16 @@ async function runLegacyOneIssueInternal(
     options.leasedIssueNumber === undefined
       ? await loadSelectionIssues(host, config, options)
       : [await host.viewIssue(options.leasedIssueNumber)];
-  // A blocked saved attempt is never an implicit retry target.  It needs an
+  // Keep automatic approval-wait candidates only for the no-selection
+  // diagnostic. They must not enter recovery-state reads or selection.
+  const automaticIneligibleIssues =
+    config.issueNumber === undefined
+      ? loadedIssues.filter(
+          (candidate) =>
+            !automaticWorkflowStateEligible(candidate.labels, config),
+        )
+      : [];
+  // A blocked saved attempt is never an implicit retry target. It needs an
   // explicit issue acknowledgement and the normal recovery gate below.
   const issues =
     config.issueNumber === undefined
@@ -262,11 +271,14 @@ async function runLegacyOneIssueInternal(
 
   if (!issue) {
     if (config.issueNumber === undefined) {
-      const diagnostics = selectIssueWithDiagnostics(issues, {
-        readyLabel: lifecycleLabels(config).ready,
-        triagePolicy: config.triagePolicy,
-        approvalPolicy: config.approvalPolicy,
-      });
+      const diagnostics = selectIssueWithDiagnostics(
+        [...issues, ...automaticIneligibleIssues],
+        {
+          readyLabel: lifecycleLabels(config).ready,
+          triagePolicy: config.triagePolicy,
+          approvalPolicy: config.approvalPolicy,
+        },
+      );
       await emitSelectionDiagnostics(diagnostics.rejections, options);
       await progress(
         options,
