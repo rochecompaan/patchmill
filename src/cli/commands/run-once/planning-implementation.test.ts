@@ -488,8 +488,13 @@ test("blocks unproven reported commits before branch-pushed evidence", async () 
     }),
   );
   assert.equal(result.kind, "blocked");
-  if (result.kind === "blocked")
+  if (result.kind === "blocked") {
     assert.equal(result.result.reason, "implementation-ancestry");
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "implementation-ancestry",
+    );
+  }
   assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
   assert.equal(inspectedRemote, false);
 });

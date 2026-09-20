@@ -35,6 +35,40 @@ test("planning-lock advice preserves evidence and never offers lease repair", ()
   assert.doesNotMatch(JSON.stringify(diagnostic.actions), /lease repair/u);
 });
 
+test("manual inspection and non-lease recovery diagnostics do not advertise commands", () => {
+  for (const reason of [
+    "issue-lock-unverifiable",
+    "issue-lock-malformed",
+  ] as const) {
+    assert.equal(
+      diagnosticFor(reason, {
+        issueNumber: 242,
+        lockPath: "/repo/.patchmill/planning-pr-v1/locks/issue-242.lock",
+        fingerprint: "a".repeat(64),
+      }).actions[0]?.command,
+      undefined,
+    );
+  }
+  assert.equal(
+    diagnosticFor("active-run", {
+      issueNumber: 242,
+      resource: "lease-guard",
+      leasePath: "/repo/.patchmill/locks/issue-242.lock",
+      guidance: [],
+    }).actions[0]?.command,
+    undefined,
+  );
+  assert.equal(
+    diagnosticFor("active-run", {
+      issueNumber: 242,
+      resource: "lease",
+      leasePath: "/repo/.patchmill/locks/issue-242.lock",
+      guidance: [],
+    }).actions[0]?.command,
+    "patchmill run lease repair --issue 242",
+  );
+});
+
 test("commands use only validated issue numbers and hostile agent text remains details", () => {
   const hostile = diagnosticFor("agent-blocked", {
     issueNumber: 242,

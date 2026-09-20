@@ -271,7 +271,20 @@ export async function runPlanningImplementation(
         return {
           kind: "blocked",
           state,
-          result: blocked("implementation-ancestry"),
+          result: blocked(
+            "implementation-ancestry",
+            runOnceFailure("implementation-ancestry", {
+              issueNumber: state.issueNumber,
+              status: "blocked",
+              phase: "implementation",
+              branch: phase.workspace.identity.branch,
+              worktreePath: phase.workspace.identity.worktreePath,
+              baseOid: phase.base.baseOid,
+              savedHeadOid: phase.workspace.headOid,
+              observedHeadOid: workspace.headOid,
+              commits: result.commits,
+            }),
+          ),
         };
       throw error;
     }
@@ -283,7 +296,22 @@ export async function runPlanningImplementation(
       return {
         kind: "blocked",
         state,
-        result: blocked("implementation-remote-head"),
+        result: blocked(
+          "implementation-remote-head",
+          runOnceFailure("implementation-remote-head", {
+            issueNumber: state.issueNumber,
+            status: "blocked",
+            phase: "implementation",
+            branch: phase.workspace.identity.branch,
+            worktreePath: phase.workspace.identity.worktreePath,
+            remote: phase.workspace.remote,
+            expectedHeadOid: workspace.headOid,
+            observedRemoteState: remote.state,
+            ...(remote.state === "present"
+              ? { observedHeadOid: remote.headOid }
+              : {}),
+          }),
+        ),
       };
     const [targetRepository, headRepository] = await Promise.all([
       input.host.resolveTargetRepositoryIdentity(),
@@ -294,7 +322,22 @@ export async function runPlanningImplementation(
       targetRepository,
     );
     if (canonicalPrUrl === undefined)
-      return { kind: "blocked", state, result: blocked("implementation-url") };
+      return {
+        kind: "blocked",
+        state,
+        result: blocked(
+          "implementation-url",
+          runOnceFailure("implementation-url", {
+            issueNumber: state.issueNumber,
+            status: "blocked",
+            phase: "implementation",
+            branch: phase.workspace.identity.branch,
+            worktreePath: phase.workspace.identity.worktreePath,
+            reportedUrl: result.prUrl,
+            expectedRepository: `${targetRepository.host}/${targetRepository.owner}/${targetRepository.repository}`,
+          }),
+        ),
+      };
     const branchPushed: ImplementationBranchPushedPlanningPhase = {
       ...phase,
       status: "branch-pushed",
@@ -340,7 +383,18 @@ export async function runPlanningImplementation(
       return {
         kind: "blocked",
         state,
-        result: blocked("implementation-branch"),
+        result: blocked(
+          "implementation-branch",
+          runOnceFailure("implementation-branch", {
+            issueNumber: state.issueNumber,
+            status: "blocked",
+            phase: "implementation",
+            branch: phase.workspace.identity.branch,
+            worktreePath: phase.workspace.identity.worktreePath,
+            expectedBranch: phase.workspace.identity.branch,
+            reportedBranch: branchPushed.implementation.branch,
+          }),
+        ),
       };
     try {
       state = await replace(input, state, branchPushed);
@@ -349,7 +403,17 @@ export async function runPlanningImplementation(
         return {
           kind: "blocked",
           state,
-          result: blocked("implementation-evidence"),
+          result: blocked(
+            "implementation-evidence",
+            runOnceFailure("implementation-evidence", {
+              issueNumber: state.issueNumber,
+              status: "blocked",
+              phase: "implementation",
+              branch: phase.workspace.identity.branch,
+              worktreePath: phase.workspace.identity.worktreePath,
+              validation: error.message,
+            }),
+          ),
         };
       throw error;
     }
@@ -378,7 +442,18 @@ export async function runPlanningImplementation(
       return {
         kind: "blocked",
         state,
-        result: blocked(error.message),
+        result: blocked(
+          "implementation-validation",
+          runOnceFailure("implementation-validation", {
+            issueNumber: state.issueNumber,
+            status: "blocked",
+            phase: "implementation",
+            branch: phase.workspace.identity.branch,
+            worktreePath: phase.workspace.identity.worktreePath,
+            validationReason: error.reason,
+            pullRequestUrl: phase.implementation.prUrl,
+          }),
+        ),
       };
     throw error;
   }

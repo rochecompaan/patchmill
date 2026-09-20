@@ -1,4 +1,4 @@
-import { definition } from "./result-diagnostic-helpers.ts";
+import { definition, issueCommand } from "./result-diagnostic-helpers.ts";
 import type {
   RecoveryDiagnosticReasonCode,
   RunOnceDiagnosticCatalog,
@@ -14,18 +14,32 @@ const inspect = (guidance: string) => ({
 });
 const retry = (guidance: string) => ({ kind: "retry-now" as const, guidance });
 export const RECOVERY_DIAGNOSTICS = {
-  "active-run": definition({
-    summary: "Issue run is active",
-    explanation:
-      "An Issue run lease, lease guard, or repair lock is owned or cannot be proven free.",
-    action:
-      "Wait for affected runners to stop, then inspect with Issue run lease repair when lease repair is relevant.",
-    command: "lease-repair",
-    safety: "Never remove lease resources while an owner may be active.",
-    retry: same(
-      "An immediate retry will give the same result while ownership is active or uncertain.",
-    ),
-  }),
+  "active-run": {
+    ...definition({
+      summary: "Issue run is active",
+      explanation:
+        "An Issue run lease, lease guard, or repair lock is owned or cannot be proven free.",
+      action:
+        "Wait for affected runners to stop, then inspect with Issue run lease repair when lease repair is relevant.",
+      safety: "Never remove lease resources while an owner may be active.",
+      retry: same(
+        "An immediate retry will give the same result while ownership is active or uncertain.",
+      ),
+    }),
+    actions: (context) => {
+      const command =
+        context.resource === "lease"
+          ? issueCommand("lease-repair", context.issueNumber)
+          : undefined;
+      return [
+        {
+          description:
+            "Wait for affected runners to stop, then inspect with Issue run lease repair when lease repair is relevant.",
+          ...(command ? { command } : {}),
+        },
+      ];
+    },
+  },
   "dirty-worktree": definition({
     summary: "Recovery found workspace changes",
     explanation:

@@ -7,6 +7,24 @@ import {
   type AnyRunOnceFailure,
 } from "./result-diagnostics.ts";
 
+type PublicLeaseOwner = {
+  pid: number;
+  hostname: string;
+  acquiredAt: string;
+};
+
+function publicLeaseOwner(owner: {
+  pid: number;
+  hostname: string;
+  acquiredAt: string;
+}): PublicLeaseOwner {
+  return {
+    pid: owner.pid,
+    hostname: owner.hostname,
+    acquiredAt: owner.acquiredAt,
+  };
+}
+
 /** Converts already-observed pipeline errors into bounded public diagnostics without I/O. */
 export function failureForPipelineError(
   error: unknown,
@@ -18,7 +36,7 @@ export function failureForPipelineError(
       status: "error",
       resource: error.resource,
       leasePath: error.leasePath,
-      ...(error.owner ? { owner: error.owner } : {}),
+      ...(error.owner ? { owner: publicLeaseOwner(error.owner) } : {}),
       guidance: ["Wait for affected runners to stop before lease repair."],
     });
   if (error instanceof RunRecoveryRefusalError) {
@@ -29,7 +47,7 @@ export function failureForPipelineError(
         status: "error",
         resource: decision.resource,
         leasePath: decision.leasePath,
-        ...(decision.owner ? { owner: decision.owner } : {}),
+        ...(decision.owner ? { owner: publicLeaseOwner(decision.owner) } : {}),
         guidance: decision.guidance,
       });
     const assessment = decision.assessment;
@@ -93,6 +111,8 @@ export function failureForPipelineError(
   if (error instanceof PlanningWorkspaceConflictError)
     return runOnceFailure("planning-workspace-conflict", {
       conflictReason: error.reason,
+      branch: error.identity.branch,
+      worktreePath: error.identity.worktreePath,
     });
   const formatted = formatErrorWithCauses(error);
   return runOnceFailure("unexpected-error", {

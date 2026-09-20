@@ -3,6 +3,7 @@ import type {
   WorkspaceReadyPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import {
   blocked,
   operations,
@@ -145,7 +146,17 @@ export async function runPlanningSpecPlanPhase(
     return {
       kind: "blocked",
       state: published.state,
-      result: blocked("planning-pull-request-ambiguous"),
+      result: blocked(
+        "planning-pull-request-ambiguous",
+        runOnceFailure("planning-pull-request-ambiguous", {
+          issueNumber: published.state.issueNumber,
+          status: "blocked",
+          phase: phase.kind,
+          pullRequestUrls: published.pullRequests.map(
+            (pullRequest) => pullRequest.url,
+          ),
+        }),
+      ),
     };
   return published.pullRequest.status === "open"
     ? {

@@ -129,10 +129,12 @@ export function definition<R extends RunOnceReasonCode>(
     explanation: policy.explanation,
     details: (context) => contextDetails(context),
     actions: (context) => {
-      const command = issueCommand(
-        policy.command ?? "run-once",
-        (context as RunOnceDiagnosticContextByReason[R]).issueNumber,
-      );
+      const command = policy.command
+        ? issueCommand(
+            policy.command,
+            (context as RunOnceDiagnosticContextByReason[R]).issueNumber,
+          )
+        : undefined;
       return [{ description: policy.action, ...(command ? { command } : {}) }];
     },
     safety: [policy.safety],

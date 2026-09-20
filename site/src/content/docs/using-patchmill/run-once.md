@@ -83,7 +83,44 @@ final JSONL `result` event contain the same object; terminal output renders the
 same fields as Reason, Explanation, Details, Recommended action, Safety, and
 Retry.
 
-`retry.kind` is `retry-now`, `after-action`, `same-result`, or `inspect-first`.
+`retry.kind` states when another invocation can help: `retry-now` means the
+recommended normal command can make progress now; `after-action` means first
+complete the listed safe action; `same-result` means the same command will stop
+again until the recorded state changes; and `inspect-first` means inspect and
+reconcile preserved evidence before deciding whether to retry. For example,
+redirected output for a dirty phase workspace includes its stable code and the
+same structured diagnostic written to JSONL:
+
+```json
+{
+  "status": "blocked",
+  "issueNumber": 242,
+  "reason": "planning-workspace-dirty",
+  "diagnostic": {
+    "summary": "Planning workspace has local changes",
+    "explanation": "Patchmill stopped because the saved phase workspace is not clean and continuing could overwrite unreviewed work.",
+    "details": [
+      {
+        "key": "worktreePath",
+        "label": "Worktree",
+        "value": ".worktrees/patchmill-issue-242-plan"
+      }
+    ],
+    "actions": [
+      {
+        "description": "Inspect and preserve the reported workspace changes before retrying."
+      }
+    ],
+    "safety": ["Do not clean, reset, or delete the phase workspace."],
+    "retry": {
+      "kind": "same-result",
+      "guidance": "An immediate retry will stop at the same workspace check."
+    }
+  },
+  "questions": []
+}
+```
+
 Selection rejection JSONL events also include a diagnostic beside their reason.
 A final `no-issue` result intentionally has no aggregate reason because its
 per-Issue rejection events are the source of that information.
