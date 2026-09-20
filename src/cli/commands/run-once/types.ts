@@ -14,6 +14,7 @@ import type {
   AgentIssuePrCreatedResult,
   AgentIssueVisualEvidence,
 } from "../../../issue-run/types.ts";
+import type { AnyRunOnceFailure } from "./result-diagnostics.ts";
 
 export type {
   CommandResult,
@@ -257,6 +258,11 @@ type AgentIssuePipelineResultLog = {
   piSessionPath?: string | undefined;
 };
 
+/** Agent-facing results retain free-form reasons; public adapters attach this bounded envelope. */
+export type AgentIssueInternalBlockedResult = AgentIssueBlockedResult & {
+  publicFailure?: AnyRunOnceFailure | undefined;
+};
+
 export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
   (
     | { status: "no-issue" }
@@ -299,7 +305,7 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         planPath?: string | undefined;
         worktreePath?: string | undefined;
         branch?: string | undefined;
-      } & AgentIssueBlockedResult)
+      } & AgentIssueInternalBlockedResult)
   );
 
 // Recovery is deliberately modelled separately from persisted run status. A Run

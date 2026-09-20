@@ -44,6 +44,7 @@ test("blockIssue writes blocked state and returns blocked result", async () => {
     {},
   );
   assert.equal(result.status, "blocked");
+  assert.equal(result.publicFailure?.reason, "agent-blocked");
   assert.match(
     await readFile(runStatePath(config.runStateDir, 1), "utf8"),
     /need info/,
@@ -65,5 +66,6 @@ test("unexpectedFailure comments once and records blocked result", async () => {
     { progress },
   );
   assert.equal(result.status, "blocked");
+  assert.equal(result.publicFailure?.reason, "unexpected-error");
   assert.equal(fakeHost.comments.length, 1);
 });

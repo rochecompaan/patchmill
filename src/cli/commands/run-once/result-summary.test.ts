@@ -60,21 +60,19 @@ test("summaries preserve the established PR machine shape", () => {
 });
 
 test("summarizeErrorResult preserves aggregate causes and resolved log path", () => {
-  assert.deepEqual(
-    summarizeErrorResult(
-      new AggregateError(
-        [new Error("observer failed"), new Error("cleanup failed")],
-        "Pi run failed",
-      ),
-      "/repo/.patchmill/runs/issue-174/run.jsonl",
+  const summary = summarizeErrorResult(
+    new AggregateError(
+      [new Error("observer failed"), new Error("cleanup failed")],
+      "Pi run failed",
     ),
-    {
-      status: "error",
-      error: "Pi run failed",
-      causes: ["observer failed", "cleanup failed"],
-      logPath: "/repo/.patchmill/runs/issue-174/run.jsonl",
-    },
+    "/repo/.patchmill/runs/issue-174/run.jsonl",
   );
+  assert.equal(summary.reason, "unexpected-error");
+  assert.equal(
+    summary.diagnostic?.details.find((entry) => entry.key === "error")?.value,
+    "Pi run failed",
+  );
+  assert.deepEqual(summary.causes, ["observer failed", "cleanup failed"]);
 });
 
 test("summarizes planning review and explicit stops without leaking the issue", () => {
@@ -99,26 +97,20 @@ test("summarizes planning review and explicit stops without leaking the issue", 
       prUrl: "https://example.test/owner/repo/pull/12",
     },
   );
-  assert.deepEqual(
-    summarizeResult({
-      status: "stopped",
-      issue,
-      reason: "plan-only",
-      nextPhase: "implementation",
-      specPath: "docs/specs/issue-189.md",
-      planPath: "docs/plans/issue-189.md",
-      branch: "agent/issue-189-implementation",
-      worktreePath: ".worktrees/issue-189-implementation",
-    }),
-    {
-      status: "stopped",
-      issueNumber: 189,
-      reason: "plan-only",
-      nextPhase: "implementation",
-      specPath: "docs/specs/issue-189.md",
-      planPath: "docs/plans/issue-189.md",
-      branch: "agent/issue-189-implementation",
-      worktreePath: ".worktrees/issue-189-implementation",
-    },
+  const stopped = summarizeResult({
+    status: "stopped",
+    issue,
+    reason: "plan-only",
+    nextPhase: "implementation",
+    specPath: "docs/specs/issue-189.md",
+    planPath: "docs/plans/issue-189.md",
+    branch: "agent/issue-189-implementation",
+    worktreePath: ".worktrees/issue-189-implementation",
+  });
+  assert.equal(stopped.status, "stopped");
+  assert.equal(stopped.diagnostic?.retry.kind, "retry-now");
+  assert.equal(
+    stopped.diagnostic?.actions[0]?.command,
+    "patchmill run-once --issue 189",
   );
 });

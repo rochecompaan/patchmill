@@ -1,6 +1,11 @@
 import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
 import { formatErrorWithCauses } from "./pi-errors.ts";
 import type { AgentIssuePipelineResult } from "./types.ts";
+import type { RunOnceDiagnostic } from "./result-diagnostics.ts";
+import {
+  summarizeFailure,
+  workspaceContext,
+} from "./result-summary-diagnostics.ts";
 
 export type RunOnceResultLog = { logPath?: string; piSessionPath?: string };
 
@@ -65,6 +70,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         planPath?: string;
         commits?: string[];
         validation?: string[];
+        diagnostic?: RunOnceDiagnostic;
       }
     | {
         status: "review-pending";
@@ -81,6 +87,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         planPath?: string;
         branch?: string;
         worktreePath?: string;
+        diagnostic?: RunOnceDiagnostic;
       }
     | {
         status: "approval-required";
@@ -98,18 +105,27 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         reason: string;
         evidence: string[];
         remediation: string[];
+        diagnostic?: RunOnceDiagnostic;
       }
     | {
         status: "blocked";
         issueNumber: number;
         reason: string;
         questions: string[];
+        diagnostic?: RunOnceDiagnostic;
       }
   );
 
 export type RunOnceResultSummary =
   | RunOncePipelineResultSummary
-  | { status: "error"; error: string; causes?: string[]; logPath?: string };
+  | {
+      status: "error";
+      error: string;
+      causes?: string[];
+      logPath?: string;
+      reason?: "unexpected-error";
+      diagnostic?: RunOnceDiagnostic;
+    };
 export type RunOnceResultStatus = RunOnceResultSummary["status"];
 
 function questionText(
@@ -207,6 +223,17 @@ export function summarizeResult(
         ...(result.validation === undefined
           ? {}
           : { validation: [...result.validation] }),
+        ...summarizeFailure("ignored-worktree-content", {
+          ...workspaceContext({
+            issueNumber: result.issue.number,
+            phase: result.phase,
+            branch: result.branch,
+            worktreePath: result.worktreePath,
+            status: result.status,
+          }),
+          ignoredPaths: result.ignoredPaths,
+          guidance: result.remediation,
+        }),
         ...withLogPath,
       };
     case "review-pending":
@@ -231,6 +258,17 @@ export function summarizeResult(
         ...(result.worktreePath !== undefined
           ? { worktreePath: result.worktreePath }
           : {}),
+        ...summarizeFailure(result.reason, {
+          ...workspaceContext({
+            issueNumber: result.issue.number,
+            branch: result.branch,
+            worktreePath: result.worktreePath,
+            status: result.status,
+          }),
+          ...(result.reason === "plan-only"
+            ? { nextPhase: result.nextPhase }
+            : { lockPath: "planning lock", fingerprint: "unavailable" }),
+        } as never),
         ...withLogPath,
       };
     case "approval-required":
@@ -254,16 +292,45 @@ export function summarizeResult(
         reason: result.reason,
         evidence: result.evidence,
         remediation: result.remediation,
+        ...summarizeFailure("development-environment-not-ready", {
+          ...workspaceContext({
+            issueNumber: result.issue.number,
+            branch: result.branch,
+            worktreePath: result.worktreePath,
+            status: result.status,
+          }),
+          reportedReason: result.reason,
+          evidence: result.evidence,
+          reportedRemediation: result.remediation,
+        }),
         ...withLogPath,
       };
-    case "blocked":
+    case "blocked": {
+      const publicFailure = result.publicFailure;
       return {
         status: result.status,
         issueNumber: result.issue.number,
-        reason: result.reason,
+        reason: publicFailure?.reason ?? "agent-blocked",
         questions: result.questions.map(questionText),
+        ...(publicFailure
+          ? summarizeFailure(
+              publicFailure.reason,
+              publicFailure.diagnosticContext as never,
+            )
+          : summarizeFailure("agent-blocked", {
+              ...workspaceContext({
+                issueNumber: result.issue.number,
+                branch: result.branch,
+                worktreePath: result.worktreePath,
+                status: result.status,
+              }),
+              reportedReason: result.reason,
+              questions: result.questions.map(questionText),
+              evidence: result.validation,
+            })),
         ...withLogPath,
       };
+    }
   }
 }
 
@@ -277,5 +344,10 @@ export function summarizeErrorResult(
     error: formatted.message,
     ...(formatted.causes ? { causes: formatted.causes } : {}),
     ...(logPath ? { logPath } : {}),
+    ...summarizeFailure("unexpected-error", {
+      error: formatted.message,
+      ...(formatted.causes ? { causes: formatted.causes } : {}),
+      ...(logPath ? { logPath } : {}),
+    }),
   };
 }
