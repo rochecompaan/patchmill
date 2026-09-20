@@ -415,8 +415,15 @@ test("blocks a resumed blocker when its saved head is not an ancestor", async ()
   );
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked") {
-    assert.equal(result.result.reason, "pause");
+    assert.equal(
+      result.result.reason,
+      "pause\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.",
+    );
     assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.reportedReason,
+      "pause",
+    );
     assert.equal(
       result.result.publicFailure?.diagnosticContext.workspaceRecoveryReason,
       "not-descendant",
@@ -458,8 +465,15 @@ test("refuses dirty blocker progress without checkpointing", async () => {
   );
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked") {
-    assert.equal(result.result.reason, "pause");
+    assert.equal(
+      result.result.reason,
+      "pause\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.",
+    );
     assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.reportedReason,
+      "pause",
+    );
     assert.equal(
       result.result.publicFailure?.diagnosticContext.workspaceRecoveryReason,
       "dirty",
@@ -766,6 +780,67 @@ test("checkpoints clean workspace progress when the implementation agent throws"
   assert.equal(repaired.kind, "validated");
   assert.deepEqual(receivedHeads, [oid("a"), oid("b")]);
   assert.equal(repaired.state.phases[0]?.status, "pull-request-open");
+});
+
+test("retains validation evidence internally while publishing a stable reason", async () => {
+  const initial = input();
+  const workspace = initial.state.phases[0];
+  const branchPushed = {
+    ...workspace,
+    status: "branch-pushed" as const,
+    workspace: { ...workspace.workspace, headOid: oid("b") },
+    publication: {
+      targetRepository: repository,
+      headRepository: repository,
+      baseBranch: "main",
+      headBranch: "agent/189",
+      headOid: oid("b"),
+    },
+    implementation: {
+      status: "pr-created" as const,
+      prUrl: "https://github.com/acme/patchmill/pull/189",
+      branch: "agent/189",
+      commits: [oid("b")],
+      validation: [],
+      visualEvidence: [],
+    },
+  };
+  const result = await runPlanningImplementation(
+    input({
+      state: { ...initial.state, phases: [branchPushed] },
+      host: {
+        id: "github-gh",
+        resolveTargetRepositoryIdentity: async () => repository,
+        resolveRemoteRepositoryIdentity: async () => repository,
+        getPullRequest: async () => ({
+          number: 189,
+          url: "https://github.com/acme/patchmill/pull/189",
+          targetRepository: repository,
+          baseBranch: "main",
+          headRepository: repository,
+          headBranch: "agent/189",
+          headSha: oid("b"),
+          body: "Refs #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+          status: "open" as const,
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(
+      result.result.reason,
+      "Implementation pull request is invalid: closing-reference",
+    );
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "implementation-validation",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.validationReason,
+      "closing-reference",
+    );
+  }
 });
 
 test("propagates host transport failures instead of converting them to validation blockers", async () => {

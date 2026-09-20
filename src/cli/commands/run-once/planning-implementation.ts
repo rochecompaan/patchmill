@@ -225,6 +225,7 @@ export async function runPlanningImplementation(
           state: recovered.state,
           result: {
             ...result,
+            reason: `${result.reason}\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.`,
             publicFailure: runOnceFailure("agent-blocked", {
               issueNumber: state.issueNumber,
               status: "blocked",
@@ -470,7 +471,7 @@ export async function runPlanningImplementation(
         kind: "blocked",
         state,
         result: blocked(
-          "implementation-validation",
+          error.message,
           runOnceFailure("implementation-validation", {
             issueNumber: state.issueNumber,
             status: "blocked",
