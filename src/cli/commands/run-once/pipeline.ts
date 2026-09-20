@@ -47,7 +47,13 @@ export async function runOneIssue(
     );
     switch (selected.kind) {
       case "none": {
-        const diagnostics = selectIssueWithDiagnostics(issues, {
+        const diagnosticCandidates = issues.filter(
+          (issue) =>
+            (config.issueNumber === undefined ||
+              issue.number === config.issueNumber) &&
+            !rejectedIssueNumbers.has(issue.number),
+        );
+        const diagnostics = selectIssueWithDiagnostics(diagnosticCandidates, {
           readyLabel: labels.ready,
           triagePolicy: config.triagePolicy,
           approvalPolicy: config.approvalPolicy,

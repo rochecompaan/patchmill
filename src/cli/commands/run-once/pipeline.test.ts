@@ -92,6 +92,49 @@ test("runOneIssue emits diagnostics for explicitly requested ineligible selectio
   );
 });
 
+test("runOneIssue emits diagnostics only for an explicitly requested ineligible issue", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 2,
+  });
+  const requested = issue(2, ["needs-info"], "Requested but blocked");
+  const unrelatedEligible = issue(3, ["agent-ready"], "Do not diagnose");
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const state = call.args[call.args.indexOf("--state") + 1];
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload(
+                state === "all" ? [requested] : [requested, unrelatedEligible],
+              )
+            : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  const result = await runCurrentOneIssue(runner, config, {
+    now: NOW,
+    progress,
+  });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  assert.deepEqual(
+    events
+      .filter((event) => event.level === "debug")
+      .map((event) => event.issueNumber),
+    [requested.number],
+  );
+});
+
 test("runOneIssue emits diagnostics for default non-dry all-rejected selection", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   const runner = createMockRunner((call) => {
