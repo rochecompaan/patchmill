@@ -6,13 +6,13 @@ import {
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import {
+  automaticWorkflowStateEligible,
   hasBlockedRunRecoveryState,
   lifecycleLabels,
 } from "./pipeline-lifecycle.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { needsPlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
-  automaticWorkflowStateEligible,
   isActionableWorkflowState,
   resolveWorkflowState,
 } from "./workflow-state.ts";
@@ -154,10 +154,7 @@ export async function selectRunOnceWorkflow(
     if (issue.state !== "open") continue;
     if (
       config.issueNumber === undefined &&
-      !automaticWorkflowStateEligible(issue.labels, {
-        readyLabel: lifecycleLabels(config).ready,
-        policy: config.approvalPolicy,
-      })
+      !automaticWorkflowStateEligible(issue.labels, config)
     )
       continue;
     let state: PlanningStateV1 | undefined;

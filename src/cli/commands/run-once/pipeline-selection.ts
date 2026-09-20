@@ -4,12 +4,10 @@ import type { IssueHostProvider } from "../../../host/types.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
-import {
-  assertExplicitWorkflowState,
-  automaticWorkflowStateEligible,
-} from "./workflow-state.ts";
+import { assertExplicitWorkflowState } from "./workflow-state.ts";
 import type { AgentIssueConfig, IssueSelectionRejection } from "./types.ts";
 import {
+  automaticWorkflowStateEligible,
   lifecycleLabels,
   hasBlockedRunRecoveryState,
 } from "./pipeline-lifecycle.ts";
@@ -95,10 +93,7 @@ export async function selectResumableIssue(
     for (const issue of issues) {
       if (
         config.issueNumber === undefined &&
-        !automaticWorkflowStateEligible(issue.labels, {
-          readyLabel: lifecycleLabels(config).ready,
-          policy: config.approvalPolicy,
-        })
+        !automaticWorkflowStateEligible(issue.labels, config)
       )
         continue;
       if (!issue.labels.includes(inProgress)) continue;
