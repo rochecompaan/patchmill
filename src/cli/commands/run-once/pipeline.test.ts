@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { runOneIssue as runCurrentOneIssue } from "./pipeline.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { readRunState, writeRunState } from "./run-state.ts";
 import {
@@ -20,6 +21,7 @@ import {
   issueListPayload,
   labelListPayload,
 } from "../../../../test-support/run-once/issue-fixtures.ts";
+import { collectProgressEvents } from "../../../../test-support/run-once/assertions.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
 
@@ -47,6 +49,58 @@ test("runOneIssue facade returns no-issue when no eligible issue exists", async 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.deepEqual(result, { status: "no-issue" });
+});
+
+test("runOneIssue emits diagnostics for default non-dry all-rejected selection", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(2, ["needs-info"], "Needs input")])
+            : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  const result = await runCurrentOneIssue(runner, config, {
+    now: NOW,
+    progress,
+  });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  const rejection = events.find((event) => event.level === "debug");
+  assert.equal(rejection?.message, "skipped #2: blocking labels");
+  assert.equal(
+    (rejection?.data as { reason?: unknown }).reason,
+    "blocking-labels",
+  );
+  const diagnostic = (
+    rejection?.data as {
+      diagnostic?: {
+        explanation?: unknown;
+        actions?: unknown[];
+        safety?: unknown[];
+        retry?: { guidance?: unknown };
+      };
+    }
+  ).diagnostic;
+  assert.match(String(diagnostic?.explanation), /blocking labels/u);
+  assert.ok(diagnostic?.actions?.length);
+  assert.ok(diagnostic?.safety?.length);
+  assert.ok(diagnostic?.retry?.guidance);
 });
 
 test("runOneIssue facade returns dry-run selection", async () => {

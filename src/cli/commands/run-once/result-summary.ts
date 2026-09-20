@@ -106,7 +106,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         planPath: string;
         branch?: string;
         worktreePath?: string;
-        reason: string;
+        reason: "development-environment-not-ready";
         evidence: string[];
         remediation: string[];
         diagnostic: RunOnceDiagnostic;

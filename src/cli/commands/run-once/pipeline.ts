@@ -9,7 +9,11 @@ import {
 } from "./pipeline-legacy.ts";
 import { runPlanningWorkflow } from "./planning-pipeline.ts";
 import { selectRunOnceWorkflow } from "./planning-selection.ts";
-import { loadSelectionIssues } from "./pipeline-selection.ts";
+import {
+  emitSelectionDiagnostics,
+  loadSelectionIssues,
+} from "./pipeline-selection.ts";
+import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
@@ -41,6 +45,18 @@ export async function runOneIssue(
     );
     switch (selected.kind) {
       case "none":
+        if (config.issueNumber === undefined) {
+          const diagnostics = selectIssueWithDiagnostics(issues, {
+            readyLabel: config.readyLabel,
+            triagePolicy: config.triagePolicy,
+            approvalPolicy: config.approvalPolicy,
+          });
+          await emitSelectionDiagnostics(
+            diagnostics.rejections,
+            options,
+            config.readyLabel,
+          );
+        }
         return withLogPath({ status: "no-issue" }, options);
       case "invalid-planning-state":
         return withLogPath(

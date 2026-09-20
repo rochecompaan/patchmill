@@ -218,7 +218,7 @@ test("preserves the exit-code contract for every status", () => {
         status: "development-environment-not-ready",
         issueNumber: 1,
         planPath: "plan.md",
-        reason: "no",
+        reason: "development-environment-not-ready",
         evidence: [],
         remediation: [],
       },
