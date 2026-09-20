@@ -76,6 +76,42 @@ test("manual inspection and non-lease recovery diagnostics do not advertise comm
   );
 });
 
+test("agent workspace blockers add preservation guidance without changing agent policy", () => {
+  const ordinary = diagnosticFor("agent-blocked", {
+    issueNumber: 242,
+    reportedReason: "Need API choice",
+    questions: ["Which API?"],
+  });
+  const unsafeWorkspace = diagnosticFor("agent-blocked", {
+    issueNumber: 242,
+    phase: "implementation",
+    worktreePath: ".worktrees/issue-242-implementation",
+    workspaceRecoveryReason: "dirty",
+    reportedReason: "Need API choice",
+    questions: ["Which API?"],
+  });
+  assert.equal(ordinary.actions.length, 1);
+  assert.match(
+    unsafeWorkspace.actions[1]?.description ?? "",
+    /Inspect and preserve the implementation workspace/u,
+  );
+  assert.match(
+    unsafeWorkspace.safety.join(" "),
+    /Do not clean, reset, or delete/u,
+  );
+});
+
+test("ignored workspace diagnostics require the normal retry label", () => {
+  const diagnostic = diagnosticFor("ignored-worktree-content", {
+    issueNumber: 242,
+    ignoredPaths: [".agent/evidence.json"],
+  });
+  assert.match(
+    diagnostic.actions[0]?.description ?? "",
+    /apply the normal retry label when required/u,
+  );
+});
+
 test("commands use only validated issue numbers and hostile agent text remains details", () => {
   const hostile = diagnosticFor("agent-blocked", {
     issueNumber: 242,

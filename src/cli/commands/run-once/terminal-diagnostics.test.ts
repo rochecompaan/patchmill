@@ -32,5 +32,7 @@ test("renders shared diagnostic sections in stable actionable order", () => {
       assert.ok(output.indexOf(headings[index - 1]!) < output.indexOf(heading));
   }
   assert.match(output.replace(/\s+/gu, " "), /patchmill run-once --issue 242/u);
+  assert.equal(output.match(/Questions/gu)?.length, 1);
+  assert.match(output, /Which API\?/u);
   assert.doesNotMatch(output, /\u001b\[/u);
 });

@@ -92,6 +92,8 @@ function diagnosticSections(summary: RunOnceResultSummary): TerminalSection[] {
               {
                 kind: "fields" as const,
                 fields: diagnostic.details.flatMap((entry) => {
+                  if (summary.status === "blocked" && entry.key === "questions")
+                    return [];
                   const role = detailRole(entry.key);
                   if (Array.isArray(entry.value) && role === "path")
                     return entry.value.map((path) => ({

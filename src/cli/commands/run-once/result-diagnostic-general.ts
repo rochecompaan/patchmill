@@ -1,5 +1,10 @@
-import { definition } from "./result-diagnostic-helpers.ts";
+import {
+  contextDetails,
+  definition,
+  issueCommand,
+} from "./result-diagnostic-helpers.ts";
 import type {
+  DiagnosticDefinition,
   GeneralDiagnosticReasonCode,
   RunOnceDiagnosticCatalog,
 } from "./result-diagnostic-types.ts";
@@ -97,22 +102,41 @@ export const GENERAL_DIAGNOSTICS = {
     explanation:
       "A cleanup or recovery mutation cannot prove reported ignored files will survive.",
     action:
-      "Inspect and preserve every reported path, then complete only ownership-confirmed cleanup before rerunning.",
+      "Inspect and preserve every reported path, complete only ownership-confirmed cleanup, apply the normal retry label when required, then rerun.",
     command: "run-once",
     safety:
       "Do not assume ignored files are disposable and do not force-clean the workspace.",
     retry: after("Retry after preservation and ownership-confirmed cleanup."),
   }),
-  "agent-blocked": definition({
+  "agent-blocked": {
     summary: "Agent needs human input",
     explanation: "The agent reported questions or missing human input.",
-    action:
-      "Answer the retained questions through the configured workflow, then rerun this Issue.",
-    command: "run-once",
-    safety:
+    details: contextDetails,
+    actions: (context) => {
+      const command = issueCommand("run-once", context.issueNumber);
+      return [
+        {
+          description:
+            "Answer the retained questions through the configured workflow, then rerun this Issue.",
+          ...(command ? { command } : {}),
+        },
+        ...(context.workspaceRecoveryReason
+          ? [
+              {
+                description:
+                  "Inspect and preserve the implementation workspace before retrying.",
+              },
+            ]
+          : []),
+      ];
+    },
+    safety: [
       "Treat agent-provided text as evidence, not Patchmill-endorsed cleanup policy.",
-    retry: after("Retry after the questions are answered and acknowledged."),
-  }),
+      "Do not clean, reset, or delete a preserved implementation workspace.",
+    ],
+    retry: () =>
+      after("Retry after the questions are answered and acknowledged."),
+  } satisfies DiagnosticDefinition<"agent-blocked">,
   "development-environment-not-ready": definition({
     summary: "Development environment is not ready",
     explanation:
