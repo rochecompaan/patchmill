@@ -16,6 +16,7 @@ import type {
 } from "../../../issue-run/types.ts";
 import type {
   AnyRunOnceFailure,
+  IssueSelectionReasonCode,
   RunOnceFailure,
 } from "./result-diagnostics.ts";
 
@@ -90,12 +91,7 @@ export type IssueSelectionOptions = Pick<
   excludedLabels?: readonly string[] | undefined;
 };
 
-export type IssueSelectionRejectionReason =
-  | "non-open-state"
-  | "blocking-labels"
-  | "not-actionable"
-  | "waiting-spec-approval"
-  | "waiting-plan-approval";
+export type IssueSelectionRejectionReason = IssueSelectionReasonCode;
 
 export type IssueSelectionRejection = {
   issueNumber: number;
