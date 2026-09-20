@@ -3,7 +3,7 @@ import { missingLabelDefinitions } from "../triage/labels.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
 export async function ensureAutomationLabel(
-  host: IssueHostProvider,
+  host: Pick<IssueHostProvider, "listLabels" | "createLabel">,
   config: Pick<AgentIssueConfig, "labelCatalog">,
   name: string,
 ): Promise<void> {
