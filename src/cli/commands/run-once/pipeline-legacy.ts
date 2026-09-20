@@ -236,6 +236,13 @@ async function runLegacyOneIssueInternal(
           .filter(({ state }) => !hasBlockedRunRecoveryState(state))
           .map(({ candidate }) => candidate)
       : loadedIssues;
+  const diagnosticIssueNumbers = new Set(
+    [...issues, ...automaticIneligibleIssues].map((issue) => issue.number),
+  );
+  const diagnosticIssues =
+    config.issueNumber === undefined
+      ? loadedIssues.filter((issue) => diagnosticIssueNumbers.has(issue.number))
+      : issues;
   let selected: { issue: IssueSummary; resumed: boolean } | undefined;
   try {
     selected = options.reset
@@ -271,14 +278,11 @@ async function runLegacyOneIssueInternal(
 
   if (!issue) {
     if (config.issueNumber === undefined) {
-      const diagnostics = selectIssueWithDiagnostics(
-        [...issues, ...automaticIneligibleIssues],
-        {
-          readyLabel: lifecycleLabels(config).ready,
-          triagePolicy: config.triagePolicy,
-          approvalPolicy: config.approvalPolicy,
-        },
-      );
+      const diagnostics = selectIssueWithDiagnostics(diagnosticIssues, {
+        readyLabel: lifecycleLabels(config).ready,
+        triagePolicy: config.triagePolicy,
+        approvalPolicy: config.approvalPolicy,
+      });
       await emitSelectionDiagnostics(diagnostics.rejections, options);
       await progress(
         options,

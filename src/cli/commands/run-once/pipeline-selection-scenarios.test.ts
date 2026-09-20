@@ -583,6 +583,7 @@ test("runOneIssue dry-run retains approval-wait skip diagnostics after selection
           page === "1"
             ? issueListPayload([
                 issue(2, ["agent-ready", "spec-review"], "Spec review"),
+                issue(3, ["needs-info"], "Needs more detail"),
                 issue(4, ["agent-ready", "plan-review"], "Plan review"),
               ])
             : "[]",
@@ -622,6 +623,19 @@ test("runOneIssue dry-run retains approval-wait skip diagnostics after selection
         },
       },
       {
+        message: "skipped #3: blocking labels",
+        issueNumber: 3,
+        data: {
+          issueNumber: 3,
+          title: "Needs more detail",
+          state: "open",
+          labels: ["needs-info"],
+          workflowState: "not-actionable",
+          reason: "blocking-labels",
+          blockingLabels: ["needs-info"],
+        },
+      },
+      {
         message: "skipped #4: waiting for plan approval",
         issueNumber: 4,
         data: {
@@ -638,7 +652,7 @@ test("runOneIssue dry-run retains approval-wait skip diagnostics after selection
   );
   assert.equal(
     events.at(-1)?.message,
-    "no eligible issue found after considering 2 open issues; see run log for skip details",
+    "no eligible issue found after considering 3 open issues; see run log for skip details",
   );
   assert.equal(runner.calls.length, 2);
 });
