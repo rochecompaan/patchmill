@@ -23,7 +23,7 @@ export function workspaceContext(input: {
 }) {
   return {
     issueNumber: input.issueNumber,
-    status: input.status,
+    ...(input.status ? { status: input.status } : {}),
     ...(input.phase ? { phase: input.phase } : {}),
     ...(input.branch ? { branch: input.branch } : {}),
     ...(input.worktreePath ? { worktreePath: input.worktreePath } : {}),

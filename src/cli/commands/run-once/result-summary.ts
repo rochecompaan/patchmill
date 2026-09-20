@@ -1,7 +1,10 @@
 import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
 import { formatErrorWithCauses } from "./pi-errors.ts";
 import type { AgentIssuePipelineResult } from "./types.ts";
-import type { RunOnceDiagnostic } from "./result-diagnostics.ts";
+import type {
+  RunOnceDiagnostic,
+  RunOnceReasonCode,
+} from "./result-diagnostics.ts";
 import {
   summarizeFailure,
   workspaceContext,
@@ -82,7 +85,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
     | {
         status: "stopped";
         issueNumber: number;
-        reason: "plan-only" | "issue-locked";
+        reason: RunOnceReasonCode;
         nextPhase?: "implementation";
         specPath?: string;
         planPath?: string;
@@ -111,7 +114,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
     | {
         status: "blocked";
         issueNumber: number;
-        reason: string;
+        reason: RunOnceReasonCode;
         questions: string[];
         diagnostic?: RunOnceDiagnostic;
       }
@@ -124,7 +127,7 @@ export type RunOnceResultSummary =
       error: string;
       causes?: string[];
       logPath?: string;
-      reason?: "unexpected-error";
+      reason?: RunOnceReasonCode;
       diagnostic?: RunOnceDiagnostic;
     };
 export type RunOnceResultStatus = RunOnceResultSummary["status"];
@@ -213,7 +216,6 @@ export function summarizeResult(
         prUrl: result.prUrl,
         branch: result.branch,
         worktreePath: result.worktreePath,
-        reason: result.reason,
         ignoredPaths: [...result.ignoredPaths],
         remediation: [...result.remediation],
         ...(result.specPath === undefined ? {} : { specPath: result.specPath }),
@@ -249,7 +251,6 @@ export function summarizeResult(
       return {
         status: result.status,
         issueNumber: result.issue.number,
-        reason: result.reason,
         ...(result.nextPhase !== undefined
           ? { nextPhase: result.nextPhase }
           : {}),
@@ -267,8 +268,10 @@ export function summarizeResult(
           : summarizeFailure(result.reason, {
               ...workspaceContext({
                 issueNumber: result.issue.number,
-                branch: result.branch,
-                worktreePath: result.worktreePath,
+                ...(result.branch ? { branch: result.branch } : {}),
+                ...(result.worktreePath
+                  ? { worktreePath: result.worktreePath }
+                  : {}),
                 status: result.status,
               }),
               ...(result.reason === "plan-only"
@@ -295,14 +298,15 @@ export function summarizeResult(
         ...(result.worktreePath !== undefined
           ? { worktreePath: result.worktreePath }
           : {}),
-        reason: result.reason,
         evidence: result.evidence,
         remediation: result.remediation,
         ...summarizeFailure("development-environment-not-ready", {
           ...workspaceContext({
             issueNumber: result.issue.number,
-            branch: result.branch,
-            worktreePath: result.worktreePath,
+            ...(result.branch ? { branch: result.branch } : {}),
+            ...(result.worktreePath
+              ? { worktreePath: result.worktreePath }
+              : {}),
             status: result.status,
           }),
           reportedReason: result.reason,
@@ -316,7 +320,6 @@ export function summarizeResult(
       return {
         status: result.status,
         issueNumber: result.issue.number,
-        reason: publicFailure?.reason ?? "agent-blocked",
         questions: result.questions.map(questionText),
         ...(publicFailure
           ? summarizeFailure(
@@ -326,8 +329,10 @@ export function summarizeResult(
           : summarizeFailure("agent-blocked", {
               ...workspaceContext({
                 issueNumber: result.issue.number,
-                branch: result.branch,
-                worktreePath: result.worktreePath,
+                ...(result.branch ? { branch: result.branch } : {}),
+                ...(result.worktreePath
+                  ? { worktreePath: result.worktreePath }
+                  : {}),
                 status: result.status,
               }),
               reportedReason: result.reason,

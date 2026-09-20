@@ -25,7 +25,7 @@ export function failureForPipelineError(
     const { decision } = error;
     if (decision.reason === "active-run")
       return runOnceFailure("active-run", {
-        issueNumber: decision.owner?.issueNumber,
+        ...(decision.owner ? { issueNumber: decision.owner.issueNumber } : {}),
         status: "error",
         resource: decision.resource,
         leasePath: decision.leasePath,
@@ -44,7 +44,9 @@ export function failureForPipelineError(
       case "dirty-worktree":
         return runOnceFailure("dirty-worktree", {
           ...workspace,
-          dirtyStatus: assessment.worktree.dirtyStatus,
+          ...(assessment.worktree.dirtyStatus
+            ? { dirtyStatus: assessment.worktree.dirtyStatus }
+            : {}),
           guidance: decision.guidance,
         });
       case "unmerged-commits":

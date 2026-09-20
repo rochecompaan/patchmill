@@ -62,9 +62,7 @@ function detailRole(key: string): TerminalValue["role"] {
         : "plain";
 }
 
-function diagnosticSections(
-  summary: Extract<RunOnceResultSummary, { diagnostic?: unknown }>,
-): TerminalSection[] {
+function diagnosticSections(summary: RunOnceResultSummary): TerminalSection[] {
   if (
     !("diagnostic" in summary) ||
     !summary.diagnostic ||

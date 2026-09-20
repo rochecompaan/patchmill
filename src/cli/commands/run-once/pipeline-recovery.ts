@@ -70,7 +70,6 @@ export async function adoptLegacyRecoveryLease(input: {
 }
 
 export class RunRecoveryRefusalError extends AgentIssueSafetyError {
-  override readonly name = "RunRecoveryRefusalError";
   readonly decision: Extract<RunRecoveryDecision, { action: "refuse" }>;
   constructor(decision: Extract<RunRecoveryDecision, { action: "refuse" }>) {
     super(formatRunRecoveryDecision(decision));
