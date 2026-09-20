@@ -16,7 +16,6 @@ import type { RunCostReport } from "./run-cost.ts";
 import { planningRunCost } from "./planning-implementation-run-cost.ts";
 import { implementationPhaseReplacer } from "./planning-implementation-state.ts";
 import type {
-  AgentIssueBlockedResult,
   AgentIssueMergedResult,
   AgentIssuePrCreatedResult,
 } from "../../../issue-run/types.ts";
@@ -65,7 +64,9 @@ export type PlanningImplementationInput = {
     requiredPullRequestMarker: string;
     workspaceCreated: boolean;
   }): Promise<
-    AgentIssuePrCreatedResult | AgentIssueMergedResult | AgentIssueBlockedResult
+    | AgentIssuePrCreatedResult
+    | AgentIssueMergedResult
+    | AgentIssueInternalBlockedResult
   >;
   resolveRunCost?: () => Promise<RunCostReport | undefined>;
   workspaceCreated?: boolean;
@@ -151,12 +152,14 @@ export async function runPlanningImplementation(
           result: {
             ...result,
             reason: `${result.reason}\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.`,
-            publicFailure: blockedAgentWorkspaceFailure({
-              base: implementationDiagnosticBase(state, phase),
-              expectedHeadOid: phase.workspace.headOid,
-              evidence: workspaceEvidence,
-              result,
-            }),
+            publicFailure:
+              result.publicFailure ??
+              blockedAgentWorkspaceFailure({
+                base: implementationDiagnosticBase(state, phase),
+                expectedHeadOid: phase.workspace.headOid,
+                evidence: workspaceEvidence,
+                result,
+              }),
           },
         };
       return {

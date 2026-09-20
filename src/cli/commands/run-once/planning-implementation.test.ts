@@ -3,6 +3,7 @@ import test from "node:test";
 import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import { validatePlanningState } from "../../../workflow/planning-state.ts";
 import { runPlanningImplementation } from "./planning-implementation.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 
 const oid = (value: string) => value.repeat(40);
 const repository = {
@@ -115,6 +116,51 @@ test("passes the post-prepare durable state and implementation workspace to the 
     "/worktrees/189",
   );
   assert.equal(received?.git.allowDirectLand, false);
+});
+
+test("preserves planning environment diagnostics through workspace recovery", async () => {
+  const result = await runPlanningImplementation(
+    input({
+      runAgent: async () => ({
+        status: "blocked" as const,
+        reason: "Database unavailable",
+        publicFailure: runOnceFailure("development-environment-not-ready", {
+          issueNumber: 189,
+          status: "blocked",
+          phase: "implementation",
+          branch: "agent/189",
+          worktreePath: "/worktrees/189",
+          reportedReason: "Database unavailable",
+          evidence: ["Database service is unavailable."],
+          reportedRemediation: ["Start the development database."],
+        }),
+        questions: [],
+        commits: [],
+        validation: [],
+      }),
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "development-environment-not-ready",
+    );
+    if (
+      result.result.publicFailure?.reason ===
+      "development-environment-not-ready"
+    )
+      assert.deepEqual(result.result.publicFailure.diagnosticContext, {
+        issueNumber: 189,
+        status: "blocked",
+        phase: "implementation",
+        branch: "agent/189",
+        worktreePath: "/worktrees/189",
+        reportedReason: "Database unavailable",
+        evidence: ["Database service is unavailable."],
+        reportedRemediation: ["Start the development database."],
+      });
+  }
 });
 
 test("blocks remote and base configuration drift before invoking a resumed implementation agent", async () => {
