@@ -99,12 +99,48 @@ export type RunOneIssueOptions = {
   verbosePiOutput?: boolean | undefined;
   heartbeatMs?: number | undefined;
 };
+
+export type LegacySelectionRunResult =
+  | { kind: "pipeline-result"; result: AgentIssuePipelineResult }
+  | {
+      kind: "selection-rejected";
+      result: AgentIssuePipelineResult & {
+        status: "no-issue" | "approval-required";
+      };
+    };
+
 type LeasedRunOneIssueOptions = RunOneIssueOptions & {
   lease?: import("./types.ts").IssueRunLease;
   /** Internal selection pin; never exposed to ordinary callers. */
   leasedIssueNumber?: number;
+  /** Distinguishes a pinned rejection before any Issue effect begins. */
+  classifySelectionRejection?: boolean;
   reset?: { seed: import("./types.ts").RunResetSeed };
 };
+
+class LegacySelectionRejected extends Error {
+  readonly result: AgentIssuePipelineResult & {
+    status: "no-issue" | "approval-required";
+  };
+
+  constructor(
+    result: AgentIssuePipelineResult & {
+      status: "no-issue" | "approval-required";
+    },
+  ) {
+    super(`Pinned legacy selection rejected: ${result.status}`);
+    this.result = result;
+  }
+}
+
+function preMutationSelectionResult(
+  result: LegacySelectionRejected["result"],
+  options: LeasedRunOneIssueOptions,
+): AgentIssuePipelineResult {
+  if (options.classifySelectionRejection)
+    throw new LegacySelectionRejected(result);
+  return result;
+}
 
 export async function runLegacyOneIssue(
   runner: CommandRunner,
@@ -120,11 +156,21 @@ export async function runLegacyOneIssueForSelection(
   config: AgentIssueConfig,
   issueNumber: number,
   options: RunOneIssueOptions = {},
-): Promise<AgentIssuePipelineResult> {
-  return runLegacyOneIssueInternal(runner, config, {
-    ...options,
-    leasedIssueNumber: issueNumber,
-  });
+): Promise<LegacySelectionRunResult> {
+  try {
+    return {
+      kind: "pipeline-result",
+      result: await runLegacyOneIssueInternal(runner, config, {
+        ...options,
+        leasedIssueNumber: issueNumber,
+        classifySelectionRejection: true,
+      }),
+    };
+  } catch (error) {
+    if (error instanceof LegacySelectionRejected)
+      return { kind: "selection-rejected", result: error.result };
+    throw error;
+  }
 }
 
 /** Reset uses this narrow leased entry point after it has archived state. */
@@ -192,13 +238,16 @@ async function runLegacyOneIssueInternal(
       : await selectResumableIssue(issues, config);
   } catch (error) {
     if (error instanceof ApprovalRequiredError) {
-      return withLogPath(
-        {
-          status: "approval-required",
-          issue: error.issue,
-          approvalKind: error.approvalKind,
-          missingLabel: error.missingLabel,
-        },
+      return preMutationSelectionResult(
+        withLogPath(
+          {
+            status: "approval-required",
+            issue: error.issue,
+            approvalKind: error.approvalKind,
+            missingLabel: error.missingLabel,
+          },
+          options,
+        ),
         options,
       );
     }
@@ -223,7 +272,10 @@ async function runLegacyOneIssueInternal(
     } else {
       await progress(options, "info", "select", "no eligible issue found");
     }
-    return withLogPath({ status: "no-issue" }, options);
+    return preMutationSelectionResult(
+      withLogPath({ status: "no-issue" }, options),
+      options,
+    );
   }
 
   // A reset has already archived and validated the prior attempt.  Its seed is
