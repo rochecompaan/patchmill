@@ -22,22 +22,18 @@ import { runStatePath, writeRunState } from "./run-state.ts";
 import { exitCodeForRunOnceResult } from "./result-output.ts";
 import { summarizeResult } from "./result-summary.ts";
 
-test("facade dispatches fresh plan-only selection to the planning lock boundary", async () => {
-  const config = await makeConfig({
-    dryRun: false,
-    execute: true,
-    planOnly: true,
-  });
-  const selected = issue(189, ["agent-ready"], "Fresh planning selection");
-  const lockPath = planningIssueLockPath(config.runStateDir, selected.number);
-  await mkdir(join(config.runStateDir, "planning-pr-v1", "locks"), {
+async function writeHeldPlanningIssueLock(
+  runStateDir: string,
+  issueNumber: number,
+): Promise<void> {
+  await mkdir(join(runStateDir, "planning-pr-v1", "locks"), {
     recursive: true,
   });
   await writeFile(
-    lockPath,
+    planningIssueLockPath(runStateDir, issueNumber),
     `${JSON.stringify({
       version: 1,
-      issueNumber: selected.number,
+      issueNumber,
       runId: "123e4567-e89b-42d3-a456-426614174000",
       ownershipId: "223e4567-e89b-42d3-a456-426614174000",
       pid: process.pid,
@@ -46,9 +42,34 @@ test("facade dispatches fresh plan-only selection to the planning lock boundary"
     })}\n`,
     "utf8",
   );
+}
+
+function issueCommandOption(args: string[], name: string): string | undefined {
+  const value = args.find((arg) => arg.startsWith(`--${name}=`));
+  if (value) return value.slice(name.length + 3);
+  const index = args.indexOf(`--${name}`);
+  return index === -1 ? undefined : args[index + 1];
+}
+
+function issueCommandState(args: string[]): string | undefined {
+  return issueCommandOption(args, "state");
+}
+
+function issueCommandPage(args: string[]): string | undefined {
+  return issueCommandOption(args, "page");
+}
+
+test("facade dispatches fresh plan-only selection to the planning lock boundary", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const selected = issue(189, ["agent-ready"], "Fresh planning selection");
+  await writeHeldPlanningIssueLock(config.runStateDir, selected.number);
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const page = call.args[call.args.indexOf("--page") + 1];
+      const page = issueCommandPage(call.args);
       return {
         code: 0,
         stdout: page === "1" ? issueListPayload([selected]) : "[]",
@@ -101,33 +122,13 @@ test("facade falls back after a pinned legacy candidate becomes approval-wait", 
     specPath: "docs/specs/issue-272.md",
     branch: "agent/issue-272",
   });
-  const lockPath = planningIssueLockPath(config.runStateDir, high.number);
-  await mkdir(join(config.runStateDir, "planning-pr-v1", "locks"), {
-    recursive: true,
-  });
-  await writeFile(
-    lockPath,
-    `${JSON.stringify({
-      version: 1,
-      issueNumber: high.number,
-      runId: "123e4567-e89b-42d3-a456-426614174000",
-      ownershipId: "223e4567-e89b-42d3-a456-426614174000",
-      pid: process.pid,
-      hostname: hostname(),
-      acquiredAt: "2026-01-01T00:00:00.000Z",
-    })}\n`,
-    "utf8",
-  );
+  await writeHeldPlanningIssueLock(config.runStateDir, high.number);
   let legacyViews = 0;
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const state = call.args.includes("--state")
-        ? call.args[call.args.indexOf("--state") + 1]
-        : call.args.find((arg) => arg.startsWith("--state="))?.slice(8);
+      const state = issueCommandState(call.args);
       if (state === "open") {
-        const page = call.args.includes("--page")
-          ? call.args[call.args.indexOf("--page") + 1]
-          : call.args.find((arg) => arg.startsWith("--page="))?.slice(7);
+        const page = issueCommandPage(call.args);
         return {
           code: 0,
           stdout: page === "1" ? issueListPayload([legacy, low, high]) : "[]",
@@ -196,33 +197,13 @@ test("facade skips malformed recovery state after a pinned candidate becomes app
       specPath: "docs/specs/issue-272.md",
       branch: "agent/issue-272",
     });
-    const lockPath = planningIssueLockPath(config.runStateDir, fresh.number);
-    await mkdir(join(config.runStateDir, "planning-pr-v1", "locks"), {
-      recursive: true,
-    });
-    await writeFile(
-      lockPath,
-      `${JSON.stringify({
-        version: 1,
-        issueNumber: fresh.number,
-        runId: "123e4567-e89b-42d3-a456-426614174000",
-        ownershipId: "223e4567-e89b-42d3-a456-426614174000",
-        pid: process.pid,
-        hostname: hostname(),
-        acquiredAt: "2026-01-01T00:00:00.000Z",
-      })}\n`,
-      "utf8",
-    );
+    await writeHeldPlanningIssueLock(config.runStateDir, fresh.number);
     let legacyViews = 0;
     const runner = createMockRunner(async (call) => {
       if (call.command === "tea" && call.args[0] === "issues") {
-        const state = call.args.includes("--state")
-          ? call.args[call.args.indexOf("--state") + 1]
-          : call.args.find((arg) => arg.startsWith("--state="))?.slice(8);
+        const state = issueCommandState(call.args);
         if (state === "open") {
-          const page = call.args.includes("--page")
-            ? call.args[call.args.indexOf("--page") + 1]
-            : call.args.find((arg) => arg.startsWith("--page="))?.slice(7);
+          const page = issueCommandPage(call.args);
           return {
             code: 0,
             stdout: page === "1" ? issueListPayload([legacy, fresh]) : "[]",
@@ -291,33 +272,13 @@ test("facade falls back when a resumable legacy candidate becomes approval-wait"
       planPath: "docs/plans/issue-272-legacy.md",
       checkpoints: { claimed: true, startedCommentPosted: true },
     });
-    const lockPath = planningIssueLockPath(config.runStateDir, fresh.number);
-    await mkdir(join(config.runStateDir, "planning-pr-v1", "locks"), {
-      recursive: true,
-    });
-    await writeFile(
-      lockPath,
-      `${JSON.stringify({
-        version: 1,
-        issueNumber: fresh.number,
-        runId: "123e4567-e89b-42d3-a456-426614174000",
-        ownershipId: "223e4567-e89b-42d3-a456-426614174000",
-        pid: process.pid,
-        hostname: hostname(),
-        acquiredAt: "2026-01-01T00:00:00.000Z",
-      })}\n`,
-      "utf8",
-    );
+    await writeHeldPlanningIssueLock(config.runStateDir, fresh.number);
     let legacyViews = 0;
     const runner = createMockRunner((call) => {
       if (call.command === "tea" && call.args[0] === "issues") {
-        const state = call.args.includes("--state")
-          ? call.args[call.args.indexOf("--state") + 1]
-          : call.args.find((arg) => arg.startsWith("--state="))?.slice(8);
+        const state = issueCommandState(call.args);
         if (state === "open") {
-          const page = call.args.includes("--page")
-            ? call.args[call.args.indexOf("--page") + 1]
-            : call.args.find((arg) => arg.startsWith("--page="))?.slice(7);
+          const page = issueCommandPage(call.args);
           return {
             code: 0,
             stdout: page === "1" ? issueListPayload([legacy, fresh]) : "[]",
@@ -387,8 +348,8 @@ test("facade exhausts each safely rejected legacy candidate once", async () => {
   const views = new Map<number, number>();
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const state = call.args[call.args.indexOf("--state") + 1];
-      const page = call.args[call.args.indexOf("--page") + 1];
+      const state = issueCommandState(call.args);
+      const page = issueCommandPage(call.args);
       if (state === "open")
         return {
           code: 0,
@@ -452,8 +413,8 @@ test("facade propagates pinned legacy provider failures without fallback", async
   let views = 0;
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const state = call.args[call.args.indexOf("--state") + 1];
-      const page = call.args[call.args.indexOf("--page") + 1];
+      const state = issueCommandState(call.args);
+      const page = issueCommandPage(call.args);
       if (state === "open")
         return {
           code: 0,
@@ -506,7 +467,7 @@ test("facade keeps explicit approval diagnostics pinned to the requested issue",
   });
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const page = call.args[call.args.indexOf("--page") + 1];
+      const page = issueCommandPage(call.args);
       return {
         code: 0,
         stdout: page === "1" ? issueListPayload([selected]) : "[]",
@@ -554,7 +515,7 @@ test("facade routes an unfinished in-progress legacy run through legacy planning
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
       if (call.args[1] === "list") {
-        const page = call.args[call.args.indexOf("--page") + 1];
+        const page = issueCommandPage(call.args);
         return {
           code: 0,
           stdout: page === "1" ? issueListPayload([selected, fresh]) : "[]",
@@ -617,7 +578,7 @@ test("facade returns a blocked result for advisory malformed planning state", as
   await writeFile(statePath, "{not-json", "utf8");
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const page = call.args[call.args.indexOf("--page") + 1];
+      const page = issueCommandPage(call.args);
       return {
         code: 0,
         stdout: page === "1" ? issueListPayload([selected]) : "[]",

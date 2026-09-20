@@ -82,6 +82,44 @@ function assertBlockedRetryEligible(
   });
 }
 
+export type AutomaticLegacyCandidatePreparation = {
+  issues: IssueSummary[];
+  diagnosticIssues: IssueSummary[];
+};
+
+/** Separates automatic candidates from diagnostic-only approval waits before state reads. */
+export async function prepareAutomaticLegacyCandidates(
+  loadedIssues: IssueSummary[],
+  config: AgentIssueConfig,
+): Promise<AutomaticLegacyCandidatePreparation> {
+  const automaticIneligibleIssues = loadedIssues.filter(
+    (candidate) => !automaticWorkflowStateEligible(candidate.labels, config),
+  );
+  const issues = (
+    await Promise.all(
+      loadedIssues
+        .filter((candidate) =>
+          automaticWorkflowStateEligible(candidate.labels, config),
+        )
+        .map(async (candidate) => ({
+          candidate,
+          state: await readRunState(config.runStateDir, candidate.number),
+        })),
+    )
+  )
+    .filter(({ state }) => !hasBlockedRunRecoveryState(state))
+    .map(({ candidate }) => candidate);
+  const diagnosticIssueNumbers = new Set(
+    [...issues, ...automaticIneligibleIssues].map((issue) => issue.number),
+  );
+  return {
+    issues,
+    diagnosticIssues: loadedIssues.filter((issue) =>
+      diagnosticIssueNumbers.has(issue.number),
+    ),
+  };
+}
+
 export async function selectResumableIssue(
   issues: IssueSummary[],
   config: AgentIssueConfig,

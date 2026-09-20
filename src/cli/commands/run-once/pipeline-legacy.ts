@@ -41,7 +41,6 @@ import {
 } from "./pipeline-progress.ts";
 import {
   AgentIssueSafetyError,
-  automaticWorkflowStateEligible,
   hasBlockedRunRecoveryState,
   effectiveCheckpoints,
   lifecycleLabels,
@@ -64,6 +63,7 @@ import {
 import {
   emitSelectionDiagnostics,
   loadSelectionIssues,
+  prepareAutomaticLegacyCandidates,
   selectResumableIssue,
 } from "./pipeline-selection.ts";
 import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
@@ -201,48 +201,18 @@ async function runLegacyOneIssueInternal(
     repoRoot: config.repoRoot,
     host: config.host,
   });
-  // Once an automatic selection has acquired its lease, re-read only that
-  // issue. Never perform another priority selection while holding a lease for
-  // a different issue.
+  // Re-read only the leased issue; never priority-select under another issue's lease.
   const loadedIssues =
     options.leasedIssueNumber === undefined
       ? await loadSelectionIssues(host, config, options)
       : [await host.viewIssue(options.leasedIssueNumber)];
-  // Keep automatic approval-wait candidates only for the no-selection
-  // diagnostic. They must not enter recovery-state reads or selection.
-  const automaticIneligibleIssues =
+  // Blocked retries are never implicit; approval waits stay diagnostic-only.
+  const automaticCandidates =
     config.issueNumber === undefined
-      ? loadedIssues.filter(
-          (candidate) =>
-            !automaticWorkflowStateEligible(candidate.labels, config),
-        )
-      : [];
-  // A blocked saved attempt is never an implicit retry target. It needs an
-  // explicit issue acknowledgement and the normal recovery gate below.
-  const issues =
-    config.issueNumber === undefined
-      ? (
-          await Promise.all(
-            loadedIssues
-              .filter((candidate) =>
-                automaticWorkflowStateEligible(candidate.labels, config),
-              )
-              .map(async (candidate) => ({
-                candidate,
-                state: await readRunState(config.runStateDir, candidate.number),
-              })),
-          )
-        )
-          .filter(({ state }) => !hasBlockedRunRecoveryState(state))
-          .map(({ candidate }) => candidate)
-      : loadedIssues;
-  const diagnosticIssueNumbers = new Set(
-    [...issues, ...automaticIneligibleIssues].map((issue) => issue.number),
-  );
-  const diagnosticIssues =
-    config.issueNumber === undefined
-      ? loadedIssues.filter((issue) => diagnosticIssueNumbers.has(issue.number))
-      : issues;
+      ? await prepareAutomaticLegacyCandidates(loadedIssues, config)
+      : undefined;
+  const issues = automaticCandidates?.issues ?? loadedIssues;
+  const diagnosticIssues = automaticCandidates?.diagnosticIssues ?? issues;
   let selected: { issue: IssueSummary; resumed: boolean } | undefined;
   try {
     selected = options.reset
