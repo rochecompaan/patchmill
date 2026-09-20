@@ -69,6 +69,15 @@ export async function adoptLegacyRecoveryLease(input: {
   });
 }
 
+export class RunRecoveryRefusalError extends AgentIssueSafetyError {
+  override readonly name = "RunRecoveryRefusalError";
+  readonly decision: Extract<RunRecoveryDecision, { action: "refuse" }>;
+  constructor(decision: Extract<RunRecoveryDecision, { action: "refuse" }>) {
+    super(formatRunRecoveryDecision(decision));
+    this.decision = decision;
+  }
+}
+
 export type BlockedWorkspaceRecoveryOutcome = {
   decision: Exclude<RunRecoveryDecision, { action: "refuse" }>;
   mutation?: RunRecoveryMutationResult;
@@ -142,8 +151,7 @@ export async function recoverBlockedWorkspace(input: {
     });
   };
   const decision = await reassess();
-  if (decision.action === "refuse")
-    throw new AgentIssueSafetyError(formatRunRecoveryDecision(decision));
+  if (decision.action === "refuse") throw new RunRecoveryRefusalError(decision);
   if (decision.action === "resume") return { decision };
   const mutation = await executeRunRecoveryMutation({
     decision,

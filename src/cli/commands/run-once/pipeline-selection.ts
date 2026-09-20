@@ -13,6 +13,7 @@ import {
 } from "./pipeline-lifecycle.ts";
 import { progress, type PipelineProgressOptions } from "./pipeline-progress.ts";
 import { rejectionMessage } from "./pipeline-comments.ts";
+import { diagnosticFor } from "./result-diagnostics.ts";
 
 export function stringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -53,7 +54,27 @@ export async function emitSelectionDiagnostics(
       "debug",
       "select",
       `skipped #${rejection.issueNumber}: ${rejectionMessage(rejection.reason)}`,
-      { issueNumber: rejection.issueNumber, data: rejection },
+      {
+        issueNumber: rejection.issueNumber,
+        data: {
+          ...rejection,
+          diagnostic: diagnosticFor(rejection.reason, {
+            issueNumber: rejection.issueNumber,
+            issueState: rejection.state,
+            labels: rejection.labels,
+            workflowState: rejection.workflowState,
+            ...(rejection.reason === "blocking-labels"
+              ? { blockingLabels: rejection.blockingLabels ?? [] }
+              : {}),
+            ...((rejection.reason === "waiting-spec-approval" ||
+              rejection.reason === "waiting-plan-approval") &&
+            rejection.missingLabel
+              ? { missingLabel: rejection.missingLabel }
+              : {}),
+            ...(rejection.reason === "not-actionable" ? {} : {}),
+          } as never),
+        },
+      },
     );
   }
 }

@@ -6,6 +6,7 @@ import {
   summarizeFailure,
   workspaceContext,
 } from "./result-summary-diagnostics.ts";
+import { failureForPipelineError } from "./pipeline-error-diagnostics.ts";
 
 export type RunOnceResultLog = { logPath?: string; piSessionPath?: string };
 
@@ -344,15 +345,12 @@ export function summarizeErrorResult(
   logPath?: string,
 ): Extract<RunOnceResultSummary, { status: "error" }> {
   const formatted = formatErrorWithCauses(error);
+  const failure = failureForPipelineError(error, logPath);
   return {
     status: "error",
     error: formatted.message,
     ...(formatted.causes ? { causes: formatted.causes } : {}),
     ...(logPath ? { logPath } : {}),
-    ...summarizeFailure("unexpected-error", {
-      error: formatted.message,
-      ...(formatted.causes ? { causes: formatted.causes } : {}),
-      ...(logPath ? { logPath } : {}),
-    }),
+    ...summarizeFailure(failure.reason, failure.diagnosticContext as never),
   };
 }
