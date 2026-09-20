@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { planningIssueLockPath } from "../../../workflow/planning-issue-lock.ts";
 import { planningStatePath } from "../../../workflow/planning-state-store.ts";
-import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
+import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import {
+  approvalPolicy,
+  makeConfig,
+} from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import {
   issue,
   issueListPayload,
@@ -14,26 +18,22 @@ import {
 } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { createMockRunner } from "../../../../test-support/run-once/mock-runner.ts";
 import { runOneIssue } from "./pipeline.ts";
-import { writeRunState } from "./run-state.ts";
+import { runStatePath, writeRunState } from "./run-state.ts";
 import { exitCodeForRunOnceResult } from "./result-output.ts";
 import { summarizeResult } from "./result-summary.ts";
 
-test("facade dispatches fresh plan-only selection to the planning lock boundary", async () => {
-  const config = await makeConfig({
-    dryRun: false,
-    execute: true,
-    planOnly: true,
-  });
-  const selected = issue(189, ["agent-ready"], "Fresh planning selection");
-  const lockPath = planningIssueLockPath(config.runStateDir, selected.number);
-  await mkdir(join(config.runStateDir, "planning-pr-v1", "locks"), {
+async function writeHeldPlanningIssueLock(
+  runStateDir: string,
+  issueNumber: number,
+): Promise<void> {
+  await mkdir(join(runStateDir, "planning-pr-v1", "locks"), {
     recursive: true,
   });
   await writeFile(
-    lockPath,
+    planningIssueLockPath(runStateDir, issueNumber),
     `${JSON.stringify({
       version: 1,
-      issueNumber: selected.number,
+      issueNumber,
       runId: "123e4567-e89b-42d3-a456-426614174000",
       ownershipId: "223e4567-e89b-42d3-a456-426614174000",
       pid: process.pid,
@@ -42,9 +42,34 @@ test("facade dispatches fresh plan-only selection to the planning lock boundary"
     })}\n`,
     "utf8",
   );
+}
+
+function issueCommandOption(args: string[], name: string): string | undefined {
+  const value = args.find((arg) => arg.startsWith(`--${name}=`));
+  if (value) return value.slice(name.length + 3);
+  const index = args.indexOf(`--${name}`);
+  return index === -1 ? undefined : args[index + 1];
+}
+
+function issueCommandState(args: string[]): string | undefined {
+  return issueCommandOption(args, "state");
+}
+
+function issueCommandPage(args: string[]): string | undefined {
+  return issueCommandOption(args, "page");
+}
+
+test("facade dispatches fresh plan-only selection to the planning lock boundary", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+  });
+  const selected = issue(189, ["agent-ready"], "Fresh planning selection");
+  await writeHeldPlanningIssueLock(config.runStateDir, selected.number);
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const page = call.args[call.args.indexOf("--page") + 1];
+      const page = issueCommandPage(call.args);
       return {
         code: 0,
         stdout: page === "1" ? issueListPayload([selected]) : "[]",
@@ -69,6 +94,407 @@ test("facade dispatches fresh plan-only selection to the planning lock boundary"
   }
 });
 
+test("facade falls back after a pinned legacy candidate becomes approval-wait", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    planOnly: true,
+    approvalPolicy: approvalPolicy({ specRequired: true, planRequired: true }),
+    triagePolicy: {
+      ...DEFAULT_TRIAGE_POLICY,
+      runOnceSelection: {
+        ...DEFAULT_TRIAGE_POLICY.runOnceSelection,
+        priorityOrder: ["priority:critical", "priority:low"],
+      },
+    },
+  } as never);
+  const legacy = issue(272, ["agent-ready"], "Legacy candidate");
+  const low = issue(326, ["agent-ready", "priority:low"], "Low fallback");
+  const high = issue(
+    327,
+    ["agent-ready", "priority:critical"],
+    "High fallback",
+  );
+  await writeRunState(config.runStateDir, {
+    issueNumber: legacy.number,
+    title: legacy.title,
+    status: "finished",
+    specPath: "docs/specs/issue-272.md",
+    branch: "agent/issue-272",
+  });
+  await writeHeldPlanningIssueLock(config.runStateDir, high.number);
+  let legacyViews = 0;
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const state = issueCommandState(call.args);
+      if (state === "open") {
+        const page = issueCommandPage(call.args);
+        return {
+          code: 0,
+          stdout: page === "1" ? issueListPayload([legacy, low, high]) : "[]",
+          stderr: "",
+        };
+      }
+      if (state === "all") {
+        legacyViews += 1;
+        return {
+          code: 0,
+          stdout: issueListPayload([
+            legacyViews === 1
+              ? legacy
+              : issue(272, ["agent-ready", "spec-review"], legacy.title),
+          ]),
+          stderr: "",
+        };
+      }
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  try {
+    const result = await runOneIssue(runner, config);
+    assert.equal(result.status, "stopped");
+    if (result.status === "stopped") {
+      assert.equal(result.issue.number, high.number);
+      assert.equal(result.reason, "issue-locked");
+    }
+    assert.equal(legacyViews, 2);
+    assert.equal(
+      runner.calls.some((call) => call.args.includes("edit")),
+      false,
+    );
+    assert.equal(
+      runner.calls.some((call) => call.args.includes("326")),
+      false,
+    );
+    await assert.rejects(
+      readFile(join(config.runStateDir, "locks", "issue-272.lock"), "utf8"),
+      { code: "ENOENT" },
+    );
+  } finally {
+    await rm(config.repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("facade skips malformed recovery state after a pinned candidate becomes approval-wait", async () => {
+  for (const reviewLabel of ["spec-review", "plan-review"] as const) {
+    const config = await makeConfig({
+      dryRun: false,
+      execute: true,
+      planOnly: true,
+      approvalPolicy: approvalPolicy({
+        specRequired: true,
+        planRequired: true,
+      }),
+    } as never);
+    const legacy = issue(272, ["agent-ready"], "Legacy candidate");
+    const fresh = issue(327, ["agent-ready"], "Fresh fallback");
+    await writeRunState(config.runStateDir, {
+      issueNumber: legacy.number,
+      title: legacy.title,
+      status: "finished",
+      specPath: "docs/specs/issue-272.md",
+      branch: "agent/issue-272",
+    });
+    await writeHeldPlanningIssueLock(config.runStateDir, fresh.number);
+    let legacyViews = 0;
+    const runner = createMockRunner(async (call) => {
+      if (call.command === "tea" && call.args[0] === "issues") {
+        const state = issueCommandState(call.args);
+        if (state === "open") {
+          const page = issueCommandPage(call.args);
+          return {
+            code: 0,
+            stdout: page === "1" ? issueListPayload([legacy, fresh]) : "[]",
+            stderr: "",
+          };
+        }
+        if (state === "all") {
+          legacyViews += 1;
+          await writeFile(
+            runStatePath(config.runStateDir, legacy.number),
+            "{invalid-json",
+            "utf8",
+          );
+          return {
+            code: 0,
+            stdout: issueListPayload([
+              issue(legacy.number, ["agent-ready", reviewLabel], legacy.title),
+            ]),
+            stderr: "",
+          };
+        }
+      }
+      throw new Error(
+        `unexpected command: ${call.command} ${call.args.join(" ")}`,
+      );
+    });
+    try {
+      const result = await runOneIssue(runner, config);
+      assert.equal(result.status, "stopped");
+      if (result.status === "stopped") {
+        assert.equal(result.issue.number, fresh.number);
+        assert.equal(result.reason, "issue-locked");
+      }
+      assert.equal(legacyViews, 1);
+      assert.equal(
+        runner.calls.some((call) => call.args.includes("edit")),
+        false,
+      );
+      await assert.rejects(
+        readFile(join(config.runStateDir, "locks", "issue-272.lock"), "utf8"),
+        { code: "ENOENT" },
+      );
+    } finally {
+      await rm(config.repoRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+test("facade falls back when a resumable legacy candidate becomes approval-wait", async () => {
+  for (const reviewLabel of ["spec-review", "plan-review"] as const) {
+    const config = await makeConfig({
+      dryRun: false,
+      execute: true,
+      planOnly: true,
+      approvalPolicy: approvalPolicy({
+        specRequired: true,
+        planRequired: true,
+      }),
+    } as never);
+    const legacy = issue(272, ["in-progress"], "Resumable candidate");
+    const fresh = issue(327, ["agent-ready"], "Fresh fallback");
+    await writeRunState(config.runStateDir, {
+      issueNumber: legacy.number,
+      title: legacy.title,
+      status: "planning",
+      planPath: "docs/plans/issue-272-legacy.md",
+      checkpoints: { claimed: true, startedCommentPosted: true },
+    });
+    await writeHeldPlanningIssueLock(config.runStateDir, fresh.number);
+    let legacyViews = 0;
+    const runner = createMockRunner((call) => {
+      if (call.command === "tea" && call.args[0] === "issues") {
+        const state = issueCommandState(call.args);
+        if (state === "open") {
+          const page = issueCommandPage(call.args);
+          return {
+            code: 0,
+            stdout: page === "1" ? issueListPayload([legacy, fresh]) : "[]",
+            stderr: "",
+          };
+        }
+        if (state === "all") {
+          legacyViews += 1;
+          return {
+            code: 0,
+            stdout: issueListPayload([
+              legacyViews === 1
+                ? legacy
+                : issue(
+                    legacy.number,
+                    ["in-progress", reviewLabel],
+                    legacy.title,
+                  ),
+            ]),
+            stderr: "",
+          };
+        }
+      }
+      throw new Error(
+        `unexpected command: ${call.command} ${call.args.join(" ")}`,
+      );
+    });
+    try {
+      const result = await runOneIssue(runner, config);
+      assert.equal(result.status, "stopped");
+      if (result.status === "stopped") {
+        assert.equal(result.issue.number, fresh.number);
+        assert.equal(result.reason, "issue-locked");
+      }
+      assert.equal(legacyViews, 2);
+      assert.equal(
+        runner.calls.some((call) => call.args.includes("edit")),
+        false,
+      );
+      await assert.rejects(
+        readFile(join(config.runStateDir, "locks", "issue-272.lock"), "utf8"),
+        { code: "ENOENT" },
+      );
+    } finally {
+      await rm(config.repoRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+test("facade exhausts each safely rejected legacy candidate once", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    approvalPolicy: approvalPolicy({ specRequired: true, planRequired: true }),
+  });
+  const first = issue(272, ["agent-ready"], "First legacy candidate");
+  const second = issue(326, ["agent-ready"], "Second legacy candidate");
+  for (const selected of [first, second]) {
+    await writeRunState(config.runStateDir, {
+      issueNumber: selected.number,
+      title: selected.title,
+      status: "finished",
+      specPath: `docs/specs/issue-${selected.number}.md`,
+      branch: `agent/issue-${selected.number}`,
+    });
+  }
+  const views = new Map<number, number>();
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const state = issueCommandState(call.args);
+      const page = issueCommandPage(call.args);
+      if (state === "open")
+        return {
+          code: 0,
+          stdout: page === "1" ? issueListPayload([first, second]) : "[]",
+          stderr: "",
+        };
+      const number = Number(call.args[call.args.indexOf("--keyword") + 1]);
+      views.set(number, (views.get(number) ?? 0) + 1);
+      const selected = number === first.number ? first : second;
+      return {
+        code: 0,
+        stdout: issueListPayload([
+          issue(
+            selected.number,
+            ["agent-ready", "spec-review"],
+            selected.title,
+          ),
+        ]),
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  try {
+    const result = await runOneIssue(runner, config);
+    assert.deepEqual(result, { status: "no-issue" });
+    assert.deepEqual(
+      [...views.entries()],
+      [
+        [first.number, 1],
+        [second.number, 1],
+      ],
+    );
+    assert.equal(
+      runner.calls.some(
+        (call) =>
+          call.command === "git" ||
+          call.command === "pi" ||
+          call.args.includes("edit"),
+      ),
+      false,
+    );
+  } finally {
+    await rm(config.repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("facade propagates pinned legacy provider failures without fallback", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const selected = issue(272, ["agent-ready"], "Legacy candidate");
+  const fresh = issue(327, ["agent-ready"], "Fresh candidate");
+  await writeRunState(config.runStateDir, {
+    issueNumber: selected.number,
+    title: selected.title,
+    status: "finished",
+    specPath: "docs/specs/issue-272.md",
+    branch: "agent/issue-272",
+  });
+  let views = 0;
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const state = issueCommandState(call.args);
+      const page = issueCommandPage(call.args);
+      if (state === "open")
+        return {
+          code: 0,
+          stdout: page === "1" ? issueListPayload([selected, fresh]) : "[]",
+          stderr: "",
+        };
+      views += 1;
+      if (views === 2) throw new Error("provider unavailable");
+      return { code: 0, stdout: issueListPayload([selected]), stderr: "" };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  try {
+    await assert.rejects(runOneIssue(runner, config), /provider unavailable/);
+    assert.equal(views, 2);
+    assert.equal(
+      runner.calls.some((call) => call.args.includes(String(fresh.number))),
+      false,
+    );
+    await assert.rejects(
+      readFile(join(config.runStateDir, "locks", "issue-272.lock"), "utf8"),
+      { code: "ENOENT" },
+    );
+  } finally {
+    await rm(config.repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("facade keeps explicit approval diagnostics pinned to the requested issue", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 272,
+    approvalPolicy: approvalPolicy({ specRequired: true, planRequired: true }),
+  });
+  const selected = issue(
+    272,
+    ["agent-ready", "spec-review"],
+    "Explicit waiting issue",
+  );
+  const fresh = issue(327, ["agent-ready"], "Unselected fresh issue");
+  await writeRunState(config.runStateDir, {
+    issueNumber: selected.number,
+    title: selected.title,
+    status: "finished",
+    specPath: "docs/specs/issue-272.md",
+    branch: "agent/issue-272",
+  });
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const page = issueCommandPage(call.args);
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  try {
+    const result = await runOneIssue(runner, config);
+    assert.equal(result.status, "approval-required");
+    if (result.status === "approval-required") {
+      assert.equal(result.issue.number, selected.number);
+      assert.equal(result.approvalKind, "spec");
+      assert.equal(result.missingLabel, "spec-approved");
+    }
+    assert.equal(
+      runner.calls.some((call) => call.args.includes(String(fresh.number))),
+      false,
+    );
+  } finally {
+    await rm(config.repoRoot, { recursive: true, force: true });
+  }
+});
+
 test("facade routes an unfinished in-progress legacy run through legacy planning", async () => {
   const config = await makeConfig({
     dryRun: false,
@@ -76,6 +502,7 @@ test("facade routes an unfinished in-progress legacy run through legacy planning
     planOnly: true,
   });
   const selected = issue(189, ["in-progress"], "Legacy planning selection");
+  const fresh = issue(190, ["agent-ready"], "Fresh planning selection");
   const planPath = "docs/plans/issue-189-legacy.md";
   await writeFile(join(config.repoRoot, planPath), "# plan\n", "utf8");
   await writeRunState(config.runStateDir, {
@@ -88,10 +515,10 @@ test("facade routes an unfinished in-progress legacy run through legacy planning
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
       if (call.args[1] === "list") {
-        const page = call.args[call.args.indexOf("--page") + 1];
+        const page = issueCommandPage(call.args);
         return {
           code: 0,
-          stdout: page === "1" ? issueListPayload([selected]) : "[]",
+          stdout: page === "1" ? issueListPayload([selected, fresh]) : "[]",
           stderr: "",
         };
       }
@@ -132,6 +559,10 @@ test("facade routes an unfinished in-progress legacy run through legacy planning
       runner.calls.some((call) => call.args.includes("planning-pr-v1")),
       false,
     );
+    assert.equal(
+      runner.calls.some((call) => call.args.includes(String(fresh.number))),
+      false,
+    );
   } finally {
     await rm(config.repoRoot, { recursive: true, force: true });
   }
@@ -147,7 +578,7 @@ test("facade returns a blocked result for advisory malformed planning state", as
   await writeFile(statePath, "{not-json", "utf8");
   const runner = createMockRunner((call) => {
     if (call.command === "tea" && call.args[0] === "issues") {
-      const page = call.args[call.args.indexOf("--page") + 1];
+      const page = issueCommandPage(call.args);
       return {
         code: 0,
         stdout: page === "1" ? issueListPayload([selected]) : "[]",

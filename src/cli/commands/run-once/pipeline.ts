@@ -15,7 +15,7 @@ import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 
-/** Public facade that selects exactly once, then pins the chosen workflow. */
+/** Public facade that safely reselects rejected legacy candidates before one substantive workflow. */
 export async function runOneIssue(
   runner: CommandRunner,
   config: AgentIssueConfig,
@@ -29,54 +29,63 @@ export async function runOneIssue(
     host: config.host,
   });
   const issues = await loadSelectionIssues(host, config, options);
-  const selected = await selectRunOnceWorkflow(
-    issues,
-    config,
-    new PlanningStateStore(config.runStateDir),
-    options.now?.toISOString(),
-  );
-  switch (selected.kind) {
-    case "none":
-      return withLogPath({ status: "no-issue" }, options);
-    case "invalid-planning-state":
-      return withLogPath(
-        {
-          status: "blocked",
+  const planningState = new PlanningStateStore(config.runStateDir);
+  const rejectedIssueNumbers = new Set<number>();
+  while (true) {
+    const selected = await selectRunOnceWorkflow(
+      issues.filter((issue) => !rejectedIssueNumbers.has(issue.number)),
+      config,
+      planningState,
+      options.now?.toISOString(),
+    );
+    switch (selected.kind) {
+      case "none":
+        return withLogPath({ status: "no-issue" }, options);
+      case "invalid-planning-state":
+        return withLogPath(
+          {
+            status: "blocked",
+            issue: selected.issue,
+            reason: `planning-state-invalid: ${selected.reason}`,
+            questions: [],
+            commits: [],
+            validation: [],
+          },
+          options,
+        );
+      case "legacy": {
+        const legacy = await runLegacyOneIssueForSelection(
+          runner,
+          config,
+          selected.issue.number,
+          options,
+        );
+        if (legacy.kind === "pipeline-result") return legacy.result;
+        if (config.issueNumber !== undefined) return legacy.result;
+        rejectedIssueNumbers.add(selected.issue.number);
+        continue;
+      }
+      case "planning":
+        return runPlanningWorkflow({
+          runner,
+          config,
+          options,
           issue: selected.issue,
-          reason: `planning-state-invalid: ${selected.reason}`,
-          questions: [],
-          commits: [],
-          validation: [],
-        },
-        options,
-      );
-    case "legacy":
-      return runLegacyOneIssueForSelection(
-        runner,
-        config,
-        selected.issue.number,
-        options,
-      );
-    case "planning":
-      return runPlanningWorkflow({
-        runner,
-        config,
-        options,
-        issue: selected.issue,
-        state: selected.state,
-        expectedStatePresence: "present",
-        host,
-      });
-    case "fresh-planning":
-      return runPlanningWorkflow({
-        runner,
-        config,
-        options,
-        issue: selected.issue,
-        state: selected.initialState,
-        expectedStatePresence: "absent",
-        host,
-      });
+          state: selected.state,
+          expectedStatePresence: "present",
+          host,
+        });
+      case "fresh-planning":
+        return runPlanningWorkflow({
+          runner,
+          config,
+          options,
+          issue: selected.issue,
+          state: selected.initialState,
+          expectedStatePresence: "absent",
+          host,
+        });
+    }
   }
 }
 

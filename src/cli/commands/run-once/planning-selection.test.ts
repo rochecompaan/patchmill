@@ -28,6 +28,23 @@ const config = {
     runOnceSelection: { priorityOrder: ["priority:high", "priority:low"] },
   },
 } as never;
+const approvalConfig = {
+  ...config,
+  approvalPolicy: {
+    specApproval: {
+      kind: "spec",
+      required: true,
+      reviewLabel: "spec-review",
+      approvedLabel: "spec-approved",
+    },
+    planApproval: {
+      kind: "plan",
+      required: true,
+      reviewLabel: "plan-review",
+      approvedLabel: "plan-approved",
+    },
+  },
+} as never;
 
 test("prioritizes active planning over fresh ready work and reuses label ordering", async () => {
   const active = { phases: [{ status: "pending" }] };
@@ -305,4 +322,97 @@ test("stamps fresh planning state with the run clock so the first revision edge 
     revision: 1,
     updatedAt: runStart,
   });
+});
+
+test("omits approval-wait legacy resumes but keeps approved resumes eligible", async () => {
+  const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
+  try {
+    await writeRunState(runStateDir, {
+      issueNumber: 272,
+      title: "Issue 272",
+      status: "finished",
+      specPath: "docs/specs/issue-272.md",
+      branch: "agent/issue-272",
+    });
+    for (const [reviewLabel, approvedLabel] of [
+      ["spec-review", "spec-approved"],
+      ["plan-review", "plan-approved"],
+    ] as const) {
+      const waiting = await selectRunOnceWorkflow(
+        [
+          issue(272, ["agent-ready", reviewLabel, "priority:high"]),
+          issue(327, ["agent-ready", "priority:low"]),
+        ],
+        { ...approvalConfig, runStateDir },
+        { path: () => "state", read: async () => undefined } as never,
+      );
+      assert.equal(waiting.kind, "fresh-planning");
+      if (waiting.kind === "fresh-planning")
+        assert.equal(waiting.issue.number, 327);
+
+      const approved = await selectRunOnceWorkflow(
+        [
+          issue(272, ["agent-ready", reviewLabel, approvedLabel]),
+          issue(327, ["agent-ready"]),
+        ],
+        { ...approvalConfig, runStateDir },
+        { path: () => "state", read: async () => undefined } as never,
+      );
+      assert.equal(approved.kind, "legacy");
+      if (approved.kind === "legacy") assert.equal(approved.issue.number, 272);
+    }
+  } finally {
+    await rm(runStateDir, { recursive: true, force: true });
+  }
+});
+
+test("omits approval-wait issues before planning-state reads in every automatic choice branch", async () => {
+  const reads: number[] = [];
+  const state = {
+    path: (number: number) => `issue-${number}.json`,
+    read: async (number: number) => {
+      reads.push(number);
+      if (number === 272)
+        throw new Error("approval-wait state must not be read");
+      return undefined;
+    },
+  };
+  const result = await selectRunOnceWorkflow(
+    [issue(272, ["agent-ready", "spec-review"]), issue(327, ["agent-ready"])],
+    approvalConfig,
+    state as never,
+  );
+  assert.equal(result.kind, "fresh-planning");
+  if (result.kind === "fresh-planning") assert.equal(result.issue.number, 327);
+  assert.deepEqual(reads, [327]);
+
+  const fresh = await selectRunOnceWorkflow(
+    [issue(272, ["agent-ready", "plan-review"]), issue(327, ["agent-ready"])],
+    approvalConfig,
+    { path: () => "state", read: async () => undefined } as never,
+  );
+  assert.equal(fresh.kind, "fresh-planning");
+  if (fresh.kind === "fresh-planning") assert.equal(fresh.issue.number, 327);
+});
+
+test("keeps explicit approval-wait legacy resume pinned for its approval diagnostic", async () => {
+  const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
+  try {
+    await writeRunState(runStateDir, {
+      issueNumber: 272,
+      title: "Issue 272",
+      status: "finished",
+      specPath: "docs/specs/issue-272.md",
+      branch: "agent/issue-272",
+    });
+    const selected = await selectRunOnceWorkflow(
+      [issue(272, ["agent-ready", "spec-review"]), issue(327, ["agent-ready"])],
+      { ...approvalConfig, runStateDir, issueNumber: 272 },
+      { path: () => "state", read: async () => undefined } as never,
+    );
+    assert.equal(selected.kind, "legacy");
+    if (selected.kind === "legacy") assert.equal(selected.issue.number, 272);
+  } finally {
+    await rm(runStateDir, { recursive: true, force: true });
+  }
 });

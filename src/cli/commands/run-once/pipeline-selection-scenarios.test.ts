@@ -566,6 +566,97 @@ test("runOneIssue dry-run logs skip diagnostics when automatic selection finds n
   assert.equal(runner.calls.length, 2);
 });
 
+test("runOneIssue dry-run retains approval-wait skip diagnostics after selection filtering", async () => {
+  const config = await makeConfig({
+    approvalPolicy: approvalPolicy({ specRequired: true, planRequired: true }),
+  });
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([
+                issue(2, ["agent-ready", "spec-review"], "Spec review"),
+                issue(3, ["needs-info"], "Needs more detail"),
+                issue(4, ["agent-ready", "plan-review"], "Plan review"),
+              ])
+            : "[]",
+        stderr: "",
+      };
+    }
+
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const { events, progress } = collectProgressEvents();
+  const result = await runOneIssue(runner, config, { now: NOW, progress });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  assert.deepEqual(
+    events
+      .filter((event) => event.level === "debug")
+      .map((event) => ({
+        message: event.message,
+        issueNumber: event.issueNumber,
+        data: event.data,
+      })),
+    [
+      {
+        message: "skipped #2: waiting for spec approval",
+        issueNumber: 2,
+        data: {
+          issueNumber: 2,
+          title: "Spec review",
+          state: "open",
+          labels: ["agent-ready", "spec-review"],
+          workflowState: "waiting-spec-review",
+          reason: "waiting-spec-approval",
+          missingLabel: "spec-approved",
+        },
+      },
+      {
+        message: "skipped #3: blocking labels",
+        issueNumber: 3,
+        data: {
+          issueNumber: 3,
+          title: "Needs more detail",
+          state: "open",
+          labels: ["needs-info"],
+          workflowState: "not-actionable",
+          reason: "blocking-labels",
+          blockingLabels: ["needs-info"],
+        },
+      },
+      {
+        message: "skipped #4: waiting for plan approval",
+        issueNumber: 4,
+        data: {
+          issueNumber: 4,
+          title: "Plan review",
+          state: "open",
+          labels: ["agent-ready", "plan-review"],
+          workflowState: "waiting-plan-review",
+          reason: "waiting-plan-approval",
+          missingLabel: "plan-approved",
+        },
+      },
+    ],
+  );
+  assert.equal(
+    events.at(-1)?.message,
+    "no eligible issue found after considering 3 open issues; see run log for skip details",
+  );
+  assert.equal(runner.calls.length, 2);
+});
+
 test("runOneIssue targeted GitHub issue reads issue by number", async () => {
   const config = await makeConfig({
     host: { provider: "github-gh", login: "" },

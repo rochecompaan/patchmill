@@ -3,7 +3,11 @@ import type {
   AgentIssueVisualEvidence,
 } from "../../../issue-run/types.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
-import type { RunOnceWorkflowState } from "./workflow-state.ts";
+import {
+  isActionableWorkflowState,
+  resolveWorkflowState,
+  type RunOnceWorkflowState,
+} from "./workflow-state.ts";
 import type {
   AgentIssueConfig,
   AgentIssueRunCheckpoints,
@@ -54,6 +58,20 @@ export function hasBlockedRunRecoveryState(
     (state.status === "blocked" ||
       (state.status === "finished" && state.blockedAt && state.lastError))
   );
+}
+
+export function automaticWorkflowStateEligible(
+  labels: string[],
+  config: Pick<
+    AgentIssueConfig,
+    "readyLabel" | "triagePolicy" | "approvalPolicy"
+  >,
+): boolean {
+  const state = resolveWorkflowState(labels, {
+    readyLabel: lifecycleLabels(config).ready,
+    policy: config.approvalPolicy,
+  });
+  return isActionableWorkflowState(state) || state.kind === "not-actionable";
 }
 
 export function lifecycleLabels(
