@@ -41,6 +41,7 @@ import {
 } from "./pipeline-progress.ts";
 import {
   AgentIssueSafetyError,
+  automaticWorkflowStateEligible,
   hasBlockedRunRecoveryState,
   effectiveCheckpoints,
   lifecycleLabels,
@@ -213,10 +214,14 @@ async function runLegacyOneIssueInternal(
     config.issueNumber === undefined
       ? (
           await Promise.all(
-            loadedIssues.map(async (candidate) => ({
-              candidate,
-              state: await readRunState(config.runStateDir, candidate.number),
-            })),
+            loadedIssues
+              .filter((candidate) =>
+                automaticWorkflowStateEligible(candidate.labels, config),
+              )
+              .map(async (candidate) => ({
+                candidate,
+                state: await readRunState(config.runStateDir, candidate.number),
+              })),
           )
         )
           .filter(({ state }) => !hasBlockedRunRecoveryState(state))
