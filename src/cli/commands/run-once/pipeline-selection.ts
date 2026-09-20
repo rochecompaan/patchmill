@@ -13,7 +13,7 @@ import {
 } from "./pipeline-lifecycle.ts";
 import { progress, type PipelineProgressOptions } from "./pipeline-progress.ts";
 import { rejectionMessage } from "./pipeline-comments.ts";
-import { diagnosticFor } from "./result-diagnostics.ts";
+import { diagnosticFor, type RunOnceDiagnostic } from "./result-diagnostics.ts";
 
 export function stringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -44,9 +44,47 @@ export function visualEvidenceArray(
   return entries.length > 0 ? entries : undefined;
 }
 
+export function selectionDiagnostic(
+  rejection: IssueSelectionRejection,
+  readyLabel: string,
+): RunOnceDiagnostic {
+  const common = {
+    issueNumber: rejection.issueNumber,
+    issueState: rejection.state,
+    labels: rejection.labels,
+    workflowState: rejection.workflowState,
+  };
+  switch (rejection.reason) {
+    case "non-open-state":
+      return diagnosticFor("non-open-state", common);
+    case "blocking-labels":
+      return diagnosticFor("blocking-labels", {
+        ...common,
+        blockingLabels: rejection.blockingLabels ?? [],
+      });
+    case "not-actionable":
+      return diagnosticFor("not-actionable", { ...common, readyLabel });
+    case "waiting-spec-approval":
+      return diagnosticFor("waiting-spec-approval", {
+        ...common,
+        ...(rejection.missingLabel
+          ? { missingLabel: rejection.missingLabel }
+          : {}),
+      });
+    case "waiting-plan-approval":
+      return diagnosticFor("waiting-plan-approval", {
+        ...common,
+        ...(rejection.missingLabel
+          ? { missingLabel: rejection.missingLabel }
+          : {}),
+      });
+  }
+}
+
 export async function emitSelectionDiagnostics(
   rejections: IssueSelectionRejection[],
   options: PipelineProgressOptions,
+  readyLabel: string,
 ): Promise<void> {
   for (const rejection of rejections) {
     await progress(
@@ -58,21 +96,7 @@ export async function emitSelectionDiagnostics(
         issueNumber: rejection.issueNumber,
         data: {
           ...rejection,
-          diagnostic: diagnosticFor(rejection.reason, {
-            issueNumber: rejection.issueNumber,
-            issueState: rejection.state,
-            labels: rejection.labels,
-            workflowState: rejection.workflowState,
-            ...(rejection.reason === "blocking-labels"
-              ? { blockingLabels: rejection.blockingLabels ?? [] }
-              : {}),
-            ...((rejection.reason === "waiting-spec-approval" ||
-              rejection.reason === "waiting-plan-approval") &&
-            rejection.missingLabel
-              ? { missingLabel: rejection.missingLabel }
-              : {}),
-            ...(rejection.reason === "not-actionable" ? {} : {}),
-          } as never),
+          diagnostic: selectionDiagnostic(rejection, readyLabel),
         },
       },
     );

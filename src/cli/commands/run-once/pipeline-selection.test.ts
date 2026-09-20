@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import {
   emitSelectionDiagnostics,
   mergeIssueLists,
+  selectionDiagnostic,
   selectResumableIssue,
   stringArray,
   visualEvidenceArray,
@@ -41,8 +42,27 @@ test("emitSelectionDiagnostics reports rejection reasons", async () => {
   await emitSelectionDiagnostics(
     [{ issueNumber: 1, reason: "blocking-labels", issue: issue(1, []) }],
     { progress },
+    "agent-ready",
   );
   assert.match(events[0]?.message ?? "", /blocking labels/);
+});
+
+test("selection diagnostics identify the configured ready label", () => {
+  const diagnostic = selectionDiagnostic(
+    {
+      issueNumber: 1,
+      title: "Issue 1",
+      state: "open",
+      labels: [],
+      workflowState: "not-actionable",
+      reason: "not-actionable",
+    },
+    "agent-ready",
+  );
+  assert.equal(
+    diagnostic.details.find((entry) => entry.key === "readyLabel")?.value,
+    "agent-ready",
+  );
 });
 
 test("selectResumableIssue prefers a single resumable in-progress run", async () => {

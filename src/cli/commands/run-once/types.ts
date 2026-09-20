@@ -14,7 +14,10 @@ import type {
   AgentIssuePrCreatedResult,
   AgentIssueVisualEvidence,
 } from "../../../issue-run/types.ts";
-import type { AnyRunOnceFailure } from "./result-diagnostics.ts";
+import type {
+  AnyRunOnceFailure,
+  RunOnceFailure,
+} from "./result-diagnostics.ts";
 
 export type {
   CommandResult,
@@ -222,7 +225,7 @@ export type AgentIssueApprovalRequiredResult = {
 
 export type AgentIssueCleanupPendingResult = {
   status: "cleanup-pending";
-  publicFailure?: AnyRunOnceFailure | undefined;
+  publicFailure: RunOnceFailure<"ignored-worktree-content">;
   issue: IssueSummary;
   phase: "spec" | "plan" | "implementation";
   prUrl: string;
@@ -245,15 +248,22 @@ export type AgentIssueReviewPendingResult = {
 };
 export type AgentIssueStoppedResult = {
   status: "stopped";
-  publicFailure?: AnyRunOnceFailure | undefined;
   issue: IssueSummary;
-  reason: "plan-only" | "issue-locked";
   nextPhase?: "implementation" | undefined;
   specPath?: string | undefined;
   planPath?: string | undefined;
   branch?: string | undefined;
   worktreePath?: string | undefined;
-};
+} & (
+  | {
+      reason: "plan-only";
+      publicFailure: RunOnceFailure<"plan-only">;
+    }
+  | {
+      reason: "issue-locked";
+      publicFailure: RunOnceFailure<"issue-locked">;
+    }
+);
 
 type AgentIssuePipelineResultLog = {
   logPath?: string | undefined;

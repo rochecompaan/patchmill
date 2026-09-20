@@ -93,10 +93,21 @@ export function createPlanningArtifactAgent(input: {
 }
 export class PlanningPhaseArtifactError extends Error {
   readonly reason: string;
-  constructor(reason: string) {
+  readonly diagnosticContext?: {
+    phase: "spec" | "plan" | "implementation";
+    artifactKind: PlanningArtifactKind;
+    baseOid: string;
+    candidates: readonly string[];
+  };
+
+  constructor(
+    reason: string,
+    diagnosticContext?: PlanningPhaseArtifactError["diagnosticContext"],
+  ) {
     super(`Planning phase artifact failed: ${reason}`);
     this.name = "PlanningPhaseArtifactError";
     this.reason = reason;
+    if (diagnosticContext) this.diagnosticContext = diagnosticContext;
   }
 }
 export function resolvePlanningPhaseArtifacts(input: {
@@ -108,7 +119,12 @@ export function resolvePlanningPhaseArtifacts(input: {
   for (const kind of input.phase.artifactKinds) {
     const candidates = input.base.artifactCandidates[kind];
     if (candidates.length > 1)
-      throw new PlanningPhaseArtifactError("ambiguous-base-artifact");
+      throw new PlanningPhaseArtifactError("ambiguous-base-artifact", {
+        phase: input.phase.kind,
+        artifactKind: kind,
+        baseOid: input.base.baseOid,
+        candidates,
+      });
     if (candidates.length === 1)
       artifacts.push({
         kind,

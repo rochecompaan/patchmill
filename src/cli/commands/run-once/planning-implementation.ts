@@ -70,12 +70,12 @@ export type PlanningImplementationInput = {
 
 function blocked(
   reason: string,
-  publicFailure?: AnyRunOnceFailure,
+  publicFailure: AnyRunOnceFailure,
 ): AgentIssueInternalBlockedResult {
   return {
     status: "blocked",
     reason,
-    ...(publicFailure ? { publicFailure } : {}),
+    publicFailure,
     questions: [],
     commits: [],
     validation: [],
@@ -206,16 +206,43 @@ export async function runPlanningImplementation(
       checkpoint: (nextPhase) => replace(input, state, nextPhase),
     });
     if (recovered.kind === "unsafe") {
-      // The agent's own blocker explains why it stopped; the unsafe
-      // workspace is evidence it left behind. Surface both rather than
-      // masking the agent's reason behind a generic workspace code.
+      const workspaceEvidence = {
+        workspaceState: recovered.workspace.state,
+        workspaceRecoveryReason: recovered.reason,
+        ...(recovered.workspace.state === "ready"
+          ? {
+              statusEvidence: recovered.workspace.clean ? "clean" : "dirty",
+              observedHeadOid: recovered.workspace.headOid,
+            }
+          : {}),
+      };
+      // The agent's own blocker explains why it stopped; the unsafe workspace
+      // snapshot is retained as catalog details rather than merged into agent
+      // supplied text.
       if (result.status === "blocked")
         return {
           kind: "blocked",
           state: recovered.state,
           result: {
             ...result,
-            reason: `${result.reason}\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.`,
+            publicFailure: runOnceFailure("agent-blocked", {
+              issueNumber: state.issueNumber,
+              status: "blocked",
+              phase: "implementation",
+              branch: phase.workspace.identity.branch,
+              worktreePath: phase.workspace.identity.worktreePath,
+              expectedHeadOid: phase.workspace.headOid,
+              ...workspaceEvidence,
+              reportedReason: result.reason,
+              questions: result.questions.map((question) =>
+                typeof question === "string"
+                  ? question
+                  : question.recommendedAnswer
+                    ? `${question.question} (recommended: ${question.recommendedAnswer})`
+                    : question.question,
+              ),
+              evidence: result.validation,
+            }),
           },
         };
       return {
@@ -229,7 +256,7 @@ export async function runPlanningImplementation(
             phase: "implementation",
             branch: phase.workspace.identity.branch,
             worktreePath: phase.workspace.identity.worktreePath,
-            workspaceState: "unsafe",
+            ...workspaceEvidence,
             expectedHeadOid: phase.workspace.headOid,
           }),
         ),

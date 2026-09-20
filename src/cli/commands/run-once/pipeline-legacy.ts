@@ -253,7 +253,11 @@ async function runLegacyOneIssueInternal(
         triagePolicy: config.triagePolicy,
         approvalPolicy: config.approvalPolicy,
       });
-      await emitSelectionDiagnostics(diagnostics.rejections, options);
+      await emitSelectionDiagnostics(
+        diagnostics.rejections,
+        options,
+        lifecycleLabels(config).ready,
+      );
       await progress(
         options,
         "info",

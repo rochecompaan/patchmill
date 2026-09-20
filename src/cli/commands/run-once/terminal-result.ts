@@ -91,15 +91,25 @@ function diagnosticSections(summary: RunOnceResultSummary): TerminalSection[] {
             blocks: [
               {
                 kind: "fields" as const,
-                fields: diagnostic.details.map((entry) => ({
-                  label: entry.label,
-                  value: value(
-                    Array.isArray(entry.value)
-                      ? entry.value.join("\n")
-                      : String(entry.value),
-                    detailRole(entry.key),
-                  ),
-                })),
+                fields: diagnostic.details.flatMap((entry) => {
+                  const role = detailRole(entry.key);
+                  if (Array.isArray(entry.value) && role === "path")
+                    return entry.value.map((path) => ({
+                      label: entry.label,
+                      value: value(formatPlanningCleanupPath(path), role),
+                    }));
+                  return [
+                    {
+                      label: entry.label,
+                      value: value(
+                        Array.isArray(entry.value)
+                          ? entry.value.join("\n")
+                          : String(entry.value),
+                        role,
+                      ),
+                    },
+                  ];
+                }),
               },
             ],
           },

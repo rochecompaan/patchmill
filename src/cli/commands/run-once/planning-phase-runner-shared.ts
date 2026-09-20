@@ -157,12 +157,12 @@ export function operations(
 
 export function blocked(
   reason: string,
-  publicFailure?: AnyRunOnceFailure,
+  publicFailure: AnyRunOnceFailure,
 ): AgentIssueInternalBlockedResult {
   return {
     status: "blocked",
     reason,
-    ...(publicFailure ? { publicFailure } : {}),
+    publicFailure,
     questions: [],
     commits: [],
     validation: [],

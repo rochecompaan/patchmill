@@ -16,6 +16,7 @@ const LABELS: Record<string, string> = {
   branch: "Branch",
   worktreePath: "Worktree",
   workspaceState: "Workspace state",
+  workspaceRecoveryReason: "Workspace recovery",
   statusEvidence: "Status",
   lockPath: "Planning lock",
   fingerprint: "SHA-256 fingerprint",

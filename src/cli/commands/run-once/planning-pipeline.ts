@@ -36,7 +36,7 @@ import { readRunState } from "./run-state.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
-import type { AgentIssueBlockedResult } from "../../../issue-run/types.ts";
+import type { AgentIssueInternalBlockedResult } from "./types.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
@@ -48,7 +48,11 @@ import type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 
 export type PlanningPipelineResult =
   | AgentIssueStoppedResult
-  | { status: "blocked"; issue: IssueSummary; result: AgentIssueBlockedResult }
+  | {
+      status: "blocked";
+      issue: IssueSummary;
+      result: AgentIssueInternalBlockedResult;
+    }
   | {
       status: "coordinated";
       issue: IssueSummary;
@@ -93,7 +97,7 @@ type PlanningIssueInput = {
 function blocked(
   issue: IssueSummary,
   reason: string,
-  publicFailure?: import("./result-diagnostics.ts").AnyRunOnceFailure,
+  publicFailure: import("./result-diagnostics.ts").AnyRunOnceFailure,
 ): PlanningPipelineResult {
   return {
     status: "blocked",
@@ -101,7 +105,7 @@ function blocked(
     result: {
       status: "blocked",
       reason,
-      ...(publicFailure ? { publicFailure } : {}),
+      publicFailure,
       questions: [],
       commits: [],
       validation: [],
@@ -109,21 +113,37 @@ function blocked(
   };
 }
 
+function planningIdentityFailure(input: {
+  expected: readonly string[];
+  observed: readonly string[];
+}) {
+  return runOnceFailure("planning-identity-changed", {
+    expectedIdentity: input.expected,
+    observedIdentity: input.observed,
+  });
+}
+
 function planningLockFailure(
   issue: IssueSummary,
   diagnostic: PlanningIssueLockConflictError["diagnostic"],
 ) {
-  const reason =
-    diagnostic.classification === "active"
-      ? "issue-locked"
-      : (`issue-lock-${diagnostic.classification}` as const);
-  return runOnceFailure(reason, {
+  const context = {
     issueNumber: issue.number,
     status: "blocked",
     lockPath: diagnostic.path,
     fingerprint: diagnostic.fingerprint,
     ...(diagnostic.owner ? { owner: diagnostic.owner } : {}),
-  } as never);
+  };
+  switch (diagnostic.classification) {
+    case "active":
+      return runOnceFailure("issue-locked", context);
+    case "stale":
+      return runOnceFailure("issue-lock-stale", context);
+    case "unverifiable":
+      return runOnceFailure("issue-lock-unverifiable", context);
+    case "malformed":
+      return runOnceFailure("issue-lock-malformed", context);
+  }
 }
 
 export function planningIssueNeedsClaim(input: {
@@ -187,7 +207,7 @@ export async function runPlanningIssue(
           input.issue,
           error.diagnostic,
         );
-        if (error.diagnostic.classification === "active")
+        if (publicFailure.reason === "issue-locked")
           return {
             status: "stopped",
             issue: input.issue,
@@ -231,7 +251,21 @@ export async function runPlanningIssue(
         (input.expectedStatePresence === "present" && saved === undefined) ||
         (retriedAuthoritativeRun && saved === undefined)
       )
-        return blocked(input.issue, "planning-identity-changed");
+        return blocked(
+          input.issue,
+          "planning-identity-changed",
+          planningIdentityFailure({
+            expected: [
+              `issueNumber=${input.issue.number}`,
+              `title=${input.issue.title}`,
+              "planningState=present",
+            ],
+            observed: [
+              `issueNumber=${input.issue.number}`,
+              "planningState=absent",
+            ],
+          }),
+        );
       const current = saved ?? input.state;
       const planningActive = current.phases.some(
         (phase) => phase.status !== "complete",
@@ -245,10 +279,37 @@ export async function runPlanningIssue(
         !planningActive ||
         legacyConflict
       )
-        return blocked(input.issue, "planning-identity-changed");
+        return blocked(
+          input.issue,
+          "planning-identity-changed",
+          planningIdentityFailure({
+            expected: [
+              `issueNumber=${input.issue.number}`,
+              `title=${input.issue.title}`,
+              "issueState=open",
+              "planningState=active",
+              "legacyState=not-active",
+            ],
+            observed: [
+              `issueNumber=${issue.number}`,
+              `title=${issue.title}`,
+              `issueState=${issue.state}`,
+              `planningState=${planningActive ? "active" : "inactive"}`,
+              `legacyState=${legacyConflict ? "active" : "not-active"}`,
+              `stateIssueNumber=${current.issueNumber}`,
+            ],
+          }),
+        );
       if (saved !== undefined && saved.runId !== lock.record.runId) {
         if (input.expectedStatePresence !== "absent" || retriedAuthoritativeRun)
-          return blocked(input.issue, "planning-identity-changed");
+          return blocked(
+            input.issue,
+            "planning-identity-changed",
+            planningIdentityFailure({
+              expected: [`runId=${lock.record.runId}`],
+              observed: [`runId=${saved.runId}`],
+            }),
+          );
         const provisionalLock = lock;
         lock = undefined;
         await releaseOwnedPlanningLock({
@@ -268,7 +329,7 @@ export async function runPlanningIssue(
               input.issue,
               error.diagnostic,
             );
-            if (error.diagnostic.classification === "active")
+            if (publicFailure.reason === "issue-locked")
               return {
                 status: "stopped",
                 issue: input.issue,
@@ -309,7 +370,14 @@ export async function runPlanningIssue(
         !eligible ||
         (input.eligible !== undefined && !input.eligible(issue, saved))
       )
-        return blocked(input.issue, "planning-identity-changed");
+        return blocked(
+          input.issue,
+          "planning-identity-changed",
+          planningIdentityFailure({
+            expected: ["eligible=true"],
+            observed: ["eligible=false"],
+          }),
+        );
       const fresh = saved === undefined;
       if (fresh) await input.stateStore.initialize({ state: current, lock });
       const labels = await input.mutate(issue, fresh, current);
@@ -381,6 +449,13 @@ export function mapPlanningOutcome(
         status: "stopped",
         issue,
         reason: outcome.reason,
+        publicFailure: runOnceFailure("plan-only", {
+          issueNumber: issue.number,
+          status: "stopped",
+          phase: "implementation",
+          ...paths,
+          nextPhase: outcome.nextPhase,
+        }),
         nextPhase: outcome.nextPhase,
         ...paths,
       };

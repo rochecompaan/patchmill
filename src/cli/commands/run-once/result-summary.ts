@@ -74,7 +74,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         planPath?: string;
         commits?: string[];
         validation?: string[];
-        diagnostic?: RunOnceDiagnostic;
+        diagnostic: RunOnceDiagnostic;
       }
     | {
         status: "review-pending";
@@ -91,7 +91,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         planPath?: string;
         branch?: string;
         worktreePath?: string;
-        diagnostic?: RunOnceDiagnostic;
+        diagnostic: RunOnceDiagnostic;
       }
     | {
         status: "approval-required";
@@ -109,14 +109,14 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         reason: string;
         evidence: string[];
         remediation: string[];
-        diagnostic?: RunOnceDiagnostic;
+        diagnostic: RunOnceDiagnostic;
       }
     | {
         status: "blocked";
         issueNumber: number;
         reason: RunOnceReasonCode;
         questions: string[];
-        diagnostic?: RunOnceDiagnostic;
+        diagnostic: RunOnceDiagnostic;
       }
   );
 
@@ -127,8 +127,8 @@ export type RunOnceResultSummary =
       error: string;
       causes?: string[];
       logPath?: string;
-      reason?: RunOnceReasonCode;
-      diagnostic?: RunOnceDiagnostic;
+      reason: RunOnceReasonCode;
+      diagnostic: RunOnceDiagnostic;
     };
 export type RunOnceResultStatus = RunOnceResultSummary["status"];
 
@@ -226,17 +226,10 @@ export function summarizeResult(
         ...(result.validation === undefined
           ? {}
           : { validation: [...result.validation] }),
-        ...summarizeFailure("ignored-worktree-content", {
-          ...workspaceContext({
-            issueNumber: result.issue.number,
-            phase: result.phase,
-            branch: result.branch,
-            worktreePath: result.worktreePath,
-            status: result.status,
-          }),
-          ignoredPaths: result.ignoredPaths,
-          guidance: result.remediation,
-        }),
+        ...summarizeFailure(
+          result.publicFailure.reason,
+          result.publicFailure.diagnosticContext,
+        ),
         ...withLogPath,
       };
     case "review-pending":
@@ -260,24 +253,10 @@ export function summarizeResult(
         ...(result.worktreePath !== undefined
           ? { worktreePath: result.worktreePath }
           : {}),
-        ...(result.publicFailure
-          ? summarizeFailure(
-              result.publicFailure.reason,
-              result.publicFailure.diagnosticContext as never,
-            )
-          : summarizeFailure(result.reason, {
-              ...workspaceContext({
-                issueNumber: result.issue.number,
-                ...(result.branch ? { branch: result.branch } : {}),
-                ...(result.worktreePath
-                  ? { worktreePath: result.worktreePath }
-                  : {}),
-                status: result.status,
-              }),
-              ...(result.reason === "plan-only"
-                ? { nextPhase: result.nextPhase }
-                : { lockPath: "planning lock", fingerprint: "unavailable" }),
-            } as never)),
+        ...summarizeFailure(
+          result.publicFailure.reason,
+          result.publicFailure.diagnosticContext,
+        ),
         ...withLogPath,
       };
     case "approval-required":

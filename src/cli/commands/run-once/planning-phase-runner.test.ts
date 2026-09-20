@@ -527,6 +527,14 @@ test("maps a missing planning pull request to a sanitized blocker", async () => 
     result: {
       status: "blocked",
       reason: "planning-pull-request-missing",
+      publicFailure: {
+        reason: "planning-pull-request-missing",
+        diagnosticContext: {
+          issueNumber: 189,
+          status: "blocked",
+          phase: "plan",
+        },
+      },
       questions: [],
       commits: [],
       validation: [],
@@ -549,7 +557,12 @@ test("blocks ambiguous base artifacts without starting a workspace", async () =>
       } as never,
       operations: {
         resolveArtifacts: () => {
-          throw new PlanningPhaseArtifactError("ambiguous-base-artifact");
+          throw new PlanningPhaseArtifactError("ambiguous-base-artifact", {
+            phase: "spec",
+            artifactKind: "spec",
+            baseOid: base.baseOid,
+            candidates: ["docs/specs/a.md", "docs/specs/b.md"],
+          });
         },
       },
     }),
@@ -557,6 +570,20 @@ test("blocks ambiguous base artifacts without starting a workspace", async () =>
   // The production error is classified by its stable reason before Git effects.
   assert.equal(prepared, false);
   assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "ambiguous-base-artifact",
+    );
+    assert.deepEqual(result.result.publicFailure?.diagnosticContext, {
+      issueNumber: 189,
+      status: "blocked",
+      phase: "spec",
+      artifactKind: "spec",
+      baseOid: base.baseOid,
+      candidates: ["docs/specs/a.md", "docs/specs/b.md"],
+    });
+  }
 });
 
 test("checkpoints a planning phase satisfied by the fetched base without a pull request", async () => {

@@ -415,8 +415,16 @@ test("blocks a resumed blocker when its saved head is not an ancestor", async ()
   );
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked") {
-    assert.match(result.result.reason, /^pause/);
-    assert.match(result.result.reason, /workspace was left dirty or unproven/);
+    assert.equal(result.result.reason, "pause");
+    assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.workspaceRecoveryReason,
+      "not-descendant",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.observedHeadOid,
+      oid("b"),
+    );
   }
   assert.deepEqual(checkpoints, []);
 });
@@ -450,8 +458,16 @@ test("refuses dirty blocker progress without checkpointing", async () => {
   );
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked") {
-    assert.match(result.result.reason, /^pause/);
-    assert.match(result.result.reason, /workspace was left dirty or unproven/);
+    assert.equal(result.result.reason, "pause");
+    assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.workspaceRecoveryReason,
+      "dirty",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.workspaceState,
+      "ready",
+    );
     assert.deepEqual(result.result.questions, [{ question: "which file?" }]);
   }
   assert.deepEqual(checkpoints, []);
