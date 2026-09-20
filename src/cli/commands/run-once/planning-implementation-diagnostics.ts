@@ -3,8 +3,6 @@ import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts"
 import {
   runOnceFailure,
   type AnyRunOnceFailure,
-  type ImplementationDiagnosticReasonCode,
-  type RunOnceDiagnosticContextByReason,
   type RunOnceFailure,
 } from "./result-diagnostics.ts";
 import type { AgentIssueInternalBlockedResult } from "./types.ts";
@@ -28,27 +26,6 @@ export function implementationDiagnosticBase(
     branch: phase.workspace.identity.branch,
     worktreePath: phase.workspace.identity.worktreePath,
   };
-}
-
-type ImplementationDiagnosticDetails<
-  R extends ImplementationDiagnosticReasonCode,
-> = Omit<
-  RunOnceDiagnosticContextByReason[R],
-  keyof ImplementationDiagnosticBase
->;
-
-/** Materializes implementation evidence already observed by the workflow. */
-export function implementationFailure<
-  R extends ImplementationDiagnosticReasonCode,
->(
-  base: ImplementationDiagnosticBase,
-  reason: R,
-  details: ImplementationDiagnosticDetails<R>,
-): RunOnceFailure<R> {
-  return runOnceFailure(reason, {
-    ...base,
-    ...details,
-  } as RunOnceDiagnosticContextByReason[R]);
 }
 
 export function unsafeWorkspaceEvidence(input: {

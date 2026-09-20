@@ -11,6 +11,7 @@ import {
   writeRunOnceResult,
 } from "./result-output.ts";
 import type { RunOnceResultSummary } from "./result-summary.ts";
+import { diagnosticFor } from "./result-diagnostics.ts";
 
 const summary: RunOnceResultSummary = {
   status: "pr-created",
@@ -32,6 +33,13 @@ const cleanupPendingSummary: RunOnceResultSummary = {
   reason: "ignored-worktree-content",
   ignoredPaths: [".env"],
   remediation: ["Remove or preserve .env."],
+  diagnostic: diagnosticFor("ignored-worktree-content", {
+    issueNumber: 174,
+    phase: "implementation",
+    branch: "agent/issue-174",
+    worktreePath: ".worktrees/issue-174",
+    ignoredPaths: [".env"],
+  }),
 };
 test("writes human TTY output but exact compact JSON when redirected", async () => {
   const interactive: string[] = [];
@@ -156,10 +164,25 @@ test("writes severity-specific complete JSONL result events", async () => {
         planPath: "docs/plans/174.md",
         branch: "agent/issue-174",
         worktreePath: ".worktrees/174",
+        diagnostic: diagnosticFor("plan-only", {
+          issueNumber: 174,
+          phase: "implementation",
+          branch: "agent/issue-174",
+          worktreePath: ".worktrees/174",
+          nextPhase: "implementation",
+        }),
       },
       "warning",
     ],
-    [{ status: "error", error: "failed" }, "error"],
+    [
+      {
+        status: "error",
+        error: "failed",
+        reason: "unexpected-error",
+        diagnostic: diagnosticFor("unexpected-error", { error: "failed" }),
+      },
+      "error",
+    ],
   ];
   for (const [result, level] of cases) {
     const path = join(dir, `${result.status}.jsonl`);
@@ -202,8 +225,28 @@ test("preserves the exit-code contract for every status", () => {
       0,
     ],
     [cleanupPendingSummary, 0],
-    [{ status: "stopped", issueNumber: 1, reason: "plan-only" }, 0],
-    [{ status: "stopped", issueNumber: 1, reason: "issue-locked" }, 0],
+    [
+      {
+        status: "stopped",
+        issueNumber: 1,
+        reason: "plan-only",
+        diagnostic: diagnosticFor("plan-only", { issueNumber: 1 }),
+      },
+      0,
+    ],
+    [
+      {
+        status: "stopped",
+        issueNumber: 1,
+        reason: "issue-locked",
+        diagnostic: diagnosticFor("issue-locked", {
+          issueNumber: 1,
+          lockPath: "lock",
+          fingerprint: "unavailable",
+        }),
+      },
+      0,
+    ],
     [
       {
         status: "approval-required",
@@ -221,11 +264,38 @@ test("preserves the exit-code contract for every status", () => {
         reason: "development-environment-not-ready",
         evidence: [],
         remediation: [],
+        diagnostic: diagnosticFor("development-environment-not-ready", {
+          issueNumber: 1,
+          reportedReason: "development-environment-not-ready",
+          evidence: [],
+          reportedRemediation: [],
+        }),
       },
       1,
     ],
-    [{ status: "blocked", issueNumber: 1, reason: "no", questions: [] }, 1],
-    [{ status: "error", error: "no" }, 1],
+    [
+      {
+        status: "blocked",
+        issueNumber: 1,
+        reason: "agent-blocked",
+        questions: [],
+        diagnostic: diagnosticFor("agent-blocked", {
+          issueNumber: 1,
+          reportedReason: "no",
+          questions: [],
+        }),
+      },
+      1,
+    ],
+    [
+      {
+        status: "error",
+        error: "no",
+        reason: "unexpected-error",
+        diagnostic: diagnosticFor("unexpected-error", { error: "no" }),
+      },
+      1,
+    ],
   ];
   for (const [result, code] of cases)
     assert.equal(exitCodeForRunOnceResult(result), code);
@@ -250,8 +320,13 @@ test("persists structured result before stdout and maps exit status", async () =
     exitCodeForRunOnceResult({
       status: "blocked",
       issueNumber: 1,
-      reason: "no",
+      reason: "agent-blocked",
       questions: [],
+      diagnostic: diagnosticFor("agent-blocked", {
+        issueNumber: 1,
+        reportedReason: "no",
+        questions: [],
+      }),
     }),
     1,
   );

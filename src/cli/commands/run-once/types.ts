@@ -314,6 +314,7 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         reason: string;
         evidence: string[];
         remediation: string[];
+        publicFailure: RunOnceFailure<"development-environment-not-ready">;
       }
     | ({
         issue: IssueSummary;

@@ -5,10 +5,7 @@ import type {
   RunOnceDiagnostic,
   RunOnceReasonCode,
 } from "./result-diagnostics.ts";
-import {
-  summarizeFailure,
-  workspaceContext,
-} from "./result-summary-diagnostics.ts";
+import { summarizeFailure } from "./result-summary-diagnostics.ts";
 import { failureForPipelineError } from "./pipeline-error-diagnostics.ts";
 
 export type RunOnceResultLog = { logPath?: string; piSessionPath?: string };
@@ -226,10 +223,7 @@ export function summarizeResult(
         ...(result.validation === undefined
           ? {}
           : { validation: [...result.validation] }),
-        ...summarizeFailure(
-          result.publicFailure.reason,
-          result.publicFailure.diagnosticContext,
-        ),
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
     case "review-pending":
@@ -253,10 +247,7 @@ export function summarizeResult(
         ...(result.worktreePath !== undefined
           ? { worktreePath: result.worktreePath }
           : {}),
-        ...summarizeFailure(
-          result.publicFailure.reason,
-          result.publicFailure.diagnosticContext,
-        ),
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
     case "approval-required":
@@ -279,19 +270,7 @@ export function summarizeResult(
           : {}),
         evidence: result.evidence,
         remediation: result.remediation,
-        ...summarizeFailure("development-environment-not-ready", {
-          ...workspaceContext({
-            issueNumber: result.issue.number,
-            ...(result.branch ? { branch: result.branch } : {}),
-            ...(result.worktreePath
-              ? { worktreePath: result.worktreePath }
-              : {}),
-            status: result.status,
-          }),
-          reportedReason: result.reason,
-          evidence: result.evidence,
-          reportedRemediation: result.remediation,
-        }),
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
     case "blocked":
@@ -299,10 +278,7 @@ export function summarizeResult(
         status: result.status,
         issueNumber: result.issue.number,
         questions: result.questions.map(questionText),
-        ...summarizeFailure(
-          result.publicFailure.reason,
-          result.publicFailure.diagnosticContext,
-        ),
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
   }
@@ -319,6 +295,6 @@ export function summarizeErrorResult(
     error: formatted.message,
     ...(formatted.causes ? { causes: formatted.causes } : {}),
     ...(logPath ? { logPath } : {}),
-    ...summarizeFailure(failure.reason, failure.diagnosticContext as never),
+    ...summarizeFailure(failure),
   };
 }

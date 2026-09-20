@@ -6,6 +6,7 @@ import type { PullRequestHost } from "../../../host/pull-requests.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import { PlanningStateValidationError } from "../../../workflow/planning-state.ts";
+import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
@@ -14,7 +15,6 @@ import type {
 } from "../../../workflow/planning-state-types.ts";
 import type { RunCostReport } from "./run-cost.ts";
 import { planningRunCost } from "./planning-implementation-run-cost.ts";
-import { implementationPhaseReplacer } from "./planning-implementation-state.ts";
 import type {
   AgentIssueMergedResult,
   AgentIssuePrCreatedResult,
@@ -33,10 +33,10 @@ import {
   developmentEnvironmentWorkspaceFailure,
   implementationBlocked,
   implementationDiagnosticBase,
-  implementationFailure,
   unsafeWorkspaceEvidence,
 } from "./planning-implementation-diagnostics.ts";
 import type { AgentIssueInternalBlockedResult } from "./types.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 
 export type PlanningImplementationOutcome =
   | { kind: "validated"; state: PlanningStateV1 }
@@ -78,7 +78,18 @@ export type PlanningImplementationInput = {
 export async function runPlanningImplementation(
   input: PlanningImplementationInput,
 ): Promise<PlanningImplementationOutcome> {
-  const replace = implementationPhaseReplacer(input);
+  const replace = (
+    state: PlanningStateV1,
+    nextPhase: PlanningStateV1["phases"][number],
+  ) =>
+    replacePlanningPhase({
+      stateStore: input.stateStore,
+      lock: input.lock,
+      state,
+      phaseIndex: input.phaseIndex,
+      phase: nextPhase,
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
   let state = input.state;
   let phase = state.phases[input.phaseIndex];
   if (phase?.kind !== "implementation")
@@ -93,16 +104,13 @@ export async function runPlanningImplementation(
         state,
         result: implementationBlocked(
           "implementation-configuration",
-          implementationFailure(
-            implementationDiagnosticBase(state, phase),
-            "implementation-configuration",
-            {
-              expectedRemote: phase.workspace.remote,
-              observedRemote: input.configuredGit.remote,
-              expectedBaseBranch: phase.base.baseBranch,
-              observedBaseBranch: input.configuredGit.baseBranch,
-            },
-          ),
+          runOnceFailure("implementation-configuration", {
+            ...implementationDiagnosticBase(state, phase),
+            expectedRemote: phase.workspace.remote,
+            observedRemote: input.configuredGit.remote,
+            expectedBaseBranch: phase.base.baseBranch,
+            observedBaseBranch: input.configuredGit.baseBranch,
+          }),
         ),
       };
     let result: Awaited<ReturnType<PlanningImplementationInput["runAgent"]>>;
@@ -176,11 +184,11 @@ export async function runPlanningImplementation(
         state: recovered.state,
         result: implementationBlocked(
           "implementation-workspace",
-          implementationFailure(
-            implementationDiagnosticBase(state, phase),
-            "implementation-workspace",
-            { ...workspaceEvidence, expectedHeadOid: phase.workspace.headOid },
-          ),
+          runOnceFailure("implementation-workspace", {
+            ...implementationDiagnosticBase(state, phase),
+            ...workspaceEvidence,
+            expectedHeadOid: phase.workspace.headOid,
+          }),
         ),
       };
     }
@@ -194,11 +202,11 @@ export async function runPlanningImplementation(
         state,
         result: implementationBlocked(
           "implementation-direct-merge",
-          implementationFailure(
-            implementationDiagnosticBase(state, phase),
-            "implementation-direct-merge",
-            { reportedBranch: result.branch, mergeCommit: result.mergeCommit },
-          ),
+          runOnceFailure("implementation-direct-merge", {
+            ...implementationDiagnosticBase(state, phase),
+            reportedBranch: result.branch,
+            mergeCommit: result.mergeCommit,
+          }),
         ),
       };
     const runCostReport = await input.resolveRunCost?.();
@@ -218,16 +226,13 @@ export async function runPlanningImplementation(
           state,
           result: implementationBlocked(
             "implementation-ancestry",
-            implementationFailure(
-              implementationDiagnosticBase(state, phase),
-              "implementation-ancestry",
-              {
-                baseOid: phase.base.baseOid,
-                savedHeadOid: phase.workspace.headOid,
-                observedHeadOid: workspace.headOid,
-                commits: result.commits,
-              },
-            ),
+            runOnceFailure("implementation-ancestry", {
+              ...implementationDiagnosticBase(state, phase),
+              baseOid: phase.base.baseOid,
+              savedHeadOid: phase.workspace.headOid,
+              observedHeadOid: workspace.headOid,
+              commits: result.commits,
+            }),
           ),
         };
       throw error;
@@ -242,18 +247,15 @@ export async function runPlanningImplementation(
         state,
         result: implementationBlocked(
           "implementation-remote-head",
-          implementationFailure(
-            implementationDiagnosticBase(state, phase),
-            "implementation-remote-head",
-            {
-              remote: phase.workspace.remote,
-              expectedHeadOid: workspace.headOid,
-              observedRemoteState: remote.state,
-              ...(remote.state === "present"
-                ? { observedHeadOid: remote.headOid }
-                : {}),
-            },
-          ),
+          runOnceFailure("implementation-remote-head", {
+            ...implementationDiagnosticBase(state, phase),
+            remote: phase.workspace.remote,
+            expectedHeadOid: workspace.headOid,
+            observedRemoteState: remote.state,
+            ...(remote.state === "present"
+              ? { observedHeadOid: remote.headOid }
+              : {}),
+          }),
         ),
       };
     const [targetRepository, headRepository] = await Promise.all([
@@ -270,14 +272,11 @@ export async function runPlanningImplementation(
         state,
         result: implementationBlocked(
           "implementation-url",
-          implementationFailure(
-            implementationDiagnosticBase(state, phase),
-            "implementation-url",
-            {
-              reportedUrl: result.prUrl,
-              expectedRepository: `${targetRepository.host}/${targetRepository.owner}/${targetRepository.repository}`,
-            },
-          ),
+          runOnceFailure("implementation-url", {
+            ...implementationDiagnosticBase(state, phase),
+            reportedUrl: result.prUrl,
+            expectedRepository: `${targetRepository.host}/${targetRepository.owner}/${targetRepository.repository}`,
+          }),
         ),
       };
     const branchPushed: ImplementationBranchPushedPlanningPhase = {
@@ -327,14 +326,11 @@ export async function runPlanningImplementation(
         state,
         result: implementationBlocked(
           "implementation-branch",
-          implementationFailure(
-            implementationDiagnosticBase(state, phase),
-            "implementation-branch",
-            {
-              expectedBranch: phase.workspace.identity.branch,
-              reportedBranch: branchPushed.implementation.branch,
-            },
-          ),
+          runOnceFailure("implementation-branch", {
+            ...implementationDiagnosticBase(state, phase),
+            expectedBranch: phase.workspace.identity.branch,
+            reportedBranch: branchPushed.implementation.branch,
+          }),
         ),
       };
     try {
@@ -346,11 +342,10 @@ export async function runPlanningImplementation(
           state,
           result: implementationBlocked(
             "implementation-evidence",
-            implementationFailure(
-              implementationDiagnosticBase(state, phase),
-              "implementation-evidence",
-              { validation: error.message },
-            ),
+            runOnceFailure("implementation-evidence", {
+              ...implementationDiagnosticBase(state, phase),
+              validation: error.message,
+            }),
           ),
         };
       throw error;
@@ -382,20 +377,17 @@ export async function runPlanningImplementation(
         state,
         result: implementationBlocked(
           error.message,
-          implementationFailure(
-            implementationDiagnosticBase(state, phase),
-            "implementation-validation",
-            {
-              validationReason: error.validationReason,
-              pullRequestUrl: phase.implementation.prUrl,
-              ...(error.facts.expected === undefined
-                ? {}
-                : { expected: error.facts.expected }),
-              ...(error.facts.observed === undefined
-                ? {}
-                : { observed: error.facts.observed }),
-            },
-          ),
+          runOnceFailure("implementation-validation", {
+            ...implementationDiagnosticBase(state, phase),
+            validationReason: error.validationReason,
+            pullRequestUrl: phase.implementation.prUrl,
+            ...(error.facts.expected === undefined
+              ? {}
+              : { expected: error.facts.expected }),
+            ...(error.facts.observed === undefined
+              ? {}
+              : { observed: error.facts.observed }),
+          }),
         ),
       };
     throw error;

@@ -7,6 +7,7 @@ import type { CommandRunner } from "../../../command/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { runDevelopmentEnvironmentAgent } from "./development-environment-agent.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import { writeRunState } from "./run-state.ts";
 import { retryableLabelsAfterDevelopmentEnvironmentFailure } from "./workflow-state.ts";
 import type {
@@ -138,6 +139,16 @@ export async function developmentEnvironmentNotReady(
       reason: result.reason,
       evidence: result.evidence,
       remediation: result.remediation,
+      publicFailure: runOnceFailure("development-environment-not-ready", {
+        issueNumber: issue.number,
+        status: "blocked",
+        phase: "implementation",
+        branch: options.branch,
+        worktreePath: options.worktreePath,
+        reportedReason: result.reason,
+        evidence: result.evidence,
+        reportedRemediation: result.remediation,
+      }),
     },
     options,
   );

@@ -5,7 +5,11 @@ import { isResumableRunState, readRunState } from "./run-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { assertExplicitWorkflowState } from "./workflow-state.ts";
-import type { AgentIssueConfig, IssueSelectionRejection } from "./types.ts";
+import type {
+  AgentIssueConfig,
+  IssueSelectionDiagnostics,
+  IssueSelectionRejection,
+} from "./types.ts";
 import {
   automaticWorkflowStateEligible,
   lifecycleLabels,
@@ -101,6 +105,22 @@ export async function emitSelectionDiagnostics(
       },
     );
   }
+}
+
+/** Computes and emits diagnostics for legacy selection without changing selection effects. */
+export async function legacySelectionDiagnostics(
+  issues: IssueSummary[],
+  config: AgentIssueConfig,
+  options: PipelineProgressOptions,
+): Promise<IssueSelectionDiagnostics> {
+  const readyLabel = lifecycleLabels(config).ready;
+  const diagnostics = selectIssueWithDiagnostics(issues, {
+    readyLabel,
+    triagePolicy: config.triagePolicy,
+    approvalPolicy: config.approvalPolicy,
+  });
+  await emitSelectionDiagnostics(diagnostics.rejections, options, readyLabel);
+  return diagnostics;
 }
 
 function assertBlockedRetryEligible(

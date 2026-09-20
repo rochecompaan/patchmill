@@ -1,4 +1,3 @@
-import { formatPlanningCleanupPath } from "./planning-cleanup-pending.ts";
 import { diagnosticSections } from "./terminal-diagnostic-sections.ts";
 import type {
   RunOnceResultStatus,
@@ -63,21 +62,6 @@ export function formatTerminalResult(
 ): string {
   const sections: TerminalSection[] = [];
   sections.push(...diagnosticSections(summary));
-  if (summary.status === "stopped" && !summary.diagnostic)
-    sections.push({
-      heading: "Stopped",
-      blocks: [
-        {
-          kind: "fields",
-          fields: [
-            { label: "Reason", value: value(summary.reason) },
-            ...(summary.nextPhase !== undefined
-              ? [{ label: "Next phase", value: value(summary.nextPhase) }]
-              : []),
-          ],
-        },
-      ],
-    });
   if ("prUrl" in summary && nonblank(summary.prUrl))
     sections.push({
       heading: "Pull request",
@@ -134,33 +118,6 @@ export function formatTerminalResult(
         },
       ],
     });
-  if (summary.status === "cleanup-pending" && !summary.diagnostic)
-    sections.push({
-      heading: "Cleanup pending",
-      blocks: [
-        {
-          kind: "fields",
-          fields: [
-            { label: "Phase", value: value(summary.phase) },
-            { label: "Reason", value: value(summary.reason) },
-          ],
-        },
-        {
-          kind: "list",
-          marker: "!",
-          markerSeverity: "warning",
-          items: summary.ignoredPaths.map((path) => ({
-            value: value(formatPlanningCleanupPath(path), "path"),
-          })),
-        },
-        {
-          kind: "list",
-          marker: "→",
-          markerSeverity: "warning",
-          items: summary.remediation.map((text) => ({ value: value(text) })),
-        },
-      ],
-    });
   if (summary.status === "review-pending")
     sections.push({
       heading: "Review pending",
@@ -184,69 +141,6 @@ export function formatTerminalResult(
         },
       ],
     });
-  if (
-    summary.status === "development-environment-not-ready" &&
-    !summary.diagnostic
-  )
-    sections.push({
-      heading: "Environment readiness",
-      blocks: [
-        {
-          kind: "fields",
-          fields: [{ label: "Reason", value: value(summary.reason) }],
-        },
-        ...(summary.evidence.filter(nonblank).length
-          ? [
-              {
-                kind: "list" as const,
-                marker: "!" as const,
-                markerSeverity: "warning" as const,
-                items: summary.evidence
-                  .filter(nonblank)
-                  .map((text) => ({ value: value(text) })),
-              },
-            ]
-          : []),
-        ...(summary.remediation.filter(nonblank).length
-          ? [
-              {
-                kind: "list" as const,
-                marker: "→" as const,
-                markerSeverity: "warning" as const,
-                items: summary.remediation
-                  .filter(nonblank)
-                  .map((text) => ({ value: value(text) })),
-              },
-            ]
-          : []),
-      ],
-    });
-  if (
-    (summary.status === "blocked" || summary.status === "error") &&
-    !summary.diagnostic
-  ) {
-    const reason =
-      summary.status === "blocked" ? summary.reason : summary.error;
-    const causes = summary.status === "error" ? (summary.causes ?? []) : [];
-    sections.push({
-      heading: "Failure",
-      blocks: [
-        { kind: "fields", fields: [{ label: "Reason", value: value(reason) }] },
-        ...(causes.filter(nonblank).length
-          ? [
-              {
-                kind: "list" as const,
-                marker: "✗" as const,
-                markerSeverity: "failure" as const,
-                items: causes
-                  .filter(nonblank)
-                  .map((text) => ({ value: value(text) })),
-              },
-            ]
-          : []),
-      ],
-    });
-  }
   if (summary.status === "blocked" && summary.questions.filter(nonblank).length)
     sections.push({
       heading: "Questions",
