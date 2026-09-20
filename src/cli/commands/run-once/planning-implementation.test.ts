@@ -840,6 +840,12 @@ test("retains validation evidence internally while publishing a stable reason", 
       result.result.publicFailure?.diagnosticContext.validationReason,
       "closing-reference",
     );
+    assert.deepEqual(result.result.publicFailure?.diagnosticContext.expected, [
+      "Closes #189",
+    ]);
+    assert.deepEqual(result.result.publicFailure?.diagnosticContext.observed, [
+      "pull request body has no unambiguous closing reference",
+    ]);
   }
 });
 

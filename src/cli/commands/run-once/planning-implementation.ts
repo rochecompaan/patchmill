@@ -478,8 +478,14 @@ export async function runPlanningImplementation(
             phase: "implementation",
             branch: phase.workspace.identity.branch,
             worktreePath: phase.workspace.identity.worktreePath,
-            validationReason: error.reason,
+            validationReason: error.validationReason,
             pullRequestUrl: phase.implementation.prUrl,
+            ...(error.facts.expected === undefined
+              ? {}
+              : { expected: error.facts.expected }),
+            ...(error.facts.observed === undefined
+              ? {}
+              : { observed: error.facts.observed }),
           }),
         ),
       };
