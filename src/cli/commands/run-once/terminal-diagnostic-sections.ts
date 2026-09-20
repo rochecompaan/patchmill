@@ -54,7 +54,11 @@ export function diagnosticSections(
               {
                 kind: "fields" as const,
                 fields: diagnostic.details.flatMap((entry) => {
-                  if (summary.status === "blocked" && entry.key === "questions")
+                  if (
+                    (summary.status === "blocked" &&
+                      entry.key === "questions") ||
+                    (summary.status === "error" && entry.key === "logPath")
+                  )
                     return [];
                   const role = detailRole(entry.key);
                   if (Array.isArray(entry.value) && role === "path")

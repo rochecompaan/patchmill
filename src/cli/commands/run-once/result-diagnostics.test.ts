@@ -121,6 +121,21 @@ test("ignored workspace diagnostics require the normal retry label", () => {
   );
 });
 
+test("unexpected-error action mentions a JSONL log only when retained", () => {
+  assert.doesNotMatch(
+    diagnosticFor("unexpected-error", { error: "host unavailable" }).actions[0]
+      ?.description ?? "",
+    /JSONL log/u,
+  );
+  assert.match(
+    diagnosticFor("unexpected-error", {
+      error: "host unavailable",
+      logPath: "/tmp/run.jsonl",
+    }).actions[0]?.description ?? "",
+    /JSONL log/u,
+  );
+});
+
 test("commands use only validated issue numbers and hostile agent text remains details", () => {
   const hostile = diagnosticFor("agent-blocked", {
     issueNumber: 242,

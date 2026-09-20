@@ -36,3 +36,22 @@ test("renders shared diagnostic sections in stable actionable order", () => {
   assert.match(output, /Which API\?/u);
   assert.doesNotMatch(output, /\u001b\[/u);
 });
+
+test("renders an error log path only in Run files", () => {
+  const logPath = "/tmp/issue-242.jsonl";
+  const output = formatTerminalResult(
+    {
+      status: "error",
+      error: "Unexpected failure",
+      logPath,
+      reason: "unexpected-error",
+      diagnostic: diagnosticFor("unexpected-error", {
+        error: "Unexpected failure",
+        logPath,
+      }),
+    },
+    { width: 100, color: false },
+  );
+  assert.equal(output.match(/\/tmp\/issue-242\.jsonl/gu)?.length, 1);
+  assert.match(output, /Run files/u);
+});

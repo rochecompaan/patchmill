@@ -13,6 +13,10 @@ type PublicLeaseOwner = {
   acquiredAt: string;
 };
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled Run recovery refusal: ${JSON.stringify(value)}`);
+}
+
 function publicLeaseOwner(owner: {
   pid: number;
   hostname: string;
@@ -106,6 +110,8 @@ export function failureForPipelineError(
           blockedAction: decision.blockedAction,
           guidance: decision.guidance,
         });
+      default:
+        return assertNever(decision);
     }
   }
   if (error instanceof PlanningWorkspaceConflictError)

@@ -148,14 +148,21 @@ export const GENERAL_DIAGNOSTICS = {
       "Patchmill does not certify agent-suggested destructive remediation.",
     retry: after("Retry after prerequisites are safely satisfied."),
   }),
-  "unexpected-error": definition({
+  "unexpected-error": {
     summary: "Unexpected Patchmill error",
     explanation:
       "Patchmill encountered an unclassified exception and cannot know whether retrying is safe.",
-    action:
-      "Inspect the retained error, causes, and JSONL log before deciding whether to retry.",
-    safety:
+    details: contextDetails,
+    actions: (context) => [
+      {
+        description: context.logPath
+          ? "Inspect the retained error, causes, and JSONL log before deciding whether to retry."
+          : "Inspect the retained error and causes before deciding whether to retry.",
+      },
+    ],
+    safety: [
       "Preserve workspaces, locks, branches, state, and logs; do not use speculative cleanup.",
-    retry: inspect("Inspect first; retry safety is unknown."),
-  }),
+    ],
+    retry: () => inspect("Inspect first; retry safety is unknown."),
+  } satisfies DiagnosticDefinition<"unexpected-error">,
 } satisfies Pick<RunOnceDiagnosticCatalog, GeneralDiagnosticReasonCode>;
