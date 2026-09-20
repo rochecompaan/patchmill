@@ -101,6 +101,10 @@ test("agent workspace blockers add preservation guidance without changing agent 
   });
   assert.equal(ordinary.actions.length, 1);
   assert.match(
+    ordinary.actions[0]?.description ?? "",
+    /acknowledge them through the configured workflow label/u,
+  );
+  assert.match(
     unsafeWorkspace.actions[1]?.description ?? "",
     /Inspect and preserve the implementation workspace/u,
   );

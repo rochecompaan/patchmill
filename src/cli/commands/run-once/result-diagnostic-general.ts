@@ -117,7 +117,7 @@ export const GENERAL_DIAGNOSTICS = {
       return [
         {
           description:
-            "Answer the retained questions through the configured workflow, then rerun this Issue.",
+            "Answer the retained questions, acknowledge them through the configured workflow label, then rerun this Issue.",
           ...(command ? { command } : {}),
         },
         ...(context.workspaceRecoveryReason
