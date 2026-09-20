@@ -473,6 +473,35 @@ test("refuses dirty blocker progress without checkpointing", async () => {
   assert.deepEqual(checkpoints, []);
 });
 
+test("retains a branch-only observed head for a blocked agent", async () => {
+  const result = await runPlanningImplementation(
+    input({
+      runAgent: async () => ({
+        status: "blocked",
+        reason: "pause",
+        questions: [],
+        commits: [],
+        validation: [],
+      }),
+      workspaces: {
+        inspect: async () => ({
+          state: "branch-only" as const,
+          identity: { branch: "agent/189", worktreePath: "/worktrees/189" },
+          headOid: oid("c"),
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.observedHeadOid,
+      oid("c"),
+    );
+  }
+});
+
 test("blocks unproven reported commits before branch-pushed evidence", async () => {
   const checkpoints: unknown[] = [];
   let inspectedRemote = false;

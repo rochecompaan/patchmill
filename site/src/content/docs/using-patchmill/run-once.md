@@ -123,12 +123,12 @@ same structured diagnostic written to JSONL:
       {
         "key": "workspaceState",
         "label": "Workspace state",
-        "value": "ready-dirty"
+        "value": "ready"
       },
       {
         "key": "statusEvidence",
         "label": "Status",
-        "value": " M docs/plans/issue-242.md"
+        "value": "dirty"
       }
     ],
     "actions": [

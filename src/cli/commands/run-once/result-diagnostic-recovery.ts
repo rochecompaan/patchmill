@@ -28,9 +28,9 @@ export const RECOVERY_DIAGNOSTICS = {
     }),
     actions: (context) => {
       const command =
-        context.resource === "lease"
-          ? issueCommand("lease-repair", context.issueNumber)
-          : undefined;
+        context.resource === "repair-lock"
+          ? undefined
+          : issueCommand("lease-repair", context.issueNumber);
       return [
         {
           description:

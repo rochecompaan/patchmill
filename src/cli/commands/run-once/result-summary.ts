@@ -294,33 +294,17 @@ export function summarizeResult(
         }),
         ...withLogPath,
       };
-    case "blocked": {
-      const publicFailure = result.publicFailure;
+    case "blocked":
       return {
         status: result.status,
         issueNumber: result.issue.number,
         questions: result.questions.map(questionText),
-        ...(publicFailure
-          ? summarizeFailure(
-              publicFailure.reason,
-              publicFailure.diagnosticContext as never,
-            )
-          : summarizeFailure("agent-blocked", {
-              ...workspaceContext({
-                issueNumber: result.issue.number,
-                ...(result.branch ? { branch: result.branch } : {}),
-                ...(result.worktreePath
-                  ? { worktreePath: result.worktreePath }
-                  : {}),
-                status: result.status,
-              }),
-              reportedReason: result.reason,
-              questions: result.questions.map(questionText),
-              evidence: result.validation,
-            })),
+        ...summarizeFailure(
+          result.publicFailure.reason,
+          result.publicFailure.diagnosticContext,
+        ),
         ...withLogPath,
       };
-    }
   }
 }
 

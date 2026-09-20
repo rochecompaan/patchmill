@@ -210,11 +210,11 @@ export async function runPlanningImplementation(
         workspaceState: recovered.workspace.state,
         workspaceRecoveryReason: recovered.reason,
         ...(recovered.workspace.state === "ready"
-          ? {
-              statusEvidence: recovered.workspace.clean ? "clean" : "dirty",
-              observedHeadOid: recovered.workspace.headOid,
-            }
+          ? { statusEvidence: recovered.workspace.clean ? "clean" : "dirty" }
           : {}),
+        ...(recovered.workspace.state === "missing"
+          ? {}
+          : { observedHeadOid: recovered.workspace.headOid }),
       };
       // The agent's own blocker explains why it stopped; the unsafe workspace
       // snapshot is retained as catalog details rather than merged into agent

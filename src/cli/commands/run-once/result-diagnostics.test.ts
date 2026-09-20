@@ -63,6 +63,15 @@ test("manual inspection and non-lease recovery diagnostics do not advertise comm
       leasePath: "/repo/.patchmill/locks/issue-242.lock",
       guidance: [],
     }).actions[0]?.command,
+    "patchmill run lease repair --issue 242",
+  );
+  assert.equal(
+    diagnosticFor("active-run", {
+      issueNumber: 242,
+      resource: "repair-lock",
+      leasePath: "/repo/.patchmill/locks/issue-242.repair",
+      guidance: [],
+    }).actions[0]?.command,
     undefined,
   );
   assert.equal(

@@ -1,12 +1,10 @@
 import { planningPhasePlan } from "../../../workflow/planning-pull-requests.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
-import type {
-  AgentIssueBlockedResult,
-  AgentIssuePrCreatedResult,
-} from "../../../issue-run/types.ts";
+import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
 import type { PlanningCleanupPendingOutcome } from "./planning-phase-runner-shared.ts";
+import type { AgentIssueInternalBlockedResult } from "./types.ts";
 
 export type PlanningCoordinatorOutcome =
   | PlanningCleanupPendingOutcome
@@ -22,7 +20,11 @@ export type PlanningCoordinatorOutcome =
       reason: "plan-only";
       nextPhase: "implementation";
     }
-  | { kind: "blocked"; state: PlanningStateV1; result: AgentIssueBlockedResult }
+  | {
+      kind: "blocked";
+      state: PlanningStateV1;
+      result: AgentIssueInternalBlockedResult;
+    }
   | {
       kind: "complete";
       state: PlanningStateV1;

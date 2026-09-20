@@ -270,10 +270,20 @@ type AgentIssuePipelineResultLog = {
   piSessionPath?: string | undefined;
 };
 
-/** Agent-facing results retain free-form reasons; public adapters attach this bounded envelope. */
+/** Agent-facing results retain free-form reasons until a public adapter attaches a bounded envelope. */
 export type AgentIssueInternalBlockedResult = AgentIssueBlockedResult & {
   publicFailure?: AnyRunOnceFailure | undefined;
 };
+
+/** Every public blocked result has a cataloged reason and typed diagnostic context. */
+export type AgentIssuePipelineBlockedResult = AgentIssuePipelineResultLog & {
+  issue: IssueSummary;
+  specPath?: string | undefined;
+  planPath?: string | undefined;
+  worktreePath?: string | undefined;
+  branch?: string | undefined;
+  publicFailure: AnyRunOnceFailure;
+} & AgentIssueBlockedResult;
 
 export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
   (
@@ -311,13 +321,7 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         planPath: string;
         worktreePath: string;
       } & (AgentIssuePrCreatedResult | AgentIssueMergedResult))
-    | ({
-        issue: IssueSummary;
-        specPath?: string | undefined;
-        planPath?: string | undefined;
-        worktreePath?: string | undefined;
-        branch?: string | undefined;
-      } & AgentIssueInternalBlockedResult)
+    | AgentIssuePipelineBlockedResult
   );
 
 // Recovery is deliberately modelled separately from persisted run status. A Run

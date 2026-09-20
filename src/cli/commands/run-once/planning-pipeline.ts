@@ -18,6 +18,7 @@ import {
 } from "../../../workflow/planning-state.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { blockerComment, startedComment } from "./pipeline-comments.ts";
+import { blockerQuestionText } from "./pipeline-failures.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
@@ -395,6 +396,25 @@ export async function runPlanningIssue(
   }
 }
 
+function publicFailureForBlocked(
+  issue: IssueSummary,
+  result: AgentIssueInternalBlockedResult,
+  paths: { branch?: string; worktreePath?: string } = {},
+) {
+  return (
+    result.publicFailure ??
+    runOnceFailure("agent-blocked", {
+      issueNumber: issue.number,
+      status: "blocked",
+      ...(paths.branch ? { branch: paths.branch } : {}),
+      ...(paths.worktreePath ? { worktreePath: paths.worktreePath } : {}),
+      reportedReason: result.reason,
+      questions: result.questions.map(blockerQuestionText),
+      evidence: result.validation,
+    })
+  );
+}
+
 function statePaths(state: PlanningStateV1) {
   const implementation = state.phases.find(
     (phase) => phase.kind === "implementation",
@@ -460,7 +480,12 @@ export function mapPlanningOutcome(
         ...paths,
       };
     case "blocked":
-      return { issue, ...paths, ...outcome.result };
+      return {
+        issue,
+        ...paths,
+        ...outcome.result,
+        publicFailure: publicFailureForBlocked(issue, outcome.result, paths),
+      };
     case "complete":
       if (!paths.planPath || !paths.branch || !paths.worktreePath)
         throw new Error(
@@ -636,7 +661,11 @@ export async function runPlanningWorkflow(input: {
     );
   if (planning.status === "blocked")
     return withLogPath(
-      { issue: planning.issue, ...planning.result },
+      {
+        issue: planning.issue,
+        ...planning.result,
+        publicFailure: publicFailureForBlocked(planning.issue, planning.result),
+      },
       runOptions,
     );
   return withLogPath(planning, runOptions);
