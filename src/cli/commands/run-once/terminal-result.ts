@@ -50,6 +50,113 @@ const value = (
   text: string,
   role: TerminalValue["role"] = "plain",
 ): TerminalValue => ({ text, role });
+
+function detailRole(key: string): TerminalValue["role"] {
+  return key.toLowerCase().includes("path")
+    ? "path"
+    : key.toLowerCase().includes("url")
+      ? "url"
+      : key.toLowerCase().includes("commit") ||
+          key.toLowerCase().includes("oid")
+        ? "commit"
+        : "plain";
+}
+
+function diagnosticSections(
+  summary: Extract<RunOnceResultSummary, { diagnostic?: unknown }>,
+): TerminalSection[] {
+  if (
+    !("diagnostic" in summary) ||
+    !summary.diagnostic ||
+    !("reason" in summary) ||
+    !summary.reason
+  )
+    return [];
+  const diagnostic = summary.diagnostic;
+  return [
+    {
+      heading: "Failure",
+      blocks: [
+        {
+          kind: "fields",
+          fields: [
+            { label: "Reason", value: value(summary.reason) },
+            { label: "Explanation", value: value(diagnostic.explanation) },
+          ],
+        },
+      ],
+    },
+    ...(diagnostic.details.length
+      ? [
+          {
+            heading: "Details",
+            blocks: [
+              {
+                kind: "fields" as const,
+                fields: diagnostic.details.map((entry) => ({
+                  label: entry.label,
+                  value: value(
+                    Array.isArray(entry.value)
+                      ? entry.value.join("\n")
+                      : String(entry.value),
+                    detailRole(entry.key),
+                  ),
+                })),
+              },
+            ],
+          },
+        ]
+      : []),
+    {
+      heading: "Recommended action",
+      blocks: [
+        {
+          kind: "list",
+          marker: "→",
+          markerSeverity: "warning",
+          items: diagnostic.actions.map((action) => ({
+            value: value(action.description),
+            ...(action.command
+              ? {
+                  details: [
+                    {
+                      label: "Command",
+                      value: value(action.command, "commit"),
+                    },
+                  ],
+                }
+              : {}),
+          })),
+        },
+      ],
+    },
+    {
+      heading: "Safety",
+      blocks: [
+        {
+          kind: "list",
+          marker: "!",
+          markerSeverity: "warning",
+          items: diagnostic.safety.map((warning) => ({
+            value: value(warning),
+          })),
+        },
+      ],
+    },
+    {
+      heading: "Retry",
+      blocks: [
+        {
+          kind: "fields",
+          fields: [
+            { label: "Kind", value: value(diagnostic.retry.kind) },
+            { label: "Guidance", value: value(diagnostic.retry.guidance) },
+          ],
+        },
+      ],
+    },
+  ];
+}
 export function terminalResultSeverity(
   status: RunOnceResultStatus,
 ): TerminalResultSeverity {
@@ -61,7 +168,8 @@ export function formatTerminalResult(
   options: TerminalResultOptions,
 ): string {
   const sections: TerminalSection[] = [];
-  if (summary.status === "stopped")
+  sections.push(...diagnosticSections(summary));
+  if (summary.status === "stopped" && !summary.diagnostic)
     sections.push({
       heading: "Stopped",
       blocks: [
@@ -132,7 +240,7 @@ export function formatTerminalResult(
         },
       ],
     });
-  if (summary.status === "cleanup-pending")
+  if (summary.status === "cleanup-pending" && !summary.diagnostic)
     sections.push({
       heading: "Cleanup pending",
       blocks: [
@@ -182,7 +290,10 @@ export function formatTerminalResult(
         },
       ],
     });
-  if (summary.status === "development-environment-not-ready")
+  if (
+    summary.status === "development-environment-not-ready" &&
+    !summary.diagnostic
+  )
     sections.push({
       heading: "Environment readiness",
       blocks: [
@@ -216,7 +327,10 @@ export function formatTerminalResult(
           : []),
       ],
     });
-  if (summary.status === "blocked" || summary.status === "error") {
+  if (
+    (summary.status === "blocked" || summary.status === "error") &&
+    !summary.diagnostic
+  ) {
     const reason =
       summary.status === "blocked" ? summary.reason : summary.error;
     const causes = summary.status === "error" ? (summary.causes ?? []) : [];
