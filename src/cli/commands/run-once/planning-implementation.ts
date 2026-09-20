@@ -30,6 +30,7 @@ import {
 import { recoverPostAgentWorkspace } from "./planning-implementation-workspace-recovery.ts";
 import {
   blockedAgentWorkspaceFailure,
+  developmentEnvironmentWorkspaceFailure,
   implementationBlocked,
   implementationDiagnosticBase,
   implementationFailure,
@@ -153,13 +154,21 @@ export async function runPlanningImplementation(
             ...result,
             reason: `${result.reason}\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.`,
             publicFailure:
-              result.publicFailure ??
-              blockedAgentWorkspaceFailure({
-                base: implementationDiagnosticBase(state, phase),
-                expectedHeadOid: phase.workspace.headOid,
-                evidence: workspaceEvidence,
-                result,
-              }),
+              result.publicFailure?.reason ===
+              "development-environment-not-ready"
+                ? developmentEnvironmentWorkspaceFailure({
+                    base: implementationDiagnosticBase(state, phase),
+                    expectedHeadOid: phase.workspace.headOid,
+                    evidence: workspaceEvidence,
+                    failure: result.publicFailure,
+                  })
+                : (result.publicFailure ??
+                  blockedAgentWorkspaceFailure({
+                    base: implementationDiagnosticBase(state, phase),
+                    expectedHeadOid: phase.workspace.headOid,
+                    evidence: workspaceEvidence,
+                    result,
+                  })),
           },
         };
       return {

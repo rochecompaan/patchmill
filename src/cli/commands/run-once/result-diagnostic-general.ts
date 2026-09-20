@@ -137,17 +137,35 @@ export const GENERAL_DIAGNOSTICS = {
     retry: () =>
       after("Retry after the questions are answered and acknowledged."),
   } satisfies DiagnosticDefinition<"agent-blocked">,
-  "development-environment-not-ready": definition({
+  "development-environment-not-ready": {
     summary: "Development environment is not ready",
     explanation:
       "The development-environment check reported unmet prerequisites.",
-    action:
-      "Validate the retained evidence, satisfy safe prerequisites, then rerun this Issue.",
-    command: "run-once",
-    safety:
+    details: contextDetails,
+    actions: (context) => {
+      const command = issueCommand("run-once", context.issueNumber);
+      return [
+        {
+          description:
+            "Validate the retained evidence, satisfy safe prerequisites, then rerun this Issue.",
+          ...(command ? { command } : {}),
+        },
+        ...(context.workspaceRecoveryReason
+          ? [
+              {
+                description:
+                  "Inspect and preserve the implementation workspace before retrying.",
+              },
+            ]
+          : []),
+      ];
+    },
+    safety: [
       "Patchmill does not certify agent-suggested destructive remediation.",
-    retry: after("Retry after prerequisites are safely satisfied."),
-  }),
+      "Do not clean, reset, or delete a preserved implementation workspace.",
+    ],
+    retry: () => after("Retry after prerequisites are safely satisfied."),
+  } satisfies DiagnosticDefinition<"development-environment-not-ready">,
   "unexpected-error": {
     summary: "Unexpected Patchmill error",
     explanation:

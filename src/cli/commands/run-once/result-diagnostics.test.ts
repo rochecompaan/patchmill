@@ -110,6 +110,23 @@ test("agent workspace blockers add preservation guidance without changing agent 
   );
 });
 
+test("environment workspace blockers add preservation guidance", () => {
+  const diagnostic = diagnosticFor("development-environment-not-ready", {
+    issueNumber: 242,
+    phase: "implementation",
+    worktreePath: ".worktrees/issue-242-implementation",
+    workspaceRecoveryReason: "dirty",
+    reportedReason: "Database unavailable",
+    evidence: ["Database service is unavailable."],
+    reportedRemediation: ["Start the development database."],
+  });
+  assert.match(
+    diagnostic.actions[1]?.description ?? "",
+    /Inspect and preserve the implementation workspace/u,
+  );
+  assert.match(diagnostic.safety.join(" "), /Do not clean, reset, or delete/u);
+});
+
 test("ignored workspace diagnostics require the normal retry label", () => {
   const diagnostic = diagnosticFor("ignored-worktree-content", {
     issueNumber: 242,

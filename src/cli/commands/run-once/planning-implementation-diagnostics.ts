@@ -106,3 +106,18 @@ export function blockedAgentWorkspaceFailure(input: {
     evidence: input.result.validation,
   });
 }
+
+/** Retains the environment failure while attaching post-agent workspace facts. */
+export function developmentEnvironmentWorkspaceFailure(input: {
+  base: ImplementationDiagnosticBase;
+  expectedHeadOid: string;
+  evidence: ReturnType<typeof unsafeWorkspaceEvidence>;
+  failure: RunOnceFailure<"development-environment-not-ready">;
+}): RunOnceFailure<"development-environment-not-ready"> {
+  return runOnceFailure("development-environment-not-ready", {
+    ...input.failure.diagnosticContext,
+    ...input.base,
+    expectedHeadOid: input.expectedHeadOid,
+    ...input.evidence,
+  });
+}

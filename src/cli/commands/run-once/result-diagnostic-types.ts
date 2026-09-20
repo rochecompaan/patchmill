@@ -274,6 +274,9 @@ export type RunOnceDiagnosticContextByReason = {
     reportedReason: string;
     evidence: readonly string[];
     reportedRemediation: readonly string[];
+    workspaceRecoveryReason?: "not-ready" | "dirty" | "not-descendant";
+    expectedHeadOid?: string;
+    observedHeadOid?: string;
   };
   "implementation-validation": Workspace & {
     validationReason: string;

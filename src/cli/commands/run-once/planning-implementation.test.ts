@@ -118,9 +118,17 @@ test("passes the post-prepare durable state and implementation workspace to the 
   assert.equal(received?.git.allowDirectLand, false);
 });
 
-test("preserves planning environment diagnostics through workspace recovery", async () => {
+test("preserves environment and unsafe workspace diagnostics together", async () => {
   const result = await runPlanningImplementation(
     input({
+      workspaces: {
+        inspect: async () => ({
+          state: "ready" as const,
+          identity: { branch: "agent/189", worktreePath: "/worktrees/189" },
+          headOid: oid("b"),
+          clean: false,
+        }),
+      },
       runAgent: async () => ({
         status: "blocked" as const,
         reason: "Database unavailable",
@@ -159,6 +167,11 @@ test("preserves planning environment diagnostics through workspace recovery", as
         reportedReason: "Database unavailable",
         evidence: ["Database service is unavailable."],
         reportedRemediation: ["Start the development database."],
+        workspaceState: "ready",
+        workspaceRecoveryReason: "dirty",
+        expectedHeadOid: oid("a"),
+        observedHeadOid: oid("b"),
+        statusEvidence: "dirty",
       });
   }
 });
