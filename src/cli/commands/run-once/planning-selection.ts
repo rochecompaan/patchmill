@@ -12,6 +12,7 @@ import {
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { needsPlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
+  automaticWorkflowStateEligible,
   isActionableWorkflowState,
   resolveWorkflowState,
 } from "./workflow-state.ts";
@@ -139,17 +140,6 @@ export function legacyActiveForIssue(
   );
 }
 
-function automaticWorkflowStateEligible(
-  issue: IssueSummary,
-  config: AgentIssueConfig,
-): boolean {
-  const state = resolveWorkflowState(issue.labels, {
-    readyLabel: lifecycleLabels(config).ready,
-    policy: config.approvalPolicy,
-  });
-  return isActionableWorkflowState(state) || state.kind === "not-actionable";
-}
-
 export async function selectRunOnceWorkflow(
   issues: readonly IssueSummary[],
   config: AgentIssueConfig,
@@ -164,7 +154,10 @@ export async function selectRunOnceWorkflow(
     if (issue.state !== "open") continue;
     if (
       config.issueNumber === undefined &&
-      !automaticWorkflowStateEligible(issue, config)
+      !automaticWorkflowStateEligible(issue.labels, {
+        readyLabel: lifecycleLabels(config).ready,
+        policy: config.approvalPolicy,
+      })
     )
       continue;
     let state: PlanningStateV1 | undefined;

@@ -15,7 +15,7 @@ import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 
-/** Public facade that selects exactly once, then pins the chosen workflow. */
+/** Public facade that safely reselects rejected legacy candidates before one substantive workflow. */
 export async function runOneIssue(
   runner: CommandRunner,
   config: AgentIssueConfig,

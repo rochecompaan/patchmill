@@ -98,6 +98,14 @@ export function isActionableWorkflowState(
   );
 }
 
+export function automaticWorkflowStateEligible(
+  labels: string[],
+  options: WorkflowStateOptions,
+): boolean {
+  const state = resolveWorkflowState(labels, options);
+  return isActionableWorkflowState(state) || state.kind === "not-actionable";
+}
+
 export function assertExplicitWorkflowState(
   labels: string[],
   options: WorkflowStateOptions & { issue: IssueSummary },

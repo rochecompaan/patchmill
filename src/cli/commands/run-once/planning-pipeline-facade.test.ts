@@ -176,6 +176,102 @@ test("facade falls back after a pinned legacy candidate becomes approval-wait", 
   }
 });
 
+test("facade falls back when a resumable legacy candidate becomes approval-wait", async () => {
+  for (const reviewLabel of ["spec-review", "plan-review"] as const) {
+    const config = await makeConfig({
+      dryRun: false,
+      execute: true,
+      planOnly: true,
+      approvalPolicy: approvalPolicy({
+        specRequired: true,
+        planRequired: true,
+      }),
+    } as never);
+    const legacy = issue(272, ["in-progress"], "Resumable candidate");
+    const fresh = issue(327, ["agent-ready"], "Fresh fallback");
+    await writeRunState(config.runStateDir, {
+      issueNumber: legacy.number,
+      title: legacy.title,
+      status: "planning",
+      planPath: "docs/plans/issue-272-legacy.md",
+      checkpoints: { claimed: true, startedCommentPosted: true },
+    });
+    const lockPath = planningIssueLockPath(config.runStateDir, fresh.number);
+    await mkdir(join(config.runStateDir, "planning-pr-v1", "locks"), {
+      recursive: true,
+    });
+    await writeFile(
+      lockPath,
+      `${JSON.stringify({
+        version: 1,
+        issueNumber: fresh.number,
+        runId: "123e4567-e89b-42d3-a456-426614174000",
+        ownershipId: "223e4567-e89b-42d3-a456-426614174000",
+        pid: process.pid,
+        hostname: hostname(),
+        acquiredAt: "2026-01-01T00:00:00.000Z",
+      })}\n`,
+      "utf8",
+    );
+    let legacyViews = 0;
+    const runner = createMockRunner((call) => {
+      if (call.command === "tea" && call.args[0] === "issues") {
+        const state = call.args.includes("--state")
+          ? call.args[call.args.indexOf("--state") + 1]
+          : call.args.find((arg) => arg.startsWith("--state="))?.slice(8);
+        if (state === "open") {
+          const page = call.args.includes("--page")
+            ? call.args[call.args.indexOf("--page") + 1]
+            : call.args.find((arg) => arg.startsWith("--page="))?.slice(7);
+          return {
+            code: 0,
+            stdout: page === "1" ? issueListPayload([legacy, fresh]) : "[]",
+            stderr: "",
+          };
+        }
+        if (state === "all") {
+          legacyViews += 1;
+          return {
+            code: 0,
+            stdout: issueListPayload([
+              legacyViews === 1
+                ? legacy
+                : issue(
+                    legacy.number,
+                    ["in-progress", reviewLabel],
+                    legacy.title,
+                  ),
+            ]),
+            stderr: "",
+          };
+        }
+      }
+      throw new Error(
+        `unexpected command: ${call.command} ${call.args.join(" ")}`,
+      );
+    });
+    try {
+      const result = await runOneIssue(runner, config);
+      assert.equal(result.status, "stopped");
+      if (result.status === "stopped") {
+        assert.equal(result.issue.number, fresh.number);
+        assert.equal(result.reason, "issue-locked");
+      }
+      assert.equal(legacyViews, 2);
+      assert.equal(
+        runner.calls.some((call) => call.args.includes("edit")),
+        false,
+      );
+      await assert.rejects(
+        readFile(join(config.runStateDir, "locks", "issue-272.lock"), "utf8"),
+        { code: "ENOENT" },
+      );
+    } finally {
+      await rm(config.repoRoot, { recursive: true, force: true });
+    }
+  }
+});
+
 test("facade exhausts each safely rejected legacy candidate once", async () => {
   const config = await makeConfig({
     dryRun: false,
