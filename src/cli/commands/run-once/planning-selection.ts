@@ -139,6 +139,17 @@ export function legacyActiveForIssue(
   );
 }
 
+function automaticWorkflowStateEligible(
+  issue: IssueSummary,
+  config: AgentIssueConfig,
+): boolean {
+  const state = resolveWorkflowState(issue.labels, {
+    readyLabel: lifecycleLabels(config).ready,
+    policy: config.approvalPolicy,
+  });
+  return isActionableWorkflowState(state) || state.kind === "not-actionable";
+}
+
 export async function selectRunOnceWorkflow(
   issues: readonly IssueSummary[],
   config: AgentIssueConfig,
@@ -151,6 +162,11 @@ export async function selectRunOnceWorkflow(
     if (config.issueNumber !== undefined && issue.number !== config.issueNumber)
       continue;
     if (issue.state !== "open") continue;
+    if (
+      config.issueNumber === undefined &&
+      !automaticWorkflowStateEligible(issue, config)
+    )
+      continue;
     let state: PlanningStateV1 | undefined;
     try {
       state = await planningState.read(issue.number);
