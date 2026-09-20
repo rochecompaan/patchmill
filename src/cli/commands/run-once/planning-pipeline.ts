@@ -2,23 +2,10 @@ import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { runPiSessionPath } from "./progress.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
-import {
-  PlanningIssueLockConflictError,
-  acquirePlanningIssueLock,
-  releasePlanningIssueLock,
-  type PlanningIssueLock,
-} from "../../../workflow/planning-issue-lock.ts";
-import {
-  PlanningStateStore,
-  planningStatePath,
-} from "../../../workflow/planning-state-store.ts";
-import {
-  PlanningStateValidationError,
-  type PlanningStateV1,
-} from "../../../workflow/planning-state.ts";
+import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
+import type { PlanningStateV1 } from "../../../workflow/planning-state.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { blockerComment, startedComment } from "./pipeline-comments.ts";
-import { blockerQuestionText } from "./pipeline-failures.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
@@ -28,7 +15,6 @@ import {
 } from "./planning-cleanup-pending.ts";
 import { reconcilePlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
-  legacyConflictsWithPlanning,
   planningFinishReachedDoneLabelBoundary,
   planningIssueEligible,
 } from "./planning-selection.ts";
@@ -37,8 +23,13 @@ import { readRunState } from "./run-state.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
-import type { AgentIssueInternalBlockedResult } from "./types.ts";
+import {
+  publicFailureForBlocked,
+  statePaths,
+} from "./planning-pipeline-diagnostics.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
+import { runPlanningIssue } from "./planning-pipeline-issue.ts";
+import type { AgentIssueInternalBlockedResult } from "./types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueConfig,
@@ -60,92 +51,7 @@ export type PlanningPipelineResult =
       outcome: PlanningCoordinatorOutcome;
     };
 
-type PlanningIssueInput = {
-  issue: IssueSummary;
-  config: AgentIssueConfig;
-  state: PlanningStateV1;
-  /** Whether selection observed durable planning state before acquiring the lock. */
-  expectedStatePresence: "present" | "absent";
-  runStateDir: string;
-  stateStore: Pick<PlanningStateStore, "read" | "initialize">;
-  readIssue: () => Promise<IssueSummary>;
-  readLegacy: () => Promise<
-    import("./types.ts").AgentIssueRunState | undefined
-  >;
-  eligible?: (
-    issue: IssueSummary,
-    state: PlanningStateV1 | undefined,
-  ) => boolean;
-  reconcileCleanupPendingPublication?: (input: {
-    issue: IssueSummary;
-    state: PlanningStateV1;
-  }) => Promise<PlanningCoordinatorOutcome | undefined>;
-  mutate: (
-    issue: IssueSummary,
-    fresh: boolean,
-    state: PlanningStateV1,
-  ) => Promise<string[]>;
-  coordinate: (
-    state: PlanningStateV1,
-    lock: PlanningIssueLock,
-    issue: IssueSummary,
-    labels: string[],
-  ) => Promise<PlanningCoordinatorOutcome>;
-  acquire?: typeof acquirePlanningIssueLock;
-  release?: typeof releasePlanningIssueLock;
-};
-
-function blocked(
-  issue: IssueSummary,
-  reason: string,
-  publicFailure: import("./result-diagnostics.ts").AnyRunOnceFailure,
-): PlanningPipelineResult {
-  return {
-    status: "blocked",
-    issue,
-    result: {
-      status: "blocked",
-      reason,
-      publicFailure,
-      questions: [],
-      commits: [],
-      validation: [],
-    },
-  };
-}
-
-function planningIdentityFailure(input: {
-  expected: readonly string[];
-  observed: readonly string[];
-}) {
-  return runOnceFailure("planning-identity-changed", {
-    expectedIdentity: input.expected,
-    observedIdentity: input.observed,
-  });
-}
-
-function planningLockFailure(
-  issue: IssueSummary,
-  diagnostic: PlanningIssueLockConflictError["diagnostic"],
-) {
-  const context = {
-    issueNumber: issue.number,
-    status: "blocked",
-    lockPath: diagnostic.path,
-    fingerprint: diagnostic.fingerprint,
-    ...(diagnostic.owner ? { owner: diagnostic.owner } : {}),
-  };
-  switch (diagnostic.classification) {
-    case "active":
-      return runOnceFailure("issue-locked", context);
-    case "stale":
-      return runOnceFailure("issue-lock-stale", context);
-    case "unverifiable":
-      return runOnceFailure("issue-lock-unverifiable", context);
-    case "malformed":
-      return runOnceFailure("issue-lock-malformed", context);
-  }
-}
+export { runPlanningIssue } from "./planning-pipeline-issue.ts";
 
 export function planningIssueNeedsClaim(input: {
   issue: IssueSummary;
@@ -165,287 +71,6 @@ export function planningIssueNeedsClaim(input: {
       input.issue.labels.includes(input.labels.ready) ||
       !input.issue.labels.includes(input.labels.inProgress))
   );
-}
-
-async function releaseOwnedPlanningLock(input: {
-  lock: PlanningIssueLock;
-  release: typeof releasePlanningIssueLock;
-  workFailure: unknown;
-}): Promise<void> {
-  try {
-    await input.release(input.lock);
-  } catch (releaseFailure) {
-    if (input.workFailure !== undefined)
-      throw new AggregateError(
-        [input.workFailure, releaseFailure],
-        "Planning issue work and lock release failed",
-        { cause: releaseFailure },
-      );
-    throw new Error("Planning lock release failed", { cause: releaseFailure });
-  }
-}
-
-/**
- * Owns one planning issue attempt. Selection is advisory; every identity and
- * workflow check is repeated after the ownership-ID lock is acquired.
- */
-export async function runPlanningIssue(
-  input: PlanningIssueInput,
-): Promise<PlanningPipelineResult> {
-  const acquire = input.acquire ?? acquirePlanningIssueLock;
-  const release = input.release ?? releasePlanningIssueLock;
-  let lock: PlanningIssueLock | undefined;
-  let workFailure: unknown;
-  try {
-    try {
-      lock = await acquire(input.runStateDir, {
-        issueNumber: input.issue.number,
-        runId: input.state.runId,
-      });
-    } catch (error) {
-      if (error instanceof PlanningIssueLockConflictError) {
-        const publicFailure = planningLockFailure(
-          input.issue,
-          error.diagnostic,
-        );
-        if (publicFailure.reason === "issue-locked")
-          return {
-            status: "stopped",
-            issue: input.issue,
-            reason: "issue-locked",
-            publicFailure,
-          };
-        return blocked(input.issue, publicFailure.reason, publicFailure);
-      }
-      throw error;
-    }
-    let retriedAuthoritativeRun = false;
-    while (true) {
-      let issue: IssueSummary;
-      let saved: PlanningStateV1 | undefined;
-      let legacy: Awaited<ReturnType<PlanningIssueInput["readLegacy"]>>;
-      try {
-        [issue, saved, legacy] = await Promise.all([
-          input.readIssue(),
-          input.stateStore.read(input.issue.number),
-          input.readLegacy(),
-        ]);
-      } catch (error) {
-        if (error instanceof PlanningStateValidationError)
-          return blocked(
-            input.issue,
-            "planning-state-invalid",
-            runOnceFailure("planning-state-invalid", {
-              issueNumber: input.issue.number,
-              status: "blocked",
-              statePath:
-                error.statePath ??
-                planningStatePath(input.runStateDir, input.issue.number),
-              validation: `${error.reason} at ${error.path}`,
-            }),
-          );
-        throw error;
-      }
-      // A planning selection owns a concrete durable state.  Never turn a
-      // disappeared active selection into a fresh attempt after locking.
-      if (
-        (input.expectedStatePresence === "present" && saved === undefined) ||
-        (retriedAuthoritativeRun && saved === undefined)
-      )
-        return blocked(
-          input.issue,
-          "planning-identity-changed",
-          planningIdentityFailure({
-            expected: [
-              `issueNumber=${input.issue.number}`,
-              `title=${input.issue.title}`,
-              "planningState=present",
-            ],
-            observed: [
-              `issueNumber=${input.issue.number}`,
-              "planningState=absent",
-            ],
-          }),
-        );
-      const current = saved ?? input.state;
-      const planningActive = current.phases.some(
-        (phase) => phase.status !== "complete",
-      );
-      const legacyConflict = legacyConflictsWithPlanning(legacy);
-      if (
-        issue.number !== input.issue.number ||
-        issue.title !== input.issue.title ||
-        current.issueNumber !== input.issue.number ||
-        issue.state !== "open" ||
-        !planningActive ||
-        legacyConflict
-      )
-        return blocked(
-          input.issue,
-          "planning-identity-changed",
-          planningIdentityFailure({
-            expected: [
-              `issueNumber=${input.issue.number}`,
-              `title=${input.issue.title}`,
-              "issueState=open",
-              "planningState=active",
-              "legacyState=not-active",
-            ],
-            observed: [
-              `issueNumber=${issue.number}`,
-              `title=${issue.title}`,
-              `issueState=${issue.state}`,
-              `planningState=${planningActive ? "active" : "inactive"}`,
-              `legacyState=${legacyConflict ? "active" : "not-active"}`,
-              `stateIssueNumber=${current.issueNumber}`,
-            ],
-          }),
-        );
-      if (saved !== undefined && saved.runId !== lock.record.runId) {
-        if (input.expectedStatePresence !== "absent" || retriedAuthoritativeRun)
-          return blocked(
-            input.issue,
-            "planning-identity-changed",
-            planningIdentityFailure({
-              expected: [`runId=${lock.record.runId}`],
-              observed: [`runId=${saved.runId}`],
-            }),
-          );
-        const provisionalLock = lock;
-        lock = undefined;
-        await releaseOwnedPlanningLock({
-          lock: provisionalLock,
-          release,
-          workFailure: undefined,
-        });
-        retriedAuthoritativeRun = true;
-        try {
-          lock = await acquire(input.runStateDir, {
-            issueNumber: input.issue.number,
-            runId: saved.runId,
-          });
-        } catch (error) {
-          if (error instanceof PlanningIssueLockConflictError) {
-            const publicFailure = planningLockFailure(
-              input.issue,
-              error.diagnostic,
-            );
-            if (publicFailure.reason === "issue-locked")
-              return {
-                status: "stopped",
-                issue: input.issue,
-                reason: "issue-locked",
-                publicFailure,
-              };
-            return blocked(input.issue, publicFailure.reason, publicFailure);
-          }
-          throw error;
-        }
-        continue;
-      }
-      if (current.runId !== lock.record.runId)
-        return blocked(
-          input.issue,
-          "planning-run-id-mismatch",
-          runOnceFailure("planning-run-id-mismatch", {
-            issueNumber: input.issue.number,
-            status: "blocked",
-            statePath: planningStatePath(input.runStateDir, input.issue.number),
-            savedRunId: current.runId,
-            lockRunId: lock.record.runId,
-          }),
-        );
-      const reconciled = await input.reconcileCleanupPendingPublication?.({
-        issue,
-        state: current,
-      });
-      if (reconciled !== undefined)
-        return { status: "coordinated", issue, outcome: reconciled };
-      const eligible = planningIssueEligible({
-        issue,
-        config: input.config,
-        state: current,
-        activeOwnedWorkflow: saved !== undefined && planningActive,
-      });
-      if (
-        !eligible ||
-        (input.eligible !== undefined && !input.eligible(issue, saved))
-      )
-        return blocked(
-          input.issue,
-          "planning-identity-changed",
-          planningIdentityFailure({
-            expected: ["eligible=true"],
-            observed: ["eligible=false"],
-          }),
-        );
-      const fresh = saved === undefined;
-      if (fresh) await input.stateStore.initialize({ state: current, lock });
-      const labels = await input.mutate(issue, fresh, current);
-      return {
-        status: "coordinated",
-        issue,
-        outcome: await input.coordinate(current, lock, issue, labels),
-      };
-    }
-  } catch (error) {
-    workFailure = error;
-    throw error;
-  } finally {
-    if (lock) await releaseOwnedPlanningLock({ lock, release, workFailure });
-  }
-}
-
-function publicFailureForBlocked(
-  issue: IssueSummary,
-  result: AgentIssueInternalBlockedResult,
-  paths: { branch?: string; worktreePath?: string } = {},
-) {
-  return (
-    result.publicFailure ??
-    runOnceFailure("agent-blocked", {
-      issueNumber: issue.number,
-      status: "blocked",
-      ...(paths.branch ? { branch: paths.branch } : {}),
-      ...(paths.worktreePath ? { worktreePath: paths.worktreePath } : {}),
-      reportedReason: result.reason,
-      questions: result.questions.map(blockerQuestionText),
-      evidence: result.validation,
-    })
-  );
-}
-
-function statePaths(state: PlanningStateV1) {
-  const implementation = state.phases.find(
-    (phase) => phase.kind === "implementation",
-  );
-  const artifacts = state.phases.flatMap((phase) =>
-    "artifacts" in phase ? phase.artifacts : [],
-  );
-  const workspace =
-    implementation && "workspace" in implementation
-      ? implementation.workspace
-      : undefined;
-  return {
-    ...(artifacts.find((artifact) => artifact.kind === "spec")
-      ? {
-          specPath: artifacts.find((artifact) => artifact.kind === "spec")!
-            .path,
-        }
-      : {}),
-    ...(artifacts.find((artifact) => artifact.kind === "plan")
-      ? {
-          planPath: artifacts.find((artifact) => artifact.kind === "plan")!
-            .path,
-        }
-      : {}),
-    ...(workspace === undefined
-      ? {}
-      : {
-          branch: workspace.identity.branch,
-          worktreePath: workspace.identity.worktreePath,
-        }),
-  };
 }
 
 export function mapPlanningOutcome(

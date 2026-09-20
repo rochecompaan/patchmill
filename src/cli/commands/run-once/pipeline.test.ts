@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { runOneIssue as runCurrentOneIssue } from "./pipeline.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { readRunState, writeRunState } from "./run-state.ts";
@@ -101,6 +102,44 @@ test("runOneIssue emits diagnostics for default non-dry all-rejected selection",
   assert.ok(diagnostic?.actions?.length);
   assert.ok(diagnostic?.safety?.length);
   assert.ok(diagnostic?.retry?.guidance);
+});
+
+test("runOneIssue selection diagnostics use the effective ready label", async () => {
+  const effectiveReadyLabel = "workflow-ready";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    triagePolicy: {
+      ...DEFAULT_TRIAGE_POLICY,
+      labels: { ...DEFAULT_TRIAGE_POLICY.labels, ready: effectiveReadyLabel },
+    },
+  } as never);
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([issue(2, [])]) : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  await runCurrentOneIssue(runner, config, { now: NOW, progress });
+
+  const diagnostic = (
+    events.find((event) => event.level === "debug")?.data as {
+      diagnostic?: { details?: Array<{ key: string; value: unknown }> };
+    }
+  ).diagnostic;
+  assert.equal(
+    diagnostic?.details?.find((detail) => detail.key === "readyLabel")?.value,
+    effectiveReadyLabel,
+  );
 });
 
 test("runOneIssue facade returns dry-run selection", async () => {

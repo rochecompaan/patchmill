@@ -15,6 +15,7 @@ import {
 } from "./pipeline-selection.ts";
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
+import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
@@ -28,6 +29,7 @@ export async function runOneIssue(
 ): Promise<AgentIssuePipelineResult> {
   // Preserve legacy dry-run output and its non-mutating diagnostic contract.
   if (config.dryRun) return runLegacyOneIssue(runner, config, options);
+  const labels = lifecycleLabels(config);
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
@@ -47,14 +49,14 @@ export async function runOneIssue(
       case "none":
         if (config.issueNumber === undefined) {
           const diagnostics = selectIssueWithDiagnostics(issues, {
-            readyLabel: config.readyLabel,
+            readyLabel: labels.ready,
             triagePolicy: config.triagePolicy,
             approvalPolicy: config.approvalPolicy,
           });
           await emitSelectionDiagnostics(
             diagnostics.rejections,
             options,
-            config.readyLabel,
+            labels.ready,
           );
         }
         return withLogPath({ status: "no-issue" }, options);
