@@ -97,7 +97,7 @@ same structured diagnostic written to JSONL:
   "issueNumber": 242,
   "reason": "planning-workspace-dirty",
   "diagnostic": {
-    "summary": "Planning workspace has local changes",
+    "summary": "Phase workspace has local changes",
     "explanation": "The phase workspace contains local changes and cannot be resumed or published safely.",
     "details": [
       {

@@ -21,6 +21,22 @@ function detailRole(key: string): TerminalValue["role"] {
         : "plain";
 }
 
+function isRepeatedIssueWorkspaceDetail(
+  summary: RunOnceResultSummary,
+  key: string,
+): boolean {
+  switch (key) {
+    case "issueNumber":
+      return "issueNumber" in summary;
+    case "branch":
+      return "branch" in summary && Boolean(summary.branch?.trim());
+    case "worktreePath":
+      return "worktreePath" in summary && Boolean(summary.worktreePath?.trim());
+    default:
+      return false;
+  }
+}
+
 /** Renders the catalog materialized at the result-summary boundary. */
 export function diagnosticSections(
   summary: RunOnceResultSummary,
@@ -55,6 +71,7 @@ export function diagnosticSections(
                 kind: "fields" as const,
                 fields: diagnostic.details.flatMap((entry) => {
                   if (
+                    isRepeatedIssueWorkspaceDetail(summary, entry.key) ||
                     (summary.status === "blocked" &&
                       entry.key === "questions") ||
                     (summary.status === "error" && entry.key === "logPath")

@@ -37,6 +37,30 @@ test("renders shared diagnostic sections in stable actionable order", () => {
   assert.doesNotMatch(output, /\u001b\[/u);
 });
 
+test("renders common issue and workspace details only once", () => {
+  const branch = "agent/issue-242-plan";
+  const worktreePath = ".worktrees/patchmill-issue-242-plan";
+  const output = formatTerminalResult(
+    {
+      status: "stopped",
+      issueNumber: 242,
+      reason: "plan-only",
+      branch,
+      worktreePath,
+      diagnostic: diagnosticFor("plan-only", {
+        issueNumber: 242,
+        phase: "plan",
+        branch,
+        worktreePath,
+      }),
+    },
+    { width: 100, color: false },
+  );
+  assert.equal(output.match(/#242/gu)?.length, 1);
+  assert.equal(output.match(new RegExp(branch, "gu"))?.length, 1);
+  assert.equal(output.match(new RegExp(worktreePath, "gu"))?.length, 1);
+});
+
 test("renders an error log path only in Run files", () => {
   const logPath = "/tmp/issue-242.jsonl";
   const output = formatTerminalResult(
