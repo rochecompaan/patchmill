@@ -7,6 +7,7 @@ import test from "node:test";
 import { PlanningPublicationGit } from "../../../git/planning-publication-git.ts";
 import { PlanningRemoteBaseGit } from "../../../git/planning-remote-base.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
+import { assertPlanningImplementationBase } from "./planning-implementation-base.ts";
 import { reconcilePlanningPhase } from "./planning-phase-reconciler.ts";
 
 function git(cwd: string, ...args: string[]): string {
@@ -166,6 +167,12 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
         phase: "spec",
       }),
     };
+    const remoteBase = new PlanningRemoteBaseGit({
+      runner,
+      repoRoot: repo,
+      specsDir: "docs/specs",
+      plansDir: "docs/plans",
+    });
     const result = await reconcilePlanningPhase({
       state: initial,
       phaseIndex: 0,
@@ -180,12 +187,7 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
           return merged;
         },
       } as never,
-      remoteBase: new PlanningRemoteBaseGit({
-        runner,
-        repoRoot: repo,
-        specsDir: "docs/specs",
-        plansDir: "docs/plans",
-      }),
+      remoteBase,
       git: publication,
       workspaces: {} as never,
     });
@@ -214,6 +216,17 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
       commands.some((command) => command.includes(planningOid)),
       false,
     );
+    const implementationBase = await remoteBase.fetch({
+      issueNumber: 188,
+      remote: "origin",
+      baseBranch: "main",
+    });
+    await assertPlanningImplementationBase({
+      state: result.state,
+      phaseIndex: 1,
+      base: implementationBase,
+      git: publication,
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

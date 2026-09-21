@@ -733,7 +733,7 @@ test("fails closed before plan-only pause when a reviewed artifact is deleted, r
   }
 });
 
-test("fails closed when reviewed planning base history is rewritten before implementation", async () => {
+test("fails closed when the newest effective planning anchor is rewritten before implementation", async () => {
   let prepared = false;
   const ancestors: string[] = [];
   await assert.rejects(
@@ -770,7 +770,7 @@ test("fails closed when reviewed planning base history is rewritten before imple
       error instanceof PlanningPublicationGitError &&
       error.reason === "not-ancestor",
   );
-  assert.deepEqual(ancestors, [oid("a"), oid("b"), oid("c")]);
+  assert.deepEqual(ancestors, [oid("c")]);
   assert.equal(prepared, false);
 });
 
@@ -900,8 +900,6 @@ test("verifies reviewed planning evidence before a plan-only implementation paus
   );
   assert.equal(result.kind, "stopped");
   assert.deepEqual(calls, [
-    { kind: "ancestor", value: oid("a") },
-    { kind: "ancestor", value: oid("b") },
     { kind: "ancestor", value: oid("c") },
     {
       kind: "regular",

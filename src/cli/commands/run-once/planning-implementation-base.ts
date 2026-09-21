@@ -1,6 +1,9 @@
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningRemoteBaseSnapshot } from "../../../git/planning-workspaces.ts";
-import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
+import type {
+  PlanningPhaseStateV1,
+  PlanningStateV1,
+} from "../../../workflow/planning-state-types.ts";
 
 export type PlanningImplementationBaseErrorReason =
   | "prior-artifact-missing"
@@ -18,9 +21,20 @@ export class PlanningImplementationBaseError extends Error {
   }
 }
 
+function effectivePlanningAnchor(
+  phase: Extract<
+    PlanningPhaseStateV1,
+    { kind: "spec" | "plan"; status: "complete" }
+  >,
+): string {
+  return phase.completion.kind === "merged-pull-request"
+    ? phase.completion.mergedBaseOid
+    : phase.base.baseOid;
+}
+
 /**
- * Verifies that the fetched implementation base still contains every completed
- * planning artifact and retains all durable planning ancestry anchors.
+ * Verifies every completed planning artifact on the fetched implementation base
+ * and retains only the newest completed planning phase's effective anchor.
  */
 export async function assertPlanningImplementationBase(input: {
   state: PlanningStateV1;
@@ -31,16 +45,12 @@ export async function assertPlanningImplementationBase(input: {
     "assertAncestor" | "assertRegularFiles"
   >;
 }): Promise<void> {
-  const anchors = new Set<string>();
+  let newestAnchor: string | undefined;
   const paths = new Set<string>();
   for (const phase of input.state.phases.slice(0, input.phaseIndex)) {
     if (phase.kind === "implementation" || phase.status !== "complete")
       continue;
-    anchors.add(phase.base.baseOid);
-    if (phase.completion.kind === "merged-pull-request") {
-      anchors.add(phase.completion.mergeOid);
-      anchors.add(phase.completion.mergedBaseOid);
-    }
+    newestAnchor = effectivePlanningAnchor(phase);
     for (const artifact of phase.artifacts) {
       const candidates = input.base.artifactCandidates[artifact.kind];
       if (candidates.length === 0)
@@ -52,9 +62,9 @@ export async function assertPlanningImplementationBase(input: {
       paths.add(artifact.path);
     }
   }
-  for (const ancestorOid of anchors)
+  if (newestAnchor !== undefined)
     await input.git.assertAncestor({
-      ancestorOid,
+      ancestorOid: newestAnchor,
       descendantOid: input.base.baseOid,
     });
   if (paths.size > 0)
