@@ -119,6 +119,19 @@ export const PLANNING_DIAGNOSTICS = {
     safety: "Do not select or close a candidate without confirming ownership.",
     retry: after("Retry after host-side ambiguity is resolved."),
   }),
+  "planning-merge-recovery-blocked": definition({
+    summary: "Planning merge recovery needs reviewed base evidence",
+    explanation:
+      "The forge merge commit is no longer an ancestor of the fetched base, and the fetched base does not provide exact regular-file evidence for every saved planning artifact.",
+    action:
+      "Restore exactly one regular artifact at each reported saved path through normal reviewed changes on the configured base branch, then rerun the Issue.",
+    command: "run-once",
+    safety:
+      "Do not hand-edit planning state, arbitrarily choose a candidate, or restore stale history merely to satisfy the old merge SHA.",
+    retry: after(
+      "Retry after reviewed base changes restore the reported artifact evidence.",
+    ),
+  }),
   "planning-workspace-conflict": definition({
     summary: "Phase workspace ownership conflicts",
     explanation:

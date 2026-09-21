@@ -40,7 +40,9 @@ function registerTodoTool(): RegisteredTool {
 
 test("todo extension groups complete todos as closed and blocks claims", async () => {
   const previous = process.env[PI_TODO_DONE_STATUSES_ENV];
+  const previousTodoPath = process.env.PI_TODO_PATH;
   delete process.env[PI_TODO_DONE_STATUSES_ENV];
+  delete process.env.PI_TODO_PATH;
   try {
     const tool = registerTodoTool();
     assert.equal(todoCloseStatus(), "closed");
@@ -114,12 +116,16 @@ test("todo extension groups complete todos as closed and blocks claims", async (
   } finally {
     if (previous === undefined) delete process.env[PI_TODO_DONE_STATUSES_ENV];
     else process.env[PI_TODO_DONE_STATUSES_ENV] = previous;
+    if (previousTodoPath === undefined) delete process.env.PI_TODO_PATH;
+    else process.env.PI_TODO_PATH = previousTodoPath;
   }
 });
 
 test("todo extension uses configured terminal statuses in its guidance and grouping", async () => {
   const previous = process.env[PI_TODO_DONE_STATUSES_ENV];
+  const previousTodoPath = process.env.PI_TODO_PATH;
   process.env[PI_TODO_DONE_STATUSES_ENV] = JSON.stringify(["shipped"]);
+  delete process.env.PI_TODO_PATH;
   try {
     const tool = registerTodoTool();
     assert.match(
@@ -172,5 +178,7 @@ test("todo extension uses configured terminal statuses in its guidance and group
   } finally {
     if (previous === undefined) delete process.env[PI_TODO_DONE_STATUSES_ENV];
     else process.env[PI_TODO_DONE_STATUSES_ENV] = previous;
+    if (previousTodoPath === undefined) delete process.env.PI_TODO_PATH;
+    else process.env.PI_TODO_PATH = previousTodoPath;
   }
 });

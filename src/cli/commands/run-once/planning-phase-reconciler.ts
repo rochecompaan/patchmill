@@ -1,4 +1,7 @@
-import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
+import {
+  PlanningPublicationGitError,
+  type PlanningPublicationOperations,
+} from "../../../git/planning-publication-git.ts";
 import type { PlanningRemoteBaseGit } from "../../../git/planning-remote-base.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import {
@@ -17,9 +20,22 @@ import type {
   PullRequestOpenPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
 import { validatePlanningPullRequestSummary } from "../../../workflow/planning-pull-request-validation.ts";
+import {
+  verifyPlanningMergeRecoveryEvidence,
+  type PlanningMergeRecoveryResult,
+} from "./planning-merge-recovery.ts";
 import { finishPlanningPhaseCleanup } from "./planning-phase-cleanup.ts";
 
+export type PlanningMergeRecoveryBlockedOutcome = Readonly<{
+  kind: "merge-recovery-blocked";
+  pullRequest: Extract<PullRequestSummary, { status: "merged" }>;
+  baseBranch: string;
+  baseOid: string;
+  evidence: Extract<PlanningMergeRecoveryResult, { kind: "blocked" }>;
+}>;
+
 export type PlanningPhaseReconciliation =
+  | PlanningMergeRecoveryBlockedOutcome
   | {
       kind: "cleanup-pending";
       prUrl: string;
@@ -200,16 +216,45 @@ export async function reconcilePlanningPhase(input: {
     remote: phase.base.remote,
     baseBranch: phase.base.baseBranch,
   });
-  await input.git.assertAncestor({
-    ancestorOid: pullRequest.mergeCommit,
-    descendantOid: snapshot.baseOid,
-  });
+  let recoveredAtCurrentBase = false;
+  try {
+    await input.git.assertAncestor({
+      ancestorOid: pullRequest.mergeCommit,
+      descendantOid: snapshot.baseOid,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof PlanningPublicationGitError) ||
+      error.operation !== "ancestry" ||
+      error.reason !== "not-ancestor"
+    )
+      throw error;
+    const evidence = await verifyPlanningMergeRecoveryEvidence({
+      artifacts: phase.artifacts,
+      base: snapshot,
+      git: input.git,
+    });
+    if (evidence.kind === "blocked")
+      return {
+        state,
+        outcome: {
+          kind: "merge-recovery-blocked",
+          pullRequest,
+          baseBranch: phase.base.baseBranch,
+          baseOid: snapshot.baseOid,
+          evidence,
+        },
+      };
+    recoveredAtCurrentBase = true;
+  }
   const paths = phase.artifacts.map((artifact) => artifact.path);
-  await input.git.assertRegularFiles({
-    commitOid: pullRequest.mergeCommit,
-    paths,
-  });
-  await input.git.assertRegularFiles({ commitOid: snapshot.baseOid, paths });
+  if (!recoveredAtCurrentBase) {
+    await input.git.assertRegularFiles({
+      commitOid: pullRequest.mergeCommit,
+      paths,
+    });
+    await input.git.assertRegularFiles({ commitOid: snapshot.baseOid, paths });
+  }
   const completed = {
     ...phase,
     status: "complete" as const,

@@ -733,7 +733,7 @@ test("fails closed before plan-only pause when a reviewed artifact is deleted, r
   }
 });
 
-test("fails closed when reviewed planning base history is rewritten before implementation", async () => {
+test("fails closed when the newest effective planning anchor is rewritten before implementation", async () => {
   let prepared = false;
   const ancestors: string[] = [];
   await assert.rejects(
@@ -770,7 +770,7 @@ test("fails closed when reviewed planning base history is rewritten before imple
       error instanceof PlanningPublicationGitError &&
       error.reason === "not-ancestor",
   );
-  assert.deepEqual(ancestors, [oid("a"), oid("b"), oid("c")]);
+  assert.deepEqual(ancestors, [oid("c")]);
   assert.equal(prepared, false);
 });
 
@@ -900,8 +900,6 @@ test("verifies reviewed planning evidence before a plan-only implementation paus
   );
   assert.equal(result.kind, "stopped");
   assert.deepEqual(calls, [
-    { kind: "ancestor", value: oid("a") },
-    { kind: "ancestor", value: oid("b") },
     { kind: "ancestor", value: oid("c") },
     {
       kind: "regular",
@@ -1225,4 +1223,57 @@ test("passes fresh versus resumed workspace context to implementation", async ()
     }),
   );
   assert.deepEqual(seen, [true, false]);
+});
+
+test("maps insufficient rewritten-merge proof to an actionable blocker", async () => {
+  const published = state({ kind: "spec", status: "pull-request-open" });
+  const result = await runPlanningPhase(
+    input({
+      state: published,
+      phase: {
+        kind: "spec",
+        artifactKinds: ["spec"],
+        pullRequestRequired: true,
+      },
+      operations: {
+        reconcile: async () => ({
+          state: published,
+          outcome: {
+            kind: "merge-recovery-blocked",
+            pullRequest: {
+              status: "merged",
+              url: "https://example.test/pr/1",
+              mergeCommit: oid("c"),
+            },
+            baseBranch: "main",
+            baseOid: oid("d"),
+            evidence: {
+              kind: "blocked",
+              failure: "missing",
+              artifactKinds: ["spec"],
+              expectedPaths: ["docs/specs/example.md"],
+              observedCandidates: [],
+            },
+          },
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(result.result.reason, "planning-merge-recovery-blocked");
+    assert.deepEqual(result.result.publicFailure.diagnosticContext, {
+      issueNumber: 189,
+      status: "blocked",
+      phase: "spec",
+      pullRequestUrl: "https://example.test/pr/1",
+      baseBranch: "main",
+      forgeMergeOid: oid("c"),
+      fetchedBaseOid: oid("d"),
+      evidenceFailure: "missing",
+      artifactKinds: ["spec"],
+      expectedPaths: ["docs/specs/example.md"],
+      observedCandidates: ["(none)"],
+    });
+  }
 });

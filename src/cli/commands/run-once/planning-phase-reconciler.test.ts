@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import {
   IncompletePullRequestSearchError,
   PullRequestNotFoundError,
@@ -170,6 +171,7 @@ function fixture(
     fetchError?: Error;
     ancestorError?: Error;
     regularError?: Error;
+    artifactCandidates?: { spec: readonly string[]; plan: readonly string[] };
   } = {},
 ) {
   const events: string[] = [];
@@ -210,7 +212,14 @@ function fixture(
         async fetch(value: { remote: string; baseBranch: string }) {
           events.push(`fetch:${value.remote}:${value.baseBranch}`);
           if (input.fetchError) throw input.fetchError;
-          return { ...base(), baseOid: mergedBaseOid };
+          return {
+            ...base(),
+            baseOid: mergedBaseOid,
+            artifactCandidates: input.artifactCandidates ?? {
+              spec: ["docs/specs/example.md"],
+              plan: [],
+            },
+          };
         },
       },
       git: {
@@ -225,8 +234,11 @@ function fixture(
           events.push(`ancestor:${value.ancestorOid}:${value.descendantOid}`);
           if (input.ancestorError) throw input.ancestorError;
         },
-        async assertRegularFiles(value: { commitOid: string }) {
-          events.push(`regular:${value.commitOid}`);
+        async assertRegularFiles(value: {
+          commitOid: string;
+          paths: readonly string[];
+        }) {
+          events.push(`regular:${value.commitOid}:${value.paths.join(",")}`);
           if (input.regularError) throw input.regularError;
         },
       },
@@ -419,8 +431,8 @@ test("proves and persists merged base artifacts without consulting workspace blo
     "replace:pull-request-open:removed",
     "fetch:saved-origin:saved-main",
     `ancestor:${mergeOid}:${mergedBaseOid}`,
-    `regular:${mergeOid}`,
-    `regular:${mergedBaseOid}`,
+    `regular:${mergeOid}:docs/specs/example.md`,
+    `regular:${mergedBaseOid}:docs/specs/example.md`,
     "replace:complete:complete",
   ]);
   const phase = result.state.phases[0]!;
@@ -454,5 +466,79 @@ test("keeps the published phase incomplete when merge proof fails", async () => 
     /not ancestor/,
   );
   assert.equal(testFixture.events.includes("replace:complete:complete"), false);
-  assert.equal(testFixture.events.includes(`regular:${mergeOid}`), false);
+  assert.equal(
+    testFixture.events.includes(`regular:${mergeOid}:docs/specs/example.md`),
+    false,
+  );
+});
+
+test("reanchors a rewritten merged pull request from exact fetched-base evidence", async () => {
+  const testFixture = fixture({
+    pullRequest: summary("merged"),
+    ancestorError: new PlanningPublicationGitError("ancestry", "not-ancestor"),
+  });
+  const result = await reconcilePlanningPhase(testFixture.input);
+  assert.deepEqual(result.outcome, {
+    kind: "merged",
+    pullRequest: summary("merged"),
+    baseOid: mergedBaseOid,
+  });
+  assert.deepEqual(testFixture.events.slice(-3), [
+    `ancestor:${mergeOid}:${mergedBaseOid}`,
+    `regular:${mergedBaseOid}:docs/specs/example.md`,
+    "replace:complete:complete",
+  ]);
+  const phase = result.state.phases[0]!;
+  assert.equal(phase.status, "complete");
+  assert.deepEqual(phase.completion, {
+    kind: "merged-pull-request",
+    mergeOid,
+    mergedBaseOid,
+  });
+});
+
+test("blocks merge recovery without exact evidence and preserves non-ancestry failures", async () => {
+  const testFixture = fixture({
+    pullRequest: summary("merged"),
+    ancestorError: new PlanningPublicationGitError("ancestry", "not-ancestor"),
+    artifactCandidates: {
+      spec: ["docs/specs/example.md", "docs/specs/example-copy.md"],
+      plan: [],
+    },
+  });
+  const result = await reconcilePlanningPhase(testFixture.input);
+  assert.deepEqual(result.outcome, {
+    kind: "merge-recovery-blocked",
+    pullRequest: summary("merged"),
+    baseBranch: "saved-main",
+    baseOid: mergedBaseOid,
+    evidence: {
+      kind: "blocked",
+      failure: "ambiguous",
+      artifactKinds: ["spec"],
+      expectedPaths: ["docs/specs/example.md"],
+      observedCandidates: [
+        "docs/specs/example.md",
+        "docs/specs/example-copy.md",
+      ],
+    },
+  });
+  assert.equal(testFixture.events.includes("replace:complete:complete"), false);
+  const errors = [
+    new PlanningPublicationGitError("ancestry", "command-failed"),
+    new PlanningPublicationGitError("ancestry", "invalid-input"),
+    new PlanningPublicationGitError("tree", "command-failed"),
+    new Error("transport"),
+  ];
+  for (const error of errors) {
+    const failing = fixture({
+      pullRequest: summary("merged"),
+      ancestorError: error,
+    });
+    await assert.rejects(
+      reconcilePlanningPhase(failing.input),
+      (received) => received === error,
+    );
+    assert.equal(failing.events.includes("replace:complete:complete"), false);
+  }
 });

@@ -52,6 +52,30 @@ async function reconcile(
     case "merged":
     case "satisfied-by-base":
       return { kind: "advanced", state: result.state };
+    case "merge-recovery-blocked":
+      return {
+        kind: "blocked",
+        state: result.state,
+        result: blocked(
+          "planning-merge-recovery-blocked",
+          runOnceFailure("planning-merge-recovery-blocked", {
+            issueNumber: result.state.issueNumber,
+            status: "blocked",
+            phase,
+            pullRequestUrl: result.outcome.pullRequest.url,
+            baseBranch: result.outcome.baseBranch,
+            forgeMergeOid: result.outcome.pullRequest.mergeCommit,
+            fetchedBaseOid: result.outcome.baseOid,
+            evidenceFailure: result.outcome.evidence.failure,
+            artifactKinds: result.outcome.evidence.artifactKinds,
+            expectedPaths: result.outcome.evidence.expectedPaths,
+            observedCandidates:
+              result.outcome.evidence.observedCandidates.length === 0
+                ? ["(none)"]
+                : result.outcome.evidence.observedCandidates,
+          }),
+        ),
+      };
     case "closed-unmerged":
       return {
         kind: "blocked",
