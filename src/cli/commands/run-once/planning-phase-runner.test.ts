@@ -1226,3 +1226,56 @@ test("passes fresh versus resumed workspace context to implementation", async ()
   );
   assert.deepEqual(seen, [true, false]);
 });
+
+test("maps insufficient rewritten-merge proof to an actionable blocker", async () => {
+  const published = state({ kind: "spec", status: "pull-request-open" });
+  const result = await runPlanningPhase(
+    input({
+      state: published,
+      phase: {
+        kind: "spec",
+        artifactKinds: ["spec"],
+        pullRequestRequired: true,
+      },
+      operations: {
+        reconcile: async () => ({
+          state: published,
+          outcome: {
+            kind: "merge-recovery-blocked",
+            pullRequest: {
+              status: "merged",
+              url: "https://example.test/pr/1",
+              mergeCommit: oid("c"),
+            },
+            baseBranch: "main",
+            baseOid: oid("d"),
+            evidence: {
+              kind: "blocked",
+              failure: "missing",
+              artifactKinds: ["spec"],
+              expectedPaths: ["docs/specs/example.md"],
+              observedCandidates: [],
+            },
+          },
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(result.result.reason, "planning-merge-recovery-blocked");
+    assert.deepEqual(result.result.publicFailure.diagnosticContext, {
+      issueNumber: 189,
+      status: "blocked",
+      phase: "spec",
+      pullRequestUrl: "https://example.test/pr/1",
+      baseBranch: "main",
+      forgeMergeOid: oid("c"),
+      fetchedBaseOid: oid("d"),
+      evidenceFailure: "missing",
+      artifactKinds: ["spec"],
+      expectedPaths: ["docs/specs/example.md"],
+      observedCandidates: ["(none)"],
+    });
+  }
+});

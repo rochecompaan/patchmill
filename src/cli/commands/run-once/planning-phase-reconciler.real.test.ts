@@ -60,14 +60,20 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
     git(repo, "config", "user.name", "Patchmill Test");
     git(repo, "config", "user.email", "patchmill@example.test");
     await mkdir(join(repo, "docs/specs"), { recursive: true });
-    await writeFile(join(repo, "docs/specs/issue-188.md"), "base\n");
-    git(repo, "add", "docs/specs/issue-188.md");
+    await writeFile(
+      join(repo, "docs/specs/example-issue-188-artifact.md"),
+      "base\n",
+    );
+    git(repo, "add", "docs/specs/example-issue-188-artifact.md");
     git(repo, "commit", "-m", "base artifact");
     const baseOid = git(repo, "rev-parse", "HEAD");
     git(repo, "remote", "add", "origin", remote);
     git(repo, "push", "origin", "main");
     git(repo, "worktree", "add", "-b", "planning/spec", workspace, "HEAD");
-    await writeFile(join(workspace, "docs/specs/issue-188.md"), "planning A\n");
+    await writeFile(
+      join(workspace, "docs/specs/example-issue-188-artifact.md"),
+      "planning A\n",
+    );
     git(workspace, "commit", "-am", "planning artifact A");
     const planningOid = git(workspace, "rev-parse", "HEAD");
     const runner = commandRunner(commands);
@@ -79,11 +85,18 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
     });
 
     git(repo, "merge", "--squash", "planning/spec");
-    await writeFile(join(repo, "docs/specs/issue-188.md"), "reviewed B\n");
-    git(repo, "add", "docs/specs/issue-188.md");
+    await writeFile(
+      join(repo, "docs/specs/example-issue-188-artifact.md"),
+      "reviewed B\n",
+    );
+    git(repo, "add", "docs/specs/example-issue-188-artifact.md");
     git(repo, "commit", "-m", "reviewed squash merge");
-    const reviewedBaseOid = git(repo, "rev-parse", "HEAD");
+    const forgeMergeOid = git(repo, "rev-parse", "HEAD");
     git(repo, "push", "origin", "main");
+    git(repo, "commit", "--amend", "-m", "rewritten reviewed squash merge");
+    const rewrittenBaseOid = git(repo, "rev-parse", "HEAD");
+    assert.notEqual(rewrittenBaseOid, forgeMergeOid);
+    git(repo, "push", "--force", "origin", "main");
 
     const initial = {
       version: 1 as const,
@@ -118,7 +131,7 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
           artifacts: [
             {
               kind: "spec" as const,
-              path: "docs/specs/issue-188.md",
+              path: "docs/specs/example-issue-188-artifact.md",
               source: "workspace" as const,
               commitOid: planningOid,
             },
@@ -142,7 +155,7 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
       number: 188,
       url: "https://github.com/acme/patchmill/pull/188",
       status: "merged" as const,
-      mergeCommit: reviewedBaseOid,
+      mergeCommit: forgeMergeOid,
       targetRepository: repository,
       baseBranch: "main",
       headRepository: repository,
@@ -180,22 +193,22 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
     assert.deepEqual(result.outcome, {
       kind: "merged",
       pullRequest: merged,
-      baseOid: reviewedBaseOid,
+      baseOid: rewrittenBaseOid,
     });
     const phase = result.state.phases[0]!;
     assert.equal(phase.status, "complete");
     assert.deepEqual(phase.artifacts, [
       {
         kind: "spec",
-        path: "docs/specs/issue-188.md",
+        path: "docs/specs/example-issue-188-artifact.md",
         source: "remote-base",
-        commitOid: reviewedBaseOid,
+        commitOid: rewrittenBaseOid,
       },
     ]);
     assert.deepEqual(phase.completion, {
       kind: "merged-pull-request",
-      mergeOid: reviewedBaseOid,
-      mergedBaseOid: reviewedBaseOid,
+      mergeOid: forgeMergeOid,
+      mergedBaseOid: rewrittenBaseOid,
     });
     assert.equal(
       commands.some((command) => command.includes(planningOid)),

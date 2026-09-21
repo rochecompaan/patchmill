@@ -159,6 +159,19 @@ const contexts = {
       "https://example.test/pulls/25",
     ],
   },
+  "planning-merge-recovery-blocked": {
+    issueNumber: 260,
+    status: "blocked",
+    phase: "spec",
+    pullRequestUrl: "https://example.test/pulls/260",
+    baseBranch: "main",
+    forgeMergeOid: "a".repeat(40),
+    fetchedBaseOid: "b".repeat(40),
+    evidenceFailure: "missing" as const,
+    artifactKinds: ["spec"] as const,
+    expectedPaths: ["docs/specs/issue-260.md"],
+    observedCandidates: ["(none)"],
+  },
   "implementation-configuration": {
     issueNumber: 242,
     status: "blocked",
@@ -504,5 +517,29 @@ test("commands use only validated issue numbers and hostile text remains details
       issueNumber: 0,
     }).actions[0]?.command,
     undefined,
+  );
+});
+
+test("planning merge recovery blockers require reviewed base evidence", () => {
+  const diagnostic = diagnosticFor(
+    "planning-merge-recovery-blocked",
+    contexts["planning-merge-recovery-blocked"],
+  );
+  assert.equal(diagnostic.retry.kind, "after-action");
+  assert.equal(
+    diagnostic.actions[0]?.command,
+    "patchmill run-once --issue 260",
+  );
+  assert.match(
+    diagnostic.actions[0]?.description ?? "",
+    /normal reviewed changes/u,
+  );
+  assert.match(
+    diagnostic.actions[0]?.description ?? "",
+    /exactly one regular artifact/u,
+  );
+  assert.match(
+    diagnostic.safety.join(" "),
+    /hand-edit planning state.*arbitrarily choose.*stale history/u,
   );
 });

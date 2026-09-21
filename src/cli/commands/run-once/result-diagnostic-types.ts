@@ -18,6 +18,7 @@ export const RUN_ONCE_REASON_CODES = [
   "planning-pull-request-closed-unmerged",
   "planning-pull-request-missing",
   "planning-pull-request-ambiguous",
+  "planning-merge-recovery-blocked",
   "implementation-configuration",
   "implementation-workspace",
   "implementation-direct-merge",
@@ -70,6 +71,7 @@ export type PlanningDiagnosticReasonCode = Extract<
   | "planning-pull-request-closed-unmerged"
   | "planning-pull-request-missing"
   | "planning-pull-request-ambiguous"
+  | "planning-merge-recovery-blocked"
   | "planning-workspace-conflict"
 >;
 export type ImplementationDiagnosticReasonCode = Extract<
@@ -195,6 +197,21 @@ export type RunOnceDiagnosticContextByReason = {
   "planning-pull-request-ambiguous": Base & {
     phase?: "spec" | "plan";
     pullRequestUrls?: readonly string[];
+  };
+  "planning-merge-recovery-blocked": Base & {
+    phase: "spec" | "plan";
+    pullRequestUrl: string;
+    baseBranch: string;
+    forgeMergeOid: string;
+    fetchedBaseOid: string;
+    evidenceFailure:
+      | "missing"
+      | "ambiguous"
+      | "path-mismatch"
+      | "non-regular-file";
+    artifactKinds: readonly ("spec" | "plan")[];
+    expectedPaths: readonly string[];
+    observedCandidates: readonly string[];
   };
   "implementation-configuration": Workspace & {
     expectedRemote?: string;
