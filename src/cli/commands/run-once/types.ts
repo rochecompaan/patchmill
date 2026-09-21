@@ -14,6 +14,11 @@ import type {
   AgentIssuePrCreatedResult,
   AgentIssueVisualEvidence,
 } from "../../../issue-run/types.ts";
+import type {
+  AnyRunOnceFailure,
+  IssueSelectionReasonCode,
+  RunOnceFailure,
+} from "./result-diagnostics.ts";
 
 export type {
   CommandResult,
@@ -86,12 +91,7 @@ export type IssueSelectionOptions = Pick<
   excludedLabels?: readonly string[] | undefined;
 };
 
-export type IssueSelectionRejectionReason =
-  | "non-open-state"
-  | "blocking-labels"
-  | "not-actionable"
-  | "waiting-spec-approval"
-  | "waiting-plan-approval";
+export type IssueSelectionRejectionReason = IssueSelectionReasonCode;
 
 export type IssueSelectionRejection = {
   issueNumber: number;
@@ -221,6 +221,7 @@ export type AgentIssueApprovalRequiredResult = {
 
 export type AgentIssueCleanupPendingResult = {
   status: "cleanup-pending";
+  publicFailure: RunOnceFailure<"ignored-worktree-content">;
   issue: IssueSummary;
   phase: "spec" | "plan" | "implementation";
   prUrl: string;
@@ -244,18 +245,41 @@ export type AgentIssueReviewPendingResult = {
 export type AgentIssueStoppedResult = {
   status: "stopped";
   issue: IssueSummary;
-  reason: "plan-only" | "issue-locked";
   nextPhase?: "implementation" | undefined;
   specPath?: string | undefined;
   planPath?: string | undefined;
   branch?: string | undefined;
   worktreePath?: string | undefined;
-};
+} & (
+  | {
+      reason: "plan-only";
+      publicFailure: RunOnceFailure<"plan-only">;
+    }
+  | {
+      reason: "issue-locked";
+      publicFailure: RunOnceFailure<"issue-locked">;
+    }
+);
 
 type AgentIssuePipelineResultLog = {
   logPath?: string | undefined;
   piSessionPath?: string | undefined;
 };
+
+/** Agent-facing results retain free-form reasons until a public adapter attaches a bounded envelope. */
+export type AgentIssueInternalBlockedResult = AgentIssueBlockedResult & {
+  publicFailure?: AnyRunOnceFailure | undefined;
+};
+
+/** Every public blocked result has a cataloged reason and typed diagnostic context. */
+export type AgentIssuePipelineBlockedResult = AgentIssuePipelineResultLog & {
+  issue: IssueSummary;
+  specPath?: string | undefined;
+  planPath?: string | undefined;
+  worktreePath?: string | undefined;
+  branch?: string | undefined;
+  publicFailure: AnyRunOnceFailure;
+} & AgentIssueBlockedResult;
 
 export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
   (
@@ -286,6 +310,7 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         reason: string;
         evidence: string[];
         remediation: string[];
+        publicFailure: RunOnceFailure<"development-environment-not-ready">;
       }
     | ({
         issue: IssueSummary;
@@ -293,13 +318,7 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
         planPath: string;
         worktreePath: string;
       } & (AgentIssuePrCreatedResult | AgentIssueMergedResult))
-    | ({
-        issue: IssueSummary;
-        specPath?: string | undefined;
-        planPath?: string | undefined;
-        worktreePath?: string | undefined;
-        branch?: string | undefined;
-      } & AgentIssueBlockedResult)
+    | AgentIssuePipelineBlockedResult
   );
 
 // Recovery is deliberately modelled separately from persisted run status. A Run

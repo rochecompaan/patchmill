@@ -1,6 +1,12 @@
 import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
 import { formatErrorWithCauses } from "./pi-errors.ts";
 import type { AgentIssuePipelineResult } from "./types.ts";
+import type {
+  RunOnceDiagnostic,
+  RunOnceReasonCode,
+} from "./result-diagnostics.ts";
+import { summarizeFailure } from "./result-summary-diagnostics.ts";
+import { failureForPipelineError } from "./pipeline-error-diagnostics.ts";
 
 export type RunOnceResultLog = { logPath?: string; piSessionPath?: string };
 
@@ -65,6 +71,7 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         planPath?: string;
         commits?: string[];
         validation?: string[];
+        diagnostic: RunOnceDiagnostic;
       }
     | {
         status: "review-pending";
@@ -75,12 +82,13 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
     | {
         status: "stopped";
         issueNumber: number;
-        reason: "plan-only" | "issue-locked";
+        reason: RunOnceReasonCode;
         nextPhase?: "implementation";
         specPath?: string;
         planPath?: string;
         branch?: string;
         worktreePath?: string;
+        diagnostic: RunOnceDiagnostic;
       }
     | {
         status: "approval-required";
@@ -95,21 +103,30 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         planPath: string;
         branch?: string;
         worktreePath?: string;
-        reason: string;
+        reason: "development-environment-not-ready";
         evidence: string[];
         remediation: string[];
+        diagnostic: RunOnceDiagnostic;
       }
     | {
         status: "blocked";
         issueNumber: number;
-        reason: string;
+        reason: RunOnceReasonCode;
         questions: string[];
+        diagnostic: RunOnceDiagnostic;
       }
   );
 
 export type RunOnceResultSummary =
   | RunOncePipelineResultSummary
-  | { status: "error"; error: string; causes?: string[]; logPath?: string };
+  | {
+      status: "error";
+      error: string;
+      causes?: string[];
+      logPath?: string;
+      reason: RunOnceReasonCode;
+      diagnostic: RunOnceDiagnostic;
+    };
 export type RunOnceResultStatus = RunOnceResultSummary["status"];
 
 function questionText(
@@ -196,7 +213,6 @@ export function summarizeResult(
         prUrl: result.prUrl,
         branch: result.branch,
         worktreePath: result.worktreePath,
-        reason: result.reason,
         ignoredPaths: [...result.ignoredPaths],
         remediation: [...result.remediation],
         ...(result.specPath === undefined ? {} : { specPath: result.specPath }),
@@ -207,6 +223,7 @@ export function summarizeResult(
         ...(result.validation === undefined
           ? {}
           : { validation: [...result.validation] }),
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
     case "review-pending":
@@ -221,7 +238,6 @@ export function summarizeResult(
       return {
         status: result.status,
         issueNumber: result.issue.number,
-        reason: result.reason,
         ...(result.nextPhase !== undefined
           ? { nextPhase: result.nextPhase }
           : {}),
@@ -231,6 +247,7 @@ export function summarizeResult(
         ...(result.worktreePath !== undefined
           ? { worktreePath: result.worktreePath }
           : {}),
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
     case "approval-required":
@@ -251,17 +268,17 @@ export function summarizeResult(
         ...(result.worktreePath !== undefined
           ? { worktreePath: result.worktreePath }
           : {}),
-        reason: result.reason,
         evidence: result.evidence,
         remediation: result.remediation,
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
     case "blocked":
       return {
         status: result.status,
         issueNumber: result.issue.number,
-        reason: result.reason,
         questions: result.questions.map(questionText),
+        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
   }
@@ -272,10 +289,12 @@ export function summarizeErrorResult(
   logPath?: string,
 ): Extract<RunOnceResultSummary, { status: "error" }> {
   const formatted = formatErrorWithCauses(error);
+  const failure = failureForPipelineError(error, logPath);
   return {
     status: "error",
     error: formatted.message,
     ...(formatted.causes ? { causes: formatted.causes } : {}),
     ...(logPath ? { logPath } : {}),
+    ...summarizeFailure(failure),
   };
 }

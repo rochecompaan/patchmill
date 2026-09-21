@@ -3,6 +3,7 @@ import type {
   WorkspaceReadyPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import {
   blocked,
   operations,
@@ -16,6 +17,11 @@ async function reconcile(
   input: PlanningPhaseRunnerInput,
   state: PlanningStateV1,
 ): Promise<PlanningPhaseRunnerOutcome> {
+  const phase = input.phase.kind;
+  if (phase === "implementation")
+    throw new RangeError(
+      "Planning reconciliation requires a spec or plan phase",
+    );
   const result = await operations(input).reconcile({
     state,
     phaseIndex: input.phaseIndex,
@@ -32,7 +38,7 @@ async function reconcile(
       return {
         kind: "cleanup-pending",
         state: result.state,
-        phase: input.phase.kind as "spec" | "plan",
+        phase,
         prUrl: result.outcome.prUrl,
         reason: result.outcome.reason,
         ignoredPaths: result.outcome.ignoredPaths,
@@ -47,12 +53,52 @@ async function reconcile(
     case "satisfied-by-base":
       return { kind: "advanced", state: result.state };
     case "closed-unmerged":
+      return {
+        kind: "blocked",
+        state: result.state,
+        result: blocked(
+          "planning-pull-request-closed-unmerged",
+          runOnceFailure("planning-pull-request-closed-unmerged", {
+            issueNumber: result.state.issueNumber,
+            status: "blocked",
+            phase,
+            pullRequestUrl: result.outcome.pullRequest.url,
+            pullRequestReference: `#${result.outcome.pullRequest.number}`,
+            observedStatus: result.outcome.pullRequest.status,
+          }),
+        ),
+      };
     case "missing":
+      return {
+        kind: "blocked",
+        state: result.state,
+        result: blocked(
+          "planning-pull-request-missing",
+          runOnceFailure("planning-pull-request-missing", {
+            issueNumber: result.state.issueNumber,
+            status: "blocked",
+            phase,
+            ...(result.outcome.reference
+              ? { pullRequestReference: `#${result.outcome.reference.number}` }
+              : {}),
+          }),
+        ),
+      };
     case "ambiguous":
       return {
         kind: "blocked",
         state: result.state,
-        result: blocked(`planning-pull-request-${result.outcome.kind}`),
+        result: blocked(
+          "planning-pull-request-ambiguous",
+          runOnceFailure("planning-pull-request-ambiguous", {
+            issueNumber: result.state.issueNumber,
+            status: "blocked",
+            phase,
+            pullRequestUrls: result.outcome.pullRequests.map(
+              (pullRequest) => pullRequest.url,
+            ),
+          }),
+        ),
       };
   }
 }
@@ -123,8 +169,24 @@ export async function runPlanningSpecPlanPhase(
       if (
         error instanceof PlanningPhaseArtifactError &&
         error.reason === "ambiguous-base-artifact"
-      )
-        return { kind: "blocked", state, result: blocked(error.reason) };
+      ) {
+        if (!error.diagnosticContext)
+          throw new Error("Ambiguous planning artifact is missing evidence", {
+            cause: error,
+          });
+        return {
+          kind: "blocked",
+          state,
+          result: blocked(
+            "ambiguous-base-artifact",
+            runOnceFailure("ambiguous-base-artifact", {
+              issueNumber: state.issueNumber,
+              status: "blocked",
+              ...error.diagnosticContext,
+            }),
+          ),
+        };
+      }
       throw error;
     }
   }
@@ -145,7 +207,17 @@ export async function runPlanningSpecPlanPhase(
     return {
       kind: "blocked",
       state: published.state,
-      result: blocked("planning-pull-request-ambiguous"),
+      result: blocked(
+        "planning-pull-request-ambiguous",
+        runOnceFailure("planning-pull-request-ambiguous", {
+          issueNumber: published.state.issueNumber,
+          status: "blocked",
+          phase: phase.kind,
+          pullRequestUrls: published.pullRequests.map(
+            (pullRequest) => pullRequest.url,
+          ),
+        }),
+      ),
     };
   return published.pullRequest.status === "open"
     ? {

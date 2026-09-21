@@ -7,6 +7,7 @@ import type { PlanningImplementationInput } from "./planning-implementation.ts";
 import { artifactPath } from "./planning-runtime-state.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
 export type PlanningImplementationAdapterInput = {
@@ -104,6 +105,16 @@ export function createPlanningImplementationAdapter(
       return {
         status: "blocked",
         reason: result.result.reason,
+        publicFailure: runOnceFailure("development-environment-not-ready", {
+          issueNumber: input.issue.number,
+          status: "blocked",
+          phase: "implementation",
+          branch: phase.workspace.identity.branch,
+          worktreePath: phase.workspace.identity.worktreePath,
+          reportedReason: result.result.reason,
+          evidence: result.result.evidence,
+          reportedRemediation: result.result.remediation,
+        }),
         questions: [],
         commits: [],
         validation: [],

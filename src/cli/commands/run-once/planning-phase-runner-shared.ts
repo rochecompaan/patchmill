@@ -31,11 +31,15 @@ import {
 } from "./planning-phase-artifacts.ts";
 import type { PlanningArtifactAgent } from "./planning-phase-artifacts.ts";
 import type {
-  AgentIssueBlockedResult,
   AgentIssuePrCreatedResult,
   PromptTriageLabels,
 } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
+import type { AgentIssueInternalBlockedResult } from "./types.ts";
+import {
+  runOnceFailure,
+  type AnyRunOnceFailure,
+} from "./result-diagnostics.ts";
 
 export type PlanningCleanupPendingOutcome = Readonly<{
   kind: "cleanup-pending";
@@ -50,7 +54,11 @@ export type PlanningPhaseRunnerOutcome =
   | PlanningCleanupPendingOutcome
   | { kind: "review-pending"; state: PlanningStateV1; prUrl: string }
   | { kind: "stopped"; state: PlanningStateV1; reason: "plan-only" }
-  | { kind: "blocked"; state: PlanningStateV1; result: AgentIssueBlockedResult }
+  | {
+      kind: "blocked";
+      state: PlanningStateV1;
+      result: AgentIssueInternalBlockedResult;
+    }
   | {
       kind: "complete";
       state: PlanningStateV1;
@@ -147,10 +155,14 @@ export function operations(
   };
 }
 
-export function blocked(reason: string): AgentIssueBlockedResult {
+export function blocked(
+  reason: string,
+  publicFailure: AnyRunOnceFailure,
+): AgentIssueInternalBlockedResult {
   return {
     status: "blocked",
     reason,
+    publicFailure,
     questions: [],
     commits: [],
     validation: [],
@@ -178,7 +190,18 @@ export async function runWorkspaceArtifacts(
     return {
       kind: "blocked",
       state,
-      result: blocked("planning-workspace-dirty"),
+      result: blocked(
+        "planning-workspace-dirty",
+        runOnceFailure("planning-workspace-dirty", {
+          issueNumber: state.issueNumber,
+          status: "blocked",
+          phase: current.kind,
+          branch: current.workspace.identity.branch,
+          worktreePath: current.workspace.identity.worktreePath,
+          workspaceState: workspace.state,
+          statusEvidence: workspace.clean ? "clean" : "dirty",
+        }),
+      ),
     };
   const artifacts = await operations(input).runArtifacts({
     issue: input.issue,

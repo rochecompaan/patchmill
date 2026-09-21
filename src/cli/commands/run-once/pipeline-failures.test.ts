@@ -44,13 +44,14 @@ test("blockIssue writes blocked state and returns blocked result", async () => {
     {},
   );
   assert.equal(result.status, "blocked");
+  assert.equal(result.publicFailure?.reason, "agent-blocked");
   assert.match(
     await readFile(runStatePath(config.runStateDir, 1), "utf8"),
     /need info/,
   );
 });
 
-test("unexpectedFailure comments once and records blocked result", async () => {
+test("unexpectedFailure comments once and retains aggregate diagnostic evidence", async () => {
   const config = await makeConfig();
   const { progress } = collectProgressEvents();
   const fakeHost = host();
@@ -61,9 +62,24 @@ test("unexpectedFailure comments once and records blocked result", async () => {
     {},
     {},
     new Date().toISOString(),
-    new Error("boom"),
-    { progress },
+    new AggregateError(
+      [new Error("observer failed"), new Error("cleanup failed")],
+      "boom",
+    ),
+    {
+      progress,
+      logPath: "/repo/.patchmill/runs/issue-2/run.jsonl",
+    },
   );
   assert.equal(result.status, "blocked");
+  assert.equal(result.publicFailure?.reason, "unexpected-error");
+  if (result.publicFailure?.reason === "unexpected-error")
+    assert.deepEqual(result.publicFailure.diagnosticContext, {
+      issueNumber: 2,
+      status: "blocked",
+      error: "boom",
+      causes: ["observer failed", "cleanup failed"],
+      logPath: "/repo/.patchmill/runs/issue-2/run.jsonl",
+    });
   assert.equal(fakeHost.comments.length, 1);
 });

@@ -3,9 +3,40 @@ import test from "node:test";
 import { PlanningIssueLockConflictError } from "../../../workflow/planning-issue-lock.ts";
 import { PlanningStateValidationError } from "../../../workflow/planning-state.ts";
 import {
+  mapPlanningOutcome,
   planningIssueNeedsClaim,
   runPlanningIssue,
 } from "./planning-pipeline.ts";
+
+test("normalizes an unannotated planning agent blocker at the public boundary", () => {
+  const result = mapPlanningOutcome(
+    { number: 189, title: "Example", state: "open", labels: [] } as never,
+    {
+      kind: "blocked",
+      state: { phases: [] },
+      result: {
+        status: "blocked",
+        reason: "Need an API decision",
+        questions: ["Which API?"],
+        commits: [],
+        validation: ["npm test failed"],
+      },
+    } as never,
+    "agent-ready",
+  );
+  assert.equal(result.status, "blocked");
+  if (result.status === "blocked") {
+    assert.equal(result.publicFailure.reason, "agent-blocked");
+    if (result.publicFailure.reason === "agent-blocked")
+      assert.deepEqual(result.publicFailure.diagnosticContext, {
+        issueNumber: 189,
+        status: "blocked",
+        reportedReason: "Need an API decision",
+        questions: ["Which API?"],
+        evidence: ["npm test failed"],
+      });
+  }
+});
 
 test("does not reclaim an issue after its done-label checkpoint", () => {
   assert.equal(
@@ -147,8 +178,18 @@ test("maps malformed post-lock planning state to a no-mutation blocker", async (
     release: async () => {},
   });
   assert.equal(result.status, "blocked");
-  if (result.status === "blocked")
-    assert.match(result.result.reason, /issue-189\.json.*invalid-json/);
+  if (result.status === "blocked") {
+    assert.equal(result.result.reason, "planning-state-invalid");
+    assert.deepEqual(result.result.publicFailure, {
+      reason: "planning-state-invalid",
+      diagnosticContext: {
+        issueNumber: 189,
+        status: "blocked",
+        statePath: "/tmp/state/issue-189.json",
+        validation: "invalid-json at $",
+      },
+    });
+  }
   assert.equal(mutated, false);
 });
 

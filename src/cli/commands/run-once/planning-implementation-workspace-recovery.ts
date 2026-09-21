@@ -2,11 +2,28 @@ import {
   PlanningPublicationGitError,
   type PlanningPublicationOperations,
 } from "../../../git/planning-publication-git.ts";
-import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
+import type {
+  PlanningWorkspaceLifecycle,
+  PlanningWorkspaceSnapshot,
+} from "../../../git/planning-workspaces.ts";
 import type {
   ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
+
+type UnsafeWorkspaceRecovery = Readonly<{
+  kind: "unsafe";
+  state: PlanningStateV1;
+  reason: "not-ready" | "dirty" | "not-descendant";
+  workspace: PlanningWorkspaceSnapshot;
+}>;
+
+type SafeWorkspaceRecovery = Readonly<{
+  kind: "safe";
+  state: PlanningStateV1;
+  phase: ImplementationWorkspaceReadyPlanningPhase;
+  workspace: Extract<PlanningWorkspaceSnapshot, { state: "ready" }>;
+}>;
 
 export type PostAgentWorkspaceRecoveryInput = Readonly<{
   state: PlanningStateV1;
@@ -22,12 +39,24 @@ export type PostAgentWorkspaceRecoveryInput = Readonly<{
 /** Adopts only a clean workspace head proven to descend from saved evidence. */
 export async function recoverPostAgentWorkspace(
   input: PostAgentWorkspaceRecoveryInput,
-) {
+): Promise<UnsafeWorkspaceRecovery | SafeWorkspaceRecovery> {
   const workspace = await input.workspaces.inspect(
     input.phase.workspace.identity,
   );
-  if (workspace.state !== "ready" || !workspace.clean)
-    return { kind: "unsafe" as const, state: input.state };
+  if (workspace.state !== "ready")
+    return {
+      kind: "unsafe",
+      state: input.state,
+      reason: "not-ready",
+      workspace,
+    };
+  if (!workspace.clean)
+    return {
+      kind: "unsafe",
+      state: input.state,
+      reason: "dirty",
+      workspace,
+    };
   if (workspace.headOid === input.phase.workspace.headOid)
     return {
       kind: "safe" as const,
@@ -45,7 +74,12 @@ export async function recoverPostAgentWorkspace(
       error instanceof PlanningPublicationGitError &&
       error.reason === "not-ancestor"
     )
-      return { kind: "unsafe" as const, state: input.state };
+      return {
+        kind: "unsafe",
+        state: input.state,
+        reason: "not-descendant",
+        workspace,
+      };
     throw error;
   }
   const state = await input.checkpoint({

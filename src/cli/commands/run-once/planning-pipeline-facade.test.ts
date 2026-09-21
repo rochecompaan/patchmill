@@ -593,9 +593,13 @@ test("facade returns a blocked result for advisory malformed planning state", as
     const result = await runOneIssue(runner, config);
     assert.equal(result.status, "blocked");
     if (result.status === "blocked") {
-      assert.match(result.reason, /planning-state-invalid/);
-      assert.match(result.reason, /invalid-json/);
-      assert.match(result.reason, /issue-189\.json/);
+      assert.equal(result.reason, "planning-state-invalid");
+      assert.equal(result.publicFailure?.reason, "planning-state-invalid");
+      if (result.publicFailure?.reason === "planning-state-invalid")
+        assert.match(
+          result.publicFailure.diagnosticContext.validation,
+          /invalid-json/,
+        );
     }
     const summary = summarizeResult(result);
     assert.equal(summary.status, "blocked");

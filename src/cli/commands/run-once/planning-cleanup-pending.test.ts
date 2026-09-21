@@ -90,6 +90,17 @@ test("cleanup-pending result preserves phase-specific evidence", () => {
       branch: `agent/issue-243-${phase}`,
       worktreePath: `.worktrees/243-${phase}`,
       reason: "ignored-worktree-content",
+      publicFailure: {
+        reason: "ignored-worktree-content",
+        diagnosticContext: {
+          issueNumber: 243,
+          status: "cleanup-pending",
+          phase,
+          branch: `agent/issue-243-${phase}`,
+          worktreePath: `.worktrees/243-${phase}`,
+          ignoredPaths: [".env"],
+        },
+      },
       ignoredPaths: [".env"],
       remediation: [
         `Inspect and preserve or remove the listed ignored paths in .worktrees/243-${phase}.`,

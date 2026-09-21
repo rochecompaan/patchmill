@@ -1,5 +1,6 @@
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
 import { applyPlanningCleanupPendingLabels } from "./planning-lifecycle-labels.ts";
@@ -44,6 +45,14 @@ export function planningCleanupPendingResult(
     branch: phase.workspace.identity.branch,
     worktreePath: phase.workspace.identity.worktreePath,
     reason: outcome.reason,
+    publicFailure: runOnceFailure("ignored-worktree-content", {
+      issueNumber: issue.number,
+      status: "cleanup-pending",
+      phase: outcome.phase,
+      branch: phase.workspace.identity.branch,
+      worktreePath: phase.workspace.identity.worktreePath,
+      ignoredPaths: outcome.ignoredPaths,
+    }),
     ignoredPaths: [...outcome.ignoredPaths],
     remediation: [
       `Inspect and preserve or remove the listed ignored paths in ${phase.workspace.identity.worktreePath}.`,

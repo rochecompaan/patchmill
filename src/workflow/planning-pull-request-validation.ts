@@ -13,6 +13,7 @@ import type { PlanningPhaseKind } from "./planning-pull-request-markers.ts";
 import {
   assertPlanningPublicationRepositories as assertPublicationRepositories,
   PlanningPublicationRepositoryError,
+  type PlanningPublicationRepositoryReason,
 } from "./planning-publication-repositories.ts";
 
 export type ValidatedPlanningPullRequest = Readonly<{
@@ -20,15 +21,27 @@ export type ValidatedPlanningPullRequest = Readonly<{
   reference: PullRequestReference;
   url: string;
 }>;
+export type PlanningPullRequestValidationReason =
+  | "target-repository"
+  | "head-repository"
+  | "base-branch"
+  | "head-branch"
+  | "head-oid"
+  | "ownership-marker"
+  | "url"
+  | "reference"
+  | "malformed-summary"
+  | PlanningPublicationRepositoryReason;
+
 export class PlanningPullRequestValidationError extends Error {
-  readonly reason: string;
-  constructor(reason: string) {
+  readonly reason: PlanningPullRequestValidationReason;
+  constructor(reason: PlanningPullRequestValidationReason) {
     super(`Planning pull request is invalid: ${reason}`);
     this.name = "PlanningPullRequestValidationError";
     this.reason = reason;
   }
 }
-function fail(reason: string): never {
+function fail(reason: PlanningPullRequestValidationReason): never {
   throw new PlanningPullRequestValidationError(reason);
 }
 export function assertPlanningPublicationRepositories(input: {

@@ -17,6 +17,8 @@ import {
   unexpectedFailureCommentKey,
 } from "./pipeline-comments.ts";
 import { lifecycleLabels, nextLabels } from "./pipeline-lifecycle.ts";
+import { formatErrorWithCauses } from "./pi-errors.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import {
   emitSimpleStep,
   progress,
@@ -44,6 +46,7 @@ export async function unexpectedFailure(
   options: PipelineProgressOptions,
 ): Promise<AgentIssuePipelineResult> {
   const reason = errorMessage(error);
+  const formatted = formatErrorWithCauses(error);
   const status =
     checkpoints.worktreeReady || checkpoints.implementationCompleted
       ? "implementing"
@@ -110,6 +113,13 @@ export async function unexpectedFailure(
     {
       status: "blocked",
       reason,
+      publicFailure: runOnceFailure("unexpected-error", {
+        issueNumber: issue.number,
+        status: "blocked",
+        error: formatted.message,
+        ...(formatted.causes ? { causes: formatted.causes } : {}),
+        ...(options.logPath ? { logPath: options.logPath } : {}),
+      }),
       questions: [],
       commits: [],
       validation: [],
@@ -176,5 +186,31 @@ export async function blockIssue(
       );
   }
   await emitSimpleStep(options, issue.number, "final result blocked");
-  return withLogPath({ ...result, ...details, issue }, options);
+  return withLogPath(
+    {
+      ...result,
+      publicFailure: runOnceFailure("agent-blocked", {
+        issueNumber: issue.number,
+        status: "blocked",
+        ...(details.branch ? { branch: details.branch } : {}),
+        ...(details.worktreePath ? { worktreePath: details.worktreePath } : {}),
+        reportedReason: result.reason,
+        questions: result.questions.map(blockerQuestionText),
+        evidence: result.validation,
+      }),
+      ...details,
+      issue,
+    },
+    options,
+  );
+}
+
+export function blockerQuestionText(
+  question: import("../../../issue-run/types.ts").AgentIssueBlockerQuestion,
+): string {
+  return typeof question === "string"
+    ? question
+    : question.recommendedAnswer
+      ? `${question.question} (recommended: ${question.recommendedAnswer})`
+      : question.question;
 }

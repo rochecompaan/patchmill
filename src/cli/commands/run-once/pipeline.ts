@@ -9,8 +9,14 @@ import {
 } from "./pipeline-legacy.ts";
 import { runPlanningWorkflow } from "./planning-pipeline.ts";
 import { selectRunOnceWorkflow } from "./planning-selection.ts";
-import { loadSelectionIssues } from "./pipeline-selection.ts";
+import {
+  emitSelectionDiagnostics,
+  loadSelectionIssues,
+} from "./pipeline-selection.ts";
+import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
+import { lifecycleLabels } from "./pipeline-lifecycle.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
@@ -23,6 +29,7 @@ export async function runOneIssue(
 ): Promise<AgentIssuePipelineResult> {
   // Preserve legacy dry-run output and its non-mutating diagnostic contract.
   if (config.dryRun) return runLegacyOneIssue(runner, config, options);
+  const labels = lifecycleLabels(config);
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
@@ -39,14 +46,37 @@ export async function runOneIssue(
       options.now?.toISOString(),
     );
     switch (selected.kind) {
-      case "none":
+      case "none": {
+        const diagnosticCandidates = issues.filter(
+          (issue) =>
+            (config.issueNumber === undefined ||
+              issue.number === config.issueNumber) &&
+            !rejectedIssueNumbers.has(issue.number),
+        );
+        const diagnostics = selectIssueWithDiagnostics(diagnosticCandidates, {
+          readyLabel: labels.ready,
+          triagePolicy: config.triagePolicy,
+          approvalPolicy: config.approvalPolicy,
+        });
+        await emitSelectionDiagnostics(
+          diagnostics.rejections,
+          options,
+          labels.ready,
+        );
         return withLogPath({ status: "no-issue" }, options);
+      }
       case "invalid-planning-state":
         return withLogPath(
           {
             status: "blocked",
             issue: selected.issue,
-            reason: `planning-state-invalid: ${selected.reason}`,
+            reason: "planning-state-invalid",
+            publicFailure: runOnceFailure("planning-state-invalid", {
+              issueNumber: selected.issue.number,
+              status: "blocked",
+              statePath: planningState.path(selected.issue.number),
+              validation: selected.reason,
+            }),
             questions: [],
             commits: [],
             validation: [],

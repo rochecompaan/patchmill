@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
+import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import { runOneIssue as runCurrentOneIssue } from "./pipeline.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { readRunState, writeRunState } from "./run-state.ts";
 import {
@@ -20,6 +22,7 @@ import {
   issueListPayload,
   labelListPayload,
 } from "../../../../test-support/run-once/issue-fixtures.ts";
+import { collectProgressEvents } from "../../../../test-support/run-once/assertions.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
 
@@ -47,6 +50,179 @@ test("runOneIssue facade returns no-issue when no eligible issue exists", async 
   const result = await runOneIssue(runner, config, { now: NOW });
 
   assert.deepEqual(result, { status: "no-issue" });
+});
+
+test("runOneIssue emits diagnostics for explicitly requested ineligible selection", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 2,
+  });
+  const rejected = issue(2, ["needs-info"], "Needs input");
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([rejected]) : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  const result = await runCurrentOneIssue(runner, config, {
+    now: NOW,
+    progress,
+  });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  const rejection = events.find((event) => event.level === "debug");
+  assert.equal(rejection?.message, "skipped #2: blocking labels");
+  assert.equal(
+    (rejection?.data as { diagnostic?: unknown }).diagnostic === undefined,
+    false,
+  );
+});
+
+test("runOneIssue emits diagnostics only for an explicitly requested ineligible issue", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueNumber: 2,
+  });
+  const requested = issue(2, ["needs-info"], "Requested but blocked");
+  const unrelatedEligible = issue(3, ["agent-ready"], "Do not diagnose");
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const state = call.args[call.args.indexOf("--state") + 1];
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload(
+                state === "all" ? [requested] : [requested, unrelatedEligible],
+              )
+            : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  const result = await runCurrentOneIssue(runner, config, {
+    now: NOW,
+    progress,
+  });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  assert.deepEqual(
+    events
+      .filter((event) => event.level === "debug")
+      .map((event) => event.issueNumber),
+    [requested.number],
+  );
+});
+
+test("runOneIssue emits diagnostics for default non-dry all-rejected selection", async () => {
+  const config = await makeConfig({ dryRun: false, execute: true });
+  const runner = createMockRunner((call) => {
+    if (
+      call.command === "tea" &&
+      call.args[0] === "issues" &&
+      call.args[1] === "list"
+    ) {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout:
+          page === "1"
+            ? issueListPayload([issue(2, ["needs-info"], "Needs input")])
+            : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  const result = await runCurrentOneIssue(runner, config, {
+    now: NOW,
+    progress,
+  });
+
+  assert.deepEqual(result, { status: "no-issue" });
+  const rejection = events.find((event) => event.level === "debug");
+  assert.equal(rejection?.message, "skipped #2: blocking labels");
+  assert.equal(
+    (rejection?.data as { reason?: unknown }).reason,
+    "blocking-labels",
+  );
+  const diagnostic = (
+    rejection?.data as {
+      diagnostic?: {
+        explanation?: unknown;
+        actions?: unknown[];
+        safety?: unknown[];
+        retry?: { guidance?: unknown };
+      };
+    }
+  ).diagnostic;
+  assert.match(String(diagnostic?.explanation), /blocking labels/u);
+  assert.ok(diagnostic?.actions?.length);
+  assert.ok(diagnostic?.safety?.length);
+  assert.ok(diagnostic?.retry?.guidance);
+});
+
+test("runOneIssue selection diagnostics use the effective ready label", async () => {
+  const effectiveReadyLabel = "workflow-ready";
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    triagePolicy: {
+      ...DEFAULT_TRIAGE_POLICY,
+      labels: { ...DEFAULT_TRIAGE_POLICY.labels, ready: effectiveReadyLabel },
+    },
+  } as never);
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([issue(2, [])]) : "[]",
+        stderr: "",
+      };
+    }
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+  const { events, progress } = collectProgressEvents();
+
+  await runCurrentOneIssue(runner, config, { now: NOW, progress });
+
+  const diagnostic = (
+    events.find((event) => event.level === "debug")?.data as {
+      diagnostic?: { details?: Array<{ key: string; value: unknown }> };
+    }
+  ).diagnostic;
+  assert.equal(
+    diagnostic?.details?.find((detail) => detail.key === "readyLabel")?.value,
+    effectiveReadyLabel,
+  );
 });
 
 test("runOneIssue facade returns dry-run selection", async () => {

@@ -5,7 +5,11 @@ import { isResumableRunState, readRunState } from "./run-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { assertExplicitWorkflowState } from "./workflow-state.ts";
-import type { AgentIssueConfig, IssueSelectionRejection } from "./types.ts";
+import type {
+  AgentIssueConfig,
+  IssueSelectionDiagnostics,
+  IssueSelectionRejection,
+} from "./types.ts";
 import {
   automaticWorkflowStateEligible,
   lifecycleLabels,
@@ -13,6 +17,7 @@ import {
 } from "./pipeline-lifecycle.ts";
 import { progress, type PipelineProgressOptions } from "./pipeline-progress.ts";
 import { rejectionMessage } from "./pipeline-comments.ts";
+import { diagnosticFor, type RunOnceDiagnostic } from "./result-diagnostics.ts";
 
 export function stringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -43,9 +48,47 @@ export function visualEvidenceArray(
   return entries.length > 0 ? entries : undefined;
 }
 
+export function selectionDiagnostic(
+  rejection: IssueSelectionRejection,
+  readyLabel: string,
+): RunOnceDiagnostic {
+  const common = {
+    issueNumber: rejection.issueNumber,
+    issueState: rejection.state,
+    labels: rejection.labels,
+    workflowState: rejection.workflowState,
+  };
+  switch (rejection.reason) {
+    case "non-open-state":
+      return diagnosticFor("non-open-state", common);
+    case "blocking-labels":
+      return diagnosticFor("blocking-labels", {
+        ...common,
+        blockingLabels: rejection.blockingLabels ?? [],
+      });
+    case "not-actionable":
+      return diagnosticFor("not-actionable", { ...common, readyLabel });
+    case "waiting-spec-approval":
+      return diagnosticFor("waiting-spec-approval", {
+        ...common,
+        ...(rejection.missingLabel
+          ? { missingLabel: rejection.missingLabel }
+          : {}),
+      });
+    case "waiting-plan-approval":
+      return diagnosticFor("waiting-plan-approval", {
+        ...common,
+        ...(rejection.missingLabel
+          ? { missingLabel: rejection.missingLabel }
+          : {}),
+      });
+  }
+}
+
 export async function emitSelectionDiagnostics(
   rejections: IssueSelectionRejection[],
   options: PipelineProgressOptions,
+  readyLabel: string,
 ): Promise<void> {
   for (const rejection of rejections) {
     await progress(
@@ -53,9 +96,31 @@ export async function emitSelectionDiagnostics(
       "debug",
       "select",
       `skipped #${rejection.issueNumber}: ${rejectionMessage(rejection.reason)}`,
-      { issueNumber: rejection.issueNumber, data: rejection },
+      {
+        issueNumber: rejection.issueNumber,
+        data: {
+          ...rejection,
+          diagnostic: selectionDiagnostic(rejection, readyLabel),
+        },
+      },
     );
   }
+}
+
+/** Computes and emits diagnostics for legacy selection without changing selection effects. */
+export async function legacySelectionDiagnostics(
+  issues: IssueSummary[],
+  config: AgentIssueConfig,
+  options: PipelineProgressOptions,
+): Promise<IssueSelectionDiagnostics> {
+  const readyLabel = lifecycleLabels(config).ready;
+  const diagnostics = selectIssueWithDiagnostics(issues, {
+    readyLabel,
+    triagePolicy: config.triagePolicy,
+    approvalPolicy: config.approvalPolicy,
+  });
+  await emitSelectionDiagnostics(diagnostics.rejections, options, readyLabel);
+  return diagnostics;
 }
 
 function assertBlockedRetryEligible(

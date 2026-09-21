@@ -2,20 +2,8 @@ import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { runPiSessionPath } from "./progress.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
-import {
-  PlanningIssueLockConflictError,
-  acquirePlanningIssueLock,
-  releasePlanningIssueLock,
-  type PlanningIssueLock,
-} from "../../../workflow/planning-issue-lock.ts";
-import {
-  PlanningStateStore,
-  planningStatePath,
-} from "../../../workflow/planning-state-store.ts";
-import {
-  PlanningStateValidationError,
-  type PlanningStateV1,
-} from "../../../workflow/planning-state.ts";
+import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
+import type { PlanningStateV1 } from "../../../workflow/planning-state.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { blockerComment, startedComment } from "./pipeline-comments.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
@@ -27,17 +15,21 @@ import {
 } from "./planning-cleanup-pending.ts";
 import { reconcilePlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
-  legacyConflictsWithPlanning,
   planningFinishReachedDoneLabelBoundary,
   planningIssueEligible,
-  planningStateDiagnostic,
 } from "./planning-selection.ts";
 import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts";
 import { readRunState } from "./run-state.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
-import type { AgentIssueBlockedResult } from "../../../issue-run/types.ts";
+import {
+  publicFailureForBlocked,
+  statePaths,
+} from "./planning-pipeline-diagnostics.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
+import { runPlanningIssue } from "./planning-pipeline-issue.ts";
+import type { AgentIssueInternalBlockedResult } from "./types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
   AgentIssueConfig,
@@ -48,61 +40,18 @@ import type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 
 export type PlanningPipelineResult =
   | AgentIssueStoppedResult
-  | { status: "blocked"; issue: IssueSummary; result: AgentIssueBlockedResult }
+  | {
+      status: "blocked";
+      issue: IssueSummary;
+      result: AgentIssueInternalBlockedResult;
+    }
   | {
       status: "coordinated";
       issue: IssueSummary;
       outcome: PlanningCoordinatorOutcome;
     };
 
-type PlanningIssueInput = {
-  issue: IssueSummary;
-  config: AgentIssueConfig;
-  state: PlanningStateV1;
-  /** Whether selection observed durable planning state before acquiring the lock. */
-  expectedStatePresence: "present" | "absent";
-  runStateDir: string;
-  stateStore: Pick<PlanningStateStore, "read" | "initialize">;
-  readIssue: () => Promise<IssueSummary>;
-  readLegacy: () => Promise<
-    import("./types.ts").AgentIssueRunState | undefined
-  >;
-  eligible?: (
-    issue: IssueSummary,
-    state: PlanningStateV1 | undefined,
-  ) => boolean;
-  reconcileCleanupPendingPublication?: (input: {
-    issue: IssueSummary;
-    state: PlanningStateV1;
-  }) => Promise<PlanningCoordinatorOutcome | undefined>;
-  mutate: (
-    issue: IssueSummary,
-    fresh: boolean,
-    state: PlanningStateV1,
-  ) => Promise<string[]>;
-  coordinate: (
-    state: PlanningStateV1,
-    lock: PlanningIssueLock,
-    issue: IssueSummary,
-    labels: string[],
-  ) => Promise<PlanningCoordinatorOutcome>;
-  acquire?: typeof acquirePlanningIssueLock;
-  release?: typeof releasePlanningIssueLock;
-};
-
-function blocked(issue: IssueSummary, reason: string): PlanningPipelineResult {
-  return {
-    status: "blocked",
-    issue,
-    result: {
-      status: "blocked",
-      reason,
-      questions: [],
-      commits: [],
-      validation: [],
-    },
-  };
-}
+export { runPlanningIssue } from "./planning-pipeline-issue.ts";
 
 export function planningIssueNeedsClaim(input: {
   issue: IssueSummary;
@@ -122,201 +71,6 @@ export function planningIssueNeedsClaim(input: {
       input.issue.labels.includes(input.labels.ready) ||
       !input.issue.labels.includes(input.labels.inProgress))
   );
-}
-
-async function releaseOwnedPlanningLock(input: {
-  lock: PlanningIssueLock;
-  release: typeof releasePlanningIssueLock;
-  workFailure: unknown;
-}): Promise<void> {
-  try {
-    await input.release(input.lock);
-  } catch (releaseFailure) {
-    if (input.workFailure !== undefined)
-      throw new AggregateError(
-        [input.workFailure, releaseFailure],
-        "Planning issue work and lock release failed",
-        { cause: releaseFailure },
-      );
-    throw new Error("Planning lock release failed", { cause: releaseFailure });
-  }
-}
-
-/**
- * Owns one planning issue attempt. Selection is advisory; every identity and
- * workflow check is repeated after the ownership-ID lock is acquired.
- */
-export async function runPlanningIssue(
-  input: PlanningIssueInput,
-): Promise<PlanningPipelineResult> {
-  const acquire = input.acquire ?? acquirePlanningIssueLock;
-  const release = input.release ?? releasePlanningIssueLock;
-  let lock: PlanningIssueLock | undefined;
-  let workFailure: unknown;
-  try {
-    try {
-      lock = await acquire(input.runStateDir, {
-        issueNumber: input.issue.number,
-        runId: input.state.runId,
-      });
-    } catch (error) {
-      if (error instanceof PlanningIssueLockConflictError) {
-        if (error.diagnostic.classification === "active")
-          return {
-            status: "stopped",
-            issue: input.issue,
-            reason: "issue-locked",
-          };
-        return blocked(
-          input.issue,
-          `issue-lock-${error.diagnostic.classification}`,
-        );
-      }
-      throw error;
-    }
-    let retriedAuthoritativeRun = false;
-    while (true) {
-      let issue: IssueSummary;
-      let saved: PlanningStateV1 | undefined;
-      let legacy: Awaited<ReturnType<PlanningIssueInput["readLegacy"]>>;
-      try {
-        [issue, saved, legacy] = await Promise.all([
-          input.readIssue(),
-          input.stateStore.read(input.issue.number),
-          input.readLegacy(),
-        ]);
-      } catch (error) {
-        if (error instanceof PlanningStateValidationError)
-          return blocked(
-            input.issue,
-            `planning-state-invalid: ${planningStateDiagnostic(
-              error,
-              planningStatePath(input.runStateDir, input.issue.number),
-            )}`,
-          );
-        throw error;
-      }
-      // A planning selection owns a concrete durable state.  Never turn a
-      // disappeared active selection into a fresh attempt after locking.
-      if (
-        (input.expectedStatePresence === "present" && saved === undefined) ||
-        (retriedAuthoritativeRun && saved === undefined)
-      )
-        return blocked(input.issue, "planning-identity-changed");
-      const current = saved ?? input.state;
-      const planningActive = current.phases.some(
-        (phase) => phase.status !== "complete",
-      );
-      const legacyConflict = legacyConflictsWithPlanning(legacy);
-      if (
-        issue.number !== input.issue.number ||
-        issue.title !== input.issue.title ||
-        current.issueNumber !== input.issue.number ||
-        issue.state !== "open" ||
-        !planningActive ||
-        legacyConflict
-      )
-        return blocked(input.issue, "planning-identity-changed");
-      if (saved !== undefined && saved.runId !== lock.record.runId) {
-        if (input.expectedStatePresence !== "absent" || retriedAuthoritativeRun)
-          return blocked(input.issue, "planning-identity-changed");
-        const provisionalLock = lock;
-        lock = undefined;
-        await releaseOwnedPlanningLock({
-          lock: provisionalLock,
-          release,
-          workFailure: undefined,
-        });
-        retriedAuthoritativeRun = true;
-        try {
-          lock = await acquire(input.runStateDir, {
-            issueNumber: input.issue.number,
-            runId: saved.runId,
-          });
-        } catch (error) {
-          if (error instanceof PlanningIssueLockConflictError) {
-            if (error.diagnostic.classification === "active")
-              return {
-                status: "stopped",
-                issue: input.issue,
-                reason: "issue-locked",
-              };
-            return blocked(
-              input.issue,
-              `issue-lock-${error.diagnostic.classification}`,
-            );
-          }
-          throw error;
-        }
-        continue;
-      }
-      if (current.runId !== lock.record.runId)
-        return blocked(input.issue, "planning-run-id-mismatch");
-      const reconciled = await input.reconcileCleanupPendingPublication?.({
-        issue,
-        state: current,
-      });
-      if (reconciled !== undefined)
-        return { status: "coordinated", issue, outcome: reconciled };
-      const eligible = planningIssueEligible({
-        issue,
-        config: input.config,
-        state: current,
-        activeOwnedWorkflow: saved !== undefined && planningActive,
-      });
-      if (
-        !eligible ||
-        (input.eligible !== undefined && !input.eligible(issue, saved))
-      )
-        return blocked(input.issue, "planning-identity-changed");
-      const fresh = saved === undefined;
-      if (fresh) await input.stateStore.initialize({ state: current, lock });
-      const labels = await input.mutate(issue, fresh, current);
-      return {
-        status: "coordinated",
-        issue,
-        outcome: await input.coordinate(current, lock, issue, labels),
-      };
-    }
-  } catch (error) {
-    workFailure = error;
-    throw error;
-  } finally {
-    if (lock) await releaseOwnedPlanningLock({ lock, release, workFailure });
-  }
-}
-
-function statePaths(state: PlanningStateV1) {
-  const implementation = state.phases.find(
-    (phase) => phase.kind === "implementation",
-  );
-  const artifacts = state.phases.flatMap((phase) =>
-    "artifacts" in phase ? phase.artifacts : [],
-  );
-  const workspace =
-    implementation && "workspace" in implementation
-      ? implementation.workspace
-      : undefined;
-  return {
-    ...(artifacts.find((artifact) => artifact.kind === "spec")
-      ? {
-          specPath: artifacts.find((artifact) => artifact.kind === "spec")!
-            .path,
-        }
-      : {}),
-    ...(artifacts.find((artifact) => artifact.kind === "plan")
-      ? {
-          planPath: artifacts.find((artifact) => artifact.kind === "plan")!
-            .path,
-        }
-      : {}),
-    ...(workspace === undefined
-      ? {}
-      : {
-          branch: workspace.identity.branch,
-          worktreePath: workspace.identity.worktreePath,
-        }),
-  };
 }
 
 export function mapPlanningOutcome(
@@ -340,11 +94,23 @@ export function mapPlanningOutcome(
         status: "stopped",
         issue,
         reason: outcome.reason,
+        publicFailure: runOnceFailure("plan-only", {
+          issueNumber: issue.number,
+          status: "stopped",
+          phase: "implementation",
+          ...paths,
+          nextPhase: outcome.nextPhase,
+        }),
         nextPhase: outcome.nextPhase,
         ...paths,
       };
     case "blocked":
-      return { issue, ...paths, ...outcome.result };
+      return {
+        issue,
+        ...paths,
+        ...outcome.result,
+        publicFailure: publicFailureForBlocked(issue, outcome.result, paths),
+      };
     case "complete":
       if (!paths.planPath || !paths.branch || !paths.worktreePath)
         throw new Error(
@@ -520,7 +286,11 @@ export async function runPlanningWorkflow(input: {
     );
   if (planning.status === "blocked")
     return withLogPath(
-      { issue: planning.issue, ...planning.result },
+      {
+        issue: planning.issue,
+        ...planning.result,
+        publicFailure: publicFailureForBlocked(planning.issue, planning.result),
+      },
       runOptions,
     );
   return withLogPath(planning, runOptions);

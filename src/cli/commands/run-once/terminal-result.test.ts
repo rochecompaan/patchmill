@@ -10,6 +10,39 @@ import {
   terminalResultSeverity,
 } from "./terminal-result.ts";
 import type { RunOnceResultSummary } from "./result-summary.ts";
+import { diagnosticFor } from "./result-diagnostics.ts";
+
+const planOnlyDiagnostic = diagnosticFor("plan-only", {
+  issueNumber: 1,
+  phase: "implementation",
+  nextPhase: "implementation",
+});
+const environmentDiagnostic = diagnosticFor(
+  "development-environment-not-ready",
+  {
+    issueNumber: 1,
+    reportedReason: "environment unavailable",
+    evidence: [],
+    reportedRemediation: [],
+  },
+);
+const blockedDiagnostic = diagnosticFor("agent-blocked", {
+  issueNumber: 1,
+  reportedReason: "blocked",
+  questions: [],
+});
+const unexpectedErrorDiagnostic = diagnosticFor("unexpected-error", {
+  error: "failed",
+});
+
+function errorSummary(error: string): RunOnceResultSummary {
+  return {
+    status: "error",
+    error,
+    reason: "unexpected-error",
+    diagnostic: diagnosticFor("unexpected-error", { error }),
+  };
+}
 
 const summary: RunOnceResultSummary = {
   status: "pr-created",
@@ -76,6 +109,13 @@ test("renders stopped reason before preserved workspace and artifact details", (
       planPath: "docs/plans/issue-189.md",
       branch: "agent/issue-189-implementation",
       worktreePath: ".worktrees/issue-189-implementation",
+      diagnostic: diagnosticFor("plan-only", {
+        issueNumber: 189,
+        phase: "implementation",
+        branch: "agent/issue-189-implementation",
+        worktreePath: ".worktrees/issue-189-implementation",
+        nextPhase: "implementation",
+      }),
     },
     { width: 100, color: false },
   );
@@ -103,6 +143,11 @@ test("sanitizes hostile strings and styles only renderer output", () => {
     status: "error",
     error: "\u001b[31mred\u001b[0m\nInjected heading\u0007",
     causes: ["\u001b]8;;https://evil.test\u0007click\u001b]8;;\u0007"],
+    reason: "unexpected-error",
+    diagnostic: diagnosticFor("unexpected-error", {
+      error: "\u001b[31mred\u001b[0m\nInjected heading\u0007",
+      causes: ["\u001b]8;;https://evil.test\u0007click\u001b]8;;\u0007"],
+    }),
   };
   const plain = formatTerminalResult(hostile, { width: 32, color: false });
   const colored = formatTerminalResult(hostile, { width: 32, color: true });
@@ -113,7 +158,7 @@ test("sanitizes hostile strings and styles only renderer output", () => {
     colored,
     /\u001b\[1m\u001b\[31mFinal result: ✗ Error\u001b\[0m/u,
   );
-  assert.match(colored, /\u001b\[31m✗/u);
+  assert.match(colored, /\u001b\[33m→/u);
   for (const line of colored.split("\n")) assert.ok(visibleWidth(line) <= 32);
 });
 
@@ -164,7 +209,12 @@ test("maps every status to its visible severity marker and label", () => {
       "! Review pending",
     ],
     [
-      { status: "stopped", issueNumber: 1, reason: "issue-locked" },
+      {
+        status: "stopped",
+        issueNumber: 1,
+        reason: "plan-only",
+        diagnostic: planOnlyDiagnostic,
+      },
       "! Stopped",
     ],
     [
@@ -181,17 +231,32 @@ test("maps every status to its visible severity marker and label", () => {
         status: "development-environment-not-ready",
         issueNumber: 1,
         planPath: "plan.md",
-        reason: "not ready",
+        reason: "development-environment-not-ready",
         evidence: [],
         remediation: [],
+        diagnostic: environmentDiagnostic,
       },
       "! Development environment not ready",
     ],
     [
-      { status: "blocked", issueNumber: 1, reason: "blocked", questions: [] },
+      {
+        status: "blocked",
+        issueNumber: 1,
+        reason: "agent-blocked",
+        questions: [],
+        diagnostic: blockedDiagnostic,
+      },
       "✗ Blocked",
     ],
-    [{ status: "error", error: "failed" }, "✗ Error"],
+    [
+      {
+        status: "error",
+        error: "failed",
+        reason: "unexpected-error",
+        diagnostic: unexpectedErrorDiagnostic,
+      },
+      "✗ Error",
+    ],
   ];
   for (const [result, header] of cases)
     assert.match(
@@ -255,22 +320,40 @@ test("renders each status with its relevant semantic sections", () => {
         status: "development-environment-not-ready",
         issueNumber: 1,
         planPath: "plan.md",
-        reason: "not ready",
+        reason: "development-environment-not-ready",
         evidence: ["evidence"],
         remediation: ["retry"],
+        diagnostic: environmentDiagnostic,
       },
-      ["Issue and workspace", "Artifacts", "Environment readiness"],
+      ["Failure", "Issue and workspace", "Artifacts"],
     ],
     [
       {
         status: "blocked",
         issueNumber: 1,
-        reason: "blocked",
+        reason: "agent-blocked",
         questions: ["what now?"],
+        diagnostic: diagnosticFor("agent-blocked", {
+          issueNumber: 1,
+          reportedReason: "blocked",
+          questions: ["what now?"],
+        }),
       },
       ["Issue and workspace", "Failure", "Questions (1)"],
     ],
-    [{ status: "error", error: "failed", causes: ["cause"] }, ["Failure"]],
+    [
+      {
+        status: "error",
+        error: "failed",
+        causes: ["cause"],
+        reason: "unexpected-error",
+        diagnostic: diagnosticFor("unexpected-error", {
+          error: "failed",
+          causes: ["cause"],
+        }),
+      },
+      ["Failure"],
+    ],
   ];
   for (const [result, headings] of cases) {
     const output = formatTerminalResult(result, { width: 100, color: false });
@@ -310,20 +393,20 @@ test("encodes individually too-wide graphemes only when necessary", () => {
       String.fromCodePoint(Number.parseInt(hex, 16)),
     );
   for (const literal of ["漢", "😀"]) {
-    const narrow = formatTerminalResult(
-      { status: "error", error: literal },
-      { width: 1, color: false },
-    );
+    const narrow = formatTerminalResult(errorSummary(literal), {
+      width: 1,
+      color: false,
+    });
     for (const line of narrow.split("\n"))
       assert.ok(visibleWidth(line) <= 1, `${visibleWidth(line)} > 1`);
     assert.ok(
       decodeUnicodeEscapes(narrow.replaceAll("\n", "")).includes(literal),
     );
 
-    const wide = formatTerminalResult(
-      { status: "error", error: literal },
-      { width: 2, color: false },
-    );
+    const wide = formatTerminalResult(errorSummary(literal), {
+      width: 2,
+      color: false,
+    });
     assert.ok(wide.includes(literal));
   }
 });
@@ -337,14 +420,14 @@ test("uses an unambiguous narrow codec for over-wide graphemes", () => {
           ? "\\"
           : String.fromCodePoint(Number.parseInt(hex, 16)),
     );
-  const emoji = formatTerminalResult(
-    { status: "error", error: "😀" },
-    { width: 1, color: false },
-  );
-  const literalEscape = formatTerminalResult(
-    { status: "error", error: "\\u{1f600}" },
-    { width: 1, color: false },
-  );
+  const emoji = formatTerminalResult(errorSummary("😀"), {
+    width: 1,
+    color: false,
+  });
+  const literalEscape = formatTerminalResult(errorSummary("\\u{1f600}"), {
+    width: 1,
+    color: false,
+  });
 
   assert.notEqual(emoji, literalEscape);
   assert.ok(decodeNarrowCodec(emoji.replaceAll("\n", "")).includes("😀"));
@@ -357,10 +440,10 @@ test("uses an unambiguous narrow codec for over-wide graphemes", () => {
 
 test("replaces tabs in hostile terminal values before wrapping", () => {
   assert.equal(cleanValue("first\tsecond\u0007"), "first second");
-  const output = formatTerminalResult(
-    { status: "error", error: "first\tsecond\u0007" },
-    { width: 12, color: false },
-  );
+  const output = formatTerminalResult(errorSummary("first\tsecond\u0007"), {
+    width: 12,
+    color: false,
+  });
   assert.doesNotMatch(output, /\t|\u0007/u);
   for (const line of output.split("\n"))
     assert.ok(visibleWidth(line) <= 12, `${visibleWidth(line)} > 12`);
@@ -518,8 +601,13 @@ test("counts only values that remain renderable after terminal sanitization", ()
   const summary: RunOnceResultSummary = {
     status: "blocked",
     issueNumber: 1,
-    reason: "blocked",
+    reason: "agent-blocked",
     questions: ["\u001b[31m\u001b[0m", "question"],
+    diagnostic: diagnosticFor("agent-blocked", {
+      issueNumber: 1,
+      reportedReason: "blocked",
+      questions: ["\u001b[31m\u001b[0m", "question"],
+    }),
   };
   const output = formatTerminalResult(summary, { width: 100, color: false });
   assert.match(output, /Questions \(1\)/u);

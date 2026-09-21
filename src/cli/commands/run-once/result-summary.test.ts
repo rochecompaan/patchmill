@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { summarizeErrorResult, summarizeResult } from "./result-summary.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 
 test("summaries preserve the established PR machine shape", () => {
   assert.deepEqual(
@@ -59,22 +60,65 @@ test("summaries preserve the established PR machine shape", () => {
   );
 });
 
+test("summaries retain catalog-owned planning blocker reasons", () => {
+  const issue = {
+    number: 189,
+    title: "Planning",
+    body: "",
+    labels: [],
+    state: "open" as const,
+  };
+  const failures = [
+    runOnceFailure("planning-pull-request-missing", {
+      issueNumber: 189,
+      status: "blocked",
+      phase: "plan",
+      pullRequestReference: "#12",
+    }),
+    runOnceFailure("ambiguous-base-artifact", {
+      issueNumber: 189,
+      status: "blocked",
+      phase: "spec",
+      artifactKind: "spec",
+      baseOid: "abc123",
+      candidates: ["docs/specs/a.md", "docs/specs/b.md"],
+    }),
+    runOnceFailure("planning-identity-changed", {
+      issueNumber: 189,
+      status: "blocked",
+      expectedIdentity: ["title=Planning"],
+      observedIdentity: ["title=Changed"],
+    }),
+  ] as const;
+  for (const failure of failures) {
+    const summary = summarizeResult({
+      status: "blocked",
+      issue,
+      reason: failure.reason,
+      publicFailure: failure,
+      questions: [],
+      commits: [],
+      validation: [],
+    });
+    assert.equal(summary.reason, failure.reason);
+    assert.equal(summary.diagnostic.summary.length > 0, true);
+  }
+});
+
 test("summarizeErrorResult preserves aggregate causes and resolved log path", () => {
-  assert.deepEqual(
-    summarizeErrorResult(
-      new AggregateError(
-        [new Error("observer failed"), new Error("cleanup failed")],
-        "Pi run failed",
-      ),
-      "/repo/.patchmill/runs/issue-174/run.jsonl",
+  const summary = summarizeErrorResult(
+    new AggregateError(
+      [new Error("observer failed"), new Error("cleanup failed")],
+      "Pi run failed",
     ),
-    {
-      status: "error",
-      error: "Pi run failed",
-      causes: ["observer failed", "cleanup failed"],
-      logPath: "/repo/.patchmill/runs/issue-174/run.jsonl",
-    },
+    "/repo/.patchmill/runs/issue-174/run.jsonl",
   );
+  assert.equal(summary.reason, "unexpected-error");
+  assert.equal(
+    summary.diagnostic?.details.find((entry) => entry.key === "error")?.value,
+    "Pi run failed",
+  );
+  assert.deepEqual(summary.causes, ["observer failed", "cleanup failed"]);
 });
 
 test("summarizes planning review and explicit stops without leaking the issue", () => {
@@ -99,26 +143,28 @@ test("summarizes planning review and explicit stops without leaking the issue", 
       prUrl: "https://example.test/owner/repo/pull/12",
     },
   );
-  assert.deepEqual(
-    summarizeResult({
-      status: "stopped",
-      issue,
-      reason: "plan-only",
-      nextPhase: "implementation",
-      specPath: "docs/specs/issue-189.md",
-      planPath: "docs/plans/issue-189.md",
-      branch: "agent/issue-189-implementation",
-      worktreePath: ".worktrees/issue-189-implementation",
-    }),
-    {
-      status: "stopped",
+  const stopped = summarizeResult({
+    status: "stopped",
+    issue,
+    reason: "plan-only",
+    publicFailure: runOnceFailure("plan-only", {
       issueNumber: 189,
-      reason: "plan-only",
-      nextPhase: "implementation",
-      specPath: "docs/specs/issue-189.md",
-      planPath: "docs/plans/issue-189.md",
+      status: "stopped",
+      phase: "implementation",
       branch: "agent/issue-189-implementation",
       worktreePath: ".worktrees/issue-189-implementation",
-    },
+      nextPhase: "implementation",
+    }),
+    nextPhase: "implementation",
+    specPath: "docs/specs/issue-189.md",
+    planPath: "docs/plans/issue-189.md",
+    branch: "agent/issue-189-implementation",
+    worktreePath: ".worktrees/issue-189-implementation",
+  });
+  assert.equal(stopped.status, "stopped");
+  assert.equal(stopped.diagnostic?.retry.kind, "retry-now");
+  assert.equal(
+    stopped.diagnostic?.actions[0]?.command,
+    "patchmill run-once --issue 189",
   );
 });

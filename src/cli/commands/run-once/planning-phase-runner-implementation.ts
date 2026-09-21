@@ -6,6 +6,7 @@ import { PlanningPublicationGitError } from "../../../git/planning-publication-g
 import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
 import { assertPlanningImplementationBase } from "./planning-implementation-base.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 import { durableImplementationResult } from "./planning-runtime-state.ts";
 import {
   blocked,
@@ -140,8 +141,24 @@ export async function runPlanningImplementationPhase(
       if (
         error instanceof PlanningPhaseArtifactError &&
         error.reason === "ambiguous-base-artifact"
-      )
-        return { kind: "blocked", state, result: blocked(error.reason) };
+      ) {
+        if (!error.diagnosticContext)
+          throw new Error("Ambiguous planning artifact is missing evidence", {
+            cause: error,
+          });
+        return {
+          kind: "blocked",
+          state,
+          result: blocked(
+            "ambiguous-base-artifact",
+            runOnceFailure("ambiguous-base-artifact", {
+              issueNumber: state.issueNumber,
+              status: "blocked",
+              ...error.diagnosticContext,
+            }),
+          ),
+        };
+      }
       throw error;
     }
     phase = state.phases[input.phaseIndex];

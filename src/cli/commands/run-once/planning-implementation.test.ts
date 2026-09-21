@@ -3,6 +3,7 @@ import test from "node:test";
 import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import { validatePlanningState } from "../../../workflow/planning-state.ts";
 import { runPlanningImplementation } from "./planning-implementation.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 
 const oid = (value: string) => value.repeat(40);
 const repository = {
@@ -117,6 +118,64 @@ test("passes the post-prepare durable state and implementation workspace to the 
   assert.equal(received?.git.allowDirectLand, false);
 });
 
+test("preserves environment and unsafe workspace diagnostics together", async () => {
+  const result = await runPlanningImplementation(
+    input({
+      workspaces: {
+        inspect: async () => ({
+          state: "ready" as const,
+          identity: { branch: "agent/189", worktreePath: "/worktrees/189" },
+          headOid: oid("b"),
+          clean: false,
+        }),
+      },
+      runAgent: async () => ({
+        status: "blocked" as const,
+        reason: "Database unavailable",
+        publicFailure: runOnceFailure("development-environment-not-ready", {
+          issueNumber: 189,
+          status: "blocked",
+          phase: "implementation",
+          branch: "agent/189",
+          worktreePath: "/worktrees/189",
+          reportedReason: "Database unavailable",
+          evidence: ["Database service is unavailable."],
+          reportedRemediation: ["Start the development database."],
+        }),
+        questions: [],
+        commits: [],
+        validation: [],
+      }),
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "development-environment-not-ready",
+    );
+    if (
+      result.result.publicFailure?.reason ===
+      "development-environment-not-ready"
+    )
+      assert.deepEqual(result.result.publicFailure.diagnosticContext, {
+        issueNumber: 189,
+        status: "blocked",
+        phase: "implementation",
+        branch: "agent/189",
+        worktreePath: "/worktrees/189",
+        reportedReason: "Database unavailable",
+        evidence: ["Database service is unavailable."],
+        reportedRemediation: ["Start the development database."],
+        workspaceState: "ready",
+        workspaceRecoveryReason: "dirty",
+        expectedHeadOid: oid("a"),
+        observedHeadOid: oid("b"),
+        statusEvidence: "dirty",
+      });
+  }
+});
+
 test("blocks remote and base configuration drift before invoking a resumed implementation agent", async () => {
   for (const configuredGit of [
     { remote: "changed-origin", baseBranch: "main", allowDirectLand: true },
@@ -133,8 +192,13 @@ test("blocks remote and base configuration drift before invoking a resumed imple
       }),
     );
     assert.equal(result.kind, "blocked");
-    if (result.kind === "blocked")
+    if (result.kind === "blocked") {
       assert.equal(result.result.reason, "implementation-configuration");
+      assert.equal(
+        result.result.publicFailure?.reason,
+        "implementation-configuration",
+      );
+    }
     assert.equal(agentRuns, 0);
   }
 });
@@ -410,8 +474,23 @@ test("blocks a resumed blocker when its saved head is not an ancestor", async ()
   );
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked") {
-    assert.match(result.result.reason, /^pause/);
-    assert.match(result.result.reason, /workspace was left dirty or unproven/);
+    assert.equal(
+      result.result.reason,
+      "pause\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.",
+    );
+    assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.reportedReason,
+      "pause",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.workspaceRecoveryReason,
+      "not-descendant",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.observedHeadOid,
+      oid("b"),
+    );
   }
   assert.deepEqual(checkpoints, []);
 });
@@ -445,11 +524,55 @@ test("refuses dirty blocker progress without checkpointing", async () => {
   );
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked") {
-    assert.match(result.result.reason, /^pause/);
-    assert.match(result.result.reason, /workspace was left dirty or unproven/);
+    assert.equal(
+      result.result.reason,
+      "pause\n\nThe implementation workspace was left dirty or unproven; the worktree is preserved for inspection.",
+    );
+    assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.reportedReason,
+      "pause",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.workspaceRecoveryReason,
+      "dirty",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.workspaceState,
+      "ready",
+    );
     assert.deepEqual(result.result.questions, [{ question: "which file?" }]);
   }
   assert.deepEqual(checkpoints, []);
+});
+
+test("retains a branch-only observed head for a blocked agent", async () => {
+  const result = await runPlanningImplementation(
+    input({
+      runAgent: async () => ({
+        status: "blocked",
+        reason: "pause",
+        questions: [],
+        commits: [],
+        validation: [],
+      }),
+      workspaces: {
+        inspect: async () => ({
+          state: "branch-only" as const,
+          identity: { branch: "agent/189", worktreePath: "/worktrees/189" },
+          headOid: oid("c"),
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(result.result.publicFailure?.reason, "agent-blocked");
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.observedHeadOid,
+      oid("c"),
+    );
+  }
 });
 
 test("blocks unproven reported commits before branch-pushed evidence", async () => {
@@ -483,8 +606,13 @@ test("blocks unproven reported commits before branch-pushed evidence", async () 
     }),
   );
   assert.equal(result.kind, "blocked");
-  if (result.kind === "blocked")
+  if (result.kind === "blocked") {
     assert.equal(result.result.reason, "implementation-ancestry");
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "implementation-ancestry",
+    );
+  }
   assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
   assert.equal(inspectedRemote, false);
 });
@@ -711,6 +839,73 @@ test("checkpoints clean workspace progress when the implementation agent throws"
   assert.equal(repaired.kind, "validated");
   assert.deepEqual(receivedHeads, [oid("a"), oid("b")]);
   assert.equal(repaired.state.phases[0]?.status, "pull-request-open");
+});
+
+test("retains validation evidence internally while publishing a stable reason", async () => {
+  const initial = input();
+  const workspace = initial.state.phases[0];
+  const branchPushed = {
+    ...workspace,
+    status: "branch-pushed" as const,
+    workspace: { ...workspace.workspace, headOid: oid("b") },
+    publication: {
+      targetRepository: repository,
+      headRepository: repository,
+      baseBranch: "main",
+      headBranch: "agent/189",
+      headOid: oid("b"),
+    },
+    implementation: {
+      status: "pr-created" as const,
+      prUrl: "https://github.com/acme/patchmill/pull/189",
+      branch: "agent/189",
+      commits: [oid("b")],
+      validation: [],
+      visualEvidence: [],
+    },
+  };
+  const result = await runPlanningImplementation(
+    input({
+      state: { ...initial.state, phases: [branchPushed] },
+      host: {
+        id: "github-gh",
+        resolveTargetRepositoryIdentity: async () => repository,
+        resolveRemoteRepositoryIdentity: async () => repository,
+        getPullRequest: async () => ({
+          number: 189,
+          url: "https://github.com/acme/patchmill/pull/189",
+          targetRepository: repository,
+          baseBranch: "main",
+          headRepository: repository,
+          headBranch: "agent/189",
+          headSha: oid("b"),
+          body: "Refs #189\n\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+          status: "open" as const,
+        }),
+      },
+    }),
+  );
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(
+      result.result.reason,
+      "Implementation pull request is invalid: closing-reference",
+    );
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "implementation-validation",
+    );
+    assert.equal(
+      result.result.publicFailure?.diagnosticContext.validationReason,
+      "closing-reference",
+    );
+    assert.deepEqual(result.result.publicFailure?.diagnosticContext.expected, [
+      "Closes #189",
+    ]);
+    assert.deepEqual(result.result.publicFailure?.diagnosticContext.observed, [
+      "pull request body has no unambiguous closing reference",
+    ]);
+  }
 });
 
 test("propagates host transport failures instead of converting them to validation blockers", async () => {

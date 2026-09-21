@@ -14,6 +14,7 @@ import {
 } from "../../../../test-support/legacy-seed.ts";
 import { createStaticCommandRunner } from "../../../../test-support/command-runner.ts";
 import { parseArgs } from "./args.ts";
+import { runOnceFailure } from "./result-diagnostics.ts";
 
 test("parseArgs executes by default when no args are provided", () => {
   const config = parseArgs([], cwd(), {});
@@ -237,39 +238,42 @@ test("summarizeResult includes approval-required details", () => {
   );
 });
 
-test("summarizeResult includes development-environment-not-ready remediation", () => {
-  assert.deepEqual(
-    summarizeResult({
-      status: "development-environment-not-ready",
-      issue: {
-        number: 47,
-        title: "Runtime missing",
-        body: "Body",
-        labels: ["plan-approved"],
-        state: "open",
-      },
-      specPath: "docs/specs/spec.md",
-      planPath: "docs/plans/plan.md",
-      branch: "agent/issue-47-runtime-missing",
-      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
-      reason: "Kubernetes API unavailable",
-      evidence: ["localhost:8080 refused connection"],
-      remediation: ["Run devenv shell -- just tilt-up"],
-      logPath: ".patchmill/runs/run.jsonl",
-    }),
-    {
-      status: "development-environment-not-ready",
-      issueNumber: 47,
-      specPath: "docs/specs/spec.md",
-      planPath: "docs/plans/plan.md",
-      branch: "agent/issue-47-runtime-missing",
-      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
-      reason: "Kubernetes API unavailable",
-      evidence: ["localhost:8080 refused connection"],
-      remediation: ["Run devenv shell -- just tilt-up"],
-      logPath: ".patchmill/runs/run.jsonl",
+test("summarizeResult normalizes development-environment diagnostics", () => {
+  const summary = summarizeResult({
+    status: "development-environment-not-ready",
+    issue: {
+      number: 47,
+      title: "Runtime missing",
+      body: "Body",
+      labels: ["plan-approved"],
+      state: "open",
     },
+    specPath: "docs/specs/spec.md",
+    planPath: "docs/plans/plan.md",
+    branch: "agent/issue-47-runtime-missing",
+    worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
+    reason: "Kubernetes API unavailable",
+    evidence: ["localhost:8080 refused connection"],
+    remediation: ["Run devenv shell -- just tilt-up"],
+    publicFailure: runOnceFailure("development-environment-not-ready", {
+      issueNumber: 47,
+      status: "development-environment-not-ready",
+      phase: "implementation",
+      branch: "agent/issue-47-runtime-missing",
+      worktreePath: ".worktrees/patchmill-issue-47-runtime-missing",
+      reportedReason: "Kubernetes API unavailable",
+      evidence: ["localhost:8080 refused connection"],
+      reportedRemediation: ["Run devenv shell -- just tilt-up"],
+    }),
+    logPath: ".patchmill/runs/run.jsonl",
+  });
+  assert.equal(summary.reason, "development-environment-not-ready");
+  assert.equal(
+    summary.diagnostic?.details.find((entry) => entry.key === "reportedReason")
+      ?.value,
+    "Kubernetes API unavailable",
   );
+  assert.deepEqual(summary.evidence, ["localhost:8080 refused connection"]);
 });
 
 test("parseArgs accepts an explicit issue number", () => {

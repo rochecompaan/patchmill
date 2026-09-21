@@ -32,7 +32,6 @@ import {
   replaceRunStateAfterReset,
   writeRunState,
 } from "./run-state.ts";
-import { selectIssueWithDiagnostics } from "./selection.ts";
 import {
   createStepAccounting,
   emitSimpleStep,
@@ -61,7 +60,7 @@ import {
   planningArtifactPolicyForWorkspace,
 } from "./pipeline-workspace.ts";
 import {
-  emitSelectionDiagnostics,
+  legacySelectionDiagnostics,
   loadSelectionIssues,
   prepareAutomaticLegacyCandidates,
   selectResumableIssue,
@@ -242,18 +241,19 @@ async function runLegacyOneIssueInternal(
         options,
       );
     }
+    if (config.issueNumber !== undefined)
+      await legacySelectionDiagnostics(diagnosticIssues, config, options);
     throw error;
   }
   const issue = selected?.issue;
 
   if (!issue) {
+    const diagnostics = await legacySelectionDiagnostics(
+      diagnosticIssues,
+      config,
+      options,
+    );
     if (config.issueNumber === undefined) {
-      const diagnostics = selectIssueWithDiagnostics(diagnosticIssues, {
-        readyLabel: lifecycleLabels(config).ready,
-        triagePolicy: config.triagePolicy,
-        approvalPolicy: config.approvalPolicy,
-      });
-      await emitSelectionDiagnostics(diagnostics.rejections, options);
       await progress(
         options,
         "info",
