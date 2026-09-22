@@ -1,9 +1,11 @@
 import { isDeepStrictEqual } from "node:util";
 import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
 import type {
+  BranchPushedPlanningPhase,
   PlanningArtifactEvidence,
   PlanningPhaseStateV1,
   PlanningWorkspaceEvidence,
+  PullRequestOpenPlanningPhase,
 } from "./planning-state-types.ts";
 import { PlanningStateValidationError } from "./planning-state-validation.ts";
 
@@ -171,6 +173,86 @@ function assertImplementationFinish(
   }
   return additions.length === 1;
 }
+function coordinatedHeadAdvance(
+  current: PlanningPhaseStateV1,
+  next: PlanningPhaseStateV1,
+): boolean {
+  if (
+    current.kind === "implementation" ||
+    next.kind === "implementation" ||
+    (current.status !== "branch-pushed" &&
+      current.status !== "pull-request-open") ||
+    next.status !== "pull-request-open" ||
+    !("publication" in current) ||
+    !("publication" in next) ||
+    !("workspace" in current) ||
+    !("workspace" in next) ||
+    !("artifacts" in current) ||
+    !("artifacts" in next)
+  )
+    return false;
+  return current.publication.headOid !== next.publication.headOid;
+}
+function assertCoordinatedHeadAdvance(
+  current: BranchPushedPlanningPhase | PullRequestOpenPlanningPhase,
+  next: PullRequestOpenPlanningPhase,
+  index: number,
+): void {
+  const candidate = next.publication.headOid;
+  same(current.base, next.base, index);
+  const {
+    headOid: _currentHead,
+    cleanup: currentCleanup,
+    ...currentWorkspace
+  } = current.workspace;
+  const {
+    headOid: _nextHead,
+    cleanup: nextCleanup,
+    ...nextWorkspace
+  } = next.workspace;
+  same(currentWorkspace, nextWorkspace, index);
+  if (currentCleanup.state !== nextCleanup.state)
+    fail("invalid-cleanup-transition", index, ".workspace.cleanup");
+  if (
+    currentCleanup.state === "worktree-removed" ||
+    currentCleanup.state === "removed"
+  ) {
+    if (
+      (nextCleanup as Extract<typeof nextCleanup, { pushedHeadOid: string }>)
+        .pushedHeadOid !== candidate
+    )
+      fail("immutable-evidence", index, ".workspace.cleanup.pushedHeadOid");
+  } else same(currentCleanup, nextCleanup, index);
+  const stablePublication = ({
+    headOid: _headOid,
+    ...publication
+  }: {
+    headOid: string;
+  }) => publication;
+  same(
+    stablePublication(current.publication),
+    stablePublication(next.publication),
+    index,
+  );
+  if (current.status === "pull-request-open")
+    same(current.pullRequest, next.pullRequest, index);
+  if (next.workspace.headOid !== candidate)
+    fail("immutable-evidence", index, ".workspace.headOid");
+  if (next.artifacts.length !== current.artifacts.length)
+    fail("immutable-evidence", index, ".artifacts");
+  for (const [artifact, previous] of next.artifacts.map(
+    (item, position) => [item, current.artifacts[position]] as const,
+  )) {
+    if (
+      previous === undefined ||
+      artifact.kind !== previous.kind ||
+      artifact.path !== previous.path ||
+      artifact.source !== "workspace" ||
+      artifact.commitOid !== candidate
+    )
+      fail("immutable-evidence", index, ".artifacts");
+  }
+}
 function assertArtifacts(
   current: readonly PlanningArtifactEvidence[],
   next: readonly PlanningArtifactEvidence[],
@@ -243,6 +325,14 @@ export function assertPlanningPhaseReplacement(
   if (current.status === "branch-pushed") {
     if (next.status !== "branch-pushed" && next.status !== "pull-request-open")
       fail("invalid-transition", index, ".status");
+    if (coordinatedHeadAdvance(current, next)) {
+      assertCoordinatedHeadAdvance(
+        current as BranchPushedPlanningPhase,
+        next as PullRequestOpenPlanningPhase,
+        index,
+      );
+      return;
+    }
     same(current.base, next.base, index);
     same(current.workspace, next.workspace, index);
     same(current.artifacts, next.artifacts, index);
@@ -260,6 +350,14 @@ export function assertPlanningPhaseReplacement(
     return;
   }
   if (next.status === "pull-request-open") {
+    if (coordinatedHeadAdvance(current, next)) {
+      assertCoordinatedHeadAdvance(
+        current as PullRequestOpenPlanningPhase,
+        next as PullRequestOpenPlanningPhase,
+        index,
+      );
+      return;
+    }
     same(current.base, next.base, index);
     assertWorkspace(current.workspace, next.workspace, false, index);
     same(current.artifacts, next.artifacts, index);
