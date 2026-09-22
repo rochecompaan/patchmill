@@ -131,12 +131,6 @@ test("existing lock diagnostics classify safely and fingerprint exact bytes", as
     {
       ownerHost: "local.test",
       requesterHost: "local.test",
-      state: "dead" as const,
-      expected: "stale",
-    },
-    {
-      ownerHost: "local.test",
-      requesterHost: "local.test",
       state: "unverifiable" as const,
       expected: "unverifiable",
     },
@@ -252,28 +246,49 @@ test("malformed binary lock fingerprints the exact on-disk bytes", async () => {
   }
 });
 
-test("classifies competing valid local locks without takeover", async () => {
+test("archives and replaces a provably stale local lock", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
   try {
-    await acquirePlanningIssueLock(
+    const stale = await acquirePlanningIssueLock(
       dir,
       { issueNumber: 187, runId },
-      { ownershipId, pid: 1234, hostname: "local.test" },
+      {
+        ownershipId,
+        pid: 1234,
+        hostname: "local.test",
+        now: () => new Date("2026-09-07T12:00:00.000Z"),
+      },
     );
-    await assert.rejects(
-      acquirePlanningIssueLock(
-        dir,
-        { issueNumber: 187, runId },
-        {
-          ownershipId: "123e4567-e89b-42d3-a456-426614174002",
-          hostname: "local.test",
-          processState: () => "dead",
-        },
-      ),
-      (error: unknown) =>
-        (error as { diagnostic?: { classification?: string } }).diagnostic
-          ?.classification === "stale",
+    const staleBytes = await readFile(stale.path);
+    const replacement = await acquirePlanningIssueLock(
+      dir,
+      { issueNumber: 187, runId: "123e4567-e89b-42d3-a456-426614174002" },
+      {
+        ownershipId: "123e4567-e89b-42d3-a456-426614174003",
+        transitionOwnershipId: "123e4567-e89b-42d3-a456-426614174004",
+        hostname: "local.test",
+        processState: () => "dead",
+      },
     );
+    assert.equal(
+      replacement.record.runId,
+      "123e4567-e89b-42d3-a456-426614174002",
+    );
+    assert.equal((await stat(replacement.path)).mode & 0o777, 0o600);
+    assert.ok(replacement.takeover);
+    assert.equal(
+      await readFile(replacement.takeover.archivePath, "utf8"),
+      staleBytes.toString("utf8"),
+    );
+    assert.equal(
+      replacement.takeover.fingerprint,
+      createHash("sha256").update(staleBytes).digest("hex"),
+    );
+    await assertPlanningIssueLockOwned(replacement, {
+      issueNumber: 187,
+      runId: "123e4567-e89b-42d3-a456-426614174002",
+    });
+    await releasePlanningIssueLock(replacement);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
