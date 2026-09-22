@@ -141,6 +141,72 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
       "preserve me\n",
     );
 
+    // After worktree removal, the same proof advances only the owned branch by CAS.
+    await rm(join(worktreePath, "ignored.txt"));
+    const removedWorktree = await workspaces.removeWorktree({
+      runId,
+      phase: "spec",
+      workspace: {
+        ...prepared.workspace,
+        headOid: twice,
+        cleanup: {
+          state: "cleanup-pending",
+          reason: "ignored-worktree-content",
+          ignoredPaths: ["ignored.txt"],
+        },
+      },
+    });
+    assert.equal(removedWorktree.kind, "removed");
+    await writeFile(
+      join(human, "docs", "specs", "example.md"),
+      "branch-only\n",
+    );
+    git(human, "add", "docs/specs/example.md");
+    git(human, "commit", "-m", "advance branch-only checkpoint");
+    git(human, "push", "origin", identity.branch);
+    const branchOnlyHead = git(human, "rev-parse", "HEAD");
+    const branchOnly = await workspaces.adoptPlanningHead({
+      issueNumber: 188,
+      runId,
+      phase: "spec",
+      workspace: {
+        ...prepared.workspace,
+        headOid: twice,
+        cleanup: { state: "worktree-removed", pushedHeadOid: twice },
+      },
+      hostHeadOid: branchOnlyHead,
+      artifactPaths: ["docs/specs/example.md"],
+    });
+    assert.deepEqual(branchOnly, { kind: "adopted", headOid: branchOnlyHead });
+    assert.equal(
+      git(repo, "rev-parse", `refs/heads/${identity.branch}`),
+      branchOnlyHead,
+    );
+
+    // A removed checkpoint is intentionally idempotent and never recreates a branch.
+    git(repo, "branch", "-D", identity.branch);
+    await writeFile(join(human, "docs", "specs", "example.md"), "removed\n");
+    git(human, "add", "docs/specs/example.md");
+    git(human, "commit", "-m", "advance removed checkpoint");
+    git(human, "push", "origin", identity.branch);
+    const removedHead = git(human, "rev-parse", "HEAD");
+    const removed = await workspaces.adoptPlanningHead({
+      issueNumber: 188,
+      runId,
+      phase: "spec",
+      workspace: {
+        ...prepared.workspace,
+        headOid: branchOnlyHead,
+        cleanup: { state: "removed", pushedHeadOid: branchOnlyHead },
+      },
+      hostHeadOid: removedHead,
+      artifactPaths: ["docs/specs/example.md"],
+    });
+    assert.deepEqual(removed, { kind: "adopted", headOid: removedHead });
+    assert.throws(() =>
+      git(repo, "rev-parse", `refs/heads/${identity.branch}`),
+    );
+
     // A descendant with a non-artifact path cannot move the local checkpoint.
     await writeFile(join(human, "README.md"), "unsafe\n");
     git(human, "add", "README.md");
@@ -158,7 +224,9 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
     assert.equal(pathBlocked.kind, "blocked");
     assert.equal(pathBlocked.evidence.failure, "unexpected-paths");
     assert.deepEqual(pathBlocked.evidence.unexpectedPaths, ["README.md"]);
-    assert.equal(git(worktreePath, "rev-parse", "HEAD"), twice);
+    assert.throws(() =>
+      git(repo, "rev-parse", `refs/heads/${identity.branch}`),
+    );
 
     // A force-pushed non-descendant is rejected and likewise cannot alter local evidence.
     git(human, "reset", "--hard", baseOid);
@@ -177,7 +245,9 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
     });
     assert.equal(rewriteBlocked.kind, "blocked");
     assert.equal(rewriteBlocked.evidence.failure, "not-descendant");
-    assert.equal(git(worktreePath, "rev-parse", "HEAD"), twice);
+    assert.throws(() =>
+      git(repo, "rev-parse", `refs/heads/${identity.branch}`),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
