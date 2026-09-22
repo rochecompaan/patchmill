@@ -147,6 +147,39 @@ test("classifies unsafe proof failures without local fast-forward", async () => 
   }
 });
 
+test("rejects malformed planning artifact diff proof output", async () => {
+  for (const stdout of ["\0", "docs/specs/example.md\0\0"]) {
+    await assert.rejects(
+      adapter(async (_command, args) => {
+        if (args[0] === "ls-remote")
+          return {
+            code: 0,
+            stdout: `${candidate}\trefs/heads/planning/spec\n`,
+            stderr: "",
+          };
+        if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "rev-parse")
+          return { code: 0, stdout: `${candidate}\n`, stderr: "" };
+        if (args[0] === "merge-base")
+          return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "diff") return { code: 0, stdout, stderr: "" };
+        throw new Error(`unexpected ${args.join(" ")}`);
+      }).adopt({
+        issueNumber: 188,
+        runId: workspace.runId,
+        phase: "spec",
+        workspace,
+        hostHeadOid: candidate,
+        artifactPaths: ["docs/specs/example.md"],
+      }),
+      (error: unknown) =>
+        error instanceof PlanningWorkspaceResponseError &&
+        error.operation === "head-adoption-proof" &&
+        error.reason === "malformed-diff",
+    );
+  }
+});
+
 test("rejects malformed planning artifact tree proof output", async () => {
   for (const stdout of [
     `100644 blob ${candidate}\tdocs/specs/example.md`,

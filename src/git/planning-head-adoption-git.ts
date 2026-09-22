@@ -131,6 +131,22 @@ export class PlanningHeadAdoptionGit {
     return true;
   }
 
+  private diffPaths(stdout: string): readonly string[] {
+    if (stdout === "") return [];
+    if (!stdout.endsWith("\0"))
+      throw new PlanningWorkspaceResponseError(
+        "head-adoption-proof",
+        "malformed-diff",
+      );
+    const paths = stdout.slice(0, -1).split("\0");
+    if (paths.some((path) => path === ""))
+      throw new PlanningWorkspaceResponseError(
+        "head-adoption-proof",
+        "malformed-diff",
+      );
+    return paths;
+  }
+
   private regularArtifact(stdout: string, path: string): boolean {
     if (stdout === "") return false;
     if (!stdout.endsWith("\0"))
@@ -300,18 +316,10 @@ export class PlanningHeadAdoptionGit {
       candidate,
       "--",
     ]);
-    if (diff.stdout !== "" && !diff.stdout.endsWith("\0"))
-      throw new PlanningWorkspaceResponseError(
-        "head-adoption-proof",
-        "malformed-diff",
-      );
     const expected = new Set(input.artifactPaths);
     const unexpected = [
       ...new Set(
-        diff.stdout
-          .split("\0")
-          .filter(Boolean)
-          .filter((path) => !expected.has(path)),
+        this.diffPaths(diff.stdout).filter((path) => !expected.has(path)),
       ),
     ].sort();
     if (unexpected.length)
