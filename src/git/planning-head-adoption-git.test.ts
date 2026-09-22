@@ -3,7 +3,10 @@ import test from "node:test";
 import type { CommandRunner } from "../command/types.ts";
 import { PlanningHeadAdoptionGit } from "./planning-head-adoption-git.ts";
 import { PlanningWorkspaceRepositoryGit } from "./planning-workspace-inspection.ts";
-import { PlanningWorkspaceResponseError } from "./planning-workspaces.ts";
+import {
+  PlanningWorkspaceConflictError,
+  PlanningWorkspaceResponseError,
+} from "./planning-workspaces.ts";
 
 const recorded = "a".repeat(40);
 const candidate = "b".repeat(40);
@@ -27,6 +30,43 @@ function adapter(run: CommandRunner["run"]) {
   });
   return new PlanningHeadAdoptionGit({ repository });
 }
+
+test("rejects mismatched workspace ownership and cleanup head before Git effects", async () => {
+  for (const input of [
+    { runId: "another-run" },
+    { phase: "plan" as const },
+    {
+      workspace: {
+        ...workspace,
+        cleanup: {
+          state: "worktree-removed" as const,
+          pushedHeadOid: candidate,
+        },
+      },
+    },
+  ]) {
+    const calls: string[][] = [];
+    await assert.rejects(
+      adapter(async (_command, args) => {
+        calls.push(args);
+        return { code: 0, stdout: "", stderr: "" };
+      }).adopt({
+        issueNumber: 188,
+        runId: workspace.runId,
+        phase: "spec",
+        workspace,
+        hostHeadOid: candidate,
+        artifactPaths: ["docs/specs/example.md"],
+        ...input,
+      }),
+      (error: unknown) =>
+        error instanceof PlanningWorkspaceConflictError &&
+        (error.reason === "invalid-saved-identity" ||
+          error.reason === "head-oid-mismatch"),
+    );
+    assert.deepEqual(calls, []);
+  }
+});
 
 test("blocks a host and remote disagreement without local mutation", async () => {
   const calls: string[][] = [];

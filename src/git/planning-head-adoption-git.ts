@@ -51,6 +51,34 @@ export class PlanningHeadAdoptionGit {
   }
 
   private validate(input: PlanningHeadAdoptionInput): void {
+    if (
+      input.runId !== input.workspace.runId ||
+      input.phase !== input.workspace.phase
+    )
+      throw new PlanningWorkspaceConflictError(
+        "invalid-saved-identity",
+        input.workspace.identity,
+      );
+    const cleanup = input.workspace.cleanup;
+    if (
+      cleanup.state !== "ready" &&
+      cleanup.state !== "cleanup-pending" &&
+      cleanup.state !== "worktree-removed" &&
+      cleanup.state !== "removed"
+    )
+      throw new PlanningWorkspaceResponseError(
+        "head-adoption-proof",
+        "invalid-cleanup",
+      );
+    if (
+      (cleanup.state === "worktree-removed" || cleanup.state === "removed") &&
+      (!planningOid.test(cleanup.pushedHeadOid) ||
+        cleanup.pushedHeadOid !== input.workspace.headOid)
+    )
+      throw new PlanningWorkspaceConflictError(
+        "head-oid-mismatch",
+        input.workspace.identity,
+      );
     if (!Number.isSafeInteger(input.issueNumber) || input.issueNumber < 1)
       throw new PlanningWorkspaceResponseError(
         "head-adoption-proof",

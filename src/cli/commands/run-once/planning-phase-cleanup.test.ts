@@ -192,6 +192,52 @@ test("retries an uncheckpointed branch removal from worktree-removed without for
   assert.ok(commands.every((command) => !command.includes("--force")));
 });
 
+test("stops cleanup before local mutation when the remote head changed", async () => {
+  for (const cleanup of [
+    { state: "ready" as const },
+    {
+      state: "cleanup-pending" as const,
+      reason: "ignored-worktree-content" as const,
+      ignoredPaths: [".cache/kept"],
+    },
+  ]) {
+    for (const remoteHead of [
+      { state: "missing" as const },
+      { state: "present" as const, headOid: "b".repeat(40) },
+    ]) {
+      const events: string[] = [];
+      const phase = {
+        ...readyPhase(),
+        workspace: { ...readyPhase().workspace, cleanup },
+      } as PullRequestOpenPlanningPhase;
+      const outcome = await finishPlanningPhaseCleanup({
+        phase,
+        remoteHead: async () => {
+          events.push("remote-head");
+          return remoteHead;
+        },
+        workspaces: {
+          async removeWorktree() {
+            events.push("remove-worktree");
+            throw new Error("must not remove worktree");
+          },
+          async removeBranch() {
+            events.push("remove-branch");
+            throw new Error("must not remove branch");
+          },
+        } as never,
+        checkpoint: async () => events.push("checkpoint"),
+      });
+      assert.deepEqual(outcome, {
+        kind: "remote-head-changed",
+        phase,
+        remoteHead,
+      });
+      assert.deepEqual(events, ["remote-head"]);
+    }
+  }
+});
+
 test("invalid worktree removal outcome cannot checkpoint or delete a planning branch", async () => {
   const events: string[] = [];
   const checkpoints: PullRequestOpenPlanningPhase[] = [];
