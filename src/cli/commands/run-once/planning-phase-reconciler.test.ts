@@ -319,7 +319,10 @@ test("classifies branch-pushed discovery outcomes without replacement creation",
     });
     const result = await reconcilePlanningPhase(testFixture.input);
     assert.equal(result.outcome.kind, kind);
-    assert.deepEqual(testFixture.events, ["find"]);
+    assert.deepEqual(
+      testFixture.events,
+      kind === "missing" ? ["find", "remote-head"] : ["find"],
+    );
   }
 });
 
