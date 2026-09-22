@@ -153,7 +153,7 @@ export class PlanningHeadAdoptionGit {
           "head-oid-mismatch",
           saved.identity,
         );
-      if (snapshot.headOid !== candidate)
+      if (snapshot.headOid !== candidate) {
         await this.repository.run(
           [
             "update-ref",
@@ -163,6 +163,13 @@ export class PlanningHeadAdoptionGit {
           ],
           "head-adoption-fast-forward",
         );
+        const updated = await this.repository.inspect(saved.identity);
+        if (updated.state !== "branch-only" || updated.headOid !== candidate)
+          throw new PlanningWorkspaceConflictError(
+            "head-oid-mismatch",
+            saved.identity,
+          );
+      }
       return;
     }
     if (snapshot.state !== "ready" || !snapshot.clean)
@@ -178,7 +185,7 @@ export class PlanningHeadAdoptionGit {
         "head-oid-mismatch",
         saved.identity,
       );
-    if (snapshot.headOid !== candidate)
+    if (snapshot.headOid !== candidate) {
       await this.repository.run(
         [
           "-C",
@@ -189,6 +196,18 @@ export class PlanningHeadAdoptionGit {
         ],
         "head-adoption-fast-forward",
       );
+      const updated = await this.repository.inspect(saved.identity);
+      if (updated.state !== "ready" || !updated.clean)
+        throw new PlanningWorkspaceConflictError(
+          updated.state === "ready" ? "dirty-worktree" : "missing-workspace",
+          saved.identity,
+        );
+      if (updated.headOid !== candidate)
+        throw new PlanningWorkspaceConflictError(
+          "head-oid-mismatch",
+          saved.identity,
+        );
+    }
   }
 
   async adopt(

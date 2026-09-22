@@ -516,3 +516,60 @@ test("resumes cleanup from worktree-removed without removing the worktree again"
   });
   assert.deepEqual(events, ["get", "branch", "replace", "get"]);
 });
+
+test("adopts a second safe revision observed after cleanup", async () => {
+  const revised = "b".repeat(40);
+  const open = structuredClone(state);
+  open.phases[0] = {
+    ...open.phases[0],
+    status: "pull-request-open",
+    pullRequest: {
+      reference: { targetRepository: repository, number: 188 },
+      url: "https://github.com/acme/patchmill/pull/188",
+    },
+  };
+  let reads = 0;
+  const replacements: string[] = [];
+  const result = await publishPlanningPhase({
+    state: open,
+    phaseIndex: 0,
+    lock: {} as never,
+    stateStore: {
+      async replace({ next }) {
+        replacements.push(next.phases[0]!.publication.headOid);
+        return next;
+      },
+    },
+    host: {
+      async getPullRequest() {
+        reads += 1;
+        return reads === 2
+          ? { ...pullRequest(), headSha: revised }
+          : pullRequest();
+      },
+    } as never,
+    git: {
+      async inspectRemoteHead() {
+        return { state: "present" as const, headOid: oid };
+      },
+    } as never,
+    workspaces: {
+      async adoptPlanningHead() {
+        return { kind: "adopted" as const, headOid: revised };
+      },
+      async removeWorktree() {
+        return removedWorktree();
+      },
+      async removeBranch() {},
+    } as never,
+  });
+  assert.equal(result.kind, "published");
+  assert.equal(result.state.phases[0]!.publication.headOid, revised);
+  assert.equal(result.state.phases[0]!.workspace.headOid, revised);
+  assert.ok(
+    result.state.phases[0]!.artifacts.every(
+      (artifact) => artifact.commitOid === revised,
+    ),
+  );
+  assert.deepEqual(replacements, [oid, oid, revised]);
+});

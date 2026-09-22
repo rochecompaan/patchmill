@@ -36,13 +36,17 @@ export async function finishPlanningPhaseCleanup(input: {
   const cleanup = phase.workspace.cleanup;
   if (cleanup.state === "ready" || cleanup.state === "cleanup-pending") {
     const remoteHead = await input.remoteHead(phase);
-    // Existing internal callback callers return void; typed production callers
-    // return this observation. Only the latter can establish a changed head.
     if (
-      typeof remoteHead === "object" &&
-      remoteHead !== null &&
-      (remoteHead.state !== "present" ||
-        remoteHead.headOid !== phase.publication.headOid)
+      typeof remoteHead !== "object" ||
+      remoteHead === null ||
+      (remoteHead.state !== "missing" &&
+        (remoteHead.state !== "present" ||
+          typeof remoteHead.headOid !== "string"))
+    )
+      throw new TypeError("Invalid planning remote head observation");
+    if (
+      remoteHead.state !== "present" ||
+      remoteHead.headOid !== phase.publication.headOid
     )
       return { kind: "remote-head-changed", phase, remoteHead };
     const removal = await input.workspaces.removeWorktree({

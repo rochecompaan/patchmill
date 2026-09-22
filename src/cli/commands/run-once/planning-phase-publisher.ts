@@ -276,5 +276,19 @@ export async function publishPlanningPhase(input: {
     publication: phase.publication,
     expectedReference: phase.pullRequest.reference,
   });
-  return { kind: "published", state, pullRequest: validated.summary };
+  const finalAdoption = await adoptPlanningPullRequestHead({
+    state,
+    phaseIndex: input.phaseIndex,
+    validated,
+    lock: input.lock,
+    stateStore: input.stateStore,
+    workspaces: input.workspaces,
+    now,
+  });
+  if (finalAdoption.kind === "head-adoption-blocked") return finalAdoption;
+  return {
+    kind: "published",
+    state: finalAdoption.state,
+    pullRequest: validated.summary,
+  };
 }

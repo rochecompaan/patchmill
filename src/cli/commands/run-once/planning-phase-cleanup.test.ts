@@ -63,7 +63,10 @@ test("retries an uncheckpointed worktree removal from ready and durably removes 
   const run = async () =>
     finishPlanningPhaseCleanup({
       phase: durable,
-      remoteHead: async () => events.push("remote-head"),
+      remoteHead: async () => {
+        events.push("remote-head");
+        return { state: "present", headOid: oid };
+      },
       workspaces: {
         async removeWorktree() {
           events.push(
@@ -141,7 +144,10 @@ test("retries an uncheckpointed branch removal from worktree-removed without for
   const run = async () =>
     finishPlanningPhaseCleanup({
       phase: durable,
-      remoteHead: async () => events.push("unexpected-remote-head"),
+      remoteHead: async () => {
+        events.push("unexpected-remote-head");
+        return { state: "present", headOid: oid };
+      },
       workspaces: {
         async removeWorktree() {
           events.push("unexpected-worktree");
@@ -193,7 +199,10 @@ test("invalid worktree removal outcome cannot checkpoint or delete a planning br
   await assert.rejects(
     finishPlanningPhaseCleanup({
       phase: readyPhase(),
-      remoteHead: async () => events.push("remote-head"),
+      remoteHead: async () => {
+        events.push("remote-head");
+        return { state: "present", headOid: oid };
+      },
       workspaces: {
         async removeWorktree() {
           events.push("remove-worktree");
@@ -219,7 +228,10 @@ test("preserves ready cleanup state when an existing workspace is dirty or has a
       () =>
         finishPlanningPhaseCleanup({
           phase: durable,
-          remoteHead: async () => events.push("remote-head"),
+          remoteHead: async () => {
+            events.push("remote-head");
+            return { state: "present", headOid: oid };
+          },
           workspaces: {
             async removeWorktree() {
               events.push(`conflict:${reason}`);
@@ -233,4 +245,29 @@ test("preserves ready cleanup state when an existing workspace is dirty or has a
     assert.equal(durable.workspace.cleanup.state, "ready");
     assert.deepEqual(events, ["remote-head", `conflict:${reason}`]);
   }
+});
+
+test("rejects malformed remote head observations before cleanup mutation", async () => {
+  const events: string[] = [];
+  await assert.rejects(
+    finishPlanningPhaseCleanup({
+      phase: readyPhase(),
+      remoteHead: async () => undefined as never,
+      workspaces: {
+        async removeWorktree() {
+          events.push("remove-worktree");
+          return {
+            kind: "removed" as const,
+            snapshot: {
+              state: "missing" as const,
+              identity: readyPhase().workspace.identity,
+            },
+          };
+        },
+      } as never,
+      checkpoint: async () => events.push("checkpoint"),
+    }),
+    /Invalid planning remote head observation/,
+  );
+  assert.deepEqual(events, []);
 });
