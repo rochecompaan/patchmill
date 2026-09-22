@@ -168,7 +168,7 @@ test("permits same-host Forgejo heads and rejects cross-host heads", () => {
   );
 });
 
-test("rejects every immutable pull request summary identity mutation", () => {
+test("stable validation rejects every non-head pull request identity mutation", () => {
   const mutations: Array<[string, (value: Record<string, unknown>) => void]> = [
     [
       "target repository",
@@ -195,12 +195,6 @@ test("rejects every immutable pull request summary identity mutation", () => {
       },
     ],
     [
-      "head oid",
-      (value) => {
-        value.headSha = "b".repeat(40);
-      },
-    ],
-    [
       "url",
       (value) => {
         value.url = "https://github.com/acme/other/pull/188";
@@ -212,7 +206,7 @@ test("rejects every immutable pull request summary identity mutation", () => {
     mutate(value);
     assert.throws(
       () =>
-        validatePlanningPullRequestSummary({
+        validatePlanningPullRequestIdentity({
           summary: value as never,
           issueNumber: 188,
           phase: "spec",
@@ -304,6 +298,47 @@ test("rejects expected-reference and URL shape mismatches without exposing confi
         !error.message.includes(secret) &&
         !JSON.stringify(error).includes(secret),
       item.name,
+    );
+  }
+});
+
+test("stable validation retains marker, URL, reference, and merged-branch rejection reasons", () => {
+  const expectedReference = { targetRepository: repository, number: 189 };
+  const cases = [
+    {
+      summary: { ...summary, body: "not a planning marker" },
+      reason: "ownership-marker",
+    },
+    {
+      summary: { ...summary, url: "https://github.com/acme/other/pull/188" },
+      reason: "url",
+    },
+    { summary, expectedReference, reason: "reference" },
+    {
+      summary: {
+        ...summary,
+        status: "merged" as const,
+        mergeCommit: "c".repeat(40),
+        headBranch: "refs/pull/189/head",
+      },
+      reason: "head-branch",
+    },
+  ] as const;
+  for (const item of cases) {
+    assert.throws(
+      () =>
+        validatePlanningPullRequestIdentity({
+          summary: item.summary,
+          issueNumber: 188,
+          phase: "spec",
+          publication,
+          ...(item.expectedReference === undefined
+            ? {}
+            : { expectedReference: item.expectedReference }),
+        }),
+      (error: unknown) =>
+        error instanceof PlanningPullRequestValidationError &&
+        error.reason === item.reason,
     );
   }
 });
