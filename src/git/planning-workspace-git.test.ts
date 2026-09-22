@@ -414,7 +414,9 @@ test("branch cleanup requires exact remote proof and expected-old CAS", async ()
 
 test(
   "real Git creates at the pinned OID, resumes without index mutation, and cleans up idempotently",
-  { timeout: 30_000 },
+  // The suite runs real Git repositories concurrently; retain a bounded timeout
+  // while allowing the isolated Git process work to wait for shared CPU and I/O.
+  { timeout: 60_000 },
   async () => {
     const root = await mkdtemp(join(tmpdir(), "planning-workspace-"));
     const remote = join(root, "remote.git");
