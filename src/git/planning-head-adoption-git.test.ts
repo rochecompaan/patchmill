@@ -151,6 +151,7 @@ test("rejects malformed planning artifact tree proof output", async () => {
   for (const stdout of [
     `100644 blob ${candidate}\tdocs/specs/example.md`,
     `100644 ${candidate}\tdocs/specs/example.md\0`,
+    `100644 blob ${candidate}\tdocs/specs/substituted.md\0`,
   ]) {
     await assert.rejects(
       adapter(async (_command, args) => {

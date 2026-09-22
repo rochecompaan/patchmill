@@ -147,15 +147,13 @@ export class PlanningHeadAdoptionGit {
       );
     const match =
       /^([0-7]{6}) ([a-z-]+) ([0-9a-f]{40}|[0-9a-f]{64})\t(.+)$/u.exec(record);
-    if (match === null)
+    if (match === null || match[4] !== path)
       throw new PlanningWorkspaceResponseError(
         "head-adoption-proof",
         "malformed-tree",
       );
     return (
-      (match[1] === "100644" || match[1] === "100755") &&
-      match[2] === "blob" &&
-      match[4] === path
+      (match[1] === "100644" || match[1] === "100755") && match[2] === "blob"
     );
   }
 
