@@ -1,11 +1,14 @@
 import type { CommandRunner } from "../command/types.ts";
 import type { PlanningPhaseKind } from "../workflow/planning-pull-request-markers.ts";
+import { PlanningHeadAdoptionGit } from "./planning-head-adoption-git.ts";
 import { PlanningWorkspaceCleanupGit } from "./planning-workspace-cleanup.ts";
 import { PlanningWorkspaceRepositoryGit } from "./planning-workspace-inspection.ts";
 import { assertPlanningWorkspacePrepareInput } from "./planning-workspace-input.ts";
 import {
   PlanningWorkspaceConflictError,
   type PlanningRemoteBaseSnapshot,
+  type PlanningHeadAdoptionInput,
+  type PlanningHeadAdoptionResult,
   type PlanningWorkspaceCleanupPending,
   type PlanningWorkspaceIdentity,
   type PlanningWorkspaceLifecycle,
@@ -21,6 +24,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   readonly worktreeRoot: string;
   private readonly repository: PlanningWorkspaceRepositoryGit;
   private readonly cleanup: PlanningWorkspaceCleanupGit;
+  private readonly headAdoption: PlanningHeadAdoptionGit;
 
   constructor(input: {
     runner: CommandRunner;
@@ -29,6 +33,9 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   }) {
     this.repository = new PlanningWorkspaceRepositoryGit(input);
     this.cleanup = new PlanningWorkspaceCleanupGit(this.repository);
+    this.headAdoption = new PlanningHeadAdoptionGit({
+      repository: this.repository,
+    });
     this.runner = this.repository.runner;
     this.repoRoot = this.repository.repoRoot;
     this.worktreeRoot = this.repository.worktreeRoot;
@@ -38,6 +45,12 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
     identity: PlanningWorkspaceIdentity,
   ): Promise<PlanningWorkspaceSnapshot> {
     return this.repository.inspect(identity);
+  }
+
+  adoptPlanningHead(
+    input: PlanningHeadAdoptionInput,
+  ): Promise<PlanningHeadAdoptionResult> {
+    return this.headAdoption.adopt(input);
   }
 
   async prepare(input: {
