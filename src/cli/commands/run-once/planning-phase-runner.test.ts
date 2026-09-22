@@ -1225,6 +1225,120 @@ test("passes fresh versus resumed workspace context to implementation", async ()
   assert.deepEqual(seen, [true, false]);
 });
 
+test("maps planning head adoption blockers from reconciliation and publication", async () => {
+  const evidence = {
+    failure: "unexpected-paths" as const,
+    recordedHeadOid: oid("a"),
+    hostHeadOid: oid("b"),
+    fetchedHeadOid: oid("b"),
+    remoteHeadOid: oid("b"),
+    artifactPaths: ["docs/specs/example.md"],
+    unexpectedPaths: ["src/unsafe.ts"],
+    cleanupState: "removed" as const,
+  };
+  const published = state({ kind: "spec", status: "pull-request-open" });
+  const fromReconciliation = await runPlanningPhase(
+    input({
+      state: published,
+      phase: {
+        kind: "spec",
+        artifactKinds: ["spec"],
+        pullRequestRequired: true,
+      },
+      operations: {
+        reconcile: async () => ({
+          state: published,
+          outcome: {
+            kind: "head-adoption-blocked" as const,
+            pullRequestUrl: "https://example.test/pr/1",
+            evidence,
+          },
+        }),
+      },
+    }),
+  );
+  assert.equal(fromReconciliation.kind, "blocked");
+  if (fromReconciliation.kind === "blocked") {
+    assert.equal(
+      fromReconciliation.result.reason,
+      "planning-head-adoption-blocked",
+    );
+    assert.strictEqual(fromReconciliation.state, published);
+    assert.deepEqual(fromReconciliation.result.questions, []);
+    assert.deepEqual(fromReconciliation.result.commits, []);
+    assert.deepEqual(fromReconciliation.result.validation, []);
+    assert.deepEqual(
+      fromReconciliation.result.publicFailure.diagnosticContext,
+      {
+        issueNumber: 189,
+        status: "blocked",
+        phase: "spec",
+        pullRequestUrl: "https://example.test/pr/1",
+        recordedHeadOid: oid("a"),
+        hostHeadOid: oid("b"),
+        fetchedHeadOid: oid("b"),
+        remoteHeadOid: oid("b"),
+        adoptionFailure: "unexpected-paths",
+        artifactPaths: ["docs/specs/example.md"],
+        unexpectedPaths: ["src/unsafe.ts"],
+        cleanupState: "removed",
+      },
+    );
+  }
+
+  const workspaceReady = state({
+    kind: "spec",
+    status: "workspace-ready",
+    base,
+    workspace: { ...workspace, phase: "spec" },
+    artifacts: [],
+  });
+  const fromPublication = await runPlanningPhase(
+    input({
+      state: workspaceReady,
+      phase: {
+        kind: "spec",
+        artifactKinds: ["spec"],
+        pullRequestRequired: true,
+      },
+      operations: {
+        runArtifacts: async ({ current }: { current: unknown }) => ({
+          kind: "workspace-ready" as const,
+          phase: current,
+        }),
+        publish: async () => ({
+          kind: "head-adoption-blocked" as const,
+          state: workspaceReady,
+          evidence: {
+            failure: "remote-missing" as const,
+            recordedHeadOid: oid("a"),
+            artifactPaths: ["docs/specs/example.md"],
+            unexpectedPaths: [],
+            cleanupState: "ready" as const,
+          },
+        }),
+      },
+    }),
+  );
+  assert.equal(fromPublication.kind, "blocked");
+  if (fromPublication.kind === "blocked") {
+    assert.equal(
+      fromPublication.result.reason,
+      "planning-head-adoption-blocked",
+    );
+    assert.strictEqual(fromPublication.state, workspaceReady);
+    assert.deepEqual(fromPublication.result.publicFailure.diagnosticContext, {
+      issueNumber: 189,
+      status: "blocked",
+      phase: "spec",
+      recordedHeadOid: oid("a"),
+      adoptionFailure: "remote-missing",
+      artifactPaths: ["docs/specs/example.md"],
+      cleanupState: "ready",
+    });
+  }
+});
+
 test("maps insufficient rewritten-merge proof to an actionable blocker", async () => {
   const published = state({ kind: "spec", status: "pull-request-open" });
   const result = await runPlanningPhase(

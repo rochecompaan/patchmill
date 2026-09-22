@@ -3,6 +3,7 @@ import test from "node:test";
 import type { CommandRunner } from "../command/types.ts";
 import { PlanningHeadAdoptionGit } from "./planning-head-adoption-git.ts";
 import { PlanningWorkspaceRepositoryGit } from "./planning-workspace-inspection.ts";
+import { PlanningWorkspaceResponseError } from "./planning-workspaces.ts";
 
 const recorded = "a".repeat(40);
 const candidate = "b".repeat(40);
@@ -110,7 +111,7 @@ test("classifies unsafe proof failures without local fast-forward", async () => 
           code: 0,
           stdout:
             scenario === "non-regular-artifact"
-              ? "120000 blob abc\tdocs/specs/example.md\0"
+              ? `120000 blob ${candidate}\tdocs/specs/example.md\0`
               : `100644 blob ${candidate}\tdocs/specs/example.md\0`,
           stderr: "",
         };
@@ -143,6 +144,43 @@ test("classifies unsafe proof failures without local fast-forward", async () => 
       scenario,
     );
     if (scenario === "remote-missing") assert.equal(remoteChecks, 1);
+  }
+});
+
+test("rejects malformed planning artifact tree proof output", async () => {
+  for (const stdout of [
+    `100644 blob ${candidate}\tdocs/specs/example.md`,
+    `100644 ${candidate}\tdocs/specs/example.md\0`,
+  ]) {
+    await assert.rejects(
+      adapter(async (_command, args) => {
+        if (args[0] === "ls-remote")
+          return {
+            code: 0,
+            stdout: `${candidate}\trefs/heads/planning/spec\n`,
+            stderr: "",
+          };
+        if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "rev-parse")
+          return { code: 0, stdout: `${candidate}\n`, stderr: "" };
+        if (args[0] === "merge-base")
+          return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "diff") return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "ls-tree") return { code: 0, stdout, stderr: "" };
+        throw new Error(`unexpected ${args.join(" ")}`);
+      }).adopt({
+        issueNumber: 188,
+        runId: workspace.runId,
+        phase: "spec",
+        workspace,
+        hostHeadOid: candidate,
+        artifactPaths: ["docs/specs/example.md"],
+      }),
+      (error: unknown) =>
+        error instanceof PlanningWorkspaceResponseError &&
+        error.operation === "head-adoption-proof" &&
+        error.reason === "malformed-tree",
+    );
   }
 });
 

@@ -131,6 +131,34 @@ export class PlanningHeadAdoptionGit {
     return true;
   }
 
+  private regularArtifact(stdout: string, path: string): boolean {
+    if (stdout === "") return false;
+    if (!stdout.endsWith("\0"))
+      throw new PlanningWorkspaceResponseError(
+        "head-adoption-proof",
+        "malformed-tree",
+      );
+    const records = stdout.slice(0, -1).split("\0");
+    const [record] = records;
+    if (records.length !== 1 || record === undefined || record === "")
+      throw new PlanningWorkspaceResponseError(
+        "head-adoption-proof",
+        "malformed-tree",
+      );
+    const match =
+      /^([0-7]{6}) ([a-z-]+) ([0-9a-f]{40}|[0-9a-f]{64})\t(.+)$/u.exec(record);
+    if (match === null)
+      throw new PlanningWorkspaceResponseError(
+        "head-adoption-proof",
+        "malformed-tree",
+      );
+    return (
+      (match[1] === "100644" || match[1] === "100755") &&
+      match[2] === "blob" &&
+      match[4] === path
+    );
+  }
+
   private async reconcileLocal(
     input: PlanningHeadAdoptionInput,
     candidate: string,
@@ -307,14 +335,7 @@ export class PlanningHeadAdoptionGit {
         "--",
         path,
       ]);
-      const records = tree.stdout.split("\0").filter(Boolean);
-      if (
-        records.length !== 1 ||
-        !/^(100644|100755) blob (?:[0-9a-f]{40}|[0-9a-f]{64})\t/u.test(
-          records[0]!,
-        ) ||
-        !records[0]!.endsWith(`\t${path}`)
-      )
+      if (!this.regularArtifact(tree.stdout, path))
         return this.evidence(input, "non-regular-artifact", {
           hostHeadOid: input.hostHeadOid,
           fetchedHeadOid: candidate,
