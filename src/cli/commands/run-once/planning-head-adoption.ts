@@ -130,7 +130,16 @@ export async function adoptPlanningPullRequestHead(input: {
       phase: next,
       ...(input.now === undefined ? {} : { now: input.now }),
     });
-    return { kind: "ready", state, phase: next, adopted: true };
+    const durable = state.phases[input.phaseIndex];
+    if (
+      durable === undefined ||
+      durable.kind === "implementation" ||
+      durable.status !== "pull-request-open"
+    )
+      throw new Error(
+        "Planning head adoption replacement returned an invalid phase",
+      );
+    return { kind: "ready", state, phase: durable, adopted: true };
   }
   const next: PullRequestOpenPlanningPhase = {
     ...phase,
@@ -148,5 +157,14 @@ export async function adoptPlanningPullRequestHead(input: {
     phase: next,
     ...(input.now === undefined ? {} : { now: input.now }),
   });
-  return { kind: "ready", state, phase: next, adopted: false };
+  const durable = state.phases[input.phaseIndex];
+  if (
+    durable === undefined ||
+    durable.kind === "implementation" ||
+    durable.status !== "pull-request-open"
+  )
+    throw new Error(
+      "Planning head adoption replacement returned an invalid phase",
+    );
+  return { kind: "ready", state, phase: durable, adopted: false };
 }

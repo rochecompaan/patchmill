@@ -534,6 +534,39 @@ test("commands use only validated issue numbers and hostile text remains details
   );
 });
 
+test("planning head adoption blockers preserve evidence and distinguish stable repair from a race", () => {
+  for (const adoptionFailure of [
+    "remote-missing",
+    "head-disagreement",
+    "not-descendant",
+    "unexpected-paths",
+    "non-regular-artifact",
+  ] as const) {
+    const diagnostic = diagnosticFor("planning-head-adoption-blocked", {
+      ...contexts["planning-head-adoption-blocked"],
+      adoptionFailure,
+    });
+    assert.equal(
+      diagnostic.summary,
+      "Planning head revision could not be adopted safely",
+    );
+    assert.equal(diagnostic.retry.kind, "after-action");
+    assert.equal(
+      diagnostic.actions[0]!.command,
+      "patchmill run-once --issue 252",
+    );
+    assert.ok(
+      diagnostic.safety[0]!.includes("Do not hand-edit planning state"),
+    );
+  }
+  const raced = diagnosticFor("planning-head-adoption-blocked", {
+    ...contexts["planning-head-adoption-blocked"],
+    adoptionFailure: "head-moved",
+  });
+  assert.equal(raced.retry.kind, "retry-now");
+  assert.ok(raced.retry.guidance.includes("raced"));
+});
+
 test("planning merge recovery blockers require reviewed base evidence", () => {
   const diagnostic = diagnosticFor(
     "planning-merge-recovery-blocked",

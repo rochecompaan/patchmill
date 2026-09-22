@@ -120,6 +120,66 @@ test("atomically reanchors all planning head evidence after safe adoption", asyn
   );
 });
 
+test("retries the durable checkpoint after local adoption succeeded before a store failure", async () => {
+  const initial = state();
+  let replacements = 0;
+  const input = {
+    state: initial,
+    phaseIndex: 0,
+    lock: {} as never,
+    validated: {
+      summary: {
+        number: 188,
+        url: "https://github.com/acme/patchmill/pull/188",
+        targetRepository: repository,
+        headRepository: repository,
+        baseBranch: "main",
+        headBranch: "planning/spec",
+        headSha: candidate,
+        body: renderPlanningPullRequestMarker({
+          issueNumber: 188,
+          phase: "spec",
+        }),
+        status: "open" as const,
+      },
+      reference,
+      url: "https://github.com/acme/patchmill/pull/188",
+    },
+    workspaces: {
+      async adoptPlanningHead() {
+        return { kind: "adopted" as const, headOid: candidate };
+      },
+    },
+  };
+  await assert.rejects(
+    () =>
+      adoptPlanningPullRequestHead({
+        ...input,
+        stateStore: {
+          async replace() {
+            replacements += 1;
+            throw new Error("store failed");
+          },
+        },
+      }),
+    /store failed/,
+  );
+  assert.equal(replacements, 1);
+  const retried = await adoptPlanningPullRequestHead({
+    ...input,
+    stateStore: {
+      async replace({ next }) {
+        replacements += 1;
+        return next;
+      },
+    },
+  });
+  assert.equal(retried.kind, "ready");
+  if (retried.kind === "ready")
+    assert.equal(retried.phase.publication.headOid, candidate);
+  assert.equal(replacements, 2);
+});
+
 test("returns typed unsafe evidence without replacing durable state", async () => {
   const initial = state();
   let replacements = 0;

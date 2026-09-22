@@ -68,6 +68,122 @@ test("blocks a host and remote disagreement without local mutation", async () =>
   );
 });
 
+test("classifies unsafe proof failures without local fast-forward", async () => {
+  const failures = [
+    ["remote-missing", "remote-missing"],
+    ["not-descendant", "not-descendant"],
+    ["unexpected-paths", "unexpected-paths"],
+    ["non-regular-artifact", "non-regular-artifact"],
+  ] as const;
+  for (const [scenario, expectedFailure] of failures) {
+    const calls: string[][] = [];
+    let remoteChecks = 0;
+    const result = await adapter(async (_command, args) => {
+      calls.push(args);
+      if (args[0] === "ls-remote") {
+        remoteChecks += 1;
+        return scenario === "remote-missing"
+          ? { code: 2, stdout: "", stderr: "" }
+          : {
+              code: 0,
+              stdout: `${candidate}\trefs/heads/planning/spec\n`,
+              stderr: "",
+            };
+      }
+      if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
+      if (args[0] === "rev-parse")
+        return { code: 0, stdout: `${candidate}\n`, stderr: "" };
+      if (args[0] === "merge-base")
+        return {
+          code: scenario === "not-descendant" ? 1 : 0,
+          stdout: "",
+          stderr: "",
+        };
+      if (args[0] === "diff")
+        return {
+          code: 0,
+          stdout: scenario === "unexpected-paths" ? "README.md\0" : "",
+          stderr: "",
+        };
+      if (args[0] === "ls-tree")
+        return {
+          code: 0,
+          stdout:
+            scenario === "non-regular-artifact"
+              ? "120000 blob abc\tdocs/specs/example.md\0"
+              : `100644 blob ${candidate}\tdocs/specs/example.md\0`,
+          stderr: "",
+        };
+      throw new Error(`unexpected ${args.join(" ")}`);
+    }).adopt({
+      issueNumber: 188,
+      runId: workspace.runId,
+      phase: "spec",
+      workspace,
+      hostHeadOid: candidate,
+      artifactPaths: ["docs/specs/example.md"],
+    });
+    assert.equal(result.kind, "blocked", scenario);
+    if (result.kind === "blocked") {
+      assert.equal(result.evidence.failure, expectedFailure, scenario);
+      assert.deepEqual(
+        result.evidence.unexpectedPaths,
+        scenario === "unexpected-paths" ? ["README.md"] : [],
+        scenario,
+      );
+    }
+    assert.equal(
+      calls.some((args) => args.includes("merge")),
+      false,
+      scenario,
+    );
+    assert.equal(
+      calls.some((args) => args.includes("update-ref")),
+      false,
+      scenario,
+    );
+    if (scenario === "remote-missing") assert.equal(remoteChecks, 1);
+  }
+});
+
+test("returns head-moved after local proof when the final remote observation races", async () => {
+  let remoteChecks = 0;
+  const result = await adapter(async (_command, args) => {
+    if (args[0] === "ls-remote") {
+      remoteChecks += 1;
+      return {
+        code: 0,
+        stdout: `${remoteChecks === 3 ? "c".repeat(40) : candidate}\trefs/heads/planning/spec\n`,
+        stderr: "",
+      };
+    }
+    if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
+    if (args[0] === "rev-parse")
+      return { code: 0, stdout: `${candidate}\n`, stderr: "" };
+    if (args[0] === "merge-base") return { code: 0, stdout: "", stderr: "" };
+    if (args[0] === "diff") return { code: 0, stdout: "", stderr: "" };
+    if (args[0] === "ls-tree")
+      return {
+        code: 0,
+        stdout: `100644 blob ${candidate}\tdocs/specs/example.md\0`,
+        stderr: "",
+      };
+    throw new Error(`unexpected ${args.join(" ")}`);
+  }).adopt({
+    issueNumber: 188,
+    runId: workspace.runId,
+    phase: "spec",
+    workspace,
+    hostHeadOid: candidate,
+    artifactPaths: ["docs/specs/example.md"],
+  });
+  assert.equal(result.kind, "blocked");
+  if (result.kind === "blocked") {
+    assert.equal(result.evidence.failure, "head-moved");
+    assert.equal(result.evidence.remoteHeadOid, "c".repeat(40));
+  }
+});
+
 test("adopts an artifact-only fast-forward candidate after bounded proof", async () => {
   let remoteChecks = 0;
   const result = await adapter(async (_command, args) => {
