@@ -1,11 +1,12 @@
 import {
+  link,
   mkdir,
   open,
   readFile,
   rename,
   rm,
+  stat,
   unlink,
-  link,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -162,6 +163,12 @@ export async function takeOverStalePlanningIssueLock<
       const archived = await readFile(archivePath);
       if (!archived.equals(canonical.bytes)) throw error;
     }
+    const [source, archived] = await Promise.all([
+      stat(input.canonicalPath),
+      stat(archivePath),
+    ]);
+    if (source.dev !== archived.dev || source.ino !== archived.ino)
+      throw new Error("Planning issue lock changed during stale-lock archival");
     await unlink(input.canonicalPath);
     return {
       lock: await input.adapter.createCanonical(),
