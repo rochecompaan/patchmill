@@ -4,6 +4,7 @@ import { renderPlanningPullRequestMarker } from "./planning-pull-request-markers
 import {
   assertPlanningPublicationRepositories,
   PlanningPullRequestValidationError,
+  validatePlanningPullRequestIdentity,
   validatePlanningPullRequestSummary,
 } from "./planning-pull-request-validation.ts";
 
@@ -42,6 +43,31 @@ test("accepts exactly matching owned planning pull requests", () => {
     188,
   );
 });
+test("stable identity accepts a revised head while exact validation rejects it", () => {
+  const revised = { ...summary, headSha: "b".repeat(40) };
+  assert.equal(
+    validatePlanningPullRequestIdentity({
+      summary: revised,
+      issueNumber: 188,
+      phase: "spec",
+      publication,
+    }).reference.number,
+    188,
+  );
+  assert.throws(
+    () =>
+      validatePlanningPullRequestSummary({
+        summary: revised,
+        issueNumber: 188,
+        phase: "spec",
+        publication,
+      }),
+    (error: unknown) =>
+      error instanceof PlanningPullRequestValidationError &&
+      error.reason === "head-oid",
+  );
+});
+
 test("rejects an implementation marker in a three-space indented code fence", () => {
   assert.throws(
     () =>
