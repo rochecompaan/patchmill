@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   createPlanningProviderScenario,
@@ -733,23 +734,16 @@ for (const provider of providers) {
     }
   });
 
-  test(`${provider} requires exact stale-lock archival before resuming`, async () => {
+  test(`${provider} automatically archives an exact stale lock before resuming`, async () => {
     const scenario = await createPlanningProviderScenario({
       provider,
       gates: bothGates,
     });
     try {
       assert.equal((await scenario.run()).status, "review-pending");
-      const before = await scenario.state();
       const installed = await scenario.installDeadProcessLock();
-      const blocked = await scenario.run();
-      assert.equal(blocked.status, "blocked");
-      if (blocked.status === "blocked")
-        assert.equal(blocked.reason, "issue-lock-stale");
-      assert.deepEqual(await scenario.state(), before);
-      const archived = await scenario.archiveExactStaleLock();
-      assert.equal(archived.fingerprint, installed.fingerprint);
-      assert.match(archived.archivePath, /planning-pr-v1[\\/]archives/u);
+      assert.equal((await scenario.run()).status, "review-pending");
+      assert.deepEqual(await readFile(installed.archivePath), installed.bytes);
       assert.equal((await scenario.run()).status, "review-pending");
     } finally {
       await scenario.cleanup();

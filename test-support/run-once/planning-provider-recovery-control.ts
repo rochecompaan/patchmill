@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { planningIssueLockPath } from "../../src/workflow/planning-issue-lock.ts";
@@ -10,7 +10,7 @@ import type {
   PlanningScenarioFailurePoint,
 } from "./planning-provider-scenario-types.ts";
 
-/** Controls fixture-only persistence failures and explicit stale-lock archival. */
+/** Controls fixture-only persistence failures and stale-lock installation. */
 export function createPlanningRecoveryControl(input: {
   runStateDir: string;
   issueNumber: number;
@@ -68,22 +68,19 @@ export function createPlanningRecoveryControl(input: {
         "utf8",
       );
       await writeFile(path, bytes, { mode: 0o600 });
-      return { fingerprint: createHash("sha256").update(bytes).digest("hex") };
-    },
-    async archiveExactStaleLock() {
-      const path = planningIssueLockPath(input.runStateDir, input.issueNumber);
-      const bytes = await readFile(path);
       const fingerprint = createHash("sha256").update(bytes).digest("hex");
-      const archivePath = join(
-        input.runStateDir,
-        "planning-pr-v1",
-        "archives",
-        `issue-${input.issueNumber}.${fingerprint}.lock`,
-      );
-      await mkdir(dirname(archivePath), { recursive: true });
-      await rename(path, archivePath);
-      assert.deepEqual(await readFile(archivePath), bytes);
-      return { fingerprint, archivePath };
+      return {
+        bytes,
+        fingerprint,
+        archivePath: join(
+          input.runStateDir,
+          "planning-pr-v1",
+          "archive",
+          "issue-locks",
+          `issue-${input.issueNumber}`,
+          "11111111-1111-4111-8111-111111111111.lock",
+        ),
+      };
     },
     async cleanup() {
       await chmod(issueStateDirectory, 0o700).catch(() => undefined);

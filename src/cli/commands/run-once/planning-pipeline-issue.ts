@@ -26,6 +26,7 @@ import { runOnceFailure } from "./result-diagnostics.ts";
 import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts";
 import type { PlanningPipelineResult } from "./planning-pipeline.ts";
 import type { AgentIssueConfig } from "./types.ts";
+import type { ProgressReporter } from "./progress.ts";
 
 export type PlanningIssueInput = {
   issue: IssueSummary;
@@ -60,6 +61,8 @@ export type PlanningIssueInput = {
   ) => Promise<PlanningCoordinatorOutcome>;
   acquire?: typeof acquirePlanningIssueLock;
   release?: typeof releasePlanningIssueLock;
+  progress?: ProgressReporter;
+  now?: () => Date;
 };
 
 async function releaseOwnedPlanningLock(input: {
@@ -80,6 +83,34 @@ async function releaseOwnedPlanningLock(input: {
   }
 }
 
+async function emitPlanningLockTakeover(
+  lock: PlanningIssueLock,
+  input: PlanningIssueInput,
+): Promise<void> {
+  if (lock.takeover === undefined) return;
+  const { owner, fingerprint, sourcePath, archivePath } = lock.takeover;
+  await input.progress?.event({
+    time: (input.now ?? (() => new Date()))().toISOString(),
+    level: "warning",
+    stage: "planning-lock",
+    message: "stale planning lock reclaimed",
+    consoleMessage:
+      `⚠ reclaimed stale planning lock for issue #${input.issue.number}; ` +
+      `archived evidence at ${archivePath}`,
+    issueNumber: input.issue.number,
+    data: {
+      kind: "planning-lock-takeover",
+      oldRunId: owner.runId,
+      hostname: owner.hostname,
+      pid: owner.pid,
+      acquiredAt: owner.acquiredAt,
+      fingerprint,
+      sourcePath,
+      archivePath,
+    },
+  });
+}
+
 /**
  * Owns one planning issue attempt. Selection is advisory; every identity and
  * workflow check is repeated after the ownership-ID lock is acquired.
@@ -97,6 +128,7 @@ export async function runPlanningIssue(
         issueNumber: input.issue.number,
         runId: input.state.runId,
       });
+      await emitPlanningLockTakeover(lock, input);
     } catch (error) {
       if (error instanceof PlanningIssueLockConflictError) {
         const publicFailure = planningLockFailure(
@@ -221,6 +253,7 @@ export async function runPlanningIssue(
             issueNumber: input.issue.number,
             runId: saved.runId,
           });
+          await emitPlanningLockTakeover(lock, input);
         } catch (error) {
           if (error instanceof PlanningIssueLockConflictError) {
             const publicFailure = planningLockFailure(

@@ -22,13 +22,11 @@ export const PLANNING_DIAGNOSTICS = {
     explanation:
       "The recorded planning-lock owner process is no longer running on the recorded host.",
     action:
-      "Confirm the owner stopped, record the lock path and fingerprint, preserve the exact bytes as evidence, then manually archive or move them before rerunning.",
+      "Current acquisition normally performs guarded same-host recovery. If this defensive result appears, preserve and inspect the reported lock evidence before coordinating recovery.",
     command: "run-once",
     safety:
       "Never delete or edit the lock in place; Issue run lease repair does not apply.",
-    retry: same(
-      "An immediate retry will give the same result until the preserved lock is handled.",
-    ),
+    retry: inspect("Inspect preserved evidence before retrying."),
   }),
   "issue-lock-unverifiable": definition({
     summary: "Planning lock ownership is unverifiable",

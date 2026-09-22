@@ -137,6 +137,76 @@ test("returns stopped without mutation for an active planning lock", async () =>
   assert.equal(mutated, false);
 });
 
+test("reports stale-lock takeover before post-lock reads", async () => {
+  const calls: string[] = [];
+  const result = await runPlanningIssue({
+    issue: {
+      number: 189,
+      title: "Example",
+      state: "open",
+      labels: [],
+    } as never,
+    config: {} as never,
+    state: { runId: "123e4567-e89b-42d3-a456-426614174000" } as never,
+    expectedStatePresence: "present",
+    runStateDir: "/tmp/state",
+    stateStore: {
+      read: async () => {
+        calls.push("state");
+        return undefined;
+      },
+    },
+    readIssue: async () => {
+      calls.push("issue");
+      return {
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: [],
+      } as never;
+    },
+    readLegacy: async () => {
+      calls.push("legacy");
+      return undefined;
+    },
+    mutate: async () => [],
+    coordinate: async () => {
+      throw new Error("unreachable");
+    },
+    acquire: async () =>
+      ({
+        path: "/tmp/lock",
+        record: { runId: "123e4567-e89b-42d3-a456-426614174000" },
+        takeover: {
+          owner: {
+            runId: "123e4567-e89b-42d3-a456-426614174001",
+            hostname: "host.test",
+            pid: 1234,
+            acquiredAt: "2026-09-07T12:00:00.000Z",
+          },
+          fingerprint: "a".repeat(64),
+          sourcePath: "/tmp/stale.lock",
+          archivePath: "/tmp/archive.lock",
+        },
+      }) as never,
+    release: async () => {},
+    now: () => new Date("2026-09-08T12:00:00.000Z"),
+    progress: {
+      event: async (event) => {
+        calls.push(event.message);
+        assert.equal(JSON.stringify(event).includes("serialized"), false);
+      },
+    },
+  });
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(calls, [
+    "stale planning lock reclaimed",
+    "issue",
+    "state",
+    "legacy",
+  ]);
+});
+
 test("maps malformed post-lock planning state to a no-mutation blocker", async () => {
   let mutated = false;
   const result = await runPlanningIssue({

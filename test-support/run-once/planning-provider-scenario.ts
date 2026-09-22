@@ -69,11 +69,11 @@ export type PlanningProviderScenario = {
   failNextCleanupPendingComment(): void;
   interruptAt(point: PlanningScenarioFailurePoint): void;
   restorePersistence(): Promise<void>;
-  archiveExactStaleLock(): Promise<{
+  installDeadProcessLock(): Promise<{
+    bytes: Buffer;
     fingerprint: string;
     archivePath: string;
   }>;
-  installDeadProcessLock(): Promise<{ fingerprint: string }>;
   remoteArtifactContents(): Promise<Readonly<Record<string, string>>>;
   carriedArtifactContents(): Readonly<Record<string, string>>;
   ignoredImplementationArtifactContents(): Promise<
@@ -327,7 +327,6 @@ export async function createPlanningProviderScenario(input: {
     restorePersistence: recovery.restorePersistence,
     installDeadProcessLock: async () =>
       recovery.installDeadProcessLock(await state()),
-    archiveExactStaleLock: recovery.archiveExactStaleLock,
     carriedArtifactContents: () => Object.fromEntries(carriedArtifacts),
     ignoredImplementationArtifactContents: async () => {
       const worktreePath = await implementationWorktreePath();
