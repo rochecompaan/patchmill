@@ -1,4 +1,8 @@
-import { definition } from "./result-diagnostic-helpers.ts";
+import {
+  contextDetails,
+  definition,
+  issueCommand,
+} from "./result-diagnostic-helpers.ts";
 import type {
   PlanningDiagnosticReasonCode,
   RunOnceDiagnosticCatalog,
@@ -119,6 +123,35 @@ export const PLANNING_DIAGNOSTICS = {
     safety: "Do not select or close a candidate without confirming ownership.",
     retry: after("Retry after host-side ambiguity is resolved."),
   }),
+  "planning-head-adoption-blocked": {
+    summary: "Planning head revision could not be adopted safely",
+    explanation:
+      "The planning pull request head changed, but Patchmill could not prove one fast-forward, artifact-only revision with agreeing host and remote evidence.",
+    details: (context) => contextDetails(context),
+    actions: (context) => {
+      const command = issueCommand("run-once", context.issueNumber);
+      return [
+        {
+          description:
+            "Preserve or reapply the revision on the saved planning branch so it is a fast-forward descendant of the recorded head, its net changes are limited to the reported artifact paths, and host and remote heads agree; then rerun the Issue.",
+          ...(command === undefined ? {} : { command }),
+        },
+      ];
+    },
+    safety: [
+      "Do not hand-edit planning state, force-restore the obsolete head, or discard revised artifacts.",
+    ],
+    retry: (context) =>
+      context.adoptionFailure === "head-moved"
+        ? {
+            kind: "retry-now",
+            guidance:
+              "The bounded observation raced; rerun now to evaluate the latest head.",
+          }
+        : after(
+            "Retry after the saved planning branch and host evidence are repaired.",
+          ),
+  },
   "planning-merge-recovery-blocked": definition({
     summary: "Planning merge recovery needs reviewed base evidence",
     explanation:
