@@ -17,13 +17,17 @@ import type {
   PlanningArtifactEvidence,
   PlanningPhaseStateV1,
   PlanningStateV1,
-  PullRequestOpenPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
-import { validatePlanningPullRequestSummary } from "../../../workflow/planning-pull-request-validation.ts";
+import { validatePlanningPullRequestIdentity } from "../../../workflow/planning-pull-request-validation.ts";
 import {
   verifyPlanningMergeRecoveryEvidence,
   type PlanningMergeRecoveryResult,
 } from "./planning-merge-recovery.ts";
+import {
+  adoptPlanningPullRequestHead,
+  planningHeadObservationBlocked,
+  type PlanningHeadAdoptionBlockedOutcome,
+} from "./planning-head-adoption.ts";
 import { finishPlanningPhaseCleanup } from "./planning-phase-cleanup.ts";
 
 export type PlanningMergeRecoveryBlockedOutcome = Readonly<{
@@ -33,9 +37,9 @@ export type PlanningMergeRecoveryBlockedOutcome = Readonly<{
   baseOid: string;
   evidence: Extract<PlanningMergeRecoveryResult, { kind: "blocked" }>;
 }>;
-
 export type PlanningPhaseReconciliation =
   | PlanningMergeRecoveryBlockedOutcome
+  | PlanningHeadAdoptionBlockedOutcome
   | {
       kind: "cleanup-pending";
       prUrl: string;
@@ -51,6 +55,7 @@ export type PlanningPhaseReconciliation =
   | { kind: "closed-unmerged"; pullRequest: PullRequestSummary }
   | { kind: "missing"; reference?: PullRequestReference }
   | { kind: "ambiguous"; pullRequests: readonly PullRequestSummary[] };
+
 async function replace(
   state: PlanningStateV1,
   index: number,
@@ -68,6 +73,7 @@ async function replace(
     now,
   });
 }
+
 export async function reconcilePlanningPhase(input: {
   state: PlanningStateV1;
   phaseIndex: number;
@@ -96,6 +102,7 @@ export async function reconcilePlanningPhase(input: {
       state,
       outcome: { kind: "satisfied-by-base", artifacts: phase.artifacts },
     };
+  const phaseKind = phase.kind;
   let pullRequest: PullRequestSummary | undefined;
   if (phase.status === "branch-pushed") {
     const matches = await input.host.findPullRequests({
@@ -104,11 +111,31 @@ export async function reconcilePlanningPhase(input: {
       headRepository: phase.publication.headRepository,
       headBranch: phase.publication.headBranch,
     });
-    if (matches.length === 0) return { state, outcome: { kind: "missing" } };
+    if (matches.length === 0) {
+      const remote = await input.git.inspectRemoteHead({
+        remote: phase.base.remote,
+        branch: phase.workspace.identity.branch,
+      });
+      if (
+        remote.state === "present" &&
+        remote.headOid === phase.publication.headOid
+      )
+        return { state, outcome: { kind: "missing" } };
+      return {
+        state,
+        outcome: planningHeadObservationBlocked({
+          phase,
+          failure:
+            remote.state === "missing" ? "remote-missing" : "head-disagreement",
+          ...(remote.state === "present"
+            ? { remoteHeadOid: remote.headOid }
+            : {}),
+        }),
+      };
+    }
     if (matches.length > 1)
       return { state, outcome: { kind: "ambiguous", pullRequests: matches } };
-    const phaseKind = phase.kind as "spec" | "plan";
-    const found = validatePlanningPullRequestSummary({
+    const found = validatePlanningPullRequestIdentity({
       summary: matches[0]!,
       issueNumber: state.issueNumber,
       phase: phaseKind,
@@ -125,31 +152,30 @@ export async function reconcilePlanningPhase(input: {
         };
       throw error;
     }
-    const confirmed = validatePlanningPullRequestSummary({
+    const confirmed = validatePlanningPullRequestIdentity({
       summary: read,
       issueNumber: state.issueNumber,
       phase: phaseKind,
       publication: phase.publication,
       expectedReference: found.reference,
     });
-    pullRequest = confirmed.summary;
-    phase = {
-      ...phase,
-      status: "pull-request-open",
-      pullRequest: { reference: confirmed.reference, url: confirmed.url },
-    };
-    state = await replace(
+    const adoption = await adoptPlanningPullRequestHead({
       state,
-      input.phaseIndex,
-      phase,
-      input.lock,
-      input.stateStore,
+      phaseIndex: input.phaseIndex,
+      validated: confirmed,
+      lock: input.lock,
+      stateStore: input.stateStore,
+      workspaces: input.workspaces,
       now,
-    );
+    });
+    if (adoption.kind === "head-adoption-blocked")
+      return { state, outcome: adoption };
+    state = adoption.state;
+    phase = adoption.phase;
+    pullRequest = confirmed.summary;
   }
   if (phase.status !== "pull-request-open")
     throw new Error("Planning phase is not reconcilable");
-  const phaseKind = phase.kind as "spec" | "plan";
   if (pullRequest === undefined) {
     try {
       pullRequest = await input.host.getPullRequest(
@@ -164,27 +190,35 @@ export async function reconcilePlanningPhase(input: {
       throw error;
     }
   }
-  validatePlanningPullRequestSummary({
+  const validated = validatePlanningPullRequestIdentity({
     summary: pullRequest,
     issueNumber: state.issueNumber,
     phase: phaseKind,
     publication: phase.publication,
     expectedReference: phase.pullRequest.reference,
   });
-  const cleanup = await finishPlanningPhaseCleanup({
-    phase: phase as PullRequestOpenPlanningPhase,
+  const adoption = await adoptPlanningPullRequestHead({
+    state,
+    phaseIndex: input.phaseIndex,
+    validated,
+    lock: input.lock,
+    stateStore: input.stateStore,
     workspaces: input.workspaces,
-    remoteHead: async (published) => {
-      const head = await input.git.inspectRemoteHead({
+    now,
+  });
+  if (adoption.kind === "head-adoption-blocked")
+    return { state, outcome: adoption };
+  state = adoption.state;
+  phase = adoption.phase;
+  pullRequest = validated.summary;
+  const cleanup = await finishPlanningPhaseCleanup({
+    phase,
+    workspaces: input.workspaces,
+    remoteHead: (published) =>
+      input.git.inspectRemoteHead({
         remote: published.base.remote,
         branch: published.workspace.identity.branch,
-      });
-      if (
-        head.state !== "present" ||
-        head.headOid !== published.publication.headOid
-      )
-        throw new Error("Planning remote head changed");
-    },
+      }),
     checkpoint: async (next) => {
       state = await replace(
         state,
@@ -196,6 +230,22 @@ export async function reconcilePlanningPhase(input: {
       );
     },
   });
+  if (cleanup.kind === "remote-head-changed")
+    return {
+      state,
+      outcome: planningHeadObservationBlocked({
+        phase: cleanup.phase,
+        failure:
+          cleanup.remoteHead.state === "missing"
+            ? "remote-missing"
+            : "head-moved",
+        hostHeadOid: pullRequest.headSha,
+        ...(cleanup.remoteHead.state === "present"
+          ? { remoteHeadOid: cleanup.remoteHead.headOid }
+          : {}),
+        pullRequestUrl: phase.pullRequest.url,
+      }),
+    };
   if (cleanup.kind === "cleanup-pending")
     return {
       state,

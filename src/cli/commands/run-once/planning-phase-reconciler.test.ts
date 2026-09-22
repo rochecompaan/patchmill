@@ -172,6 +172,7 @@ function fixture(
     ancestorError?: Error;
     regularError?: Error;
     artifactCandidates?: { spec: readonly string[]; plan: readonly string[] };
+    adoptedHead?: string;
   } = {},
 ) {
   const events: string[] = [];
@@ -225,7 +226,10 @@ function fixture(
       git: {
         async inspectRemoteHead() {
           events.push("remote-head");
-          return { state: "present" as const, headOid };
+          return {
+            state: "present" as const,
+            headOid: input.adoptedHead ?? headOid,
+          };
         },
         async assertAncestor(value: {
           ancestorOid: string;
@@ -243,6 +247,12 @@ function fixture(
         },
       },
       workspaces: {
+        async adoptPlanningHead() {
+          events.push("adopt-head");
+          return input.adoptedHead === undefined
+            ? { kind: "adopted" as const, headOid }
+            : { kind: "adopted" as const, headOid: input.adoptedHead };
+        },
         async removeWorktree() {
           events.push("remove-worktree");
           if (input.removeWorktreeError) throw input.removeWorktreeError;
@@ -274,6 +284,29 @@ test("returns remote-base completion without host or local effects", async () =>
   const result = await reconcilePlanningPhase(testFixture.input);
   assert.equal(result.outcome.kind, "satisfied-by-base");
   assert.deepEqual(testFixture.events, []);
+});
+
+test("re-adopts a revised open planning pull request before cleanup and review wait", async () => {
+  const revised = "e".repeat(40);
+  const testFixture = fixture({
+    pullRequest: { ...summary(), headSha: revised },
+    adoptedHead: revised,
+  });
+  const result = await reconcilePlanningPhase(testFixture.input);
+  assert.equal(result.outcome.kind, "review-pending");
+  assert.equal(result.state.phases[0]!.publication!.headOid, revised);
+  assert.equal(result.state.phases[0]!.workspace!.headOid, revised);
+  assert.ok(
+    result.state.phases[0]!.artifacts!.every(
+      (artifact) => artifact.commitOid === revised,
+    ),
+  );
+  assert.deepEqual(testFixture.events.slice(0, 4), [
+    "get",
+    "adopt-head",
+    "replace:pull-request-open:ready",
+    "remote-head",
+  ]);
 });
 
 test("classifies open and closed pull requests only after both cleanup checkpoints", async () => {
@@ -319,7 +352,10 @@ test("classifies branch-pushed discovery outcomes without replacement creation",
     });
     const result = await reconcilePlanningPhase(testFixture.input);
     assert.equal(result.outcome.kind, kind);
-    assert.deepEqual(testFixture.events, ["find"]);
+    assert.deepEqual(
+      testFixture.events,
+      kind === "missing" ? ["find", "remote-head"] : ["find"],
+    );
   }
 });
 

@@ -30,6 +30,41 @@ export type PlanningWorkspaceCleanup =
   | Readonly<{ state: "worktree-removed"; pushedHeadOid: string }>
   | Readonly<{ state: "removed"; pushedHeadOid: string }>;
 
+export type PlanningHeadAdoptionFailure =
+  | "remote-missing"
+  | "head-disagreement"
+  | "not-descendant"
+  | "unexpected-paths"
+  | "non-regular-artifact"
+  | "head-moved";
+
+export type PlanningHeadAdoptionBlockedEvidence = Readonly<{
+  failure: PlanningHeadAdoptionFailure;
+  recordedHeadOid: string;
+  hostHeadOid?: string;
+  fetchedHeadOid?: string;
+  remoteHeadOid?: string;
+  artifactPaths: readonly string[];
+  unexpectedPaths: readonly string[];
+  cleanupState: PlanningWorkspaceCleanup["state"];
+}>;
+
+export type PlanningHeadAdoptionResult =
+  | Readonly<{ kind: "adopted"; headOid: string }>
+  | Readonly<{
+      kind: "blocked";
+      evidence: PlanningHeadAdoptionBlockedEvidence;
+    }>;
+
+export type PlanningHeadAdoptionInput = Readonly<{
+  issueNumber: number;
+  runId: string;
+  phase: PlanningPhaseKind;
+  workspace: PlanningWorkspaceOwnership;
+  hostHeadOid: string;
+  artifactPaths: readonly string[];
+}>;
+
 export type PlanningWorkspaceRemovalOutcome =
   | Readonly<{
       kind: "removed";
@@ -118,7 +153,10 @@ export type PlanningWorkspaceOperation =
   | "worktree-remove"
   | "status"
   | "remote-head-inspection"
-  | "branch-deletion";
+  | "branch-deletion"
+  | "head-adoption-fetch"
+  | "head-adoption-proof"
+  | "head-adoption-fast-forward";
 
 export class PlanningWorkspaceCommandError extends Error {
   readonly operation: PlanningWorkspaceOperation;
@@ -167,6 +205,9 @@ export interface PlanningWorkspaceLifecycle {
   inspect(
     identity: PlanningWorkspaceIdentity,
   ): Promise<PlanningWorkspaceSnapshot>;
+  adoptPlanningHead(
+    input: PlanningHeadAdoptionInput,
+  ): Promise<PlanningHeadAdoptionResult>;
   removeWorktree(input: {
     runId: string;
     phase: PlanningPhaseKind;

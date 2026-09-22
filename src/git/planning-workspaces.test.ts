@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PlanningWorkspaceConflictError,
+  type PlanningHeadAdoptionInput,
+  type PlanningHeadAdoptionResult,
   type PlanningRemoteBaseSnapshot,
   type PlanningWorkspaceCleanupPending,
   type PlanningWorkspaceIdentity,
@@ -72,6 +74,13 @@ class FakePlanningWorkspace implements PlanningWorkspaceLifecycle {
     assert.deepEqual(input.base, base);
     if (this.snapshot.state !== "ready") throw new Error("not ready");
     return this.snapshot;
+  }
+
+  async adoptPlanningHead(
+    input: PlanningHeadAdoptionInput,
+  ): Promise<PlanningHeadAdoptionResult> {
+    this.events.push("adopt-head");
+    return { kind: "adopted", headOid: input.hostHeadOid };
   }
 
   async inspect(

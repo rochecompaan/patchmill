@@ -65,6 +65,7 @@ test("planning cleanup refreshes ignored inventory and resumes branch cleanup af
       remoteHead: async (candidate) => {
         assert.equal(candidate.workspace, current.workspace);
         events.push("remote-head");
+        return { state: "present", headOid: oid };
       },
       workspaces: {
         removeWorktree: async () => {

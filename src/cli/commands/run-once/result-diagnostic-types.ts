@@ -1,3 +1,8 @@
+import type {
+  PlanningHeadAdoptionFailure,
+  PlanningWorkspaceCleanup,
+} from "../../../git/planning-workspaces.ts";
+
 export const RUN_ONCE_REASON_CODES = [
   "non-open-state",
   "blocking-labels",
@@ -19,6 +24,7 @@ export const RUN_ONCE_REASON_CODES = [
   "planning-pull-request-missing",
   "planning-pull-request-ambiguous",
   "planning-merge-recovery-blocked",
+  "planning-head-adoption-blocked",
   "implementation-configuration",
   "implementation-workspace",
   "implementation-direct-merge",
@@ -72,6 +78,7 @@ export type PlanningDiagnosticReasonCode = Extract<
   | "planning-pull-request-missing"
   | "planning-pull-request-ambiguous"
   | "planning-merge-recovery-blocked"
+  | "planning-head-adoption-blocked"
   | "planning-workspace-conflict"
 >;
 export type ImplementationDiagnosticReasonCode = Extract<
@@ -197,6 +204,18 @@ export type RunOnceDiagnosticContextByReason = {
   "planning-pull-request-ambiguous": Base & {
     phase?: "spec" | "plan";
     pullRequestUrls?: readonly string[];
+  };
+  "planning-head-adoption-blocked": Base & {
+    phase: "spec" | "plan";
+    pullRequestUrl?: string;
+    recordedHeadOid: string;
+    hostHeadOid?: string;
+    fetchedHeadOid?: string;
+    remoteHeadOid?: string;
+    adoptionFailure: PlanningHeadAdoptionFailure;
+    artifactPaths: readonly string[];
+    unexpectedPaths?: readonly string[];
+    cleanupState: PlanningWorkspaceCleanup["state"];
   };
   "planning-merge-recovery-blocked": Base & {
     phase: "spec" | "plan";

@@ -2,6 +2,7 @@ import type {
   PlanningStateV1,
   WorkspaceReadyPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
+import type { PlanningHeadAdoptionBlockedOutcome } from "./planning-head-adoption.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import {
@@ -12,6 +13,44 @@ import {
   type PlanningPhaseRunnerInput,
   type PlanningPhaseRunnerOutcome,
 } from "./planning-phase-runner-shared.ts";
+
+function adoptionBlocked(
+  state: PlanningStateV1,
+  phase: "spec" | "plan",
+  outcome: PlanningHeadAdoptionBlockedOutcome,
+): PlanningPhaseRunnerOutcome {
+  return {
+    kind: "blocked",
+    state,
+    result: blocked(
+      "planning-head-adoption-blocked",
+      runOnceFailure("planning-head-adoption-blocked", {
+        issueNumber: state.issueNumber,
+        status: "blocked",
+        phase,
+        ...(outcome.pullRequestUrl === undefined
+          ? {}
+          : { pullRequestUrl: outcome.pullRequestUrl }),
+        recordedHeadOid: outcome.evidence.recordedHeadOid,
+        ...(outcome.evidence.hostHeadOid === undefined
+          ? {}
+          : { hostHeadOid: outcome.evidence.hostHeadOid }),
+        ...(outcome.evidence.fetchedHeadOid === undefined
+          ? {}
+          : { fetchedHeadOid: outcome.evidence.fetchedHeadOid }),
+        ...(outcome.evidence.remoteHeadOid === undefined
+          ? {}
+          : { remoteHeadOid: outcome.evidence.remoteHeadOid }),
+        adoptionFailure: outcome.evidence.failure,
+        artifactPaths: outcome.evidence.artifactPaths,
+        ...(outcome.evidence.unexpectedPaths.length === 0
+          ? {}
+          : { unexpectedPaths: outcome.evidence.unexpectedPaths }),
+        cleanupState: outcome.evidence.cleanupState,
+      }),
+    ),
+  };
+}
 
 async function reconcile(
   input: PlanningPhaseRunnerInput,
@@ -52,6 +91,8 @@ async function reconcile(
     case "merged":
     case "satisfied-by-base":
       return { kind: "advanced", state: result.state };
+    case "head-adoption-blocked":
+      return adoptionBlocked(result.state, phase, result.outcome);
     case "merge-recovery-blocked":
       return {
         kind: "blocked",
@@ -227,6 +268,8 @@ export async function runPlanningSpecPlanPhase(
     ...(input.now === undefined ? {} : { now: input.now }),
   });
   if (published.kind === "cleanup-pending") return published;
+  if (published.kind === "head-adoption-blocked")
+    return adoptionBlocked(published.state, phase.kind, published);
   if (published.kind === "ambiguous")
     return {
       kind: "blocked",

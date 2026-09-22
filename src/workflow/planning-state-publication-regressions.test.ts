@@ -605,6 +605,111 @@ test("permits every checkpoint edge and rejects skipped or backward checkpoint e
     );
 });
 
+function coordinatedHeadAdvance(
+  current: ReturnType<typeof parsed>,
+  next: ReturnType<typeof parsed>,
+): ReturnType<typeof parsed> {
+  const candidate = oid("c");
+  const advanced = structuredClone(next) as Record<string, unknown>;
+  (advanced.publication as Record<string, unknown>).headOid = candidate;
+  const nextWorkspace = advanced.workspace as Record<string, unknown>;
+  nextWorkspace.headOid = candidate;
+  const cleanup = nextWorkspace.cleanup as Record<string, unknown>;
+  if (cleanup.state === "worktree-removed" || cleanup.state === "removed")
+    cleanup.pushedHeadOid = candidate;
+  for (const evidence of advanced.artifacts as Record<string, unknown>[]) {
+    evidence.source = "workspace";
+    evidence.commitOid = candidate;
+  }
+  return advanced as ReturnType<typeof parsed>;
+}
+
+test("permits only coherent coordinated planning head advances", () => {
+  const cleanupStates = [
+    { state: "ready" },
+    {
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [".cache/keep"],
+    },
+    { state: "worktree-removed", pushedHeadOid: oid("b") },
+    { state: "removed", pushedHeadOid: oid("b") },
+  ] as const;
+  for (const cleanup of cleanupStates) {
+    const current = parsed("pull-request-open", cleanup);
+    const next = coordinatedHeadAdvance(
+      current,
+      parsed("pull-request-open", cleanup),
+    );
+    assert.doesNotThrow(() => assertPlanningPhaseReplacement(current, next, 0));
+  }
+  const pushed = parsed("branch-pushed", { state: "ready" });
+  const open = coordinatedHeadAdvance(
+    pushed,
+    parsed("pull-request-open", { state: "ready" }),
+  );
+  assert.doesNotThrow(() => assertPlanningPhaseReplacement(pushed, open, 0));
+
+  const current = parsed("pull-request-open", {
+    state: "worktree-removed",
+    pushedHeadOid: oid("b"),
+  });
+  const valid = coordinatedHeadAdvance(
+    current,
+    parsed("pull-request-open", {
+      state: "worktree-removed",
+      pushedHeadOid: oid("b"),
+    }),
+  );
+  const invalidMutations = [
+    (phase: Record<string, unknown>) => {
+      (phase.publication as Record<string, unknown>).headOid = oid("b");
+    },
+    (phase: Record<string, unknown>) => {
+      (phase.workspace as Record<string, unknown>).headOid = oid("b");
+    },
+    (phase: Record<string, unknown>) => {
+      (phase.artifacts as Record<string, unknown>[])[0]!.commitOid = oid("b");
+    },
+    (phase: Record<string, unknown>) => {
+      (
+        (phase.workspace as Record<string, unknown>).cleanup as Record<
+          string,
+          unknown
+        >
+      ).pushedHeadOid = oid("b");
+    },
+    (phase: Record<string, unknown>) => {
+      (phase.artifacts as Record<string, unknown>[])[0]!.path =
+        "docs/specs/other.md";
+    },
+    (phase: Record<string, unknown>) => {
+      (
+        (phase.workspace as Record<string, unknown>).identity as Record<
+          string,
+          unknown
+        >
+      ).branch = "planning/other";
+    },
+    (phase: Record<string, unknown>) => {
+      (
+        (phase.workspace as Record<string, unknown>).cleanup as Record<
+          string,
+          unknown
+        >
+      ).state = "removed";
+    },
+  ];
+  for (const mutate of invalidMutations) {
+    const partial = structuredClone(valid) as Record<string, unknown>;
+    mutate(partial);
+    assert.throws(
+      () => assertPlanningPhaseReplacement(current, partial as never, 0),
+      PlanningStateValidationError,
+    );
+  }
+});
+
 test("keeps immutable publication and pull request evidence after publication", () => {
   const pushed = parsed("branch-pushed");
   const open = parsed("pull-request-open");

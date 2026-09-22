@@ -55,13 +55,18 @@ export function assertPlanningPublicationRepositories(input: {
     throw error;
   }
 }
-export function validatePlanningPullRequestSummary(input: {
+type PlanningPullRequestValidationInput = Readonly<{
   summary: PullRequestSummary;
   issueNumber: number;
   phase: PlanningPhaseKind;
   publication: PlanningPublicationEvidence;
   expectedReference?: PullRequestReference;
-}): ValidatedPlanningPullRequest {
+}>;
+
+function validatePlanningPullRequest(
+  input: PlanningPullRequestValidationInput,
+  requireExactHead: boolean,
+): ValidatedPlanningPullRequest {
   try {
     assertPlanningPublicationRepositories(input.publication);
     const { summary, publication } = input;
@@ -89,7 +94,8 @@ export function validatePlanningPullRequestSummary(input: {
         summary.headBranch !== `refs/pull/${summary.number}/head`)
     )
       fail("head-branch");
-    if (summary.headSha !== publication.headOid) fail("head-oid");
+    if (requireExactHead && summary.headSha !== publication.headOid)
+      fail("head-oid");
     const marker = parsePlanningPullRequestMarker(summary.body);
     if (
       marker === undefined ||
@@ -123,4 +129,18 @@ export function validatePlanningPullRequestSummary(input: {
       fail("ownership-marker");
     fail("malformed-summary");
   }
+}
+
+/** Validates immutable planning pull request identity while allowing its head to advance. */
+export function validatePlanningPullRequestIdentity(
+  input: PlanningPullRequestValidationInput,
+): ValidatedPlanningPullRequest {
+  return validatePlanningPullRequest(input, false);
+}
+
+/** Validates planning pull request identity and its recorded immutable head. */
+export function validatePlanningPullRequestSummary(
+  input: PlanningPullRequestValidationInput,
+): ValidatedPlanningPullRequest {
+  return validatePlanningPullRequest(input, true);
 }

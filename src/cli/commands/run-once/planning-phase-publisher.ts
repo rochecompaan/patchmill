@@ -18,8 +18,13 @@ import type {
 } from "../../../workflow/planning-state-types.ts";
 import {
   assertPlanningPublicationRepositories,
-  validatePlanningPullRequestSummary,
+  validatePlanningPullRequestIdentity,
 } from "../../../workflow/planning-pull-request-validation.ts";
+import {
+  adoptPlanningPullRequestHead,
+  planningHeadObservationBlocked,
+  type PlanningHeadAdoptionBlockedOutcome,
+} from "./planning-head-adoption.ts";
 import { finishPlanningPhaseCleanup } from "./planning-phase-cleanup.ts";
 
 export type PlanningPhasePublicationResult =
@@ -40,7 +45,9 @@ export type PlanningPhasePublicationResult =
       kind: "ambiguous";
       state: PlanningStateV1;
       pullRequests: readonly PullRequestSummary[];
-    }>;
+    }>
+  | (PlanningHeadAdoptionBlockedOutcome & Readonly<{ state: PlanningStateV1 }>);
+
 async function replace(input: {
   state: PlanningStateV1;
   phaseIndex: number;
@@ -51,6 +58,7 @@ async function replace(input: {
 }): Promise<PlanningStateV1> {
   return replacePlanningPhase(input);
 }
+
 export async function publishPlanningPhase(input: {
   state: PlanningStateV1;
   phaseIndex: number;
@@ -69,7 +77,7 @@ export async function publishPlanningPhase(input: {
   let phase = state.phases[input.phaseIndex];
   if (phase === undefined || phase.kind === "implementation")
     throw new RangeError("Planning phase is not publishable");
-  const phaseKind = phase.kind as "spec" | "plan";
+  const phaseKind = phase.kind;
   const assignedArtifacts = planningPhasePlan(state.gates)[input.phaseIndex]!
     .artifactKinds;
   if (phase.status === "workspace-ready") {
@@ -93,13 +101,11 @@ export async function publishPlanningPhase(input: {
       headOid: phase.workspace.headOid,
       artifactPaths: phase.artifacts.map((artifact) => artifact.path),
     });
-    const targetRepository = await input.host.resolveTargetRepositoryIdentity();
-    const headRepository = await input.host.resolveRemoteRepositoryIdentity(
-      phase.base.remote,
-    );
     const publication = {
-      targetRepository,
-      headRepository,
+      targetRepository: await input.host.resolveTargetRepositoryIdentity(),
+      headRepository: await input.host.resolveRemoteRepositoryIdentity(
+        phase.base.remote,
+      ),
       baseBranch: phase.base.baseBranch,
       headBranch: phase.workspace.identity.branch,
       headOid: phase.workspace.headOid,
@@ -121,15 +127,10 @@ export async function publishPlanningPhase(input: {
     });
   }
   if (phase.status === "branch-pushed") {
-    const remoteHead = await input.git.inspectRemoteHead({
+    const remote = await input.git.inspectRemoteHead({
       remote: phase.base.remote,
       branch: phase.workspace.identity.branch,
     });
-    if (
-      remoteHead.state !== "present" ||
-      remoteHead.headOid !== phase.publication.headOid
-    )
-      throw new Error("Planning remote head changed");
     const matches = await input.host.findPullRequests({
       targetRepository: phase.publication.targetRepository,
       baseBranch: phase.publication.baseBranch,
@@ -138,10 +139,26 @@ export async function publishPlanningPhase(input: {
     });
     if (matches.length > 1)
       return { kind: "ambiguous", state, pullRequests: matches };
-    let summary: PullRequestSummary;
-    if (matches.length === 1) summary = matches[0]!;
-    else
-      summary = await input.host.createPullRequest({
+    let observed: PullRequestSummary;
+    if (matches.length === 0) {
+      if (
+        remote.state !== "present" ||
+        remote.headOid !== phase.publication.headOid
+      )
+        return {
+          state,
+          ...planningHeadObservationBlocked({
+            phase,
+            failure:
+              remote.state === "missing"
+                ? "remote-missing"
+                : "head-disagreement",
+            ...(remote.state === "present"
+              ? { remoteHeadOid: remote.headOid }
+              : {}),
+          }),
+        };
+      observed = await input.host.createPullRequest({
         title: planningPullRequestTitle({
           issueNumber: state.issueNumber,
           issueTitle: state.issueTitle,
@@ -155,60 +172,65 @@ export async function publishPlanningPhase(input: {
         baseBranch: phase.publication.baseBranch,
         headBranch: phase.publication.headBranch,
       });
-    const validated = validatePlanningPullRequestSummary({
-      summary,
+    } else observed = matches[0]!;
+    const found = validatePlanningPullRequestIdentity({
+      summary: observed,
       issueNumber: state.issueNumber,
       phase: phaseKind,
       publication: phase.publication,
     });
-    const readBack = await input.host.getPullRequest(validated.reference);
-    const confirmed = validatePlanningPullRequestSummary({
-      summary: readBack,
+    const confirmed = validatePlanningPullRequestIdentity({
+      summary: await input.host.getPullRequest(found.reference),
       issueNumber: state.issueNumber,
       phase: phaseKind,
       publication: phase.publication,
-      expectedReference: validated.reference,
+      expectedReference: found.reference,
     });
-    phase = {
-      ...phase,
-      status: "pull-request-open",
-      pullRequest: { reference: confirmed.reference, url: confirmed.url },
-    };
-    state = await replace({
+    const adoption = await adoptPlanningPullRequestHead({
       state,
       phaseIndex: input.phaseIndex,
-      phase,
+      validated: confirmed,
       lock: input.lock,
       stateStore: input.stateStore,
+      workspaces: input.workspaces,
       now,
     });
+    if (adoption.kind === "head-adoption-blocked") return adoption;
+    state = adoption.state;
+    phase = adoption.phase;
   }
   if (phase.status !== "pull-request-open")
     throw new Error("Planning phase publication state is invalid");
   let pullRequest = await input.host.getPullRequest(
     phase.pullRequest.reference,
   );
-  validatePlanningPullRequestSummary({
+  let validated = validatePlanningPullRequestIdentity({
     summary: pullRequest,
     issueNumber: state.issueNumber,
     phase: phaseKind,
     publication: phase.publication,
     expectedReference: phase.pullRequest.reference,
   });
+  const adoption = await adoptPlanningPullRequestHead({
+    state,
+    phaseIndex: input.phaseIndex,
+    validated,
+    lock: input.lock,
+    stateStore: input.stateStore,
+    workspaces: input.workspaces,
+    now,
+  });
+  if (adoption.kind === "head-adoption-blocked") return adoption;
+  state = adoption.state;
+  phase = adoption.phase;
   const cleanup = await finishPlanningPhaseCleanup({
     phase,
     workspaces: input.workspaces,
-    remoteHead: async (published) => {
-      const head = await input.git.inspectRemoteHead({
+    remoteHead: (published) =>
+      input.git.inspectRemoteHead({
         remote: published.base.remote,
         branch: published.workspace.identity.branch,
-      });
-      if (
-        head.state !== "present" ||
-        head.headOid !== published.publication.headOid
-      )
-        throw new Error("Planning remote head changed");
-    },
+      }),
     checkpoint: async (next) => {
       state = await replace({
         state,
@@ -220,6 +242,22 @@ export async function publishPlanningPhase(input: {
       });
     },
   });
+  if (cleanup.kind === "remote-head-changed")
+    return {
+      state,
+      ...planningHeadObservationBlocked({
+        phase: cleanup.phase,
+        failure:
+          cleanup.remoteHead.state === "missing"
+            ? "remote-missing"
+            : "head-moved",
+        hostHeadOid: validated.summary.headSha,
+        ...(cleanup.remoteHead.state === "present"
+          ? { remoteHeadOid: cleanup.remoteHead.headOid }
+          : {}),
+        pullRequestUrl: phase.pullRequest.url,
+      }),
+    };
   if (cleanup.kind === "cleanup-pending")
     return {
       kind: "cleanup-pending",
@@ -231,12 +269,26 @@ export async function publishPlanningPhase(input: {
     };
   phase = cleanup.phase;
   pullRequest = await input.host.getPullRequest(phase.pullRequest.reference);
-  validatePlanningPullRequestSummary({
+  validated = validatePlanningPullRequestIdentity({
     summary: pullRequest,
     issueNumber: state.issueNumber,
     phase: phaseKind,
     publication: phase.publication,
     expectedReference: phase.pullRequest.reference,
   });
-  return { kind: "published", state, pullRequest };
+  const finalAdoption = await adoptPlanningPullRequestHead({
+    state,
+    phaseIndex: input.phaseIndex,
+    validated,
+    lock: input.lock,
+    stateStore: input.stateStore,
+    workspaces: input.workspaces,
+    now,
+  });
+  if (finalAdoption.kind === "head-adoption-blocked") return finalAdoption;
+  return {
+    kind: "published",
+    state: finalAdoption.state,
+    pullRequest: validated.summary,
+  };
 }
