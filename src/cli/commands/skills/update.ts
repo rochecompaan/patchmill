@@ -96,6 +96,11 @@ const VERSION_NOTICES: SkillPackUpdateNotice[] = [
     message:
       "Fresh Run-once review gates now use planning pull requests whose verified merge advances the Issue run. Legacy set-spec, set-plan, and --plan-only controls remain available but are deprecated.",
   },
+  {
+    version: "2026.09.2",
+    message:
+      "Patchmill's recommended skill pack now includes simple-english. The patchmill-planning wrapper requires it as a sibling skill and applies its plain-language rules when writing specs and plans.",
+  },
 ];
 
 async function readInstalledMetadata(
@@ -145,6 +150,13 @@ function isSkillPackSource(source: unknown): boolean {
   );
 }
 
+function isOptionalSkillPackSourceList(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every(isSkillPackSource))
+  );
+}
+
 function assertPatchmillManagedProjectLocal(
   metadata: unknown,
 ): asserts metadata is SkillPackMetadataFile {
@@ -155,6 +167,7 @@ function assertPatchmillManagedProjectLocal(
     metadata.pack.name !== PATCHMILL_RECOMMENDED_SKILL_PACK.name ||
     !isNonEmptyString(metadata.pack.version) ||
     !isSkillPackSource(metadata.pack.source) ||
+    !isOptionalSkillPackSourceList(metadata.pack.additionalSources) ||
     metadata.skillDir !== DEFAULT_PROJECT_SKILL_DIR ||
     metadata.metadataFile !== SKILL_PACK_METADATA_FILE ||
     !Array.isArray(metadata.files) ||
@@ -368,6 +381,8 @@ export async function updateProjectSkills(
     metadata.pack.version === newMetadata.pack.version &&
     JSON.stringify(metadata.pack.source) ===
       JSON.stringify(newMetadata.pack.source) &&
+    JSON.stringify(metadata.pack.additionalSources ?? null) ===
+      JSON.stringify(newMetadata.pack.additionalSources ?? null) &&
     sameFiles(metadata.files, newMetadata.files)
   ) {
     return { status: "up-to-date", version: newMetadata.pack.version };
