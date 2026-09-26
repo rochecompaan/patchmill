@@ -9,6 +9,7 @@ import {
   type PlanningRemoteBaseSnapshot,
   type PlanningHeadAdoptionInput,
   type PlanningHeadAdoptionResult,
+  type PlanningWorkspaceBranchRemovalAuthorization,
   type PlanningWorkspaceCleanupPending,
   type PlanningWorkspaceIdentity,
   type PlanningWorkspaceLifecycle,
@@ -164,7 +165,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
       state: "worktree-removed";
       pushedHeadOid: string;
     }>;
-    skipRemoteHeadCheck?: true;
+    authorization: PlanningWorkspaceBranchRemovalAuthorization;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>> {
     return this.cleanup.removeBranch(input);
   }

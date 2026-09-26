@@ -65,6 +65,10 @@ export type PlanningHeadAdoptionInput = Readonly<{
   artifactPaths: readonly string[];
 }>;
 
+export type PlanningWorkspaceBranchRemovalAuthorization =
+  | Readonly<{ kind: "publication" }>
+  | Readonly<{ kind: "merged-terminal" }>;
+
 export type PlanningWorkspaceRemovalOutcome =
   | Readonly<{
       kind: "removed";
@@ -222,7 +226,6 @@ export interface PlanningWorkspaceLifecycle {
       state: "worktree-removed";
       pushedHeadOid: string;
     }>;
-    /** Terminal merged cleanup has already proved target-base evidence. */
-    skipRemoteHeadCheck?: true;
+    authorization: PlanningWorkspaceBranchRemovalAuthorization;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>>;
 }

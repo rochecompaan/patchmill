@@ -11,11 +11,16 @@ import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts
 import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
+  BranchPushedPlanningPhase,
   PlanningArtifactEvidence,
   PlanningPhaseStateV1,
   PlanningStateV1,
+  PullRequestOpenPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
-import { validatePlanningPullRequestIdentity } from "../../../workflow/planning-pull-request-validation.ts";
+import {
+  validatePlanningPullRequestIdentity,
+  type ValidatedPlanningPullRequest,
+} from "../../../workflow/planning-pull-request-validation.ts";
 import {
   verifyPlanningMergedArtifacts,
   type PlanningMergedArtifactProof,
@@ -72,7 +77,7 @@ async function replace(
   });
 }
 
-export async function reconcilePlanningPhase(input: {
+type PlanningPhaseReconcilerInput = Readonly<{
   state: PlanningStateV1;
   phaseIndex: number;
   lock: PlanningIssueLock;
@@ -85,12 +90,204 @@ export async function reconcilePlanningPhase(input: {
   >;
   workspaces: PlanningWorkspaceLifecycle;
   now?: () => Date;
-}): Promise<
-  Readonly<{ state: PlanningStateV1; outcome: PlanningPhaseReconciliation }>
-> {
-  const now = input.now ?? (() => new Date());
+}>;
+
+type ReconciliablePlanningPhase =
+  | BranchPushedPlanningPhase
+  | PullRequestOpenPlanningPhase;
+type PlanningReconciliationResult = Readonly<{
+  state: PlanningStateV1;
+  outcome: PlanningPhaseReconciliation;
+}>;
+
+async function reconcileOpenPlanningPullRequest(input: {
+  reconciler: PlanningPhaseReconcilerInput;
+  state: PlanningStateV1;
+  phase: ReconciliablePlanningPhase;
+  validated: ValidatedPlanningPullRequest;
+  now: () => Date;
+}): Promise<PlanningReconciliationResult> {
+  const { reconciler, validated, now } = input;
+  const adoption = await adoptPlanningPullRequestHead({
+    state: input.state,
+    phaseIndex: reconciler.phaseIndex,
+    validated,
+    lock: reconciler.lock,
+    stateStore: reconciler.stateStore,
+    workspaces: reconciler.workspaces,
+    now,
+  });
+  if (adoption.kind === "head-adoption-blocked")
+    return { state: input.state, outcome: adoption };
+  let state = adoption.state;
+  const cleanup = await finishPlanningPhaseCleanup({
+    phase: adoption.phase,
+    workspaces: reconciler.workspaces,
+    authorization: {
+      kind: "publication",
+      remoteHead: (published) =>
+        reconciler.git.inspectRemoteHead({
+          remote: published.base.remote,
+          branch: published.workspace.identity.branch,
+        }),
+    },
+    checkpoint: async (next) => {
+      state = await replace(
+        state,
+        reconciler.phaseIndex,
+        next,
+        reconciler.lock,
+        reconciler.stateStore,
+        now,
+      );
+    },
+  });
+  if (cleanup.kind === "remote-head-changed")
+    return {
+      state,
+      outcome: planningHeadObservationBlocked({
+        phase: cleanup.phase,
+        failure:
+          cleanup.remoteHead.state === "missing"
+            ? "remote-missing"
+            : "head-moved",
+        hostHeadOid: validated.summary.headSha,
+        ...(cleanup.remoteHead.state === "present"
+          ? { remoteHeadOid: cleanup.remoteHead.headOid }
+          : {}),
+        pullRequestUrl: validated.url,
+      }),
+    };
+  if (cleanup.kind === "cleanup-pending")
+    return {
+      state,
+      outcome: {
+        kind: "cleanup-pending",
+        prUrl: validated.url,
+        reason: cleanup.reason,
+        ignoredPaths: cleanup.ignoredPaths,
+      },
+    };
+  return {
+    state,
+    outcome: { kind: "review-pending", pullRequest: validated.summary },
+  };
+}
+
+async function reconcileMergedPlanningPullRequest(input: {
+  reconciler: PlanningPhaseReconcilerInput;
+  state: PlanningStateV1;
+  phase: ReconciliablePlanningPhase;
+  validated: ValidatedPlanningPullRequest;
+  now: () => Date;
+}): Promise<PlanningReconciliationResult> {
+  const { reconciler, validated, now } = input;
+  const summary = validated.summary;
+  if (summary.status !== "merged")
+    throw new RangeError("Planning pull request is not merged");
+  const snapshot = await reconciler.remoteBase.fetch({
+    issueNumber: input.state.issueNumber,
+    remote: input.phase.base.remote,
+    baseBranch: input.phase.base.baseBranch,
+  });
+  const evidence = await verifyPlanningMergedArtifacts({
+    mergeOid: summary.mergeCommit,
+    artifacts: input.phase.artifacts,
+    base: snapshot,
+    git: reconciler.git,
+  });
+  if (evidence.kind === "blocked")
+    return {
+      state: input.state,
+      outcome: {
+        kind: "merge-recovery-blocked",
+        pullRequest: summary,
+        recordedHeadOid: input.phase.publication.headOid,
+        baseBranch: input.phase.base.baseBranch,
+        baseOid: snapshot.baseOid,
+        evidence,
+      },
+    };
   let state = input.state;
-  let phase = state.phases[input.phaseIndex];
+  let phase: PullRequestOpenPlanningPhase;
+  if (input.phase.status === "branch-pushed") {
+    phase = {
+      ...input.phase,
+      status: "pull-request-open",
+      pullRequest: { reference: validated.reference, url: validated.url },
+    };
+    state = await replace(
+      state,
+      reconciler.phaseIndex,
+      phase,
+      reconciler.lock,
+      reconciler.stateStore,
+      now,
+    );
+  } else phase = input.phase;
+  const cleanup = await finishPlanningPhaseCleanup({
+    phase,
+    workspaces: reconciler.workspaces,
+    authorization: { kind: "merged-terminal" },
+    checkpoint: async (next) => {
+      state = await replace(
+        state,
+        reconciler.phaseIndex,
+        next,
+        reconciler.lock,
+        reconciler.stateStore,
+        now,
+      );
+    },
+  });
+  if (cleanup.kind === "cleanup-pending")
+    return {
+      state,
+      outcome: {
+        kind: "cleanup-pending",
+        prUrl: validated.url,
+        reason: cleanup.reason,
+        ignoredPaths: cleanup.ignoredPaths,
+      },
+    };
+  const completed = {
+    ...cleanup.phase,
+    status: "complete" as const,
+    artifacts: cleanup.phase.artifacts.map((artifact) => ({
+      ...artifact,
+      source: "remote-base" as const,
+      commitOid: snapshot.baseOid,
+    })),
+    completion: {
+      kind: "merged-pull-request" as const,
+      mergeOid: summary.mergeCommit,
+      mergedBaseOid: snapshot.baseOid,
+    },
+  } as PlanningPhaseStateV1;
+  state = await replace(
+    state,
+    reconciler.phaseIndex,
+    completed,
+    reconciler.lock,
+    reconciler.stateStore,
+    now,
+  );
+  return {
+    state,
+    outcome: {
+      kind: "merged",
+      pullRequest: summary,
+      baseOid: snapshot.baseOid,
+    },
+  };
+}
+
+export async function reconcilePlanningPhase(
+  input: PlanningPhaseReconcilerInput,
+): Promise<PlanningReconciliationResult> {
+  const now = input.now ?? (() => new Date());
+  const state = input.state;
+  const phase = state.phases[input.phaseIndex];
   if (phase === undefined)
     throw new RangeError("Planning phase index is invalid");
   if (phase.kind === "implementation")
@@ -184,169 +381,21 @@ export async function reconcilePlanningPhase(input: {
         state,
         outcome: { kind: "closed-unmerged", pullRequest: validated.summary },
       };
-    case "open": {
-      const adoption = await adoptPlanningPullRequestHead({
+    case "open":
+      return reconcileOpenPlanningPullRequest({
+        reconciler: input,
         state,
-        phaseIndex: input.phaseIndex,
+        phase,
         validated,
-        lock: input.lock,
-        stateStore: input.stateStore,
-        workspaces: input.workspaces,
         now,
       });
-      if (adoption.kind === "head-adoption-blocked")
-        return { state, outcome: adoption };
-      state = adoption.state;
-      phase = adoption.phase;
-      const cleanup = await finishPlanningPhaseCleanup({
-        phase,
-        workspaces: input.workspaces,
-        authorization: {
-          kind: "publication",
-          remoteHead: (published) =>
-            input.git.inspectRemoteHead({
-              remote: published.base.remote,
-              branch: published.workspace.identity.branch,
-            }),
-        },
-        checkpoint: async (next) => {
-          state = await replace(
-            state,
-            input.phaseIndex,
-            next,
-            input.lock,
-            input.stateStore,
-            now,
-          );
-        },
-      });
-      if (cleanup.kind === "remote-head-changed")
-        return {
-          state,
-          outcome: planningHeadObservationBlocked({
-            phase: cleanup.phase,
-            failure:
-              cleanup.remoteHead.state === "missing"
-                ? "remote-missing"
-                : "head-moved",
-            hostHeadOid: validated.summary.headSha,
-            ...(cleanup.remoteHead.state === "present"
-              ? { remoteHeadOid: cleanup.remoteHead.headOid }
-              : {}),
-            pullRequestUrl: validated.url,
-          }),
-        };
-      if (cleanup.kind === "cleanup-pending")
-        return {
-          state,
-          outcome: {
-            kind: "cleanup-pending",
-            prUrl: validated.url,
-            reason: cleanup.reason,
-            ignoredPaths: cleanup.ignoredPaths,
-          },
-        };
-      return {
+    case "merged":
+      return reconcileMergedPlanningPullRequest({
+        reconciler: input,
         state,
-        outcome: { kind: "review-pending", pullRequest: validated.summary },
-      };
-    }
-    case "merged": {
-      const snapshot = await input.remoteBase.fetch({
-        issueNumber: state.issueNumber,
-        remote: phase.base.remote,
-        baseBranch: phase.base.baseBranch,
-      });
-      const evidence = await verifyPlanningMergedArtifacts({
-        mergeOid: validated.summary.mergeCommit,
-        artifacts: phase.artifacts,
-        base: snapshot,
-        git: input.git,
-      });
-      if (evidence.kind === "blocked")
-        return {
-          state,
-          outcome: {
-            kind: "merge-recovery-blocked",
-            pullRequest: validated.summary,
-            recordedHeadOid: phase.publication.headOid,
-            baseBranch: phase.base.baseBranch,
-            baseOid: snapshot.baseOid,
-            evidence,
-          },
-        };
-      if (phase.status === "branch-pushed") {
-        const next = {
-          ...phase,
-          status: "pull-request-open" as const,
-          pullRequest: { reference: validated.reference, url: validated.url },
-        };
-        state = await replace(
-          state,
-          input.phaseIndex,
-          next,
-          input.lock,
-          input.stateStore,
-          now,
-        );
-        phase = next;
-      }
-      const cleanup = await finishPlanningPhaseCleanup({
         phase,
-        workspaces: input.workspaces,
-        authorization: { kind: "merged-terminal" },
-        checkpoint: async (next) => {
-          state = await replace(
-            state,
-            input.phaseIndex,
-            next,
-            input.lock,
-            input.stateStore,
-            now,
-          );
-        },
-      });
-      if (cleanup.kind === "cleanup-pending")
-        return {
-          state,
-          outcome: {
-            kind: "cleanup-pending",
-            prUrl: validated.url,
-            reason: cleanup.reason,
-            ignoredPaths: cleanup.ignoredPaths,
-          },
-        };
-      phase = cleanup.phase;
-      const completed = {
-        ...phase,
-        status: "complete" as const,
-        artifacts: phase.artifacts.map((artifact) => ({
-          ...artifact,
-          source: "remote-base" as const,
-          commitOid: snapshot.baseOid,
-        })),
-        completion: {
-          kind: "merged-pull-request" as const,
-          mergeOid: validated.summary.mergeCommit,
-          mergedBaseOid: snapshot.baseOid,
-        },
-      } as PlanningPhaseStateV1;
-      state = await replace(
-        state,
-        input.phaseIndex,
-        completed,
-        input.lock,
-        input.stateStore,
+        validated,
         now,
-      );
-      return {
-        state,
-        outcome: {
-          kind: "merged",
-          pullRequest: validated.summary,
-          baseOid: snapshot.baseOid,
-        },
-      };
-    }
+      });
   }
 }
