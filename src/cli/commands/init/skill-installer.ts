@@ -40,6 +40,7 @@ const require = createRequire(import.meta.url);
 export type SourceRoots = {
   patchmillSkillsDir: string;
   superpowersSkillsDir: string;
+  simpleEnglishSkillsDir: string;
 };
 
 export type ProjectSkillInstallResult = {
@@ -82,6 +83,9 @@ const defaultDependencies: SkillInstallerDependencies = {
 
 export function defaultSkillSourceRoots(): SourceRoots {
   const superpowersRoot = dirname(require.resolve("superpowers/package.json"));
+  const simpleEnglishRoot = dirname(
+    require.resolve("simple-english/package.json"),
+  );
   const bundledTriageSkill = bundledSkillByKey("triage");
   if (!bundledTriageSkill) {
     throw new Error("Bundled Patchmill skill registry is missing triage skill");
@@ -89,6 +93,7 @@ export function defaultSkillSourceRoots(): SourceRoots {
   return {
     patchmillSkillsDir: resolve(bundledSkillDir(bundledTriageSkill), ".."),
     superpowersSkillsDir: join(superpowersRoot, "skills"),
+    simpleEnglishSkillsDir: join(simpleEnglishRoot, "skills"),
   };
 }
 
@@ -108,9 +113,13 @@ export function sourceRootFor(
   skill: SkillPackSkill,
   roots: SourceRoots,
 ): string {
-  return skill.source === "patchmill"
-    ? roots.patchmillSkillsDir
-    : roots.superpowersSkillsDir;
+  if (skill.source === "patchmill") {
+    return roots.patchmillSkillsDir;
+  }
+  if (skill.source === "simple-english") {
+    return roots.simpleEnglishSkillsDir;
+  }
+  return roots.superpowersSkillsDir;
 }
 
 export async function assertSkillFile(
@@ -393,6 +402,10 @@ export async function validateExistingSkillDirectory(
     {
       name: "writing-plans",
       skillPath: projectSkillPath("writing-plans", skillDir),
+    },
+    {
+      name: "simple-english",
+      skillPath: projectSkillPath("simple-english", skillDir),
     },
     {
       name: SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
