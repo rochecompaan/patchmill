@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
-import { verifyPlanningMergeRecoveryEvidence } from "./planning-merge-recovery.ts";
+import {
+  verifyPlanningMergeRecoveryEvidence,
+  verifyPlanningMergedArtifacts,
+} from "./planning-merge-recovery.ts";
 
 const rewrittenBaseOid = "a".repeat(40);
 const specArtifact = {
@@ -27,6 +30,102 @@ function snapshot(candidates: {
     artifactCandidates: candidates,
   };
 }
+
+test("proves saved artifacts at merge and fetched-base in order", async () => {
+  const mergeOid = "c".repeat(40);
+  const calls: unknown[] = [];
+  const result = await verifyPlanningMergedArtifacts({
+    mergeOid,
+    artifacts: [specArtifact, planArtifact],
+    base: snapshot({ spec: [specArtifact.path], plan: [planArtifact.path] }),
+    git: {
+      async assertAncestor({ ancestorOid, descendantOid }) {
+        calls.push(["ancestor", ancestorOid, descendantOid]);
+      },
+      async assertRegularFiles({ commitOid, paths }) {
+        calls.push(["regular", commitOid, ...paths]);
+      },
+    },
+  });
+  assert.deepEqual(calls, [
+    ["ancestor", mergeOid, rewrittenBaseOid],
+    ["regular", mergeOid, specArtifact.path, planArtifact.path],
+    ["regular", rewrittenBaseOid, specArtifact.path, planArtifact.path],
+  ]);
+  assert.deepEqual(result, {
+    kind: "verified",
+    evidenceSource: "merge-and-base",
+  });
+});
+
+test("recovers only typed merged proof insufficiency and preserves hard errors", async () => {
+  const mergeOid = "c".repeat(40);
+  for (const [source, failAt, error] of [
+    [
+      "merge-ancestry",
+      "ancestor",
+      new PlanningPublicationGitError("ancestry", "not-ancestor"),
+    ],
+    [
+      "merge-commit-tree",
+      "merge",
+      new PlanningPublicationGitError("tree", "non-regular-file"),
+    ],
+    [
+      "fetched-base-tree",
+      "base",
+      new PlanningPublicationGitError("tree", "non-regular-file"),
+    ],
+  ] as const) {
+    let recoveryCalls = 0;
+    let failed = false;
+    const result = await verifyPlanningMergedArtifacts({
+      mergeOid,
+      artifacts: [specArtifact],
+      base: snapshot({ spec: [specArtifact.path], plan: [] }),
+      git: {
+        async assertAncestor() {
+          if (failAt === "ancestor") throw error;
+        },
+        async assertRegularFiles({ commitOid }) {
+          if (
+            !failed &&
+            ((failAt === "merge" && commitOid === mergeOid) ||
+              (failAt === "base" && commitOid === rewrittenBaseOid))
+          ) {
+            failed = true;
+            throw error;
+          }
+          if (commitOid === rewrittenBaseOid) recoveryCalls += 1;
+        },
+      },
+    });
+    assert.deepEqual(
+      result,
+      { kind: "verified", evidenceSource: "current-base" },
+      source,
+    );
+    assert.equal(recoveryCalls, 1, source);
+  }
+  const hard = new PlanningPublicationGitError("tree", "command-failed");
+  let regularCalls = 0;
+  await assert.rejects(
+    verifyPlanningMergedArtifacts({
+      mergeOid,
+      artifacts: [specArtifact],
+      base: snapshot({ spec: [specArtifact.path], plan: [] }),
+      git: {
+        async assertAncestor() {},
+        async assertRegularFiles() {
+          regularCalls += 1;
+          throw hard;
+        },
+      },
+    }),
+    (received) => received === hard,
+  );
+  assert.equal(regularCalls, 1);
+});
 
 test("blocks missing, ambiguous, and renamed current-base candidates", async () => {
   for (const [name, candidates, failure] of [

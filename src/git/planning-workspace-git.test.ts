@@ -317,6 +317,7 @@ test("branch cleanup preserves an absent worktree branch when its local head cha
       runId: workspace.runId,
       phase: workspace.phase,
       workspace,
+      authorization: { kind: "publication" },
     }),
     /head-oid-mismatch/,
   );
@@ -326,7 +327,7 @@ test("branch cleanup preserves an absent worktree branch when its local head cha
   );
 });
 
-test("branch cleanup requires exact remote proof and expected-old CAS", async () => {
+test("branch cleanup requires publication remote proof and expected-old CAS", async () => {
   const runId = "123e4567-e89b-42d3-a456-426614174000";
   const workspace: PlanningWorkspaceOwnership<{
     state: "worktree-removed";
@@ -370,7 +371,12 @@ test("branch cleanup requires exact remote proof and expected-old CAS", async ()
       worktreeRoot: "/repo/.worktrees",
     });
     await assert.rejects(
-      adapter.removeBranch({ runId, phase: "spec", workspace }),
+      adapter.removeBranch({
+        runId,
+        phase: "spec",
+        workspace,
+        authorization: { kind: "publication" },
+      }),
       /remote-head-mismatch/,
     );
     assert.equal(
@@ -399,7 +405,12 @@ test("branch cleanup requires exact remote proof and expected-old CAS", async ()
     worktreeRoot: "/repo/.worktrees",
   });
   await assert.rejects(
-    adapter.removeBranch({ runId, phase: "spec", workspace }),
+    adapter.removeBranch({
+      runId,
+      phase: "spec",
+      workspace,
+      authorization: { kind: "publication" },
+    }),
     /branch-deletion/,
   );
   assert.deepEqual(
@@ -408,6 +419,60 @@ test("branch cleanup requires exact remote proof and expected-old CAS", async ()
   );
   assert.equal(
     calls.some((args) => args.includes("-D")),
+    false,
+  );
+});
+
+test("terminal branch cleanup requires merged authorization instead of a boolean bypass", async () => {
+  const calls: string[][] = [];
+  let branchPresent = true;
+  const workspace: PlanningWorkspaceOwnership<{
+    state: "worktree-removed";
+    pushedHeadOid: string;
+  }> = {
+    runId: "123e4567-e89b-42d3-a456-426614174000",
+    phase: "spec",
+    identity,
+    remote: "origin",
+    baseBranch: "main",
+    baseOid: oid,
+    headOid: oid,
+    cleanup: { state: "worktree-removed", pushedHeadOid: oid },
+  };
+  const adapter = new PlanningWorkspaceGit({
+    runner: {
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "worktree") return { code: 0, stdout: "", stderr: "" };
+        if (args[0] === "show-ref")
+          return { code: branchPresent ? 0 : 1, stdout: "", stderr: "" };
+        if (args[0] === "rev-parse")
+          return { code: 0, stdout: `${oid}\n`, stderr: "" };
+        if (args[0] === "update-ref") {
+          branchPresent = false;
+          return { code: 0, stdout: "", stderr: "" };
+        }
+        throw new Error(`unexpected command ${args.join(" ")}`);
+      },
+    },
+    repoRoot: "/repo",
+    worktreeRoot: "/repo/.worktrees",
+  });
+
+  const result = await adapter.removeBranch({
+    runId: workspace.runId,
+    phase: workspace.phase,
+    workspace,
+    authorization: { kind: "merged-terminal" },
+  });
+
+  assert.equal(result.state, "missing");
+  assert.deepEqual(
+    calls.find((args) => args[0] === "update-ref"),
+    ["update-ref", "-d", "refs/heads/topic", oid],
+  );
+  assert.equal(
+    calls.some((args) => args[0] === "ls-remote"),
     false,
   );
 });
@@ -550,6 +615,7 @@ test(
             runId: pushed.runId,
             phase: "spec",
             workspace: pushed,
+            authorization: { kind: "publication" },
           })
         ).state,
         "missing",
@@ -560,6 +626,7 @@ test(
             runId: pushed.runId,
             phase: "spec",
             workspace: pushed,
+            authorization: { kind: "publication" },
           })
         ).state,
         "missing",

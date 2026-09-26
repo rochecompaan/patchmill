@@ -21,6 +21,44 @@ export type PlanningMergeRecoveryResult =
       observedCandidates: readonly string[];
     }>;
 
+export type PlanningMergeProofInsufficiency =
+  | Readonly<{ source: "merge-ancestry"; failure: "not-ancestor" }>
+  | Readonly<{
+      source: "merge-commit-tree" | "fetched-base-tree";
+      failure: "non-regular-file";
+    }>;
+
+export type PlanningMergedArtifactProof =
+  | Readonly<{
+      kind: "verified";
+      evidenceSource: "merge-and-base" | "current-base";
+    }>
+  | Readonly<{
+      kind: "blocked";
+      trigger: PlanningMergeProofInsufficiency;
+      recovery: Extract<PlanningMergeRecoveryResult, { kind: "blocked" }>;
+    }>;
+
+function typedInsufficiency(
+  error: unknown,
+  source: PlanningMergeProofInsufficiency["source"],
+): PlanningMergeProofInsufficiency | undefined {
+  if (!(error instanceof PlanningPublicationGitError)) return undefined;
+  if (
+    source === "merge-ancestry" &&
+    error.operation === "ancestry" &&
+    error.reason === "not-ancestor"
+  )
+    return { source, failure: "not-ancestor" };
+  if (
+    source !== "merge-ancestry" &&
+    error.operation === "tree" &&
+    error.reason === "non-regular-file"
+  )
+    return { source, failure: "non-regular-file" };
+  return undefined;
+}
+
 export async function verifyPlanningMergeRecoveryEvidence(input: {
   artifacts: readonly PlanningArtifactEvidence[];
   base: PlanningRemoteBaseSnapshot;
@@ -69,4 +107,55 @@ export async function verifyPlanningMergeRecoveryEvidence(input: {
     throw error;
   }
   return { kind: "verified" };
+}
+
+export async function verifyPlanningMergedArtifacts(input: {
+  mergeOid: string;
+  artifacts: readonly PlanningArtifactEvidence[];
+  base: PlanningRemoteBaseSnapshot;
+  git: Pick<
+    PlanningPublicationOperations,
+    "assertAncestor" | "assertRegularFiles"
+  >;
+}): Promise<PlanningMergedArtifactProof> {
+  const paths = input.artifacts.map((artifact) => artifact.path);
+  const checks: readonly [
+    PlanningMergeProofInsufficiency["source"],
+    () => Promise<void>,
+  ][] = [
+    [
+      "merge-ancestry",
+      () =>
+        input.git.assertAncestor({
+          ancestorOid: input.mergeOid,
+          descendantOid: input.base.baseOid,
+        }),
+    ],
+    [
+      "merge-commit-tree",
+      () => input.git.assertRegularFiles({ commitOid: input.mergeOid, paths }),
+    ],
+    [
+      "fetched-base-tree",
+      () =>
+        input.git.assertRegularFiles({ commitOid: input.base.baseOid, paths }),
+    ],
+  ];
+  for (const [source, check] of checks) {
+    try {
+      await check();
+    } catch (error) {
+      const trigger = typedInsufficiency(error, source);
+      if (trigger === undefined) throw error;
+      const recovery = await verifyPlanningMergeRecoveryEvidence({
+        artifacts: input.artifacts,
+        base: input.base,
+        git: input.git,
+      });
+      return recovery.kind === "verified"
+        ? { kind: "verified", evidenceSource: "current-base" }
+        : { kind: "blocked", trigger, recovery };
+    }
+  }
+  return { kind: "verified", evidenceSource: "merge-and-base" };
 }
