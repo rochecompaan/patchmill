@@ -214,11 +214,14 @@ export async function reconcilePlanningPhase(input: {
   const cleanup = await finishPlanningPhaseCleanup({
     phase,
     workspaces: input.workspaces,
-    remoteHead: (published) =>
-      input.git.inspectRemoteHead({
-        remote: published.base.remote,
-        branch: published.workspace.identity.branch,
-      }),
+    authorization: {
+      kind: "publication",
+      remoteHead: (published) =>
+        input.git.inspectRemoteHead({
+          remote: published.base.remote,
+          branch: published.workspace.identity.branch,
+        }),
+    },
     checkpoint: async (next) => {
       state = await replace(
         state,
