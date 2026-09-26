@@ -222,5 +222,7 @@ export interface PlanningWorkspaceLifecycle {
       state: "worktree-removed";
       pushedHeadOid: string;
     }>;
+    /** Terminal merged cleanup has already proved target-base evidence. */
+    skipRemoteHeadCheck?: true;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>>;
 }

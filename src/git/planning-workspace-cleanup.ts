@@ -76,6 +76,7 @@ export class PlanningWorkspaceCleanupGit {
       state: "worktree-removed";
       pushedHeadOid: string;
     }>;
+    skipRemoteHeadCheck?: true;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>> {
     const { workspace } = input;
     this.assertOwner(input.runId, input.phase, workspace);
@@ -91,7 +92,8 @@ export class PlanningWorkspaceCleanupGit {
       this.repository.path(workspace.identity),
       workspace,
     );
-    await this.assertRemoteHead(workspace);
+    if (input.skipRemoteHeadCheck !== true)
+      await this.assertRemoteHead(workspace);
     if (current.state === "branch-only") {
       this.assertHead(current.headOid, workspace);
       await this.repository.run(

@@ -108,6 +108,9 @@ export async function finishPlanningPhaseCleanup(input: {
         state: "worktree-removed";
         pushedHeadOid: string;
       }>,
+      ...(input.authorization.kind === "merged-terminal"
+        ? { skipRemoteHeadCheck: true as const }
+        : {}),
     });
     phase = {
       ...phase,

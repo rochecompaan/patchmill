@@ -164,6 +164,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
       state: "worktree-removed";
       pushedHeadOid: string;
     }>;
+    skipRemoteHeadCheck?: true;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>> {
     return this.cleanup.removeBranch(input);
   }
