@@ -220,10 +220,18 @@ export type RunOnceDiagnosticContextByReason = {
   "planning-merge-recovery-blocked": Base & {
     phase: "spec" | "plan";
     pullRequestUrl: string;
+    pullRequestReference: string;
+    recordedHeadOid: string;
+    hostHeadOid: string;
     baseBranch: string;
     forgeMergeOid: string;
     fetchedBaseOid: string;
-    evidenceFailure:
+    evidenceSource:
+      | "merge-ancestry"
+      | "merge-commit-tree"
+      | "fetched-base-tree";
+    evidenceFailure: "not-ancestor" | "non-regular-file";
+    recoveryFailure:
       | "missing"
       | "ambiguous"
       | "path-mismatch"
