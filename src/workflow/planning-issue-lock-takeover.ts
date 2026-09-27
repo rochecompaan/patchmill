@@ -1,4 +1,4 @@
-import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 export type PlanningLockObservation<Record> = Readonly<{
@@ -84,6 +84,24 @@ async function removePrivateDirectory(path: string): Promise<void> {
   await rm(path, { recursive: true, force: true });
 }
 
+/** Avoid rename's replacement semantics for forensic archive destinations. */
+async function renameWithoutReplacing(
+  source: string,
+  destination: string,
+): Promise<void> {
+  try {
+    await lstat(destination);
+    const error = new Error(
+      "Planning issue lock archive already exists",
+    ) as NodeJS.ErrnoException;
+    error.code = "EEXIST";
+    throw error;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await rename(source, destination);
+}
+
 async function acquireTransition<Record extends Owner, Lock>(input: {
   location: ReturnType<typeof locations>;
   transitionOwner: Record;
@@ -117,7 +135,7 @@ async function acquireTransition<Record extends Owner, Lock>(input: {
       ownershipId(current.record.ownershipId),
     );
     await mkdir(input.location.transitionArchive, { recursive: true });
-    await rename(input.location.transition, archive);
+    await renameWithoutReplacing(input.location.transition, archive);
   }
 }
 
@@ -178,7 +196,7 @@ export async function takeOverStalePlanningIssueLock<
       ? join(location.issueArchive, ownerId)
       : join(location.issueArchive, `${ownerId}.lock`);
     await mkdir(location.issueArchive, { recursive: true });
-    await rename(input.canonicalPath, archive);
+    await renameWithoutReplacing(input.canonicalPath, archive);
     return {
       lock: await input.adapter.createCanonical(),
       evidence: {

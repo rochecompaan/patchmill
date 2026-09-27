@@ -165,6 +165,43 @@ test("archives a stale transition directory intact before taking over", async ()
   }
 });
 
+test("never overwrites an existing stale-lock archive destination", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
+  const root = join(dir, "planning-pr-v1");
+  const canonicalPath = join(root, "locks", "issue-187.lock");
+  try {
+    await mkdir(join(root, "locks"), { recursive: true });
+    const staleBytes = Buffer.from(`${JSON.stringify(oldOwner)}\n`);
+    await writeFile(canonicalPath, staleBytes, { mode: 0o600 });
+    const archivePath = join(
+      root,
+      "archive",
+      "issue-locks",
+      "issue-187",
+      `${oldOwner.ownershipId}.lock`,
+    );
+    await mkdir(join(root, "archive", "issue-locks", "issue-187"), {
+      recursive: true,
+    });
+    await writeFile(archivePath, "existing evidence");
+    await assert.rejects(
+      takeOverStalePlanningIssueLock({
+        runStateDir: dir,
+        issueNumber: 187,
+        canonicalPath,
+        triggeringObservation: classify(canonicalPath, staleBytes),
+        transitionOwner,
+        adapter: adapter(canonicalPath),
+      }),
+      (error: unknown) => (error as NodeJS.ErrnoException).code === "EEXIST",
+    );
+    assert.equal(await readFile(archivePath, "utf8"), "existing evidence");
+    assert.deepEqual(await readFile(canonicalPath), staleBytes);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("active transition ownership blocks without mutating the canonical owner", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
   const root = join(dir, "planning-pr-v1");
