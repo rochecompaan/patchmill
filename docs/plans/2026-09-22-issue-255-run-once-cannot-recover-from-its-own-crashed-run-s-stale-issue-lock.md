@@ -8,14 +8,20 @@
 planning issue lock whose owner process is provably dead, then continue normal
 post-lock validation without operator filesystem surgery.
 
-**Architecture:** Keep the canonical `issue-N.lock` format, parser, liveness
-classification, ownership assertion, and release API in
-`planning-issue-lock.ts`. Add a focused takeover helper that serializes recovery
-with a crash-recoverable per-Issue transition directory, re-observes the
-canonical lock under that transition owner, archives exact stale bytes without
-clobbering evidence, and creates the replacement through the existing exclusive
-open protocol. Carry structured takeover evidence on the acquired lock so the
-planning pipeline can emit one warning before any post-lock mutation.
+**Architecture:** Change the canonical `issue-N.lock` representation to a
+non-empty ownership directory containing one strict mode-`0600` owner record,
+and keep the record format, parser, liveness classification, ownership
+assertion, and release API semantics in `planning-issue-lock.ts`. Acquisition
+stages a complete private sibling directory and atomically renames it into the
+canonical path; POSIX rename of a non-empty directory onto an existing non-empty
+directory fails, so acquisition is the compare-and-swap boundary and can never
+clobber a live owner. A focused takeover helper serializes recovery with a
+crash-recoverable per-Issue transition directory of the same form, re-observes
+the canonical lock under that transition owner, archives a stale owner by
+atomically renaming the whole canonical directory to a deterministic,
+non-overwriting archive path, and creates the replacement through the same
+staged-directory rename. Carry structured takeover evidence on the acquired lock
+so the planning pipeline can emit one warning before any post-lock mutation.
 
 **Tech Stack:** TypeScript ESM, Node.js `node:fs/promises`, SHA-256 and UUIDs
 from `node:crypto`, `node:test`, the existing Run-once progress/JSONL and
@@ -24,6 +30,15 @@ Prettier, ESLint, TypeScript, and dependency-cruiser; no new dependency.
 
 **Spec:**
 `docs/specs/2026-09-22-issue-255-run-once-cannot-recover-from-its-own-crashed-run-s-stale-issue-lock-design.md`
+
+**Maintainer decision (2026-09-27):** The repository owner authorized revising
+this plan, the spec, and the lock representation to an atomic
+canonical-directory/indirection protocol (issue #255 approval comments). This
+revision supersedes the earlier hard-link/inode-verify/unlink archival sequence:
+Node/POSIX provides no atomic inode-conditional unlink, so a compare-then-unlink
+sequence can delete a replacement owner between the check and the unlink.
+Wherever an older section below still describes a canonical regular file or a
+hard-link/unlink archive, this revision wins.
 
 ## Global Constraints
 
@@ -40,16 +55,30 @@ Prettier, ESLint, TypeScript, and dependency-cruiser; no new dependency.
 - Reclaim a stale transition owner only by atomically moving its whole directory
   to a deterministic, non-overwriting archive derived from the validated Issue
   number and transition ownership ID.
-- Re-read and fingerprint the canonical lock after transition ownership is
-  established. Never remove a lock based on the observation that triggered
+- The canonical lock is a non-empty ownership directory `issue-N.lock/`
+  containing exactly one strict mode-`0600` owner record. Never create or mutate
+  canonical owner bytes in place, and never unlink individual records out of a
+  canonical or transition directory; ownership changes only through
+  whole-directory atomic renames.
+- Re-read and fingerprint the canonical owner record after transition ownership
+  is established. Never remove a lock based on the observation that triggered
   takeover.
+- Reclaim a stale canonical lock only by atomically renaming the whole canonical
+  directory to its deterministic archive path derived from the validated Issue
+  number and observed ownership ID.
+- Treat a legacy regular file at the canonical path (written before this
+  revision) as a valid lock representation: classify it from its bytes, and
+  reclaim it only by atomically renaming the whole file to its deterministic
+  archive path. All Patchmill acquisitions use exclusive creation, so no
+  protocol participant renames over an occupied canonical path.
 - Existing archive destinations are never overwritten. A changed canonical
   owner, archive collision, replacement race, permission failure, or unexpected
   liveness error fails closed while preserving the available source/archive
   evidence.
 - The replacement lock keeps the requested Run ID, receives a fresh ownership
-  ID, is created with mode `0600`, and remains the sole authority used by
-  `PlanningStateStore`, ownership assertions, and release.
+  ID, is a canonical ownership directory whose owner record has mode `0600`, and
+  remains the sole authority used by `PlanningStateStore`, ownership assertions,
+  and release.
 - Planning state, issue labels/comments, Git state, phase workspaces, and host
   state are not mutated until replacement ownership exists and the existing
   post-lock checks pass.
@@ -74,18 +103,19 @@ Prettier, ESLint, TypeScript, and dependency-cruiser; no new dependency.
 
 - Create `src/workflow/planning-issue-lock-takeover.ts` to own transition path
   derivation, complete-directory staging, transition classification/recovery,
-  exact no-clobber stale-file archival, replacement coordination, and transition
-  retirement.
+  atomic whole-directory stale-lock archival, replacement coordination, and
+  transition retirement.
 - Create `src/workflow/planning-issue-lock-takeover.test.ts` for transition
   ownership, delayed-contender, archive-collision, interruption-boundary, and
   filesystem failure behavior.
 
 ### Canonical lock integration
 
-- Modify `src/workflow/planning-issue-lock.ts` to expose takeover evidence on a
-  successfully acquired lock, give diagnostics an explicit lock resource, factor
-  the existing exclusive create path for reuse, and enter guarded takeover only
-  for an authoritative `stale` observation.
+- Modify `src/workflow/planning-issue-lock.ts` to represent the canonical lock
+  as a non-empty ownership directory, expose takeover evidence on a successfully
+  acquired lock, give diagnostics an explicit lock resource, replace the
+  regular-file exclusive open with staged-directory atomic creation, and enter
+  guarded takeover only for an authoritative `stale` observation.
 - Modify `src/workflow/planning-issue-lock.test.ts` for exact-byte replacement,
   classification preservation, concurrent rescuers, replacement races, and
   ownership/release behavior.
@@ -166,17 +196,17 @@ public conflict diagnostics continue omitting ownership IDs from their reduced
 and UUIDs:
 
 ```text
-planning-pr-v1/locks/issue-N.lock
+planning-pr-v1/locks/issue-N.lock/owner.record
 planning-pr-v1/locks/issue-N.takeover/owner.lock
-planning-pr-v1/archive/issue-locks/issue-N/<staleOwnershipId>.lock
+planning-pr-v1/archive/issue-locks/issue-N/<staleOwnershipId>/owner.record
 planning-pr-v1/archive/issue-lock-transitions/issue-N/<transitionOwnershipId>/owner.lock
 ```
 
-Stage a transition under a unique sibling such as
-`.issue-N.takeover.<transitionOwnershipId>.tmp`, and retire a normally released
-transition by renaming the complete canonical directory to a private sibling
-such as `.issue-N.takeover.<transitionOwnershipId>.retired` before removing only
-that private path.
+Stage a canonical lock under a unique sibling such as
+`.issue-N.lock.<ownershipId>.tmp`, stage a transition under a unique sibling
+such as `.issue-N.takeover.<transitionOwnershipId>.tmp`, and retire a normally
+released lock or transition by renaming the complete canonical directory to a
+private sibling before removing only that private path.
 
 Keep the takeover helper independent of the public lock module with a narrow,
 generic adapter rather than a runtime import cycle:
@@ -349,14 +379,12 @@ conditional dependency/Nix command.
   - changed active/unverifiable/malformed bytes: return that new conflict and
     leave bytes unchanged;
   - changed same-host stale owner: archive only the new authoritative bytes;
-  - exact stale owner: preserve its bytes at the ownership-ID archive path
-    before removing the canonical name;
-  - matching pre-existing archive from an interrupted no-clobber archival:
-    accept only byte-for-byte/fingerprint equality and resume;
-  - differing archive collision: reject without replacing either source or
-    archive; and
-  - replacement `EEXIST`: classify/propagate the replacement conflict and never
-    remove it.
+  - exact stale owner: move its whole canonical directory to the ownership-ID
+    archive path with one atomic rename;
+  - pre-existing archive from an interrupted or completed takeover: the archive
+    destination already exists and is never replaced, so fail closed; and
+  - replacement rename failure because a canonical directory already exists:
+    classify/propagate the replacement conflict and never remove it.
 
   Construct the durable filesystem states for interruption before archival,
   after evidence creation but before source removal, after source removal but
@@ -375,7 +403,7 @@ conditional dependency/Nix command.
   Expected before implementation: FAIL because the takeover helper and exported
   protocol do not exist.
 
-- [ ] **Step 6: Implement staged transition ownership and no-clobber archives**
+- [ ] **Step 6: Implement staged transition ownership and atomic archives**
 
   Validate every Issue number and ownership UUID before path derivation. Create
   archive parents without following unchecked lock text. Stage a mode-`0700`
@@ -389,14 +417,16 @@ conditional dependency/Nix command.
   structure, and every unexpected filesystem result as a fail-closed outcome;
   never recursively remove an unowned canonical transition.
 
-  For canonical stale bytes, use a no-clobber same-filesystem archival sequence
-  (exclusive hard-link/equivalent exact-byte preservation before source unlink)
-  that can recognize and resume its own identical interrupted archive. Re-read
-  the canonical path under transition ownership before acting, and invoke
-  `createCanonical()` only after the authoritative stale name is retired or the
-  path is absent. Retire the transition in `finally` for ordinary returns and
-  errors; the boundary-state tests model process death, where `finally` cannot
-  run.
+  For canonical stale owners, archive by atomically renaming the whole canonical
+  ownership directory to its deterministic, non-overwriting archive path; the
+  atomic move preserves the exact owner record bytes and cannot strand a
+  half-copied archive. Do not use a hard-link/inode-verify/unlink sequence:
+  Node/POSIX provides no atomic inode-conditional unlink, so compare-then-unlink
+  can delete a replacement owner. Re-read the canonical path under transition
+  ownership before acting, and invoke `createCanonical()` only after the
+  authoritative stale directory is retired or the path is absent. Retire the
+  transition in `finally` for ordinary returns and errors; the boundary-state
+  tests model process death, where `finally` cannot run.
 
 - [ ] **Step 7: Run the focused transition protocol tests**
 
@@ -440,14 +470,18 @@ conditional dependency/Nix command.
 
 - [ ] **Step 1: Write the failing exact stale replacement regression**
 
-  Create a mode-`0600` canonical lock with deterministic exact bytes, old Run
-  ID/ownership ID, current hostname, and a PID classified `dead`. Acquire with a
-  different requested Run ID and deterministic new ownership ID. Assert:
+  Create a canonical ownership directory whose mode-`0600` owner record has
+  deterministic exact bytes, old Run ID/ownership ID, current hostname, and a
+  PID classified `dead`. Acquire with a different requested Run ID and
+  deterministic new ownership ID. Assert:
 
   ```ts
   assert.equal(lock.record.runId, requestedRunId);
   assert.notEqual(lock.record.ownershipId, staleOwner.ownershipId);
-  assert.equal((await stat(lock.path)).mode & 0o777, 0o600);
+  assert.equal(
+    (await stat(join(lock.path, "owner.record"))).mode & 0o777,
+    0o600,
+  );
   assert.deepEqual(await readFile(lock.takeover!.archivePath), staleBytes);
   assert.deepEqual(lock.takeover, {
     owner: staleOwner,
@@ -517,15 +551,19 @@ conditional dependency/Nix command.
 
 - [ ] **Step 6: Integrate guarded takeover without weakening the fast path**
 
-  Refactor the current `open(path, "wx", 0o600)` body into one private creation
-  function that preserves write, `sync()`, close, and cleanup behavior. Keep it
-  as the first acquisition attempt. Extend the internal observation used by
-  `diagnostic()` so takeover receives exact bytes and the full parsed record
-  while public diagnostics continue exposing the reduced owner.
+  Replace the current `open(path, "wx", 0o600)` fast path with staged
+  ownership-directory creation: stage a complete private sibling directory
+  containing the flushed mode-`0600` owner record, then atomically rename it
+  into the canonical path. POSIX rename of a non-empty directory onto an
+  existing non-empty directory fails, so the rename is the exclusive-creation
+  boundary. Extend the internal observation used by `diagnostic()` so takeover
+  receives exact bytes and the full parsed record while public diagnostics
+  continue exposing the reduced owner.
 
-  On `EEXIST`, classify once. Throw the existing conflict immediately for
-  `active`, `unverifiable`, and `malformed`. Only for `stale`, create a fresh
-  transition owner record and call Task 1's helper with concrete
+  When the canonical rename fails because a canonical owner already exists,
+  classify once. Throw the existing conflict immediately for `active`,
+  `unverifiable`, and `malformed`. Only for `stale`, create a fresh transition
+  owner record and call Task 1's helper with concrete
   observe/serialize/create/conflict callbacks. Attach returned evidence to the
   replacement lock. Preserve the requested Run ID and replacement ownership ID;
   use a distinct transition ownership ID. Add optional deterministic IDs only to
@@ -871,13 +909,13 @@ conditional dependency/Nix command.
 ## Self-Review Notes
 
 - **Spec coverage:** Task 1 owns transition serialization, stale-transition
-  recovery, authoritative re-observation, no-clobber evidence, races, and every
-  interruption boundary. Task 2 limits entry to proven same-host death,
-  preserves existing lock/state authority, and proves one replacement under
-  concurrency. Task 3 covers both pipeline acquisition sites, console/JSONL
-  evidence, provider-level continuation, resource-aware defensive diagnostics,
-  and operator docs. Task 4 runs every validation command named by the spec and
-  enforces the repository's conditional Nix requirement.
+  recovery, authoritative re-observation, atomic non-overwriting evidence,
+  races, and every interruption boundary. Task 2 limits entry to proven
+  same-host death, preserves existing lock/state authority, and proves one
+  replacement under concurrency. Task 3 covers both pipeline acquisition sites,
+  console/JSONL evidence, provider-level continuation, resource-aware defensive
+  diagnostics, and operator docs. Task 4 runs every validation command named by
+  the spec and enforces the repository's conditional Nix requirement.
 - **Module boundaries:** Filesystem transition mechanics live in one focused
   workflow helper; canonical record/liveness/ownership behavior remains in the
   existing lock facade; orchestration emits progress at the acquisition
