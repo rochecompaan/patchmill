@@ -178,10 +178,15 @@ const contexts = {
     status: "blocked",
     phase: "spec",
     pullRequestUrl: "https://example.test/pulls/260",
+    pullRequestReference: "#260",
+    recordedHeadOid: "a".repeat(40),
+    hostHeadOid: "b".repeat(40),
     baseBranch: "main",
-    forgeMergeOid: "a".repeat(40),
-    fetchedBaseOid: "b".repeat(40),
-    evidenceFailure: "missing" as const,
+    forgeMergeOid: "c".repeat(40),
+    fetchedBaseOid: "d".repeat(40),
+    evidenceSource: "merge-ancestry" as const,
+    evidenceFailure: "not-ancestor" as const,
+    recoveryFailure: "missing" as const,
     artifactKinds: ["spec"] as const,
     expectedPaths: ["docs/specs/issue-260.md"],
     observedCandidates: ["(none)"],
@@ -587,6 +592,6 @@ test("planning merge recovery blockers require reviewed base evidence", () => {
   );
   assert.match(
     diagnostic.safety.join(" "),
-    /hand-edit planning state.*arbitrarily choose.*stale history/u,
+    /deleted source branch.*hand-edit planning state.*stale history.*ambiguous candidate/u,
   );
 });

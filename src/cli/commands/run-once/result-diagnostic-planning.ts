@@ -153,16 +153,16 @@ export const PLANNING_DIAGNOSTICS = {
           ),
   },
   "planning-merge-recovery-blocked": definition({
-    summary: "Planning merge recovery needs reviewed base evidence",
+    summary: "Planning merge evidence needs reviewed base repair",
     explanation:
-      "The forge merge commit is no longer an ancestor of the fetched base, and the fetched base does not provide exact regular-file evidence for every saved planning artifact.",
+      "The immutable merge commit and freshly fetched target base could not prove every saved regular-file planning artifact, and exact current-base recovery was insufficient.",
     action:
-      "Restore exactly one regular artifact at each reported saved path through normal reviewed changes on the configured base branch, then rerun the Issue.",
+      "Restore exactly one regular artifact at each reported saved path through normal reviewed changes on the configured target base, then rerun the Issue.",
     command: "run-once",
     safety:
-      "Do not hand-edit planning state, arbitrarily choose a candidate, or restore stale history merely to satisfy the old merge SHA.",
+      "Do not recreate the deleted source branch, hand-edit planning state, force-restore stale history, or choose an ambiguous candidate.",
     retry: after(
-      "Retry after reviewed base changes restore the reported artifact evidence.",
+      "Retry after reviewed target-base changes restore the reported artifact evidence.",
     ),
   }),
   "planning-workspace-conflict": definition({

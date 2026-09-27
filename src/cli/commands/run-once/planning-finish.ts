@@ -190,6 +190,7 @@ export async function finishPlanningImplementation(
           pushedHeadOid: phase.workspace.cleanup.pushedHeadOid,
         },
       },
+      authorization: { kind: "publication" },
     });
     phase = {
       ...phase,

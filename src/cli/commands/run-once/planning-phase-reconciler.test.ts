@@ -157,6 +157,25 @@ function planningState(
   };
 }
 
+function mergedServerReference() {
+  return {
+    ...summary("merged"),
+    headSha: "e".repeat(40),
+    headBranch: "refs/pull/188/head",
+  };
+}
+
+function preventMergedSourceBranchEffects(
+  testFixture: ReturnType<typeof fixture>,
+) {
+  testFixture.input.git.inspectRemoteHead = async () => {
+    throw new Error("source branch must not be inspected");
+  };
+  testFixture.input.workspaces.adoptPlanningHead = async () => {
+    throw new Error("merged head must not be adopted");
+  };
+}
+
 function fixture(
   input: {
     state?: ReturnType<typeof planningState>;
@@ -309,24 +328,22 @@ test("re-adopts a revised open planning pull request before cleanup and review w
   ]);
 });
 
-test("classifies open and closed pull requests only after both cleanup checkpoints", async () => {
-  for (const [status, outcome] of [
-    ["open", "review-pending"],
-    ["closed-unmerged", "closed-unmerged"],
-  ] as const) {
-    const testFixture = fixture({ pullRequest: summary(status) });
-    const result = await reconcilePlanningPhase(testFixture.input);
-    assert.equal(result.outcome.kind, outcome);
-    assert.deepEqual(testFixture.events, [
-      "get",
-      "remote-head",
-      "remove-worktree",
-      "replace:pull-request-open:worktree-removed",
-      "remove-branch",
-      "replace:pull-request-open:removed",
-    ]);
-    assert.equal(result.state.phases[0]!.workspace!.cleanup.state, "removed");
-  }
+test("cleans up open pull requests but blocks closed-unmerged before local effects", async () => {
+  const open = fixture({ pullRequest: summary("open") });
+  const openResult = await reconcilePlanningPhase(open.input);
+  assert.equal(openResult.outcome.kind, "review-pending");
+  assert.deepEqual(open.events, [
+    "get",
+    "remote-head",
+    "remove-worktree",
+    "replace:pull-request-open:worktree-removed",
+    "remove-branch",
+    "replace:pull-request-open:removed",
+  ]);
+  const closed = fixture({ pullRequest: summary("closed-unmerged") });
+  const closedResult = await reconcilePlanningPhase(closed.input);
+  assert.equal(closedResult.outcome.kind, "closed-unmerged");
+  assert.deepEqual(closed.events, ["get"]);
 });
 
 test("returns cleanup pending before a second planning pull-request classification", async () => {
@@ -460,15 +477,14 @@ test("proves and persists merged base artifacts without consulting workspace blo
   assert.equal(result.outcome.kind, "merged");
   assert.deepEqual(testFixture.events, [
     "get",
-    "remote-head",
-    "remove-worktree",
-    "replace:pull-request-open:worktree-removed",
-    "remove-branch",
-    "replace:pull-request-open:removed",
     "fetch:saved-origin:saved-main",
     `ancestor:${mergeOid}:${mergedBaseOid}`,
     `regular:${mergeOid}:docs/specs/example.md`,
     `regular:${mergedBaseOid}:docs/specs/example.md`,
+    "remove-worktree",
+    "replace:pull-request-open:worktree-removed",
+    "remove-branch",
+    "replace:pull-request-open:removed",
     "replace:complete:complete",
   ]);
   const phase = result.state.phases[0]!;
@@ -490,6 +506,173 @@ test("proves and persists merged base artifacts without consulting workspace blo
     testFixture.events.some((event) => event.includes(headOid)),
     false,
   );
+});
+
+test("proves a revised merged head before terminal cleanup without source-head adoption", async () => {
+  const merged = mergedServerReference();
+  const testFixture = fixture({ pullRequest: merged });
+  preventMergedSourceBranchEffects(testFixture);
+  const result = await reconcilePlanningPhase(testFixture.input);
+  assert.equal(result.outcome.kind, "merged");
+  assert.deepEqual(testFixture.events, [
+    "get",
+    "fetch:saved-origin:saved-main",
+    `ancestor:${mergeOid}:${mergedBaseOid}`,
+    `regular:${mergeOid}:docs/specs/example.md`,
+    `regular:${mergedBaseOid}:docs/specs/example.md`,
+    "remove-worktree",
+    "replace:pull-request-open:worktree-removed",
+    "remove-branch",
+    "replace:pull-request-open:removed",
+    "replace:complete:complete",
+  ]);
+  const phase = result.state.phases[0]!;
+  assert.equal(phase.status, "complete");
+  assert.equal(phase.publication!.headOid, headOid);
+  assert.equal(phase.completion.mergeOid, mergeOid);
+  assert.equal(phase.artifacts[0]!.commitOid, mergedBaseOid);
+});
+
+test("reconciles a discovered merged pull request only after proof and leaves blocked discovery durable state unchanged", async () => {
+  const merged = mergedServerReference();
+  const successful = fixture({
+    state: planningState("branch-pushed"),
+    pullRequest: merged,
+  });
+  preventMergedSourceBranchEffects(successful);
+
+  const result = await reconcilePlanningPhase(successful.input);
+  assert.equal(result.outcome.kind, "merged");
+  assert.deepEqual(successful.events, [
+    "find",
+    "get",
+    "fetch:saved-origin:saved-main",
+    `ancestor:${mergeOid}:${mergedBaseOid}`,
+    `regular:${mergeOid}:docs/specs/example.md`,
+    `regular:${mergedBaseOid}:docs/specs/example.md`,
+    "replace:pull-request-open:ready",
+    "remove-worktree",
+    "replace:pull-request-open:worktree-removed",
+    "remove-branch",
+    "replace:pull-request-open:removed",
+    "replace:complete:complete",
+  ]);
+  assert.equal(result.state.phases[0]!.status, "complete");
+
+  const blocked = fixture({
+    state: planningState("branch-pushed"),
+    pullRequest: merged,
+    ancestorError: new PlanningPublicationGitError("ancestry", "not-ancestor"),
+    artifactCandidates: {
+      spec: ["docs/specs/example.md", "docs/specs/example-copy.md"],
+      plan: [],
+    },
+  });
+  preventMergedSourceBranchEffects(blocked);
+  const before = JSON.stringify(blocked.state);
+
+  const blockedResult = await reconcilePlanningPhase(blocked.input);
+  assert.equal(blockedResult.outcome.kind, "merge-recovery-blocked");
+  assert.equal(JSON.stringify(blockedResult.state), before);
+  assert.deepEqual(blocked.events, [
+    "find",
+    "get",
+    "fetch:saved-origin:saved-main",
+    `ancestor:${mergeOid}:${mergedBaseOid}`,
+  ]);
+});
+
+test("repeats merged terminal proof on cleanup and completion retries without source effects", async () => {
+  const merged = mergedServerReference();
+  const proofEvents = [
+    "get",
+    "fetch:saved-origin:saved-main",
+    `ancestor:${mergeOid}:${mergedBaseOid}`,
+    `regular:${mergeOid}:docs/specs/example.md`,
+    `regular:${mergedBaseOid}:docs/specs/example.md`,
+  ];
+  const attempts = [
+    {
+      name: "cleanup-pending",
+      first: { state: planningState("open-ready"), cleanupPending: true },
+      retryState: planningState("open-ready"),
+      firstOutcome: "cleanup-pending",
+      retryTail: [
+        "remove-worktree",
+        "replace:pull-request-open:worktree-removed",
+        "remove-branch",
+        "replace:pull-request-open:removed",
+        "replace:complete:complete",
+      ],
+    },
+    {
+      name: "worktree checkpoint failure",
+      first: { state: planningState("open-ready"), replaceErrorAt: 1 },
+      retryState: planningState("open-ready"),
+      firstOutcome: undefined,
+      retryTail: [
+        "remove-worktree",
+        "replace:pull-request-open:worktree-removed",
+        "remove-branch",
+        "replace:pull-request-open:removed",
+        "replace:complete:complete",
+      ],
+    },
+    {
+      name: "branch checkpoint failure",
+      first: {
+        state: planningState("open-worktree-removed"),
+        replaceErrorAt: 1,
+      },
+      retryState: planningState("open-worktree-removed"),
+      firstOutcome: undefined,
+      retryTail: [
+        "remove-branch",
+        "replace:pull-request-open:removed",
+        "replace:complete:complete",
+      ],
+    },
+    {
+      name: "completion replacement failure",
+      first: { state: planningState("open-removed"), replaceErrorAt: 1 },
+      retryState: planningState("open-removed"),
+      firstOutcome: undefined,
+      retryTail: ["replace:complete:complete"],
+    },
+  ] as const;
+
+  for (const attempt of attempts) {
+    const first = fixture({ ...attempt.first, pullRequest: merged });
+    preventMergedSourceBranchEffects(first);
+    let retryState = attempt.retryState;
+    if (attempt.firstOutcome === undefined)
+      await assert.rejects(
+        () => reconcilePlanningPhase(first.input),
+        /store failed/,
+        attempt.name,
+      );
+    else {
+      const firstResult = await reconcilePlanningPhase(first.input);
+      assert.equal(
+        firstResult.outcome.kind,
+        attempt.firstOutcome,
+        attempt.name,
+      );
+      retryState = firstResult.state;
+    }
+
+    const retry = fixture({ state: retryState, pullRequest: merged });
+    preventMergedSourceBranchEffects(retry);
+    const retryResult = await reconcilePlanningPhase(retry.input);
+    assert.equal(retryResult.outcome.kind, "merged", attempt.name);
+    assert.deepEqual(
+      retry.events,
+      [...proofEvents, ...attempt.retryTail],
+      attempt.name,
+    );
+    assert.equal(retry.events.includes("remote-head"), false, attempt.name);
+    assert.equal(retry.events.includes("adopt-head"), false, attempt.name);
+  }
 });
 
 test("keeps the published phase incomplete when merge proof fails", async () => {
@@ -519,9 +702,16 @@ test("reanchors a rewritten merged pull request from exact fetched-base evidence
     pullRequest: summary("merged"),
     baseOid: mergedBaseOid,
   });
-  assert.deepEqual(testFixture.events.slice(-3), [
-    `ancestor:${mergeOid}:${mergedBaseOid}`,
-    `regular:${mergedBaseOid}:docs/specs/example.md`,
+  assert.ok(
+    testFixture.events.indexOf(
+      `regular:${mergedBaseOid}:docs/specs/example.md`,
+    ) < testFixture.events.indexOf("remove-worktree"),
+  );
+  assert.deepEqual(testFixture.events.slice(-5), [
+    "remove-worktree",
+    "replace:pull-request-open:worktree-removed",
+    "remove-branch",
+    "replace:pull-request-open:removed",
     "replace:complete:complete",
   ]);
   const phase = result.state.phases[0]!;
@@ -546,17 +736,22 @@ test("blocks merge recovery without exact evidence and preserves non-ancestry fa
   assert.deepEqual(result.outcome, {
     kind: "merge-recovery-blocked",
     pullRequest: summary("merged"),
+    recordedHeadOid: headOid,
     baseBranch: "saved-main",
     baseOid: mergedBaseOid,
     evidence: {
       kind: "blocked",
-      failure: "ambiguous",
-      artifactKinds: ["spec"],
-      expectedPaths: ["docs/specs/example.md"],
-      observedCandidates: [
-        "docs/specs/example.md",
-        "docs/specs/example-copy.md",
-      ],
+      trigger: { source: "merge-ancestry", failure: "not-ancestor" },
+      recovery: {
+        kind: "blocked",
+        failure: "ambiguous",
+        artifactKinds: ["spec"],
+        expectedPaths: ["docs/specs/example.md"],
+        observedCandidates: [
+          "docs/specs/example.md",
+          "docs/specs/example-copy.md",
+        ],
+      },
     },
   });
   assert.equal(testFixture.events.includes("replace:complete:complete"), false);

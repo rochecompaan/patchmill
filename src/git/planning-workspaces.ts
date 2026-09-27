@@ -65,6 +65,10 @@ export type PlanningHeadAdoptionInput = Readonly<{
   artifactPaths: readonly string[];
 }>;
 
+export type PlanningWorkspaceBranchRemovalAuthorization =
+  | Readonly<{ kind: "publication" }>
+  | Readonly<{ kind: "merged-terminal" }>;
+
 export type PlanningWorkspaceRemovalOutcome =
   | Readonly<{
       kind: "removed";
@@ -222,5 +226,6 @@ export interface PlanningWorkspaceLifecycle {
       state: "worktree-removed";
       pushedHeadOid: string;
     }>;
+    authorization: PlanningWorkspaceBranchRemovalAuthorization;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>>;
 }

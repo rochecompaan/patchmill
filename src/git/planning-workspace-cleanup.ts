@@ -2,6 +2,7 @@ import type { PlanningPhaseKind } from "../workflow/planning-pull-request-marker
 import { PlanningWorkspaceRepositoryGit } from "./planning-workspace-inspection.ts";
 import {
   PlanningWorkspaceConflictError,
+  type PlanningWorkspaceBranchRemovalAuthorization,
   type PlanningWorkspaceCleanupPending,
   type PlanningWorkspaceOwnership,
   type PlanningWorkspaceRemovalOutcome,
@@ -76,6 +77,7 @@ export class PlanningWorkspaceCleanupGit {
       state: "worktree-removed";
       pushedHeadOid: string;
     }>;
+    authorization: PlanningWorkspaceBranchRemovalAuthorization;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>> {
     const { workspace } = input;
     this.assertOwner(input.runId, input.phase, workspace);
@@ -91,7 +93,8 @@ export class PlanningWorkspaceCleanupGit {
       this.repository.path(workspace.identity),
       workspace,
     );
-    await this.assertRemoteHead(workspace);
+    if (input.authorization.kind === "publication")
+      await this.assertRemoteHead(workspace);
     if (current.state === "branch-only") {
       this.assertHead(current.headOid, workspace);
       await this.repository.run(

@@ -104,16 +104,21 @@ async function reconcile(
             status: "blocked",
             phase,
             pullRequestUrl: result.outcome.pullRequest.url,
+            pullRequestReference: `#${result.outcome.pullRequest.number}`,
+            recordedHeadOid: result.outcome.recordedHeadOid,
+            hostHeadOid: result.outcome.pullRequest.headSha,
             baseBranch: result.outcome.baseBranch,
             forgeMergeOid: result.outcome.pullRequest.mergeCommit,
             fetchedBaseOid: result.outcome.baseOid,
-            evidenceFailure: result.outcome.evidence.failure,
-            artifactKinds: result.outcome.evidence.artifactKinds,
-            expectedPaths: result.outcome.evidence.expectedPaths,
+            evidenceSource: result.outcome.evidence.trigger.source,
+            evidenceFailure: result.outcome.evidence.trigger.failure,
+            recoveryFailure: result.outcome.evidence.recovery.failure,
+            artifactKinds: result.outcome.evidence.recovery.artifactKinds,
+            expectedPaths: result.outcome.evidence.recovery.expectedPaths,
             observedCandidates:
-              result.outcome.evidence.observedCandidates.length === 0
+              result.outcome.evidence.recovery.observedCandidates.length === 0
                 ? ["(none)"]
-                : result.outcome.evidence.observedCandidates,
+                : result.outcome.evidence.recovery.observedCandidates,
           }),
         ),
       };

@@ -63,9 +63,12 @@ test("retries an uncheckpointed worktree removal from ready and durably removes 
   const run = async () =>
     finishPlanningPhaseCleanup({
       phase: durable,
-      remoteHead: async () => {
-        events.push("remote-head");
-        return { state: "present", headOid: oid };
+      authorization: {
+        kind: "publication",
+        remoteHead: async () => {
+          events.push("remote-head");
+          return { state: "present", headOid: oid };
+        },
       },
       workspaces: {
         async removeWorktree() {
@@ -144,9 +147,12 @@ test("retries an uncheckpointed branch removal from worktree-removed without for
   const run = async () =>
     finishPlanningPhaseCleanup({
       phase: durable,
-      remoteHead: async () => {
-        events.push("unexpected-remote-head");
-        return { state: "present", headOid: oid };
+      authorization: {
+        kind: "publication",
+        remoteHead: async () => {
+          events.push("unexpected-remote-head");
+          return { state: "present", headOid: oid };
+        },
       },
       workspaces: {
         async removeWorktree() {
@@ -192,6 +198,41 @@ test("retries an uncheckpointed branch removal from worktree-removed without for
   assert.ok(commands.every((command) => !command.includes("--force")));
 });
 
+test("terminal cleanup never observes the deleted publication branch", async () => {
+  const events: string[] = [];
+  let durable = readyPhase();
+  const result = await finishPlanningPhaseCleanup({
+    phase: durable,
+    authorization: { kind: "merged-terminal" },
+    workspaces: {
+      async removeWorktree() {
+        events.push("remove-worktree");
+        return {
+          kind: "removed" as const,
+          snapshot: {
+            state: "missing" as const,
+            identity: durable.workspace.identity,
+          },
+        };
+      },
+      async removeBranch() {
+        events.push("remove-branch");
+      },
+    } as never,
+    checkpoint: async (next) => {
+      durable = next;
+      events.push(`checkpoint:${next.workspace.cleanup.state}`);
+    },
+  });
+  assert.equal(result.kind, "cleaned");
+  assert.deepEqual(events, [
+    "remove-worktree",
+    "checkpoint:worktree-removed",
+    "remove-branch",
+    "checkpoint:removed",
+  ]);
+});
+
 test("stops cleanup before local mutation when the remote head changed", async () => {
   for (const cleanup of [
     { state: "ready" as const },
@@ -212,9 +253,12 @@ test("stops cleanup before local mutation when the remote head changed", async (
       } as PullRequestOpenPlanningPhase;
       const outcome = await finishPlanningPhaseCleanup({
         phase,
-        remoteHead: async () => {
-          events.push("remote-head");
-          return remoteHead;
+        authorization: {
+          kind: "publication",
+          remoteHead: async () => {
+            events.push("remote-head");
+            return remoteHead;
+          },
         },
         workspaces: {
           async removeWorktree() {
@@ -245,9 +289,12 @@ test("invalid worktree removal outcome cannot checkpoint or delete a planning br
   await assert.rejects(
     finishPlanningPhaseCleanup({
       phase: readyPhase(),
-      remoteHead: async () => {
-        events.push("remote-head");
-        return { state: "present", headOid: oid };
+      authorization: {
+        kind: "publication",
+        remoteHead: async () => {
+          events.push("remote-head");
+          return { state: "present", headOid: oid };
+        },
       },
       workspaces: {
         async removeWorktree() {
@@ -274,9 +321,12 @@ test("preserves ready cleanup state when an existing workspace is dirty or has a
       () =>
         finishPlanningPhaseCleanup({
           phase: durable,
-          remoteHead: async () => {
-            events.push("remote-head");
-            return { state: "present", headOid: oid };
+          authorization: {
+            kind: "publication",
+            remoteHead: async () => {
+              events.push("remote-head");
+              return { state: "present", headOid: oid };
+            },
           },
           workspaces: {
             async removeWorktree() {
@@ -298,7 +348,10 @@ test("rejects malformed remote head observations before cleanup mutation", async
   await assert.rejects(
     finishPlanningPhaseCleanup({
       phase: readyPhase(),
-      remoteHead: async () => undefined as never,
+      authorization: {
+        kind: "publication",
+        remoteHead: async () => undefined as never,
+      },
       workspaces: {
         async removeWorktree() {
           events.push("remove-worktree");

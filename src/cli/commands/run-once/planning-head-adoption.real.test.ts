@@ -225,3 +225,182 @@ test("real Git re-adopts a revised planning PR while open and completes it from 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("real Git reconciles a revised planning PR merged before adoption after source deletion", async () => {
+  const root = await mkdtemp(join(tmpdir(), "planning-adoption-run-once-"));
+  const remote = join(root, "remote.git");
+  const seed = join(root, "seed");
+  const repo = join(root, "repo");
+  const human = join(root, "human");
+  const worktreeRoot = join(root, "worktrees");
+  try {
+    execFileSync("git", ["init", "--bare", "--initial-branch=main", remote]);
+    execFileSync("git", ["init", "-b", "main", seed]);
+    git(seed, "config", "user.name", "Patchmill Test");
+    git(seed, "config", "user.email", "patchmill@example.test");
+    await mkdir(join(seed, "docs", "specs"), { recursive: true });
+    await writeFile(join(seed, "docs", "specs", "example.md"), "original\n");
+    git(seed, "add", ".");
+    git(seed, "commit", "-m", "base");
+    git(seed, "remote", "add", "origin", remote);
+    git(seed, "push", "-u", "origin", "main");
+    execFileSync("git", ["clone", remote, repo]);
+    execFileSync("git", ["clone", remote, human]);
+    git(human, "config", "user.name", "Human Test");
+    git(human, "config", "user.email", "human@example.test");
+    await mkdir(worktreeRoot);
+    const runner = commandRunner();
+    const workspaces = new PlanningWorkspaceGit({
+      runner,
+      repoRoot: repo,
+      worktreeRoot,
+    });
+    const baseOid = git(repo, "rev-parse", "HEAD");
+    const prepared = await workspaces.prepare({
+      runId,
+      phase: "spec",
+      identity,
+      base: {
+        remote: "origin",
+        baseBranch: "main",
+        baseOid,
+        artifactCandidates: { spec: [], plan: [] },
+      },
+    });
+    const worktreePath = join(worktreeRoot, "spec");
+    git(worktreePath, "push", "-u", "origin", identity.branch);
+    git(human, "fetch", "origin", identity.branch);
+    git(human, "checkout", "-b", identity.branch, `origin/${identity.branch}`);
+    await writeFile(join(human, "docs", "specs", "example.md"), "revised\n");
+    git(human, "add", "docs/specs/example.md");
+    git(human, "commit", "-m", "revise planning artifact");
+    git(human, "push", "origin", identity.branch);
+    const revisedOid = git(human, "rev-parse", "HEAD");
+    const reference = { targetRepository: repository, number: 188 };
+    let host = {
+      number: 188,
+      url: "https://github.com/acme/patchmill/pull/188",
+      targetRepository: repository,
+      headRepository: repository,
+      baseBranch: "main",
+      headBranch: identity.branch,
+      headSha: revisedOid,
+      body: renderPlanningPullRequestMarker({
+        issueNumber: 188,
+        phase: "spec",
+      }),
+      status: "open" as const,
+    };
+    const state = {
+      version: 1 as const,
+      workflowVersion: "planning-pr-v1" as const,
+      runId,
+      issueNumber: 188,
+      issueTitle: "Example",
+      gates: { specRequired: true, planRequired: false },
+      revision: 0,
+      createdAt: "2026-09-22T00:00:00.000Z",
+      updatedAt: "2026-09-22T00:00:00.000Z",
+      phases: [
+        {
+          kind: "spec" as const,
+          status: "pull-request-open" as const,
+          base: prepared.base,
+          workspace: prepared.workspace,
+          artifacts: [
+            {
+              kind: "spec" as const,
+              path: "docs/specs/example.md",
+              source: "workspace" as const,
+              commitOid: prepared.workspace.headOid,
+            },
+          ],
+          publication: {
+            targetRepository: repository,
+            headRepository: repository,
+            baseBranch: "main",
+            headBranch: identity.branch,
+            headOid: prepared.workspace.headOid,
+          },
+          pullRequest: { reference, url: host.url },
+        },
+        { kind: "implementation" as const, status: "pending" as const },
+      ],
+    };
+    const publicationGit = new PlanningPublicationGit({
+      runner,
+      repoRoot: repo,
+    });
+    const remoteBase = new PlanningRemoteBaseGit({
+      runner,
+      repoRoot: repo,
+      specsDir: "docs/specs",
+      plansDir: "docs/plans",
+    });
+    const common = {
+      phaseIndex: 0,
+      lock: {} as never,
+      stateStore: {
+        async replace({ next }: { next: typeof state }) {
+          return next;
+        },
+      },
+      host: {
+        async getPullRequest() {
+          return host;
+        },
+        async findPullRequests() {
+          return [host];
+        },
+      } as never,
+      remoteBase,
+      git: publicationGit,
+      workspaces,
+      now: () => new Date("2026-09-22T00:01:00.000Z"),
+    };
+    git(seed, "fetch", "origin", identity.branch);
+    git(
+      seed,
+      "merge",
+      "--no-ff",
+      "-m",
+      "merge revised planning artifact",
+      `origin/${identity.branch}`,
+    );
+    git(seed, "push", "origin", "main");
+    const mergeCommit = git(seed, "rev-parse", "HEAD");
+    git(remote, "update-ref", "refs/pull/188/head", revisedOid);
+    git(remote, "update-ref", "-d", `refs/heads/${identity.branch}`);
+    assert.equal(
+      git(
+        remote,
+        "for-each-ref",
+        "--format=%(refname)",
+        `refs/heads/${identity.branch}`,
+      ),
+      "",
+    );
+    host = {
+      ...host,
+      status: "merged",
+      headBranch: "refs/pull/188/head",
+      mergeCommit,
+    };
+    const merged = await reconcilePlanningPhase({ state, ...common });
+    assert.equal(merged.outcome.kind, "merged");
+    const completed = merged.state.phases[0]!;
+    assert.equal(completed.status, "complete");
+    assert.equal(completed.completion.mergedBaseOid, mergeCommit);
+    assert.equal(completed.publication!.headOid, prepared.workspace.headOid);
+    assert.equal(completed.workspace!.headOid, prepared.workspace.headOid);
+    assert.ok(
+      completed.artifacts.every(
+        (artifact) =>
+          artifact.source === "remote-base" &&
+          artifact.commitOid === mergeCommit,
+      ),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
