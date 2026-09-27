@@ -16,7 +16,7 @@
 // repository contract test.
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -57,6 +57,53 @@ async function downloadTarball(url, fetchImpl) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+// Installs an extracted upstream payload as the vendored npm package.
+// Stages the full payload in a sibling temporary directory and swaps it into
+// place only after every copy succeeds, so a failed repack leaves any
+// previously vendored package intact.
+export async function installSimpleEnglishPackage({ rootDir, sourceDir }) {
+  const version = SIMPLE_ENGLISH_TAG.replace(/^v/u, "");
+  const packageJson = {
+    name: SIMPLE_ENGLISH_PACKAGE,
+    version,
+    description: `ASD-STE100 Simplified Technical English writing skill, repacked from ${SIMPLE_ENGLISH_REPOSITORY} ${SIMPLE_ENGLISH_TAG} by scripts/repack-simple-english.mjs`,
+    license: "MIT",
+    repository: {
+      type: "git",
+      url: `https://github.com/${SIMPLE_ENGLISH_REPOSITORY}.git`,
+    },
+    files: ["skills", "README.md", "LICENSE"],
+  };
+
+  const vendorParent = join(rootDir, "vendor");
+  const vendorDir = join(vendorParent, SIMPLE_ENGLISH_PACKAGE);
+  await mkdir(vendorParent, { recursive: true });
+  // Stage inside vendor/ so the final rename stays on one filesystem.
+  const stagingDir = await mkdtemp(
+    join(vendorParent, `.${SIMPLE_ENGLISH_PACKAGE}-staging-`),
+  );
+  let swapped = false;
+  try {
+    for (const entry of ["skills", "README.md", "LICENSE"]) {
+      await cp(join(sourceDir, entry), join(stagingDir, entry), {
+        recursive: true,
+      });
+    }
+    await writeFile(
+      join(stagingDir, "package.json"),
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    );
+    await rm(vendorDir, { recursive: true, force: true });
+    await rename(stagingDir, vendorDir);
+    swapped = true;
+    return vendorDir;
+  } finally {
+    if (!swapped) {
+      await rm(stagingDir, { recursive: true, force: true });
+    }
+  }
+}
+
 export async function repackSimpleEnglish(options = {}) {
   const rootDir = options.rootDir ?? defaultRootDir;
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -75,30 +122,10 @@ export async function repackSimpleEnglish(options = {}) {
     await writeFile(archivePath, tarball);
     await runCommand("tar", ["-xzf", archivePath], workDir);
     const extractedDir = join(workDir, `SimpleEnglish-${version}`);
-    const packageJson = {
-      name: SIMPLE_ENGLISH_PACKAGE,
-      version,
-      description: `ASD-STE100 Simplified Technical English writing skill, repacked from ${SIMPLE_ENGLISH_REPOSITORY} ${SIMPLE_ENGLISH_TAG} by scripts/repack-simple-english.mjs`,
-      license: "MIT",
-      repository: {
-        type: "git",
-        url: `https://github.com/${SIMPLE_ENGLISH_REPOSITORY}.git`,
-      },
-      files: ["skills", "README.md", "LICENSE"],
-    };
-
-    const vendorDir = join(rootDir, "vendor", SIMPLE_ENGLISH_PACKAGE);
-    await rm(vendorDir, { recursive: true, force: true });
-    await mkdir(vendorDir, { recursive: true });
-    for (const entry of ["skills", "README.md", "LICENSE"]) {
-      await cp(join(extractedDir, entry), join(vendorDir, entry), {
-        recursive: true,
-      });
-    }
-    await writeFile(
-      join(vendorDir, "package.json"),
-      `${JSON.stringify(packageJson, null, 2)}\n`,
-    );
+    const vendorDir = await installSimpleEnglishPackage({
+      rootDir,
+      sourceDir: extractedDir,
+    });
 
     console.log(
       `Wrote ${vendorDir}\n` +
@@ -112,7 +139,10 @@ export async function repackSimpleEnglish(options = {}) {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   repackSimpleEnglish().catch((error) => {
     console.error(errorMessage(error));
     process.exitCode = 1;
