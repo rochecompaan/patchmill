@@ -91,6 +91,13 @@ description: Brainstorm.
 # Brainstorming
 `;
 
+const simpleEnglishSkill = `---
+name: simple-english
+description: Write clear technical English.
+---
+# Simple English
+`;
+
 const tddSkill = `---
 name: test-driven-development
 description: TDD.
@@ -130,6 +137,9 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
   const patchmillSource = await tempRoot("patchmill-install-patchmill-");
   const superpowersSource = await tempRoot("patchmill-install-superpowers-");
+  const simpleEnglishSource = await tempRoot(
+    "patchmill-install-simple-english-",
+  );
   await writeSkill(patchmillSource, "patchmill-issue-triage", triageSkill);
   await writeSkill(
     patchmillSource,
@@ -161,6 +171,10 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     "patchmill-planning",
     patchmillPlanningSkill,
   );
+  await writeSkill(simpleEnglishSource, "simple-english", simpleEnglishSkill, {
+    "references/checklist.md": "run the checklist\n",
+    "references/use-cases.md": "adapt the rules\n",
+  });
   await writeSkill(superpowersSource, "brainstorming", brainstormingSkill, {
     "visual-companion.md": "visual companion instructions\n",
     "scripts/server.cjs": "console.log('server');\n",
@@ -182,6 +196,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     sourceRoots: {
       patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
+      simpleEnglishSkillsDir: simpleEnglishSource,
     },
     installedAt: "2026-05-29T00:00:00.000Z",
     packSkills: [
@@ -199,6 +214,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         source: "patchmill",
       },
       { name: "patchmill-planning", source: "patchmill" },
+      { name: "simple-english", source: "simple-english" },
       { name: "brainstorming", source: "superpowers" },
       { name: "writing-plans", source: "superpowers" },
       { name: "test-driven-development", source: "superpowers" },
@@ -214,6 +230,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/patchmill-planning",
+    ".patchmill/skills/simple-english",
     ".patchmill/skills/brainstorming",
     ".patchmill/skills/writing-plans",
     ".patchmill/skills/test-driven-development",
@@ -428,6 +445,18 @@ test("installProjectSkills copies skills and writes metadata", async () => {
         sha256: hashText(patchmillPlanningSkill),
       },
       {
+        path: ".patchmill/skills/simple-english/SKILL.md",
+        sha256: hashText(simpleEnglishSkill),
+      },
+      {
+        path: ".patchmill/skills/simple-english/references/checklist.md",
+        sha256: hashText("run the checklist\n"),
+      },
+      {
+        path: ".patchmill/skills/simple-english/references/use-cases.md",
+        sha256: hashText("adapt the rules\n"),
+      },
+      {
         path: ".patchmill/skills/brainstorming/SKILL.md",
         sha256: hashText(brainstormingSkill),
       },
@@ -513,6 +542,44 @@ test("installProjectSkills installs module-size from the recommended pack", asyn
   );
 });
 
+test("installProjectSkills installs simple-english from the recommended pack", async () => {
+  const repoRoot = await tempRoot("patchmill-install-repo-");
+
+  const result = await installProjectSkills({
+    repoRoot,
+    installedAt: "2026-09-26T00:00:00.000Z",
+  });
+
+  assert.equal(
+    result.installedSkills.includes(".patchmill/skills/simple-english"),
+    true,
+  );
+  for (const relativeFile of [
+    "SKILL.md",
+    "references/checklist.md",
+    "references/use-cases.md",
+  ]) {
+    assert.match(
+      await readFile(
+        join(repoRoot, ".patchmill", "skills", "simple-english", relativeFile),
+        "utf8",
+      ),
+      /\S/u,
+      `${relativeFile} must be installed and non-empty`,
+    );
+  }
+
+  const metadata = JSON.parse(
+    await readFile(result.metadataPath, "utf8"),
+  ) as ReturnType<typeof buildSkillPackMetadata>;
+  assert.equal(
+    metadata.files.some(
+      (file) => file.path === ".patchmill/skills/simple-english/SKILL.md",
+    ),
+    true,
+  );
+});
+
 test("installProjectSkills installs the default Patchmill visual evidence skill", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
 
@@ -586,6 +653,9 @@ test("installProjectSkills makes copied skill pack owner-writable", async () => 
     sourceRoots: {
       patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
+      simpleEnglishSkillsDir: await tempRoot(
+        "patchmill-skills-simple-english-",
+      ),
     },
     packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
   });
@@ -636,6 +706,9 @@ test("installProjectSkills refuses to overwrite existing skill files/directories
       sourceRoots: {
         patchmillSkillsDir: patchmillSource,
         superpowersSkillsDir: superpowersSource,
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
     }),
@@ -672,6 +745,9 @@ test("installProjectSkills preflights all targets before copying any skill", asy
       sourceRoots: {
         patchmillSkillsDir: patchmillSource,
         superpowersSkillsDir: superpowersSource,
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [
         { name: "patchmill-issue-triage", source: "patchmill" },
@@ -703,6 +779,9 @@ test("installProjectSkills preflights later source trees before copying any skil
       sourceRoots: {
         patchmillSkillsDir: patchmillSource,
         superpowersSkillsDir: superpowersSource,
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [
         { name: "patchmill-issue-triage", source: "patchmill" },
@@ -736,6 +815,9 @@ test("installProjectSkills does not publish partial targets when staging fails",
       sourceRoots: {
         patchmillSkillsDir: patchmillSource,
         superpowersSkillsDir: superpowersSource,
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [
         { name: "patchmill-issue-triage", source: "patchmill" },
@@ -782,6 +864,9 @@ test("installProjectSkills can install two skills and publish metadata in one di
     sourceRoots: {
       patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
+      simpleEnglishSkillsDir: await tempRoot(
+        "patchmill-skills-simple-english-",
+      ),
     },
     installedAt: "2026-05-29T00:00:00.000Z",
     packSkills: [
@@ -846,6 +931,9 @@ test("installProjectSkills refuses to overwrite existing skill root", async () =
       sourceRoots: {
         patchmillSkillsDir: patchmillSource,
         superpowersSkillsDir: await tempRoot("patchmill-install-superpowers-"),
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [{ name: "patchmill-issue-triage", source: "patchmill" }],
     }),

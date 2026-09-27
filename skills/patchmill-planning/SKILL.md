@@ -3,7 +3,8 @@ name: patchmill-planning
 description:
   Use for Patchmill run-once spec and plan creation. Wraps sibling Superpowers
   brainstorming and writing-plans skills with Patchmill worktree, artifact path,
-  and test-value policy.
+  and test-value policy, and applies the simple-english writing rules to specs
+  and plans.
 ---
 
 # Patchmill Planning
@@ -20,6 +21,9 @@ with Patchmill-specific rules.
 - For implementation-plan work, read `../writing-plans/SKILL.md` and follow the
   upstream writing-plans workflow except where this wrapper or the Patchmill
   prompt gives a stricter instruction.
+- For writing style, read `../simple-english/SKILL.md` and apply its rules to
+  the prose of the spec and plan documents you write, except where this wrapper
+  or the Patchmill prompt gives a stricter instruction.
 
 Use paths relative to this skill directory. If those sibling skills or their
 supporting files are missing, stop and ask instead of recreating them.
@@ -57,6 +61,13 @@ docs/plans/YYYY-MM-DD-<feature-name>.md
 
 Do not save Patchmill plans under `docs/superpowers/`.
 
+### Writing style
+
+Write spec and plan prose with the sibling simple-english skill in its default
+pragmatic mode. The style rules apply to the artifact's prose: keep code,
+identifiers, commands, file paths, and quoted errors exact. Run the skill's
+self-check on the document before you return it.
+
 ### Unattended Run-once phases
 
 When Patchmill invokes this skill for unattended Run-once work, the prompt names
@@ -69,7 +80,8 @@ In that phase:
 1. Edit and commit only the requested spec or plan artifact in the active phase
    workspace.
 2. Self-review the complete document against the issue, approved source
-   material, project instructions, and Testing Value Gate.
+   material, project instructions, Testing Value Gate, and simple-english
+   writing style.
 3. Return only the terminal JSON contract requested by the prompt.
 
 Run-once owns push, pull request creation, review stops, merge reconciliation,

@@ -239,6 +239,7 @@ test("interactive init add-to-git with path skills commits the provided skill ro
   await writeSkill(repoRoot, "custom-skills", "patchmill-planning");
   await writeSkill(repoRoot, "custom-skills", "brainstorming");
   await writeSkill(repoRoot, "custom-skills", "writing-plans");
+  await writeSkill(repoRoot, "custom-skills", "simple-english");
   await writeSkill(
     repoRoot,
     "custom-skills",

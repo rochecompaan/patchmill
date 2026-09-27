@@ -54,6 +54,13 @@ description: Brainstorm.
 # Brainstorming
 `;
 
+const simpleEnglishSkill = `---
+name: simple-english
+description: Write clear technical English.
+---
+# Simple English
+`;
+
 const implementationSkill = `---
 name: subagent-driven-development
 description: Execute plans.
@@ -106,6 +113,11 @@ async function writeBaseProjectLocalSkills(repoRoot: string): Promise<void> {
     brainstormingSkill,
   );
   await writeSkill(repoRoot, "project-skills/writing-plans", planningSkill);
+  await writeSkill(
+    repoRoot,
+    "project-skills/simple-english",
+    simpleEnglishSkill,
+  );
   await writeSkill(
     repoRoot,
     "project-skills/patchmill-visual-evidence",

@@ -18,7 +18,8 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "npm-shrinkwrap.json",
-    "tsconfig.build.json"
+    "tsconfig.build.json",
+    "vendor"
   ],
   "repository": {
     "type": "git",
@@ -106,6 +107,7 @@
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@earendil-works/pi-tui": "0.84.2",
     "pi-subagents": "0.68.0",
+    "simple-english": "file:vendor/simple-english",
     "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.3.0.tar.gz",
     "typebox": "1.3.7"
   }

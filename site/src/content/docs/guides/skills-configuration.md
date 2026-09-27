@@ -22,7 +22,8 @@ Superpowers skills. Patchmill installs the upstream Superpowers skills as
 siblings, then uses lightweight wrapper entry points to add repository workflow
 rules. The `patchmill-planning` wrapper tells agents to read the sibling
 `brainstorming` and `writing-plans` skills while saving artifacts under
-`docs/specs/` and `docs/plans/` in the issue worktree. Patchmill prompts and
+`docs/specs/` and `docs/plans/` in the issue worktree, and to write spec and
+plan prose with the sibling `simple-english` skill. Patchmill prompts and
 wrappers also apply the Testing Value Gate so agents keep automated tests as the
 default for meaningful behavior and use direct verification for static docs,
 workflow YAML, lockfiles, dependency versions, and similar low-value-test

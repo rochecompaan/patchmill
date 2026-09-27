@@ -36,13 +36,14 @@ export type SkillPackSource = {
 
 export type SkillPackSkill = {
   name: string;
-  source: "patchmill" | "superpowers";
+  source: "patchmill" | "superpowers" | "simple-english";
 };
 
 export type SkillPack = {
   name: "patchmill-recommended";
   version: string;
   source: SkillPackSource;
+  additionalSources: SkillPackSource[];
   skills: SkillPackSkill[];
 };
 
@@ -51,6 +52,8 @@ export type SkillPackMetadataFile = {
     name: string;
     version: string;
     source: SkillPackSource;
+    /** Written since 2026.09.2; absent in metadata installed by older packs. */
+    additionalSources?: SkillPackSource[];
   };
   installedAt: "<generated-by-init>" | string;
   skillDir: string;
@@ -64,7 +67,7 @@ export function requiredSkillFiles(skillName: string): string[] {
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
-  version: "2026.09.1",
+  version: "2026.09.2",
   source: {
     type: "github-release",
     repository: "obra/superpowers",
@@ -72,6 +75,15 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
     tarballUrl:
       "https://github.com/obra/superpowers/archive/refs/tags/v6.3.0.tar.gz",
   },
+  additionalSources: [
+    {
+      type: "github-release",
+      repository: "AminBlg/SimpleEnglish",
+      tag: "v1.2.0",
+      tarballUrl:
+        "https://github.com/AminBlg/SimpleEnglish/archive/refs/tags/v1.2.0.tar.gz",
+    },
+  ],
   skills: [
     { name: bundledTriageSkill.globalName, source: "patchmill" },
     {
@@ -89,6 +101,7 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
     { name: "module-size", source: "patchmill" },
     { name: PATCHMILL_VISUAL_EVIDENCE_SKILL, source: "patchmill" },
     { name: PATCHMILL_PLANNING_SKILL, source: "patchmill" },
+    { name: "simple-english", source: "simple-english" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
@@ -172,6 +185,9 @@ export function buildSkillPackMetadata(
       name: PATCHMILL_RECOMMENDED_SKILL_PACK.name,
       version: PATCHMILL_RECOMMENDED_SKILL_PACK.version,
       source: PATCHMILL_RECOMMENDED_SKILL_PACK.source,
+      additionalSources: PATCHMILL_RECOMMENDED_SKILL_PACK.additionalSources.map(
+        (source) => ({ ...source }),
+      ),
     },
     installedAt: options.installedAt ?? "<generated-by-init>",
     skillDir: trimTrailingSkillDirSlashes(

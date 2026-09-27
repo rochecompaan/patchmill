@@ -26,7 +26,7 @@ buildNpmPackageNode24 rec {
         || baseName == "result");
   };
 
-  npmDepsHash = "sha256-IR+pMnEPfw1CwHjrT71Ai37rRT2tWg+uOsqzqZuzZhI=";
+  npmDepsHash = "sha256-FQLIjhlsrmu12QCO7izlzBJ9kcfSLl7dYSWq/d3Z+tg=";
   npmDepsFetcherVersion = 2;
 
   dontNpmBuild = true;
@@ -74,6 +74,9 @@ buildNpmPackageNode24 rec {
         XDG_CONFIG_HOME="$install_check_dir/config" \
         $out/bin/patchmill init >/dev/null
       test -f .patchmill/skills/patchmill-issue-triage/SKILL.md
+      test -f .patchmill/skills/simple-english/SKILL.md
+      test -f .patchmill/skills/simple-english/references/checklist.md
+      test -f .patchmill/skills/simple-english/references/use-cases.md
     )
     test -f "$out/share/${pname}/fixtures/patchmill-test-repo/README.md"
     test -f "$out/share/${pname}/extensions/todos.ts"

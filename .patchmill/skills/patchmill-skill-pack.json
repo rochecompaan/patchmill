@@ -1,15 +1,23 @@
 {
   "pack": {
     "name": "patchmill-recommended",
-    "version": "2026.09.1",
+    "version": "2026.09.2",
     "source": {
       "type": "github-release",
       "repository": "obra/superpowers",
       "tag": "v6.3.0",
       "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v6.3.0.tar.gz"
-    }
+    },
+    "additionalSources": [
+      {
+        "type": "github-release",
+        "repository": "AminBlg/SimpleEnglish",
+        "tag": "v1.2.0",
+        "tarballUrl": "https://github.com/AminBlg/SimpleEnglish/archive/refs/tags/v1.2.0.tar.gz"
+      }
+    ]
   },
-  "installedAt": "2026-09-11T17:01:19.605Z",
+  "installedAt": "2026-09-26T14:50:09.274Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -67,7 +75,7 @@
     },
     {
       "path": ".patchmill/skills/patchmill-planning/SKILL.md",
-      "sha256": "e0a9df3b102ae2174abfe3fa90fbbff39733e65994ce8b5169d8098ab0ecad84"
+      "sha256": "76513769e17916c212d7be7816787381dc7c7830a5f0bffd6d9ca94f888596ad"
     },
     {
       "path": ".patchmill/skills/patchmill-visual-evidence/SKILL.md",
@@ -88,6 +96,18 @@
     {
       "path": ".patchmill/skills/requesting-code-review/code-reviewer.md",
       "sha256": "5eca5fcfd48a50e0a526ce5ffd64bf625d6b81bb46d11795274dae451fe6ffd4"
+    },
+    {
+      "path": ".patchmill/skills/simple-english/SKILL.md",
+      "sha256": "b688022acbb9b9b1293f8f3da9bc6305f8b8c6855b0c8e96ef7393e0cf256e25"
+    },
+    {
+      "path": ".patchmill/skills/simple-english/references/checklist.md",
+      "sha256": "c90c3834fa691da11e23f11ccb922ad09ddb18fbea04004ad047b5070c0ae846"
+    },
+    {
+      "path": ".patchmill/skills/simple-english/references/use-cases.md",
+      "sha256": "a875819fe39687282b893d92d9d5f91c89685a01e21ffed0579d8873d4de6a68"
     },
     {
       "path": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/SKILL.md",

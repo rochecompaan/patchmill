@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Patchmill vendors the following third-party component:
+Patchmill vendors the following third-party components:
 
 ## agent-stuff `extensions/todos.ts`
 
@@ -28,3 +28,18 @@ instructs agents to read the installed sibling Superpowers `brainstorming` and
 artifact-location, and testing-policy guidance. The upstream Superpowers skills
 remain installed from the pinned dependency rather than vendored as modified
 copies in Patchmill's package.
+
+## SimpleEnglish skill
+
+- Source: <https://github.com/AminBlg/SimpleEnglish/tree/v1.2.0/skills>
+- Repository: <https://github.com/AminBlg/SimpleEnglish>
+- License: MIT License (`node_modules/simple-english/LICENSE`)
+- Purpose: Provides the simple-english writing skill that the Patchmill planning
+  wrapper applies to spec and plan documents.
+
+The upstream repository ships no npm manifest, so
+`scripts/repack-simple-english.mjs` downloads the pinned release tarball,
+verifies its sha256, injects a `package.json`, and copies the skill payload to
+`vendor/simple-english/`, which package.json depends on as
+`file:vendor/simple-english`. The skill files remain unmodified upstream
+content.

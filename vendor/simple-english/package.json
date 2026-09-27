@@ -1,0 +1,15 @@
+{
+  "name": "simple-english",
+  "version": "1.2.0",
+  "description": "ASD-STE100 Simplified Technical English writing skill, repacked from AminBlg/SimpleEnglish v1.2.0 by scripts/repack-simple-english.mjs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AminBlg/SimpleEnglish.git"
+  },
+  "files": [
+    "skills",
+    "README.md",
+    "LICENSE"
+  ]
+}

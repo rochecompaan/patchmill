@@ -164,6 +164,9 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
     sourceRoots: {
       patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
+      simpleEnglishSkillsDir: await tempRoot(
+        "patchmill-skills-simple-english-",
+      ),
     },
     packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
     installedAt: "2026-06-27T00:00:00.000Z",
@@ -195,6 +198,11 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
         version: "2026.09.1",
         message:
           "Fresh Run-once review gates now use planning pull requests whose verified merge advances the Issue run. Legacy set-spec, set-plan, and --plan-only controls remain available but are deprecated.",
+      },
+      {
+        version: "2026.09.2",
+        message:
+          "Patchmill's recommended skill pack now includes simple-english. The patchmill-planning wrapper requires it as a sibling skill and applies its plain-language rules when writing specs and plans.",
       },
     ],
   });
@@ -278,6 +286,9 @@ test("updateProjectSkills reports only the planning-pull-request notice from 202
     sourceRoots: {
       patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
+      simpleEnglishSkillsDir: await tempRoot(
+        "patchmill-skills-simple-english-",
+      ),
     },
     packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
     dependencies,
@@ -288,6 +299,11 @@ test("updateProjectSkills reports only the planning-pull-request notice from 202
       message:
         "Fresh Run-once review gates now use planning pull requests whose verified merge advances the Issue run. Legacy set-spec, set-plan, and --plan-only controls remain available but are deprecated.",
     },
+    {
+      version: "2026.09.2",
+      message:
+        "Patchmill's recommended skill pack now includes simple-english. The patchmill-planning wrapper requires it as a sibling skill and applies its plain-language rules when writing specs and plans.",
+    },
   ]);
 
   const second = await updateProjectSkills({
@@ -295,6 +311,9 @@ test("updateProjectSkills reports only the planning-pull-request notice from 202
     sourceRoots: {
       patchmillSkillsDir: patchmillSource,
       superpowersSkillsDir: superpowersSource,
+      simpleEnglishSkillsDir: await tempRoot(
+        "patchmill-skills-simple-english-",
+      ),
     },
     packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
     dependencies,
@@ -322,6 +341,7 @@ test("updateProjectSkills reports already current packs", async () => {
       name: PATCHMILL_RECOMMENDED_SKILL_PACK.name,
       version: PATCHMILL_RECOMMENDED_SKILL_PACK.version,
       source: PATCHMILL_RECOMMENDED_SKILL_PACK.source,
+      additionalSources: PATCHMILL_RECOMMENDED_SKILL_PACK.additionalSources,
     },
     installedAt: "2026-06-01T00:00:00.000Z",
     skillDir: ".patchmill/skills",
@@ -339,6 +359,9 @@ test("updateProjectSkills reports already current packs", async () => {
     sourceRoots: {
       patchmillSkillsDir: await tempRoot("patchmill-skills-current-patchmill-"),
       superpowersSkillsDir: superpowersSource,
+      simpleEnglishSkillsDir: await tempRoot(
+        "patchmill-skills-simple-english-",
+      ),
     },
     packSkills: [{ name: "writing-plans", source: "superpowers" }],
     dependencies,
@@ -393,6 +416,9 @@ test("updateProjectSkills aborts when managed files changed locally", async () =
       sourceRoots: {
         patchmillSkillsDir: await tempRoot("patchmill-skills-dirty-patchmill-"),
         superpowersSkillsDir: superpowersSource,
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [{ name: "writing-plans", source: "superpowers" }],
       dependencies,
@@ -434,6 +460,9 @@ test("updateProjectSkills aborts when managed files are missing", async () => {
           "patchmill-skills-missing-patchmill-",
         ),
         superpowersSkillsDir: superpowersSource,
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [{ name: "writing-plans", source: "superpowers" }],
       dependencies,
@@ -540,6 +569,9 @@ test("updateProjectSkills aborts when new bundled files would overwrite local fi
           "patchmill-skills-collision-patchmill-",
         ),
         superpowersSkillsDir: superpowersSource,
+        simpleEnglishSkillsDir: await tempRoot(
+          "patchmill-skills-simple-english-",
+        ),
       },
       packSkills: [{ name: "writing-plans", source: "superpowers" }],
       dependencies,

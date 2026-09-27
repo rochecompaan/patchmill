@@ -34,6 +34,28 @@ const expectedSuperpowersSource = {
   tag: superpowersMatch[1],
   tarballUrl: superpowersSpec,
 };
+const simpleEnglishSpec = packageJson.dependencies?.["simple-english"] ?? "";
+assert.equal(
+  simpleEnglishSpec,
+  "file:vendor/simple-english",
+  "package.json must pin the vendored SimpleEnglish package",
+);
+const vendoredSimpleEnglishPackage = JSON.parse(
+  readFileSync(
+    join(repoRoot, "vendor", "simple-english", "package.json"),
+    "utf8",
+  ),
+) as { version?: string };
+assert.ok(
+  vendoredSimpleEnglishPackage.version,
+  "vendor/simple-english/package.json must record a version",
+);
+const expectedSimpleEnglishSource = {
+  type: "github-release" as const,
+  repository: "AminBlg/SimpleEnglish",
+  tag: `v${vendoredSimpleEnglishPackage.version}`,
+  tarballUrl: `https://github.com/AminBlg/SimpleEnglish/archive/refs/tags/v${vendoredSimpleEnglishPackage.version}.tar.gz`,
+};
 
 function bundledSkillText(skillName: string): string {
   return bundledSkillFileText(skillName, "SKILL.md");
@@ -80,11 +102,14 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.09.1");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.09.2");
   assert.deepEqual(
     PATCHMILL_RECOMMENDED_SKILL_PACK.source,
     expectedSuperpowersSource,
   );
+  assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.additionalSources, [
+    expectedSimpleEnglishSource,
+  ]);
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
     {
@@ -102,6 +127,7 @@ test("default pack records pinned external source", () => {
     { name: "module-size", source: "patchmill" },
     { name: "patchmill-visual-evidence", source: "patchmill" },
     { name: "patchmill-planning", source: "patchmill" },
+    { name: "simple-english", source: "simple-english" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
     { name: "executing-plans", source: "superpowers" },
@@ -129,6 +155,7 @@ test("Patchmill planning wrapper annotates sibling Superpowers skills", () => {
   assert.match(planning, /name: patchmill-planning/u);
   assert.match(planning, /\.\.\/brainstorming\/SKILL\.md/u);
   assert.match(planning, /\.\.\/writing-plans\/SKILL\.md/u);
+  assert.match(planning, /\.\.\/simple-english\/SKILL\.md/u);
   assert.match(planning, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
   assert.match(planning, /docs\/plans\/YYYY-MM-DD-<feature-name>\.md/u);
   assert.match(planning, /issue worktree/u);
@@ -166,8 +193,9 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.09.1",
+      version: "2026.09.2",
       source: expectedSuperpowersSource,
+      additionalSources: [expectedSimpleEnglishSource],
     },
     installedAt: "<generated-by-init>",
     skillDir: "custom/skills",
