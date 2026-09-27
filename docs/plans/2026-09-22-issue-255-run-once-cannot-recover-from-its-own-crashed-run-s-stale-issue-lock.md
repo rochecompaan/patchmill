@@ -40,6 +40,23 @@ sequence can delete a replacement owner between the check and the unlink.
 Wherever an older section below still describes a canonical regular file or a
 hard-link/unlink archive, this revision wins.
 
+**Maintainer decision (2026-09-27, retry authorization):** The repository owner
+answered "Yes" to the 2026-09-27 blocked-run question on issue #255: the
+governed workflow may continue this implementation with a longer worker deadline
+and must then run all required review gates. Concretely:
+
+- Continue from the committed branch state (`467196b`, `8b0d4fa`). First audit
+  which plan steps those commits already satisfy; do not redo completed work or
+  re-ask decided questions.
+- The earlier worker hit a 30-minute child timeout during validation before the
+  Codex, thermo-nuclear, and validation-readiness gates launched. Set a
+  per-child deadline of at least two hours
+  (`timeoutMs`/`maxRuntimeMs` >= 7200000) on implementation and fix-up worker
+  launches for this issue so plan Task 4 validation and every required review
+  gate can finish.
+- The timed-out worker belonged to the previous run and cannot be resumed across
+  runs; launch a fresh worker that resumes from the branch instead.
+
 ## Global Constraints
 
 - Only a valid lock from the current host whose PID probe returns `dead`
