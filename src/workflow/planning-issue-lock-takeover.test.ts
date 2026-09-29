@@ -81,11 +81,15 @@ async function createCanonicalDirectory(
   return { path };
 }
 
-function adapter(canonicalPath: string) {
+function adapter(
+  canonicalPath: string,
+  beforeTransitionArchiveRename?: () => Promise<void>,
+) {
   return {
     observe,
     serialize: (record: Record) => Buffer.from(`${JSON.stringify(record)}\n`),
     createCanonical: () => createCanonicalDirectory(canonicalPath),
+    beforeTransitionArchiveRename,
     conflict: (
       current: PlanningLockObservation<Record>,
       resource: string,
@@ -160,6 +164,69 @@ test("archives a stale transition directory intact before taking over", async ()
       "owner.lock",
     );
     assert.deepEqual(await readFile(archivedOwner), transitionBytes);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("re-observes when another rescuer archives the stale transition", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
+  const root = join(dir, "planning-pr-v1");
+  const canonicalPath = join(root, "locks", "issue-187.lock");
+  const transitionPath = join(root, "locks", "issue-187.takeover");
+  let waiting = 0;
+  let release!: () => void;
+  const bothContendersObserved = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const beforeTransitionArchiveRename = async () => {
+    waiting += 1;
+    if (waiting === 2) release();
+    await bothContendersObserved;
+  };
+  try {
+    await mkdir(transitionPath, { recursive: true, mode: 0o700 });
+    const staleTransition: Record = {
+      ownershipId: "123e4567-e89b-42d3-a456-426614174002",
+      name: "stale",
+    };
+    await writeFile(
+      join(transitionPath, "owner.lock"),
+      `${JSON.stringify(staleTransition)}\n`,
+      { mode: 0o600 },
+    );
+    const staleBytes = Buffer.from(`${JSON.stringify(oldOwner)}\n`);
+    await writeFile(canonicalPath, staleBytes, { mode: 0o600 });
+    const contenders = [
+      "123e4567-e89b-42d3-a456-426614174003",
+      "123e4567-e89b-42d3-a456-426614174004",
+    ].map((ownershipId) =>
+      takeOverStalePlanningIssueLock({
+        runStateDir: dir,
+        issueNumber: 187,
+        canonicalPath,
+        triggeringObservation: classify(canonicalPath, staleBytes),
+        transitionOwner: { ...transitionOwner, ownershipId },
+        adapter: adapter(canonicalPath, beforeTransitionArchiveRename),
+      }),
+    );
+    const outcomes = await Promise.allSettled(contenders);
+    assert.equal(
+      outcomes.filter((outcome) => outcome.status === "fulfilled").length,
+      1,
+    );
+    assert.equal(
+      outcomes.filter((outcome) => outcome.status === "rejected").length,
+      1,
+    );
+    const failure = outcomes.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === "rejected",
+    )!;
+    assert.match(
+      String(failure.reason),
+      /(?:takeover-transition|canonical-lock):active/,
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

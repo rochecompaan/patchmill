@@ -21,6 +21,10 @@ export type PlanningIssueLockTakeoverAdapter<Record, Lock> = Readonly<{
 
 type Owner = { ownershipId: string };
 
+type TransitionArchiveTestHooks = Readonly<{
+  beforeTransitionArchiveRename?: () => Promise<void>;
+}>;
+
 function issueNumber(value: number): number {
   if (!Number.isSafeInteger(value) || value <= 0)
     throw new TypeError(
@@ -88,6 +92,7 @@ async function removePrivateDirectory(path: string): Promise<void> {
 async function renameWithoutReplacing(
   source: string,
   destination: string,
+  beforeRename?: () => Promise<void>,
 ): Promise<void> {
   try {
     await lstat(destination);
@@ -99,6 +104,7 @@ async function renameWithoutReplacing(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  await beforeRename?.();
   await rename(source, destination);
 }
 
@@ -118,7 +124,18 @@ async function acquireTransition<Record extends Owner, Lock>(input: {
         ownershipId(current.record.ownershipId),
       );
       await mkdir(input.location.transitionArchive, { recursive: true });
-      await renameWithoutReplacing(input.location.transition, archive);
+      try {
+        await renameWithoutReplacing(
+          input.location.transition,
+          archive,
+          (
+            input.adapter as PlanningIssueLockTakeoverAdapter<Record, Lock> &
+              TransitionArchiveTestHooks
+          ).beforeTransitionArchiveRename,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
       continue;
     }
 
