@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -272,6 +274,177 @@ test("malformed canonical ownership directories are never removed", async () => 
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("blocks an active takeover transition before acquiring an absent canonical lock", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+  const transitionPath = join(
+    dir,
+    "planning-pr-v1",
+    "locks",
+    "issue-187.takeover",
+  );
+  try {
+    const transitionRecord = {
+      version: 1,
+      issueNumber: 187,
+      runId,
+      ownershipId: transitionOwnershipId,
+      pid: 1234,
+      hostname: "local.test",
+      acquiredAt: "2026-09-07T12:00:00.000Z",
+    };
+    await mkdir(transitionPath, { recursive: true, mode: 0o700 });
+    const bytes = Buffer.from(`${JSON.stringify(transitionRecord)}\n`);
+    await writeFile(join(transitionPath, "owner.lock"), bytes, {
+      mode: 0o600,
+    });
+
+    await assert.rejects(
+      acquirePlanningIssueLock(
+        dir,
+        { issueNumber: 187, runId: replacementRunId },
+        {
+          ownershipId: replacementOwnershipId,
+          hostname: "local.test",
+          processState: () => "alive",
+        },
+      ),
+      (error: unknown) =>
+        error instanceof PlanningIssueLockConflictError &&
+        error.diagnostic.resource === "takeover-transition" &&
+        error.diagnostic.classification === "active",
+    );
+    assert.deepEqual(await readFile(join(transitionPath, "owner.lock")), bytes);
+    await assert.rejects(
+      stat(join(dir, "planning-pr-v1", "locks", "issue-187.lock")),
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("reclaims a stale transition before acquiring an absent canonical lock", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+  const transitionPath = join(
+    dir,
+    "planning-pr-v1",
+    "locks",
+    "issue-187.takeover",
+  );
+  try {
+    const transitionRecord = {
+      version: 1,
+      issueNumber: 187,
+      runId,
+      ownershipId: transitionOwnershipId,
+      pid: 1234,
+      hostname: "local.test",
+      acquiredAt: "2026-09-07T12:00:00.000Z",
+    };
+    const bytes = Buffer.from(`${JSON.stringify(transitionRecord)}\n`);
+    await mkdir(transitionPath, { recursive: true, mode: 0o700 });
+    await writeFile(join(transitionPath, "owner.lock"), bytes, {
+      mode: 0o600,
+    });
+
+    const lock = await acquirePlanningIssueLock(
+      dir,
+      { issueNumber: 187, runId: replacementRunId },
+      {
+        ownershipId: replacementOwnershipId,
+        transitionOwnershipId: "123e4567-e89b-42d3-a456-426614174005",
+        hostname: "local.test",
+        processState: () => "dead",
+      },
+    );
+    assert.equal(lock.record.ownershipId, replacementOwnershipId);
+    assert.deepEqual(
+      await readFile(
+        join(
+          dir,
+          "planning-pr-v1",
+          "archive",
+          "issue-lock-transitions",
+          "issue-187",
+          transitionOwnershipId,
+          "owner.lock",
+        ),
+      ),
+      bytes,
+    );
+    await releasePlanningIssueLock(lock);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("preserves malformed transition paths instead of replacing them", async () => {
+  const cases = ["empty-directory", "regular-file", "symbolic-link"] as const;
+  for (const kind of cases) {
+    const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+    const transitionPath = join(
+      dir,
+      "planning-pr-v1",
+      "locks",
+      "issue-187.takeover",
+    );
+    try {
+      await mkdir(join(dir, "planning-pr-v1", "locks"), { recursive: true });
+      if (kind === "empty-directory") {
+        await mkdir(transitionPath);
+      } else if (kind === "regular-file") {
+        await writeFile(transitionPath, "unowned transition");
+      } else {
+        await symlink("missing-transition-owner", transitionPath);
+      }
+      const before = await lstat(transitionPath);
+      const staleRecord = {
+        version: 1,
+        issueNumber: 187,
+        runId,
+        ownershipId,
+        pid: 1234,
+        hostname: "local.test",
+        acquiredAt: "2026-09-07T12:00:00.000Z",
+      };
+      const staleBytes = Buffer.from(`${JSON.stringify(staleRecord)}\n`);
+      const canonicalPath = await installLegacyLock({
+        directory: dir,
+        issueNumber: 187,
+        bytes: staleBytes,
+      });
+
+      await assert.rejects(
+        acquirePlanningIssueLock(
+          dir,
+          { issueNumber: 187, runId: replacementRunId },
+          {
+            ownershipId: replacementOwnershipId,
+            transitionOwnershipId,
+            hostname: "local.test",
+            processState: () => "dead",
+          },
+        ),
+        (error: unknown) =>
+          error instanceof PlanningIssueLockConflictError &&
+          error.diagnostic.resource === "takeover-transition" &&
+          error.diagnostic.classification === "malformed",
+      );
+      const after = await lstat(transitionPath);
+      assert.equal(after.isDirectory(), before.isDirectory());
+      assert.equal(after.isFile(), before.isFile());
+      assert.equal(after.isSymbolicLink(), before.isSymbolicLink());
+      assert.deepEqual(await readFile(canonicalPath), staleBytes);
+      if (kind === "regular-file")
+        assert.equal(
+          await readFile(transitionPath, "utf8"),
+          "unowned transition",
+        );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 });
 

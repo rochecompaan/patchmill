@@ -108,6 +108,20 @@ async function acquireTransition<Record extends Owner, Lock>(input: {
   adapter: PlanningIssueLockTakeoverAdapter<Record, Lock>;
 }): Promise<void> {
   while (true) {
+    const current = await input.adapter.observe(input.location.transition);
+    if (current !== undefined) {
+      if (current.classification !== "stale" || current.record === undefined)
+        input.adapter.conflict(current, "takeover-transition");
+
+      const archive = join(
+        input.location.transitionArchive,
+        ownershipId(current.record.ownershipId),
+      );
+      await mkdir(input.location.transitionArchive, { recursive: true });
+      await renameWithoutReplacing(input.location.transition, archive);
+      continue;
+    }
+
     try {
       await stageDirectory({
         path: input.location.transitionTemp,
@@ -124,18 +138,6 @@ async function acquireTransition<Record extends Owner, Lock>(input: {
     } catch (error) {
       if (!isAlreadyPresent(error)) throw error;
     }
-
-    const current = await input.adapter.observe(input.location.transition);
-    if (current === undefined) continue;
-    if (current.classification !== "stale" || current.record === undefined)
-      input.adapter.conflict(current, "takeover-transition");
-
-    const archive = join(
-      input.location.transitionArchive,
-      ownershipId(current.record.ownershipId),
-    );
-    await mkdir(input.location.transitionArchive, { recursive: true });
-    await renameWithoutReplacing(input.location.transition, archive);
   }
 }
 

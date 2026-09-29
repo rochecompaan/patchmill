@@ -216,18 +216,14 @@ async function ownerBytesFromDirectory(
 }
 
 async function structuralBytes(path: string): Promise<Buffer> {
-  try {
-    const entries = await readdir(path, { withFileTypes: true });
-    const inventory = await Promise.all(
-      entries.map(async (entry) => {
-        const entryStat = await lstat(join(path, entry.name));
-        return `${entry.name}:${entryStat.mode & 0o777}:${entry.isDirectory() ? "dir" : entry.isFile() ? "file" : "other"}`;
-      }),
-    );
-    return Buffer.from(inventory.sort().join("\n"));
-  } catch {
-    return Buffer.from("unreadable-lock-structure");
-  }
+  const entries = await readdir(path, { withFileTypes: true });
+  const inventory = await Promise.all(
+    entries.map(async (entry) => {
+      const entryStat = await lstat(join(path, entry.name));
+      return `${entry.name}:${entryStat.mode & 0o777}:${entry.isDirectory() ? "dir" : entry.isFile() ? "file" : "other"}`;
+    }),
+  );
+  return Buffer.from(inventory.sort().join("\n"));
 }
 
 async function observeLock(
@@ -288,6 +284,24 @@ export class PlanningIssueLockConflictError extends Error {
   }
 }
 
+function isAlreadyPresent(error: unknown): boolean {
+  return ["EEXIST", "ENOTEMPTY"].includes(
+    (error as NodeJS.ErrnoException).code ?? "",
+  );
+}
+
+function planningIssueLockTransitionPath(
+  runStateDir: string,
+  issueNumber: number,
+): string {
+  return join(
+    resolve(runStateDir),
+    "planning-pr-v1",
+    "locks",
+    `issue-${positive(issueNumber)}.takeover`,
+  );
+}
+
 async function createExclusivePlanningIssueLock(
   path: string,
   record: PlanningIssueLockRecord,
@@ -346,60 +360,75 @@ export async function acquirePlanningIssueLock(
   options: PlanningIssueLockOptions = {},
 ): Promise<PlanningIssueLock> {
   const path = planningIssueLockPath(runStateDir, input.issueNumber);
+  const transitionPath = planningIssueLockTransitionPath(
+    runStateDir,
+    input.issueNumber,
+  );
   const record = lockRecord(input, options);
   await mkdir(dirname(path), { recursive: true });
   const initial = await observeLock(path, options);
+  const transitionOwner = (): PlanningIssueLockRecord => ({
+    ...record,
+    ownershipId: uuid(options.transitionOwnershipId ?? randomUUID()),
+  });
+  const adapter = {
+    observe: (target: string) =>
+      observeLock(
+        target,
+        options,
+        target.endsWith(".takeover") ? TRANSITION_RECORD : OWNER_RECORD,
+      ),
+    serialize: (owner: PlanningIssueLockRecord) =>
+      Buffer.from(`${JSON.stringify(owner)}\n`),
+    createCanonical: async () => {
+      try {
+        return await createExclusivePlanningIssueLock(path, record);
+      } catch (error) {
+        if (!isAlreadyPresent(error)) throw error;
+        const replacement = await observeLock(path, options);
+        if (replacement === undefined) throw error;
+        throw new PlanningIssueLockConflictError(
+          resourceDiagnostic(replacement, "canonical-lock"),
+        );
+      }
+    },
+    conflict: (
+      observation: Observation,
+      resource: PlanningIssueLockResource,
+    ): never => {
+      throw new PlanningIssueLockConflictError(
+        resourceDiagnostic(observation, resource),
+      );
+    },
+  };
+  let transition: Observation | undefined;
   if (initial === undefined) {
-    try {
-      return await createExclusivePlanningIssueLock(path, record);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    transition = await observeLock(transitionPath, options, TRANSITION_RECORD);
+    if (transition === undefined) {
+      try {
+        return await adapter.createCanonical();
+      } catch (error) {
+        if (!(error instanceof PlanningIssueLockConflictError)) throw error;
+      }
+    } else if (transition.classification !== "stale") {
+      throw new PlanningIssueLockConflictError(
+        resourceDiagnostic(transition, "takeover-transition"),
+      );
     }
   }
   const conflict = initial ?? (await observeLock(path, options));
-  if (conflict === undefined)
-    return createExclusivePlanningIssueLock(path, record);
-  if (conflict.classification !== "stale")
+  if (conflict !== undefined && conflict.classification !== "stale")
     throw new PlanningIssueLockConflictError(
       resourceDiagnostic(conflict, "canonical-lock"),
     );
 
-  const transitionOwner: PlanningIssueLockRecord = {
-    ...record,
-    ownershipId: uuid(options.transitionOwnershipId ?? randomUUID()),
-  };
   const takeover = await takeOverStalePlanningIssueLock({
     runStateDir,
     issueNumber: record.issueNumber,
     canonicalPath: path,
-    triggeringObservation: conflict,
-    transitionOwner,
-    adapter: {
-      observe: (target) =>
-        observeLock(
-          target,
-          options,
-          target.endsWith(".takeover") ? TRANSITION_RECORD : OWNER_RECORD,
-        ),
-      serialize: (owner) => Buffer.from(`${JSON.stringify(owner)}\n`),
-      createCanonical: async () => {
-        try {
-          return await createExclusivePlanningIssueLock(path, record);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-          const replacement = await observeLock(path, options);
-          if (replacement === undefined) throw error;
-          throw new PlanningIssueLockConflictError(
-            resourceDiagnostic(replacement, "canonical-lock"),
-          );
-        }
-      },
-      conflict: (observation, resource): never => {
-        throw new PlanningIssueLockConflictError(
-          resourceDiagnostic(observation, resource),
-        );
-      },
-    },
+    triggeringObservation: conflict ?? transition!,
+    transitionOwner: transitionOwner(),
+    adapter,
   });
   return takeover.evidence === undefined
     ? takeover.lock
