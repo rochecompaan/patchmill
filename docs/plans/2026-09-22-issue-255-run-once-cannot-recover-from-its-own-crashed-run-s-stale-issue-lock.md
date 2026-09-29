@@ -70,6 +70,25 @@ Wherever steps or acceptance prose below claim unconditional replacement-race
 safety, read them with this scope; keep tests to cooperating-protocol races
 only.
 
+**Maintainer decision (2026-09-29, standing operational authorization):** The
+repository owner answered "Yes" to the 2026-09-29 blocked-run question and
+grants a standing operational authorization for this issue (#255):
+
+- Set a per-child deadline of at least two hours (`timeoutMs`/`maxRuntimeMs`
+  > = 7200000) on EVERY child in the governed workflow: implementation and
+  > fix-up workers, acceptance gates, and every review gate (Codex,
+  > thermo-nuclear, validation-readiness). The 2026-09-27 retry authorization
+  > covered worker launches only; the acceptance-gate child then timed out under
+  > a shorter default before the required reviews launched, which produced the
+  > 2026-09-29 blocked run.
+- When a run blocks only on operational grounds — a child timeout, a deadline
+  too short for the remaining gates, or a transient workflow interruption — and
+  validation evidence is green and the worktree is clean, continue or retry the
+  affected gate with an adequate deadline WITHOUT asking the maintainer again.
+  This standing authorization covers operational retries only; architecture,
+  protocol, scope, or safety questions must still be escalated to the
+  maintainer.
+
 ## Global Constraints
 
 - Only a valid lock from the current host whose PID probe returns `dead`
