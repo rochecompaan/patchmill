@@ -75,7 +75,7 @@ async function stageDirectory(input: {
 }
 
 function isAlreadyPresent(error: unknown): boolean {
-  return ["EEXIST", "ENOTEMPTY"].includes(
+  return ["EEXIST", "ENOTEMPTY", "ENOTDIR"].includes(
     (error as NodeJS.ErrnoException).code ?? "",
   );
 }
@@ -147,8 +147,29 @@ async function retireTransition<Record extends Owner, Lock>(input: {
   adapter: PlanningIssueLockTakeoverAdapter<Record, Lock>;
 }): Promise<void> {
   const current = await input.adapter.observe(input.location.transition);
-  if (current?.record?.ownershipId !== input.transitionOwnershipId) return;
-  await rename(input.location.transition, input.location.transitionRetired);
+  if (current === undefined)
+    throw new Error(
+      "Planning issue lock transition disappeared before retirement",
+    );
+  if (current.classification === "malformed" || current.record === undefined)
+    throw new Error(
+      "Planning issue lock transition is malformed during retirement",
+    );
+  if (current.record.ownershipId !== input.transitionOwnershipId)
+    throw new Error(
+      "Planning issue lock transition ownership changed before retirement",
+    );
+  try {
+    await rename(input.location.transition, input.location.transitionRetired);
+  } catch (error) {
+    if (!isAlreadyPresent(error)) throw error;
+    throw new Error(
+      "Planning issue lock transition retirement path already exists",
+      {
+        cause: error,
+      },
+    );
+  }
   await removePrivateDirectory(input.location.transitionRetired);
 }
 

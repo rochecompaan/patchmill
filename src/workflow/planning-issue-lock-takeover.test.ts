@@ -202,6 +202,105 @@ test("never overwrites an existing stale-lock archive destination", async () => 
   }
 });
 
+test("rejects transition retirement after ownership changes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
+  const root = join(dir, "planning-pr-v1");
+  const canonicalPath = join(root, "locks", "issue-187.lock");
+  const transitionPath = join(root, "locks", "issue-187.takeover");
+  const changedTransition: Record = {
+    ownershipId: "123e4567-e89b-42d3-a456-426614174009",
+    name: "active",
+  };
+  try {
+    await mkdir(join(root, "locks"), { recursive: true });
+    const staleBytes = Buffer.from(`${JSON.stringify(oldOwner)}\n`);
+    await writeFile(canonicalPath, staleBytes, { mode: 0o600 });
+    const baseAdapter = adapter(canonicalPath);
+    await assert.rejects(
+      takeOverStalePlanningIssueLock({
+        runStateDir: dir,
+        issueNumber: 187,
+        canonicalPath,
+        triggeringObservation: classify(canonicalPath, staleBytes),
+        transitionOwner,
+        adapter: {
+          ...baseAdapter,
+          createCanonical: async () => {
+            const replacement = await createCanonicalDirectory(canonicalPath);
+            await rm(transitionPath, { recursive: true, force: false });
+            await mkdir(transitionPath, { mode: 0o700 });
+            await writeFile(
+              join(transitionPath, "owner.lock"),
+              `${JSON.stringify(changedTransition)}\n`,
+              { mode: 0o600 },
+            );
+            return replacement;
+          },
+        },
+      }),
+      /transition ownership changed before retirement/,
+    );
+    assert.deepEqual(
+      await readFile(join(transitionPath, "owner.lock"), "utf8"),
+      `${JSON.stringify(changedTransition)}\n`,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("rejects transition retirement when it disappears or its retired path exists", async () => {
+  for (const failure of ["disappeared", "retired-path"] as const) {
+    const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
+    const root = join(dir, "planning-pr-v1");
+    const canonicalPath = join(root, "locks", "issue-187.lock");
+    const transitionPath = join(root, "locks", "issue-187.takeover");
+    const retiredPath = join(
+      root,
+      "locks",
+      `.issue-187.takeover.${transitionOwner.ownershipId}.retired`,
+    );
+    try {
+      await mkdir(join(root, "locks"), { recursive: true });
+      const staleBytes = Buffer.from(`${JSON.stringify(oldOwner)}\n`);
+      await writeFile(canonicalPath, staleBytes, { mode: 0o600 });
+      const baseAdapter = adapter(canonicalPath);
+      await assert.rejects(
+        takeOverStalePlanningIssueLock({
+          runStateDir: dir,
+          issueNumber: 187,
+          canonicalPath,
+          triggeringObservation: classify(canonicalPath, staleBytes),
+          transitionOwner,
+          adapter: {
+            ...baseAdapter,
+            createCanonical: async () => {
+              const replacement = await createCanonicalDirectory(canonicalPath);
+              if (failure === "disappeared")
+                await rm(transitionPath, { recursive: true, force: false });
+              else {
+                await mkdir(retiredPath, { mode: 0o700 });
+                await writeFile(join(retiredPath, "owner.lock"), "evidence");
+              }
+              return replacement;
+            },
+          },
+        }),
+        failure === "disappeared"
+          ? /transition disappeared before retirement/
+          : /transition retirement path already exists/,
+      );
+      if (failure === "retired-path")
+        assert.equal(
+          await readFile(join(retiredPath, "owner.lock"), "utf8"),
+          "evidence",
+        );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("active transition ownership blocks without mutating the canonical owner", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
   const root = join(dir, "planning-pr-v1");

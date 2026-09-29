@@ -448,6 +448,49 @@ test("preserves malformed transition paths instead of replacing them", async () 
   }
 });
 
+test("treats a schema-valid regular-file transition as malformed and leaves it untouched", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+  const transitionPath = join(
+    dir,
+    "planning-pr-v1",
+    "locks",
+    "issue-187.takeover",
+  );
+  const transitionRecord = {
+    version: 1,
+    issueNumber: 187,
+    runId,
+    ownershipId: transitionOwnershipId,
+    pid: 1234,
+    hostname: "local.test",
+    acquiredAt: "2026-09-07T12:00:00.000Z",
+  };
+  const transitionBytes = Buffer.from(`${JSON.stringify(transitionRecord)}\n`);
+  try {
+    await mkdir(join(dir, "planning-pr-v1", "locks"), { recursive: true });
+    await writeFile(transitionPath, transitionBytes, { mode: 0o600 });
+
+    await assert.rejects(
+      acquirePlanningIssueLock(
+        dir,
+        { issueNumber: 187, runId: replacementRunId },
+        {
+          ownershipId: replacementOwnershipId,
+          hostname: "local.test",
+          processState: () => "dead",
+        },
+      ),
+      (error: unknown) =>
+        error instanceof PlanningIssueLockConflictError &&
+        error.diagnostic.resource === "takeover-transition" &&
+        error.diagnostic.classification === "malformed",
+    );
+    assert.deepEqual(await readFile(transitionPath), transitionBytes);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("concurrent rescuers leave one replacement owner and one stale archive", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
   try {

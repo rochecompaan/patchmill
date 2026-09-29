@@ -230,6 +230,7 @@ async function observeLock(
   path: string,
   options: PlanningIssueLockOptions,
   ownerFile = OWNER_RECORD,
+  allowLegacyFile = ownerFile === OWNER_RECORD,
 ): Promise<Observation | undefined> {
   let source;
   try {
@@ -240,7 +241,7 @@ async function observeLock(
   }
   const bytes = source.isDirectory()
     ? await ownerBytesFromDirectory(path, ownerFile)
-    : source.isFile() && !source.isSymbolicLink()
+    : allowLegacyFile && source.isFile() && !source.isSymbolicLink()
       ? await readFile(path)
       : undefined;
   if (bytes === undefined)
@@ -285,7 +286,7 @@ export class PlanningIssueLockConflictError extends Error {
 }
 
 function isAlreadyPresent(error: unknown): boolean {
-  return ["EEXIST", "ENOTEMPTY"].includes(
+  return ["EEXIST", "ENOTEMPTY", "ENOTDIR"].includes(
     (error as NodeJS.ErrnoException).code ?? "",
   );
 }
@@ -377,6 +378,7 @@ export async function acquirePlanningIssueLock(
         target,
         options,
         target.endsWith(".takeover") ? TRANSITION_RECORD : OWNER_RECORD,
+        !target.endsWith(".takeover"),
       ),
     serialize: (owner: PlanningIssueLockRecord) =>
       Buffer.from(`${JSON.stringify(owner)}\n`),
@@ -403,7 +405,12 @@ export async function acquirePlanningIssueLock(
   };
   let transition: Observation | undefined;
   if (initial === undefined) {
-    transition = await observeLock(transitionPath, options, TRANSITION_RECORD);
+    transition = await observeLock(
+      transitionPath,
+      options,
+      TRANSITION_RECORD,
+      false,
+    );
     if (transition === undefined) {
       try {
         return await adapter.createCanonical();
