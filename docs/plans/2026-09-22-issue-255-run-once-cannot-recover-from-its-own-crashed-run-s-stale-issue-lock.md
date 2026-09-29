@@ -57,6 +57,19 @@ and must then run all required review gates. Concretely:
 - The timed-out worker belonged to the previous run and cannot be resumed across
   runs; launch a fresh worker that resumes from the branch instead.
 
+**Maintainer decision (2026-09-27, replacement-race scope):** The repository
+owner answered "Yes" to the 2026-09-27 blocked-run question on issue #255: this
+plan and the spec limit replacement-race safety to cooperating Patchmill
+processes. Transition ownership already serializes every Patchmill acquisition
+and takeover, so a cooperating process cannot replace the canonical directory
+while a takeover is in flight. A non-cooperating process that directly deletes
+or replaces the canonical directory between the authoritative re-observation and
+the archive rename cannot be defended against with portable Node/POSIX
+operations; that residual risk is accepted and recorded in the spec's Non-goals.
+Wherever steps or acceptance prose below claim unconditional replacement-race
+safety, read them with this scope; keep tests to cooperating-protocol races
+only.
+
 ## Global Constraints
 
 - Only a valid lock from the current host whose PID probe returns `dead`

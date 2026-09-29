@@ -9,6 +9,10 @@
   whole-directory atomic renames; the earlier canonical regular file plus
   hard-link/inode-verify/unlink archival is superseded because Node/POSIX
   provides no atomic inode-conditional unlink.
+- **Revision (2026-09-27, safety scope):** The repository owner answered "Yes"
+  to the 2026-09-27 blocked-run question on issue #255: replacement-race safety
+  is limited to cooperating Patchmill processes. See the scoped requirement and
+  Non-goals below.
 
 ## Summary
 
@@ -49,8 +53,11 @@ This design uses **Issue run**, **Run attempt**, **Run-once workflow**, and
 - Concurrent acquisition and takeover still produce at most one current lock
   owner.
 - A crash during takeover cannot create another permanent same-host wedge.
-- A live owner is never displaced. PID reuse may conservatively produce
-  `active`, but cannot authorize an unsafe takeover.
+- A live owner is never displaced by a process following this protocol.
+  Transition ownership serializes every cooperating acquisition and takeover, so
+  an in-flight takeover cannot archive a newer canonical owner created through
+  the protocol. PID reuse may conservatively produce `active`, but cannot
+  authorize an unsafe takeover.
 - Different-host records, permission-denied or otherwise unverifiable local
   liveness, malformed bytes, and unexpected liveness errors remain fail-closed.
 - Planning state, labels, Git state, workspaces, and host state are not mutated
@@ -69,8 +76,17 @@ This change will not:
 - repair malformed lock or transition records;
 - change planning state schemas, Run IDs, phase behavior, selection priority,
   result exit codes, or lock release authorization;
-- change legacy Issue run lease behavior; or
-- delete archived evidence automatically.
+- change legacy Issue run lease behavior;
+- delete archived evidence automatically; or
+- defend the lock tree against processes that do not follow this protocol. Every
+  Patchmill acquisition creates the canonical lock only by a staged rename onto
+  an absent path, and every recovery is serialized through the transition owner,
+  so cooperating processes cannot replace the canonical directory while a
+  takeover is in flight. No portable Node/POSIX operation atomically renames a
+  directory only when its identity is unchanged since observation, so a
+  non-cooperating process that directly deletes or replaces the canonical
+  directory between the authoritative re-observation and the archive rename
+  could cause a newer owner to be archived. That residual risk is accepted.
 
 ## Approaches considered
 
