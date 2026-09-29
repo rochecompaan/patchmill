@@ -149,6 +149,16 @@ test("archives a provably stale legacy file byte-for-byte before replacing it wi
       issueNumber: 187,
       runId: replacementRunId,
     });
+    const stale = { path: canonicalPath, record: staleRecord };
+    await assert.rejects(
+      assertPlanningIssueLockOwned(stale, { issueNumber: 187, runId }),
+      PlanningIssueLockConflictError,
+    );
+    await assert.rejects(
+      releasePlanningIssueLock(stale),
+      PlanningIssueLockConflictError,
+    );
+    assert.equal((await stat(replacement.path)).isDirectory(), true);
     await releasePlanningIssueLock(replacement);
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -57,6 +57,7 @@ const contexts = {
     status: "stopped",
     lockPath: "/repo/.patchmill/planning-pr-v1/locks/issue-242.lock",
     fingerprint: "a".repeat(64),
+    resource: "canonical-lock",
     owner: {
       issueNumber: 242,
       runId: "11111111-1111-4111-8111-111111111111",
@@ -80,6 +81,7 @@ const contexts = {
     status: "blocked",
     lockPath: "/repo/.patchmill/planning-pr-v1/locks/issue-242.lock",
     fingerprint: "b".repeat(64),
+    resource: "canonical-lock",
     owner: {
       issueNumber: 242,
       runId: "22222222-2222-4222-8222-222222222222",
@@ -93,12 +95,14 @@ const contexts = {
     status: "blocked",
     lockPath: "/repo/.patchmill/planning-pr-v1/locks/issue-242.lock",
     fingerprint: "c".repeat(64),
+    resource: "canonical-lock",
   },
   "issue-lock-malformed": {
     issueNumber: 242,
     status: "blocked",
     lockPath: "/repo/.patchmill/planning-pr-v1/locks/issue-242.lock",
     fingerprint: "d".repeat(64),
+    resource: "canonical-lock",
   },
   "planning-state-invalid": {
     issueNumber: 242,
@@ -390,6 +394,26 @@ test("catalog exhaustively materializes nonblank actionable diagnostics", () => 
     );
     assert.ok(diagnostic.retry.guidance.trim(), reason);
   }
+});
+
+test("planning lock diagnostics preserve their conflict resource", () => {
+  const canonical = diagnosticFor("issue-lock-unverifiable", {
+    ...contexts["issue-lock-unverifiable"],
+    resource: "canonical-lock",
+  });
+  const transition = diagnosticFor("issue-locked", {
+    ...contexts["issue-locked"],
+    resource: "takeover-transition",
+  });
+  assert.equal(
+    canonical.details.find((detail) => detail.key === "resource")?.value,
+    "canonical-lock",
+  );
+  assert.equal(
+    transition.details.find((detail) => detail.key === "resource")?.value,
+    "takeover-transition",
+  );
+  assert.equal(transition.retry.kind, "same-result");
 });
 
 test("planning-lock advice preserves evidence and never offers lease repair", () => {
