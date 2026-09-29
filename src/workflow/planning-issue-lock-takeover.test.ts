@@ -130,6 +130,140 @@ test("archives a legacy stale owner before creating a complete directory replace
   }
 });
 
+test("uses the authoritative canonical observation instead of the triggering stale record", async () => {
+  for (const classification of [
+    "active",
+    "unverifiable",
+    "malformed",
+  ] as const) {
+    const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
+    const canonicalPath = join(
+      dir,
+      "planning-pr-v1",
+      "locks",
+      "issue-187.lock",
+    );
+    const staleBytes = Buffer.from(`${JSON.stringify(oldOwner)}\n`);
+    try {
+      await mkdir(join(dir, "planning-pr-v1", "locks"), { recursive: true });
+      await writeFile(canonicalPath, staleBytes, { mode: 0o600 });
+      const baseAdapter = adapter(canonicalPath);
+      await assert.rejects(
+        takeOverStalePlanningIssueLock({
+          runStateDir: dir,
+          issueNumber: 187,
+          canonicalPath,
+          triggeringObservation: classify(canonicalPath, staleBytes),
+          transitionOwner,
+          adapter: {
+            ...baseAdapter,
+            observe: async (path) => {
+              if (path !== canonicalPath) return baseAdapter.observe(path);
+              if (classification === "malformed")
+                return {
+                  classification,
+                  path,
+                  bytes: Buffer.from("changed malformed owner"),
+                  fingerprint: "changed",
+                };
+              return {
+                ...classify(
+                  path,
+                  Buffer.from(
+                    `${JSON.stringify({ ...oldOwner, name: "active" })}\n`,
+                  ),
+                ),
+                classification,
+              };
+            },
+          },
+        }),
+        new RegExp(`canonical-lock:${classification}`),
+      );
+      assert.deepEqual(await readFile(canonicalPath), staleBytes);
+      await assert.rejects(stat(join(dir, "planning-pr-v1", "archive")));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("archives the new authoritative stale owner instead of the triggering bytes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
+  const canonicalPath = join(dir, "planning-pr-v1", "locks", "issue-187.lock");
+  const staleBytes = Buffer.from(`${JSON.stringify(oldOwner)}\n`);
+  const currentOwner: Record = {
+    ownershipId: "123e4567-e89b-42d3-a456-426614174008",
+    name: "stale",
+  };
+  const currentBytes = Buffer.from(`${JSON.stringify(currentOwner)}\n`);
+  let canonicalObserved = false;
+  try {
+    await mkdir(join(dir, "planning-pr-v1", "locks"), { recursive: true });
+    await writeFile(canonicalPath, staleBytes, { mode: 0o600 });
+    const baseAdapter = adapter(canonicalPath);
+    const result = await takeOverStalePlanningIssueLock({
+      runStateDir: dir,
+      issueNumber: 187,
+      canonicalPath,
+      triggeringObservation: classify(canonicalPath, staleBytes),
+      transitionOwner,
+      adapter: {
+        ...baseAdapter,
+        observe: async (path) => {
+          if (path !== canonicalPath) return baseAdapter.observe(path);
+          if (!canonicalObserved) {
+            canonicalObserved = true;
+            await writeFile(canonicalPath, currentBytes, { mode: 0o600 });
+          }
+          return baseAdapter.observe(path);
+        },
+      },
+    });
+    assert.deepEqual(
+      await readFile(result.evidence!.archivePath),
+      currentBytes,
+    );
+    assert.deepEqual(result.evidence!.owner, currentOwner);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("creates normally when the canonical lock disappears before takeover", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
+  const canonicalPath = join(dir, "planning-pr-v1", "locks", "issue-187.lock");
+  const staleBytes = Buffer.from(`${JSON.stringify(oldOwner)}\n`);
+  let canonicalObserved = false;
+  try {
+    await mkdir(join(dir, "planning-pr-v1", "locks"), { recursive: true });
+    await writeFile(canonicalPath, staleBytes, { mode: 0o600 });
+    const baseAdapter = adapter(canonicalPath);
+    const result = await takeOverStalePlanningIssueLock({
+      runStateDir: dir,
+      issueNumber: 187,
+      canonicalPath,
+      triggeringObservation: classify(canonicalPath, staleBytes),
+      transitionOwner,
+      adapter: {
+        ...baseAdapter,
+        observe: async (path) => {
+          if (path === canonicalPath && !canonicalObserved) {
+            canonicalObserved = true;
+            await rm(canonicalPath);
+            return undefined;
+          }
+          return baseAdapter.observe(path);
+        },
+      },
+    });
+    assert.equal(result.evidence, undefined);
+    assert.equal((await stat(result.lock.path)).isDirectory(), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("archives a stale transition directory intact before taking over", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-takeover-"));
   const root = join(dir, "planning-pr-v1");

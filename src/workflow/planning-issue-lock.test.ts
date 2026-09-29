@@ -390,6 +390,76 @@ test("reclaims a stale transition before acquiring an absent canonical lock", as
   }
 });
 
+test("recovers a dead transition after replacement before transition retirement", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+  const transitionPath = join(
+    dir,
+    "planning-pr-v1",
+    "locks",
+    "issue-187.takeover",
+  );
+  const deadTransition = {
+    version: 1,
+    issueNumber: 187,
+    runId,
+    ownershipId: transitionOwnershipId,
+    pid: 1234,
+    hostname: "local.test",
+    acquiredAt: "2026-09-07T12:00:00.000Z",
+  };
+  const transitionBytes = Buffer.from(`${JSON.stringify(deadTransition)}\n`);
+  try {
+    const replacement = await acquirePlanningIssueLock(
+      dir,
+      { issueNumber: 187, runId: replacementRunId },
+      {
+        ownershipId: replacementOwnershipId,
+        hostname: "local.test",
+        pid: 5678,
+      },
+    );
+    await mkdir(transitionPath, { recursive: true, mode: 0o700 });
+    await writeFile(join(transitionPath, "owner.lock"), transitionBytes, {
+      mode: 0o600,
+    });
+
+    await assert.rejects(
+      acquirePlanningIssueLock(
+        dir,
+        { issueNumber: 187, runId },
+        {
+          ownershipId,
+          transitionOwnershipId: "123e4567-e89b-42d3-a456-426614174007",
+          hostname: "local.test",
+          processState: (pid) => (pid === 1234 ? "dead" : "alive"),
+        },
+      ),
+      (error: unknown) =>
+        error instanceof PlanningIssueLockConflictError &&
+        error.diagnostic.classification === "active" &&
+        error.diagnostic.resource === "canonical-lock",
+    );
+    assert.deepEqual(
+      await readFile(
+        join(
+          dir,
+          "planning-pr-v1",
+          "archive",
+          "issue-lock-transitions",
+          "issue-187",
+          transitionOwnershipId,
+          "owner.lock",
+        ),
+      ),
+      transitionBytes,
+    );
+    await assert.rejects(stat(transitionPath));
+    await releasePlanningIssueLock(replacement);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("preserves malformed transition paths instead of replacing them", async () => {
   const cases = ["empty-directory", "regular-file", "symbolic-link"] as const;
   for (const kind of cases) {
@@ -498,6 +568,66 @@ test("treats a schema-valid regular-file transition as malformed and leaves it u
     assert.deepEqual(await readFile(transitionPath), transitionBytes);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("rejects canonical and transition records whose issue number differs from their path", async () => {
+  for (const resource of ["canonical", "transition"] as const) {
+    const dir = await mkdtemp(join(tmpdir(), "planning-lock-"));
+    const path = join(
+      dir,
+      "planning-pr-v1",
+      "locks",
+      resource === "canonical" ? "issue-187.lock" : "issue-187.takeover",
+    );
+    const record = {
+      version: 1,
+      issueNumber: 188,
+      runId,
+      ownershipId,
+      pid: 1234,
+      hostname: "local.test",
+      acquiredAt: "2026-09-07T12:00:00.000Z",
+    };
+    const bytes = Buffer.from(`${JSON.stringify(record)}\n`);
+    try {
+      await mkdir(join(dir, "planning-pr-v1", "locks"), { recursive: true });
+      if (resource === "canonical")
+        await writeFile(path, bytes, { mode: 0o600 });
+      else {
+        await mkdir(path, { mode: 0o700 });
+        await writeFile(join(path, "owner.lock"), bytes, { mode: 0o600 });
+      }
+
+      await assert.rejects(
+        acquirePlanningIssueLock(
+          dir,
+          { issueNumber: 187, runId: replacementRunId },
+          {
+            ownershipId: replacementOwnershipId,
+            transitionOwnershipId,
+            hostname: "local.test",
+            processState: () => "dead",
+          },
+        ),
+        (error: unknown) =>
+          error instanceof PlanningIssueLockConflictError &&
+          error.diagnostic.classification === "malformed" &&
+          error.diagnostic.resource ===
+            (resource === "canonical"
+              ? "canonical-lock"
+              : "takeover-transition"),
+      );
+      assert.deepEqual(
+        resource === "canonical"
+          ? await readFile(path)
+          : await readFile(join(path, "owner.lock")),
+        bytes,
+      );
+      await assert.rejects(stat(join(dir, "planning-pr-v1", "archive")));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 });
 

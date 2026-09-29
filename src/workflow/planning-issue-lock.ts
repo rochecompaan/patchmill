@@ -228,6 +228,7 @@ async function structuralBytes(path: string): Promise<Buffer> {
 
 async function observeLock(
   path: string,
+  issueNumber: number,
   options: PlanningIssueLockOptions,
   ownerFile = OWNER_RECORD,
   allowLegacyFile = ownerFile === OWNER_RECORD,
@@ -257,6 +258,7 @@ async function observeLock(
   } catch {
     return malformed(path, bytes);
   }
+  if (record.issueNumber !== issueNumber) return malformed(path, bytes);
   const here = options.hostname ?? localHostname();
   const state =
     record.hostname === here
@@ -367,7 +369,7 @@ export async function acquirePlanningIssueLock(
   );
   const record = lockRecord(input, options);
   await mkdir(dirname(path), { recursive: true });
-  const initial = await observeLock(path, options);
+  const initial = await observeLock(path, record.issueNumber, options);
   const transitionOwner = (): PlanningIssueLockRecord => ({
     ...record,
     ownershipId: uuid(options.transitionOwnershipId ?? randomUUID()),
@@ -376,6 +378,7 @@ export async function acquirePlanningIssueLock(
     observe: (target: string) =>
       observeLock(
         target,
+        record.issueNumber,
         options,
         target.endsWith(".takeover") ? TRANSITION_RECORD : OWNER_RECORD,
         !target.endsWith(".takeover"),
@@ -387,7 +390,11 @@ export async function acquirePlanningIssueLock(
         return await createExclusivePlanningIssueLock(path, record);
       } catch (error) {
         if (!isAlreadyPresent(error)) throw error;
-        const replacement = await observeLock(path, options);
+        const replacement = await observeLock(
+          path,
+          record.issueNumber,
+          options,
+        );
         if (replacement === undefined) throw error;
         throw new PlanningIssueLockConflictError(
           resourceDiagnostic(replacement, "canonical-lock"),
@@ -403,28 +410,32 @@ export async function acquirePlanningIssueLock(
       );
     },
   };
-  let transition: Observation | undefined;
-  if (initial === undefined) {
-    transition = await observeLock(
-      transitionPath,
-      options,
-      TRANSITION_RECORD,
-      false,
-    );
-    if (transition === undefined) {
-      try {
-        return await adapter.createCanonical();
-      } catch (error) {
-        if (!(error instanceof PlanningIssueLockConflictError)) throw error;
-      }
-    } else if (transition.classification !== "stale") {
-      throw new PlanningIssueLockConflictError(
-        resourceDiagnostic(transition, "takeover-transition"),
-      );
+  const transition = await observeLock(
+    transitionPath,
+    record.issueNumber,
+    options,
+    TRANSITION_RECORD,
+    false,
+  );
+  if (initial === undefined && transition === undefined) {
+    try {
+      return await adapter.createCanonical();
+    } catch (error) {
+      if (!(error instanceof PlanningIssueLockConflictError)) throw error;
     }
   }
-  const conflict = initial ?? (await observeLock(path, options));
-  if (conflict !== undefined && conflict.classification !== "stale")
+  if (transition !== undefined && transition.classification !== "stale")
+    throw new PlanningIssueLockConflictError(
+      resourceDiagnostic(transition, "takeover-transition"),
+    );
+
+  const conflict =
+    initial ?? (await observeLock(path, record.issueNumber, options));
+  if (
+    transition === undefined &&
+    conflict !== undefined &&
+    conflict.classification !== "stale"
+  )
     throw new PlanningIssueLockConflictError(
       resourceDiagnostic(conflict, "canonical-lock"),
     );
