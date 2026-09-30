@@ -28,6 +28,7 @@ export function planningLockFailure(
     status: "blocked" as const,
     lockPath: diagnostic.path,
     fingerprint: diagnostic.fingerprint,
+    resource: diagnostic.resource,
     ...(diagnostic.owner ? { owner: diagnostic.owner } : {}),
   };
   switch (diagnostic.classification) {

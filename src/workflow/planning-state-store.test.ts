@@ -63,6 +63,75 @@ test("initializes and atomically replaces canonical planning state under owner l
     await rm(dir, { recursive: true, force: true });
   }
 });
+test("a reclaimed lock alone can mutate planning state", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "planning-store-"));
+  const replacementRunId = "123e4567-e89b-42d3-a456-426614174001";
+  try {
+    const store = new PlanningStateStore(dir);
+    const stale = await acquirePlanningIssueLock(
+      dir,
+      { issueNumber: 187, runId },
+      {
+        ownershipId: "123e4567-e89b-42d3-a456-426614174002",
+        transitionOwnershipId: "123e4567-e89b-42d3-a456-426614174003",
+        pid: 1234,
+        hostname: "local.test",
+        now: () => new Date("2026-09-07T12:00:00.000Z"),
+      },
+    );
+    const replacement = await acquirePlanningIssueLock(
+      dir,
+      { issueNumber: 187, runId: replacementRunId },
+      {
+        ownershipId: "123e4567-e89b-42d3-a456-426614174004",
+        transitionOwnershipId: "123e4567-e89b-42d3-a456-426614174005",
+        hostname: "local.test",
+        processState: () => "dead",
+      },
+    );
+    const state = createPlanningState({
+      issueNumber: 187,
+      issueTitle: "Example",
+      gates: { specRequired: false, planRequired: false },
+      runId: replacementRunId,
+      now: "2026-09-07T12:00:00.000Z",
+    });
+    await store.initialize({ state, lock: replacement });
+    const next = {
+      ...state,
+      revision: 1,
+      updatedAt: "2026-09-07T12:00:01.000Z",
+    };
+    const before = await readFile(store.path(187), "utf8");
+    await assert.rejects(
+      store.replace({
+        issueNumber: 187,
+        expectedRunId: replacementRunId,
+        expectedRevision: 0,
+        next,
+        lock: stale,
+      }),
+      (error: unknown) =>
+        error instanceof PlanningStateConflictError &&
+        error.reason === "lock-ownership-mismatch",
+    );
+    assert.equal(await readFile(store.path(187), "utf8"), before);
+    assert.deepEqual(
+      await store.replace({
+        issueNumber: 187,
+        expectedRunId: replacementRunId,
+        expectedRevision: 0,
+        next,
+        lock: replacement,
+      }),
+      next,
+    );
+    await releasePlanningIssueLock(replacement);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("atomically appends a later plan artifact without changing the earlier spec evidence", async () => {
   const dir = await mkdtemp(join(tmpdir(), "planning-store-"));
   const oid = (character: string) => character.repeat(40);

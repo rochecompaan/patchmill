@@ -2,6 +2,17 @@
 
 - **Issue:** #255
 - **Status:** Proposed design
+- **Revision (2026-09-27):** The repository owner authorized (issue #255
+  approval comments) revising this spec, the plan, and the lock representation
+  to an atomic canonical-directory/indirection protocol. The canonical lock
+  becomes a non-empty ownership directory so that acquisition and takeover are
+  whole-directory atomic renames; the earlier canonical regular file plus
+  hard-link/inode-verify/unlink archival is superseded because Node/POSIX
+  provides no atomic inode-conditional unlink.
+- **Revision (2026-09-27, safety scope):** The repository owner answered "Yes"
+  to the 2026-09-27 blocked-run question on issue #255: replacement-race safety
+  is limited to cooperating Patchmill processes. See the scoped requirement and
+  Non-goals below.
 
 ## Summary
 
@@ -42,8 +53,11 @@ This design uses **Issue run**, **Run attempt**, **Run-once workflow**, and
 - Concurrent acquisition and takeover still produce at most one current lock
   owner.
 - A crash during takeover cannot create another permanent same-host wedge.
-- A live owner is never displaced. PID reuse may conservatively produce
-  `active`, but cannot authorize an unsafe takeover.
+- A live owner is never displaced by a process following this protocol.
+  Transition ownership serializes every cooperating acquisition and takeover, so
+  an in-flight takeover cannot archive a newer canonical owner created through
+  the protocol. PID reuse may conservatively produce `active`, but cannot
+  authorize an unsafe takeover.
 - Different-host records, permission-denied or otherwise unverifiable local
   liveness, malformed bytes, and unexpected liveness errors remain fail-closed.
 - Planning state, labels, Git state, workspaces, and host state are not mutated
@@ -62,8 +76,17 @@ This change will not:
 - repair malformed lock or transition records;
 - change planning state schemas, Run IDs, phase behavior, selection priority,
   result exit codes, or lock release authorization;
-- change legacy Issue run lease behavior; or
-- delete archived evidence automatically.
+- change legacy Issue run lease behavior;
+- delete archived evidence automatically; or
+- defend the lock tree against processes that do not follow this protocol. Every
+  Patchmill acquisition creates the canonical lock only by a staged rename onto
+  an absent path, and every recovery is serialized through the transition owner,
+  so cooperating processes cannot replace the canonical directory while a
+  takeover is in flight. No portable Node/POSIX operation atomically renames a
+  directory only when its identity is unchanged since observation, so a
+  non-cooperating process that directly deletes or replaces the canonical
+  directory between the authoritative re-observation and the archive rename
+  could cause a newer owner to be archived. That residual risk is accepted.
 
 ## Approaches considered
 
@@ -111,12 +134,14 @@ archive state.
 
 ### Crash-recoverable transition ownership
 
-Keep the canonical lock file at its current path. Add a sibling transition path
-for the issue, implemented as a non-empty ownership directory containing one
-strict record. Acquisition stages a complete directory under a unique temporary
-name, flushes its record, and atomically renames it to the canonical transition
-path. A canonical transition directory is therefore never intentionally exposed
-without a parseable owner record.
+Change the canonical lock at its current path to a non-empty ownership directory
+containing one strict mode-`0600` owner record, and use the same representation
+for a sibling transition path for the issue. Acquisition stages a complete
+directory under a unique temporary name, flushes its record, and atomically
+renames it to the canonical path. A canonical directory is therefore never
+intentionally exposed without a parseable owner record, and POSIX rename of a
+non-empty directory onto an existing non-empty directory fails, so a staged
+acquisition can never silently clobber a live owner.
 
 An existing transition owner is classified with the same host and PID rules:
 
@@ -139,25 +164,31 @@ the canonical directory in place.
 
 ### Stale lock takeover
 
-The normal fast path remains exclusive `open(..., "wx", 0o600)`. When that
-reports an existing stale lock, acquisition obtains the transition owner and
-then starts its decision again from disk:
+The normal fast path is staged ownership-directory creation: stage a complete
+private sibling directory, flush its owner record, and atomically rename it into
+the canonical path. When that reports an existing stale lock, acquisition
+obtains the transition owner and then starts its decision again from disk:
 
-1. Re-read the canonical lock and fingerprint its exact bytes.
-2. If it disappeared, attempt ordinary exclusive creation.
+1. Re-read the canonical owner record and fingerprint its exact bytes.
+2. If it disappeared, attempt ordinary staged-directory creation.
 3. If its bytes or owner changed, classify the new record and follow that
    result; never act on the earlier observation.
-4. If it is still the same same-host stale owner, atomically move the exact file
-   to a controlled archive path such as
-   `planning-pr-v1/archive/issue-locks/issue-N/<ownershipId>.lock`.
-5. Create the replacement canonical lock with the existing exclusive-create
-   protocol and the current Run ID plus a fresh ownership ID.
+4. If it is still the same same-host stale owner, atomically move the whole
+   canonical directory to a controlled archive path such as
+   `planning-pr-v1/archive/issue-locks/issue-N/<ownershipId>/`.
+5. Create the replacement canonical lock with the same staged-directory protocol
+   and the current Run ID plus a fresh ownership ID.
 6. Retire the transition owner only after replacement ownership is established.
+
+A legacy regular file at the canonical path (written before this revision) is
+classified from its bytes and, when provably stale, reclaimed by atomically
+renaming the whole file to its deterministic archive path; replacements always
+use the ownership-directory representation.
 
 Archive names never use unchecked lock text. Existing archive destinations are
 not overwritten. If an older Patchmill process or external actor acquires the
-canonical name during the archival gap, replacement exclusive creation loses
-safely; the contender classifies the new owner instead of removing it.
+canonical name during the archival gap, replacement staged-directory creation
+loses safely; the contender classifies the new owner instead of removing it.
 
 Interruption remains recoverable at every boundary:
 

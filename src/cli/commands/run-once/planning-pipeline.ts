@@ -172,6 +172,12 @@ export async function runPlanningWorkflow(input: {
     expectedStatePresence: input.expectedStatePresence,
     runStateDir: input.config.runStateDir,
     stateStore,
+    ...(input.options.progress === undefined
+      ? {}
+      : { progress: input.options.progress }),
+    ...(input.options.now === undefined
+      ? {}
+      : { now: () => input.options.now! }),
     readIssue: () => host.viewIssue(input.issue.number),
     readLegacy: () =>
       readRunState(input.config.runStateDir, input.issue.number),
