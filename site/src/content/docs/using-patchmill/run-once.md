@@ -16,6 +16,18 @@ Preview selection without mutation:
 patchmill run-once --dry-run
 ```
 
+## Comment-backed issue state
+
+When `issueState.provider` is `comments`, Run-once reads the latest trusted
+Patchmill state comment instead of repository labels for workflow state such as
+`agent-ready`, `in-progress`, `spec-review`, `plan-review`, and `agent-done`.
+State changes append new comments and do not edit or delete older state
+comments.
+
+Priority labels still affect automatic issue ordering when they exist. If you
+cannot use priority labels, Run-once falls back to issue-number ordering among
+eligible issues.
+
 ## Fresh planning workflow
 
 The saved gate snapshot assigns spec and plan artifacts to a **phase
