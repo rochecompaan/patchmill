@@ -57,6 +57,7 @@ export function parseArgs(
       patchmillConfig.labels,
       patchmillConfig.triage,
     ),
+    issueState: patchmillConfig.issueState,
     skills: patchmillConfig.skills,
   };
 

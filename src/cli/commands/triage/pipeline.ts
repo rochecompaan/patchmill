@@ -2,6 +2,8 @@ import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createIssueHostProvider } from "../../../host/factory.ts";
+import { createIssueStateProvider } from "../../../issue-state/index.ts";
+import { createPatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
 import { canonicalBucketForLabels } from "../../../policy/triage-state.ts";
 import { preprocessBlockedIssues } from "./blocked-preprocessor.ts";
 import { runTriageDryRunAgent } from "./dry-run-agent.ts";
@@ -135,6 +137,22 @@ export async function runTriage(
   const projectPolicy =
     config.projectPolicy ?? DEFAULT_PATCHMILL_CONFIG.projectPolicy;
   const triagePolicy = config.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+  const labelCatalog = createPatchmillLabelCatalog({
+    ...DEFAULT_PATCHMILL_CONFIG,
+    labels: triagePolicy.labels,
+    triage: { stateMap: triagePolicy.stateMap },
+  });
+  const issueState = config.issueState ?? DEFAULT_PATCHMILL_CONFIG.issueState;
+  const issueStateProvider = await createIssueStateProvider(
+    host,
+    { issueState },
+    labelCatalog,
+  );
+  const runtimeConfig: TriageConfig = {
+    ...config,
+    issueState,
+    issueStateProvider,
+  };
 
   let listedIssues: IssueSummary[];
   try {
@@ -273,10 +291,18 @@ export async function runTriage(
       mutationStatus: "observed",
       isBlockedIssue: (issue) => blockedBucket(issue, config),
       async onAutoUnblocked({ issue, comment, finalLabels }) {
-        await host.applyLabels(
-          planLabelChange(issue.number, issue.labels, finalLabels),
-        );
-        await host.commentIssue(issue.number, comment);
+        if (runtimeConfig.issueState.provider === "comments") {
+          await issueStateProvider.setRoles({
+            issue,
+            roles: ["agent-ready"],
+            message: comment,
+          });
+        } else {
+          await host.applyLabels(
+            planLabelChange(issue.number, issue.labels, finalLabels),
+          );
+          await host.commentIssue(issue.number, comment);
+        }
         return {
           addedComments: [comment],
           previousState: issue.state,
@@ -292,15 +318,16 @@ export async function runTriage(
     if (agentIssues.length > 0) {
       await executeTriageIssues({
         runner,
-        repoRoot: config.repoRoot,
+        repoRoot: runtimeConfig.repoRoot,
         host,
-        hostConfig: config.host,
+        hostConfig: runtimeConfig.host,
         issues: agentIssues,
         projectPolicy,
         stateMap: triagePolicy.stateMap,
-        skills: config.skills,
+        skills: runtimeConfig.skills,
         thinking:
-          config.triageThinking ?? DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+          runtimeConfig.triageThinking ??
+          DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
         onToolCall: config.onToolCall,
         onIssue(entry) {
           pendingEntries.set(entry.issueNumber, entry);
