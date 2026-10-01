@@ -89,6 +89,24 @@ The comment provider can also accept a trusted-author list:
 If `trustedAuthors` is omitted, Patchmill will trust the authenticated host user.
 This matches the user who can create Patchmill state comments through the CLI.
 
+## Using comment mode after init
+
+The first implementation does not need to change `patchmill init`. Because
+`patchmill init` prepares the repository for the default label backend, it asks
+whether to create missing Patchmill labels.
+
+Documentation must explain the comment-mode setup path:
+
+1. Run `patchmill init` without `--yes`.
+2. Answer `no` when asked to create missing labels.
+3. Edit the generated `patchmill.config.json` to set
+   `issueState.provider` to `comments`.
+4. Add `issueState.trustedAuthors` if the authenticated host user should not be
+   the only trusted author.
+
+This keeps the implementation scope limited. A later change can add an
+`init` option or prompt for selecting the issue-state provider.
+
 ## Patchmill state comments
 
 The comment backend will use a small front-matter document:
