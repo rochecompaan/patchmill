@@ -14,6 +14,10 @@ export type PatchmillPiConfig = {
   triageThinking: string;
 };
 
+export type PatchmillIssueStateConfig =
+  | { provider: "labels" }
+  | { provider: "comments"; trustedAuthors?: string[] | undefined };
+
 export type PatchmillLabelsConfig = {
   ready: string;
   needsInfo: string;
@@ -57,6 +61,7 @@ export type PatchmillConfig = {
   host: PatchmillHostConfig;
   pi: PatchmillPiConfig;
   labels: PatchmillLabelsConfig;
+  issueState: PatchmillIssueStateConfig;
   triage: PatchmillTriageConfig;
   workflow: PatchmillWorkflowConfig;
   skills: PatchmillSkillsConfig;

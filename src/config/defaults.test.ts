@@ -45,6 +45,7 @@ test("defaults match the current patchmill baseline configuration", () => {
         "priority:low",
       ],
     },
+    issueState: { provider: "labels" },
     triage: {
       stateMap: {
         "agent-ready": "agent-ready",

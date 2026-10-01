@@ -42,6 +42,7 @@ export const DEFAULT_PATCHMILL_CONFIG: PatchmillConfig = {
     triageThinking: "high",
   },
   labels: DEFAULT_PATCHMILL_LABELS,
+  issueState: { provider: "labels" },
   triage: {
     stateMap: defaultTriageStateMap(DEFAULT_PATCHMILL_LABELS),
   },

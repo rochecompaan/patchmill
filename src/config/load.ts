@@ -217,10 +217,40 @@ function mergeProjectPolicy(
   };
 }
 
+function cloneIssueStateConfig(
+  issueState: PatchmillConfig["issueState"],
+): PatchmillConfig["issueState"] {
+  return issueState.provider === "comments"
+    ? {
+        provider: "comments",
+        ...(issueState.trustedAuthors === undefined
+          ? {}
+          : { trustedAuthors: cloneStringArray(issueState.trustedAuthors) }),
+      }
+    : { provider: "labels" };
+}
+
 function cloneTriageConfig(
   triage: PatchmillConfig["triage"],
 ): PatchmillConfig["triage"] {
   return { stateMap: cloneTriageStateMap(triage.stateMap) };
+}
+
+function mergeIssueStateConfig(
+  base: PatchmillConfig["issueState"],
+  update: PartialConfig["issueState"] | undefined,
+): PatchmillConfig["issueState"] {
+  if (update === undefined) return cloneIssueStateConfig(base);
+  if (update.provider === "comments") {
+    return {
+      provider: "comments",
+      ...("trustedAuthors" in update && update.trustedAuthors !== undefined
+        ? { trustedAuthors: cloneStringArray(update.trustedAuthors) }
+        : {}),
+    };
+  }
+  if (update.provider === "labels") return { provider: "labels" };
+  return cloneIssueStateConfig(base);
 }
 
 function mergeTriageConfig(
@@ -268,6 +298,7 @@ function mergeConfig(
     host: { ...base.host, ...update.host },
     pi: { ...base.pi, ...update.pi },
     labels,
+    issueState: mergeIssueStateConfig(base.issueState, update.issueState),
     triage,
     workflow,
     skills: mergeSkillsConfig(base.skills, update.skills),
@@ -296,6 +327,7 @@ function absolutizePaths(
 ): PatchmillConfig {
   return {
     ...config,
+    issueState: cloneIssueStateConfig(config.issueState),
     triage: cloneTriageConfig(config.triage),
     workflow: cloneWorkflowConfig(config.workflow),
     skills: cloneSkillsConfig(config.skills),
@@ -349,6 +381,66 @@ function readSkillsConfig(
   }
 
   return hasEntries(parsed) ? parsed : undefined;
+}
+
+function readIssueStateConfig(
+  source: Record<string, unknown>,
+): PartialConfig["issueState"] | undefined {
+  const value = source.issueState;
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw configError("issueState", "an object", value);
+
+  const provider = readOptionalLiteral(
+    value,
+    "provider",
+    "issueState.provider",
+    ["labels", "comments"],
+  );
+  const trustedAuthors = readOptionalStringArray(
+    value,
+    "trustedAuthors",
+    "issueState.trustedAuthors",
+  );
+  if (trustedAuthors !== undefined) {
+    for (const [index, author] of trustedAuthors.entries()) {
+      if (author.trim().length === 0) {
+        throw configError(
+          `issueState.trustedAuthors[${index}]`,
+          "a non-empty string",
+          author,
+        );
+      }
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key !== "provider" && key !== "trustedAuthors") {
+      throw configError(
+        `issueState.${key}`,
+        "a supported issue-state setting",
+        value[key],
+      );
+    }
+  }
+
+  if (provider === undefined && trustedAuthors === undefined) return undefined;
+  if (provider === "labels") {
+    if (trustedAuthors !== undefined) {
+      throw configError(
+        "issueState.trustedAuthors",
+        'only valid when issueState.provider is "comments"',
+        trustedAuthors,
+      );
+    }
+    return { provider: "labels" };
+  }
+  if (provider === "comments") {
+    return {
+      provider: "comments",
+      ...(trustedAuthors === undefined ? {} : { trustedAuthors }),
+    };
+  }
+  throw configError("issueState.provider", "a configured provider", provider);
 }
 
 function readTriageConfig(
@@ -589,6 +681,11 @@ function parseConfigFile(data: unknown): PartialConfig {
     );
     if (triageThinking !== undefined) parsed.triageThinking = triageThinking;
     if (hasEntries(parsed)) config.pi = parsed;
+  }
+
+  const issueState = readIssueStateConfig(data);
+  if (issueState !== undefined) {
+    config.issueState = issueState;
   }
 
   const labels = readOptionalSection(data, "labels");
