@@ -36,8 +36,9 @@ export async function createIssueStateProvider(
     "triagePolicy" | "workflowApprovalPolicy"
   >,
 ): Promise<IssueStateProvider> {
-  if (config.issueState.provider === "comments") {
-    return createCommentIssueStateProvider(host, config.issueState);
+  const issueState = config.issueState ?? ({ provider: "labels" } as const);
+  if (issueState.provider === "comments") {
+    return createCommentIssueStateProvider(host, issueState);
   }
   return createLabelIssueStateProvider(host, {
     triagePolicy: labelCatalog.triagePolicy,

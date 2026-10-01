@@ -10,7 +10,10 @@ import {
   hasBlockedRunRecoveryState,
   lifecycleLabels,
 } from "./pipeline-lifecycle.ts";
-import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import {
+  DEFAULT_LABEL_CATALOG,
+  DEFAULT_TRIAGE_POLICY,
+} from "../triage/labels.ts";
 import { needsPlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
   isActionableWorkflowState,
@@ -52,7 +55,8 @@ function workflowRolesForIssue(
     triagePolicy: config.triagePolicy?.labels
       ? config.triagePolicy
       : DEFAULT_TRIAGE_POLICY,
-    approvalPolicy: config.approvalPolicy,
+    approvalPolicy:
+      config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy,
   });
 }
 
