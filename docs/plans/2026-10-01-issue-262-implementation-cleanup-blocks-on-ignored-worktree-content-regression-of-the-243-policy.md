@@ -34,13 +34,28 @@ planning state, Astro documentation
 - Continue to decode and resume durable legacy `cleanup-pending` records.
 - Do not add a setting, allowlist, dependency, or schema change.
 - Do not change legacy recovery uses of `ignored-worktree-content`.
+- Do not publish ignored-content warnings or remediation comments during new
+  cleanup.
+- Do not apply `needs-info` or require an `agent-ready` retry for new
+  ignored-only cleanup.
+
+**CAUTION:** Do not store unique data in ignored files inside disposable phase
+workspaces. Cleanup permanently deletes all ignored content, including `.env`,
+`.pi/`, unknown files, and operator-created files. The issue owner accepts this
+trade-off.
 
 ## Testing Value Gate
 
-The new tests pass the Testing Value Gate. They protect destructive behavior, a
-critical regression, race handling, phase consistency, and durable-state
-compatibility. Each test can fail when Patchmill deletes ordinary work or
-restores ignored-content blocking.
+The planned tests meet all four conditions:
+
+- They prove removal, preservation of ordinary changes, completion, and durable
+  retry behavior, rather than static configuration.
+- They fail for meaningful regressions, including ignored-content blocking,
+  unsafe removal, and replay of completed effects.
+- Future maintainers can rerun them without live GitHub access or operator
+  files.
+- Destructive cleanup and durable recovery justify automated regression
+  coverage.
 
 Do not add tests that compare documentation text. Use formatting, Markdown lint,
 and the site build for documentation verification.
@@ -86,16 +101,28 @@ split is necessary.
 
 ## Review Focus
 
-1. An ignored file with an unknown name must be removed for each phase. Task 1
-   adds a real-Git phase matrix.
-2. A staged, tracked, or ordinary untracked file must block removal and remain
-   on disk. Task 1 adds real-Git blocker cases.
-3. An ordinary file created after the final status read must make Git refuse
-   removal. Task 1 adds a race-injection test.
-4. A legacy pending checkpoint must resume without replaying completed finish
-   effects. Task 2 adds spec, plan, and implementation retry tests.
-5. A successful implementation with ignored artifacts must not publish pending
-   cleanup or apply `needs-info`. Task 1 adds a provider scenario.
+1. Late ordinary changes must remain on disk. Task 1 covers both status-read and
+   Git-removal races.
+2. Invalid ownership, path, registration, or local HEAD must prevent removal.
+   Task 1 adds cleanup-specific guard cases.
+3. Missing or changed publication proof must prevent local mutation. Task 2
+   retains remote-HEAD and compare-and-swap tests.
+4. Legacy pending records must remain readable and resume without replay of
+   completed effects. Task 2 covers serialization and phase retries.
+5. A checkpoint error after removal must not authorize replacement or duplicate
+   effects. Task 2 retains missing-worktree and missing-branch retry tests.
+
+## Execution setup
+
+- [ ] Record the implementation baseline before code changes.
+
+```bash
+IMPLEMENTATION_BASE=$(git rev-parse HEAD)
+```
+
+Retain this value for final scope and dependency comparisons. Use it instead of
+a moving remote branch or a fixed commit count. Run tasks in order in this phase
+workspace. No dependency or skill-pack change is necessary.
 
 ---
 
@@ -120,7 +147,7 @@ split is necessary.
 - Consumes:
   `PlanningWorkspaceOwnership<{ state: "ready" } | PlanningWorkspaceCleanupPending>`.
 - Produces:
-  `parsePlanningWorkspaceRemovalStatus(stdout): { ordinaryDirty: boolean }`.
+  `parsePlanningWorkspaceRemovalStatus(stdout: string): { ordinaryDirty: boolean }`.
 - Produces: a `removeWorktree()` path that never returns ignored-content
   pending.
 - Preserves: the broad live result type until Task 2 narrows its contract.
@@ -149,19 +176,26 @@ assert.deepEqual(
 );
 ```
 
-Keep a malformed NUL-record assertion. Update the late-status mock to return
-only `{ ordinaryDirty: true }`.
+Add separate ordinary-status cases for staged, tracked, and non-ignored
+untracked changes. Include an ordinary rename record and a path with a newline.
+For each non-empty NUL-delimited case, assert `{ ordinaryDirty: true }`. Keep
+the malformed response assertion for missing trailing NUL, using
+`" M tracked.txt"`. Remove the obsolete empty-ignored-path assertion. Update the
+late-status mock to return only `{ ordinaryDirty: true }`.
 
 - [ ] **Step 3: Add real-Git cleanup tests**
 
 Create `src/git/planning-workspace-cleanup.real.test.ts` with an isolated
-repository fixture. The fixture must record each Git argument list and support a
-callback immediately before `git worktree remove`.
+repository fixture with a bare remote and committed ignore rules. Publish each
+saved phase HEAD before cleanup. The fixture must record each Git argument list
+and support a callback immediately before `git worktree remove`.
 
 Add `normal removal deletes ignored-only worktrees for every phase`. Loop over
-`spec`, `plan`, and `implementation`. Create `.env`, `build/output.bin`, and
-`.unknown/operator.txt` as ignored files. Verify that ordinary porcelain status
-is empty.
+`spec`, `plan`, and `implementation`. Create `.env`, `.pi/state.json`,
+`build/output.bin`, and `.unknown/operator.txt` as ignored files. Verify that
+ordinary porcelain status is empty. Before removal, call `resume()` with ready
+ownership and assert `clean === true`. Verify that resume leaves the ignored
+bytes intact. This preserves the separate in-place recovery boundary.
 
 For the implementation case, pass a durable legacy cleanup input:
 
@@ -193,11 +227,28 @@ worktree still exists.
 Add `normal Git removal preserves an ordinary file created after status`. Inject
 `late.txt` immediately before the remove command. Assert a
 `PlanningWorkspaceCommandError` for `worktree-remove`, no `--force` argument,
-and the continued presence of `late.txt`.
+and the continued presence of `late.txt`. Assert one removal attempt and no
+force retry. The local branch must remain.
 
-In `planning-workspace-git.test.ts`, keep the existing tracked, staged, and
-ordinary untracked cases. Remove the old ignored-content pending case because
-the focused real-Git test now owns that behavior.
+Add
+`cleanup safeguards reject ready and legacy pending ownership before removal`.
+Run each case with both accepted cleanup states. Cover these conditions:
+
+- A different saved `runId` or phase returns `invalid-saved-identity`.
+- A path outside the configured worktree root returns `outside-worktree-root`.
+- A conflicting registration returns `unsafe-registration` or
+  `branch-owned-by-other-worktree`.
+- A changed saved local HEAD returns `head-oid-mismatch`.
+
+Use `PlanningWorkspaceGit` with a recording runner for path and registration
+cases. Assert that no `worktree remove` or `update-ref -d` command runs.
+
+In `planning-workspace-git.test.ts`, keep the tracked, staged, and ordinary
+untracked cases. Assert that each blocked file retains its bytes. Remove
+`"ignored"` from the old dirty-case matrix, including its pending assertion and
+teardown inside the removed worktree. The focused real-Git test now owns
+ignored-only removal. Keep the existing non-destructive resume assertion in the
+new phase matrix.
 
 - [ ] **Step 4: Replace the old pipeline pending scenarios with normal
       completion coverage**
@@ -219,8 +270,22 @@ assert.equal(workspaceRemoveCalls, 1);
 assert.equal(branchRemoveCalls, 1);
 ```
 
-Do not inspect ignored bytes after completion. The removed worktree is the
-deletion proof.
+Calculate the checkpoint and effect counts from `stateHistory()` and
+`effects()`. Calculate `hasCleanupPendingComment` from the issue comment bodies.
+Use `scenario.invocation().config.repoRoot` to resolve the saved workspace path.
+Assert that the path no longer exists and that
+`git show-ref --verify --quiet refs/heads/<saved-branch>` exits with code `1`.
+Assert that the implementation remote ref still equals the saved publication
+HEAD.
+
+Use `summarizeResult(result)` and
+`formatTerminalResult(summary, { width: 100, color: false })` for output
+assertions. Assert that redirected summary data has no `ignoredPaths`,
+`remediation`, or ignored-content diagnostic. Assert that terminal output
+contains neither `Cleanup pending` nor `ignored-worktree-content`.
+
+Do not inspect ignored bytes after completion. The absent worktree path proves
+removal.
 
 - [ ] **Step 5: Run the new tests and verify the old policy fails**
 
@@ -329,6 +394,9 @@ git commit -m "fix(git): remove ignored phase-worktree content"
 - Modify: `src/cli/commands/run-once/planning-phase-coordinator.test.ts`
 - Create:
   `src/cli/commands/run-once/planning-cleanup-pending-reconciliation.test.ts`
+- Modify: `src/workflow/planning-state-cleanup-pending.test.ts`
+- Test: `src/cli/commands/run-once/planning-cleanup-pending-output.test.ts`
+- Test: `src/cli/commands/run-once/planning-pipeline-provider-recovery.test.ts`
 
 **Interfaces:**
 
@@ -364,8 +432,10 @@ pending workspace. Set these finish checkpoints to `true`: cost publication,
 visual evidence, handoff comment, and cleanup hook.
 
 Add
-`a legacy implementation cleanup-pending state completes without replaying finish effects`.
-Assert:
+`a legacy pending record survives serialization and completes without replaying finish effects`.
+Round-trip the saved state through `serializePlanningState()` and
+`parsePlanningState()` before calling the finish function. Assert exact
+preservation of the legacy reason and raw ignored paths. Then assert:
 
 ```ts
 assert.equal(result.kind, "complete");
@@ -405,7 +475,15 @@ assert.equal(current.workspace.cleanup.state, "removed");
 ```
 
 Use the existing publication authorization shape. Verify the exact remote head
-before removal.
+before removal. Retain changed or missing remote-HEAD cases for ready and
+pending input. These cases must return `remote-head-changed` without removal or
+a cleanup checkpoint.
+
+In `planning-state-cleanup-pending.test.ts`, add
+`legacy pending records retain raw paths through serialization`. Assert that
+`parsePlanningState(serializePlanningState(current))` equals `current`. Include
+`"build/output\nname.bin"` as a raw legacy path. Retain codec validation and
+forward-transition tests. No state-version or decoder change is necessary.
 
 - [ ] **Step 4: Add legacy publication-reconciliation coverage**
 
@@ -416,6 +494,12 @@ implementation phase in pending cleanup. Call
 Assert that the result retains the phase, reason, paths, and pull-request URL.
 Also assert one cleanup-pending comment and one label change. This test protects
 compatibility after live producers disappear.
+
+Add
+`an eligible legacy pending retry does not republish ignored-content remediation`.
+Pass an issue with the configured ready label. Assert that the helper returns
+`undefined` and performs no host writes. This retry then uses the live cleanup
+policy. Do not change selection or acknowledgment rules for older records.
 
 - [ ] **Step 5: Run the type contract and verify that it fails**
 
@@ -458,10 +542,10 @@ checkpoint.
 
 Remove impossible pending variants and branches from:
 
-- `PlanningPhasePublicationResult` and `publishPlanningPhase()`;
-- `PlanningPhaseReconciliation` and `reconcilePlanningPhase()`;
-- `PlanningPhaseRunnerOutcome` and both phase runners; and
-- the coordinator's phase-runner switch.
+- `PlanningPhasePublicationResult` and `publishPlanningPhase()`.
+- `PlanningPhaseReconciliation` and `reconcilePlanningPhase()`.
+- `PlanningPhaseRunnerOutcome` and both phase runners.
+- The coordinator's phase-runner switch.
 
 Keep `PlanningCleanupPendingOutcome` exported from
 `planning-phase-runner-shared.ts`. Keep it in `PlanningCoordinatorOutcome`
@@ -488,7 +572,9 @@ Make these changes:
   remove the worktree and branch, then return `published`.
 - In `planning-phase-reconciler.test.ts`, start one open phase in legacy pending
   state. Assert `review-pending` after `worktree-removed` and `removed`
-  checkpoints.
+  checkpoints. Replace the fake pending producer in the merged retry matrix with
+  saved pending input. Retain the merged-terminal proof and its separate
+  branch-removal authorization.
 - Remove fake live pending outcomes from `planning-phase-runner.test.ts` and
   `planning-phase-coordinator.test.ts`.
 - Keep invalid-removal tests in `planning-finish.test.ts` and
@@ -513,7 +599,10 @@ node --test \
   src/cli/commands/run-once/planning-phase-reconciler.test.ts \
   src/cli/commands/run-once/planning-phase-runner.test.ts \
   src/cli/commands/run-once/planning-phase-coordinator.test.ts \
-  src/cli/commands/run-once/planning-cleanup-pending-reconciliation.test.ts
+  src/cli/commands/run-once/planning-cleanup-pending-reconciliation.test.ts \
+  src/cli/commands/run-once/planning-cleanup-pending-output.test.ts \
+  src/cli/commands/run-once/planning-pipeline-provider-recovery.test.ts \
+  src/workflow/planning-state-cleanup-pending.test.ts
 npm run test:run-once
 ```
 
@@ -559,7 +648,8 @@ git add \
   src/cli/commands/run-once/planning-phase-runner.test.ts \
   src/cli/commands/run-once/planning-phase-coordinator.ts \
   src/cli/commands/run-once/planning-phase-coordinator.test.ts \
-  src/cli/commands/run-once/planning-cleanup-pending-reconciliation.test.ts
+  src/cli/commands/run-once/planning-cleanup-pending-reconciliation.test.ts \
+  src/workflow/planning-state-cleanup-pending.test.ts
 git commit -m "refactor(run-once): make phase cleanup completion-only"
 ```
 
@@ -583,9 +673,12 @@ State that new ignored-only phase cleanup does not return `cleanup-pending`.
 Explain that the result can still appear during reconciliation of state from an
 older release.
 
-State that Patchmill removes ignored content when ordinary status is clean. Keep
-staged, tracked, and ordinary untracked content documented as blockers. Keep
-non-destructive in-place recovery as a separate preservation policy.
+State that empty ordinary status permits removal only after the existing
+identity, HEAD, and publication safeguards pass. Keep staged, tracked, and
+ordinary untracked content documented as blockers. Add a caution that removal
+permanently deletes all ignored content, including `.env`, `.pi/`, unknown
+files, and operator-created files. Keep non-destructive in-place recovery as a
+separate preservation policy.
 
 Replace the current `Cleanup pending` operator row with a
 `Legacy cleanup pending` row. Tell the operator to apply the configured ready
@@ -613,11 +706,11 @@ operator cleanup round-trip after ignored-only content.
 Run:
 
 ```bash
-npx prettier --check \
+npx --no-install prettier --check \
   site/src/content/docs/using-patchmill/run-once.md \
   site/src/content/docs/reference/agent-workflow-lifecycle.md \
   site/src/content/docs/getting-started/configuration.md
-npx markdownlint-cli2 \
+npx --no-install markdownlint-cli2 \
   site/src/content/docs/using-patchmill/run-once.md \
   site/src/content/docs/reference/agent-workflow-lifecycle.md \
   site/src/content/docs/getting-started/configuration.md
@@ -655,7 +748,7 @@ npm run lint
 npm run build
 npm run site:build
 git diff --check
-if git diff --quiet origin/main...HEAD -- \
+if git diff --quiet "$IMPLEMENTATION_BASE" -- \
   package.json package-lock.json npm-shrinkwrap.json; then
   echo "Nix build skipped: npm dependency metadata unchanged"
 else
@@ -664,7 +757,7 @@ fi
 ```
 
 Expected: PASS. If a command fails on the unchanged base, record the base
-comparison and do not claim that the full suite passes.
+comparison. Do not claim that the full suite passes.
 
 The conditional Nix build implements the dependency gate from `AGENTS.md`. No
 Nix build runs when npm dependency metadata is unchanged.
@@ -685,10 +778,12 @@ Run:
 
 ```bash
 git status --short
-git log --oneline --decorate -4
-git diff --stat HEAD~3..HEAD
-git diff --check HEAD~3..HEAD
+git log --oneline --decorate "$IMPLEMENTATION_BASE"..HEAD
+git diff --stat "$IMPLEMENTATION_BASE"..HEAD
+git diff --check "$IMPLEMENTATION_BASE"..HEAD
 ```
 
-Expected: the worktree is clean, the branch contains the three implementation
-commits, and the complete range has no whitespace errors.
+Expected: the worktree is clean and the complete implementation range has no
+whitespace errors. Only the planned cleanup, compatibility, test, and
+documentation files change. No npm dependency metadata, skill-pack,
+configuration schema, or in-place recovery policy changes.
