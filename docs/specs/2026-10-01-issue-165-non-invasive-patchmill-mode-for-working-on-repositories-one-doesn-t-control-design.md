@@ -86,8 +86,9 @@ The comment provider can also accept a trusted-author list:
 }
 ```
 
-If `trustedAuthors` is omitted, Patchmill will trust the authenticated host user.
-This matches the user who can create Patchmill state comments through the CLI.
+If `trustedAuthors` is omitted, Patchmill will trust the authenticated host
+user. This matches the user who can create Patchmill state comments through the
+CLI.
 
 ## Using comment mode after init
 
@@ -99,13 +100,13 @@ Documentation must explain the comment-mode setup path:
 
 1. Run `patchmill init` without `--yes`.
 2. Answer `no` when asked to create missing labels.
-3. Edit the generated `patchmill.config.json` to set
-   `issueState.provider` to `comments`.
+3. Edit the generated `patchmill.config.json` to set `issueState.provider` to
+   `comments`.
 4. Add `issueState.trustedAuthors` if the authenticated host user should not be
    the only trusted author.
 
-This keeps the implementation scope limited. A later change can add an
-`init` option or prompt for selecting the issue-state provider.
+This keeps the implementation scope limited. A later change can add an `init`
+option or prompt for selecting the issue-state provider.
 
 ## Patchmill state comments
 
@@ -117,8 +118,8 @@ Patchmill: agent-ready
 ---
 ```
 
-The value after `Patchmill:` is a Patchmill workflow role. The first version will
-support these roles:
+The value after `Patchmill:` is a Patchmill workflow role. The first version
+will support these roles:
 
 - `agent-ready`
 - `needs-info`
@@ -158,7 +159,8 @@ The names are illustrative. The implementation plan can choose exact names that
 fit the current modules.
 
 The label provider will map configured labels to roles. It will preserve current
-behavior by applying and removing labels through `IssueHostProvider.applyLabels`.
+behavior by applying and removing labels through
+`IssueHostProvider.applyLabels`.
 
 The comment provider will map roles to one new state comment. It will not edit
 or delete old comments. Each state change appends a new authoritative comment.
@@ -271,8 +273,8 @@ host provider and the Patchmill configuration.
 
 Host implementations need only focused changes if their comment payloads lack
 stable authors, creation times, or ordering. GitHub already returns these values
-through `gh issue view --json comments`. Forgejo must provide the same normalized
-fields before the comment backend can be enabled for it.
+through `gh issue view --json comments`. Forgejo must provide the same
+normalized fields before the comment backend can be enabled for it.
 
 ## Affected components
 
@@ -351,11 +353,11 @@ tests, then `npm run check:types`, `npm run lint`, `npm run build`, and
 
 ## Acceptance mapping
 
-| Acceptance criterion | Design response |
-| --- | --- |
-| Work without label control | The comment provider stores Patchmill state through issue comments. |
-| Avoid repository configuration changes | The mode uses local `patchmill.config.json` and existing local-only setup. |
-| Preserve existing behavior | The label provider remains the default and keeps current label semantics. |
-| Determine state from the last comment | The resolver uses the last trusted Patchmill state comment. |
-| Keep approvals safe | Trusted approval comments reuse approved artifacts and fail safely on ambiguity. |
-| Avoid a larger tracker rewrite | The design adds issue-state providers, not a new work-source subsystem. |
+| Acceptance criterion                   | Design response                                                                  |
+| -------------------------------------- | -------------------------------------------------------------------------------- |
+| Work without label control             | The comment provider stores Patchmill state through issue comments.              |
+| Avoid repository configuration changes | The mode uses local `patchmill.config.json` and existing local-only setup.       |
+| Preserve existing behavior             | The label provider remains the default and keeps current label semantics.        |
+| Determine state from the last comment  | The resolver uses the last trusted Patchmill state comment.                      |
+| Keep approvals safe                    | Trusted approval comments reuse approved artifacts and fail safely on ambiguity. |
+| Avoid a larger tracker rewrite         | The design adds issue-state providers, not a new work-source subsystem.          |
