@@ -49,8 +49,8 @@ export type PlanApprovalGateDecision =
       missingLabel: string;
     };
 
-function has(labels: string[], label: string): boolean {
-  return labels.includes(label);
+function has(roles: readonly string[], role: string): boolean {
+  return roles.includes(role);
 }
 
 function removeLabels(labels: string[], remove: string[]): string[] {
@@ -63,27 +63,27 @@ function addLabel(labels: string[], label: string): string[] {
 }
 
 export function resolveWorkflowState(
-  labels: string[],
+  roles: readonly string[],
   options: WorkflowStateOptions,
 ): RunOnceWorkflowState {
-  const { readyLabel, policy } = options;
+  const { policy } = options;
   const { specApproval, planApproval } = policy;
 
-  if (has(labels, planApproval.approvedLabel)) return { kind: "plan-approved" };
-  if (has(labels, planApproval.reviewLabel)) {
+  if (has(roles, "plan-approved")) return { kind: "plan-approved" };
+  if (has(roles, "plan-review")) {
     return {
       kind: "waiting-plan-review",
       missingLabel: planApproval.approvedLabel,
     };
   }
-  if (has(labels, specApproval.approvedLabel)) return { kind: "spec-approved" };
-  if (has(labels, specApproval.reviewLabel)) {
+  if (has(roles, "spec-approved")) return { kind: "spec-approved" };
+  if (has(roles, "spec-review")) {
     return {
       kind: "waiting-spec-review",
       missingLabel: specApproval.approvedLabel,
     };
   }
-  if (has(labels, readyLabel)) return { kind: "agent-ready" };
+  if (has(roles, "agent-ready")) return { kind: "agent-ready" };
 
   return { kind: "not-actionable" };
 }
@@ -118,14 +118,14 @@ export function assertExplicitWorkflowState(
 }
 
 export function decidePlanApprovalGate(options: {
-  labels: string[];
+  roles: readonly string[];
   planOnly: boolean;
   policy: WorkflowApprovalPolicy;
 }): PlanApprovalGateDecision {
   if (options.planOnly) return { action: "stop-for-plan-only" };
   const approval = options.policy.planApproval;
   if (!approval.required) return { action: "proceed" };
-  if (options.labels.includes(approval.approvedLabel)) {
+  if (options.roles.includes("plan-approved")) {
     return { action: "proceed" };
   }
   return {

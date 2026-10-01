@@ -217,13 +217,27 @@ export async function runPlanningWorkflow(input: {
           ]
         : [...issue.labels];
       if (mustClaim) {
-        await ensureAutomationLabel(host, input.config, labels.inProgress);
-        await host.applyLabels(
-          planLabelChange(issue.number, issue.labels, claimedLabels),
-        );
+        if (
+          input.config.issueState?.provider === "comments" &&
+          input.config.issueStateProvider
+        ) {
+          await input.config.issueStateProvider.setRoles({
+            issue,
+            roles: ["in-progress"],
+            message: startedComment(issue),
+          });
+        } else {
+          await ensureAutomationLabel(host, input.config, labels.inProgress);
+          await host.applyLabels(
+            planLabelChange(issue.number, issue.labels, claimedLabels),
+          );
+        }
       }
       const body = startedComment(issue);
-      if (!issue.comments?.some((comment) => comment.body === body))
+      if (
+        input.config.issueState?.provider !== "comments" &&
+        !issue.comments?.some((comment) => comment.body === body)
+      )
         await host.commentIssue(issue.number, body);
       return claimedLabels;
     },
@@ -269,18 +283,29 @@ export async function runPlanningWorkflow(input: {
       }
       if (outcome.kind === "blocked") {
         const body = blockerComment(outcome.result);
-        if (!issue.comments?.some((comment) => comment.body === body))
-          await host.commentIssue(issue.number, body);
-        await ensureAutomationLabel(host, input.config, labels.needsInfo);
-        await applyPlanningBlockedLabels({
-          host,
-          issueNumber: issue.number,
-          labels: {
-            ready: labels.ready,
-            inProgress: labels.inProgress,
-            needsInfo: labels.needsInfo,
-          },
-        });
+        if (
+          input.config.issueState?.provider === "comments" &&
+          input.config.issueStateProvider
+        ) {
+          await input.config.issueStateProvider.setRoles({
+            issue,
+            roles: ["needs-info"],
+            message: body,
+          });
+        } else {
+          if (!issue.comments?.some((comment) => comment.body === body))
+            await host.commentIssue(issue.number, body);
+          await ensureAutomationLabel(host, input.config, labels.needsInfo);
+          await applyPlanningBlockedLabels({
+            host,
+            issueNumber: issue.number,
+            labels: {
+              ready: labels.ready,
+              inProgress: labels.inProgress,
+              needsInfo: labels.needsInfo,
+            },
+          });
+        }
       }
       return outcome;
     },

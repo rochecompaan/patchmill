@@ -1,4 +1,8 @@
-import type { PatchmillHostConfig } from "../../../config/types.ts";
+import type {
+  PatchmillHostConfig,
+  PatchmillIssueStateConfig,
+} from "../../../config/types.ts";
+import type { IssueStateProvider } from "../../../issue-state/index.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
@@ -73,6 +77,8 @@ export type AgentIssueConfig = {
   issueLimit: 1;
   labelCatalog: PatchmillLabelCatalog;
   approvalPolicy: WorkflowApprovalPolicy;
+  issueState: PatchmillIssueStateConfig;
+  issueStateProvider?: IssueStateProvider | undefined;
   baseBranch: string;
   baseRef: string;
   remote: string;
@@ -87,6 +93,7 @@ export type IssueSelectionOptions = Pick<
   "issueNumber" | "readyLabel" | "triagePolicy"
 > & {
   approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
+  issueStateProvider?: IssueStateProvider | undefined;
   priorityLabels?: readonly string[] | undefined;
   excludedLabels?: readonly string[] | undefined;
 };

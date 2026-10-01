@@ -145,8 +145,18 @@ export async function blockIssue(
     issueNumber: issue.number,
   });
   const blockedLabels = nextLabels(labels, [inProgress], [needsInfo]);
-  await ensureAutomationLabel(host, config, needsInfo);
-  await host.applyLabels(planLabelChange(issue.number, labels, blockedLabels));
+  if (config.issueState?.provider === "comments" && config.issueStateProvider) {
+    await config.issueStateProvider.setRoles({
+      issue,
+      roles: ["needs-info"],
+      message: blockerComment(result),
+    });
+  } else {
+    await ensureAutomationLabel(host, config, needsInfo);
+    await host.applyLabels(
+      planLabelChange(issue.number, labels, blockedLabels),
+    );
+  }
   await writeRunState(
     config.runStateDir,
     {
@@ -169,10 +179,13 @@ export async function blockIssue(
   const commentKey = blockerCommentKey(result);
   const persisted = await readRunState(config.runStateDir, issue.number);
   if (!persisted?.blockerCommentKeys?.includes(commentKey)) {
-    const commented = await host
-      .commentIssue(issue.number, blockerComment(result))
-      .then(() => true)
-      .catch(() => false);
+    const commented =
+      config.issueState?.provider === "comments"
+        ? true
+        : await host
+            .commentIssue(issue.number, blockerComment(result))
+            .then(() => true)
+            .catch(() => false);
     if (commented)
       await writeRunState(
         config.runStateDir,

@@ -229,7 +229,9 @@ export async function runPipelineFinishStage(
       checkpoints.handoffCommentPosted = true;
     }
     if (!checkpoints.doneLabelEnsured) {
-      await ensureAutomationLabel(host, config, doneLabel);
+      if (config.issueState?.provider !== "comments") {
+        await ensureAutomationLabel(host, config, doneLabel);
+      }
       await writeRunState(
         config.runStateDir,
         {
@@ -256,7 +258,19 @@ export async function runPipelineFinishStage(
       [doneLabel],
     );
     if (!checkpoints.doneLabelApplied) {
-      await host.applyLabels(planLabelChange(issue.number, labels, doneLabels));
+      if (
+        config.issueState?.provider === "comments" &&
+        config.issueStateProvider
+      ) {
+        await config.issueStateProvider.setRoles({
+          issue,
+          roles: ["agent-done"],
+        });
+      } else {
+        await host.applyLabels(
+          planLabelChange(issue.number, labels, doneLabels),
+        );
+      }
       await writeRunState(
         config.runStateDir,
         {

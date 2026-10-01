@@ -76,6 +76,7 @@ export function parseArgs(
     issueLimit: 1,
     labelCatalog,
     approvalPolicy: labelCatalog.workflowApprovalPolicy,
+    issueState: patchmillConfig.issueState,
     baseBranch: patchmillConfig.git.baseBranch,
     baseRef: patchmillConfig.git.baseRef,
     remote: patchmillConfig.git.remote,

@@ -3,6 +3,7 @@ import type {
   AgentIssueVisualEvidence,
 } from "../../../issue-run/types.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import {
   isActionableWorkflowState,
   resolveWorkflowState,
@@ -67,10 +68,18 @@ export function automaticWorkflowStateEligible(
     "readyLabel" | "triagePolicy" | "approvalPolicy"
   >,
 ): boolean {
-  const state = resolveWorkflowState(labels, {
-    readyLabel: lifecycleLabels(config).ready,
-    policy: config.approvalPolicy,
-  });
+  const state = resolveWorkflowState(
+    workflowRolesFromLabels(labels, {
+      triagePolicy: config.triagePolicy?.labels
+        ? config.triagePolicy
+        : DEFAULT_TRIAGE_POLICY,
+      approvalPolicy: config.approvalPolicy,
+    }),
+    {
+      readyLabel: lifecycleLabels(config).ready,
+      policy: config.approvalPolicy,
+    },
+  );
   return isActionableWorkflowState(state) || state.kind === "not-actionable";
 }
 

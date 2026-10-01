@@ -3,6 +3,7 @@ import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { planLabelChange } from "../triage/labels.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
 import { assertApprovedArtifactsResolvable } from "./approval-artifact-preflight.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
@@ -361,10 +362,17 @@ async function runLegacyOneIssueInternal(
   const runOptions = { ...options, piSessionPath };
   if (config.dryRun) {
     const { ready } = lifecycleLabels(config);
-    const state = resolveWorkflowState(issue.labels, {
-      readyLabel: ready,
-      policy: config.approvalPolicy,
-    });
+    const state = resolveWorkflowState(
+      config.issueStateProvider?.resolveRoles(issue).roles ??
+        workflowRolesFromLabels(issue.labels, {
+          triagePolicy: config.labelCatalog.triagePolicy,
+          approvalPolicy: config.approvalPolicy,
+        }),
+      {
+        readyLabel: ready,
+        policy: config.approvalPolicy,
+      },
+    );
     return withLogPath(
       {
         status: "dry-run",
@@ -625,10 +633,21 @@ async function runLegacyOneIssueInternal(
         `ensuring ${inProgress} label exists`,
         { issueNumber: issue.number },
       );
-      await ensureAutomationLabel(host, config, inProgress);
-      await host.applyLabels(
-        planLabelChange(issue.number, issue.labels, labels),
-      );
+      if (
+        config.issueState?.provider === "comments" &&
+        config.issueStateProvider
+      ) {
+        await config.issueStateProvider.setRoles({
+          issue,
+          roles: ["in-progress"],
+          message: startedComment(issue),
+        });
+      } else {
+        await ensureAutomationLabel(host, config, inProgress);
+        await host.applyLabels(
+          planLabelChange(issue.number, issue.labels, labels),
+        );
+      }
       await progress(
         runOptions,
         "info",
@@ -688,7 +707,10 @@ async function runLegacyOneIssueInternal(
   }
 
   try {
-    if (!checkpoints.startedCommentPosted) {
+    if (
+      !checkpoints.startedCommentPosted &&
+      config.issueState?.provider !== "comments"
+    ) {
       await host.commentIssue(issueForRun.number, startedComment(issueForRun));
       await writeRunState(
         config.runStateDir,

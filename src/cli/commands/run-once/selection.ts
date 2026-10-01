@@ -1,6 +1,7 @@
 import type { IssueSummary } from "../../../issue/types.ts";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
 import type {
   IssueSelectionDiagnostics,
@@ -22,30 +23,38 @@ type ResolvedIssueSelectionOptions = {
   issueNumber?: number;
   readyLabel: IssueSelectionOptions["readyLabel"];
   approvalPolicy?: IssueSelectionOptions["approvalPolicy"];
+  issueStateProvider?: IssueSelectionOptions["issueStateProvider"];
+  triagePolicy: ReturnType<typeof createTriagePolicy>;
   priorityLabels: readonly string[];
   excludedLabels: Set<string>;
 };
 
 function defaultExcludedLabels(options: IssueSelectionOptions): string[] {
   return [
-    ...(options.triagePolicy ?? DEFAULT_TRIAGE_POLICY).runOnceSelection
-      .excludedLabels,
+    ...(options.triagePolicy?.runOnceSelection?.excludedLabels ??
+      DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels),
   ];
 }
 
 function resolveSelectionOptions(
   options: IssueSelectionOptions,
 ): ResolvedIssueSelectionOptions {
-  const triagePolicy = options.triagePolicy ?? DEFAULT_TRIAGE_POLICY;
+  const triagePolicy = options.triagePolicy?.labels
+    ? options.triagePolicy
+    : DEFAULT_TRIAGE_POLICY;
 
   return {
     ...(options.issueNumber === undefined
       ? {}
       : { issueNumber: options.issueNumber }),
     readyLabel: options.readyLabel,
+    triagePolicy,
     ...(options.approvalPolicy === undefined
       ? {}
       : { approvalPolicy: options.approvalPolicy }),
+    ...(options.issueStateProvider === undefined
+      ? {}
+      : { issueStateProvider: options.issueStateProvider }),
     priorityLabels:
       options.priorityLabels ?? triagePolicy.runOnceSelection.priorityOrder,
     excludedLabels: new Set([
@@ -80,6 +89,31 @@ function approvalPolicy(options: ResolvedIssueSelectionOptions) {
   );
 }
 
+function workflowRoles(
+  issue: IssueSummary,
+  options: ResolvedIssueSelectionOptions,
+): string[] {
+  if (options.issueStateProvider) {
+    return options.issueStateProvider.resolveRoles(issue).roles;
+  }
+  return workflowRolesFromLabels(issue.labels, {
+    triagePolicy: options.triagePolicy,
+    approvalPolicy: approvalPolicy(options),
+  });
+}
+
+function isBlockedByWorkflowRole(roles: readonly string[]): boolean {
+  return roles.some((role) =>
+    [
+      "needs-info",
+      "agent-unsuitable",
+      "blocked",
+      "in-progress",
+      "agent-done",
+    ].includes(role),
+  );
+}
+
 function isEligible(
   issue: IssueSummary,
   options: ResolvedIssueSelectionOptions,
@@ -88,9 +122,11 @@ function isEligible(
   if (blockingLabels(issue.labels, options.excludedLabels).length > 0) {
     return false;
   }
+  const roles = workflowRoles(issue, options);
+  if (isBlockedByWorkflowRole(roles)) return false;
 
   return isActionableWorkflowState(
-    resolveWorkflowState(issue.labels, {
+    resolveWorkflowState(roles, {
       readyLabel: options.readyLabel,
       policy: approvalPolicy(options),
     }),
@@ -101,7 +137,8 @@ function rejectionForIssue(
   issue: IssueSummary,
   options: ResolvedIssueSelectionOptions,
 ): IssueSelectionRejection | undefined {
-  const state = resolveWorkflowState(issue.labels, {
+  const roles = workflowRoles(issue, options);
+  const state = resolveWorkflowState(roles, {
     readyLabel: options.readyLabel,
     policy: approvalPolicy(options),
   });
@@ -111,7 +148,7 @@ function rejectionForIssue(
 
   if (issue.state !== "open") {
     reason = "non-open-state";
-  } else if (blockedBy.length > 0) {
+  } else if (blockedBy.length > 0 || isBlockedByWorkflowRole(roles)) {
     reason = "blocking-labels";
   } else if (state.kind === "waiting-spec-review") {
     reason = "waiting-spec-approval";
@@ -213,7 +250,7 @@ export function selectIssue(
       );
     }
 
-    assertExplicitWorkflowState(issue.labels, {
+    assertExplicitWorkflowState(workflowRoles(issue, resolved), {
       readyLabel: resolved.readyLabel,
       policy: approvalPolicy(resolved),
       issue,

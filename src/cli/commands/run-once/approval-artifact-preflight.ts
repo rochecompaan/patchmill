@@ -27,7 +27,11 @@ import type { ReadOnlyIssueWorkspace } from "./git.ts";
 export type ApprovedArtifactPreflightOptions = {
   config: Pick<
     AgentIssueConfig,
-    "repoRoot" | "specsDir" | "plansDir" | "approvalPolicy"
+    | "repoRoot"
+    | "specsDir"
+    | "plansDir"
+    | "approvalPolicy"
+    | "issueStateProvider"
   >;
   issue: IssueSummary;
   existingState?: AgentIssueRunState | undefined;
@@ -261,10 +265,17 @@ async function assertApprovedSourcesMaterializable(input: {
 export async function assertApprovedArtifactsResolvable(
   options: ApprovedArtifactPreflightOptions,
 ): Promise<ApprovedArtifactPreflight | undefined> {
+  const roles = options.config.issueStateProvider?.resolveRoles(
+    options.issue,
+  ).roles;
   const specLabel = options.config.approvalPolicy.specApproval.approvedLabel;
   const planLabel = options.config.approvalPolicy.planApproval.approvedLabel;
-  const requireSpec = options.issue.labels.includes(specLabel);
-  const requirePlan = options.issue.labels.includes(planLabel);
+  const requireSpec = roles
+    ? roles.includes("spec-approved")
+    : options.issue.labels.includes(specLabel);
+  const requirePlan = roles
+    ? roles.includes("plan-approved")
+    : options.issue.labels.includes(planLabel);
   if (!requireSpec && !requirePlan) return undefined;
 
   const branchSpec = await branchSavedArtifact({

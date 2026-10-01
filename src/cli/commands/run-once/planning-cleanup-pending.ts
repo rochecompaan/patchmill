@@ -98,6 +98,17 @@ export async function publishPlanningCleanupPending(input: {
 }): Promise<void> {
   const current = await input.host.viewIssue(input.result.issue.number);
   const body = cleanupPendingComment(input.result);
+  if (
+    input.config.issueState?.provider === "comments" &&
+    input.config.issueStateProvider
+  ) {
+    await input.config.issueStateProvider.setRoles({
+      issue: input.result.issue,
+      roles: ["needs-info"],
+      message: body,
+    });
+    return;
+  }
   if (!current.comments?.some((comment) => comment.body === body))
     await input.host.commentIssue(input.result.issue.number, body);
   await ensureAutomationLabel(input.host, input.config, input.labels.needsInfo);
