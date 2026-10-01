@@ -12,8 +12,10 @@ import { DEFAULT_TRIAGE_POLICY, planLabelChange } from "./labels.ts";
 import { writeTriageLog } from "./log.ts";
 import { createPreviewEntries } from "./reporting.ts";
 import type {
+  PrimaryBucket,
   TriageConfig,
   TriageLogIssueEntry,
+  TriagePreview,
   TriageResult,
 } from "./types.ts";
 
@@ -91,6 +93,59 @@ function blockedBucket(issue: IssueSummary, config: TriageConfig): boolean {
 
 function logMode(config: TriageConfig): "dry-run" | "execute" {
   return config.execute ? "execute" : "dry-run";
+}
+
+function roleForTriageBucket(bucket: PrimaryBucket) {
+  switch (bucket) {
+    case "agent-ready":
+      return "agent-ready";
+    case "needs-info":
+      return "needs-info";
+    case "agent-unsuitable":
+      return "agent-unsuitable";
+    case "blocked":
+      return "blocked";
+  }
+}
+
+async function applyCommentModeTriagePreviews(input: {
+  issues: IssueSummary[];
+  previews: TriagePreview[];
+  issueStateProvider: NonNullable<TriageConfig["issueStateProvider"]>;
+}): Promise<TriageLogIssueEntry[]> {
+  const issueByNumber = new Map(
+    input.issues.map((issue) => [issue.number, issue]),
+  );
+  const entries: TriageLogIssueEntry[] = [];
+  for (const preview of input.previews) {
+    const issue = issueByNumber.get(preview.issueNumber);
+    if (!issue)
+      throw new Error(`No issue found for preview #${preview.issueNumber}`);
+    const message = preview.wouldComment ?? preview.rationale;
+    await input.issueStateProvider.setRoles({
+      issue,
+      roles: [roleForTriageBucket(preview.canonicalBucket)],
+      ...(message.length === 0 ? {} : { message }),
+    });
+    entries.push({
+      issueNumber: issue.number,
+      title: issue.title,
+      ...(issue.url ? { url: issue.url } : {}),
+      previousLabels: issue.labels,
+      finalLabels: preview.proposedLabels,
+      primaryBucket: preview.canonicalBucket,
+      ...(preview.blockedBy.length > 0 ? { blockedBy: preview.blockedBy } : {}),
+      rationale: preview.rationale,
+      questions: preview.questions,
+      comment: preview.wouldComment,
+      ...(message.length === 0 ? {} : { addedComments: [message] }),
+      previousState: issue.state,
+      finalState: issue.state,
+      wouldClose: preview.wouldClose,
+      mutationStatus: "observed",
+    });
+  }
+  return entries;
 }
 
 function entriesBySelectedIssueOrder(
@@ -316,24 +371,49 @@ export async function runTriage(
     });
 
     if (agentIssues.length > 0) {
-      await executeTriageIssues({
-        runner,
-        repoRoot: runtimeConfig.repoRoot,
-        host,
-        hostConfig: runtimeConfig.host,
-        issues: agentIssues,
-        projectPolicy,
-        stateMap: triagePolicy.stateMap,
-        skills: runtimeConfig.skills,
-        thinking:
-          runtimeConfig.triageThinking ??
-          DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
-        onToolCall: config.onToolCall,
-        onIssue(entry) {
+      if (
+        runtimeConfig.issueState.provider === "comments" &&
+        runtimeConfig.issueStateProvider
+      ) {
+        const previews = await runTriageDryRunAgent(runner, config.repoRoot, {
+          issues: agentIssues,
+          projectPolicy,
+          stateMap: triagePolicy.stateMap,
+          skills: runtimeConfig.skills,
+          thinking:
+            runtimeConfig.triageThinking ??
+            DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+          onToolCall: config.onToolCall,
+        });
+        const entries = await applyCommentModeTriagePreviews({
+          issues: agentIssues,
+          previews,
+          issueStateProvider: runtimeConfig.issueStateProvider,
+        });
+        for (const entry of entries) {
           pendingEntries.set(entry.issueNumber, entry);
           flushPendingEntries();
-        },
-      });
+        }
+      } else {
+        await executeTriageIssues({
+          runner,
+          repoRoot: runtimeConfig.repoRoot,
+          host,
+          hostConfig: runtimeConfig.host,
+          issues: agentIssues,
+          projectPolicy,
+          stateMap: triagePolicy.stateMap,
+          skills: runtimeConfig.skills,
+          thinking:
+            runtimeConfig.triageThinking ??
+            DEFAULT_PATCHMILL_CONFIG.pi.triageThinking,
+          onToolCall: config.onToolCall,
+          onIssue(entry) {
+            pendingEntries.set(entry.issueNumber, entry);
+            flushPendingEntries();
+          },
+        });
+      }
     }
   } catch (error) {
     const failureLogIssues = entriesBySelectedIssueOrder(issues, [
