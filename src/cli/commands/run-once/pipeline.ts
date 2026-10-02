@@ -64,6 +64,7 @@ export async function runOneIssue(
           readyLabel: labels.ready,
           triagePolicy: runtimeConfig.triagePolicy,
           approvalPolicy: runtimeConfig.approvalPolicy,
+          issueState: runtimeConfig.issueState,
           issueStateProvider,
         });
         await emitSelectionDiagnostics(

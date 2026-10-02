@@ -119,6 +119,49 @@ export function lifecycleLabels(
   };
 }
 
+export function issueWorkflowLabels(
+  config: Pick<AgentIssueConfig, "readyLabel"> & {
+    triagePolicy?: AgentIssueConfig["triagePolicy"] | undefined;
+    approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
+  },
+): Set<string> {
+  const labels = lifecycleLabels(config);
+  const triageLabels =
+    config.triagePolicy?.labels ?? DEFAULT_TRIAGE_POLICY.labels;
+  const approvalPolicy =
+    config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy;
+  return new Set([
+    labels.ready,
+    labels.inProgress,
+    labels.done,
+    labels.needsInfo,
+    triageLabels.unsuitable,
+    triageLabels.blocked,
+    approvalPolicy.specApproval.reviewLabel,
+    approvalPolicy.specApproval.approvedLabel,
+    approvalPolicy.planApproval.reviewLabel,
+    approvalPolicy.planApproval.approvedLabel,
+  ]);
+}
+
+export function selectionBlockingLabels(
+  labels: readonly string[],
+  excludedLabels: readonly string[],
+  config: Pick<AgentIssueConfig, "readyLabel"> & {
+    triagePolicy?: AgentIssueConfig["triagePolicy"] | undefined;
+    approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
+    issueState?: AgentIssueConfig["issueState"] | undefined;
+  },
+): string[] {
+  const workflowLabels =
+    config.issueState?.provider === "comments"
+      ? issueWorkflowLabels(config)
+      : new Set<string>();
+  return labels.filter(
+    (label) => excludedLabels.includes(label) && !workflowLabels.has(label),
+  );
+}
+
 const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
   keyof AgentIssueRunCheckpoints
 >([

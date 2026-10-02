@@ -3,6 +3,7 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
 import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import { createWorkflowApprovalPolicy } from "../../../workflow/approval-policy.ts";
+import { selectionBlockingLabels } from "./pipeline-lifecycle.ts";
 import type {
   IssueSelectionDiagnostics,
   IssueSelectionOptions,
@@ -23,6 +24,7 @@ type ResolvedIssueSelectionOptions = {
   issueNumber?: number;
   readyLabel: IssueSelectionOptions["readyLabel"];
   approvalPolicy?: IssueSelectionOptions["approvalPolicy"];
+  issueState?: IssueSelectionOptions["issueState"];
   issueStateProvider?: IssueSelectionOptions["issueStateProvider"];
   triagePolicy: ReturnType<typeof createTriagePolicy>;
   priorityLabels: readonly string[];
@@ -52,6 +54,9 @@ function resolveSelectionOptions(
     ...(options.approvalPolicy === undefined
       ? {}
       : { approvalPolicy: options.approvalPolicy }),
+    ...(options.issueState === undefined
+      ? {}
+      : { issueState: options.issueState }),
     ...(options.issueStateProvider === undefined
       ? {}
       : { issueStateProvider: options.issueStateProvider }),
@@ -77,9 +82,9 @@ function priorityRank(
 
 function blockingLabels(
   labels: string[],
-  excludedLabels: Set<string>,
+  options: ResolvedIssueSelectionOptions,
 ): string[] {
-  return labels.filter((label) => excludedLabels.has(label));
+  return selectionBlockingLabels(labels, [...options.excludedLabels], options);
 }
 
 function approvalPolicy(options: ResolvedIssueSelectionOptions) {
@@ -119,7 +124,7 @@ function isEligible(
   options: ResolvedIssueSelectionOptions,
 ): boolean {
   if (issue.state !== "open") return false;
-  if (blockingLabels(issue.labels, options.excludedLabels).length > 0) {
+  if (blockingLabels(issue.labels, options).length > 0) {
     return false;
   }
   const roles = workflowRoles(issue, options);
@@ -142,7 +147,7 @@ function rejectionForIssue(
     readyLabel: options.readyLabel,
     policy: approvalPolicy(options),
   });
-  const blockedBy = blockingLabels(issue.labels, options.excludedLabels);
+  const blockedBy = blockingLabels(issue.labels, options);
   let reason: IssueSelectionRejectionReason | undefined;
   let missingLabel: string | undefined;
 
@@ -243,7 +248,7 @@ export function selectIssue(
         candidate.number === resolved.issueNumber && candidate.state === "open",
     );
     if (!issue) return undefined;
-    const blockedBy = blockingLabels(issue.labels, resolved.excludedLabels);
+    const blockedBy = blockingLabels(issue.labels, resolved);
     if (blockedBy.length > 0) {
       throw new Error(
         `Issue #${issue.number} is open but not eligible because it has ${blockedBy.join(", ")}`,

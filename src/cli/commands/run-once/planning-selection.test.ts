@@ -174,7 +174,7 @@ test("selects a finished legacy planning workspace over fresh planning", async (
 
 test("comment issue state is authoritative over stale workflow labels", async () => {
   const result = await selectRunOnceWorkflow(
-    [issue(3, ["spec-review"])],
+    [issue(3, ["needs-info", "spec-review"])],
     {
       ...config,
       issueState: { provider: "comments" },

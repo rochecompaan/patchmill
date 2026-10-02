@@ -9,6 +9,7 @@ import {
   automaticWorkflowRolesEligible,
   hasBlockedRunRecoveryState,
   lifecycleLabels,
+  selectionBlockingLabels,
 } from "./pipeline-lifecycle.ts";
 import {
   DEFAULT_LABEL_CATALOG,
@@ -113,17 +114,19 @@ export function planningIssueEligible(input: {
     config.triagePolicy?.runOnceSelection?.excludedLabels ??
     DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
   const doneCheckpoint = planningFinishReachedDoneLabelBoundary(state);
-  const blocked = issue.labels.filter((label) => {
-    if (config.issueState?.provider === "comments")
-      return excluded.includes(label);
-    if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
-    if (doneCheckpoint && label === lifecycle.done) return false;
-    return (
-      label === lifecycle.done ||
-      label === lifecycle.needsInfo ||
-      excluded.includes(label)
-    );
-  });
+  const blocked = selectionBlockingLabels(
+    issue.labels.filter((label) => {
+      if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
+      if (doneCheckpoint && label === lifecycle.done) return false;
+      return (
+        label === lifecycle.done ||
+        label === lifecycle.needsInfo ||
+        excluded.includes(label)
+      );
+    }),
+    excluded,
+    config,
+  );
   const roleBlocked = roles.some((role) => {
     if (activeOwnedWorkflow && role === "in-progress") return false;
     if (doneCheckpoint && role === "agent-done") return false;

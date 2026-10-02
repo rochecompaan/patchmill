@@ -205,7 +205,11 @@ async function runLegacyOneIssueInternal(
   const loadedIssues =
     options.leasedIssueNumber === undefined
       ? await loadSelectionIssues(host, config, options)
-      : [await host.viewIssue(options.leasedIssueNumber)];
+      : config.issueState?.provider === "comments"
+        ? await host.hydrateIssueComments([
+            await host.viewIssue(options.leasedIssueNumber),
+          ])
+        : [await host.viewIssue(options.leasedIssueNumber)];
   // Blocked retries are never implicit; approval waits stay diagnostic-only.
   const automaticCandidates =
     config.issueNumber === undefined

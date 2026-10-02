@@ -15,6 +15,7 @@ import {
   automaticWorkflowRolesEligible,
   lifecycleLabels,
   hasBlockedRunRecoveryState,
+  selectionBlockingLabels,
 } from "./pipeline-lifecycle.ts";
 import { progress, type PipelineProgressOptions } from "./pipeline-progress.ts";
 import { rejectionMessage } from "./pipeline-comments.ts";
@@ -132,6 +133,7 @@ export async function legacySelectionDiagnostics(
     readyLabel,
     triagePolicy: config.triagePolicy,
     approvalPolicy: config.approvalPolicy,
+    issueState: config.issueState,
     issueStateProvider: config.issueStateProvider,
   });
   await emitSelectionDiagnostics(diagnostics.rejections, options, readyLabel);
@@ -150,7 +152,7 @@ function assertBlockedRetryEligible(
   ).runOnceSelection.excludedLabels.filter(
     (label) => label !== lifecycle.needsInfo,
   );
-  const blocking = issue.labels.filter((label) => excluded.includes(label));
+  const blocking = selectionBlockingLabels(issue.labels, excluded, config);
   if (blocking.length)
     throw new Error(
       `Issue #${issue.number} is open but not eligible because it has ${blocking.join(", ")}`,
@@ -268,6 +270,7 @@ export async function selectResumableIssue(
       readyLabel: ready,
       triagePolicy: config.triagePolicy,
       approvalPolicy: config.approvalPolicy,
+      issueState: config.issueState,
       issueStateProvider: config.issueStateProvider,
     });
     if (!selected) return undefined;
@@ -289,6 +292,7 @@ export async function selectResumableIssue(
     readyLabel: ready,
     triagePolicy: config.triagePolicy,
     approvalPolicy: config.approvalPolicy,
+    issueState: config.issueState,
     issueStateProvider: config.issueStateProvider,
   });
   return diagnostics.issue

@@ -90,7 +90,7 @@ export type AgentIssueConfig = {
 
 export type IssueSelectionOptions = Pick<
   AgentIssueConfig,
-  "issueNumber" | "readyLabel" | "triagePolicy"
+  "issueNumber" | "readyLabel" | "triagePolicy" | "issueState"
 > & {
   approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
   issueStateProvider?: IssueStateProvider | undefined;
