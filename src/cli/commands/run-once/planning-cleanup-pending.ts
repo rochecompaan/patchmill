@@ -97,6 +97,13 @@ export async function publishPlanningCleanupPending(input: {
   labels: { ready: string; inProgress: string; needsInfo: string };
 }): Promise<void> {
   const current = await input.host.viewIssue(input.result.issue.number);
+  if (input.config.issueState?.provider === "comments") {
+    input.result.remediation = [
+      `Inspect and preserve or remove the listed ignored paths in ${input.result.worktreePath}.`,
+      `After every blocker is handled, add a trusted Patchmill state comment with \`Patchmill: agent-ready\` to issue #${input.result.issue.number}.`,
+      `Rerun \`patchmill run-once --issue ${input.result.issue.number}\`.`,
+    ];
+  }
   const body = cleanupPendingComment(input.result);
   if (
     input.config.issueState?.provider === "comments" &&

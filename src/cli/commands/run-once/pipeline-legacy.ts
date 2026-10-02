@@ -481,11 +481,14 @@ async function runLegacyOneIssueInternal(
       );
     }
   };
-  const hasApprovalLabel = [
-    config.approvalPolicy.specApproval.approvedLabel,
-    config.approvalPolicy.planApproval.approvedLabel,
-  ].some((label) => issueForRun.labels.includes(label));
-  const artifactWorkspace = hasApprovalLabel
+  const hasApprovalRole = (
+    config.issueStateProvider?.resolveRoles(issueForRun).roles ??
+    workflowRolesFromLabels(issueForRun.labels, {
+      triagePolicy: config.labelCatalog.triagePolicy,
+      approvalPolicy: config.approvalPolicy,
+    })
+  ).some((role) => role === "spec-approved" || role === "plan-approved");
+  const artifactWorkspace = hasApprovalRole
     ? await (async () => {
         assertExpectedWorkspaceIdentity();
         return await inspectIssueWorkspace(runner, config.repoRoot, {
