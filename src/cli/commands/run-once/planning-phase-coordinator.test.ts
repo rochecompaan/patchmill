@@ -186,3 +186,159 @@ test("rejects implementation review pending after one call", async () => {
   });
   assert.equal(calls, 1);
 });
+
+const completePhase = (
+  current: PlanningStateV1,
+  phaseIndex: number,
+): PlanningStateV1 =>
+  ({
+    ...current,
+    phases: current.phases.map((phase, index) =>
+      index === phaseIndex ? { ...phase, status: "complete" } : phase,
+    ),
+    revision: current.revision + 1,
+  }) as PlanningStateV1;
+
+test("rejects advancement without selected-phase completion", async () => {
+  const specGate = { specRequired: true, planRequired: true };
+  const initial = state(specGate);
+  const resumed = state(specGate, [
+    { kind: "spec", status: "complete" },
+    { kind: "plan", status: "pending" },
+    { kind: "implementation", status: "pending" },
+  ]);
+  const cases: readonly {
+    name: string;
+    initial: PlanningStateV1;
+    returned: PlanningStateV1;
+  }[] = [
+    { name: "unchanged state", initial, returned: initial },
+    {
+      name: "revised state",
+      initial,
+      returned: state(specGate, undefined, 2),
+    },
+    ...(["workspace-ready", "branch-pushed", "pull-request-open"] as const).map(
+      (status) => ({
+        name: `${status} checkpoint`,
+        initial,
+        returned: state(specGate, [
+          { kind: "spec", status },
+          { kind: "plan", status: "pending" },
+          { kind: "implementation", status: "pending" },
+        ]),
+      }),
+    ),
+    {
+      name: "missing selected entry",
+      initial: resumed,
+      returned: state(specGate, [{ kind: "spec", status: "complete" }]),
+    },
+    {
+      name: "different phase completes",
+      initial,
+      returned: state(specGate, [
+        { kind: "spec", status: "pending" },
+        { kind: "plan", status: "complete" },
+        { kind: "implementation", status: "pending" },
+      ]),
+    },
+    {
+      name: "earlier phase remains complete",
+      initial: resumed,
+      returned: state(specGate, [
+        { kind: "spec", status: "complete" },
+        { kind: "plan", status: "pending" },
+        { kind: "implementation", status: "pending" },
+      ]),
+    },
+  ];
+
+  for (const { name, initial, returned } of cases) {
+    let calls = 0;
+    const run = () =>
+      coordinatePlanningPhases({
+        state: initial,
+        issue,
+        runPlanningPhase: async () => {
+          calls += 1;
+          if (calls === 2) throw new Error("Unexpected second runner call");
+          return { kind: "advanced", state: returned };
+        },
+      });
+    await assert.rejects(
+      run,
+      {
+        name: "Error",
+        message: "Phase reported advancement without completion",
+      },
+      name,
+    );
+    assert.equal(calls, 1, name);
+  }
+});
+
+test("passes advanced state to the next phase in gate order", async () => {
+  const expectedSequences: readonly (readonly PhaseKind[])[] = [
+    ["implementation"],
+    ["spec", "implementation"],
+    ["plan", "implementation"],
+    ["spec", "plan", "implementation"],
+  ];
+
+  for (const [index, gates] of allGates.entries()) {
+    const expected = expectedSequences[index];
+    let current = state(gates);
+    let calls = 0;
+    const actual = await coordinatePlanningPhases({
+      state: current,
+      issue,
+      runPlanningPhase: async ({ state: received, phaseIndex, phase }) => {
+        assert.strictEqual(received, current);
+        assert.equal(phaseIndex, calls);
+        assert.equal(phase.kind, expected[calls]);
+        calls += 1;
+        if (phase.kind === "implementation") {
+          return {
+            kind: "complete",
+            state: received,
+            result: { status: "pr-created" } as never,
+          };
+        }
+        current = completePhase(received, phaseIndex);
+        return { kind: "advanced", state: current };
+      },
+    });
+    assert.equal(actual.kind, "complete");
+    assert.equal(calls, expected.length);
+  }
+
+  const resumed = state({ specRequired: true, planRequired: true }, [
+    { kind: "spec", status: "complete" },
+    { kind: "plan", status: "pending" },
+    { kind: "implementation", status: "pending" },
+  ]);
+  let current = resumed;
+  let calls = 0;
+  const actual = await coordinatePlanningPhases({
+    state: current,
+    issue,
+    runPlanningPhase: async ({ state: received, phaseIndex, phase }) => {
+      assert.strictEqual(received, current);
+      assert.equal(phaseIndex, [1, 2][calls]);
+      assert.equal(phase.kind, ["plan", "implementation"][calls]);
+      calls += 1;
+      if (phase.kind === "implementation") {
+        return {
+          kind: "complete",
+          state: received,
+          result: { status: "pr-created" } as never,
+        };
+      }
+      current = completePhase(received, phaseIndex);
+      return { kind: "advanced", state: current };
+    },
+  });
+  assert.equal(actual.kind, "complete");
+  assert.equal(calls, 2);
+});

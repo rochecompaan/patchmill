@@ -93,6 +93,9 @@ export async function coordinatePlanningPhases(
           nextPhase: "implementation",
         };
       case "advanced":
+        if (outcome.state.phases[phaseIndex]?.status !== "complete") {
+          throw new Error("Phase reported advancement without completion");
+        }
         state = outcome.state;
         break;
       default: {
