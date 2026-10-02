@@ -183,7 +183,12 @@ export async function runPlanningWorkflow(input: {
     ...(input.options.now === undefined
       ? {}
       : { now: () => input.options.now! }),
-    readIssue: () => host.viewIssue(input.issue.number),
+    readIssue: async () => {
+      const issue = await host.viewIssue(input.issue.number);
+      return input.config.issueState?.provider === "comments"
+        ? (await host.hydrateIssueComments([issue]))[0]!
+        : issue;
+    },
     readLegacy: () =>
       readRunState(input.config.runStateDir, input.issue.number),
     eligible: (issue, state) =>
