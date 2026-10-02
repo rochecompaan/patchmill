@@ -27,6 +27,11 @@ import {
   readOptionalString,
   readOptionalStringArray,
 } from "./parse-helpers.ts";
+import {
+  cloneIssueStateConfig,
+  mergeIssueStateConfig,
+  readIssueStateConfig,
+} from "./issue-state.ts";
 import type {
   PartialConfig,
   PartialPiTaskContract,
@@ -268,6 +273,7 @@ function mergeConfig(
     host: { ...base.host, ...update.host },
     pi: { ...base.pi, ...update.pi },
     labels,
+    issueState: mergeIssueStateConfig(base.issueState, update.issueState),
     triage,
     workflow,
     skills: mergeSkillsConfig(base.skills, update.skills),
@@ -296,6 +302,7 @@ function absolutizePaths(
 ): PatchmillConfig {
   return {
     ...config,
+    issueState: cloneIssueStateConfig(config.issueState),
     triage: cloneTriageConfig(config.triage),
     workflow: cloneWorkflowConfig(config.workflow),
     skills: cloneSkillsConfig(config.skills),
@@ -589,6 +596,11 @@ function parseConfigFile(data: unknown): PartialConfig {
     );
     if (triageThinking !== undefined) parsed.triageThinking = triageThinking;
     if (hasEntries(parsed)) config.pi = parsed;
+  }
+
+  const issueState = readIssueStateConfig(data);
+  if (issueState !== undefined) {
+    config.issueState = issueState;
   }
 
   const labels = readOptionalSection(data, "labels");

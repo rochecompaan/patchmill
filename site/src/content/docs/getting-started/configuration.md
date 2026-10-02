@@ -58,6 +58,36 @@ For Forgejo/Gitea through the `tea` CLI, set the configured login name:
 `PATCHMILL_HOST_LOGIN` can override `host.login` for providers that use named
 logins, which is useful when local machines need different credentials.
 
+## Choose where Patchmill stores issue workflow state
+
+Patchmill stores workflow state in labels by default:
+
+```json
+{
+  "issueState": {
+    "provider": "labels"
+  }
+}
+```
+
+Use comment-backed state when you can comment on issues but cannot create or
+apply repository labels:
+
+```json
+{
+  "issueState": {
+    "provider": "comments",
+    "trustedAuthors": ["your-login"]
+  }
+}
+```
+
+To set this up after `patchmill init`, run `patchmill init` without `--yes`,
+answer `no` when asked to create missing labels, then edit
+`patchmill.config.json` to set `issueState.provider` to `comments`. Omit
+`trustedAuthors` to trust the authenticated host user, or set it when other
+users may write authoritative Patchmill state comments.
+
 ## Decide when humans approve work
 
 `workflow.specApproval.required` and `workflow.planApproval.required` choose

@@ -1,5 +1,9 @@
 import type { HumanDecisionQuestion } from "../../../workflow/decisions.ts";
-import type { PatchmillHostConfig } from "../../../config/types.ts";
+import type {
+  PatchmillHostConfig,
+  PatchmillIssueStateConfig,
+} from "../../../config/types.ts";
+import type { IssueStateProvider } from "../../../issue-state/index.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillTriageCanonicalBucket } from "../../../policy/triage-state.ts";
@@ -44,6 +48,8 @@ export type TriageConfig = {
   logDir: string;
   projectPolicy?: PatchmillProjectPolicy;
   triagePolicy?: PatchmillTriagePolicy;
+  issueState: PatchmillIssueStateConfig;
+  issueStateProvider?: IssueStateProvider | undefined;
   skills: PatchmillSkillsConfig;
   onProgress?: TriageProgressHandler;
   onToolCall?: TriageToolCallHandler;

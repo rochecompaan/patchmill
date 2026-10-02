@@ -113,7 +113,7 @@ test("assertExplicitWorkflowState returns actionable state for explicit issues",
         number: 12,
         title: "Issue 12",
         body: "",
-        labels: [],
+        roles: [],
         state: "open",
       },
     }),
@@ -131,7 +131,7 @@ test("assertExplicitWorkflowState throws approval-required for waiting spec revi
           number: 7,
           title: "Issue 7",
           body: "",
-          labels: [],
+          roles: [],
           state: "open",
         },
       }),
@@ -146,7 +146,7 @@ test("assertExplicitWorkflowState throws approval-required for waiting spec revi
 
 test("decidePlanApprovalGate proceeds when plan approval is disabled", () => {
   const decision = decidePlanApprovalGate({
-    labels: ["agent-ready"],
+    roles: ["agent-ready"],
     planOnly: false,
     policy: planApprovalPolicy(false),
   });
@@ -156,7 +156,7 @@ test("decidePlanApprovalGate proceeds when plan approval is disabled", () => {
 
 test("decidePlanApprovalGate stops for review when plan approval is required and missing", () => {
   const decision = decidePlanApprovalGate({
-    labels: ["in-progress"],
+    roles: ["in-progress"],
     planOnly: false,
     policy: planApprovalPolicy(true),
   });
@@ -170,7 +170,7 @@ test("decidePlanApprovalGate stops for review when plan approval is required and
 
 test("decidePlanApprovalGate proceeds when the approved plan label is present", () => {
   const decision = decidePlanApprovalGate({
-    labels: ["in-progress", "plan-approved"],
+    roles: ["in-progress", "plan-approved"],
     planOnly: false,
     policy: planApprovalPolicy(true),
   });
@@ -180,7 +180,7 @@ test("decidePlanApprovalGate proceeds when the approved plan label is present", 
 
 test("decidePlanApprovalGate stops for plan-only without workflow review labels", () => {
   const decision = decidePlanApprovalGate({
-    labels: ["in-progress"],
+    roles: ["in-progress"],
     planOnly: true,
     policy: planApprovalPolicy(false),
   });

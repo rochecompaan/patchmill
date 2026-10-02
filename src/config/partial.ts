@@ -29,6 +29,7 @@ export type PartialConfig = Partial<{
   pi: Partial<PatchmillConfig["pi"]>;
   paths: Partial<PatchmillConfig["paths"]>;
   labels: Partial<PatchmillConfig["labels"]>;
+  issueState: Partial<PatchmillConfig["issueState"]>;
   triage: Partial<PatchmillConfig["triage"]>;
   workflow: PartialWorkflowConfig;
   skills: PartialPatchmillSkillsConfig;

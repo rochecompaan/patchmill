@@ -559,39 +559,74 @@ export async function runDoctorChecks(
       );
     }
 
-    try {
-      const labelCatalog = createPatchmillLabelCatalog(config);
-      const missing = missingLabelDefinitions(
-        await host.listLabels(),
-        labelCatalog,
-      );
-      if (missing.length === 0) {
-        results.push(
-          pass(
-            "labels",
-            labelCatalog.labelDefinitions.map((label) => label.name).join(", "),
-          ),
+    if (config.issueState.provider === "labels") {
+      try {
+        const labelCatalog = createPatchmillLabelCatalog(config);
+        const missing = missingLabelDefinitions(
+          await host.listLabels(),
+          labelCatalog,
         );
-      } else {
+        if (missing.length === 0) {
+          results.push(
+            pass(
+              "labels",
+              labelCatalog.labelDefinitions
+                .map((label) => label.name)
+                .join(", "),
+            ),
+          );
+        } else {
+          results.push(
+            fail(
+              "labels",
+              `missing ${missing.map((label) => label.name).join(", ")}`,
+              [
+                "Patchmill doctor is read-only and did not create labels.",
+                "",
+                "Run the approved repair flow:",
+                "  patchmill doctor --fix",
+                "",
+                "You can edit label names in patchmill.config.json before running --fix.",
+              ],
+            ),
+          );
+        }
+      } catch (error) {
         results.push(
           fail(
             "labels",
-            `missing ${missing.map((label) => label.name).join(", ")}`,
-            [
-              "Patchmill doctor is read-only and did not create labels.",
-              "",
-              "Run the approved repair flow:",
-              "  patchmill doctor --fix",
-              "",
-              "You can edit label names in patchmill.config.json before running --fix.",
-            ],
+            error instanceof Error ? error.message : String(error),
           ),
         );
       }
-    } catch (error) {
-      results.push(
-        fail("labels", error instanceof Error ? error.message : String(error)),
-      );
+    } else {
+      try {
+        const trustedAuthors =
+          config.issueState.trustedAuthors ??
+          (await host.trustedTriageCommentAuthors());
+        if (trustedAuthors.length === 0) {
+          results.push(
+            fail("issue-state", "no trusted comment authors resolved", [
+              "Set issueState.trustedAuthors in patchmill.config.json, or authenticate the host CLI.",
+              "Doctor does not write probe comments; comment permission is verified on first state write.",
+            ]),
+          );
+        } else {
+          results.push(
+            pass(
+              "issue-state",
+              `trusted comment authors: ${trustedAuthors.join(", ")}`,
+            ),
+          );
+        }
+      } catch (error) {
+        results.push(
+          fail(
+            "issue-state",
+            error instanceof Error ? error.message : String(error),
+          ),
+        );
+      }
     }
 
     results.push(

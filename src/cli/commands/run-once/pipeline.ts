@@ -1,5 +1,6 @@
 import type { CommandRunner } from "../../../command/types.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
+import { createIssueStateProvider } from "../../../issue-state/index.ts";
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import {
   runLegacyOneIssue,
@@ -27,21 +28,27 @@ export async function runOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  // Preserve legacy dry-run output and its non-mutating diagnostic contract.
-  if (config.dryRun) return runLegacyOneIssue(runner, config, options);
-  const labels = lifecycleLabels(config);
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
     host: config.host,
   });
-  const issues = await loadSelectionIssues(host, config, options);
+  const issueStateProvider = await createIssueStateProvider(
+    host,
+    config,
+    config.labelCatalog,
+  );
+  const runtimeConfig: AgentIssueConfig = { ...config, issueStateProvider };
+  // Preserve legacy dry-run output and its non-mutating diagnostic contract.
+  if (config.dryRun) return runLegacyOneIssue(runner, runtimeConfig, options);
+  const labels = lifecycleLabels(runtimeConfig);
+  const issues = await loadSelectionIssues(host, runtimeConfig, options);
   const planningState = new PlanningStateStore(config.runStateDir);
   const rejectedIssueNumbers = new Set<number>();
   while (true) {
     const selected = await selectRunOnceWorkflow(
       issues.filter((issue) => !rejectedIssueNumbers.has(issue.number)),
-      config,
+      runtimeConfig,
       planningState,
       options.now?.toISOString(),
     );
@@ -49,14 +56,16 @@ export async function runOneIssue(
       case "none": {
         const diagnosticCandidates = issues.filter(
           (issue) =>
-            (config.issueNumber === undefined ||
-              issue.number === config.issueNumber) &&
+            (runtimeConfig.issueNumber === undefined ||
+              issue.number === runtimeConfig.issueNumber) &&
             !rejectedIssueNumbers.has(issue.number),
         );
         const diagnostics = selectIssueWithDiagnostics(diagnosticCandidates, {
           readyLabel: labels.ready,
-          triagePolicy: config.triagePolicy,
-          approvalPolicy: config.approvalPolicy,
+          triagePolicy: runtimeConfig.triagePolicy,
+          approvalPolicy: runtimeConfig.approvalPolicy,
+          issueState: runtimeConfig.issueState,
+          issueStateProvider,
         });
         await emitSelectionDiagnostics(
           diagnostics.rejections,
@@ -86,19 +95,19 @@ export async function runOneIssue(
       case "legacy": {
         const legacy = await runLegacyOneIssueForSelection(
           runner,
-          config,
+          runtimeConfig,
           selected.issue.number,
           options,
         );
         if (legacy.kind === "pipeline-result") return legacy.result;
-        if (config.issueNumber !== undefined) return legacy.result;
+        if (runtimeConfig.issueNumber !== undefined) return legacy.result;
         rejectedIssueNumbers.add(selected.issue.number);
         continue;
       }
       case "planning":
         return runPlanningWorkflow({
           runner,
-          config,
+          config: runtimeConfig,
           options,
           issue: selected.issue,
           state: selected.state,
@@ -108,7 +117,7 @@ export async function runOneIssue(
       case "fresh-planning":
         return runPlanningWorkflow({
           runner,
-          config,
+          config: runtimeConfig,
           options,
           issue: selected.issue,
           state: selected.initialState,

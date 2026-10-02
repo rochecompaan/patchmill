@@ -17,6 +17,54 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   assert.equal(config.cleanupHook, undefined);
 });
 
+test("loadPatchmillConfig uses label issue state by default", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  const config = await loadPatchmillConfig(dir, {}, []);
+
+  assert.deepEqual(config.issueState, { provider: "labels" });
+});
+
+test("loadPatchmillConfig accepts comment issue state", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({ issueState: { provider: "comments" } }),
+  );
+
+  const config = await loadPatchmillConfig(dir, {}, []);
+
+  assert.deepEqual(config.issueState, { provider: "comments" });
+});
+
+test("loadPatchmillConfig accepts trusted comment authors", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({
+      issueState: { provider: "comments", trustedAuthors: ["jimfulton"] },
+    }),
+  );
+
+  const config = await loadPatchmillConfig(dir, {}, []);
+
+  assert.deepEqual(config.issueState, {
+    provider: "comments",
+    trustedAuthors: ["jimfulton"],
+  });
+});
+
+test("loadPatchmillConfig rejects invalid issue-state trusted authors", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({
+      issueState: { provider: "comments", trustedAuthors: [""] },
+    }),
+  );
+
+  await assert.rejects(loadPatchmillConfig(dir, {}, []), /non-empty string/);
+});
+
 test("loadPatchmillConfigState accepts github-gh host provider", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   await writeFile(

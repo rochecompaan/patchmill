@@ -60,6 +60,32 @@ test("prioritizes active planning over fresh ready work and reuses label orderin
   if (result.kind === "planning") assert.equal(result.issue.number, 3);
 });
 
+test("comment cleanup-pending publication is idempotent after needs-info role", async () => {
+  const pending = {
+    phases: [
+      {
+        kind: "implementation",
+        status: "pull-request-open",
+        workspace: { cleanup: { state: "cleanup-pending" } },
+        pullRequest: { url: "https://example.test/pr/1" },
+      },
+    ],
+  } as never;
+  const result = await selectRunOnceWorkflow(
+    [issue(3, [])],
+    {
+      ...config,
+      issueState: { provider: "comments" },
+      issueStateProvider: {
+        resolveRoles: () => ({ roles: ["needs-info"] }),
+        setRoles: async () => undefined,
+      },
+    } as never,
+    { path: () => "state", read: async () => pending } as never,
+  );
+  assert.equal(result.kind, "none");
+});
+
 test("selects pending publication reconciliation but requires ready for cleanup retry", async () => {
   const pending = {
     phases: [
@@ -170,6 +196,23 @@ test("selects a finished legacy planning workspace over fresh planning", async (
   } finally {
     await rm(runStateDir, { recursive: true, force: true });
   }
+});
+
+test("comment issue state is authoritative over stale workflow labels", async () => {
+  const result = await selectRunOnceWorkflow(
+    [issue(3, ["needs-info", "spec-review"])],
+    {
+      ...config,
+      issueState: { provider: "comments" },
+      issueStateProvider: {
+        resolveRoles: () => ({ roles: ["agent-ready"] }),
+        setRoles: async () => undefined,
+      },
+    } as never,
+    { path: () => "state", read: async () => undefined } as never,
+  );
+  assert.equal(result.kind, "fresh-planning");
+  if (result.kind === "fresh-planning") assert.equal(result.issue.number, 3);
 });
 
 test("selects approval-resumed finished legacy planning workspaces", async () => {

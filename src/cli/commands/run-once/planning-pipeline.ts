@@ -57,19 +57,24 @@ export function planningIssueNeedsClaim(input: {
   issue: IssueSummary;
   fresh: boolean;
   state: PlanningStateV1;
+  roles?: readonly string[] | undefined;
   labels: Pick<
     ReturnType<typeof lifecycleLabels>,
     "ready" | "inProgress" | "done"
   >;
 }): boolean {
-  const doneLabelAlreadyApplied =
-    input.issue.labels.includes(input.labels.done) &&
-    planningFinishReachedDoneLabelBoundary(input.state);
+  const roles = input.roles ?? [];
+  const doneAlreadyApplied =
+    planningFinishReachedDoneLabelBoundary(input.state) &&
+    (input.issue.labels.includes(input.labels.done) ||
+      roles.includes("agent-done"));
   return (
-    !doneLabelAlreadyApplied &&
+    !doneAlreadyApplied &&
     (input.fresh ||
       input.issue.labels.includes(input.labels.ready) ||
-      !input.issue.labels.includes(input.labels.inProgress))
+      roles.includes("agent-ready") ||
+      (!input.issue.labels.includes(input.labels.inProgress) &&
+        !roles.includes("in-progress")))
   );
 }
 
@@ -178,7 +183,12 @@ export async function runPlanningWorkflow(input: {
     ...(input.options.now === undefined
       ? {}
       : { now: () => input.options.now! }),
-    readIssue: () => host.viewIssue(input.issue.number),
+    readIssue: async () => {
+      const issue = await host.viewIssue(input.issue.number);
+      return input.config.issueState?.provider === "comments"
+        ? (await host.hydrateIssueComments([issue]))[0]!
+        : issue;
+    },
     readLegacy: () =>
       readRunState(input.config.runStateDir, input.issue.number),
     eligible: (issue, state) =>
@@ -188,7 +198,11 @@ export async function runPlanningWorkflow(input: {
         ...(state === undefined ? {} : { state }),
         activeOwnedWorkflow: state !== undefined,
       }) &&
-      (state !== undefined || issue.labels.includes(input.config.readyLabel)),
+      (state !== undefined ||
+        issue.labels.includes(input.config.readyLabel) ||
+        input.config.issueStateProvider
+          ?.resolveRoles(issue)
+          .roles.includes("agent-ready") === true),
     reconcileCleanupPendingPublication: ({ issue, state }) =>
       reconcilePlanningCleanupPendingPublication({
         host,
@@ -206,6 +220,7 @@ export async function runPlanningWorkflow(input: {
         issue,
         fresh,
         state,
+        roles: input.config.issueStateProvider?.resolveRoles(issue).roles,
         labels,
       });
       const claimedLabels = mustClaim
@@ -217,13 +232,27 @@ export async function runPlanningWorkflow(input: {
           ]
         : [...issue.labels];
       if (mustClaim) {
-        await ensureAutomationLabel(host, input.config, labels.inProgress);
-        await host.applyLabels(
-          planLabelChange(issue.number, issue.labels, claimedLabels),
-        );
+        if (
+          input.config.issueState?.provider === "comments" &&
+          input.config.issueStateProvider
+        ) {
+          await input.config.issueStateProvider.setRoles({
+            issue,
+            roles: ["in-progress"],
+            message: startedComment(issue),
+          });
+        } else {
+          await ensureAutomationLabel(host, input.config, labels.inProgress);
+          await host.applyLabels(
+            planLabelChange(issue.number, issue.labels, claimedLabels),
+          );
+        }
       }
       const body = startedComment(issue);
-      if (!issue.comments?.some((comment) => comment.body === body))
+      if (
+        input.config.issueState?.provider !== "comments" &&
+        !issue.comments?.some((comment) => comment.body === body)
+      )
         await host.commentIssue(issue.number, body);
       return claimedLabels;
     },
@@ -269,18 +298,29 @@ export async function runPlanningWorkflow(input: {
       }
       if (outcome.kind === "blocked") {
         const body = blockerComment(outcome.result);
-        if (!issue.comments?.some((comment) => comment.body === body))
-          await host.commentIssue(issue.number, body);
-        await ensureAutomationLabel(host, input.config, labels.needsInfo);
-        await applyPlanningBlockedLabels({
-          host,
-          issueNumber: issue.number,
-          labels: {
-            ready: labels.ready,
-            inProgress: labels.inProgress,
-            needsInfo: labels.needsInfo,
-          },
-        });
+        if (
+          input.config.issueState?.provider === "comments" &&
+          input.config.issueStateProvider
+        ) {
+          await input.config.issueStateProvider.setRoles({
+            issue,
+            roles: ["needs-info"],
+            message: body,
+          });
+        } else {
+          if (!issue.comments?.some((comment) => comment.body === body))
+            await host.commentIssue(issue.number, body);
+          await ensureAutomationLabel(host, input.config, labels.needsInfo);
+          await applyPlanningBlockedLabels({
+            host,
+            issueNumber: issue.number,
+            labels: {
+              ready: labels.ready,
+              inProgress: labels.inProgress,
+              needsInfo: labels.needsInfo,
+            },
+          });
+        }
       }
       return outcome;
     },

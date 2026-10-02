@@ -41,6 +41,25 @@ host access checks.
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `PATCHMILL_HOST_LOGIN` | Host account/login override for providers with named-login support, such as `forgejo-tea`; ignored by `github-gh`. |
 
+## Issue state configuration
+
+`issueState.provider` selects where Patchmill stores its own workflow state. The
+default is `labels`. Set it to `comments` for repositories where you can comment
+on issues but should not change labels:
+
+```json
+{
+  "issueState": {
+    "provider": "comments",
+    "trustedAuthors": ["your-login"]
+  }
+}
+```
+
+When `trustedAuthors` is omitted, Patchmill trusts the authenticated host user.
+`patchmill doctor` validates trusted-author resolution and verifies comment
+permission on the first state write.
+
 ## Git configuration notes
 
 `git.baseBranch` controls the pull-request target branch used by `run-once`. If

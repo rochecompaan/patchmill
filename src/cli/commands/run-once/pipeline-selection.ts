@@ -4,6 +4,7 @@ import type { IssueHostProvider } from "../../../host/types.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import { assertExplicitWorkflowState } from "./workflow-state.ts";
 import type {
   AgentIssueConfig,
@@ -11,9 +12,10 @@ import type {
   IssueSelectionRejection,
 } from "./types.ts";
 import {
-  automaticWorkflowStateEligible,
+  automaticWorkflowRolesEligible,
   lifecycleLabels,
   hasBlockedRunRecoveryState,
+  selectionBlockingLabels,
 } from "./pipeline-lifecycle.ts";
 import { progress, type PipelineProgressOptions } from "./pipeline-progress.ts";
 import { rejectionMessage } from "./pipeline-comments.ts";
@@ -108,6 +110,19 @@ export async function emitSelectionDiagnostics(
 }
 
 /** Computes and emits diagnostics for legacy selection without changing selection effects. */
+function workflowRolesForIssue(
+  issue: IssueSummary,
+  config: AgentIssueConfig,
+): string[] {
+  if (config.issueStateProvider) {
+    return config.issueStateProvider.resolveRoles(issue).roles;
+  }
+  return workflowRolesFromLabels(issue.labels, {
+    triagePolicy: config.triagePolicy ?? DEFAULT_TRIAGE_POLICY,
+    approvalPolicy: config.approvalPolicy,
+  });
+}
+
 export async function legacySelectionDiagnostics(
   issues: IssueSummary[],
   config: AgentIssueConfig,
@@ -118,6 +133,8 @@ export async function legacySelectionDiagnostics(
     readyLabel,
     triagePolicy: config.triagePolicy,
     approvalPolicy: config.approvalPolicy,
+    issueState: config.issueState,
+    issueStateProvider: config.issueStateProvider,
   });
   await emitSelectionDiagnostics(diagnostics.rejections, options, readyLabel);
   return diagnostics;
@@ -135,12 +152,12 @@ function assertBlockedRetryEligible(
   ).runOnceSelection.excludedLabels.filter(
     (label) => label !== lifecycle.needsInfo,
   );
-  const blocking = issue.labels.filter((label) => excluded.includes(label));
+  const blocking = selectionBlockingLabels(issue.labels, excluded, config);
   if (blocking.length)
     throw new Error(
       `Issue #${issue.number} is open but not eligible because it has ${blocking.join(", ")}`,
     );
-  assertExplicitWorkflowState(issue.labels, {
+  assertExplicitWorkflowState(workflowRolesForIssue(issue, config), {
     readyLabel: lifecycle.ready,
     policy: config.approvalPolicy,
     issue,
@@ -158,13 +175,20 @@ export async function prepareAutomaticLegacyCandidates(
   config: AgentIssueConfig,
 ): Promise<AutomaticLegacyCandidatePreparation> {
   const automaticIneligibleIssues = loadedIssues.filter(
-    (candidate) => !automaticWorkflowStateEligible(candidate.labels, config),
+    (candidate) =>
+      !automaticWorkflowRolesEligible(
+        workflowRolesForIssue(candidate, config),
+        config,
+      ),
   );
   const issues = (
     await Promise.all(
       loadedIssues
         .filter((candidate) =>
-          automaticWorkflowStateEligible(candidate.labels, config),
+          automaticWorkflowRolesEligible(
+            workflowRolesForIssue(candidate, config),
+            config,
+          ),
         )
         .map(async (candidate) => ({
           candidate,
@@ -194,12 +218,13 @@ export async function selectResumableIssue(
   const resumable: IssueSummary[] = [];
   if (shouldResume) {
     for (const issue of issues) {
+      const roles = workflowRolesForIssue(issue, config);
       if (
         config.issueNumber === undefined &&
-        !automaticWorkflowStateEligible(issue.labels, config)
+        !automaticWorkflowRolesEligible(roles, config)
       )
         continue;
-      if (!issue.labels.includes(inProgress)) continue;
+      if (!roles.includes("in-progress")) continue;
       const state = await readRunState(config.runStateDir, issue.number);
       if (state && isResumableRunState(state)) resumable.push(issue);
     }
@@ -229,9 +254,11 @@ export async function selectResumableIssue(
           throw new Error(
             `Resumable ${inProgress} automation run #${resumable[0]?.number} exists; resume it before processing #${explicitIssue.number}`,
           );
-        if (!explicitIssue.labels.includes(ready)) {
+        if (
+          !workflowRolesForIssue(explicitIssue, config).includes("agent-ready")
+        ) {
           throw new Error(
-            `Issue #${explicitIssue.number} has a blocked Run recovery state but is not labeled ${ready}`,
+            `Issue #${explicitIssue.number} has a blocked Run recovery state but is not marked ${ready}`,
           );
         }
         assertBlockedRetryEligible(explicitIssue, config);
@@ -243,6 +270,8 @@ export async function selectResumableIssue(
       readyLabel: ready,
       triagePolicy: config.triagePolicy,
       approvalPolicy: config.approvalPolicy,
+      issueState: config.issueState,
+      issueStateProvider: config.issueStateProvider,
     });
     if (!selected) return undefined;
     if (resumable.length === 1 && resumable[0]?.number !== selected.number)
@@ -263,6 +292,8 @@ export async function selectResumableIssue(
     readyLabel: ready,
     triagePolicy: config.triagePolicy,
     approvalPolicy: config.approvalPolicy,
+    issueState: config.issueState,
+    issueStateProvider: config.issueStateProvider,
   });
   return diagnostics.issue
     ? { issue: diagnostics.issue, resumed: false }
@@ -286,7 +317,10 @@ export async function loadSelectionIssues(
 ): Promise<IssueSummary[]> {
   if (config.issueNumber === undefined) {
     await progress(options, "info", "select", "listing open issues");
-    return host.listOpenIssues();
+    const issues = await host.listOpenIssues();
+    return config.issueState?.provider === "comments"
+      ? host.hydrateIssueComments(issues)
+      : issues;
   }
   await progress(
     options,
@@ -295,10 +329,19 @@ export async function loadSelectionIssues(
     `loading issue #${config.issueNumber}`,
     { issueNumber: config.issueNumber },
   );
-  const requestedIssues = [await host.viewIssue(config.issueNumber)];
+  const requestedIssues =
+    config.issueState?.provider === "comments"
+      ? await host.hydrateIssueComments([
+          await host.viewIssue(config.issueNumber),
+        ])
+      : [await host.viewIssue(config.issueNumber)];
   const shouldResume = config.execute && !config.dryRun;
   if (!shouldResume) return requestedIssues;
   await progress(options, "info", "select", "listing open issues");
   const openIssues = await host.listOpenIssues();
-  return mergeIssueLists(requestedIssues, openIssues);
+  const hydratedOpenIssues =
+    config.issueState?.provider === "comments"
+      ? await host.hydrateIssueComments(openIssues)
+      : openIssues;
+  return mergeIssueLists(requestedIssues, hydratedOpenIssues);
 }

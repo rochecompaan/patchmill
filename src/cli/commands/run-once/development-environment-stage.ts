@@ -101,7 +101,18 @@ export async function developmentEnvironmentNotReady(
     },
   );
 
-  if (retryableLabels.join("\0") !== labels.join("\0")) {
+  if (config.issueState?.provider === "comments" && config.issueStateProvider) {
+    const originalRoles = config.issueStateProvider
+      .resolveRoles(issue)
+      .roles.filter((role) =>
+        ["agent-ready", "spec-approved", "plan-approved"].includes(role),
+      );
+    await config.issueStateProvider.setRoles({
+      issue,
+      roles: originalRoles.length > 0 ? originalRoles : ["agent-ready"],
+      message: `Development environment not ready: ${result.reason}`,
+    });
+  } else if (retryableLabels.join("\0") !== labels.join("\0")) {
     await host.applyLabels(
       planLabelChange(issue.number, labels, retryableLabels),
     );
