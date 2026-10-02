@@ -57,19 +57,24 @@ export function planningIssueNeedsClaim(input: {
   issue: IssueSummary;
   fresh: boolean;
   state: PlanningStateV1;
+  roles?: readonly string[] | undefined;
   labels: Pick<
     ReturnType<typeof lifecycleLabels>,
     "ready" | "inProgress" | "done"
   >;
 }): boolean {
-  const doneLabelAlreadyApplied =
-    input.issue.labels.includes(input.labels.done) &&
-    planningFinishReachedDoneLabelBoundary(input.state);
+  const roles = input.roles ?? [];
+  const doneAlreadyApplied =
+    planningFinishReachedDoneLabelBoundary(input.state) &&
+    (input.issue.labels.includes(input.labels.done) ||
+      roles.includes("agent-done"));
   return (
-    !doneLabelAlreadyApplied &&
+    !doneAlreadyApplied &&
     (input.fresh ||
       input.issue.labels.includes(input.labels.ready) ||
-      !input.issue.labels.includes(input.labels.inProgress))
+      roles.includes("agent-ready") ||
+      (!input.issue.labels.includes(input.labels.inProgress) &&
+        !roles.includes("in-progress")))
   );
 }
 
@@ -210,6 +215,7 @@ export async function runPlanningWorkflow(input: {
         issue,
         fresh,
         state,
+        roles: input.config.issueStateProvider?.resolveRoles(issue).roles,
         labels,
       });
       const claimedLabels = mustClaim

@@ -75,6 +75,28 @@ test("does not reclaim an issue after its done-label checkpoint", () => {
   );
 });
 
+test("does not reclaim a comment-mode in-progress planning issue", () => {
+  assert.equal(
+    planningIssueNeedsClaim({
+      issue: {
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: [],
+      } as never,
+      fresh: false,
+      state: { phases: [{ kind: "spec", status: "pending" }] } as never,
+      roles: ["in-progress"],
+      labels: {
+        ready: "agent-ready",
+        inProgress: "agent-in-progress",
+        done: "agent-done",
+      },
+    }),
+    false,
+  );
+});
+
 test("does not reclaim a done-labeled finish awaiting its final checkpoint", () => {
   assert.equal(
     planningIssueNeedsClaim({

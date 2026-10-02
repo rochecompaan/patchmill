@@ -62,10 +62,10 @@ import {
 } from "./pipeline-workspace.ts";
 import {
   legacySelectionDiagnostics,
-  loadSelectionIssues,
   prepareAutomaticLegacyCandidates,
   selectResumableIssue,
 } from "./pipeline-selection.ts";
+import { loadLegacyPipelineSelectionIssues } from "./pipeline-legacy-selection.ts";
 import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { withIssueRunLease } from "./recovery-lease.ts";
@@ -77,11 +77,13 @@ import {
 import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
+import { runPiSessionPath, type AgentIssueProgressEvent } from "./progress.ts";
 import {
-  runPiSessionPath,
-  type AgentIssueProgressEvent,
-  type ProgressReporter,
-} from "./progress.ts";
+  LegacySelectionRejected,
+  type LeasedRunOneIssueOptions,
+  type LegacySelectionRunResult,
+  type RunOneIssueOptions,
+} from "./pipeline-legacy-types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
@@ -90,49 +92,10 @@ import type {
   AgentIssueRunState,
 } from "./types.ts";
 
-type PiOutputStream = (chunk: string) => void;
-
-export type RunOneIssueOptions = {
-  now?: Date | undefined;
-  progress?: ProgressReporter | undefined;
-  logPath?: string | undefined;
-  streamPiOutput?: PiOutputStream | undefined;
-  verbosePiOutput?: boolean | undefined;
-  heartbeatMs?: number | undefined;
-};
-
-export type LegacySelectionRunResult =
-  | { kind: "pipeline-result"; result: AgentIssuePipelineResult }
-  | {
-      kind: "selection-rejected";
-      result: AgentIssuePipelineResult & {
-        status: "no-issue" | "approval-required";
-      };
-    };
-
-type LeasedRunOneIssueOptions = RunOneIssueOptions & {
-  lease?: import("./types.ts").IssueRunLease;
-  /** Internal selection pin; never exposed to ordinary callers. */
-  leasedIssueNumber?: number;
-  /** Distinguishes a pinned rejection before any Issue effect begins. */
-  classifySelectionRejection?: boolean;
-  reset?: { seed: import("./types.ts").RunResetSeed };
-};
-
-class LegacySelectionRejected extends Error {
-  readonly result: AgentIssuePipelineResult & {
-    status: "no-issue" | "approval-required";
-  };
-
-  constructor(
-    result: AgentIssuePipelineResult & {
-      status: "no-issue" | "approval-required";
-    },
-  ) {
-    super(`Pinned legacy selection rejected: ${result.status}`);
-    this.result = result;
-  }
-}
+export type {
+  LegacySelectionRunResult,
+  RunOneIssueOptions,
+} from "./pipeline-legacy-types.ts";
 
 function preMutationSelectionResult(
   result: LegacySelectionRejected["result"],
@@ -202,14 +165,11 @@ async function runLegacyOneIssueInternal(
     host: config.host,
   });
   // Re-read only the leased issue; never priority-select under another issue's lease.
-  const loadedIssues =
-    options.leasedIssueNumber === undefined
-      ? await loadSelectionIssues(host, config, options)
-      : config.issueState?.provider === "comments"
-        ? await host.hydrateIssueComments([
-            await host.viewIssue(options.leasedIssueNumber),
-          ])
-        : [await host.viewIssue(options.leasedIssueNumber)];
+  const loadedIssues = await loadLegacyPipelineSelectionIssues(
+    host,
+    config,
+    options,
+  );
   // Blocked retries are never implicit; approval waits stay diagnostic-only.
   const automaticCandidates =
     config.issueNumber === undefined
