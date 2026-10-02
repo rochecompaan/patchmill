@@ -599,38 +599,40 @@ export async function advancePlanningStages({
       );
       checkpoints.specReadyCommentPosted = true;
     }
-    if (
-      config.issueState?.provider === "comments" &&
-      config.issueStateProvider
-    ) {
-      await config.issueStateProvider.setRoles({
-        issue,
-        roles: ["spec-review"],
-        message: specComment(specPath, specCreated),
-      });
-    } else {
-      await ensureAutomationLabel(
-        host,
-        config,
-        config.approvalPolicy.specApproval.reviewLabel,
+    if (!checkpoints.readyLabelRestored) {
+      if (
+        config.issueState?.provider === "comments" &&
+        config.issueStateProvider
+      ) {
+        await config.issueStateProvider.setRoles({
+          issue,
+          roles: ["spec-review"],
+          message: specComment(specPath, specCreated),
+        });
+      } else {
+        await ensureAutomationLabel(
+          host,
+          config,
+          config.approvalPolicy.specApproval.reviewLabel,
+        );
+        await host.applyLabels(
+          planLabelChange(issue.number, labels, finalLabels),
+        );
+      }
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issue.number,
+          status: reviewStopStatus(existingState),
+          ...planningWorkspaceState(),
+          specPath,
+          specCommit,
+          checkpoints: { readyLabelRestored: true },
+        },
+        timestamp,
       );
-      await host.applyLabels(
-        planLabelChange(issue.number, labels, finalLabels),
-      );
+      checkpoints.readyLabelRestored = true;
     }
-    await writeRunState(
-      config.runStateDir,
-      {
-        issueNumber: issue.number,
-        status: reviewStopStatus(existingState),
-        ...planningWorkspaceState(),
-        specPath,
-        specCommit,
-        checkpoints: { readyLabelRestored: true },
-      },
-      timestamp,
-    );
-    checkpoints.readyLabelRestored = true;
     const specStatus = specCreated ? "spec-created" : "spec-found";
     await emitSimpleStep(issue.number, `final result ${specStatus}`);
     return {
