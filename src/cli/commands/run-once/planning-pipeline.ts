@@ -188,7 +188,11 @@ export async function runPlanningWorkflow(input: {
         ...(state === undefined ? {} : { state }),
         activeOwnedWorkflow: state !== undefined,
       }) &&
-      (state !== undefined || issue.labels.includes(input.config.readyLabel)),
+      (state !== undefined ||
+        issue.labels.includes(input.config.readyLabel) ||
+        input.config.issueStateProvider
+          ?.resolveRoles(issue)
+          .roles.includes("agent-ready") === true),
     reconcileCleanupPendingPublication: ({ issue, state }) =>
       reconcilePlanningCleanupPendingPublication({
         host,
