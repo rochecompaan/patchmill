@@ -321,8 +321,9 @@ messages and for priority labels. It does not require those labels to exist on
 the host.
 
 `patchmill doctor` will validate the selected issue-state provider. For the
-comment provider, it will check comment permission instead of required label
-existence.
+comment provider, it will resolve trusted authors instead of checking required
+label existence. Doctor will not write a probe comment. The first state write
+will verify comment permission.
 
 ## Verification strategy
 
@@ -344,7 +345,7 @@ Automated coverage will include:
 7. Durable spec and plan approvals from trusted comments enforce the existing
    approved-artifact safety checks.
 8. Label-provider tests keep passing without behavior changes.
-9. Doctor checks comment permissions for the comment provider and label
+9. Doctor checks trusted-author resolution for the comment provider and label
    existence for the label provider.
 
 Verification commands will include focused run-once, config, policy, and host

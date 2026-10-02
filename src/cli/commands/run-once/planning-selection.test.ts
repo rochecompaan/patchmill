@@ -172,6 +172,23 @@ test("selects a finished legacy planning workspace over fresh planning", async (
   }
 });
 
+test("comment issue state is authoritative over stale workflow labels", async () => {
+  const result = await selectRunOnceWorkflow(
+    [issue(3, ["spec-review"])],
+    {
+      ...config,
+      issueState: { provider: "comments" },
+      issueStateProvider: {
+        resolveRoles: () => ({ roles: ["agent-ready"] }),
+        setRoles: async () => undefined,
+      },
+    } as never,
+    { path: () => "state", read: async () => undefined } as never,
+  );
+  assert.equal(result.kind, "fresh-planning");
+  if (result.kind === "fresh-planning") assert.equal(result.issue.number, 3);
+});
+
 test("selects approval-resumed finished legacy planning workspaces", async () => {
   const runStateDir = await mkdtemp(join(tmpdir(), "planning-selection-"));
   try {

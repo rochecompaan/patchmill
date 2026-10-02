@@ -64,6 +64,21 @@ export function hasBlockedRunRecoveryState(
   );
 }
 
+export function automaticWorkflowRolesEligible(
+  roles: readonly string[],
+  config: Pick<
+    AgentIssueConfig,
+    "readyLabel" | "triagePolicy" | "approvalPolicy"
+  >,
+): boolean {
+  const state = resolveWorkflowState(roles, {
+    readyLabel: lifecycleLabels(config).ready,
+    policy:
+      config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy,
+  });
+  return isActionableWorkflowState(state) || state.kind === "not-actionable";
+}
+
 export function automaticWorkflowStateEligible(
   labels: string[],
   config: Pick<
@@ -71,7 +86,7 @@ export function automaticWorkflowStateEligible(
     "readyLabel" | "triagePolicy" | "approvalPolicy"
   >,
 ): boolean {
-  const state = resolveWorkflowState(
+  return automaticWorkflowRolesEligible(
     workflowRolesFromLabels(labels, {
       triagePolicy: config.triagePolicy?.labels
         ? config.triagePolicy
@@ -79,13 +94,8 @@ export function automaticWorkflowStateEligible(
       approvalPolicy:
         config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy,
     }),
-    {
-      readyLabel: lifecycleLabels(config).ready,
-      policy:
-        config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy,
-    },
+    config,
   );
-  return isActionableWorkflowState(state) || state.kind === "not-actionable";
 }
 
 export function lifecycleLabels(

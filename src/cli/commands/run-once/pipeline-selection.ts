@@ -12,7 +12,7 @@ import type {
   IssueSelectionRejection,
 } from "./types.ts";
 import {
-  automaticWorkflowStateEligible,
+  automaticWorkflowRolesEligible,
   lifecycleLabels,
   hasBlockedRunRecoveryState,
 } from "./pipeline-lifecycle.ts";
@@ -173,13 +173,20 @@ export async function prepareAutomaticLegacyCandidates(
   config: AgentIssueConfig,
 ): Promise<AutomaticLegacyCandidatePreparation> {
   const automaticIneligibleIssues = loadedIssues.filter(
-    (candidate) => !automaticWorkflowStateEligible(candidate.labels, config),
+    (candidate) =>
+      !automaticWorkflowRolesEligible(
+        workflowRolesForIssue(candidate, config),
+        config,
+      ),
   );
   const issues = (
     await Promise.all(
       loadedIssues
         .filter((candidate) =>
-          automaticWorkflowStateEligible(candidate.labels, config),
+          automaticWorkflowRolesEligible(
+            workflowRolesForIssue(candidate, config),
+            config,
+          ),
         )
         .map(async (candidate) => ({
           candidate,
@@ -209,12 +216,13 @@ export async function selectResumableIssue(
   const resumable: IssueSummary[] = [];
   if (shouldResume) {
     for (const issue of issues) {
+      const roles = workflowRolesForIssue(issue, config);
       if (
         config.issueNumber === undefined &&
-        !automaticWorkflowStateEligible(issue.labels, config)
+        !automaticWorkflowRolesEligible(roles, config)
       )
         continue;
-      if (!issue.labels.includes(inProgress)) continue;
+      if (!roles.includes("in-progress")) continue;
       const state = await readRunState(config.runStateDir, issue.number);
       if (state && isResumableRunState(state)) resumable.push(issue);
     }
@@ -244,9 +252,11 @@ export async function selectResumableIssue(
           throw new Error(
             `Resumable ${inProgress} automation run #${resumable[0]?.number} exists; resume it before processing #${explicitIssue.number}`,
           );
-        if (!explicitIssue.labels.includes(ready)) {
+        if (
+          !workflowRolesForIssue(explicitIssue, config).includes("agent-ready")
+        ) {
           throw new Error(
-            `Issue #${explicitIssue.number} has a blocked Run recovery state but is not labeled ${ready}`,
+            `Issue #${explicitIssue.number} has a blocked Run recovery state but is not marked ${ready}`,
           );
         }
         assertBlockedRetryEligible(explicitIssue, config);

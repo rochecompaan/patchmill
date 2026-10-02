@@ -6,7 +6,7 @@ import {
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import {
-  automaticWorkflowStateEligible,
+  automaticWorkflowRolesEligible,
   hasBlockedRunRecoveryState,
   lifecycleLabels,
 } from "./pipeline-lifecycle.ts";
@@ -193,7 +193,10 @@ export async function selectRunOnceWorkflow(
     if (issue.state !== "open") continue;
     if (
       config.issueNumber === undefined &&
-      !automaticWorkflowStateEligible(issue.labels, config)
+      !automaticWorkflowRolesEligible(
+        workflowRolesForIssue(issue, config),
+        config,
+      )
     )
       continue;
     let state: PlanningStateV1 | undefined;

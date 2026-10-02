@@ -250,6 +250,48 @@ test("runOneIssue facade returns dry-run selection", async () => {
   assert.equal(result.issue.number, 7);
 });
 
+test("runOneIssue dry-run uses comment issue-state roles", async () => {
+  const selected = issue(7, [], "Dry run issue");
+  const config = await makeConfig({
+    dryRun: true,
+    issueState: { provider: "comments", trustedAuthors: ["bot"] },
+  } as never);
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "tea" && call.args[0] === "api") {
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          {
+            body: "---\nPatchmill: agent-ready\n---\n",
+            author: { login: "bot" },
+            created_at: "2026-05-09T11:00:00Z",
+          },
+        ]),
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "merge-base")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runCurrentOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issue.number, 7);
+  assert.equal(result.transition, "agent-ready -> agent-done");
+});
+
 test("runOneIssue facade returns plan-created in plan-only mode", async () => {
   const { result } = await runPlanApprovedImplementationScenario({
     issueNumber: 8,

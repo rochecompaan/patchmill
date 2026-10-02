@@ -65,6 +65,32 @@ test("selection diagnostics identify the configured ready label", () => {
   );
 });
 
+test("selectResumableIssue uses comment issue-state roles", async () => {
+  const config = await makeConfig({
+    dryRun: false,
+    execute: true,
+    issueState: { provider: "comments" },
+    issueStateProvider: {
+      resolveRoles: () => ({ roles: ["in-progress"] }),
+      setRoles: async () => undefined,
+    },
+  } as never);
+  await mkdir(config.runStateDir, { recursive: true });
+  await writeRunState(
+    config.runStateDir,
+    {
+      issueNumber: 3,
+      title: "Issue 3",
+      status: "planning",
+      checkpoints: { claimed: true },
+    },
+    new Date().toISOString(),
+  );
+  const selected = await selectResumableIssue([issue(3, [])], config);
+  assert.equal(selected?.issue.number, 3);
+  assert.equal(selected?.resumed, true);
+});
+
 test("selectResumableIssue prefers a single resumable in-progress run", async () => {
   const config = await makeConfig({ dryRun: false, execute: true });
   await mkdir(config.runStateDir, { recursive: true });

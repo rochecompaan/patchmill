@@ -28,8 +28,6 @@ export async function runOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  // Preserve legacy dry-run output and its non-mutating diagnostic contract.
-  if (config.dryRun) return runLegacyOneIssue(runner, config, options);
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
@@ -41,6 +39,8 @@ export async function runOneIssue(
     config.labelCatalog,
   );
   const runtimeConfig: AgentIssueConfig = { ...config, issueStateProvider };
+  // Preserve legacy dry-run output and its non-mutating diagnostic contract.
+  if (config.dryRun) return runLegacyOneIssue(runner, runtimeConfig, options);
   const labels = lifecycleLabels(runtimeConfig);
   const issues = await loadSelectionIssues(host, runtimeConfig, options);
   const planningState = new PlanningStateStore(config.runStateDir);
