@@ -245,6 +245,7 @@ export async function selectRunOnceWorkflow(
         needsPlanningCleanupPendingPublication({
           state,
           labels: issue.labels,
+          roles: workflowRolesForIssue(issue, config),
           readyLabel: lifecycleLabels(config).ready,
           needsInfoLabel: lifecycleLabels(config).needsInfo,
         }))

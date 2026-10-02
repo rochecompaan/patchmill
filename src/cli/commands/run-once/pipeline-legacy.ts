@@ -894,7 +894,10 @@ async function runLegacyOneIssueInternal(
       [],
       [inProgress],
     );
-    if (implementationLabels.join("\0") !== labels.join("\0")) {
+    if (
+      config.issueState?.provider !== "comments" &&
+      implementationLabels.join("\0") !== labels.join("\0")
+    ) {
       await host.applyLabels(
         planLabelChange(issue.number, labels, implementationLabels),
       );
