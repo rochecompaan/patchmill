@@ -305,15 +305,30 @@ export async function withIssueRunLease<T>(
         : { ownerToken: input.ownerToken }),
     },
   );
+  let result: T | undefined;
+  let workFailure: unknown;
   try {
     await assertIssueRunLeaseOwned(lease, {
       runStateDir: input.runStateDir,
       issueNumber: input.issueNumber,
     });
-    return await action(lease);
-  } finally {
-    await releaseIssueRunLease(lease);
+    result = await action(lease);
+  } catch (error) {
+    workFailure = error;
   }
+  try {
+    await releaseIssueRunLease(lease);
+  } catch (releaseFailure) {
+    if (workFailure !== undefined)
+      throw new AggregateError(
+        [workFailure, releaseFailure],
+        "Issue run work and lease release failed",
+        { cause: releaseFailure },
+      );
+    throw releaseFailure;
+  }
+  if (workFailure !== undefined) throw workFailure;
+  return result as T;
 }
 export function activeRunRecoveryDecision(
   error: IssueRunLeaseConflictError,

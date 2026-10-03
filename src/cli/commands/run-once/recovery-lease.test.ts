@@ -62,6 +62,21 @@ test("rejects a replaced borrowed lease before its callback", async () => {
   assert.equal(called, false);
 });
 
+test("releases an owned lease after callback failure and preserves the failure", async () => {
+  const runStateDir = await dir();
+  const failure = new Error("work failed");
+  await assert.rejects(
+    withIssueRunLease(
+      { runStateDir, issueNumber: 45, ownerToken: "failing-owner" },
+      async () => {
+        throw failure;
+      },
+    ),
+    (error: unknown) => error === failure,
+  );
+  await assert.rejects(readFile(join(runStateDir, "locks", "issue-45.lock")));
+});
+
 test("acquires and releases a lease with a valid OS underscore hostname", async () => {
   const runStateDir = await dir();
   const lease = await acquireIssueRunLease(runStateDir, 45, {
