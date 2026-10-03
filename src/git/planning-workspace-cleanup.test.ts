@@ -10,25 +10,23 @@ import {
 const oid = "a".repeat(40);
 const identity = { branch: "planning/spec", worktreePath: "/worktree" };
 
-test("removal status preserves and sorts exact ignored paths", () => {
-  assert.deepEqual(
-    parsePlanningWorkspaceRemovalStatus(
-      "!! .env\0!! build/output\nname.bin\0!! .env\0",
-    ),
-    {
-      ordinaryDirty: false,
-      ignoredPaths: [".env", "build/output\nname.bin"],
-    },
-  );
+test("removal status accepts empty ordinary porcelain", () => {
+  assert.deepEqual(parsePlanningWorkspaceRemovalStatus(""), {
+    ordinaryDirty: false,
+  });
 });
 
-test("removal status preserves ordinary dirty evidence alongside ignored paths", () => {
-  assert.deepEqual(
-    parsePlanningWorkspaceRemovalStatus(
-      " M tracked.txt\0?? ordinary.txt\0!! .env\0",
-    ),
-    { ordinaryDirty: true, ignoredPaths: [".env"] },
-  );
+test("removal status treats every ordinary porcelain record as dirty", () => {
+  for (const stdout of [
+    " M tracked.txt\0?? ordinary.txt\0",
+    "M  staged.txt\0",
+    "R  before.txt\0after.txt\0",
+    "?? ordinary\nname.txt\0",
+  ]) {
+    assert.deepEqual(parsePlanningWorkspaceRemovalStatus(stdout), {
+      ordinaryDirty: true,
+    });
+  }
 });
 
 test("worktree removal rejects a late ordinary status change without removing", async () => {
@@ -41,7 +39,7 @@ test("worktree removal rejects a late ordinary status change without removing", 
       clean: true,
     }),
     path: () => "/worktree",
-    removalStatus: async () => ({ ordinaryDirty: true, ignoredPaths: [] }),
+    removalStatus: async () => ({ ordinaryDirty: true }),
     run: async (args: string[]) => {
       calls.push(args);
       return { stdout: "" };
@@ -73,13 +71,9 @@ test("worktree removal rejects a late ordinary status change without removing", 
   assert.deepEqual(calls, []);
 });
 
-test("removal status rejects malformed NUL records", () => {
+test("removal status rejects nonempty porcelain without a trailing NUL", () => {
   assert.throws(
-    () => parsePlanningWorkspaceRemovalStatus("!! .env"),
-    PlanningWorkspaceResponseError,
-  );
-  assert.throws(
-    () => parsePlanningWorkspaceRemovalStatus("!! \0"),
+    () => parsePlanningWorkspaceRemovalStatus(" M tracked.txt"),
     PlanningWorkspaceResponseError,
   );
 });

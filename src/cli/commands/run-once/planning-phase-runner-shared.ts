@@ -51,7 +51,6 @@ export type PlanningCleanupPendingOutcome = Readonly<{
 }>;
 
 export type PlanningPhaseRunnerOutcome =
-  | PlanningCleanupPendingOutcome
   | { kind: "review-pending"; state: PlanningStateV1; prUrl: string }
   | { kind: "stopped"; state: PlanningStateV1; reason: "plan-only" }
   | {

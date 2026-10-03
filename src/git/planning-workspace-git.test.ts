@@ -632,12 +632,7 @@ test(
         "missing",
       );
 
-      for (const dirty of [
-        "tracked",
-        "staged",
-        "untracked",
-        "ignored",
-      ] as const) {
+      for (const dirty of ["tracked", "staged", "untracked"] as const) {
         const dirtyIdentity = {
           branch: `planning/${dirty}`,
           worktreePath: `../worktrees/${dirty}`,
@@ -655,44 +650,17 @@ test(
         } else {
           await writeFile(join(dirtyPath, `${dirty}.txt`), `${dirty}\n`);
         }
-        if (dirty === "ignored") {
-          const resumed = await workspace.resume({
-            runId: dirtyPrepared.workspace.runId,
-            phase: "spec",
-            identity: dirtyIdentity,
-            base: snapshot,
-            saved: dirtyPrepared.workspace,
-          });
-          assert.equal(
-            resumed.clean,
-            true,
-            "ignored files do not dirty resumed workspaces",
-          );
-        }
-        if (dirty === "ignored") {
-          const pending = await workspace.removeWorktree({
+        await assert.rejects(
+          workspace.removeWorktree({
             runId: dirtyPrepared.workspace.runId,
             phase: "spec",
             workspace: dirtyPrepared.workspace,
-          });
-          assert.deepEqual(pending, {
-            kind: "cleanup-pending",
-            reason: "ignored-worktree-content",
-            ignoredPaths: ["ignored.txt"],
-          });
-        } else {
-          await assert.rejects(
-            workspace.removeWorktree({
-              runId: dirtyPrepared.workspace.runId,
-              phase: "spec",
-              workspace: dirtyPrepared.workspace,
-            }),
-            /dirty-worktree/,
-            dirty,
-          );
-        }
+          }),
+          /dirty-worktree/,
+          dirty,
+        );
         git(dirtyPath, "reset", "--hard", "HEAD");
-        if (dirty === "untracked" || dirty === "ignored") {
+        if (dirty === "untracked") {
           await rm(join(dirtyPath, `${dirty}.txt`), { force: true });
         }
         await workspace.removeWorktree({

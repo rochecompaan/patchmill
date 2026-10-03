@@ -14,6 +14,17 @@ import {
   type PreparedPlanningWorkspace,
 } from "./planning-workspaces.ts";
 
+const legacyPendingRemoval = {
+  kind: "cleanup-pending",
+  reason: "ignored-worktree-content",
+  ignoredPaths: [".env"],
+} as const;
+
+// @ts-expect-error cleanup-pending is durable input, not live output
+const invalidLiveRemoval: PlanningWorkspaceRemovalOutcome =
+  legacyPendingRemoval;
+void invalidLiveRemoval;
+
 const identity: PlanningWorkspaceIdentity = {
   branch: "agent/issue-184-foundations-spec",
   worktreePath: ".worktrees/patchmill-issue-184-foundations-spec",

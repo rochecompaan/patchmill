@@ -29,14 +29,6 @@ import { finishPlanningPhaseCleanup } from "./planning-phase-cleanup.ts";
 
 export type PlanningPhasePublicationResult =
   | Readonly<{
-      kind: "cleanup-pending";
-      state: PlanningStateV1;
-      phase: "spec" | "plan";
-      prUrl: string;
-      reason: "ignored-worktree-content";
-      ignoredPaths: readonly string[];
-    }>
-  | Readonly<{
       kind: "published";
       state: PlanningStateV1;
       pullRequest: PullRequestSummary;
@@ -260,15 +252,6 @@ export async function publishPlanningPhase(input: {
           : {}),
         pullRequestUrl: phase.pullRequest.url,
       }),
-    };
-  if (cleanup.kind === "cleanup-pending")
-    return {
-      kind: "cleanup-pending",
-      state,
-      phase: phase.kind,
-      prUrl: phase.pullRequest.url,
-      reason: cleanup.reason,
-      ignoredPaths: cleanup.ignoredPaths,
     };
   phase = cleanup.phase;
   pullRequest = await input.host.getPullRequest(phase.pullRequest.reference);

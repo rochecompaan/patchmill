@@ -55,34 +55,33 @@ test("coordinates every gate plan in order and stops at an open planning review"
   }
 });
 
-test("passes planning cleanup pending through without advancing phases", async () => {
+test("advances to implementation after a completed planning checkpoint", async () => {
   const gates = { specRequired: true, planRequired: false };
-  const initial = state(gates);
-  let calls = 0;
+  const advanced = {
+    issueNumber: 189,
+    gates,
+    phases: [
+      { kind: "spec", status: "complete" },
+      { kind: "implementation", status: "pending" },
+    ],
+  } as never;
+  const seen: string[] = [];
   const result = await coordinatePlanningPhases({
-    state: initial,
+    state: state(gates),
     issue: { number: 189 } as never,
-    runPlanningPhase: async () => {
-      calls += 1;
+    runPlanningPhase: async ({ state: current, phase }) => {
+      seen.push(phase.kind);
+      if (phase.kind === "spec") return { kind: "advanced", state: advanced };
+      assert.equal(current, advanced);
       return {
-        kind: "cleanup-pending",
-        state: initial,
-        phase: "spec",
-        prUrl: "https://example.test/pr/1",
-        reason: "ignored-worktree-content",
-        ignoredPaths: [".env"],
+        kind: "complete",
+        state: current,
+        result: { status: "pr-created" } as never,
       };
     },
   });
-  assert.deepEqual(result, {
-    kind: "cleanup-pending",
-    state: initial,
-    phase: "spec",
-    prUrl: "https://example.test/pr/1",
-    reason: "ignored-worktree-content",
-    ignoredPaths: [".env"],
-  });
-  assert.equal(calls, 1);
+  assert.equal(result.kind, "complete");
+  assert.deepEqual(seen, ["spec", "implementation"]);
 });
 
 test("delegates plan-only implementation artifacts to the phase runner", async () => {

@@ -50,12 +50,6 @@ export class PlanningWorkspaceCleanupGit {
         workspace.identity,
       );
     }
-    if (content.ignoredPaths.length > 0)
-      return {
-        kind: "cleanup-pending",
-        reason: "ignored-worktree-content",
-        ignoredPaths: content.ignoredPaths,
-      };
     await this.repository.run(
       ["worktree", "remove", "--", path],
       "worktree-remove",

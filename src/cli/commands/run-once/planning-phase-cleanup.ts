@@ -20,12 +20,6 @@ export type PlanningPhaseCleanupAuthorization =
   | Readonly<{ kind: "merged-terminal" }>;
 
 export type PlanningPhaseCleanupOutcome =
-  | Readonly<{
-      kind: "cleanup-pending";
-      phase: PullRequestOpenPlanningPhase;
-      reason: "ignored-worktree-content";
-      ignoredPaths: readonly string[];
-    }>
   | Readonly<{ kind: "cleaned"; phase: PullRequestOpenPlanningPhase }>
   | Readonly<{
       kind: "remote-head-changed";
@@ -63,31 +57,8 @@ export async function finishPlanningPhaseCleanup(input: {
       phase: phase.kind,
       workspace: { ...phase.workspace, cleanup },
     });
-    switch (removal?.kind) {
-      case "cleanup-pending": {
-        const cleanup = {
-          state: "cleanup-pending" as const,
-          reason: removal.reason,
-          ignoredPaths: [...removal.ignoredPaths],
-        };
-        if (
-          JSON.stringify(phase.workspace.cleanup) !== JSON.stringify(cleanup)
-        ) {
-          phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
-          await input.checkpoint(phase);
-        }
-        return {
-          kind: "cleanup-pending",
-          phase,
-          reason: cleanup.reason,
-          ignoredPaths: cleanup.ignoredPaths,
-        };
-      }
-      case "removed":
-        break;
-      default:
-        throw new TypeError("Invalid planning worktree removal outcome");
-    }
+    if (removal?.kind !== "removed")
+      throw new TypeError("Invalid planning worktree removal outcome");
     phase = {
       ...phase,
       workspace: {

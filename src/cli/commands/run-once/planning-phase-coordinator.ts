@@ -69,7 +69,6 @@ export async function coordinatePlanningPhases(
       phase,
       planOnly: input.planOnly === true,
     });
-    if (outcome.kind === "cleanup-pending") return outcome;
     if (outcome.kind === "review-pending") {
       if (phase.kind === "implementation")
         throw new Error("Implementation pull request cannot be review-pending");

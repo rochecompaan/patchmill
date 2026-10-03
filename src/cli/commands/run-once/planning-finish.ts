@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import type {
   PlanningWorkspaceCleanupPending,
   PlanningWorkspaceLifecycle,
@@ -16,19 +15,11 @@ import type {
 import { durableImplementationResult } from "./planning-runtime-state.ts";
 import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
 
-export type PlanningImplementationFinishOutcome =
-  | Readonly<{
-      kind: "complete";
-      state: PlanningStateV1;
-      result: AgentIssuePrCreatedResult;
-    }>
-  | Readonly<{
-      kind: "cleanup-pending";
-      state: PlanningStateV1;
-      result: AgentIssuePrCreatedResult;
-      reason: "ignored-worktree-content";
-      ignoredPaths: readonly string[];
-    }>;
+export type PlanningImplementationFinishOutcome = Readonly<{
+  kind: "complete";
+  state: PlanningStateV1;
+  result: AgentIssuePrCreatedResult;
+}>;
 
 export type PlanningFinishInput = {
   state: PlanningStateV1;
@@ -137,33 +128,8 @@ export async function finishPlanningImplementation(
         { state: "ready" } | PlanningWorkspaceCleanupPending
       >,
     });
-    switch (removal?.kind) {
-      case "cleanup-pending": {
-        const cleanup = {
-          state: "cleanup-pending" as const,
-          reason: removal.reason,
-          ignoredPaths: [...removal.ignoredPaths],
-        };
-        if (!isDeepStrictEqual(phase.workspace.cleanup, cleanup)) {
-          phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
-          state = await checkpoint(input, state, phase);
-          phase = state.phases[
-            input.phaseIndex
-          ] as ImplementationPullRequestOpenPlanningPhase;
-        }
-        return {
-          kind: "cleanup-pending",
-          state,
-          result: durableImplementationResult(phase),
-          reason: cleanup.reason,
-          ignoredPaths: cleanup.ignoredPaths,
-        };
-      }
-      case "removed":
-        break;
-      default:
-        throw new TypeError("Invalid planning worktree removal outcome");
-    }
+    if (removal?.kind !== "removed")
+      throw new TypeError("Invalid planning worktree removal outcome");
     phase = {
       ...phase,
       workspace: {

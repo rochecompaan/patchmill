@@ -43,12 +43,6 @@ export type PlanningMergeRecoveryBlockedOutcome = Readonly<{
 export type PlanningPhaseReconciliation =
   | PlanningMergeRecoveryBlockedOutcome
   | PlanningHeadAdoptionBlockedOutcome
-  | {
-      kind: "cleanup-pending";
-      prUrl: string;
-      reason: "ignored-worktree-content";
-      ignoredPaths: readonly string[];
-    }
   | { kind: "review-pending"; pullRequest: PullRequestSummary }
   | { kind: "merged"; pullRequest: PullRequestSummary; baseOid: string }
   | {
@@ -158,16 +152,6 @@ async function reconcileOpenPlanningPullRequest(input: {
         pullRequestUrl: validated.url,
       }),
     };
-  if (cleanup.kind === "cleanup-pending")
-    return {
-      state,
-      outcome: {
-        kind: "cleanup-pending",
-        prUrl: validated.url,
-        reason: cleanup.reason,
-        ignoredPaths: cleanup.ignoredPaths,
-      },
-    };
   return {
     state,
     outcome: { kind: "review-pending", pullRequest: validated.summary },
@@ -240,16 +224,6 @@ async function reconcileMergedPlanningPullRequest(input: {
       );
     },
   });
-  if (cleanup.kind === "cleanup-pending")
-    return {
-      state,
-      outcome: {
-        kind: "cleanup-pending",
-        prUrl: validated.url,
-        reason: cleanup.reason,
-        ignoredPaths: cleanup.ignoredPaths,
-      },
-    };
   const completed = {
     ...cleanup.phase,
     status: "complete" as const,
