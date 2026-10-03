@@ -281,7 +281,12 @@ export async function releaseIssueRunLease(
   }
 }
 export async function withIssueRunLease<T>(
-  input: { runStateDir: string; issueNumber: number; lease?: IssueRunLease },
+  input: {
+    runStateDir: string;
+    issueNumber: number;
+    lease?: IssueRunLease;
+    ownerToken?: string;
+  },
   action: (lease: IssueRunLease) => Promise<T>,
 ): Promise<T> {
   if (input.lease) {
@@ -294,6 +299,11 @@ export async function withIssueRunLease<T>(
   const lease = await acquireIssueRunLease(
     input.runStateDir,
     input.issueNumber,
+    {
+      ...(input.ownerToken === undefined
+        ? {}
+        : { ownerToken: input.ownerToken }),
+    },
   );
   try {
     await assertIssueRunLeaseOwned(lease, {

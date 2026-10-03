@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { CommandRunner } from "../../../command/types.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { createIssueStateProvider } from "../../../issue-state/index.ts";
@@ -17,6 +18,7 @@ import {
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
@@ -28,6 +30,8 @@ export async function runOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
+  const attemptId = options.attemptId ?? randomUUID();
+  const attemptOptions = { ...options, attemptId };
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
@@ -40,17 +44,33 @@ export async function runOneIssue(
   );
   const runtimeConfig: AgentIssueConfig = { ...config, issueStateProvider };
   // Preserve legacy dry-run output and its non-mutating diagnostic contract.
-  if (config.dryRun) return runLegacyOneIssue(runner, runtimeConfig, options);
+  if (config.dryRun)
+    return runLegacyOneIssue(runner, runtimeConfig, attemptOptions);
   const labels = lifecycleLabels(runtimeConfig);
-  const issues = await loadSelectionIssues(host, runtimeConfig, options);
+  const issues = await loadSelectionIssues(host, runtimeConfig, attemptOptions);
   const planningState = new PlanningStateStore(config.runStateDir);
+  const withSelectedLease = <T>(
+    issueNumber: number,
+    action: (lease: import("./types.ts").IssueRunLease) => Promise<T>,
+  ) =>
+    withIssueRunLease(
+      {
+        runStateDir: runtimeConfig.runStateDir,
+        issueNumber,
+        ...(attemptOptions.lease === undefined
+          ? {}
+          : { lease: attemptOptions.lease }),
+        ownerToken: attemptId,
+      },
+      action,
+    );
   const rejectedIssueNumbers = new Set<number>();
   while (true) {
     const selected = await selectRunOnceWorkflow(
       issues.filter((issue) => !rejectedIssueNumbers.has(issue.number)),
       runtimeConfig,
       planningState,
-      options.now?.toISOString(),
+      attemptOptions.now?.toISOString(),
     );
     switch (selected.kind) {
       case "none": {
@@ -69,10 +89,10 @@ export async function runOneIssue(
         });
         await emitSelectionDiagnostics(
           diagnostics.rejections,
-          options,
+          attemptOptions,
           labels.ready,
         );
-        return withLogPath({ status: "no-issue" }, options);
+        return withLogPath({ status: "no-issue" }, attemptOptions);
       }
       case "invalid-planning-state":
         return withLogPath(
@@ -90,14 +110,16 @@ export async function runOneIssue(
             commits: [],
             validation: [],
           },
-          options,
+          attemptOptions,
         );
       case "legacy": {
-        const legacy = await runLegacyOneIssueForSelection(
-          runner,
-          runtimeConfig,
-          selected.issue.number,
-          options,
+        const legacy = await withSelectedLease(selected.issue.number, (lease) =>
+          runLegacyOneIssueForSelection(
+            runner,
+            runtimeConfig,
+            selected.issue.number,
+            { ...attemptOptions, lease },
+          ),
         );
         if (legacy.kind === "pipeline-result") return legacy.result;
         if (runtimeConfig.issueNumber !== undefined) return legacy.result;
@@ -105,25 +127,29 @@ export async function runOneIssue(
         continue;
       }
       case "planning":
-        return runPlanningWorkflow({
-          runner,
-          config: runtimeConfig,
-          options,
-          issue: selected.issue,
-          state: selected.state,
-          expectedStatePresence: "present",
-          host,
-        });
+        return withSelectedLease(selected.issue.number, () =>
+          runPlanningWorkflow({
+            runner,
+            config: runtimeConfig,
+            options: attemptOptions,
+            issue: selected.issue,
+            state: selected.state,
+            expectedStatePresence: "present",
+            host,
+          }),
+        );
       case "fresh-planning":
-        return runPlanningWorkflow({
-          runner,
-          config: runtimeConfig,
-          options,
-          issue: selected.issue,
-          state: selected.initialState,
-          expectedStatePresence: "absent",
-          host,
-        });
+        return withSelectedLease(selected.issue.number, () =>
+          runPlanningWorkflow({
+            runner,
+            config: runtimeConfig,
+            options: attemptOptions,
+            issue: selected.issue,
+            state: selected.initialState,
+            expectedStatePresence: "absent",
+            host,
+          }),
+        );
     }
   }
 }

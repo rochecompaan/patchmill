@@ -275,7 +275,13 @@ async function runLegacyOneIssueInternal(
   // A caller-supplied lease (reset) is borrowed and is therefore not released.
   if (!config.dryRun && !options.lease) {
     return withIssueRunLease(
-      { runStateDir: config.runStateDir, issueNumber: issue.number },
+      {
+        runStateDir: config.runStateDir,
+        issueNumber: issue.number,
+        ...(options.attemptId === undefined
+          ? {}
+          : { ownerToken: options.attemptId }),
+      },
       (lease) =>
         runLegacyOneIssueInternal(runner, config, {
           ...options,

@@ -4,6 +4,9 @@ import type { ProgressReporter } from "./progress.ts";
 type PiOutputStream = (chunk: string) => void;
 
 export type RunOneIssueOptions = {
+  /** One attempt token is shared by repository admission and its Issue lease. */
+  attemptId?: string | undefined;
+  lease?: import("./types.ts").IssueRunLease | undefined;
   now?: Date | undefined;
   progress?: ProgressReporter | undefined;
   logPath?: string | undefined;
@@ -22,7 +25,6 @@ export type LegacySelectionRunResult =
     };
 
 export type LeasedRunOneIssueOptions = RunOneIssueOptions & {
-  lease?: import("./types.ts").IssueRunLease;
   /** Internal selection pin; never exposed to ordinary callers. */
   leasedIssueNumber?: number;
   /** Distinguishes a pinned rejection before any Issue effect begins. */
