@@ -63,6 +63,31 @@ test("canonical aliases share a repository namespace", async () => {
   }
 });
 
+test("concurrent namespace initialization publishes one complete record", async () => {
+  const root = await mkdtemp(join(tmpdir(), "run-namespace-"));
+  try {
+    const clone = join(root, "clone");
+    const common = join(root, "common");
+    await mkdir(clone);
+    await mkdir(common);
+    const input = {
+      repoRoot: clone,
+      hostRepository: host,
+      runStateDir: "state",
+      worktreeRoot: "workspaces",
+      todoRoot: ".pi/todos",
+    };
+    const resolved = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        resolveRunRepositoryNamespace(runner(common), input),
+      ),
+    );
+    for (const namespace of resolved) assert.deepEqual(namespace, resolved[0]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("rejects every changed bound namespace identity before issue effects", async () => {
   const root = await mkdtemp(join(tmpdir(), "run-namespace-"));
   try {

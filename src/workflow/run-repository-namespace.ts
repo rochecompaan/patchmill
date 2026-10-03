@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   link,
   mkdir,
@@ -94,7 +95,7 @@ async function bindNamespace(namespace: RunRepositoryNamespace): Promise<void> {
   const path = join(directory, "namespace-v1.json");
   const temporary = join(
     directory,
-    `.namespace-${process.pid}-${Date.now()}.tmp`,
+    `.namespace-${process.pid}-${randomUUID()}.tmp`,
   );
   await mkdir(directory, { recursive: true });
   const handle = await open(temporary, "wx", 0o600);

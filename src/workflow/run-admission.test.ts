@@ -164,21 +164,152 @@ test("malformed registrations fail closed", async () => {
   }
 });
 
+test("foreign and malformed guard owners fail closed", async () => {
+  const ns = await namespace();
+  try {
+    const guard = join(
+      ns.commonDir,
+      "patchmill",
+      "run-once",
+      "admission-guard",
+    );
+    await mkdir(guard, { recursive: true });
+    await writeFile(join(guard, "owner.json"), "not-json");
+    await assert.rejects(
+      withRunAdmission(
+        { namespace: ns, attemptId: "blocked", mode: "explicit" },
+        async () => undefined,
+      ),
+      RunAdmissionConflictError,
+    );
+    await writeFile(
+      join(guard, "owner.json"),
+      `${JSON.stringify({
+        version: 1,
+        ownerToken: "foreign",
+        pid: 1,
+        hostname: "foreign.example.test",
+      })}\n`,
+    );
+    await assert.rejects(
+      withRunAdmission(
+        { namespace: ns, attemptId: "blocked", mode: "explicit" },
+        async () => undefined,
+      ),
+      RunAdmissionConflictError,
+    );
+  } finally {
+    await rm(ns.commonDir, { recursive: true, force: true });
+  }
+});
+
+test("live guard waits without registering an admission", async () => {
+  const ns = await namespace();
+  try {
+    const root = join(ns.commonDir, "patchmill", "run-once");
+    const guard = join(root, "admission-guard");
+    await mkdir(guard, { recursive: true });
+    await writeFile(
+      join(guard, "owner.json"),
+      `${JSON.stringify({
+        version: 1,
+        ownerToken: "live-guard",
+        pid: process.pid,
+        hostname: hostname(),
+      })}\n`,
+    );
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error("stop wait")), 20);
+    await assert.rejects(
+      withRunAdmission(
+        {
+          namespace: ns,
+          attemptId: "waiting",
+          mode: "explicit",
+          signal: controller.signal,
+        },
+        async () => undefined,
+      ),
+      /stop wait/,
+    );
+    await assert.rejects(
+      readFile(join(root, "admissions", "waiting.json"), "utf8"),
+      /ENOENT/,
+    );
+  } finally {
+    await rm(ns.commonDir, { recursive: true, force: true });
+  }
+});
+
+test("archives a dead guard and preserves each identical-time record", async () => {
+  const ns = await namespace();
+  try {
+    const root = join(ns.commonDir, "patchmill", "run-once");
+    const guard = join(root, "admission-guard");
+    await mkdir(guard, { recursive: true });
+    await writeFile(
+      join(guard, "owner.json"),
+      `${JSON.stringify({
+        version: 1,
+        ownerToken: "dead-guard",
+        pid: 99999999,
+        hostname: hostname(),
+      })}\n`,
+    );
+    const admissions = join(root, "admissions");
+    await mkdir(admissions, { recursive: true });
+    for (const name of ["dead-a.json", "dead-b.json"]) {
+      await writeFile(
+        join(admissions, name),
+        `${JSON.stringify({
+          version: 1,
+          attemptId: name,
+          ownerToken: name,
+          mode: "explicit",
+          pid: 99999999,
+          hostname: hostname(),
+        })}\n`,
+      );
+    }
+    await withRunAdmission(
+      { namespace: ns, attemptId: "live", mode: "explicit" },
+      async () => undefined,
+    );
+    assert.equal(
+      (await readdir(join(root, "archive", "admissions"))).length,
+      2,
+    );
+    assert.equal(
+      (await readdir(join(root, "archive", "admission-guards"))).length,
+      1,
+    );
+  } finally {
+    await rm(ns.commonDir, { recursive: true, force: true });
+  }
+});
+
 test("obsolete release preserves a replacement registration", async () => {
   const ns = await namespace();
   try {
-    let firstAdmission: { recordPath: string; ownerToken: string } | undefined;
+    let recordPath = "";
     await withRunAdmission(
       { namespace: ns, attemptId: "same", mode: "explicit", issueNumber: 1 },
       async (admission) => {
-        firstAdmission = admission;
+        recordPath = admission.recordPath;
+        await writeFile(
+          admission.recordPath,
+          `${JSON.stringify({
+            version: 1,
+            attemptId: "replacement",
+            ownerToken: "replacement-token",
+            mode: "explicit",
+            pid: process.pid,
+            hostname: hostname(),
+          })}\n`,
+        );
       },
     );
-    await withRunAdmission(
-      { namespace: ns, attemptId: "same", mode: "explicit", issueNumber: 1 },
-      async () => undefined,
-    );
-    assert.ok(firstAdmission);
+    assert.match(await readFile(recordPath, "utf8"), /replacement-token/);
   } finally {
     await rm(ns.commonDir, { recursive: true, force: true });
   }
