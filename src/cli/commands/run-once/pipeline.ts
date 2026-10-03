@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { CommandRunner } from "../../../command/types.ts";
-import { createRunOnceHostProvider } from "../../../host/factory.ts";
+import {
+  createPullRequestHost,
+  createRunOnceHostProvider,
+} from "../../../host/factory.ts";
+import type { RunOnceHostProvider } from "../../../host/types.ts";
 import { createIssueStateProvider } from "../../../issue-state/index.ts";
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
+import { withRunAdmission } from "../../../workflow/run-admission.ts";
+import { resolveRunRepositoryNamespace } from "../../../workflow/run-repository-namespace.ts";
 import {
   runLegacyOneIssue,
   runLegacyOneIssueAfterReset,
@@ -24,7 +30,7 @@ import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 
-/** Public facade that safely reselects rejected legacy candidates before one substantive workflow. */
+/** Public facade that admits a Run attempt before non-dry-run selection. */
 export async function runOneIssue(
   runner: CommandRunner,
   config: AgentIssueConfig,
@@ -43,41 +49,82 @@ export async function runOneIssue(
     config.labelCatalog,
   );
   const runtimeConfig: AgentIssueConfig = { ...config, issueStateProvider };
-  // Preserve legacy dry-run output and its non-mutating diagnostic contract.
   if (config.dryRun)
     return runLegacyOneIssue(runner, runtimeConfig, attemptOptions);
+  const hostRepository = await createPullRequestHost({
+    runner,
+    repoRoot: config.repoRoot,
+    remote: config.remote,
+    host: config.host,
+  }).resolveTargetRepositoryIdentity();
+  const namespace = await resolveRunRepositoryNamespace(runner, {
+    repoRoot: runtimeConfig.repoRoot,
+    hostRepository,
+    runStateDir: runtimeConfig.runStateDir,
+    worktreeRoot: runtimeConfig.worktreeDir,
+    todoRoot: runtimeConfig.projectPolicy.pi.taskContract.todoRoot,
+  });
+  return withRunAdmission(
+    {
+      namespace,
+      attemptId,
+      mode: runtimeConfig.issueNumber === undefined ? "automatic" : "explicit",
+      ...(runtimeConfig.issueNumber === undefined
+        ? {}
+        : { issueNumber: runtimeConfig.issueNumber }),
+    },
+    () =>
+      runAdmittedOneIssue(
+        runner,
+        runtimeConfig,
+        attemptOptions,
+        host,
+        issueStateProvider,
+      ),
+  );
+}
+
+async function runAdmittedOneIssue(
+  runner: CommandRunner,
+  runtimeConfig: AgentIssueConfig,
+  options: RunOneIssueOptions,
+  host: RunOnceHostProvider,
+  issueStateProvider: NonNullable<AgentIssueConfig["issueStateProvider"]>,
+): Promise<AgentIssuePipelineResult> {
   const labels = lifecycleLabels(runtimeConfig);
-  const issues = await loadSelectionIssues(host, runtimeConfig, attemptOptions);
-  const planningState = new PlanningStateStore(config.runStateDir);
+  const issues = await loadSelectionIssues(host, runtimeConfig, options);
+  const planningState = new PlanningStateStore(runtimeConfig.runStateDir);
   const rejectedIssueNumbers = new Set<number>();
   while (true) {
     const selected = await selectRunOnceWorkflow(
       issues.filter((issue) => !rejectedIssueNumbers.has(issue.number)),
       runtimeConfig,
       planningState,
-      attemptOptions.now?.toISOString(),
+      options.now?.toISOString(),
     );
     switch (selected.kind) {
       case "none": {
-        const diagnosticCandidates = issues.filter(
-          (issue) =>
-            (runtimeConfig.issueNumber === undefined ||
-              issue.number === runtimeConfig.issueNumber) &&
-            !rejectedIssueNumbers.has(issue.number),
+        const diagnostics = selectIssueWithDiagnostics(
+          issues.filter(
+            (issue) =>
+              (runtimeConfig.issueNumber === undefined ||
+                issue.number === runtimeConfig.issueNumber) &&
+              !rejectedIssueNumbers.has(issue.number),
+          ),
+          {
+            readyLabel: labels.ready,
+            triagePolicy: runtimeConfig.triagePolicy,
+            approvalPolicy: runtimeConfig.approvalPolicy,
+            issueState: runtimeConfig.issueState,
+            issueStateProvider,
+          },
         );
-        const diagnostics = selectIssueWithDiagnostics(diagnosticCandidates, {
-          readyLabel: labels.ready,
-          triagePolicy: runtimeConfig.triagePolicy,
-          approvalPolicy: runtimeConfig.approvalPolicy,
-          issueState: runtimeConfig.issueState,
-          issueStateProvider,
-        });
         await emitSelectionDiagnostics(
           diagnostics.rejections,
-          attemptOptions,
+          options,
           labels.ready,
         );
-        return withLogPath({ status: "no-issue" }, attemptOptions);
+        return withLogPath({ status: "no-issue" }, options);
       }
       case "invalid-planning-state":
         return withLogPath(
@@ -95,58 +142,75 @@ export async function runOneIssue(
             commits: [],
             validation: [],
           },
-          attemptOptions,
+          options,
         );
       case "legacy": {
         const legacy = await runLegacyOneIssueForSelection(
           runner,
           runtimeConfig,
           selected.issue.number,
-          attemptOptions,
+          options,
         );
-        if (legacy.kind === "pipeline-result") return legacy.result;
-        if (runtimeConfig.issueNumber !== undefined) return legacy.result;
+        if (
+          legacy.kind === "pipeline-result" ||
+          runtimeConfig.issueNumber !== undefined
+        )
+          return legacy.result;
         rejectedIssueNumbers.add(selected.issue.number);
         continue;
       }
       case "planning":
-        return withIssueRunLease(
-          {
-            runStateDir: runtimeConfig.runStateDir,
-            issueNumber: selected.issue.number,
-            ownerToken: attemptId,
-          },
-          (lease) =>
-            runPlanningWorkflow({
-              runner,
-              config: runtimeConfig,
-              options: { ...attemptOptions, lease },
-              issue: selected.issue,
-              state: selected.state,
-              expectedStatePresence: "present",
-              host,
-            }),
+        return withPlanningLease(
+          runner,
+          runtimeConfig,
+          options,
+          selected.issue,
+          selected.state,
+          "present",
+          host,
         );
       case "fresh-planning":
-        return withIssueRunLease(
-          {
-            runStateDir: runtimeConfig.runStateDir,
-            issueNumber: selected.issue.number,
-            ownerToken: attemptId,
-          },
-          (lease) =>
-            runPlanningWorkflow({
-              runner,
-              config: runtimeConfig,
-              options: { ...attemptOptions, lease },
-              issue: selected.issue,
-              state: selected.initialState,
-              expectedStatePresence: "absent",
-              host,
-            }),
+        return withPlanningLease(
+          runner,
+          runtimeConfig,
+          options,
+          selected.issue,
+          selected.initialState,
+          "absent",
+          host,
         );
     }
   }
+}
+
+function withPlanningLease(
+  runner: CommandRunner,
+  config: AgentIssueConfig,
+  options: RunOneIssueOptions,
+  issue: import("../../../issue/types.ts").IssueSummary,
+  state: import("../../../workflow/planning-state.ts").PlanningStateV1,
+  expectedStatePresence: "present" | "absent",
+  host: RunOnceHostProvider,
+): Promise<AgentIssuePipelineResult> {
+  return withIssueRunLease(
+    {
+      runStateDir: config.runStateDir,
+      issueNumber: issue.number,
+      ...(options.attemptId === undefined
+        ? {}
+        : { ownerToken: options.attemptId }),
+    },
+    (lease) =>
+      runPlanningWorkflow({
+        runner,
+        config,
+        options: { ...options, lease },
+        issue,
+        state,
+        expectedStatePresence,
+        host,
+      }),
+  );
 }
 
 /** Reset is intentionally pinned to the legacy recovery contract. */

@@ -32,6 +32,28 @@ export function workflowPiCalls(calls: Call[]): Call[] {
 }
 
 function defaultGitPreflightResult(call: Call): CommandResult | undefined {
+  if (
+    call.command === "git" &&
+    call.args.join(" ") === "rev-parse --path-format=absolute --git-common-dir"
+  ) {
+    return { code: 0, stdout: `${call.cwd ?? process.cwd()}\n`, stderr: "" };
+  }
+  if (
+    call.command === "tea" &&
+    call.args[0] === "api" &&
+    call.args[1] === "/repos/{owner}/{repo}"
+  ) {
+    return {
+      code: 0,
+      stdout: JSON.stringify({
+        name: "test-repo",
+        full_name: "test-owner/test-repo",
+        owner: { login: "test-owner" },
+        html_url: "https://forgejo.test/test-owner/test-repo",
+      }),
+      stderr: "",
+    };
+  }
   if (call.command === "git" && call.args[0] === "cat-file") {
     return {
       code: 0,
