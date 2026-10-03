@@ -270,6 +270,11 @@ export async function runPlanningIssue(
             issueNumber: input.issue.number,
             runId: saved.runId,
           });
+          if (input.lease)
+            await assertIssueRunLeaseOwned(input.lease, {
+              runStateDir: input.runStateDir,
+              issueNumber: input.issue.number,
+            });
           await emitPlanningLockTakeover(lock, input);
         } catch (error) {
           if (error instanceof PlanningIssueLockConflictError) {
