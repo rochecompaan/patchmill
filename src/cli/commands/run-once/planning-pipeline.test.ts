@@ -241,6 +241,57 @@ test("reports stale-lock takeover before post-lock reads", async () => {
   ]);
 });
 
+test("blocks a changed saved Run ID when selection saw planning state", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "planning-pipeline-"));
+  const selectedRunId = "123e4567-e89b-42d3-a456-426614174000";
+  const changedRunId = "123e4567-e89b-42d3-a456-426614174001";
+  let mutated = false;
+  try {
+    const result = await runPlanningIssue({
+      issue: {
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: [],
+      } as never,
+      config: {} as never,
+      state: {
+        issueNumber: 189,
+        runId: selectedRunId,
+        phases: [{ status: "pending" }],
+      } as never,
+      expectedStatePresence: "present",
+      runStateDir: directory,
+      stateStore: {
+        read: async () =>
+          ({
+            issueNumber: 189,
+            runId: changedRunId,
+            phases: [{ status: "pending" }],
+          }) as never,
+      },
+      readIssue: async () =>
+        ({ number: 189, title: "Example", state: "open", labels: [] }) as never,
+      readLegacy: async () => undefined,
+      mutate: async () => {
+        mutated = true;
+        return [];
+      },
+      coordinate: async () => ({}) as never,
+      acquire: async (_dir, input) =>
+        ({
+          path: join(directory, "lock"),
+          record: { runId: input.runId },
+        }) as never,
+      release: async () => undefined,
+    });
+    assert.equal(result.status, "blocked");
+    assert.equal(mutated, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("rejects a replaced common lease after authoritative lock reacquisition", async () => {
   const directory = await mkdtemp(join(tmpdir(), "planning-pipeline-"));
   const initialRunId = "123e4567-e89b-42d3-a456-426614174000";
