@@ -43,3 +43,16 @@ verifies its sha256, injects a `package.json`, and copies the skill payload to
 `vendor/simple-english/`, which package.json depends on as
 `file:vendor/simple-english`. The skill files remain unmodified upstream
 content.
+
+## Site HTTP cache policy
+
+- Source: `http-cache-semantics@4.2.0` from the npm registry
+- Repository: <https://github.com/kornelski/http-cache-semantics>
+- License: BSD 2-Clause (`vendor/http-cache-semantics/LICENSE`)
+- Security patch: <https://github.com/kornelski/http-cache-semantics/pull/58>
+- Purpose: Prevents client cache directives from bypassing response security
+  restrictions in Astro's site cache policy.
+
+The local copy retains the upstream version and includes the security patch.
+`vendor/http-cache-semantics/README.md` records the exact source, patch, tests,
+and removal conditions.

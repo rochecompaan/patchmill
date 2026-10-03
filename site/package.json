@@ -9,11 +9,13 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.3",
     "astro": "^7.0.6",
+    "http-cache-semantics": "file:../vendor/http-cache-semantics",
     "starlight-theme-nova": "^0.12.1"
   }
 }

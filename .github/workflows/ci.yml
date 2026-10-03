@@ -60,6 +60,9 @@ jobs:
       - name: Install site dependencies
         run: npm --prefix site ci
 
+      - name: Test site cache security
+        run: npm --prefix site test
+
       - name: Audit site dependencies
         run: npm --prefix site audit --audit-level=high
 
