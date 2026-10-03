@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { hostname as systemHostname } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type {
   IssueRunLease,
   RunRecoveryDecision,
@@ -230,6 +230,37 @@ export async function acquireIssueRunLease(
     await releaseGuard();
   }
 }
+/** Verifies a borrowed lease before it performs an Issue-owned effect. */
+export async function assertIssueRunLeaseOwned(
+  lease: IssueRunLease,
+  expected: { runStateDir: string; issueNumber: number },
+): Promise<void> {
+  const expectedPath = paths(expected.runStateDir, expected.issueNumber).lease;
+  if (
+    resolve(expectedPath) !== resolve(lease.path) ||
+    lease.record.issueNumber !== expected.issueNumber
+  )
+    throw new Error("Borrowed Issue run lease belongs to another issue");
+  let raw: string;
+  try {
+    raw = await readFile(lease.path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      throw new Error(
+        `Issue run lease is not owned by this Run attempt: ${lease.path}`,
+        { cause: error },
+      );
+    throw error;
+  }
+  const current = parseIssueRunLeaseRecord(raw);
+  if (
+    current?.issueNumber !== expected.issueNumber ||
+    current.ownerToken !== lease.record.ownerToken
+  )
+    throw new Error(
+      `Issue run lease is not owned by this Run attempt: ${lease.path}`,
+    );
+}
 export async function releaseIssueRunLease(
   lease: IssueRunLease,
 ): Promise<void> {
@@ -254,8 +285,10 @@ export async function withIssueRunLease<T>(
   action: (lease: IssueRunLease) => Promise<T>,
 ): Promise<T> {
   if (input.lease) {
-    if (input.lease.record.issueNumber !== input.issueNumber)
-      throw new Error("Borrowed Issue run lease belongs to another issue");
+    await assertIssueRunLeaseOwned(input.lease, {
+      runStateDir: input.runStateDir,
+      issueNumber: input.issueNumber,
+    });
     return action(input.lease);
   }
   const lease = await acquireIssueRunLease(
@@ -263,6 +296,10 @@ export async function withIssueRunLease<T>(
     input.issueNumber,
   );
   try {
+    await assertIssueRunLeaseOwned(lease, {
+      runStateDir: input.runStateDir,
+      issueNumber: input.issueNumber,
+    });
     return await action(lease);
   } finally {
     await releaseIssueRunLease(lease);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   acquireIssueRunLease,
+  assertIssueRunLeaseOwned,
   IssueRunLeaseConflictError,
   releaseIssueRunLease,
   withIssueRunLease,
@@ -28,6 +29,37 @@ test("acquires and releases an Issue run lease", async () => {
   );
   await releaseIssueRunLease(lease);
   await assert.rejects(readFile(lease.path, "utf8"));
+});
+
+test("asserts the current token before borrowed effects", async () => {
+  const runStateDir = await dir();
+  const lease = await acquireIssueRunLease(runStateDir, 45, owner);
+  await assertIssueRunLeaseOwned(lease, { runStateDir, issueNumber: 45 });
+  await writeFile(
+    lease.path,
+    `${JSON.stringify({ ...lease.record, ownerToken: "replacement" })}\n`,
+  );
+  await assert.rejects(
+    assertIssueRunLeaseOwned(lease, { runStateDir, issueNumber: 45 }),
+    /not owned/,
+  );
+});
+
+test("rejects a replaced borrowed lease before its callback", async () => {
+  const runStateDir = await dir();
+  const lease = await acquireIssueRunLease(runStateDir, 45, owner);
+  await writeFile(
+    lease.path,
+    `${JSON.stringify({ ...lease.record, ownerToken: "replacement" })}\n`,
+  );
+  let called = false;
+  await assert.rejects(
+    withIssueRunLease({ runStateDir, issueNumber: 45, lease }, async () => {
+      called = true;
+    }),
+    /not owned/,
+  );
+  assert.equal(called, false);
 });
 
 test("acquires and releases a lease with a valid OS underscore hostname", async () => {
