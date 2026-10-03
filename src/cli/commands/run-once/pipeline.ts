@@ -24,7 +24,10 @@ import {
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
-import { withIssueRunLease } from "./recovery-lease.ts";
+import {
+  IssueRunLeaseConflictError,
+  withIssueRunLease,
+} from "./recovery-lease.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
@@ -173,19 +176,26 @@ async function runAdmittedOneIssue(
               ...(lease === undefined ? {} : { lease }),
             },
           );
-        const legacy =
-          runtimeConfig.issueNumber === undefined
-            ? await withIssueRunLease(
-                {
-                  runStateDir: runtimeConfig.runStateDir,
-                  issueNumber: selected.issue.number,
-                  ...(options.attemptId === undefined
-                    ? {}
-                    : { ownerToken: options.attemptId }),
-                },
-                runLegacy,
-              )
-            : await runLegacy();
+        let legacy;
+        try {
+          legacy =
+            runtimeConfig.issueNumber === undefined
+              ? await withIssueRunLease(
+                  {
+                    runStateDir: runtimeConfig.runStateDir,
+                    issueNumber: selected.issue.number,
+                    ...(options.attemptId === undefined
+                      ? {}
+                      : { ownerToken: options.attemptId }),
+                  },
+                  runLegacy,
+                )
+              : await runLegacy();
+        } catch (error) {
+          const stopped = stoppedForLiveLease(selected.issue, error);
+          if (stopped) return stopped;
+          throw error;
+        }
         if (
           legacy.kind === "pipeline-result" ||
           runtimeConfig.issueNumber !== undefined
@@ -218,6 +228,36 @@ async function runAdmittedOneIssue(
   }
 }
 
+function stoppedForLiveLease(
+  issue: import("../../../issue/types.ts").IssueSummary,
+  error: unknown,
+): AgentIssuePipelineResult | undefined {
+  if (
+    !(error instanceof IssueRunLeaseConflictError) ||
+    error.owner === undefined
+  )
+    return undefined;
+  return {
+    status: "stopped",
+    issue,
+    reason: "issue-locked",
+    publicFailure: runOnceFailure("issue-locked", {
+      issueNumber: issue.number,
+      status: "stopped",
+      lockPath: error.leasePath,
+      fingerprint: "",
+      resource: "common-lease",
+      owner: {
+        issueNumber: error.owner.issueNumber,
+        runId: error.owner.ownerToken,
+        pid: error.owner.pid,
+        hostname: error.owner.hostname,
+        acquiredAt: error.owner.acquiredAt,
+      },
+    }),
+  };
+}
+
 function withPlanningLease(
   runner: CommandRunner,
   config: AgentIssueConfig,
@@ -246,7 +286,11 @@ function withPlanningLease(
         expectedStatePresence,
         host,
       }),
-  );
+  ).catch((error: unknown) => {
+    const stopped = stoppedForLiveLease(issue, error);
+    if (stopped) return stopped;
+    throw error;
+  });
 }
 
 /** Reset is intentionally pinned to the legacy recovery contract. */

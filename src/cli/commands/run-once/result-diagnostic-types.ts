@@ -129,7 +129,7 @@ type Workspace = Base & {
 type Lock = Base & {
   lockPath: string;
   fingerprint: string;
-  resource: "canonical-lock" | "takeover-transition";
+  resource: "canonical-lock" | "takeover-transition" | "common-lease";
   owner?: {
     issueNumber: number;
     runId: string;
