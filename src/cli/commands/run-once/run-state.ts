@@ -1,4 +1,11 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readFile,
+  rename,
+  writeFile,
+  unlink,
+} from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AgentIssueRunState,
@@ -276,7 +283,23 @@ export async function writeRunState(
   const path = runStatePath(runStateDir, update.issueNumber);
   const existing = await readRunState(runStateDir, update.issueNumber);
   const next = mergeRunState(existing, update, now);
-  await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  const temporary = join(
+    runStateDir,
+    `.${update.issueNumber}.${randomUUID()}.tmp`,
+  );
+  const handle = await open(temporary, "wx", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await rename(temporary, path);
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    throw error;
+  }
   return next;
 }
 
