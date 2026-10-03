@@ -145,6 +145,28 @@ export function planningIssueEligible(input: {
   );
 }
 
+/** Routes saved implementation PR handoffs to later merge reconciliation. */
+export function planningImplementationNeedsMergeReconciliation(
+  state: PlanningStateV1,
+): boolean {
+  return state.phases.some(
+    (phase) =>
+      phase.kind === "implementation" &&
+      (phase.status === "pull-request-open" ||
+        (phase.status === "complete" && "pullRequest" in phase)),
+  );
+}
+
+/** Identifies legacy PR handoffs without treating PR creation as a merge. */
+export function legacyImplementationNeedsMergeReconciliation(
+  state: import("./types.ts").AgentIssueRunState,
+): boolean {
+  return (
+    state.implementationStatus === "pr-created" ||
+    (state.status === "finished" && typeof state.prUrl === "string")
+  );
+}
+
 export function hasFinishedPlanningWorkspaceState(
   state: Awaited<ReturnType<typeof readRunState>>,
 ): boolean {
