@@ -72,7 +72,27 @@ test("implementation cleanup removes ignored worktree content without a pending 
       ),
       { code: "ENOENT" },
     );
-    const terminal = formatTerminalResult(summarizeResult(result), {
+    const branch = workspace.identity.branch;
+    const localBranch = await scenario
+      .invocation()
+      .runner.run(
+        "git",
+        ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
+        { cwd: scenario.invocation().config.repoRoot },
+      );
+    assert.equal(localBranch.code, 1);
+    assert.equal(
+      (await scenario.remoteRefs())[branch],
+      workspace.cleanup.pushedHeadOid,
+    );
+    const summary = summarizeResult(result);
+    assert.equal("ignoredPaths" in summary, false);
+    const redirected = JSON.stringify(summary);
+    assert.doesNotMatch(
+      redirected,
+      /ignoredPaths|remediation|ignored-worktree-content/,
+    );
+    const terminal = formatTerminalResult(summary, {
       width: 100,
       color: false,
     });
