@@ -7,6 +7,9 @@ export type RunOneIssueOptions = {
   /** One attempt token is shared by repository admission and its Issue lease. */
   attemptId?: string | undefined;
   lease?: import("./types.ts").IssueRunLease | undefined;
+  admission?:
+    | import("../../../workflow/run-admission.ts").RunAdmission
+    | undefined;
   now?: Date | undefined;
   progress?: ProgressReporter | undefined;
   logPath?: string | undefined;

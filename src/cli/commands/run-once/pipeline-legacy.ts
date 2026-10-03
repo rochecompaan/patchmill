@@ -68,7 +68,10 @@ import {
 import { loadLegacyPipelineSelectionIssues } from "./pipeline-legacy-selection.ts";
 import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
-import { withIssueRunLease } from "./recovery-lease.ts";
+import {
+  assertIssueRunLeaseOwned,
+  withIssueRunLease,
+} from "./recovery-lease.ts";
 import { formatRunRecoveryDecision } from "./recovery.ts";
 import {
   adoptLegacyRecoveryLease,
@@ -159,6 +162,12 @@ async function runLegacyOneIssueInternal(
   config: AgentIssueConfig,
   options: LeasedRunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
+  if (options.lease)
+    await assertIssueRunLeaseOwned(options.lease, {
+      runStateDir: config.runStateDir,
+      issueNumber:
+        options.leasedIssueNumber ?? options.lease.record.issueNumber,
+    });
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,

@@ -73,11 +73,11 @@ export async function runOneIssue(
         ? {}
         : { issueNumber: runtimeConfig.issueNumber }),
     },
-    () =>
+    (admission) =>
       runAdmittedOneIssue(
         runner,
         runtimeConfig,
-        attemptOptions,
+        { ...attemptOptions, admission },
         host,
         issueStateProvider,
       ),
