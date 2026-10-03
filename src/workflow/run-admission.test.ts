@@ -203,6 +203,39 @@ test("foreign and malformed guard owners fail closed", async () => {
   }
 });
 
+test("foreign admission owner fails closed without archival", async () => {
+  const ns = await namespace();
+  try {
+    const admissions = join(
+      ns.commonDir,
+      "patchmill",
+      "run-once",
+      "admissions",
+    );
+    await mkdir(admissions, { recursive: true });
+    const record = join(admissions, "foreign.json");
+    const bytes = `${JSON.stringify({
+      version: 1,
+      attemptId: "foreign",
+      ownerToken: "foreign-token",
+      mode: "explicit",
+      pid: 1,
+      hostname: "foreign.example.test",
+    })}\n`;
+    await writeFile(record, bytes);
+    await assert.rejects(
+      withRunAdmission(
+        { namespace: ns, attemptId: "automatic", mode: "automatic" },
+        async () => undefined,
+      ),
+      RunAdmissionConflictError,
+    );
+    assert.equal(await readFile(record, "utf8"), bytes);
+  } finally {
+    await rm(ns.commonDir, { recursive: true, force: true });
+  }
+});
+
 test("live guard waits without registering an admission", async () => {
   const ns = await namespace();
   try {
