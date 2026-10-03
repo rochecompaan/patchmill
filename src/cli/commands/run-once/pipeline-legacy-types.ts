@@ -32,6 +32,8 @@ export type LeasedRunOneIssueOptions = RunOneIssueOptions & {
   leasedIssueNumber?: number;
   /** Distinguishes a pinned rejection before any Issue effect begins. */
   classifySelectionRejection?: boolean;
+  /** A borrowed lease performs one target-only authoritative reread before effects. */
+  authoritativeLeaseChecked?: boolean;
   reset?: { seed: import("./types.ts").RunResetSeed };
 };
 

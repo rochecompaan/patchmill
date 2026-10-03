@@ -163,12 +163,29 @@ async function runAdmittedOneIssue(
           options,
         );
       case "legacy": {
-        const legacy = await runLegacyOneIssueForSelection(
-          runner,
-          runtimeConfig,
-          selected.issue.number,
-          options,
-        );
+        const runLegacy = (lease?: import("./types.ts").IssueRunLease) =>
+          runLegacyOneIssueForSelection(
+            runner,
+            runtimeConfig,
+            selected.issue.number,
+            {
+              ...options,
+              ...(lease === undefined ? {} : { lease }),
+            },
+          );
+        const legacy =
+          runtimeConfig.issueNumber === undefined
+            ? await withIssueRunLease(
+                {
+                  runStateDir: runtimeConfig.runStateDir,
+                  issueNumber: selected.issue.number,
+                  ...(options.attemptId === undefined
+                    ? {}
+                    : { ownerToken: options.attemptId }),
+                },
+                runLegacy,
+              )
+            : await runLegacy();
         if (
           legacy.kind === "pipeline-result" ||
           runtimeConfig.issueNumber !== undefined

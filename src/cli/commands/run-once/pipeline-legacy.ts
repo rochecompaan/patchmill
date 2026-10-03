@@ -257,6 +257,16 @@ async function runLegacyOneIssueInternal(
       `Leased selection changed from issue #${options.leasedIssueNumber} to issue #${issue.number}`,
     );
 
+  if (
+    options.lease &&
+    options.leasedIssueNumber !== undefined &&
+    !options.authoritativeLeaseChecked
+  )
+    return runLegacyOneIssueInternal(runner, config, {
+      ...options,
+      authoritativeLeaseChecked: true,
+    });
+
   let existingState: AgentIssueRunState | undefined = options.reset
     ? {
         issueNumber: issue.number,
