@@ -27,6 +27,7 @@ import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts
 import type { PlanningPipelineResult } from "./planning-pipeline.ts";
 import type { AgentIssueConfig } from "./types.ts";
 import type { ProgressReporter } from "./progress.ts";
+import { assertIssueRunLeaseOwned } from "./recovery-lease.ts";
 
 export type PlanningIssueInput = {
   issue: IssueSummary;
@@ -63,6 +64,7 @@ export type PlanningIssueInput = {
   release?: typeof releasePlanningIssueLock;
   progress?: ProgressReporter;
   now?: () => Date;
+  lease?: import("./types.ts").IssueRunLease;
 };
 
 async function releaseOwnedPlanningLock(input: {
@@ -118,6 +120,11 @@ async function emitPlanningLockTakeover(
 export async function runPlanningIssue(
   input: PlanningIssueInput,
 ): Promise<PlanningPipelineResult> {
+  if (input.lease)
+    await assertIssueRunLeaseOwned(input.lease, {
+      runStateDir: input.runStateDir,
+      issueNumber: input.issue.number,
+    });
   const acquire = input.acquire ?? acquirePlanningIssueLock;
   const release = input.release ?? releasePlanningIssueLock;
   let lock: PlanningIssueLock | undefined;

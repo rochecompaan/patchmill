@@ -183,6 +183,9 @@ export async function runPlanningWorkflow(input: {
     ...(input.options.now === undefined
       ? {}
       : { now: () => input.options.now! }),
+    ...(input.options.lease === undefined
+      ? {}
+      : { lease: input.options.lease }),
     readIssue: async () => {
       const issue = await host.viewIssue(input.issue.number);
       return input.config.issueState?.provider === "comments"
