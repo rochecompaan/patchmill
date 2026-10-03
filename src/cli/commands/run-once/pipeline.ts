@@ -18,6 +18,7 @@ import {
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
@@ -109,25 +110,41 @@ export async function runOneIssue(
         continue;
       }
       case "planning":
-        return runPlanningWorkflow({
-          runner,
-          config: runtimeConfig,
-          options: attemptOptions,
-          issue: selected.issue,
-          state: selected.state,
-          expectedStatePresence: "present",
-          host,
-        });
+        return withIssueRunLease(
+          {
+            runStateDir: runtimeConfig.runStateDir,
+            issueNumber: selected.issue.number,
+            ownerToken: attemptId,
+          },
+          (lease) =>
+            runPlanningWorkflow({
+              runner,
+              config: runtimeConfig,
+              options: { ...attemptOptions, lease },
+              issue: selected.issue,
+              state: selected.state,
+              expectedStatePresence: "present",
+              host,
+            }),
+        );
       case "fresh-planning":
-        return runPlanningWorkflow({
-          runner,
-          config: runtimeConfig,
-          options: attemptOptions,
-          issue: selected.issue,
-          state: selected.initialState,
-          expectedStatePresence: "absent",
-          host,
-        });
+        return withIssueRunLease(
+          {
+            runStateDir: runtimeConfig.runStateDir,
+            issueNumber: selected.issue.number,
+            ownerToken: attemptId,
+          },
+          (lease) =>
+            runPlanningWorkflow({
+              runner,
+              config: runtimeConfig,
+              options: { ...attemptOptions, lease },
+              issue: selected.issue,
+              state: selected.initialState,
+              expectedStatePresence: "absent",
+              host,
+            }),
+        );
     }
   }
 }
