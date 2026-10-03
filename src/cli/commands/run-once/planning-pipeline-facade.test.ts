@@ -388,7 +388,7 @@ test("facade exhausts each safely rejected legacy candidate once", async () => {
     assert.equal(
       runner.calls.some(
         (call) =>
-          call.command === "git" ||
+          (call.command === "git" && call.args[0] !== "rev-parse") ||
           call.command === "pi" ||
           call.args.includes("edit"),
       ),

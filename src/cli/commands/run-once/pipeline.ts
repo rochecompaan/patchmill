@@ -91,6 +91,24 @@ async function runAdmittedOneIssue(
   host: RunOnceHostProvider,
   issueStateProvider: NonNullable<AgentIssueConfig["issueStateProvider"]>,
 ): Promise<AgentIssuePipelineResult> {
+  if (runtimeConfig.issueNumber !== undefined && options.lease === undefined)
+    return withIssueRunLease(
+      {
+        runStateDir: runtimeConfig.runStateDir,
+        issueNumber: runtimeConfig.issueNumber,
+        ...(options.attemptId === undefined
+          ? {}
+          : { ownerToken: options.attemptId }),
+      },
+      (lease) =>
+        runAdmittedOneIssue(
+          runner,
+          runtimeConfig,
+          { ...options, lease },
+          host,
+          issueStateProvider,
+        ),
+    );
   const labels = lifecycleLabels(runtimeConfig);
   const issues = await loadSelectionIssues(host, runtimeConfig, options);
   const planningState = new PlanningStateStore(runtimeConfig.runStateDir);
@@ -196,6 +214,7 @@ function withPlanningLease(
     {
       runStateDir: config.runStateDir,
       issueNumber: issue.number,
+      ...(options.lease === undefined ? {} : { lease: options.lease }),
       ...(options.attemptId === undefined
         ? {}
         : { ownerToken: options.attemptId }),

@@ -135,6 +135,11 @@ export async function runPlanningIssue(
         issueNumber: input.issue.number,
         runId: input.state.runId,
       });
+      if (input.lease)
+        await assertIssueRunLeaseOwned(input.lease, {
+          runStateDir: input.runStateDir,
+          issueNumber: input.issue.number,
+        });
       await emitPlanningLockTakeover(lock, input);
     } catch (error) {
       if (error instanceof PlanningIssueLockConflictError) {
@@ -159,6 +164,11 @@ export async function runPlanningIssue(
     }
     let retriedAuthoritativeRun = false;
     while (true) {
+      if (input.lease)
+        await assertIssueRunLeaseOwned(input.lease, {
+          runStateDir: input.runStateDir,
+          issueNumber: input.issue.number,
+        });
       let issue: IssueSummary;
       let saved: PlanningStateV1 | undefined;
       let legacy: Awaited<ReturnType<PlanningIssueInput["readLegacy"]>>;
