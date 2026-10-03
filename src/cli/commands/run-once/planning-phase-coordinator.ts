@@ -69,26 +69,39 @@ export async function coordinatePlanningPhases(
       phase,
       planOnly: input.planOnly === true,
     });
-    if (outcome.kind === "cleanup-pending") return outcome;
-    if (outcome.kind === "review-pending") {
-      if (phase.kind === "implementation")
-        throw new Error("Implementation pull request cannot be review-pending");
-      return {
-        kind: "review-pending",
-        state: outcome.state,
-        phase: phase.kind,
-        prUrl: outcome.prUrl,
-      };
+    switch (outcome.kind) {
+      case "cleanup-pending":
+      case "blocked":
+      case "complete":
+        return outcome;
+      case "review-pending":
+        if (phase.kind === "implementation")
+          throw new Error(
+            "Implementation pull request cannot be review-pending",
+          );
+        return {
+          kind: "review-pending",
+          state: outcome.state,
+          phase: phase.kind,
+          prUrl: outcome.prUrl,
+        };
+      case "stopped":
+        return {
+          kind: "stopped",
+          state: outcome.state,
+          reason: outcome.reason,
+          nextPhase: "implementation",
+        };
+      case "advanced":
+        if (outcome.state.phases[phaseIndex]?.status !== "complete") {
+          throw new Error("Phase reported advancement without completion");
+        }
+        state = outcome.state;
+        break;
+      default: {
+        const _exhaustive: never = outcome;
+        throw new Error("Unexpected phase-runner outcome");
+      }
     }
-    if (outcome.kind === "blocked") return outcome;
-    if (outcome.kind === "stopped")
-      return {
-        kind: "stopped",
-        state: outcome.state,
-        reason: outcome.reason,
-        nextPhase: "implementation",
-      };
-    if (outcome.kind === "complete") return outcome;
-    state = outcome.state;
   }
 }
