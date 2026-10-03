@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -89,6 +96,69 @@ test("automatic admission excludes every writer", async () => {
     );
     release();
     await automatic;
+  } finally {
+    await rm(ns.commonDir, { recursive: true, force: true });
+  }
+});
+
+test("archives a demonstrably dead local registration after exact reconciliation", async () => {
+  const ns = await namespace();
+  try {
+    const admissions = join(
+      ns.commonDir,
+      "patchmill",
+      "run-once",
+      "admissions",
+    );
+    await mkdir(admissions, { recursive: true });
+    await writeFile(
+      join(admissions, "dead.json"),
+      `${JSON.stringify({
+        version: 1,
+        attemptId: "dead",
+        ownerToken: "dead-token",
+        mode: "explicit",
+        pid: 99999999,
+        hostname: hostname(),
+      })}\n`,
+    );
+    await withRunAdmission(
+      { namespace: ns, attemptId: "live", mode: "explicit", issueNumber: 1 },
+      async () => undefined,
+    );
+    const archive = join(
+      ns.commonDir,
+      "patchmill",
+      "run-once",
+      "archive",
+      "admissions",
+    );
+    const [file] = await readdir(archive);
+    assert.ok(file);
+    assert.match(await readFile(join(archive, file), "utf8"), /dead-token/);
+  } finally {
+    await rm(ns.commonDir, { recursive: true, force: true });
+  }
+});
+
+test("malformed registrations fail closed", async () => {
+  const ns = await namespace();
+  try {
+    const admissions = join(
+      ns.commonDir,
+      "patchmill",
+      "run-once",
+      "admissions",
+    );
+    await mkdir(admissions, { recursive: true });
+    await writeFile(join(admissions, "unknown.json"), "not-json");
+    await assert.rejects(
+      withRunAdmission(
+        { namespace: ns, attemptId: "live", mode: "explicit", issueNumber: 1 },
+        async () => undefined,
+      ),
+      RunAdmissionConflictError,
+    );
   } finally {
     await rm(ns.commonDir, { recursive: true, force: true });
   }

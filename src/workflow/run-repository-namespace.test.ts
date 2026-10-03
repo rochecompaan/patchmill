@@ -63,6 +63,37 @@ test("canonical aliases share a repository namespace", async () => {
   }
 });
 
+test("rejects every changed bound namespace identity before issue effects", async () => {
+  const root = await mkdtemp(join(tmpdir(), "run-namespace-"));
+  try {
+    const clone = join(root, "clone");
+    const common = join(root, "common");
+    await mkdir(clone);
+    await mkdir(common);
+    const input = {
+      repoRoot: clone,
+      hostRepository: host,
+      runStateDir: join(root, "state"),
+      worktreeRoot: join(root, "workspaces"),
+      todoRoot: join(root, "todos"),
+    };
+    await resolveRunRepositoryNamespace(runner(common), input);
+    for (const changed of [
+      { ...input, runStateDir: join(root, "other-state") },
+      { ...input, worktreeRoot: join(root, "other-workspaces") },
+      { ...input, todoRoot: join(root, "other-todos") },
+      { ...input, hostRepository: { ...host, repository: "other" } },
+    ]) {
+      await assert.rejects(
+        resolveRunRepositoryNamespace(runner(common), changed),
+        RunRepositoryNamespaceConflictError,
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("rejects a namespace identity mismatch before issue effects", async () => {
   const root = await mkdtemp(join(tmpdir(), "run-namespace-"));
   try {

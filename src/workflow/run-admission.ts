@@ -1,7 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, readdir, rm, unlink } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  unlink,
+} from "node:fs/promises";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { RunRepositoryNamespace } from "./run-repository-namespace.ts";
 
 export type { RunRepositoryNamespace } from "./run-repository-namespace.ts";
@@ -19,6 +27,12 @@ type AdmissionRecord = {
   ownerToken: string;
   mode: RunAdmissionMode;
   issueNumber?: number;
+  pid: number;
+  hostname: string;
+};
+type GuardRecord = {
+  version: 1;
+  ownerToken: string;
   pid: number;
   hostname: string;
 };
@@ -63,7 +77,21 @@ function parse(raw: string): AdmissionRecord | undefined {
     return undefined;
   }
 }
-function live(record: AdmissionRecord): boolean {
+function parseGuard(raw: string): GuardRecord | undefined {
+  try {
+    const value = JSON.parse(raw) as Partial<GuardRecord>;
+    return value.version === 1 &&
+      typeof value.ownerToken === "string" &&
+      Number.isSafeInteger(value.pid) &&
+      (value.pid ?? 0) > 0 &&
+      typeof value.hostname === "string"
+      ? (value as GuardRecord)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function live(record: Pick<AdmissionRecord, "hostname" | "pid">): boolean {
   if (record.hostname !== hostname()) return true;
   try {
     process.kill(record.pid, 0);
@@ -75,6 +103,20 @@ function live(record: AdmissionRecord): boolean {
 function waits(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function guardOwnerPath(guard: string): string {
+  return join(guard, "owner.json");
+}
+async function archiveDeadDirectory(
+  root: string,
+  guard: string,
+  raw: string,
+): Promise<void> {
+  const current = await readFile(guardOwnerPath(guard), "utf8");
+  if (current !== raw) throw new RunAdmissionConflictError(guard);
+  const archiveRoot = join(root, "archive", "admission-guards");
+  await mkdir(archiveRoot, { recursive: true });
+  await rename(guard, join(archiveRoot, `${Date.now()}-${randomUUID()}`));
+}
 async function acquireGuard(
   root: string,
   signal?: AbortSignal,
@@ -82,18 +124,65 @@ async function acquireGuard(
   const guard = join(root, "admission-guard");
   while (true) {
     if (signal?.aborted) throw signal.reason ?? new Error("Admission aborted");
+    const mine: GuardRecord = {
+      version: 1,
+      ownerToken: randomUUID(),
+      pid: process.pid,
+      hostname: hostname(),
+    };
+    const expected = `${JSON.stringify(mine)}\n`;
     try {
       await mkdir(guard, { recursive: false, mode: 0o700 });
+      const owner = await open(guardOwnerPath(guard), "wx", 0o600);
+      try {
+        await owner.writeFile(expected);
+        await owner.sync();
+      } finally {
+        await owner.close();
+      }
       return async () => {
-        await rm(guard, { recursive: true, force: true });
+        const current = await readFile(guardOwnerPath(guard), "utf8");
+        if (
+          current !== expected ||
+          parseGuard(current)?.ownerToken !== mine.ownerToken
+        )
+          throw new Error(
+            "Run-once admission guard is not owned by this attempt",
+          );
+        await rm(guard, { recursive: true, force: false });
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      await waits(10);
+      let raw: string;
+      try {
+        raw = await readFile(guardOwnerPath(guard), "utf8");
+      } catch {
+        throw new RunAdmissionConflictError(guard);
+      }
+      const owner = parseGuard(raw);
+      if (!owner || owner.hostname !== hostname())
+        throw new RunAdmissionConflictError(guard);
+      if (live(owner)) {
+        await waits(10);
+        continue;
+      }
+      await archiveDeadDirectory(root, guard, raw);
     }
   }
 }
+async function archiveDeadRecord(
+  root: string,
+  path: string,
+  raw: string,
+): Promise<void> {
+  const current = await readFile(path, "utf8");
+  if (current !== raw) throw new RunAdmissionConflictError(path);
+  const archiveRoot = join(root, "archive", "admissions");
+  await mkdir(archiveRoot, { recursive: true });
+  await rename(path, join(archiveRoot, `${Date.now()}-${basename(path)}`));
+}
 async function activeRecords(
+  root: string,
   directory: string,
 ): Promise<Array<{ path: string; record: AdmissionRecord }>> {
   let entries;
@@ -112,7 +201,7 @@ async function activeRecords(
     const record = parse(raw);
     if (!record) throw new RunAdmissionConflictError(path);
     if (live(record)) records.push({ path, record });
-    else await unlink(path);
+    else await archiveDeadRecord(root, path, raw);
   }
   return records;
 }
@@ -160,7 +249,7 @@ export async function withRunAdmission<T>(
     ownerToken,
   };
   try {
-    const active = await activeRecords(directory);
+    const active = await activeRecords(root, directory);
     if (
       conflicts(
         input.mode,

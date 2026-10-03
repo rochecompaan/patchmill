@@ -1,4 +1,11 @@
-import { mkdir, open, readFile, realpath } from "node:fs/promises";
+import {
+  link,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  unlink,
+} from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { CommandRunner } from "../command/types.ts";
 import type { RepositoryIdentity } from "../host/pull-requests.ts";
@@ -85,18 +92,27 @@ function same(
 async function bindNamespace(namespace: RunRepositoryNamespace): Promise<void> {
   const directory = join(namespace.commonDir, "patchmill", "run-once");
   const path = join(directory, "namespace-v1.json");
+  const temporary = join(
+    directory,
+    `.namespace-${process.pid}-${Date.now()}.tmp`,
+  );
   await mkdir(directory, { recursive: true });
+  const handle = await open(temporary, "wx", 0o600);
   try {
-    const handle = await open(path, "wx", 0o600);
-    try {
-      await handle.writeFile(serialize(namespace));
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await handle.writeFile(serialize(namespace));
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await link(temporary, path);
     return;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  } finally {
+    await unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
   }
   const saved = parse(await readFile(path, "utf8"));
   if (saved === undefined || !same(saved, namespace))
