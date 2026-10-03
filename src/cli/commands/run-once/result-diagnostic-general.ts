@@ -86,13 +86,12 @@ export const GENERAL_DIAGNOSTICS = {
     ),
   }),
   "issue-locked": definition({
-    summary: "Planning lock is active",
+    summary: "issue already in progress.",
     explanation:
-      "Another owner holds the active planning-pr-v1 lock for this Issue.",
-    action: "Wait for the recorded owner to finish, then rerun this Issue.",
+      "Another Run attempt holds the active ownership resource for this Issue.",
+    action: "Wait for the owner to finish, then rerun this Issue.",
     command: "run-once",
-    safety:
-      "Never remove an active planning lock and never use Issue run lease repair for it.",
+    safety: "Never remove an active ownership resource.",
     retry: same(
       "An immediate retry will give the same result while the owner is active.",
     ),
