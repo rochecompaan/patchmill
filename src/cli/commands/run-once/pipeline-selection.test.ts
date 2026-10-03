@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import {
   emitSelectionDiagnostics,
+  loadSelectionIssues,
   mergeIssueLists,
   selectionDiagnostic,
   selectResumableIssue,
@@ -13,6 +14,32 @@ import { issue } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { collectProgressEvents } from "../../../../test-support/run-once/assertions.ts";
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import { writeRunState } from "./run-state.ts";
+
+test("explicit selection reads only the requested Issue", async () => {
+  const config = await makeConfig({
+    issueNumber: 17,
+    execute: true,
+    dryRun: false,
+  });
+  let listed = false;
+  const selected = issue(17, ["agent-ready"]);
+  const issues = await loadSelectionIssues(
+    {
+      viewIssue: async (number) => {
+        assert.equal(number, 17);
+        return selected;
+      },
+      listOpenIssues: async () => {
+        listed = true;
+        throw new Error("unrelated issues must not be read");
+      },
+    } as never,
+    config,
+    {},
+  );
+  assert.deepEqual(issues, [selected]);
+  assert.equal(listed, false);
+});
 
 test("stringArray and visualEvidenceArray validate arrays", () => {
   assert.deepEqual(stringArray(["a"]), ["a"]);

@@ -335,13 +335,7 @@ export async function loadSelectionIssues(
           await host.viewIssue(config.issueNumber),
         ])
       : [await host.viewIssue(config.issueNumber)];
-  const shouldResume = config.execute && !config.dryRun;
-  if (!shouldResume) return requestedIssues;
-  await progress(options, "info", "select", "listing open issues");
-  const openIssues = await host.listOpenIssues();
-  const hydratedOpenIssues =
-    config.issueState?.provider === "comments"
-      ? await host.hydrateIssueComments(openIssues)
-      : openIssues;
-  return mergeIssueLists(requestedIssues, hydratedOpenIssues);
+  // Explicit attempts own only the requested Issue.  Cross-issue resume
+  // precedence belongs to automatic selection and must not read other state.
+  return requestedIssues;
 }
