@@ -1,10 +1,20 @@
 import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runDoctorChecks } from "./checks.ts";
+import { INLINE_IMPLEMENTATION_RUNTIME_FILES } from "../../../workflow/skill-runtime-requirements.ts";
 import { installProjectSkills } from "../init/skill-installer.ts";
 import {
   DEFAULT_PATCHMILL_SKILLS,
@@ -70,7 +80,7 @@ function recommendedProjectLocalConfig() {
     skills: {
       triage: `${DEFAULT_PROJECT_SKILL_DIR}/patchmill-issue-triage`,
       planning: `${DEFAULT_PROJECT_SKILL_DIR}/writing-plans`,
-      implementation: `${DEFAULT_PROJECT_SKILL_DIR}/subagent-dev-with-validation-and-pr-checks`,
+      implementation: `${DEFAULT_PROJECT_SKILL_DIR}/custom-implementation`,
       visualEvidence: `${DEFAULT_PROJECT_SKILL_DIR}/patchmill-visual-evidence`,
     },
   };
@@ -780,7 +790,10 @@ test("runDoctorChecks resolves configured skill directories to their SKILL.md ta
 
 test("runDoctorChecks passes for fresh configured project-local skills", async () => {
   const repoRoot = await tempRepo();
-  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  const config = recommendedProjectLocalConfig();
+  config.skills.implementation =
+    ".patchmill/skills/inline-dev-with-validation-and-pr-checks";
+  await writeConfig(repoRoot, config);
   await mkdir(join(repoRoot, "docs"), { recursive: true });
   await installProjectSkills({
     repoRoot,
@@ -876,7 +889,7 @@ test("runDoctorChecks fails when project-local visual evidence helper is missing
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     "Execute plans.",
   );
 
@@ -886,7 +899,7 @@ test("runDoctorChecks fails when project-local visual evidence helper is missing
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     implementationSkill,
   );
   await writeProjectLocalSkill(
@@ -958,11 +971,8 @@ test("runDoctorChecks fails when project-local visual evidence helper is a direc
   );
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-dev-with-validation-and-pr-checks",
-    skillDocument(
-      "subagent-dev-with-validation-and-pr-checks",
-      "Execute plans.",
-    ),
+    "custom-implementation",
+    skillDocument("custom-implementation", "Execute plans."),
   );
   await writeProjectLocalSkill(
     repoRoot,
@@ -1136,7 +1146,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
     );
     const planningSkill = skillDocument("writing-plans", "Write plans.");
     const implementationSkill = skillDocument(
-      "subagent-dev-with-validation-and-pr-checks",
+      "custom-implementation",
       "Execute plans.",
     );
 
@@ -1150,7 +1160,7 @@ test("runDoctorChecks rejects metadata paths outside project-local skills", asyn
     await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
     await writeProjectLocalSkill(
       repoRoot,
-      "subagent-dev-with-validation-and-pr-checks",
+      "custom-implementation",
       implementationSkill,
     );
     await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1208,7 +1218,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
     "Write plans with local tweaks.",
   );
   const implementationSkill = skillDocument(
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     "Execute plans.",
   );
 
@@ -1222,7 +1232,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
   );
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1236,9 +1246,7 @@ test("runDoctorChecks warns when project-local skill files differ from metadata"
       sha256: hashText(originalPlanningSkill),
     },
     {
-      path: projectLocalMetadataSkillPath(
-        "subagent-dev-with-validation-and-pr-checks",
-      ),
+      path: projectLocalMetadataSkillPath("custom-implementation"),
       sha256: hashText(implementationSkill),
     },
     ...projectLocalVisualEvidenceMetadata(),
@@ -1273,7 +1281,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     "Execute plans.",
   );
 
@@ -1283,7 +1291,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1297,9 +1305,7 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
       sha256: hashText(planningSkill),
     },
     {
-      path: projectLocalMetadataSkillPath(
-        "subagent-dev-with-validation-and-pr-checks",
-      ),
+      path: projectLocalMetadataSkillPath("custom-implementation"),
       sha256: hashText(implementationSkill),
     },
     ...projectLocalVisualEvidenceMetadata(),
@@ -1350,7 +1356,10 @@ test("runDoctorChecks allows project-local skills to be ignored by git", async (
 
 test("runDoctorChecks fails when Pi cannot discover project-local skill directory", async () => {
   const repoRoot = await tempRepo();
-  await writeConfig(repoRoot, recommendedProjectLocalConfig());
+  const config = recommendedProjectLocalConfig();
+  config.skills.implementation =
+    ".patchmill/skills/inline-dev-with-validation-and-pr-checks";
+  await writeConfig(repoRoot, config);
   await mkdir(join(repoRoot, "docs"), { recursive: true });
   await installProjectSkills({
     repoRoot,
@@ -1395,7 +1404,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     "Execute plans.",
   );
 
@@ -1405,7 +1414,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1419,9 +1428,7 @@ test("runDoctorChecks fails when Pi cannot load project-local skills", async () 
       sha256: hashText(planningSkill),
     },
     {
-      path: projectLocalMetadataSkillPath(
-        "subagent-dev-with-validation-and-pr-checks",
-      ),
+      path: projectLocalMetadataSkillPath("custom-implementation"),
       sha256: hashText(implementationSkill),
     },
     ...projectLocalVisualEvidenceMetadata(),
@@ -1456,7 +1463,7 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
   const triageSkill = skillDocument("patchmill-issue-triage", "Triage issues.");
   const planningSkill = skillDocument("writing-plans", "Write plans.");
   const implementationSkill = skillDocument(
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     "Execute plans.",
   );
 
@@ -1466,7 +1473,7 @@ test("runDoctorChecks warns when project-local metadata is missing", async () =>
   await writeProjectLocalSkill(repoRoot, "writing-plans", planningSkill);
   await writeProjectLocalSkill(
     repoRoot,
-    "subagent-dev-with-validation-and-pr-checks",
+    "custom-implementation",
     implementationSkill,
   );
   await writeProjectLocalVisualEvidenceSkill(repoRoot);
@@ -1536,3 +1543,167 @@ test("runDoctorChecks never invokes known mutating host commands", async () => {
     false,
   );
 });
+
+for (const name of [
+  "subagent-dev-with-validation-and-pr-checks",
+  "subagent-dev-with-codex-and-thermo-reviews",
+  "single-subagent-dev-with-codex-and-thermo-reviews",
+]) {
+  test(`doctor gives the same migration before and after file removal: ${name}`, async () => {
+    const repoRoot = await tempRepo();
+    try {
+      const path = `.patchmill/skills/${name}/SKILL.md`;
+      await writeConfig(repoRoot, {
+        host: { provider: "forgejo-tea", login: "triage-agent" },
+        skills: { implementation: join(repoRoot, path) },
+      });
+      await writeProjectLocalSkill(
+        repoRoot,
+        name,
+        skillDocument(name, "Retired workflow"),
+      );
+      const configBytes = await readFile(
+        join(repoRoot, "patchmill.config.json"),
+      );
+      const run = () =>
+        runDoctorChecks(runnerFrom(successMocks()), {
+          repoRoot,
+          teaRepoRootForTests: "/repo",
+        });
+      const present = (await run()).find((item) => item.name === "skills");
+      await rm(join(repoRoot, path));
+      const missing = (await run()).find((item) => item.name === "skills");
+      assert.equal(present?.status, "fail");
+      assert.equal(missing?.message, present?.message);
+      assert.match(
+        present?.message ?? "",
+        /inline-dev-with-validation-and-pr-checks/,
+      );
+      assert.deepEqual(
+        await readFile(join(repoRoot, "patchmill.config.json")),
+        configBytes,
+      );
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+}
+
+test("doctor accepts custom basenames without migration", async () => {
+  const repoRoot = await tempRepo();
+  try {
+    const name = "single-subagent-dev-with-codex-and-thermo-reviews";
+    await writeConfig(repoRoot, {
+      host: { provider: "forgejo-tea", login: "triage-agent" },
+      skills: { planning: `custom/${name}`, implementation: `custom/${name}` },
+    });
+    const customPath = await writeSkillFile(
+      join(repoRoot, "custom"),
+      name,
+      skillDocument(name, "Custom workflow"),
+    );
+    const original = await readFile(customPath);
+    const results = await runDoctorChecks(runnerFrom(successMocks()), {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    });
+    assert.equal(
+      results.find((item) => item.name === "skills")?.status,
+      "pass",
+    );
+    assert.deepEqual(await readFile(customPath), original);
+  } finally {
+    await rm(repoRoot, { recursive: true, force: true });
+  }
+});
+
+async function nativeDoctorFixture() {
+  const repoRoot = await tempRepo();
+  await installProjectSkills({ repoRoot, skillDir: "custom/installed" });
+  await rename(
+    join(repoRoot, "custom/installed/inline-dev-with-validation-and-pr-checks"),
+    join(repoRoot, "custom/installed/renamed"),
+  );
+  await writeConfig(repoRoot, {
+    host: { provider: "forgejo-tea", login: "triage-agent" },
+    skills: {
+      planning: "custom/installed/writing-plans",
+      implementation: "custom/installed/renamed",
+    },
+  });
+  return repoRoot;
+}
+
+test("doctor resolves renamed inline sidecar and installed siblings read-only", async () => {
+  const repoRoot = await nativeDoctorFixture();
+  try {
+    const configBytes = await readFile(join(repoRoot, "patchmill.config.json"));
+    const results = await runDoctorChecks(runnerFrom(successMocks()), {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    });
+    assert.equal(
+      results.find((item) => item.name === "skills")?.status,
+      "pass",
+    );
+    assert.deepEqual(
+      await readFile(join(repoRoot, "patchmill.config.json")),
+      configBytes,
+    );
+  } finally {
+    await rm(repoRoot, { recursive: true, force: true });
+  }
+});
+
+for (const requirement of INLINE_IMPLEMENTATION_RUNTIME_FILES) {
+  for (const failure of requirement.executable
+    ? ["missing", "non-executable"]
+    : ["missing"]) {
+    test(`doctor rejects broken native runtime: ${failure} ${requirement.skillName}/${requirement.path}`, async () => {
+      const repoRoot = await nativeDoctorFixture();
+      try {
+        const skillName =
+          requirement.skillName === "inline-dev-with-validation-and-pr-checks"
+            ? "renamed"
+            : requirement.skillName;
+        const path = join(
+          repoRoot,
+          "custom/installed",
+          skillName,
+          requirement.path,
+        );
+        if (failure === "missing") await rm(path);
+        else await chmod(path, 0o644);
+        const calls: string[] = [];
+        const boundary = runnerFrom(successMocks());
+        const runner: CommandRunner = {
+          async run(command, args, options) {
+            calls.push(normalizePiCommandKey(command, args));
+            return boundary.run(command, args, options);
+          },
+        };
+        const results = await runDoctorChecks(runner, {
+          repoRoot,
+          teaRepoRootForTests: "/repo",
+        });
+        const skills = results.find((item) => item.name === "skills");
+        assert.equal(skills?.status, "fail");
+        assert.ok(skills?.message.includes(path), skills?.message);
+        assert.equal(
+          calls.some((call) =>
+            call.includes("Confirm Patchmill project-local skills"),
+          ),
+          false,
+        );
+        if (failure === "non-executable")
+          assert.equal(
+            (await stat(path)).mode & 0o111,
+            0,
+            "doctor must not repair permissions",
+          );
+      } finally {
+        await rm(repoRoot, { recursive: true, force: true });
+      }
+    });
+  }
+}

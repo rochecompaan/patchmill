@@ -12,6 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { requiredRuntimeFiles } from "../../../workflow/skill-runtime-requirements.ts";
 import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
@@ -100,6 +101,14 @@ const VERSION_NOTICES: SkillPackUpdateNotice[] = [
     version: "2026.09.2",
     message:
       "Patchmill's recommended skill pack now includes simple-english. The patchmill-planning wrapper requires it as a sibling skill and applies its plain-language rules when writing specs and plans.",
+  },
+  {
+    version: "2026.10.1",
+    message:
+      "The managed implementation wrappers are retired: subagent-dev-with-validation-and-pr-checks, subagent-dev-with-codex-and-thermo-reviews, and single-subagent-dev-with-codex-and-thermo-reviews.\n" +
+      "Use the inline workflow. Explicitly update patchmill.config.json:\n" +
+      '  "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"\n' +
+      "Skills updates do not rewrite config. Customized files require an explicit operator decision before replacement.",
   },
 ];
 
@@ -193,11 +202,14 @@ async function collectBundledPackFiles(options: {
       sourceRootFor(skill, options.sourceRoots),
       skill.name,
     );
-    await assertSkillFile(
-      join(sourceDir, "SKILL.md"),
-      `${skill.name}/SKILL.md`,
-      options.dependencies,
-    );
+    for (const requirement of requiredRuntimeFiles(skill.name)) {
+      await assertSkillFile(
+        join(sourceDir, requirement.path),
+        `${skill.name}/${requirement.path}`,
+        options.dependencies,
+        { executable: requirement.executable },
+      );
+    }
     files.push(
       ...(await collectSourceFiles(
         sourceDir,
@@ -284,11 +296,14 @@ function noticesForVersionRange(
   fromVersion: string,
   toVersion: string,
 ): SkillPackUpdateNotice[] {
-  return VERSION_NOTICES.filter(
+  const notices = VERSION_NOTICES.filter(
     (notice) =>
       compareVersions(fromVersion, notice.version) < 0 &&
       compareVersions(notice.version, toVersion) <= 0,
   );
+  return notices.some((notice) => notice.version === "2026.10.1")
+    ? notices.filter((notice) => notice.version !== "2026.07.2")
+    : notices;
 }
 
 async function copyBundledSkills(options: {

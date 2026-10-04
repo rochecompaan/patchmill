@@ -21,7 +21,11 @@ import {
   hashText,
   type SkillPackMetadataFile,
 } from "../../../workflow/skill-pack.ts";
-import type { SkillInstallerDependencies } from "../init/skill-installer.ts";
+import {
+  defaultSkillSourceRoots,
+  type SkillInstallerDependencies,
+} from "../init/skill-installer.ts";
+import { INLINE_IMPLEMENTATION_RUNTIME_FILES } from "../../../workflow/skill-runtime-requirements.ts";
 import { updateProjectSkills } from "./update.ts";
 
 const dependencies: SkillInstallerDependencies = {
@@ -188,13 +192,6 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
           '  "planning": ".patchmill/skills/patchmill-planning"',
       },
       {
-        version: "2026.07.2",
-        message:
-          "Patchmill's recommended implementation skill now adds final validation and PR readiness.\n" +
-          "To opt in, update patchmill.config.json:\n" +
-          '  "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks"',
-      },
-      {
         version: "2026.09.1",
         message:
           "Fresh Run-once review gates now use planning pull requests whose verified merge advances the Issue run. Legacy set-spec, set-plan, and --plan-only controls remain available but are deprecated.",
@@ -203,6 +200,14 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
         version: "2026.09.2",
         message:
           "Patchmill's recommended skill pack now includes simple-english. The patchmill-planning wrapper requires it as a sibling skill and applies its plain-language rules when writing specs and plans.",
+      },
+      {
+        version: "2026.10.1",
+        message:
+          "The managed implementation wrappers are retired: subagent-dev-with-validation-and-pr-checks, subagent-dev-with-codex-and-thermo-reviews, and single-subagent-dev-with-codex-and-thermo-reviews.\n" +
+          "Use the inline workflow. Explicitly update patchmill.config.json:\n" +
+          '  "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"\n' +
+          "Skills updates do not rewrite config. Customized files require an explicit operator decision before replacement.",
       },
     ],
   });
@@ -303,6 +308,14 @@ test("updateProjectSkills reports only the planning-pull-request notice from 202
       version: "2026.09.2",
       message:
         "Patchmill's recommended skill pack now includes simple-english. The patchmill-planning wrapper requires it as a sibling skill and applies its plain-language rules when writing specs and plans.",
+    },
+    {
+      version: "2026.10.1",
+      message:
+        "The managed implementation wrappers are retired: subagent-dev-with-validation-and-pr-checks, subagent-dev-with-codex-and-thermo-reviews, and single-subagent-dev-with-codex-and-thermo-reviews.\n" +
+        "Use the inline workflow. Explicitly update patchmill.config.json:\n" +
+        '  "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"\n' +
+        "Skills updates do not rewrite config. Customized files require an explicit operator decision before replacement.",
     },
   ]);
 
@@ -579,3 +592,130 @@ test("updateProjectSkills aborts when new bundled files would overwrite local fi
     /Refusing to overwrite unmanaged project-local skill files:\n- \.patchmill\/skills\/writing-plans\/new-file\.md/u,
   );
 });
+
+// Catches removal/copy before runtime validation and silent config rewriting.
+test("migration preserves customized and unmanaged skills", async () => {
+  const repoRoot = await tempRoot("patchmill-migration-");
+  try {
+    const oldPath =
+      ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews/SKILL.md";
+    const configPath = join(repoRoot, "patchmill.config.json");
+    const configBytes = Buffer.from(
+      '{ "skills": { "implementation": "' + oldPath + '" } }\n',
+    );
+    const customPath = join(repoRoot, ".patchmill/skills/landing/SKILL.md");
+    const customBytes = Buffer.from("local landing: preserve exactly\n");
+    await writeFileEnsuringParent(
+      join(repoRoot, oldPath),
+      "managed original\n",
+    );
+    await writeFileEnsuringParent(customPath, customBytes.toString());
+    await writeFile(configPath, configBytes);
+    await writeMetadata(
+      repoRoot,
+      oldMetadata([{ path: oldPath, sha256: hashText("managed original\n") }]),
+    );
+    await writeFile(join(repoRoot, oldPath), "customized old skill\n");
+    await assert.rejects(
+      updateProjectSkills({ repoRoot }),
+      /Refusing to update customized/,
+    );
+    assert.equal(
+      await readFile(join(repoRoot, oldPath), "utf8"),
+      "customized old skill\n",
+    );
+    assert.deepEqual(await readFile(configPath), configBytes);
+    assert.deepEqual(await readFile(customPath), customBytes);
+
+    await writeFile(join(repoRoot, oldPath), "managed original\n");
+    const result = await updateProjectSkills({ repoRoot });
+    assert.equal(result.status, "updated");
+    assert.deepEqual(await readFile(configPath), configBytes);
+    assert.deepEqual(await readFile(customPath), customBytes);
+    await assert.rejects(access(join(repoRoot, oldPath)));
+    if (result.status !== "updated") return;
+    const notice = result.notices.find((item) => item.version === "2026.10.1");
+    assert.match(
+      notice?.message ?? "",
+      /inline-dev-with-validation-and-pr-checks/,
+    );
+    for (const name of [
+      "subagent-dev-with-validation-and-pr-checks",
+      "subagent-dev-with-codex-and-thermo-reviews",
+      "single-subagent-dev-with-codex-and-thermo-reviews",
+    ]) {
+      assert.ok(notice?.message.includes(name));
+    }
+    assert.equal(
+      result.notices.some((item) => item.version === "2026.07.2"),
+      false,
+      "do not recommend a removed workflow alongside the migration",
+    );
+  } finally {
+    await rm(repoRoot, { recursive: true, force: true });
+  }
+});
+
+for (const requirement of INLINE_IMPLEMENTATION_RUNTIME_FILES) {
+  for (const failure of requirement.executable
+    ? ["missing", "non-executable"]
+    : ["missing"]) {
+    test(`update validates native source before removing managed files: ${failure} ${requirement.skillName}/${requirement.path}`, async () => {
+      const repoRoot = await tempRoot("patchmill-update-runtime-");
+      try {
+        const roots = defaultSkillSourceRoots();
+        const sourceRoots = { ...roots };
+        const key =
+          requirement.skillName === "inline-dev-with-validation-and-pr-checks"
+            ? "patchmillSkillsDir"
+            : "superpowersSkillsDir";
+        sourceRoots[key] = join(repoRoot, "source");
+        await cp(roots[key], sourceRoots[key], { recursive: true });
+        const broken = join(
+          sourceRoots[key],
+          requirement.skillName,
+          requirement.path,
+        );
+        if (failure === "missing") await rm(broken);
+        else await chmod(broken, 0o644);
+        const oldPath = ".patchmill/skills/obsolete-skill/SKILL.md";
+        await writeFileEnsuringParent(
+          join(repoRoot, oldPath),
+          oldObsoleteSkill,
+        );
+        const original = oldMetadata([
+          { path: oldPath, sha256: hashText(oldObsoleteSkill) },
+        ]);
+        await writeMetadata(repoRoot, original);
+        const metadataPath = join(
+          repoRoot,
+          ".patchmill/skills",
+          SKILL_PACK_METADATA_FILE,
+        );
+        const metadataBytes = await readFile(metadataPath);
+        await assert.rejects(
+          updateProjectSkills({ repoRoot, sourceRoots }),
+          (error: Error) =>
+            error.message.includes(
+              `${requirement.skillName}/${requirement.path}`,
+            ),
+        );
+        assert.equal(
+          await readFile(join(repoRoot, oldPath), "utf8"),
+          oldObsoleteSkill,
+        );
+        assert.deepEqual(await readFile(metadataPath), metadataBytes);
+        await assert.rejects(
+          access(
+            join(
+              repoRoot,
+              ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
+            ),
+          ),
+        );
+      } finally {
+        await rm(repoRoot, { recursive: true, force: true });
+      }
+    });
+  }
+}
