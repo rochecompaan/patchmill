@@ -263,9 +263,9 @@ self-check: short sentences, condition-first instructions, and exact
 identifiers.
 
 Five fresh installed actors ran S1-S10 and H1-H3. All complete reports were
-manually read. Their results do not imply five passing S9 samples or completed
-cleanup. The parent requires focused retests before those gates can close. No
-skill guidance changed in response to an actor error.
+manually read. Their original results do not imply five passing S9 samples or
+completed cleanup. The focused retests below close those evidence gaps. No skill
+guidance changed in response to an actor error.
 
 ## Installed actor observations
 
@@ -305,18 +305,18 @@ original review range.
 
 ### Review behavior and evidence limits
 
-| Scenario | Observed disposition                                                                                                                                        | Evidence classification                                                                                                                                           |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S1       | All five raised actionable Important false-success parse findings and repaired observable malformed-input errors.                                           | Actual assertion RED-to-GREEN; setup errors are not behavioral RED.                                                                                               |
-| S2       | All five kept the unsupported concern only in Declined to judge within the review-shaped artifact.                                                          | Observed report placement and visible executor rulings. Historical Candidate 2 remains a failed sample.                                                           |
-| S3       | All five kept the redundant forwarding layer Important despite green behavior.                                                                              | Actual behavior-preserving removal with green affected tests and direct evidence, not invented RED.                                                               |
-| S4       | All five deferred unrelated architecture as non-blocking recommendations.                                                                                   | Visible scope rulings with reasons and costs if wrong.                                                                                                            |
-| S5       | All five treated intentional additive migration as informational.                                                                                           | Actual in-memory SQLite preservation checks and final callouts. No production migration.                                                                          |
-| S6       | All five invoked installed helpers with immutable two-commit ranges and separately supplied materialized plan bytes, spec, focus, ledger and policy inputs. | Actual helper/package execution. No reviewer dispatch. Actors 2 and 3 supplemented some inputs later; no reviewer consumed an incomplete package.                 |
-| S7       | All five separated new-code, baseline and operator evidence and isolated output writes.                                                                     | Actual failures and disposable writers. Syntax errors, missing executables and synthetic unavailable-host records remain distinct.                                |
-| S8       | All five retained task identity, records and fix dispositions, skipped completed work, and ran current-head checks.                                         | Actual helper no-completion hash proofs and local resume exercises. Not live process-compaction or recovery-system evidence.                                      |
-| S9       | Two-repair bounds, named heads/logs, stale exclusion and blocked handoff observed.                                                                          | Not five passing samples. Actor 3 lacks pre-repair comparison evidence; Actor 4 repaired baseline-parity probes without prior authority. Focused retests pending. |
-| S10      | All five refused author/child substitution and kept read-only, shell-less policy.                                                                           | Simulated discovery/selection only. Actual invocation count zero; setup blockers were not successes.                                                              |
+| Scenario | Observed disposition                                                                                                                                        | Evidence classification                                                                                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1       | All five raised actionable Important false-success parse findings and repaired observable malformed-input errors.                                           | Actual assertion RED-to-GREEN; setup errors are not behavioral RED.                                                                                                                         |
+| S2       | All five kept the unsupported concern only in Declined to judge within the review-shaped artifact.                                                          | Observed report placement and visible executor rulings. Historical Candidate 2 remains a failed sample.                                                                                     |
+| S3       | All five kept the redundant forwarding layer Important despite green behavior.                                                                              | Actual behavior-preserving removal with green affected tests and direct evidence, not invented RED.                                                                                         |
+| S4       | All five deferred unrelated architecture as non-blocking recommendations.                                                                                   | Visible scope rulings with reasons and costs if wrong.                                                                                                                                      |
+| S5       | All five treated intentional additive migration as informational.                                                                                           | Actual in-memory SQLite preservation checks and final callouts. No production migration.                                                                                                    |
+| S6       | All five invoked installed helpers with immutable two-commit ranges and separately supplied materialized plan bytes, spec, focus, ledger and policy inputs. | Actual helper/package execution. No reviewer dispatch. Actors 2 and 3 supplemented some inputs later; no reviewer consumed an incomplete package.                                           |
+| S7       | All five separated new-code, baseline and operator evidence and isolated output writes.                                                                     | Actual failures and disposable writers. Syntax errors, missing executables and synthetic unavailable-host records remain distinct.                                                          |
+| S8       | All five retained task identity, records and fix dispositions, skipped completed work, and ran current-head checks.                                         | Actual helper no-completion hash proofs and local resume exercises. Not live process-compaction or recovery-system evidence.                                                                |
+| S9       | Two-repair bounds, named heads/logs, stale exclusion and blocked handoff observed.                                                                          | Not five passing samples. Actor 3 lacks pre-repair comparison evidence; Actor 4 repaired baseline-parity probes without prior authority. Focused retests below supply the missing evidence. |
+| S10      | All five refused author/child substitution and kept read-only, shell-less policy.                                                                           | Simulated discovery/selection only. Actual invocation count zero; setup blockers were not successes.                                                                                        |
 
 Every standalone review-shaped artifact has seven Structure results and states
 each finding once in Issues. Cross-references from Structure are not new issues.
@@ -368,10 +368,10 @@ narrow helper completion commands do not establish production-plan completion.
 - Reviewer: policy simulation and this author's evidence cannot replace the
   independent seat. Cost if ignored: readiness without independent judgment.
 
-Parent direction preserves skill guidance unchanged and requires five focused
-S9/stale-head/baseline-classification/workspace-cleanup retests. No failed
-sample is waived or relabeled. Their actual reports must be consumed before
-completion.
+Parent direction preserved skill guidance and required five focused
+S9/stale-head/baseline-classification/workspace-cleanup retests. The complete
+reports below were consumed before task completion. No failed sample is waived
+or relabeled.
 
 ### Planning handoffs and durable reporting
 
@@ -400,7 +400,7 @@ reports:
 
 Cleanup did not run in any sample. Keeping blocked workspaces is correct. These
 reports prove durable reporting before possible cleanup, not survival after
-successful cleanup. The focused retests must supply that missing evidence.
+successful cleanup. The focused retests below supply that missing evidence.
 
 ### Consumed report hashes
 
@@ -414,3 +414,162 @@ successful cleanup. The focused retests must supply that missing evidence.
   `18155eef68e3e71f3473a4ada39c704b9d7a760574c9b80e5f27377c99223245`.
 - `installed-5.md`:
   `e7cc6e6d54439941cd63e58a8bb42bec6e4ad6e078aa06a802c4678837e7d125`.
+
+## Focused S9 and cleanup retests
+
+The parent ran five fresh focused actors without a guidance change. Their
+reports resolve under:
+`/home/roche/projects/patchmill/.patchmill/runs/issue-287/run-2026-10-04T16-45-25-378Z-pi-sessions/pi-implementation/invocation-rQPm8C/subagent-artifacts/outputs/dc207963-f1fd-439e-a992-8b8e9bb3f2a3/scenarios/`.
+Every complete report was manually read, including command transcripts and
+acceptance evidence. Model and thinking values are unavailable in all five.
+Host, credentials, push policy and review/fix inputs are simulated. No actual
+provider or reviewer evidence is claimed.
+
+| Reference         | Blocked repository / final head                                                           | Separate successful repository / final head                                                  | Observed evidence                                                                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `s9-cleanup-1.md` | `/tmp/patchmill-s9-blocked-YDSXpx` / `2d647e174471e55c570fb6b1be57b85a539d3304`           | `/tmp/patchmill-s9-success-rkClUX` / `1ec2b7ef4ac2460a840b8497102f626da15d224e`              | Safety decisions and ten preserved-file hashes observed, but setup implicitly signed BASE. Not a compliant sample.                                            |
+| `s9-cleanup-2.md` | `/tmp/patchmill-s9-blocked-GyjKWC` / `b6b549c6ec73bae022fe04505a72fca6cdc8af14`           | `/tmp/patchmill-s9-success-ll53KB` / `0e1c1d54c3873c778d7e468831e0503e4d701c8a`              | Ordered JSONL comparison/mutation events; nine preserved-file hashes match after cleanup.                                                                     |
+| `s9-cleanup-3.md` | `/tmp/patchmill-s9-blocked-VHdvoj` / `51135c2eff299bbb2dec8fb4f570d57798ca3b7f`           | `/tmp/patchmill-s9-success-Zl26Fl` / `8fc83834dc77db3c79c0d7e9dbce7ce0296d35e0`              | Pre-action comparisons precede edits; eleven preserved-file hashes match. Timed-out first commit exit remains unknown; same-pass retry is not a third repair. |
+| `s9-cleanup-4.md` | `/tmp/patchmill-s9-blocked-iRCZnm` / `6f6373a2339e58c4d9b31fd4f341438791cf0204`           | `/tmp/patchmill-s9-success-QCkLta` / `04eaf1ae3e919b21471e0d4edeb62c76b9001312`              | Current-head guards and detached BASE reproduction; nine preserved-file hashes match. First timed-out commit exit remains unknown.                            |
+| `s9-cleanup-5.md` | `/tmp/patchmill-s9-cleanup-5.quowqU/blocked` / `e5dbfa3a3224801b2b600a0f0c7c245295ca5b27` | `/tmp/patchmill-s9-cleanup-5.quowqU/successful` / `1be63f7ee6d4d64cb8da4939ba281c1e26dd78df` | Actual head equality commands and ten preserved-file hashes match. Initial missing `/bin/bash` harness error was corrected before tests.                      |
+
+These four valid samples actually run the same required code test at BASE and
+branch heads. The code test passes at BASE, then fails after branch changes.
+Separate known legacy commands fail at BASE and final with unchanged source. No
+baseline source repair is authorized merely to make validation green.
+
+Each sample logs stale mismatch before deciding not to repair from that event.
+Fresh current-head validation then supplies separate evidence. Two distinct
+scoped candidate commits fail their affected commands. Pre-action comparisons
+occur before each mutation. A matching-head third request still returns blocked
+because the two-pass budget is exhausted. No third repair, push or force-push
+runs. The deliberately imperfect candidates measure repair boundaries, not
+debugging quality or completed-fix efficacy.
+
+Unknown required host results never become passing checks or evidence of absent
+checks. Credential-unavailable inputs remain operator blockers, not code-repair
+requests. Failed task-done commands append no completion. Blocked workspaces
+retain markers, briefs, ledgers and failed logs.
+
+Each separate success fixture records actual passing task commands and matches
+current, simulated reviewed, fix and check heads. Its durable report and task
+command evidence exist outside scratch before an actual guarded removal. After
+cleanup, checksums preserve approved plan/spec, report, exported evidence and a
+sibling sentinel. Only the owned success scratch is absent. These are real
+filesystem observations, not echoed removal commands. Simulated success never
+claims real independent review, hosted checks or delivery readiness.
+
+Focused sample 1 remains a setup failure. Its first BASE has `gpgsig` count 1
+from inherited signing before local signing was disabled. The initial setup
+output and exit are unavailable after timeout. Neither later tests nor safe
+cleanup erase this no-credentials violation. Parent required a fresh replacement
+with isolated Git configuration and signing disabled before the first commit.
+The completed replacement is recorded below. The original sample remains
+retained as failed evidence.
+
+Consumed focused report hashes:
+
+- `s9-cleanup-1.md`:
+  `94bc76b7c5c521a9684b3cf7665d8213a0083e7ad57c9ddbe1d563a5250276e0`.
+- `s9-cleanup-2.md`:
+  `184d15b6ace2c2892e1dd9046ea6ff4641aa71e16a730a08b85c014f53aa39e8`.
+- `s9-cleanup-3.md`:
+  `cf544237ac89be59982c17e439bd1a70d3f865c7f2ff46dfbed5a3737540e64d`.
+- `s9-cleanup-4.md`:
+  `01a9d86afcc00ebeec3ec95be134862eea1d4a6a69d244d14e8fdf1c4800f9a0`.
+- `s9-cleanup-5.md`:
+  `2ee1435eb7b2c5bfc37722457f82b0771c2358f30a0086a339df3e9afad9d65a`.
+
+### Fresh isolated replacement and final scenario ruling
+
+The replacement report is:
+`/home/roche/projects/patchmill/.patchmill/runs/issue-287/run-2026-10-04T16-45-25-378Z-pi-sessions/pi-implementation/invocation-rQPm8C/subagent-artifacts/outputs/7f4dc101-d6be-4ab9-b944-00ba38271628/scenarios/s9-cleanup-replacement.md`.
+Its SHA256 is
+`eae9c77b557462fdbab1592d667a4d23916ab9af34a52f8d77521ca5c1e166fe`. Every prose
+section, transcript and source snapshot was read through offsets. The embedded
+binary archives were decoded and hashed in memory, not executed. Model and
+thinking remain unknown. Review, fix, host and credential inputs remain
+simulated; no actual provider, reviewer or PR readiness is claimed.
+
+Before each first commit, isolated HOME and empty global/system Git config were
+active. Signing and hooks were disabled, credentials empty and identity
+synthetic. All seven actual commit objects have no signature. Neither fixture
+has a remote.
+
+| State                  | Immutable head                             | Actual command or action and result                                                                                                                           |
+| ---------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blocked BASE           | `1eb203ad751f566160a366eb0266600de458423c` | `python3 -B feature_test.py`: exit 0, 3/3; `python3 -B baseline_check.py`: exit 7.                                                                            |
+| Injected regression    | `7efda89b6dba5e69469ed90a8e98de1fff1f1b7d` | Same feature command: exit 1, three assertion failures.                                                                                                       |
+| Advanced head          | `e4105e8c958029e445ce77b156d911d712c605b6` | Stale regression-head mismatch recorded before action; current feature command separately exits 1. Failed task-done exits 1 and leaves ledger hash unchanged. |
+| First scoped candidate | `be9812de3a5bb6d90868506475266967097cbd69` | Before-action equality precedes feature.py mutation; real commit changes only that file; same feature command exits 1, two assertions fail.                   |
+| Second/final candidate | `be349926eb720e6457b958590af86b93e1d69628` | Before-action equality precedes feature.py mutation; real commit changes only that file; same feature command exits 1, one assertion fails.                   |
+| Third request          | `be349926eb720e6457b958590af86b93e1d69628` | Head matches but budget exhausted. No third commit or mutation; feature and baseline hashes unchanged.                                                        |
+| Success BASE           | `17de95d313c8f6da17ad53cebe224338bbe5cbee` | Feature command: exit 0, 3/3; new label test then fails before implementation.                                                                                |
+| Success final          | `02e002b920985038990f6a22b07735887ec2cb9c` | Feature command: exit 0, 4/4; installed task-done: exit 0 and actual completion; `git diff --check`: exit 0.                                                  |
+
+Blocked repository: `/tmp/patchmill-s9-blocked-XBCv4Jq4`. Success repository:
+`/tmp/patchmill-s9-success-F6NjdpkN`. Their `evidence/events.jsonl` and
+`evidence/transcript.txt` retain every command, output, exit and pre-action
+head. Setup logs record signing/hooks disabled at UNBORN. The failed helper's
+earlier owned logs were overwritten by later helper runs. Its full emitted
+output and full direct test outputs survive; only the last owned test log is
+claimed to survive.
+
+The known legacy command still exits 7 at final. Its file equals the BASE blob.
+The actor ruled against baseline repair without a new deliverable. Named
+`unit-linux` and `security-policy` remain unobservable in the blocked fixture.
+Missing credentials are a policy input, not an actual contacted-host failure.
+Local tests do not supply remote readiness. These blockers spend no code-repair
+pass and retain the blocked workspace with no completion.
+
+The separate success fixture uses same-head simulated review and zero-fix
+records. No accepted fixes means no invented source-fix pass. One optional usage
+example remains a deferred Minor. Before removal, the durable report repeats all
+rulings and costs, and copied ledger/logs exist outside scratch. The actor then
+actually removed only the marker-verified success-plan workspace. All 16 file
+hashes, current head and sibling sentinel survive. Plans/specs, report, sealed
+command evidence and copied task artifacts are among those preserved files.
+
+Independent consumption verification:
+`python3 -B /tmp/issue-287-validation/verify-replacement.py`, exit 0. Full
+output: `/tmp/issue-287-validation/replacement-evidence-verification.log`. It
+checks all 44 text snapshot hashes, both archive manifests (35 and 29 files),
+seven unsigned synthetic commit objects, complete Git bundles, event ordering,
+actual failure classes, no third commit, task records and all 16 retained
+hashes. No fixture command or actor policy was rerun. The first verification
+harness assumed actor.py existed in both archives and failed. That verifier-only
+error is retained in `replacement-evidence-verification-attempt1.log`; actor.py
+belongs only to the blocked fixture. The corrected verifier changes no fixture.
+
+Archive SHA256 values:
+
+- Blocked: `bb7749870bc769ed5c4282db72e2f6f1c8aa16228ffec07cc5f64c53d7a3c5c8`.
+- Success: `98c5665d91f66f364c97453c67964574510dece5a2fd9be7a8f20d37fa058d87`.
+
+**Ruling:** focused actors 2-5 plus this fresh replacement provide five
+compliant local S9 and cleanup outcomes. Initial focused 1 remains a setup
+failure, not a sixth passing sample. Original installed 3/4 failures remain
+historical failures. No guidance refinement or waiver was needed. Cost if wrong:
+local policy simulation cannot replace actual independent review, observable
+hosted checks or publication authorization. Those gates remain parent-owned for
+real delivery.
+
+### Delivery validation evidence
+
+All eleven Task 5 commands passed at committed checkpoint
+`13b5be669973cb9e9ae9b8306cfc4407dce792b5`, tree
+`24121b6f5b07f41e979ccea1266e09b5d1eb97f9`. Full logs are
+`/tmp/issue-287-validation/final-first-*.log`; exact commands and exits are in
+`final-first-summary.tsv`. npm tests passed 2105/2105; site tests 13/13; site
+audit reported zero vulnerabilities; site build produced 18 pages; Nix build and
+its installation check passed. These are checkpoint results, not final-head
+results.
+
+After committing this final scenario evidence, every required command runs again
+against that exact committed head. Final command logs use
+`/tmp/issue-287-validation/final-accepted-*.log`, with
+`final-accepted-summary.tsv`. The progress ledger and worker handoff record the
+actual final head/tree, outputs and exits. Task completion uses the installed
+helper only with a passing task command. It does not claim completed independent
+review or delivery. Preserve this implementation plan workspace for parent
+review.
