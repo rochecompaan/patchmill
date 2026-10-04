@@ -9,10 +9,14 @@ Implementation requires a separate approved plan.
 Patchmill users need a reliable implementation workflow, not a choice between
 several overlapping skills. Patchmill must make one recommended choice.
 
-The recommendation is native execution through Superpowers `executing-plans`.
-One fresh-context reviewer uses the upstream review template plus a
-Patchmill-owned appendix. The appendix preserves the distinct strengths of the
-Codex and thermo-nuclear rubrics without separate review passes.
+The recommended skill is `inline-dev-with-validation-and-pr-checks`. It uses
+Native (inline) execution through Superpowers `executing-plans`. The session
+implements the whole plan itself, without pauses for batch check-ins.
+
+After all tasks complete, one fresh-context reviewer reviews the whole branch.
+It uses the upstream review template plus a Patchmill-owned appendix. The
+appendix preserves the distinct strengths of the Codex and thermo-nuclear
+rubrics without separate review passes.
 
 Native execution is Patchmill's default choice. This spec does not claim that
 Superpowers makes native execution its universal default.
@@ -28,7 +32,7 @@ Superpowers makes native execution its universal default.
 
 ## Non-goals
 
-- A second implementation skill or an execution-mode selector.
+- A second Patchmill implementation skill or a new execution-mode selector.
 - Changes to Superpowers source files or a new upstream dependency version.
 - Per-task implementer or reviewer subagents.
 - A second review for gaps, structure, or validation.
@@ -56,8 +60,14 @@ review, and one fix pass. The namespace defaults still select
 
 ## Skill ownership and defaults
 
-The new entrypoint is `skills/patchmill-implementation/SKILL.md`. Its installed
-project-local path is `.patchmill/skills/patchmill-implementation`.
+The new entrypoint is
+`skills/inline-dev-with-validation-and-pr-checks/SKILL.md`. Its installed
+project-local path is
+`.patchmill/skills/inline-dev-with-validation-and-pr-checks`.
+
+This name replaces the former `subagent-dev-with-validation-and-pr-checks`
+entrypoint. The old name remains only in historical descriptions and migration
+guidance, not as the name of the new skill.
 
 The skill is a thin wrapper around sibling upstream skills. It adds the
 Patchmill rules in this spec instead of reproducing the upstream task loop.
@@ -80,11 +90,12 @@ The upstream `subagent-driven-development` directory remains installed because
 native execution uses its helpers. Its presence is not another Patchmill
 recommendation.
 
-Fresh project-local configuration selects `patchmill-implementation`. Namespace
-and user-global defaults select `superpowers:executing-plans` instead of the
-subagent-driven executor. This is an external-skill compatibility path, not the
-recommended workflow. It does not provide the Patchmill appendix automatically.
-Documentation must state that distinction and recommend the managed local pack.
+Fresh project-local configuration selects
+`inline-dev-with-validation-and-pr-checks`. Namespace and user-global defaults
+select `superpowers:executing-plans` instead of the subagent-driven executor.
+This is an external-skill compatibility path, not the recommended workflow. It
+does not provide the Patchmill appendix automatically. Documentation must state
+that distinction and recommend the managed local pack.
 
 Explicit custom implementation skills remain supported. This change does not
 silently replace user-owned skill choices.
@@ -101,7 +112,16 @@ Phase workspace. It follows the sibling `executing-plans` skill, including:
 5. Applying TDD where the Testing Value Gate requires behavioral tests.
 6. Comparing command output with the plan's expected results.
 7. Recording task completion through `task-done`.
-8. Completing all tasks without routine human check-ins.
+8. Completing the whole plan without per-task reviews or batch check-ins.
+
+The session uses the same plan workspace, progress ledger, and stopping rules as
+upstream subagent-driven development. The `task-start` and `task-done` helpers
+preserve task and test evidence. No fixed task count triggers a pause. Only the
+stopping conditions described below interrupt execution.
+
+Inline execution avoids fresh implementer and reviewer contexts for every task.
+It supports a mid-tier implementation model while reserving the most capable
+available review model for the final whole-branch review.
 
 The Superpowers progress ledger is a task record. It is not Patchmill's Event
 ledger and does not replace Run recovery state.
@@ -111,9 +131,25 @@ Documentation, static configuration, and other excluded changes use direct
 verification. Their task completion command must still pass and enter the
 progress ledger. No task receives a completion record from an unrun command.
 
-The planning wrapper records native execution as the configured choice. It does
-not ask an unattended session to choose between execution methods. Planning
-review gates and spec or plan approval requirements remain unchanged.
+### Plan handoff
+
+The upstream handoff offers Subagent-driven and Native when no execution method
+is supplied. It explains their costs and recommends one using a reason drawn
+from the plan. An interactive handoff without a prior choice retains that
+behavior.
+
+For unattended Patchmill, the configured implementation skill supplies the
+choice. The new skill supplies Native. The planning wrapper records that choice
+instead of asking again or offering another implementation skill.
+
+An explicit operator choice remains authoritative. The handoff preserves it
+rather than replacing it with a new recommendation. Selecting the new inline
+skill does not authorize it to dispatch task implementers.
+
+Planning review gates and spec or plan approval requirements remain unchanged.
+Preserving an execution method does not waive plan approval.
+
+### Stopping rules
 
 Upstream's ordinary ambiguities become reasoned ledger rulings. A ruling does
 not grant new product scope or authorize unsafe actions. Destructive actions,
@@ -405,7 +441,8 @@ The repository's managed `.patchmill/skills` copy must match the pack sources.
 
 ## Expected change areas
 
-- `skills/patchmill-implementation/`: the wrapper and review appendix.
+- `skills/inline-dev-with-validation-and-pr-checks/`: the wrapper and review
+  appendix.
 - `skills/patchmill-planning/SKILL.md`: the unattended execution handoff.
 - The three retired wrapper directories and their support files.
 - `src/workflow/skill-pack.ts` and `src/workflow/skills.ts`: pack membership and
@@ -427,9 +464,10 @@ silently dispatch an additional review through that configuration key.
 
 The implementation is acceptable when all of these outcomes hold:
 
-1. A fresh managed installation selects one Patchmill implementation entrypoint.
-2. The parent runs plan tasks natively and resumes completed tasks from upstream
-   records.
+1. A fresh managed installation selects
+   `inline-dev-with-validation-and-pr-checks`.
+2. The parent runs the whole plan inline without batch check-ins and resumes
+   completed tasks from upstream records.
 3. One fresh reviewer receives the full scope, upstream template, appendix, and
    required commands.
 4. No default per-task review, Codex loop, thermo loop, or validation reviewer
@@ -447,6 +485,10 @@ The implementation is acceptable when all of these outcomes hold:
     damage to custom skills.
 13. Required helpers run from installed paths, and all upstream version
     references agree.
+
+The handoff must also preserve any supplied execution method. Without a prior
+choice, the interactive handoff must explain both approaches and recommend one
+with a reason from the plan.
 
 Automated tests cover behavior at reusable seams: installation, missing helper
 handling, executable permissions, configuration resolution, and migration
