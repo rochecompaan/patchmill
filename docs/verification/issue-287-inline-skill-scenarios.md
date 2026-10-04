@@ -203,4 +203,65 @@ Logs: `/tmp/issue-287-validation/`.
   review already worked before this change; that case does not claim new RED.
 
 The first run-once command timed out at the tool boundary. Its partial output is
-`task4-gate.log`, not a passing result. A complete rerun is required.
+`task4-gate.log`, not a passing result. The complete rerun,
+`task4-gate-full.log`, passed all 840 tests with exit 0.
+
+A later Task 2 regression found that the native manifest omitted the basic
+`subagent-driven-development/SKILL.md` check. New source, staged, and path-mode
+cases failed before the shared requirements merged basic files with native
+files. `task2-member-skill-red.log` records that RED. Its GREEN passed 49 native
+tests. `task2-gate-final.log` passed all 417 task-gate tests. The Task 3 gate
+remained 114/114 after this correction (`task3-gate-final.log`).
+
+## Installed candidate checkpoint
+
+The safe updater passed without a protection exception
+(`task5-managed-update.log`). It moved the pack from `2026.09.2` to `2026.10.1`.
+It updated three files and removed ten obsolete managed files. This repository
+explicitly changed only its implementation config reference. The active Issue
+run keeps its saved executor. Local `landing` and
+`patchmill-development-environment` bytes remain unchanged. No dependency or
+upstream skill changed.
+
+The exact plan helper smoke passed (`task5-helper-smoke.log`). In disposable Git
+repository `/tmp/tmp.QGxZBODCDL`, task-start printed a readable brief and base
+`7145d9bc51fdf8d8ae87b7cdf033d1fec5217556`. A failing task-done command returned
+1 and wrote no completion ledger. The passing command recorded `PASS` and
+`Task 1: complete`. The review package contained one delivery commit and 332
+bytes, including `delivery.txt`. The smoke removed only its disposable
+repository. This helper smoke is not evidence for actor workspace-preservation
+scenarios.
+
+`task5-installed-audit.log` compares all 64 managed files with their resolved
+source bytes, metadata hashes, and executable bits. All agree. Source roots came
+from `defaultSkillSourceRoots()`. The installed pack and both dependency
+contracts agree with Superpowers `v6.4.2` (`task5-contracts.log`, 22 tests
+passed).
+
+The installation root is:
+`/home/roche/projects/patchmill/.worktrees/patchmill-issue-287-refactor-implementation-skills-to-inline-executi-implementation/.patchmill/skills`.
+Each helper below resolves under that root and has mode `755`:
+
+- `executing-plans/scripts/task-start`
+- `executing-plans/scripts/task-done`
+- `subagent-driven-development/scripts/sdd-workspace`
+- `subagent-driven-development/scripts/task-brief`
+- `subagent-driven-development/scripts/review-package`
+
+`task5-installed-links.log` resolves relative Markdown links from each installed
+entrypoint directory. No link is missing. The inline required inputs resolve to
+`executing-plans/SKILL.md`, `requesting-code-review/code-reviewer.md`, and the
+inline directory's `review-appendix.md` under that root. Planning inputs resolve
+to `brainstorming/SKILL.md`, `writing-plans/SKILL.md`, and
+`simple-english/SKILL.md`.
+
+The candidate build and full lint passed (`candidate-build.log` and
+`candidate-lint.log`). Changed prose received the pragmatic simple-English
+self-check: short sentences, condition-first instructions, and exact
+identifiers.
+
+Five fresh installed actors must still run S1-S10 and H1-H3. They must retest S2
+and S8-S10, preserve blocked workspaces, and show durable reporting before
+cleanup. Tasks 1, 4, and 5 remain open until their evidence is consumed. All
+Task 5 final commands, including the mandatory Nix build, must run against the
+final state. Preliminary results above do not substitute for that gate.

@@ -138,7 +138,7 @@ Patchmill gives agents at each workflow stage.
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
+    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   }
 }
@@ -182,16 +182,17 @@ Prefer project-local skill paths under `.patchmill/skills/` when the team wants
 reviewable, versioned agent instructions. Use global or bundled skill names only
 when the exact skill text does not need to live in the repository.
 
-For heavier implementation review loops, the recommended skill pack also
-installs opt-in implementation skills such as:
+The managed inline workflow uses one final independent reviewer and one fix
+pass. It reruns final commands and permits at most two code-related PR check
+repairs. Namespace and global `superpowers:executing-plans` defaults do not
+automatically include the Patchmill review appendix. Use the managed local pack
+for the complete workflow. Explicit custom implementation and review skills
+remain operator overrides.
 
-```json
-{
-  "skills": {
-    "implementation": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews"
-  }
-}
-```
+To migrate an older managed pack, run `npx patchmill@latest skills update`. Then
+explicitly set `skills.implementation` to
+`.patchmill/skills/inline-dev-with-validation-and-pr-checks`. Updates preserve
+customized files and do not rewrite config.
 
 See [Skills configuration](/guides/skills-configuration/) for the full skill
 surface.

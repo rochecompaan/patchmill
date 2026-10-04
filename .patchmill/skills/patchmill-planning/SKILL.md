@@ -61,6 +61,25 @@ docs/plans/YYYY-MM-DD-<feature-name>.md
 
 Do not save Patchmill plans under `docs/superpowers/`.
 
+### Execution handoff
+
+Preserve any explicit operator choice of Native or Subagent-driven execution. A
+later default or recommendation does not replace that choice.
+
+For unattended work, the configured implementation skill supplies the choice.
+Record its exact reference in the plan. Do not ask for another method choice.
+For `inline-dev-with-validation-and-pr-checks`, record Native through the
+sibling `executing-plans` skill. The implementation session remains the sole
+writer. Do not dispatch task implementers through this entrypoint.
+
+Use this recorded choice in the plan header instead of the upstream static
+Subagent-driven recommendation. Preserve custom implementation references
+without mapping them to another method.
+
+If no interactive method was supplied, keep the upstream handoff unchanged.
+Explain both methods and recommend one with a reason from the plan. Keep
+existing spec and plan review gates. A supplied method does not waive approval.
+
 ### Writing style
 
 Write spec and plan prose with the sibling simple-english skill in its default
