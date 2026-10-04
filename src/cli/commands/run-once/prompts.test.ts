@@ -472,7 +472,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   );
   assert.match(
     prompt,
-    /Set a task todo status to `closed` only after code, tests, review, fixes, and verification/,
+    /Set a task todo status to `closed` only after the task's required commands and ledger completion succeed/,
   );
   assert.match(
     prompt,
@@ -511,7 +511,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Read AGENTS\.md and the implementation plan at/);
   assert.match(
     prompt,
-    /Use the configured implementation skill: `superpowers:subagent-driven-development`\./,
+    /Use the configured implementation skill: `superpowers:executing-plans`\./,
   );
   assert.match(prompt, /Subagent support:/);
   assert.match(prompt, /Patchmill bundles `pi-subagents`/);
@@ -521,9 +521,12 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   );
   assert.match(
     prompt,
-    /Use pi-subagents-discovered `worker` agents for implementation handoffs/,
+    /For required dispatches, use pi-subagents-discovered `worker` and `reviewer` agents/,
   );
-  assert.match(prompt, /`reviewer` agents for review checkpoints/);
+  assert.match(
+    prompt,
+    /Do not require task workers or task review checkpoints/,
+  );
   assert.match(
     prompt,
     /If required subagents are unavailable or disabled, return the blocker JSON/,
@@ -1042,7 +1045,7 @@ test("task contract overrides drive todo instructions in plan and implementation
   );
   assert.match(
     implementationPrompt,
-    /Set a task todo status to `shipped` only after code, tests, review, fixes, and verification/,
+    /Set a task todo status to `shipped` only after the task's required commands and ledger completion succeed/,
   );
   assert.doesNotMatch(
     implementationPrompt,
@@ -1120,5 +1123,96 @@ test("buildImplementationPrompt renders an optional planning pull request marker
   assert.match(
     prompt,
     /Closes #189\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->\n```/,
+  );
+});
+
+// Catches loss of configured execution choices and default extra review/fanout.
+test("unattended planning carries the configured implementation choice", () => {
+  for (const implementation of [
+    ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
+    "superpowers:executing-plans",
+    "custom/team-implementation",
+  ]) {
+    const prompt = buildPlanCreationPrompt({
+      issue,
+      planPath,
+      projectPolicy: examplePolicy,
+      skills: { ...DEFAULT_PATCHMILL_SKILLS, implementation },
+    });
+    assert.ok(
+      prompt.includes(
+        `Configured implementation choice: \`${implementation}\``,
+      ),
+    );
+    assert.match(prompt, /Record this choice in the plan/);
+    assert.match(prompt, /Do not ask for another execution-method choice/);
+    assert.match(prompt, untrustedInputBoundary);
+    assert.match(prompt, /"status": "blocked"/);
+  }
+});
+
+test("inline prompts do not require task dispatch or task review", () => {
+  const prompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    projectPolicy: examplePolicy,
+    branch: "agent/issue-42",
+    worktreePath: ".worktrees/issue-42",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      implementation:
+        ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
+    },
+  });
+  assert.doesNotMatch(
+    prompt,
+    /Use pi-subagents-discovered `worker` agents for implementation handoffs/,
+  );
+  assert.doesNotMatch(
+    prompt,
+    /only after code, tests, review, fixes, and verification for that task/,
+  );
+  assert.match(
+    prompt,
+    /task's required commands and ledger completion succeed/,
+  );
+  assert.match(
+    prompt,
+    /Whole-branch review, accepted fixes, final validation, and handoff remain separate/,
+  );
+  assert.doesNotMatch(prompt, /accepted fix, re-review, validation/);
+  assert.match(prompt, /unresolved run prohibits the final response/);
+  assert.match(prompt, untrustedInputBoundary);
+});
+
+test("custom review remains explicit rather than a default extra pass", () => {
+  const skills = {
+    ...DEFAULT_PATCHMILL_SKILLS,
+    implementation:
+      ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
+  };
+  const absent = buildImplementationPrompt({
+    issue,
+    planPath,
+    projectPolicy: examplePolicy,
+    branch: "agent/issue-42",
+    worktreePath: ".worktrees/issue-42",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    skills,
+  });
+  assert.doesNotMatch(absent, /Use the configured review skill/);
+  const explicit = buildImplementationPrompt({
+    issue,
+    planPath,
+    projectPolicy: examplePolicy,
+    branch: "agent/issue-42",
+    worktreePath: ".worktrees/issue-42",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    skills: { ...skills, review: "custom/team-review" },
+  });
+  assert.match(
+    explicit,
+    /Use the configured review skill for explicit review passes: `custom\/team-review`/,
   );
 });
