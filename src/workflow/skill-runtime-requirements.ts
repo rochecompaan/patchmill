@@ -68,10 +68,14 @@ export function requiredRuntimeFiles(
     (requirement) => requirement.skillName === skillName,
   ).map(({ path, executable }) => ({ path, executable }));
 
-  if (inlineRequirements.length > 0) return inlineRequirements;
-
-  return requiredFilesForBundledSkillName(skillName).map((path) => ({
-    path,
-    executable: false,
-  }));
+  const requirements = new Map<string, SkillFileRequirement>(
+    requiredFilesForBundledSkillName(skillName).map((path) => [
+      path,
+      { path, executable: false },
+    ]),
+  );
+  for (const requirement of inlineRequirements) {
+    requirements.set(requirement.path, requirement);
+  }
+  return [...requirements.values()];
 }

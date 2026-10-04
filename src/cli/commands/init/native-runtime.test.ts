@@ -93,7 +93,14 @@ test("fresh installation publishes a usable inline workflow", async () => {
   }
 });
 
-for (const requirement of INLINE_IMPLEMENTATION_RUNTIME_FILES) {
+for (const requirement of [
+  ...INLINE_IMPLEMENTATION_RUNTIME_FILES,
+  {
+    skillName: "subagent-driven-development",
+    path: "SKILL.md",
+    executable: false,
+  },
+]) {
   const relative = `${requirement.skillName}/${requirement.path}`;
   test(`missing native runtime files prevent publication: source ${relative}`, async () => {
     const { root, repoRoot, sourceRoots } = await fixture();
