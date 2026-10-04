@@ -95,14 +95,14 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
     triage: ".patchmill/skills/patchmill-issue-triage",
     planning: ".patchmill/skills/patchmill-planning",
     implementation:
-      ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
+      ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
     visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
   });
 });
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.09.2");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.10.1");
   assert.deepEqual(
     PATCHMILL_RECOMMENDED_SKILL_PACK.source,
     expectedSuperpowersSource,
@@ -113,15 +113,7 @@ test("default pack records pinned external source", () => {
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
     {
-      name: "subagent-dev-with-validation-and-pr-checks",
-      source: "patchmill",
-    },
-    {
-      name: "subagent-dev-with-codex-and-thermo-reviews",
-      source: "patchmill",
-    },
-    {
-      name: "single-subagent-dev-with-codex-and-thermo-reviews",
+      name: "inline-dev-with-validation-and-pr-checks",
       source: "patchmill",
     },
     { name: "module-size", source: "patchmill" },
@@ -193,7 +185,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.09.2",
+      version: "2026.10.1",
       source: expectedSuperpowersSource,
       additionalSources: [expectedSimpleEnglishSource],
     },

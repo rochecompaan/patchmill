@@ -52,14 +52,14 @@ if (!bundledTriageSkill || !bundledVisualEvidenceSkill) {
 export const DEFAULT_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   triage: bundledTriageSkill.configReference,
   planning: "superpowers:writing-plans",
-  implementation: "superpowers:subagent-driven-development",
+  implementation: "superpowers:executing-plans",
   visualEvidence: bundledVisualEvidenceSkill.configReference,
 };
 
 export const GLOBAL_PATCHMILL_SKILLS: PatchmillSkillsConfig = {
   triage: bundledTriageSkill.globalName,
   planning: "superpowers:writing-plans",
-  implementation: "superpowers:subagent-driven-development",
+  implementation: "superpowers:executing-plans",
   visualEvidence: bundledVisualEvidenceSkill.globalName,
 };
 

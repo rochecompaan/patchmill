@@ -62,15 +62,15 @@ description: Write clear technical English.
 `;
 
 const implementationSkill = `---
-name: subagent-driven-development
+name: executing-plans
 description: Execute plans.
 ---
 # Implementation
 `;
 
 const validationReadyImplementationSkill = `---
-name: subagent-dev-with-validation-and-pr-checks
-description: Execute plans with final validation and PR readiness.
+name: inline-dev-with-validation-and-pr-checks
+description: Execute plans inline with final validation and PR readiness.
 ---
 # Subagent Dev with Validation and PR Checks
 `;
@@ -83,11 +83,8 @@ description: Use when executing Patchmill implementation plans that require fina
 `;
 
 const rawTaskImplementationFiles = {
-  "implementer-prompt.md": "implement a task\n",
-  "task-reviewer-prompt.md": "review a task\n",
-  "scripts/review-package": "#!/usr/bin/env bash\n",
-  "scripts/sdd-workspace": "#!/usr/bin/env bash\n",
-  "scripts/task-brief": "#!/usr/bin/env bash\n",
+  "scripts/task-start": "#!/usr/bin/env bash\n",
+  "scripts/task-done": "#!/usr/bin/env bash\n",
 };
 
 const validationWrapperSharedPrompts = {
@@ -136,23 +133,60 @@ async function writeValidationWrapperDependencies(
   skillDir: string,
   options: { executableTaskScripts?: boolean; omit?: string } = {},
 ): Promise<void> {
-  if (options.omit !== "subagent-dev-with-validation-and-pr-checks/SKILL.md") {
+  if (options.omit !== "inline-dev-with-validation-and-pr-checks/SKILL.md") {
     await writeSkill(
       root,
-      `${skillDir}/subagent-dev-with-validation-and-pr-checks`,
+      `${skillDir}/inline-dev-with-validation-and-pr-checks`,
       validationReadyImplementationSkill,
+      options.omit ===
+        "inline-dev-with-validation-and-pr-checks/review-appendix.md"
+        ? {}
+        : { "review-appendix.md": "review policy\n" },
+    );
+  }
+
+  await writeSkill(
+    root,
+    `${skillDir}/subagent-driven-development`,
+    implementationSkill,
+    Object.fromEntries(
+      Object.entries({
+        "scripts/sdd-workspace": "#!/usr/bin/env bash\n",
+        "scripts/task-brief": "#!/usr/bin/env bash\n",
+        "scripts/review-package": "#!/usr/bin/env bash\n",
+      }).filter(
+        ([path]) => `subagent-driven-development/${path}` !== options.omit,
+      ),
+    ),
+  );
+  for (const script of ["sdd-workspace", "task-brief", "review-package"]) {
+    if (options.omit !== `subagent-driven-development/scripts/${script}`) {
+      await chmod(
+        join(root, skillDir, "subagent-driven-development", "scripts", script),
+        0o755,
+      );
+    }
+  }
+  if (options.omit !== "requesting-code-review/SKILL.md") {
+    await writeSkill(
+      root,
+      `${skillDir}/requesting-code-review`,
+      implementationSkill,
+      options.omit === "requesting-code-review/code-reviewer.md"
+        ? {}
+        : { "code-reviewer.md": "review\n" },
     );
   }
 
   const rawFiles = Object.fromEntries(
     Object.entries(rawTaskImplementationFiles).filter(
-      ([path]) => `subagent-driven-development/${path}` !== options.omit,
+      ([path]) => `executing-plans/${path}` !== options.omit,
     ),
   );
-  if (options.omit !== "subagent-driven-development/SKILL.md") {
+  if (options.omit !== "executing-plans/SKILL.md") {
     await writeSkill(
       root,
-      `${skillDir}/subagent-driven-development`,
+      `${skillDir}/executing-plans`,
       implementationSkill,
       rawFiles,
     );
@@ -160,10 +194,7 @@ async function writeValidationWrapperDependencies(
       for (const script of Object.keys(rawFiles).filter((path) =>
         path.startsWith("scripts/"),
       )) {
-        await chmod(
-          join(root, skillDir, "subagent-driven-development", script),
-          0o755,
-        );
+        await chmod(join(root, skillDir, "executing-plans", script), 0o755);
       }
     }
   }
@@ -195,16 +226,16 @@ test("validateExistingSkillDirectory returns local config for path mode", async 
 
 test("validateExistingSkillDirectory fails when validation wrapper runtime dependencies are missing", async () => {
   for (const missingPath of [
-    "subagent-dev-with-validation-and-pr-checks/SKILL.md",
-    "subagent-driven-development/SKILL.md",
-    "subagent-driven-development/implementer-prompt.md",
-    "subagent-driven-development/task-reviewer-prompt.md",
-    "subagent-driven-development/scripts/review-package",
+    "inline-dev-with-validation-and-pr-checks/SKILL.md",
+    "executing-plans/SKILL.md",
+    "inline-dev-with-validation-and-pr-checks/review-appendix.md",
+    "executing-plans/scripts/task-start",
+    "executing-plans/scripts/task-done",
     "subagent-driven-development/scripts/sdd-workspace",
     "subagent-driven-development/scripts/task-brief",
-    "subagent-dev-with-codex-and-thermo-reviews/prompts/final-validation-review.md",
-    "subagent-dev-with-codex-and-thermo-reviews/prompts/fix-review-findings.md",
-    "subagent-dev-with-codex-and-thermo-reviews/prompts/fix-pr-checks.md",
+    "subagent-driven-development/scripts/review-package",
+    "requesting-code-review/SKILL.md",
+    "requesting-code-review/code-reviewer.md",
   ]) {
     const repoRoot = await tempRoot("patchmill-install-repo-");
     await writeBaseProjectLocalSkills(repoRoot);
@@ -233,7 +264,7 @@ test("validateExistingSkillDirectory fails when task implementation scripts are 
 
   await assert.rejects(
     validateExistingSkillDirectory(repoRoot, "project-skills"),
-    /Missing required executable skill file: project-skills\/subagent-driven-development\/scripts\/review-package/,
+    /Missing required executable skill file: project-skills\/executing-plans\/scripts\/task-start/,
   );
 });
 
@@ -279,6 +310,13 @@ test("validateExistingSkillDirectory fails when a required skill is missing", as
     repoRoot,
     "project-skills/patchmill-planning",
     patchmillPlanningSkill,
+  );
+  await writeValidationWrapperDependencies(repoRoot, "project-skills");
+  await writeSkill(
+    repoRoot,
+    "project-skills/patchmill-visual-evidence",
+    "---\nname: patchmill-visual-evidence\ndescription: Capture visual evidence.\n---\n# Visual Evidence\n",
+    { "scripts/capture-visual-evidence.cjs": "#!/usr/bin/env node\n" },
   );
 
   await assert.rejects(

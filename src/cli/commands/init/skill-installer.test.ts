@@ -189,7 +189,18 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     superpowersSource,
     "subagent-driven-development",
     implementationSkill,
+    {
+      "scripts/sdd-workspace": "#!/usr/bin/env bash\n",
+      "scripts/task-brief": "#!/usr/bin/env bash\n",
+      "scripts/review-package": "#!/usr/bin/env bash\n",
+    },
   );
+  for (const script of ["sdd-workspace", "task-brief", "review-package"]) {
+    await chmod(
+      join(superpowersSource, "subagent-driven-development", "scripts", script),
+      0o755,
+    );
+  }
 
   const result = await installProjectSkills({
     repoRoot,
@@ -487,6 +498,18 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       {
         path: ".patchmill/skills/subagent-driven-development/SKILL.md",
         sha256: hashText(implementationSkill),
+      },
+      {
+        path: ".patchmill/skills/subagent-driven-development/scripts/review-package",
+        sha256: hashText("#!/usr/bin/env bash\n"),
+      },
+      {
+        path: ".patchmill/skills/subagent-driven-development/scripts/sdd-workspace",
+        sha256: hashText("#!/usr/bin/env bash\n"),
+      },
+      {
+        path: ".patchmill/skills/subagent-driven-development/scripts/task-brief",
+        sha256: hashText("#!/usr/bin/env bash\n"),
       },
     ],
     {
@@ -950,7 +973,7 @@ test("defaultSkillSourceRoots resolves bundled and dependency skill roots", asyn
   await access(
     join(
       roots.patchmillSkillsDir,
-      "single-subagent-dev-with-codex-and-thermo-reviews",
+      "inline-dev-with-validation-and-pr-checks",
       "SKILL.md",
     ),
   );
