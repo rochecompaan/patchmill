@@ -1549,73 +1549,122 @@ for (const name of [
   "subagent-dev-with-codex-and-thermo-reviews",
   "single-subagent-dev-with-codex-and-thermo-reviews",
 ]) {
-  test(`doctor gives the same migration before and after file removal: ${name}`, async () => {
+  test(`doctor normalizes retired references before and after file removal: ${name}`, async (t) => {
     const repoRoot = await tempRepo();
     try {
-      const path = `.patchmill/skills/${name}/SKILL.md`;
-      await writeConfig(repoRoot, {
-        host: { provider: "forgejo-tea", login: "triage-agent" },
-        skills: { implementation: join(repoRoot, path) },
-      });
-      await writeProjectLocalSkill(
-        repoRoot,
-        name,
-        skillDocument(name, "Retired workflow"),
-      );
-      const configBytes = await readFile(
-        join(repoRoot, "patchmill.config.json"),
-      );
-      const run = () =>
-        runDoctorChecks(runnerFrom(successMocks()), {
-          repoRoot,
-          teaRepoRootForTests: "/repo",
+      const path = `.patchmill/skills/${name}`;
+      const forms = [
+        path,
+        `${path}/SKILL.md`,
+        `./.patchmill/skills/../skills/${name}`,
+        `./.patchmill/skills/../skills/${name}/SKILL.md`,
+        join(repoRoot, path),
+        join(repoRoot, path, "SKILL.md"),
+      ].flatMap((form) => [form, form.replaceAll("/", "\\")]);
+      for (const form of forms) {
+        await t.test(`readable and missing: ${form}`, async () => {
+          await writeConfig(repoRoot, {
+            host: { provider: "forgejo-tea", login: "triage-agent" },
+            skills: { implementation: form },
+          });
+          const skillPath = await writeProjectLocalSkill(
+            repoRoot,
+            name,
+            skillDocument(name, "Retired workflow"),
+          );
+          const configBytes = await readFile(
+            join(repoRoot, "patchmill.config.json"),
+          );
+          const skillBytes = await readFile(skillPath);
+          const calls: string[] = [];
+          const boundary = runnerFrom(successMocks());
+          const runner: CommandRunner = {
+            async run(command, args, options) {
+              calls.push(normalizePiCommandKey(command, args));
+              return boundary.run(command, args, options);
+            },
+          };
+          const run = () =>
+            runDoctorChecks(runner, {
+              repoRoot,
+              teaRepoRootForTests: "/repo",
+            });
+          const present = (await run()).find((item) => item.name === "skills");
+          assert.deepEqual(await readFile(skillPath), skillBytes);
+          await rm(skillPath);
+          const missing = (await run()).find((item) => item.name === "skills");
+          assert.equal(present?.status, "fail", form);
+          assert.equal(missing?.status, "fail", form);
+          assert.equal(missing?.message, present?.message, form);
+          assert.match(
+            present?.message ?? "",
+            /retired managed implementation skill/,
+          );
+          assert.match(
+            present?.message ?? "",
+            /inline-dev-with-validation-and-pr-checks/,
+          );
+          assert.equal(
+            calls.some((call) =>
+              call.includes("Confirm Patchmill project-local skills"),
+            ),
+            false,
+            form,
+          );
+          assert.deepEqual(
+            await readFile(join(repoRoot, "patchmill.config.json")),
+            configBytes,
+          );
         });
-      const present = (await run()).find((item) => item.name === "skills");
-      await rm(join(repoRoot, path));
-      const missing = (await run()).find((item) => item.name === "skills");
-      assert.equal(present?.status, "fail");
-      assert.equal(missing?.message, present?.message);
-      assert.match(
-        present?.message ?? "",
-        /inline-dev-with-validation-and-pr-checks/,
-      );
-      assert.deepEqual(
-        await readFile(join(repoRoot, "patchmill.config.json")),
-        configBytes,
-      );
+      }
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
     }
   });
 }
 
-test("doctor accepts custom basenames without migration", async () => {
-  const repoRoot = await tempRepo();
-  try {
-    const name = "single-subagent-dev-with-codex-and-thermo-reviews";
-    await writeConfig(repoRoot, {
-      host: { provider: "forgejo-tea", login: "triage-agent" },
-      skills: { planning: `custom/${name}`, implementation: `custom/${name}` },
-    });
-    const customPath = await writeSkillFile(
-      join(repoRoot, "custom"),
-      name,
-      skillDocument(name, "Custom workflow"),
-    );
-    const original = await readFile(customPath);
-    const results = await runDoctorChecks(runnerFrom(successMocks()), {
-      repoRoot,
-      teaRepoRootForTests: "/repo",
-    });
-    assert.equal(
-      results.find((item) => item.name === "skills")?.status,
-      "pass",
-    );
-    assert.deepEqual(await readFile(customPath), original);
-  } finally {
-    await rm(repoRoot, { recursive: true, force: true });
-  }
-});
+for (const name of [
+  "subagent-dev-with-validation-and-pr-checks",
+  "subagent-dev-with-codex-and-thermo-reviews",
+  "single-subagent-dev-with-codex-and-thermo-reviews",
+]) {
+  test(`doctor accepts custom basenames with either separator: ${name}`, async () => {
+    const repoRoot = await tempRepo();
+    try {
+      const path = `custom/${name}`;
+      const customPath = await writeSkillFile(
+        join(repoRoot, "custom"),
+        name,
+        skillDocument(name, "Custom workflow"),
+      );
+      const original = await readFile(customPath);
+      const forms = [
+        path,
+        `${path}/SKILL.md`,
+        join(repoRoot, path),
+        customPath,
+      ].flatMap((form) => [form, form.replaceAll("/", "\\")]);
+      for (const form of forms) {
+        await writeConfig(repoRoot, {
+          host: { provider: "forgejo-tea", login: "triage-agent" },
+          skills: { planning: form, implementation: form },
+        });
+        const results = await runDoctorChecks(runnerFrom(successMocks()), {
+          repoRoot,
+          teaRepoRootForTests: "/repo",
+        });
+        assert.equal(
+          results.find((item) => item.name === "skills")?.status,
+          "pass",
+          form,
+        );
+        assert.deepEqual(await readFile(customPath), original);
+      }
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+}
 
 async function nativeDoctorFixture() {
   const repoRoot = await tempRepo();

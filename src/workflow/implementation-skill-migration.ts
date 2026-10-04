@@ -12,7 +12,7 @@ export function retiredManagedImplementationSkill(
   repoRoot: string,
 ): string | undefined {
   const managedRoot = resolve(repoRoot, ".patchmill/skills");
-  const resolved = resolve(repoRoot, skill);
+  const resolved = resolve(repoRoot, skill.replaceAll("\\", "/"));
   const local = relative(managedRoot, resolved).replaceAll("\\", "/");
   if (local === "" || local.startsWith("../") || local === "..")
     return undefined;
