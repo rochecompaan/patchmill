@@ -148,8 +148,14 @@ test("Patchmill planning wrapper annotates sibling Superpowers skills", () => {
   assert.match(planning, /\.\.\/brainstorming\/SKILL\.md/u);
   assert.match(planning, /\.\.\/writing-plans\/SKILL\.md/u);
   assert.match(planning, /\.\.\/simple-english\/SKILL\.md/u);
-  assert.match(planning, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
-  assert.match(planning, /docs\/plans\/YYYY-MM-DD-<feature-name>\.md/u);
+  assert.match(
+    planning,
+    /docs\/specs\/YYYY-MM-DD-issue-<number>-<title-slug>-design\.md/u,
+  );
+  assert.match(
+    planning,
+    /docs\/plans\/YYYY-MM-DD-issue-<number>-<title-slug>\.md/u,
+  );
   assert.match(planning, /issue worktree/u);
   assert.match(planning, /Testing Value Gate/u);
   assert.match(planning, /direct verification/u);

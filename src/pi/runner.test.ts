@@ -65,7 +65,7 @@ function assertBundledPiCall(call: RecordedCall): string[] {
   assert.equal(call.command, process.execPath);
   assert.match(
     call.args[0] ?? "",
-    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\](?:bundle[/\\])?cli\.js$/,
   );
   return call.args.slice(1);
 }

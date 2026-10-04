@@ -17,7 +17,7 @@
       }
     ]
   },
-  "installedAt": "2026-10-04T17:16:34.611Z",
+  "installedAt": "2026-10-04T20:10:48.073Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -91,7 +91,7 @@
     },
     {
       "path": ".patchmill/skills/patchmill-planning/SKILL.md",
-      "sha256": "f52d71bd3f30a062924013fe09a4d6b1b2c9c5e1af1949297cb05866b76d7cc4"
+      "sha256": "bae583d2134cfe2a41c0daf11700772fab388c56c6af6096d4466c3c3476a46c"
     },
     {
       "path": ".patchmill/skills/patchmill-visual-evidence/SKILL.md",
