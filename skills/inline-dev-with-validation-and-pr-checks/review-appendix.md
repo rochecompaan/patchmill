@@ -9,7 +9,9 @@ and no-child boundaries.
 
 Report only discrete, actionable problems introduced or worsened by this diff.
 For each finding, identify an affected path, proven impact, and an actionable
-correction. Do not report speculation about unknown callers or author intent.
+correction. Do not report speculation about unknown callers or author intent. An
+unsupported concern belongs only in Declined to judge for a parent ruling. Do
+not also list it in Issues, even as an explanatory bullet.
 
 An intentional required change is not a defect by itself. Intent does not excuse
 a security fault or a broken requirement. Keep reasonable user expectations in

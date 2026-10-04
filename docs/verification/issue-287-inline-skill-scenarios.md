@@ -108,7 +108,7 @@ the helpers, rather than only describe their intended behavior.
 | Five fresh behavior-shaping samples against the control | Observed; references above                                            |
 | S1-S10 observed dispositions and evidence locations     | Observed; references above                                            |
 | Seven Structure results                                 | Observed in every candidate report                                    |
-| One finding location per finding                        | Observed in the candidate review-shaped reports                       |
+| One finding location per finding                        | Failed in Candidate 2; Candidates 1, 3, 4, and 5 complied             |
 | One reviewer policy and no task-implementer dispatch    | Observed policy; no actual reviewer invocation in synthetic scenarios |
 | Markdown lint after complete candidate evidence         | Recorded below after lint                                             |
 
@@ -129,5 +129,78 @@ saved-plan retry. It does not prove that the refinement passes. The five fresh
 installed S8-S10 samples remain the required retest. Task 5 must consume their
 evidence before implementation completion.
 
-Status: pending Task 5. The migration helper also remains unfinished and needs
-integration, regression tests, and review.
+Status: pending installed actor evidence. Task 3 now integrates migration and
+runtime checks. Its gate passed 114 tests. Logs remain outside the tracked repo.
+
+### S2 refinement
+
+All ten original reports were read again during this resume. Candidate 2 put its
+unsupported S2 bullet in Important Issues and Declined to judge. Its words “not
+Issues” did not make that duplicate location compliant. The appendix now states
+that unsupported concerns belong only in Declined to judge. Five installed
+samples must retest this wording as well as the preserved S8-S10 refinement.
+
+## Planning handoff controls
+
+Five fresh controls read only `skills/patchmill-planning/SKILL.md` and the
+installed `.patchmill/skills/writing-plans/SKILL.md`. Their input hashes were
+`76513769e17916c212d7be7816787381dc7c7830a5f0bffd6d9ca94f888596ad` and
+`a6c67c1900064347c2a329990dd3c555657c51c3ec53b259a08aa01a2c26139a`. Model and
+thinking values were unavailable in all five reports.
+
+Their references resolve under:
+`/home/roche/projects/patchmill/.patchmill/runs/issue-287/run-2026-10-04T16-45-25-378Z-pi-sessions/pi-implementation/invocation-rQPm8C/subagent-artifacts/outputs/1511de3d-bb3c-4ac6-ac1d-6ab15f93801c/scenarios/`.
+
+| Control | Result reference       | Disposable directory                        | H3 observed approval question              |
+| ------- | ---------------------- | ------------------------------------------- | ------------------------------------------ |
+| 1       | `handoff-control-1.md` | `/tmp/patchmill-handoff-control-1.5eEHrY`   | Plan review hold inside illustrative JSON  |
+| 2       | `handoff-control-2.md` | `/tmp/patchmill-handoff-control-2.hLfKxh`   | None; terminal planning response           |
+| 3       | `handoff-control-3.md` | `/tmp/patchmill-handoff-control-3.0lJwAdf1` | Plan review hold inside illustrative JSON  |
+| 4       | `handoff-control-4.md` | `/tmp/patchmill-handoff-control-4.jRxb9E`   | None; supplied transport-only JSON fixture |
+| 5       | `handoff-control-5.md` | `/tmp/patchmill-handoff-control-5.VodcjS`   | None; ready-issue JSON fixture             |
+
+All five preserved Native and Subagent-driven in separate H1 cases. All asked
+for interactive plan review, not a second method choice. H2 explained both
+methods and recommended Native with a plan-based reason. No actor treated the
+recommendation as an authorized selection.
+
+All five preserved the exact configured inline path for H3. Controls 1 and 3
+retained plan approval because their fixtures lacked readiness or approval-skip
+instructions. Controls 2, 4, and 5 returned terminal planning responses without
+another question. These are different fixture assumptions, not fabricated RED.
+All identified the missing inline mapping and the static Subagent-driven plan
+header. None tested a real terminal schema, executor, provider, or reviewer.
+
+The candidate records the configured reference and Native mapping in the plan
+header. It preserves explicit choices and existing planning review gates.
+Installed H1-H3 actor evidence remains pending.
+
+## Runtime regression evidence
+
+Logs: `/tmp/issue-287-validation/`.
+
+- `preflight.log`: all five required setup commands passed, including npm ci,
+  Node v24, CLI version, and the unchanged dependency tree.
+- `task2-controlled-red.log`: a disposable broken copy omitted native helper
+  requirements and forced script permissions. The behavioral assertions failed.
+- `task2-native-green.log`: all 46 cases passed with real source, staged, and
+  custom-root path-mode files. Failed installs published nothing and removed
+  staging. All five scripts retained exact source mode 0751.
+- `task2-gate.log`: 414 installation, config, resolution, and triage tests
+  passed.
+- `task3-red.log`: absent notices and unchecked runtime update/doctor cases
+  failed.
+- `task3-identity-controlled-red.log`: a basename-only disposable helper failed
+  custom-path protection. The saved identity helper already met that behavior.
+- `task3-gate.log`: all 114 migration, update, and doctor tests passed. Config,
+  customized bytes, and unmanaged bytes remained unchanged. Doctor checked a
+  renamed inline directory, its actual appendix, and installed siblings.
+- `task4-red.log`: first attempt had missing test input fields. It is not RED
+  proof.
+- `task4-red-corrected.log`: correct inputs exposed lost handoff choices and
+  compulsory worker/task-review instructions.
+- `task4-green-2.log`: all 27 prompt tests passed. Absent versus explicit custom
+  review already worked before this change; that case does not claim new RED.
+
+The first run-once command timed out at the tool boundary. Its partial output is
+`task4-gate.log`, not a passing result. A complete rerun is required.
