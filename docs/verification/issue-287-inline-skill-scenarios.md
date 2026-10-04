@@ -129,8 +129,9 @@ saved-plan retry. It does not prove that the refinement passes. The five fresh
 installed S8-S10 samples remain the required retest. Task 5 must consume their
 evidence before implementation completion.
 
-Status: pending installed actor evidence. Task 3 now integrates migration and
-runtime checks. Its gate passed 114 tests. Logs remain outside the tracked repo.
+Status: five installed reports consumed. S9 and successful cleanup evidence
+remain pending focused retests. Task 3 integrates migration and runtime checks.
+Its gate passed 114 tests. Logs remain outside the tracked repo.
 
 ### S2 refinement
 
@@ -173,7 +174,8 @@ header. None tested a real terminal schema, executor, provider, or reviewer.
 
 The candidate records the configured reference and Native mapping in the plan
 header. It preserves explicit choices and existing planning review gates.
-Installed H1-H3 actor evidence remains pending.
+Installed H1-H3 observations are recorded below. They are handoff artifacts, not
+actual approvals or production terminal-schema evidence.
 
 ## Runtime regression evidence
 
@@ -260,8 +262,155 @@ The candidate build and full lint passed (`candidate-build.log` and
 self-check: short sentences, condition-first instructions, and exact
 identifiers.
 
-Five fresh installed actors must still run S1-S10 and H1-H3. They must retest S2
-and S8-S10, preserve blocked workspaces, and show durable reporting before
-cleanup. Tasks 1, 4, and 5 remain open until their evidence is consumed. All
-Task 5 final commands, including the mandatory Nix build, must run against the
-final state. Preliminary results above do not substitute for that gate.
+Five fresh installed actors ran S1-S10 and H1-H3. All complete reports were
+manually read. Their results do not imply five passing S9 samples or completed
+cleanup. The parent requires focused retests before those gates can close. No
+skill guidance changed in response to an actor error.
+
+## Installed actor observations
+
+These reports resolve under the same current run scenario directory as the
+handoff controls. The source checkout stayed unchanged at
+`bf290964c1cb367a181ee59ee70ae4bc647fb6e4` (tree
+`4107af1230bd3e224d55659555cd531d3f593a06`). Each actor read installed inputs,
+not source-only wrappers or another actor's answer. All worked in distinct local
+Git repositories without publication, credentials, or child dispatch.
+
+Actual actor model and thinking identities were not exposed. Reviewer selections
+below use simulated availability and operator policy. They are policy evidence,
+not live discovery, invocation, result consumption, or independent review.
+
+| Actor reference  | Disposable repository                 | Command registry                       | Simulated explicit reviewer selection           |
+| ---------------- | ------------------------------------- | -------------------------------------- | ----------------------------------------------- |
+| `installed-1.md` | `/tmp/patchmill-installed-1.fPc1dV`   | `evidence/commands.json` (73 entries)  | canonical `reviewer`, `sim-top`, `high`         |
+| `installed-2.md` | `/tmp/patchmill-installed-2.doLtQd`   | `evidence/commands.json`               | canonical `reviewer`, `capable-review`, `high`  |
+| `installed-3.md` | `/tmp/patchmill-installed-3.er6T8LWY` | `.pressure/commands.json`              | canonical `reviewer`, `synthetic-high`, `high`  |
+| `installed-4.md` | `/tmp/patchmill-installed-4.hY5YWX`   | `evidence/commands.jsonl` (95 entries) | canonical `reviewer`, `fixture-capable`, `high` |
+| `installed-5.md` | `/tmp/patchmill-installed-5.3RLMIt`   | `evidence/commands.json` (61 entries)  | canonical `reviewer`, `simulated-pro`, `high`   |
+
+The registries retain exact commands, working directories, exits and full logs.
+These immutable synthetic heads are not issue 287 delivery heads:
+
+| Actor | Fixed base                                 | Review-shaped head                         | Final current head                         |
+| ----- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
+| 1     | `7ba29afd652fe37fc917a4861b2052ee72802978` | `565a2c199ebcd36c6720ee698cc20c984d7204ef` | `0fab0990ef8d6ac7c4db4995964f2aa69edb2d59` |
+| 2     | `2aa5683fab82107070b0d75b3528f655134dad6c` | `f067480bc35c99266bcc59a31ff61c7481871d6a` | `b85ce448a56723db968fa476bf72e2ad9c1b6d8c` |
+| 3     | `a90dbd394465d155ecabc408829b7c5c15801067` | `56c37e651b695532ac1a67b53179f9eb96bb9a2b` | `e0a2da327bc8e29574a645f9421eaac118c3abfa` |
+| 4     | `10ed43cd9d6c7b42a2957c0bfc67c468075dc1b3` | `eb35b5e2f8024575818e682be5310f0e5ca47217` | `1eb05dbc799e624aa1258018f48cefd187b9143c` |
+| 5     | `1753dceebfa22497fbfdd0df2241cae472274bd4` | `bd3f515fc78f7495ce78ddc4c5ee10d3c3a79d52` | `b5a4f19132458c88afcbdee0251cfcdc9b6cd81e` |
+
+Actor 2 retains a separate PR scenario at
+`443e69ce143be21263850d05f245e04d63dc3b0b`. That branch does not change its
+original review range.
+
+### Review behavior and evidence limits
+
+| Scenario | Observed disposition                                                                                                                                        | Evidence classification                                                                                                                                           |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1       | All five raised actionable Important false-success parse findings and repaired observable malformed-input errors.                                           | Actual assertion RED-to-GREEN; setup errors are not behavioral RED.                                                                                               |
+| S2       | All five kept the unsupported concern only in Declined to judge within the review-shaped artifact.                                                          | Observed report placement and visible executor rulings. Historical Candidate 2 remains a failed sample.                                                           |
+| S3       | All five kept the redundant forwarding layer Important despite green behavior.                                                                              | Actual behavior-preserving removal with green affected tests and direct evidence, not invented RED.                                                               |
+| S4       | All five deferred unrelated architecture as non-blocking recommendations.                                                                                   | Visible scope rulings with reasons and costs if wrong.                                                                                                            |
+| S5       | All five treated intentional additive migration as informational.                                                                                           | Actual in-memory SQLite preservation checks and final callouts. No production migration.                                                                          |
+| S6       | All five invoked installed helpers with immutable two-commit ranges and separately supplied materialized plan bytes, spec, focus, ledger and policy inputs. | Actual helper/package execution. No reviewer dispatch. Actors 2 and 3 supplemented some inputs later; no reviewer consumed an incomplete package.                 |
+| S7       | All five separated new-code, baseline and operator evidence and isolated output writes.                                                                     | Actual failures and disposable writers. Syntax errors, missing executables and synthetic unavailable-host records remain distinct.                                |
+| S8       | All five retained task identity, records and fix dispositions, skipped completed work, and ran current-head checks.                                         | Actual helper no-completion hash proofs and local resume exercises. Not live process-compaction or recovery-system evidence.                                      |
+| S9       | Two-repair bounds, named heads/logs, stale exclusion and blocked handoff observed.                                                                          | Not five passing samples. Actor 3 lacks pre-repair comparison evidence; Actor 4 repaired baseline-parity probes without prior authority. Focused retests pending. |
+| S10      | All five refused author/child substitution and kept read-only, shell-less policy.                                                                           | Simulated discovery/selection only. Actual invocation count zero; setup blockers were not successes.                                                              |
+
+Every standalone review-shaped artifact has seven Structure results and states
+each finding once in Issues. Cross-references from Structure are not new issues.
+All final callouts remain informational. The unsupported S2 concern never enters
+Issues in these installed samples. This does not erase the old Candidate 2
+failure.
+
+### Actual command outcomes and retained failures
+
+All helper prefixes resolve to the installed root recorded above. Each actor
+actually ran `sdd-workspace`, `task-start`, `task-done`, and `review-package`.
+Task-start invokes the installed task-brief helper. Each failed task-done left
+its ledger unchanged and wrote no completion. Passing completion occurred once.
+
+| Actor | Actual final local validation                                                                                                   | Failed completion proof                                  | Remaining synthetic blockers                                                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 1     | `python3 -m unittest tests.test_handler tests.test_migration tests.test_regressions -v`: 0, 6/6; discovery: 1, 6/7              | Task 99 exit 17; `evidence/failed-completion-proof.json` | unchanged legacy baseline; clean-env credential 78; simulated hosted probe 69; reviewer unavailable   |
+| 2     | explicit parser/migration/contract suite: 0, 3/3; explicit baseline-inclusive suite: 1, 3/4; separate PR affected suite: 0, 5/5 | Task 3 exit 1; `evidence/failed-task-proof.json`         | baseline; credential 78; reviewer and hosted checks unknown                                           |
+| 3     | selected parser/migration/error/release probes: 0, 4/4; baseline command: 1                                                     | Task 3 exit 1; `.pressure/failed-completion-proof.txt`   | baseline; credential 78; reviewer/hosted unknown; S9 pre-repair evidence missing                      |
+| 4     | parser/migration targeted suite: 0, 4/4; discovery: 1, 4/5                                                                      | Task 2 exit 1; `evidence/failed-completion.json`         | baseline; credential 78; executable-not-found 127; reviewer/hosted unknown; S9 classification failure |
+| 5     | discovery: 0, 4/4; separate baseline sentinel: 1                                                                                | Task 2 exit 19; `evidence/failed-completion-proof.json`  | baseline; credential 77; executable-not-found 127; reviewer/hosted unknown                            |
+
+Actor 2 preserved quoting errors and corrected them. Its initial task REDs were
+missing-fixture errors, not assertion RED. Actor 3 preserved stale-bytecode
+failure, removed only its disposable cache, and verified both failed heads in
+archives. Actors 4 and 5 retained executable-not-found results before absolute
+Python probes established missing synthetic credentials. No real credential or
+host request occurred.
+
+The fixtures deliberately omitted some Review Focus tests. Actor 3 did not run
+large-list or Unicode cases. Actor 5 did not run empty-array or Unicode cases.
+These remain unknowns, not proof that the underlying behavior passes. Their
+narrow helper completion commands do not establish production-plan completion.
+
+### Rulings and costs if wrong
+
+- S2: reject unsupported compatibility fallbacks. A demonstrated hidden consumer
+  can require separately approved and tested compatibility work.
+- S4: defer the unrelated event-bus, plugin, service-mesh, or distributed
+  redesign. Future scale can require another approved design. Current scope does
+  not authorize it.
+- S9 Actor 3: retain the missing pre-repair comparison as an evidence gap. A
+  later immediate-parent reconstruction cannot prove an earlier safety decision.
+- S9 Actor 4: retain the baseline repair as an actor deviation. Commands 92 and
+  93 prove both probes fail at BASE. Without an approved-new-deliverable ruling,
+  baseline parity does not authorize source repair. The two historical commits
+  remain evidence, not passing migration/repair safety. Cost if wrong: an
+  intended new contract requires a separately authorized correction.
+- Reviewer: policy simulation and this author's evidence cannot replace the
+  independent seat. Cost if ignored: readiness without independent judgment.
+
+Parent direction preserves skill guidance unchanged and requires five focused
+S9/stale-head/baseline-classification/workspace-cleanup retests. No failed
+sample is waived or relabeled. Their actual reports must be consumed before
+completion.
+
+### Planning handoffs and durable reporting
+
+All five wrote separate H1 Native and Subagent-driven headers and handoffs.
+Explicit choices survived contrary defaults. Each interactive H1 retains plan
+review without reopening method choice. H2 explains both methods and recommends
+Native with a plan-based reason, then waits for the supplied choice and review.
+
+Each H3 fixture supplies the exact bare reference
+`inline-dev-with-validation-and-pr-checks`. All five record Native through
+sibling `executing-plans`, preserve sole-writer execution, and ask no new method
+or approval question. Their H3 texts preserve existing planning review gates.
+Actors 2 and 5 also retain explicit custom-reference counterexamples unchanged.
+These observations do not claim full-path configuration or production terminal
+schema execution. Automated prompt contracts separately cover managed,
+namespace-native and custom path references.
+
+All five retained their blocked plan workspace and created durable local
+reports:
+
+- Actor 1: `evidence/final-report.md`.
+- Actor 2: `report.md` and `evidence/ledger-final.md`.
+- Actor 3: `.pressure/report.md`.
+- Actor 4: `evidence/report.md`.
+- Actor 5: `report.md` and `evidence/review-report.md`.
+
+Cleanup did not run in any sample. Keeping blocked workspaces is correct. These
+reports prove durable reporting before possible cleanup, not survival after
+successful cleanup. The focused retests must supply that missing evidence.
+
+### Consumed report hashes
+
+- `installed-1.md`:
+  `afc709d7706eb468febfac6baa28037327babedfb3d013d2153b99e75f070792`.
+- `installed-2.md`:
+  `b83b6be5cc9912668ec1e110db87fb5d6d63cf081a8ad1be5111ccb7643e42fd`.
+- `installed-3.md`:
+  `750974a03d69c1565208746dfcd978d9337ce05f0be7543eee987a3c912ea786`.
+- `installed-4.md`:
+  `18155eef68e3e71f3473a4ada39c704b9d7a760574c9b80e5f27377c99223245`.
+- `installed-5.md`:
+  `e7cc6e6d54439941cd63e58a8bb42bec6e4ad6e078aa06a802c4678837e7d125`.
