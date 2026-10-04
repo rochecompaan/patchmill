@@ -139,6 +139,11 @@ export async function assertSkillFile(
 
   if (options.executable) {
     const mode = (await dependencies.stat(path)).mode;
+    try {
+      await dependencies.access(path, constants.X_OK);
+    } catch {
+      throw new Error(`Missing required executable skill file: ${displayPath}`);
+    }
     if ((mode & 0o111) === 0) {
       throw new Error(`Missing required executable skill file: ${displayPath}`);
     }
