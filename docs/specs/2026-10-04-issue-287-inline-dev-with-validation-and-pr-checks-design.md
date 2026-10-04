@@ -2,9 +2,18 @@
 
 ## Status and intent
 
+Tracking issue: [#287](https://github.com/rochecompaan/patchmill/issues/287).
+This refactor supersedes
+[#265](https://github.com/rochecompaan/patchmill/issues/265).
+
 This spec records the design approved in Pi session
-`01a1057a-49c6-706c-828f-5a9b59debbe6`. The written spec awaits user review.
-Implementation requires a separate approved plan.
+`01a1057a-49c6-706c-828f-5a9b59debbe6`. The spec pull request provides the
+review gate. Implementation requires a separate approved plan.
+
+Before starting a fresh Run-once for issue #287, merge the spec pull request
+into `main`. The issue-numbered filename lets Run-once discover this spec on the
+fetched target base instead of creating a replacement. A PR link or a legacy
+`set-spec` comment alone does not provide that guarantee.
 
 Patchmill users need a reliable implementation workflow, not a choice between
 several overlapping skills. Patchmill must make one recommended choice.
