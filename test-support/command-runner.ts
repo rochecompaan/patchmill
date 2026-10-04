@@ -13,7 +13,7 @@ export function normalizeRecordedPiCall(
 ): RecordedCommandCall {
   if (
     command === process.execPath &&
-    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/.test(
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\](?:bundle[/\\])?cli\.js$/.test(
       args[0] ?? "",
     )
   ) {

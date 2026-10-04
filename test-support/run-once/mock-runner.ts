@@ -18,7 +18,7 @@ export type MockRunner = CommandRunner & { calls: Call[] };
 export function normalizeRecordedPiCall(call: Call): Call {
   if (
     call.command === process.execPath &&
-    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/.test(
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\](?:bundle[/\\])?cli\.js$/.test(
       call.args[0] ?? "",
     )
   ) {
