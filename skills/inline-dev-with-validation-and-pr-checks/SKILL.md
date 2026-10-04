@@ -64,15 +64,19 @@ workflow-materialized file. The package must include these inputs:
 - required commands, results, evidence locations, and their working directory;
 - the installed upstream template and this appendix.
 
-Dispatch one fresh, read-only canonical Pi `reviewer`. Pass the resolved model
-and thinking values explicitly under operator policy. The reviewer must not
-create children or alter the branch. Await and consume its result. Unresolved
-reviewer work prevents a successful terminal result.
+Discover the canonical Pi `reviewer` before review. Select the most capable
+available model under operator policy. Pass its resolved model and thinking
+values explicitly. If no reviewer is available, return the existing reviewer
+setup blocker. Do not substitute author review. The reviewer must not create
+children or alter the branch. Await and consume its result. Unresolved reviewer
+work prevents a successful terminal result.
 
-The reviewer runs required commands as part of this review. Run a command that
-writes files in a disposable copy of the exact reviewed state. Do not publish,
-deploy, change credentials, or modify shared resources without existing
-authorization. Record unavailable evidence and its required operator action.
+The canonical reviewer is shell-less. Keep its read-only tool policy. The parent
+runs required commands at the reviewer's request and supplies the command,
+result, and evidence location. Run a command that writes files in a disposable
+copy of the exact reviewed state. Do not publish, deploy, change credentials, or
+modify shared resources without existing authorization. Record unavailable
+evidence and its required operator action.
 
 Before one ordered fix pass, rule on every declined-to-judge entry and regrade
 findings by their user impact. Record the review reference, reviewed head,
@@ -92,9 +96,13 @@ automatic second review or a repeat-until-approved loop.
 
 ## PR checks and durable handoff
 
-Keep the existing stale failed-head guard. For a code-related failed check, run
-affected validation and make no more than two repair passes. Push normally when
-existing authorization permits it. Never force-push.
+Resume only from matching task, review, and fix records. A review for another
+head is stale. Record the current immutable head, status, and final validation
+before resuming review or landing. Before repairing a failed PR check, compare
+its failed head with the current PR or branch head. Skip stale failures and
+record the mismatch. For a current code-related failure, run affected validation
+and make no more than two repair passes. Push normally when existing
+authorization permits it. Never force-push.
 
 Classify pre-existing failures as validation blockers, and credentials,
 services, runners, permissions, quotas, billing, and host failures as operator

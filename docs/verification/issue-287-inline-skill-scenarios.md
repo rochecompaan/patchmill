@@ -50,10 +50,12 @@ The result references resolve under this run's scenario-artifact directory:
 | S9  | Two failed code-repair records and unobservable checks were recorded.                    | Stop after two repairs. Preserve check names, heads, logs, and blocker status.                                                                        |
 | S10 | The required reviewer was unavailable or proposed child dispatch.                        | Block or enforce the read-only no-child boundary. Do not substitute author review.                                                                    |
 
-The controls already complied with parts of S2 and S6-S10. This baseline does
-not invent a RED result. The candidate wrapper must add the missing explicit
-policy for the complete Structure section, final callouts, one review dispatch,
-and one ordered fix pass.
+The controls already complied with parts of S2 and S6-S10. They also exposed
+policy-shape gaps: Control 1 graded the redundant wrapper Minor, Control 2 put
+the S4 out-of-scope ruling in Important Issues, and Control 5 put the neutral S5
+migration in Important Issues. This baseline does not invent a RED result. The
+candidate wrapper must add explicit policy for the complete Structure section,
+final callouts, one review dispatch, and one ordered fix pass.
 
 ## Candidate wrapper and appendix
 
@@ -77,23 +79,29 @@ used credentials, or dispatched children.
 ### Observed candidate results
 
 All five samples classified S1 as a Critical false-success boundary and S3 as an
-Important structural finding. All kept S2 out of Issues, kept S4 as a ruling
-with a cost if wrong, and treated S5 as an informational migration callout.
+Important structural finding. Candidates 1, 3, 4, and 5 kept S2 out of Issues.
+Candidate 2 incorrectly listed S2 in both Important Issues and Declined to
+judge, despite saying the concern was speculative. This is a failed one-location
+and unsupported-finding sample. All samples kept S4 as a ruling with a cost if
+wrong and treated S5 as an informational migration callout.
 
 All samples required immutable whole-range package binding for S6, separate
 failure classes and disposable output for S7, no duplicate completed task for
-S8, no third repair for S9, and a blocker or no-child boundary for S10. The
-reports state the actual commands that ran and mark unavailable helper or
-hypothetical commands as unknown. Candidates 1, 3, and 4 could not run sibling
-helper scripts in their synthetic repositories. This is an explicit evidence
-gap, not a passing helper result.
+S8, no third repair for S9, and a blocker or no-child boundary for S10. These
+are policy results unless a report records command output. Candidate 1 did not
+execute the requested S7 failure, credential, or output-writing commands.
+Candidates 1, 3, 4, and 5 could not execute sibling helper scripts in their
+synthetic repositories. This is an explicit evidence gap, not a passing helper
+result.
 
-Each candidate supplied all seven Structure results. Findings appear once in
-Issues and Structure refers to them. The candidate reports prescribe one fresh,
-read-only reviewer and no task-implementer dispatch. They did not dispatch a
-reviewer from their disposable scenarios, so this is policy evidence rather than
-an observed reviewer invocation. Task 5 must repeat the scenarios through the
-installed helper paths.
+Each candidate supplied all seven Structure results. Candidate 2 is the
+exception to one-location evidence because it duplicated the unsupported S2
+concern. The candidate reports prescribe one fresh, read-only reviewer and no
+task-implementer dispatch. They did not dispatch a reviewer from their
+disposable scenarios, so this is policy evidence rather than an observed
+reviewer invocation. Task 5 must repeat the scenarios through actual absolute
+installed helper paths in disposable Git repositories. Those samples must run
+the helpers, rather than only describe their intended behavior.
 
 | Required evidence                                       | Status                                                                |
 | ------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -111,4 +119,15 @@ paths, permissions, resolved relative links, model policy, reviewed heads,
 command evidence, rulings, workspace preservation, and cleanup results in this
 section.
 
-Status: pending Task 5.
+This recovery checkpoint preserves an unfinished S8-S10 refinement. Reviewer
+discovery selects the most capable permitted model and blocks without author
+self-review. A shell-less reviewer receives parent-run command evidence. Resume
+and PR repair compare current heads before action.
+
+The operator authorized this checkpoint only to preserve work and unblock the
+saved-plan retry. It does not prove that the refinement passes. The five fresh
+installed S8-S10 samples remain the required retest. Task 5 must consume their
+evidence before implementation completion.
+
+Status: pending Task 5. The migration helper also remains unfinished and needs
+integration, regression tests, and review.
