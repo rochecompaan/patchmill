@@ -39,27 +39,39 @@ and do not create another one. If working ad hoc outside an issue worktree, use
 
 Return artifact paths relative to the repository root.
 
+### Artifact output paths
+
+When the Patchmill prompt supplies an output path, use that exact
+repository-relative path. Keep its directory and filename unchanged. The prompt
+path takes precedence over these examples and upstream skill naming rules.
+Patchmill can use configured directories instead of `docs/specs/` and
+`docs/plans/`.
+
+Do not substitute an upstream `docs/superpowers/` path for the prompt path. For
+ad hoc work without a Patchmill output path, follow the project's artifact
+naming rules.
+
 ### Spec artifacts
 
-When the Patchmill prompt asks for a design spec, use the sibling brainstorming
-workflow as source material, but save the validated design to:
+For design specs, use the sibling brainstorming workflow as source material.
+Save the validated design to the prompt's `Spec output path`.
+
+With the default spec directory, Patchmill generates:
 
 ```text
-docs/specs/YYYY-MM-DD-<topic>-design.md
+docs/specs/YYYY-MM-DD-issue-<number>-<title-slug>-design.md
 ```
-
-Do not save Patchmill specs under `docs/superpowers/`.
 
 ### Plan artifacts
 
-When the Patchmill prompt asks for an implementation plan, use the sibling
-writing-plans workflow as source material, but save the plan to:
+For implementation plans, use the sibling writing-plans workflow as source
+material. Save the plan to the prompt's `Plan output path`.
+
+With the default plan directory, Patchmill generates:
 
 ```text
-docs/plans/YYYY-MM-DD-<feature-name>.md
+docs/plans/YYYY-MM-DD-issue-<number>-<title-slug>.md
 ```
-
-Do not save Patchmill plans under `docs/superpowers/`.
 
 ### Writing style
 
