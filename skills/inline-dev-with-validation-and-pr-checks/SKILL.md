@@ -64,12 +64,18 @@ workflow-materialized file. The package must include these inputs:
 - required commands, results, evidence locations, and their working directory;
 - the installed upstream template and this appendix.
 
-Discover the canonical Pi `reviewer` before review. Select the most capable
-available model under operator policy. Pass its resolved model and thinking
-values explicitly. If no reviewer is available, return the existing reviewer
-setup blocker. Do not substitute author review. The reviewer must not create
-children or alter the branch. Await and consume its result. Unresolved reviewer
-work prevents a successful terminal result.
+Discover `reviewer` within Patchmill’s isolated Pi runtime. The bundled
+`pi-subagents/agents/reviewer.md` supplies its base prompt.
+
+Build the review task from `../requesting-code-review/code-reviewer.md`, add
+`review-appendix.md`, and supply the complete review package. Selecting the role
+does not load these task files automatically.
+
+Select the most capable available model under operator policy. Pass its resolved
+model and thinking values explicitly. If no reviewer is available, return the
+existing reviewer setup blocker. Do not substitute author review. The reviewer
+must not create children or alter the branch. Await and consume its result.
+Unresolved reviewer work prevents a successful terminal result.
 
 The canonical reviewer is shell-less. Keep its read-only tool policy. The parent
 runs required commands at the reviewer's request and supplies the command,

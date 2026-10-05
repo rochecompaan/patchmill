@@ -80,6 +80,11 @@ same role characteristics.
 | `worker`          | Implements production changes                         | Prefer a strong coding model with deeper reasoning  |
 | `reviewer`        | Performs adversarial correctness review               | Prefer an independent, high-capability review model |
 
+## Reviewer prompt mapping
+
+The bundled `pi-subagents/agents/reviewer.md` supplies its base prompt;
+`.patchmill/pi-agent/settings.json` supplies runtime overrides.
+
 ## Understand the settings
 
 - `defaultProvider` and `defaultModel` select the main Patchmill orchestrator
