@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { planningIssueLockPath } from "../../../workflow/planning-issue-lock.ts";
 import { collectProgressEvents } from "../../../../test-support/run-once/assertions.ts";
@@ -402,10 +402,12 @@ test("planning and implementation steps share one attempt-wide token total", asy
     ],
     async (event) => {
       if (event.stage !== "pi-implementation") return;
-      const todoRoot = resolve(
-        config.repoRoot,
-        config.projectPolicy.pi.taskContract.todoRoot,
+      const state = await scenario.state();
+      const phase = state?.phases.find(
+        (phase) => phase.kind === "implementation",
       );
+      assert.ok(phase && "workspace" in phase && phase.workspace.todoRoot);
+      const todoRoot = phase.workspace.todoRoot;
       await mkdir(todoRoot, { recursive: true });
       await writeFile(
         join(todoRoot, "issue-190-progress.md"),
@@ -424,7 +426,7 @@ test("planning and implementation steps share one attempt-wide token total", asy
       now,
       progress: harness.progress,
     });
-    assert.equal(result.status, "pr-created", JSON.stringify(result));
+    assert.equal(result.status, "cleanup-pending", JSON.stringify(result));
     assert.deepEqual(
       completions(harness.events)
         .filter((step) =>

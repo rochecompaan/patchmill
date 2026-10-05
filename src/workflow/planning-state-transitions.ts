@@ -113,8 +113,16 @@ function assertWorkspace(
   allowHeadAdvance: boolean,
   index: number,
 ): void {
+  if (current.todoRoot !== undefined && current.todoRoot !== next.todoRoot)
+    fail("immutable-evidence", index, ".workspace.todoRoot");
   same(
-    workspaceStable(current, allowHeadAdvance),
+    workspaceStable(
+      {
+        ...current,
+        ...(next.todoRoot === undefined ? {} : { todoRoot: next.todoRoot }),
+      },
+      allowHeadAdvance,
+    ),
     workspaceStable(next, allowHeadAdvance),
     index,
   );

@@ -32,7 +32,7 @@ const issue = {
   body: "",
   state: "open" as const,
 };
-test("production artifact agent keeps Pi operator state in the primary repository", async () => {
+test("production artifact agent keeps default todos in its phase workspace", async () => {
   const calls: Array<{ cwd?: string; env?: NodeJS.ProcessEnv }> = [];
   const agent = createPlanningArtifactAgent({
     runner: {
@@ -60,7 +60,7 @@ test("production artifact agent keeps Pi operator state in the primary repositor
     calls[0]?.env?.PI_CODING_AGENT_DIR,
     "/primary/.patchmill/pi-agent",
   );
-  assert.equal(calls[0]?.env?.PI_TODO_PATH, "/primary/.pi/todos");
+  assert.equal(calls[0]?.env?.PI_TODO_PATH, "/phase-worktree/.pi/todos");
 });
 test("resolves mixed base candidates in planner order", () => {
   const result = resolvePlanningPhaseArtifacts({
@@ -219,6 +219,7 @@ test("checkpoints spec before running plan", async () => {
   });
   assert.equal(result.kind, "workspace-ready");
   assert.deepEqual(events, [
+    "checkpoint:",
     "agent:spec",
     "git:spec",
     "checkpoint:spec",
@@ -285,6 +286,7 @@ test("resumes from a saved spec checkpoint without invoking spec again", async (
   });
   assert.equal(result.kind, "workspace-ready");
   assert.deepEqual(calls, [
+    `checkpoint:${oid("b")}`,
     `agent:plan`,
     `git:${oid("b")}`,
     `checkpoint:${oid("c")}`,
@@ -349,7 +351,7 @@ test("stops on blocked spec or checkpoint failure before the plan agent", async 
     },
   });
   assert.equal(blocked.kind, "blocked");
-  assert.deepEqual(calls, ["agent:spec"]);
+  assert.deepEqual(calls, ["checkpoint", "agent:spec"]);
   calls.length = 0;
   await assert.rejects(
     () =>
@@ -372,7 +374,7 @@ test("stops on blocked spec or checkpoint failure before the plan agent", async 
       }),
     /store failed/,
   );
-  assert.deepEqual(calls, ["agent:spec", "git", "checkpoint"]);
+  assert.deepEqual(calls, ["checkpoint"]);
 });
 
 test("rejects invalid artifact path forms before the Git validation seam", async () => {

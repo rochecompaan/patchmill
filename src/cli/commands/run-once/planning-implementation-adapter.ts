@@ -1,4 +1,7 @@
-import { resolve } from "node:path";
+import {
+  resolveResumedIssueTodoContract,
+  resolveIssueTodoContract,
+} from "./issue-todo-contract.ts";
 import type { GitWorktreeStrategyConfig } from "../../../git/types.ts";
 import { runImplementationAgent } from "./implementation-agent.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
@@ -39,6 +42,18 @@ export function createPlanningImplementationAdapter(
   const steps = input.stepAccounting;
   return {
     configuredGit: input.git,
+    resolveTodoRoot: async (phase) =>
+      (
+        await resolveResumedIssueTodoContract({
+          repoRoot: input.config.repoRoot,
+          worktreeRoot: phase.workspace.identity.worktreePath,
+          contract: input.config.projectPolicy.pi.taskContract,
+          issueNumber: input.issue.number,
+          ...(phase.workspace.todoRoot === undefined
+            ? {}
+            : { savedTodoRoot: phase.workspace.todoRoot }),
+        })
+      ).todoRoot,
     runAgent: async ({
       state,
       phase,
@@ -76,13 +91,11 @@ export function createPlanningImplementationAdapter(
         heartbeatMs: input.heartbeatMs,
         piSessionPath: input.piSessionPath,
         requiredPullRequestMarker,
-        taskContract: {
-          ...input.config.projectPolicy.pi.taskContract,
-          todoRoot: resolve(
-            input.config.repoRoot,
-            input.config.projectPolicy.pi.taskContract.todoRoot,
-          ),
-        },
+        taskContract: resolveIssueTodoContract(
+          phase.workspace.identity.worktreePath,
+          input.config.projectPolicy.pi.taskContract,
+          phase.workspace.todoRoot,
+        ),
         progress: (level, stage, message, extras) =>
           progress(
             { progress: input.progressReporter },

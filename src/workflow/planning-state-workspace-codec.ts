@@ -7,6 +7,7 @@ import {
   branch,
   fail,
   object,
+  objectWithOptionalKeys,
   oid,
   phase,
   singleLine,
@@ -31,7 +32,7 @@ export function planningWorkspaceEvidence(
   value: unknown,
   path: string,
 ): PlanningWorkspaceOwnership {
-  const parsed = object(
+  const parsed = objectWithOptionalKeys(
     value,
     [
       "runId",
@@ -43,6 +44,7 @@ export function planningWorkspaceEvidence(
       "headOid",
       "cleanup",
     ],
+    ["todoRoot"],
     path,
   );
   const identity = object(
@@ -122,6 +124,9 @@ export function planningWorkspaceEvidence(
     baseBranch: branch(parsed.baseBranch, `${path}.baseBranch`),
     baseOid: oid(parsed.baseOid, `${path}.baseOid`),
     headOid: oid(parsed.headOid, `${path}.headOid`),
+    ...(parsed.todoRoot === undefined
+      ? {}
+      : { todoRoot: singleLine(parsed.todoRoot, `${path}.todoRoot`) }),
     cleanup: cleanupEvidence,
   } as PlanningWorkspaceOwnership;
 }

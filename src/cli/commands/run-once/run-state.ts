@@ -171,6 +171,9 @@ function mergeRunState(
     worktreePath:
       update.worktreePath ??
       (update.resetCheckpoints ? undefined : existing?.worktreePath),
+    todoRoot:
+      update.todoRoot ??
+      (update.resetCheckpoints ? undefined : existing?.todoRoot),
     specPath: update.specPath ?? existing?.specPath,
     specCommit: update.specCommit ?? existing?.specCommit,
     planPath: update.planPath ?? existing?.planPath,
@@ -207,6 +210,7 @@ function mergeRunState(
   if (next.worktreePath === undefined) {
     delete next.worktreePath;
   }
+  if (next.todoRoot === undefined) delete next.todoRoot;
   if (next.specPath === undefined) {
     delete next.specPath;
   }
@@ -297,6 +301,7 @@ const RUN_STATUSES = new Set([
   "finished",
 ]);
 const RECOVERY_STRING_FIELDS = [
+  "todoRoot",
   "branch",
   "worktreePath",
   "specPath",

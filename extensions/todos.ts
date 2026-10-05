@@ -42,6 +42,7 @@ import {
 	todoCompletionStatus,
 	todoStatusIsDone,
 } from "../src/policy/todo-statuses.ts";
+import { PI_TODO_ISSUE_SCOPE_ENV, parseTodoIssueScope, todoMatchesIssueScope } from "../src/policy/todo-issue-scope.ts";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -108,6 +109,15 @@ function stringEnum(
 	options: Record<string, unknown> = {},
 ) {
 	return Type.Unsafe({ type: "string", enum: [...values], ...options });
+}
+
+function activeTodoIssueScope() {
+	return parseTodoIssueScope(process.env[PI_TODO_ISSUE_SCOPE_ENV]);
+}
+
+function assertTodoScope(todo: Pick<TodoFrontMatter, "title" | "tags">): void {
+	if (!todoMatchesIssueScope(todo, activeTodoIssueScope()))
+		throw new Error("Todo belongs to another Issue; this Run attempt cannot read or change it");
 }
 
 function activeTodoDoneStatuses(): string[] {
@@ -804,7 +814,7 @@ async function readTodoSettings(todosDir: string): Promise<TodoSettings> {
 }
 
 async function garbageCollectTodos(todosDir: string, settings: TodoSettings): Promise<void> {
-	if (!settings.gc) return;
+	if (activeTodoIssueScope() !== undefined || !settings.gc) return;
 
 	let entries: string[] = [];
 	try {
@@ -975,10 +985,13 @@ async function ensureTodosDir(todosDir: string) {
 
 async function readTodoFile(filePath: string, idFallback: string): Promise<TodoRecord> {
 	const content = await fs.readFile(filePath, "utf8");
-	return parseTodoContent(content, idFallback);
+	const todo = parseTodoContent(content, idFallback);
+	assertTodoScope(todo);
+	return todo;
 }
 
 async function writeTodoFile(filePath: string, todo: TodoRecord) {
+	assertTodoScope(todo);
 	await fs.writeFile(filePath, serializeTodo(todo), "utf8");
 }
 
@@ -1005,6 +1018,8 @@ async function acquireLock(
 	id: string,
 	ctx: ExtensionContext,
 ): Promise<(() => Promise<void>) | { error: string }> {
+	const todoPath = getTodoPath(todosDir, id);
+	if (activeTodoIssueScope() !== undefined && existsSync(todoPath)) await readTodoFile(todoPath, id);
 	const lockPath = getLockPath(todosDir, id);
 	const now = Date.now();
 	const session = ctx.sessionManager.getSessionFile();
@@ -1087,6 +1102,7 @@ async function listTodos(todosDir: string): Promise<TodoFrontMatter[]> {
 			const content = await fs.readFile(filePath, "utf8");
 			const { frontMatter } = splitFrontMatter(content);
 			const parsed = parseFrontMatter(frontMatter, id);
+			if (!todoMatchesIssueScope({ title: parsed.title, tags: parsed.tags ?? [] }, activeTodoIssueScope())) continue;
 			todos.push({
 				id,
 				title: parsed.title,
@@ -1120,6 +1136,7 @@ function listTodosSync(todosDir: string): TodoFrontMatter[] {
 			const content = readFileSync(filePath, "utf8");
 			const { frontMatter } = splitFrontMatter(content);
 			const parsed = parseFrontMatter(frontMatter, id);
+			if (!todoMatchesIssueScope({ title: parsed.title, tags: parsed.tags ?? [] }, activeTodoIssueScope())) continue;
 			todos.push({
 				id,
 				title: parsed.title,
@@ -1493,6 +1510,8 @@ export default function todosExtension(pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const todosDir = getTodosDir(ctx.cwd);
 			const action: TodoAction = params.action;
+			activeTodoIssueScope();
+			if (action === "create") assertTodoScope({ title: params.title ?? "", tags: params.tags ?? [] });
 
 			switch (action) {
 				case "list": {

@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { PI_TODO_ISSUE_SCOPE_ENV } from "../src/policy/todo-issue-scope.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -25,10 +33,12 @@ type RegisteredTool = {
   ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
 };
 
-function registerTodoTool(): RegisteredTool {
+function registerTodoTool(
+  on?: (name: string, callback: (...args: never[]) => Promise<void>) => void,
+): RegisteredTool {
   let tool: RegisteredTool | undefined;
   todosExtension({
-    on: () => undefined,
+    on: on ?? (() => undefined),
     registerCommand: () => undefined,
     registerTool: (registered: RegisteredTool) => {
       tool = registered;
@@ -37,6 +47,105 @@ function registerTodoTool(): RegisteredTool {
   assert.ok(tool);
   return tool;
 }
+
+test("shared todo scope preserves old completed tasks and refuses every foreign ID mutation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-shared-todos-"));
+  const previousPath = process.env.PI_TODO_PATH;
+  const previousScope = process.env[PI_TODO_ISSUE_SCOPE_ENV];
+  process.env.PI_TODO_PATH = dir;
+  process.env[PI_TODO_ISSUE_SCOPE_ENV] = JSON.stringify({
+    titlePattern: "^issue-226-task-.*$",
+    tags: ["issue-226"],
+  });
+  let startup!: (...args: never[]) => Promise<void>;
+  const body = `${JSON.stringify({ id: "abcdef01", title: "issue-227-task-01-old", tags: ["issue-227"], status: "closed", created_at: "2020-01-01T00:00:00.000Z" })}\n\nDo not collect\n`;
+  await writeFile(join(dir, "abcdef01.md"), body);
+  const ctx = {
+    cwd: dir,
+    sessionManager: {
+      getSessionId: () => "issue-226",
+      getSessionFile: () => "issue-226.json",
+    },
+  };
+  try {
+    const tool = registerTodoTool((name, callback) => {
+      if (name === "session_start") startup = callback;
+    });
+    await startup({} as never, ctx as never);
+    assert.equal(
+      await readFile(join(dir, "abcdef01.md"), "utf8").catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT")
+          return undefined;
+        throw error;
+      }),
+      body,
+    );
+    const signal = new AbortController().signal;
+    const listed = await tool.execute(
+      "list",
+      { action: "list-all" },
+      signal,
+      () => undefined,
+      ctx,
+    );
+    assert.doesNotMatch(listed.content[0].text, /issue-227/u);
+    for (const action of [
+      "get",
+      "update",
+      "append",
+      "delete",
+      "claim",
+      "release",
+    ]) {
+      await assert.rejects(
+        tool.execute(
+          action,
+          {
+            action,
+            id: "abcdef01",
+            title: "issue-226-task-01-override",
+            body: "overwrite",
+            force: true,
+          },
+          signal,
+          () => undefined,
+          ctx,
+        ),
+        /another Issue/u,
+      );
+      assert.equal(await readFile(join(dir, "abcdef01.md"), "utf8"), body);
+    }
+    assert.deepEqual(
+      (await readdir(dir)).filter((name) => name.endsWith(".lock")),
+      [],
+    );
+    await assert.rejects(
+      tool.execute(
+        "foreign-create",
+        { action: "create", title: "issue-227-task-01-new" },
+        signal,
+        () => undefined,
+        ctx,
+      ),
+      /another Issue/u,
+    );
+    const created = await tool.execute(
+      "own-create",
+      { action: "create", title: "issue-226-task-01-new", tags: ["issue-226"] },
+      signal,
+      () => undefined,
+      ctx,
+    );
+    assert.match(created.content[0].text, /issue-226-task-01-new/u);
+  } finally {
+    if (previousPath === undefined) delete process.env.PI_TODO_PATH;
+    else process.env.PI_TODO_PATH = previousPath;
+    if (previousScope === undefined)
+      delete process.env[PI_TODO_ISSUE_SCOPE_ENV];
+    else process.env[PI_TODO_ISSUE_SCOPE_ENV] = previousScope;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("todo extension groups complete todos as closed and blocks claims", async () => {
   const previous = process.env[PI_TODO_DONE_STATUSES_ENV];

@@ -69,6 +69,9 @@ export type PlanningImplementationInput = {
     | AgentIssueMergedResult
     | AgentIssueInternalBlockedResult
   >;
+  resolveTodoRoot?: (
+    phase: ImplementationWorkspaceReadyPlanningPhase,
+  ) => Promise<string>;
   resolveRunCost?: () => Promise<RunCostReport | undefined>;
   workspaceCreated?: boolean;
   now?: () => Date;
@@ -113,6 +116,11 @@ export async function runPlanningImplementation(
           }),
         ),
       };
+    if (input.resolveTodoRoot && phase.workspace.todoRoot === undefined) {
+      const todoRoot = await input.resolveTodoRoot(phase);
+      phase = { ...phase, workspace: { ...phase.workspace, todoRoot } };
+      state = await replace(state, phase);
+    }
     let result: Awaited<ReturnType<PlanningImplementationInput["runAgent"]>>;
     try {
       result = await input.runAgent({

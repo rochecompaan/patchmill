@@ -205,7 +205,7 @@ const interruptionStateExpectations: Readonly<
 > = {
   "after-phase-push": {
     preDeniedWrite: {
-      revision: 2,
+      revision: 3,
       phases: [
         phase("spec", "workspace-ready", "ready"),
         phase("plan", "pending"),
@@ -213,7 +213,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 3,
+      revision: 4,
       phases: [
         phase("spec", "branch-pushed", "ready"),
         phase("plan", "pending"),
@@ -223,7 +223,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-planning-pull-request-create": {
     preDeniedWrite: {
-      revision: 3,
+      revision: 4,
       phases: [
         phase("spec", "branch-pushed", "ready"),
         phase("plan", "pending"),
@@ -231,7 +231,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 4,
+      revision: 5,
       phases: [
         phase("spec", "pull-request-open", "ready"),
         phase("plan", "pending"),
@@ -241,7 +241,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-worktree-remove": {
     preDeniedWrite: {
-      revision: 4,
+      revision: 5,
       phases: [
         phase("spec", "pull-request-open", "ready"),
         phase("plan", "pending"),
@@ -249,7 +249,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 5,
+      revision: 6,
       phases: [
         phase("spec", "pull-request-open", "worktree-removed"),
         phase("plan", "pending"),
@@ -259,7 +259,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-local-branch-remove": {
     preDeniedWrite: {
-      revision: 5,
+      revision: 6,
       phases: [
         phase("spec", "pull-request-open", "worktree-removed"),
         phase("plan", "pending"),
@@ -267,7 +267,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 6,
+      revision: 7,
       phases: [
         phase("spec", "pull-request-open", "removed"),
         phase("plan", "pending"),
@@ -277,7 +277,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-planning-merge-observation": {
     preDeniedWrite: {
-      revision: 6,
+      revision: 7,
       phases: [
         phase("spec", "pull-request-open", "removed"),
         phase("plan", "pending"),
@@ -285,7 +285,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 7,
+      revision: 8,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "pending"),
@@ -295,7 +295,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-implementation-pull-request-validation": {
     preDeniedWrite: {
-      revision: 17,
+      revision: 20,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -303,7 +303,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 18,
+      revision: 21,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -313,7 +313,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-handoff-comment": {
     preDeniedWrite: {
-      revision: 20,
+      revision: 23,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -324,7 +324,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 21,
+      revision: 24,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -338,7 +338,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-cleanup-hook": {
     preDeniedWrite: {
-      revision: 21,
+      revision: 24,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -350,7 +350,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 22,
+      revision: 25,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -365,7 +365,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-implementation-worktree-remove": {
     preDeniedWrite: {
-      revision: 22,
+      revision: 25,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -378,7 +378,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 23,
+      revision: 26,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -393,7 +393,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-done-label": {
     preDeniedWrite: {
-      revision: 25,
+      revision: 28,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -407,7 +407,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 26,
+      revision: 29,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),

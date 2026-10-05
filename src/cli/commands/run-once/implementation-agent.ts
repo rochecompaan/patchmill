@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { resolveIssueTodoContract } from "./issue-todo-contract.ts";
 import type { PatchmillPiTaskContract } from "../../../policy/task-contract.ts";
 import {
   profileExtensionArgs,
@@ -81,6 +82,11 @@ export async function runImplementationAgent(
   input: ImplementationAgentInput,
 ): Promise<ImplementationAgentOutcome> {
   const worktreeRoot = resolve(input.config.repoRoot, input.worktreePath);
+  const taskContract = resolveIssueTodoContract(
+    worktreeRoot,
+    input.taskContract ?? input.config.projectPolicy.pi.taskContract,
+    input.resume.existingState?.todoRoot,
+  );
   let developmentEnvironment;
   if (input.config.skills.developmentEnvironment) {
     const environment = await runDevelopmentEnvironmentAgent({
@@ -115,8 +121,6 @@ export async function runImplementationAgent(
       issueNumber: input.issue.number,
     },
   );
-  const taskContract =
-    input.taskContract ?? input.config.projectPolicy.pi.taskContract;
   const taskProgress = await createImplementationTaskProgress({
     repoRoot: input.config.repoRoot,
     worktreeRoot,

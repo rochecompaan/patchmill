@@ -14,6 +14,10 @@ import {
   successfulImplementationFromState,
 } from "./pipeline-lifecycle.ts";
 import { writeRunState } from "./run-state.ts";
+import {
+  resolveIssueTodoContract,
+  resolveResumedIssueTodoContract,
+} from "./issue-todo-contract.ts";
 import type { IssueWorktreeResult } from "./git.ts";
 import type {
   AgentIssueConfig,
@@ -125,12 +129,27 @@ export async function runPipelineImplementationStage(
         "Saved implementation state",
       );
 
+    const taskContract = options.resumableState
+      ? await resolveResumedIssueTodoContract({
+          repoRoot: options.config.repoRoot,
+          worktreeRoot: join(options.config.repoRoot, options.worktreePath),
+          contract: options.config.projectPolicy.pi.taskContract,
+          issueNumber: options.issue.number,
+          ...(options.existingState?.todoRoot === undefined
+            ? {}
+            : { savedTodoRoot: options.existingState.todoRoot }),
+        })
+      : resolveIssueTodoContract(
+          join(options.config.repoRoot, options.worktreePath),
+          options.config.projectPolicy.pi.taskContract,
+        );
     await writeRunState(
       options.config.runStateDir,
       {
         issueNumber: options.issue.number,
         status: "implementing",
         ...details,
+        todoRoot: taskContract.todoRoot,
         checkpoints: { worktreeReady: true },
       },
       options.lease,
@@ -153,6 +172,7 @@ export async function runPipelineImplementationStage(
         worktreePath: options.worktreePath,
         worktree: options.worktree,
         git: options.worktreeStrategy,
+        taskContract,
         resume: {
           resumed: options.resumableState,
           existingState: options.existingState,
@@ -212,7 +232,7 @@ export async function runPipelineImplementationStage(
     await assertIssueTodosComplete(
       join(options.config.repoRoot, options.worktreePath),
       options.issue.number,
-      options.config.projectPolicy.pi.taskContract,
+      taskContract,
     );
     return {
       kind: alreadyImplemented ? "already-implemented" : "implemented",

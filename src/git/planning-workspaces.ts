@@ -93,6 +93,7 @@ export type PlanningWorkspaceOwnership<
   baseBranch: string;
   baseOid: string;
   headOid: string;
+  todoRoot?: string;
   cleanup: Cleanup;
 }>;
 

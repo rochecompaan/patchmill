@@ -159,6 +159,7 @@ export type AgentIssueRunState = {
   status: AgentIssueRunStateStatus;
   branch?: string | undefined;
   worktreePath?: string | undefined;
+  todoRoot?: string | undefined;
   specPath?: string | undefined;
   specCommit?: string | undefined;
   planPath?: string | undefined;
@@ -194,6 +195,7 @@ export type AgentIssueRunStateUpdate = {
   title?: string | undefined;
   branch?: string | undefined;
   worktreePath?: string | undefined;
+  todoRoot?: string | undefined;
   specPath?: string | undefined;
   specCommit?: string | undefined;
   planPath?: string | undefined;
