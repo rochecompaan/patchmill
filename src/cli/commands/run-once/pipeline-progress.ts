@@ -3,6 +3,8 @@ import type { AgentIssuePipelineResult } from "./types.ts";
 
 export type PipelineProgressOptions = {
   now?: Date | undefined;
+  attemptId?: string | undefined;
+  lease?: import("./types.ts").IssueRunLease | undefined;
   progress?: ProgressReporter | undefined;
   logPath?: string | undefined;
   piSessionPath?: string | undefined;
@@ -25,6 +27,7 @@ export async function progress(
     level,
     stage,
     message,
+    ...(options.attemptId ? { attemptId: options.attemptId } : {}),
     ...extras,
   });
 }

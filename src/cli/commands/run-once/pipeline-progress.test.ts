@@ -32,8 +32,13 @@ test("emitSimpleStep emits start and complete", async () => {
 
 test("runPiSessionPath stores session logs beside issue run logs", () => {
   assert.equal(
-    runPiSessionPath(".patchmill/runs", "2026-07-16T09:00:00.000Z", 92),
-    ".patchmill/runs/issue-92/run-2026-07-16T09-00-00-000Z-pi-sessions",
+    runPiSessionPath(
+      ".patchmill/runs",
+      "2026-07-16T09:00:00.000Z",
+      "attempt",
+      92,
+    ),
+    ".patchmill/runs/issue-92/run-2026-07-16T09-00-00-000Z-attempt-pi-sessions",
   );
 });
 

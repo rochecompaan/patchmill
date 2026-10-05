@@ -190,6 +190,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   const streamedPiOutput: string[] = [];
   const result = await runOneIssue(runner, config, {
     now: NOW,
+    attemptId: "implementation-attempt",
     progress,
     logPath,
     streamPiOutput: (chunk) => streamedPiOutput.push(chunk),
@@ -200,7 +201,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   const expectedPiSessionPath = join(
     config.runStateDir,
     "issue-15",
-    "run-2026-05-09T12-00-00-000Z-pi-sessions",
+    "run-2026-05-09T12-00-00-000Z-implementation-attempt-pi-sessions",
   );
   assert.equal(result.piSessionPath, expectedPiSessionPath);
   const piSessionDirs = sessionDirs(workflowPiCalls(runner.calls));

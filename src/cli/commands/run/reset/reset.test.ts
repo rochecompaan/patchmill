@@ -10,7 +10,8 @@ import {
   configuredWorktreeStrategy,
   expectedIssueWorkspace,
 } from "../../run-once/pipeline-workspace.ts";
-import { runStatePath, writeRunState } from "../../run-once/run-state.ts";
+import { runStatePath } from "../../run-once/run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../../test-support/run-once/run-state-fixture.ts";
 import {
   blockedRecoveryRunner,
   makeConfig,

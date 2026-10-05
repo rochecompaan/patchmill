@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
@@ -70,6 +71,7 @@ import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import {
   assertIssueRunLeaseOwned,
+  requireIssueRunLease,
   withIssueRunLease,
 } from "./recovery-lease.ts";
 import { formatRunRecoveryDecision } from "./recovery.ts";
@@ -114,7 +116,10 @@ export async function runLegacyOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  return runLegacyOneIssueInternal(runner, config, options);
+  return runLegacyOneIssueInternal(runner, config, {
+    ...options,
+    attemptId: options.attemptId ?? randomUUID(),
+  });
 }
 
 /** Runs one already-selected legacy issue without returning to advisory selection. */
@@ -129,6 +134,8 @@ export async function runLegacyOneIssueForSelection(
       kind: "pipeline-result",
       result: await runLegacyOneIssueInternal(runner, config, {
         ...options,
+        attemptId:
+          options.attemptId ?? options.lease?.record.ownerToken ?? randomUUID(),
         leasedIssueNumber: issueNumber,
         classifySelectionRejection: true,
       }),
@@ -153,6 +160,7 @@ export async function runLegacyOneIssueAfterReset(
   return runLegacyOneIssueInternal(runner, config, {
     ...options,
     lease: reset.lease,
+    attemptId: reset.lease.record.ownerToken,
     reset: { seed: reset.seed },
   });
 }
@@ -346,6 +354,7 @@ async function runLegacyOneIssueInternal(
   const piSessionPath = runPiSessionPath(
     config.runStateDir,
     timestamp,
+    options.attemptId ?? options.lease?.record.ownerToken ?? randomUUID(),
     issue.number,
   );
   const runOptions = { ...options, piSessionPath };
@@ -372,6 +381,7 @@ async function runLegacyOneIssueInternal(
     );
   }
 
+  const lease = requireIssueRunLease(options.lease);
   const ignoredPaths = cleanStatusIgnoredPaths(
     config,
     runOptions.logPath === undefined ? {} : { logPath: runOptions.logPath },
@@ -655,6 +665,7 @@ async function runLegacyOneIssueInternal(
             title: issue.title,
             seed: options.reset.seed,
           },
+          lease,
           timestamp,
         );
       } else {
@@ -676,6 +687,7 @@ async function runLegacyOneIssueInternal(
                 status: existingState.status,
                 blockerCommentKeys: [blockerCommentKey(blocked)],
               },
+              lease,
               timestamp,
             );
         }
@@ -691,6 +703,7 @@ async function runLegacyOneIssueInternal(
             clearBlockerQuestions: recoveringBlocked,
             leaseProtocolVersion: 1,
           },
+          lease,
           timestamp,
         );
       }
@@ -712,6 +725,7 @@ async function runLegacyOneIssueInternal(
           status: "claimed",
           checkpoints: { startedCommentPosted: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.startedCommentPosted = true;
@@ -814,11 +828,13 @@ async function runLegacyOneIssueInternal(
           planPath: resolvedArtifacts.plan?.path,
           planCommit: resolvedArtifacts.plan?.commit,
         },
+        lease,
         timestamp,
       );
     }
 
     const planningStages = await advancePlanningStages({
+      lease,
       runner,
       host,
       config,
@@ -901,6 +917,7 @@ async function runLegacyOneIssueInternal(
       );
     }
     const implementationStage = await runPipelineImplementationStage({
+      lease,
       runner,
       host,
       config,
@@ -967,6 +984,7 @@ async function runLegacyOneIssueInternal(
     });
 
     const finishStage = await runPipelineFinishStage({
+      lease,
       runner,
       host,
       config,

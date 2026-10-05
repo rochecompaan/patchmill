@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { readRunState, runStatePath, writeRunState } from "./run-state.ts";
+import { readRunState, runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import {
   issue,
@@ -235,12 +236,15 @@ test("runOneIssue runs development environment before implementation when config
     });
 
   assert.equal(result.status, "pr-created");
-  const expectedPiSessionPath = join(
-    config.runStateDir,
-    "issue-46",
-    "run-2026-05-09T12-00-00-000Z-pi-sessions",
+  const expectedPiSessionPath = result.piSessionPath!;
+  assert.equal(
+    dirname(expectedPiSessionPath),
+    join(config.runStateDir, "issue-46"),
   );
-  assert.equal(result.piSessionPath, expectedPiSessionPath);
+  assert.match(
+    basename(expectedPiSessionPath),
+    /^run-2026-05-09T12-00-00-000Z-[0-9a-f-]{36}-pi-sessions$/u,
+  );
   const piSessionDirs = sessionDirs(workflowPiCalls(runner.calls));
   const developmentEnvironmentDir = piSessionDirs.find(
     (dir) =>

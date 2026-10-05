@@ -119,27 +119,36 @@ function completions(
   );
 }
 
+function runStartEvents(
+  events: ReturnType<typeof collectProgressEvents>["events"],
+) {
+  return events
+    .filter((event) => event.step?.type === "run-start")
+    .map(({ attemptId, runId, ...event }) => {
+      assert.match(attemptId ?? "", /^[0-9a-f-]{36}$/u);
+      assert.match(runId ?? "", /^[0-9a-f-]{36}$/u);
+      return event;
+    });
+}
+
 function assertProviderScenarioRunStart(
   events: ReturnType<typeof collectProgressEvents>["events"],
   now: Date,
 ) {
-  assert.deepEqual(
-    events.filter((event) => event.step?.type === "run-start"),
-    [
-      {
-        time: now.toISOString(),
-        level: "info",
-        stage: "run",
-        message: "issue #190 · Provider scenario",
+  assert.deepEqual(runStartEvents(events), [
+    {
+      time: now.toISOString(),
+      level: "info",
+      stage: "run",
+      message: "issue #190 · Provider scenario",
+      issueNumber: 190,
+      step: {
+        type: "run-start",
         issueNumber: 190,
-        step: {
-          type: "run-start",
-          issueNumber: 190,
-          title: "Provider scenario",
-        },
+        title: "Provider scenario",
       },
-    ],
-  );
+    },
+  ]);
 }
 
 test("planning facade announces an attempt before an active lock stops it", async () => {
@@ -191,23 +200,20 @@ test("planning facade announces an attempt before an active lock stops it", asyn
       runner.calls.some((call) => call.args.includes("edit")),
       false,
     );
-    assert.deepEqual(
-      events.filter((event) => event.step?.type === "run-start"),
-      [
-        {
-          time: NOW.toISOString(),
-          level: "info",
-          stage: "run",
-          message: "issue #245 · Planning progress",
+    assert.deepEqual(runStartEvents(events), [
+      {
+        time: NOW.toISOString(),
+        level: "info",
+        stage: "run",
+        message: "issue #245 · Planning progress",
+        issueNumber: 245,
+        step: {
+          type: "run-start",
           issueNumber: 245,
-          step: {
-            type: "run-start",
-            issueNumber: 245,
-            title: "Planning progress",
-          },
+          title: "Planning progress",
         },
-      ],
-    );
+      },
+    ]);
   } finally {
     await rm(config.repoRoot, { recursive: true, force: true });
   }

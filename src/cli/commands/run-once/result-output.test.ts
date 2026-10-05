@@ -95,17 +95,23 @@ test("fails rather than splitting a result log when its preliminary log cannot r
   const dir = await mkdtemp(join(tmpdir(), "patchmill-final-log-"));
   const preliminaryLogPath = join(dir, "missing.jsonl");
   await assert.rejects(
-    finalLogPath(preliminaryLogPath, dir, "2026-08-22T11:00:00.000Z", {
-      status: "spec-created",
-      issue: {
-        number: 174,
-        title: "Issue",
-        body: "",
-        labels: [],
-        state: "open",
-      },
-      specPath: "docs/specs/result.md",
-    } satisfies AgentIssuePipelineResult),
+    finalLogPath(
+      preliminaryLogPath,
+      dir,
+      "2026-08-22T11:00:00.000Z",
+      {
+        status: "spec-created",
+        issue: {
+          number: 174,
+          title: "Issue",
+          body: "",
+          labels: [],
+          state: "open",
+        },
+        specPath: "docs/specs/result.md",
+      } satisfies AgentIssuePipelineResult,
+      "attempt",
+    ),
     /ENOENT/u,
   );
 });

@@ -245,6 +245,13 @@ export async function acquireIssueRunLease(
     await releaseGuard();
   }
 }
+export function requireIssueRunLease(
+  lease: IssueRunLease | undefined,
+): IssueRunLease {
+  if (!lease) throw new Error("An Issue run lease is required for mutation");
+  return lease;
+}
+
 /** Verifies a borrowed lease before it performs an Issue-owned effect. */
 export async function assertIssueRunLeaseOwned(
   lease: IssueRunLease,

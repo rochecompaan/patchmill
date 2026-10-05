@@ -26,6 +26,7 @@ export type PipelineFinishStageResult =
   | { kind: "unexpected"; error: Error };
 
 export type PipelineFinishStageOptions = {
+  lease: import("./types.ts").IssueRunLease;
   runner: CommandRunner;
   host: RunOnceHostProvider;
   config: AgentIssueConfig;
@@ -113,6 +114,7 @@ export async function runPipelineFinishStage(
         handoffCommentPosted: checkpoints.handoffCommentPosted === true,
         checkpoints: { implementationCompleted: true },
       },
+      options.lease,
       timestamp,
     );
     checkpoints.implementationCompleted = true;
@@ -135,6 +137,7 @@ export async function runPipelineFinishStage(
             status: "implementing",
             checkpoints: { prCostSummaryUpdated: true },
           },
+          options.lease,
           timestamp,
         );
         checkpoints.prCostSummaryUpdated = true;
@@ -200,6 +203,7 @@ export async function runPipelineFinishStage(
           visualEvidence: validatedEvidence,
           checkpoints: { visualEvidenceValidated: true },
         },
+        options.lease,
         timestamp,
       );
       checkpoints.visualEvidenceValidated = true;
@@ -224,6 +228,7 @@ export async function runPipelineFinishStage(
           handoffCommentPosted: true,
           checkpoints: { handoffCommentPosted: true },
         },
+        options.lease,
         timestamp,
       );
       checkpoints.handoffCommentPosted = true;
@@ -245,6 +250,7 @@ export async function runPipelineFinishStage(
           worktreePath,
           checkpoints: { doneLabelEnsured: true },
         },
+        options.lease,
         timestamp,
       );
       checkpoints.doneLabelEnsured = true;
@@ -284,6 +290,7 @@ export async function runPipelineFinishStage(
           worktreePath,
           checkpoints: { doneLabelApplied: true },
         },
+        options.lease,
         timestamp,
       );
       checkpoints.doneLabelApplied = true;
@@ -311,6 +318,7 @@ export async function runPipelineFinishStage(
         worktreePath,
         clearLastError: true,
       },
+      options.lease,
       timestamp,
     );
 

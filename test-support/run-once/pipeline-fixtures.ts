@@ -8,10 +8,8 @@ import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { createPatchmillLabelCatalog } from "../../src/policy/label-catalog.ts";
 import { createWorkflowApprovalPolicy } from "../../src/workflow/approval-policy.ts";
 import { runLegacyOneIssue as runOneIssue } from "../../src/cli/commands/run-once/pipeline-legacy.ts";
-import {
-  runStatePath,
-  writeRunState,
-} from "../../src/cli/commands/run-once/run-state.ts";
+import { runStatePath } from "../../src/cli/commands/run-once/run-state.ts";
+import { writeFixtureRunState as writeRunState } from "./run-state-fixture.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,

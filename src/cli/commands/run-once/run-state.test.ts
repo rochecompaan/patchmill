@@ -9,10 +9,13 @@ import {
   isResumableRunState,
   readRunState,
   readRunStateSnapshot,
-  replaceRunStateAfterReset,
   runStatePath,
-  writeRunState,
 } from "./run-state.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
+import {
+  writeFixtureRunState as writeRunState,
+  replaceFixtureRunStateAfterReset as replaceRunStateAfterReset,
+} from "../../../../test-support/run-once/run-state-fixture.ts";
 
 test("writeRunState creates issue run-state files", async () => {
   const repoRoot = await mkdtemp(join(tmpdir(), "agent-issue-run-state-"));
@@ -592,24 +595,18 @@ test("adoptRunStateLeaseProtocol changes only the protocol and update timestamp"
     checkpoints: { claimed: true, planCreated: true },
   });
   const snapshot = (await readRunStateSnapshot(dir, 45))!;
-  const state = await adoptRunStateLeaseProtocol({
-    snapshot,
-    expectedStateSha256: createHash("sha256")
-      .update(snapshot.raw)
-      .digest("hex"),
-    lease: {
-      path: join(dir, "locks", "issue-45.lock"),
-      record: {
-        version: 1,
-        issueNumber: 45,
-        pid: 1,
-        hostname: "test",
-        ownerToken: "owner",
-        acquiredAt: "2026-08-30T12:00:00.000Z",
-      },
-    },
-    now: "2026-08-30T12:00:00.000Z",
-  });
+  const state = await withIssueRunLease(
+    { runStateDir: dir, issueNumber: 45 },
+    (lease) =>
+      adoptRunStateLeaseProtocol({
+        snapshot,
+        expectedStateSha256: createHash("sha256")
+          .update(snapshot.raw)
+          .digest("hex"),
+        lease,
+        now: "2026-08-30T12:00:00.000Z",
+      }),
+  );
   const { updatedAt: _oldUpdatedAt, ...before } = snapshot.state;
   assert.deepEqual(state, {
     ...before,

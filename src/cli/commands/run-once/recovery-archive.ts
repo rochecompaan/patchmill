@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
+  IssueRunLease,
   RunRecoveryAssessment,
   RunRecoveryDecision,
   RunStateSnapshot,
 } from "./types.ts";
+import { assertIssueRunLeaseOwned } from "./recovery-lease.ts";
 
 export async function archiveRunRecovery(input: {
   runStateDir: string;
+  lease: IssueRunLease;
   /** The leased CLI issue, validated before this archive is created. */
   issueNumber: number;
   snapshot: RunStateSnapshot;
@@ -18,6 +21,12 @@ export async function archiveRunRecovery(input: {
   baseRef: string;
   now: Date;
 }): Promise<{ path: string }> {
+  const assertOwnedSnapshot = async () => {
+    await assertIssueRunLeaseOwned(input.lease, input);
+    if ((await readFile(input.snapshot.path, "utf8")) !== input.snapshot.raw)
+      throw new Error("Run recovery state changed before archival");
+  };
+  await assertOwnedSnapshot();
   const root = join(input.runStateDir, "archive", `issue-${input.issueNumber}`);
   await mkdir(root, { recursive: true });
   const stamp = input.now.toISOString().replaceAll(/[:.]/gu, "-");
@@ -64,6 +73,7 @@ export async function archiveRunRecovery(input: {
     );
     while (true) {
       try {
+        await assertOwnedSnapshot();
         await rename(temporary, target);
         break;
       } catch (error) {

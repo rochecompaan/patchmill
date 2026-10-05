@@ -40,7 +40,18 @@ export async function runOneIssue(
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
   const attemptId = options.attemptId ?? randomUUID();
-  const attemptOptions = { ...options, attemptId };
+  const attemptOptions = {
+    ...options,
+    attemptId,
+    ...(options.progress
+      ? {
+          progress: {
+            event: (event: import("./progress.ts").AgentIssueProgressEvent) =>
+              options.progress!.event({ ...event, attemptId }),
+          },
+        }
+      : {}),
+  };
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,

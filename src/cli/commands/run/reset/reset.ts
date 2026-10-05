@@ -211,6 +211,7 @@ export async function resetIssueRun(
         dependencies.archiveRecovery ?? archiveRunRecovery
       )({
         runStateDir: config.runStateDir,
+        lease,
         issueNumber: config.issueNumber,
         snapshot,
         assessment: decision.assessment,

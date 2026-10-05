@@ -88,6 +88,7 @@ export type PlanningStageAdvanceResult =
   | { kind: "finished"; result: AgentIssuePipelineResult };
 
 export type AdvancePlanningStagesOptions = {
+  lease: import("./types.ts").IssueRunLease;
   runner: CommandRunner;
   host: IssueHostProvider;
   config: AgentIssueConfig;
@@ -238,6 +239,7 @@ export async function advancePlanningStages({
   artifactPolicy,
   ensurePlanningArtifactWorkspace,
   checkpoints,
+  lease,
   timestamp,
   now,
   runOptions,
@@ -403,6 +405,7 @@ export async function advancePlanningStages({
           ...(specCreated ? { specCreated: true } : {}),
         },
       },
+      lease,
       timestamp,
     );
     checkpoints.specPathResolved = true;
@@ -480,6 +483,7 @@ export async function advancePlanningStages({
         specCommit,
         checkpoints: { specPathResolved: true, specCreated: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.specPathResolved = true;
@@ -549,6 +553,7 @@ export async function advancePlanningStages({
         specCommit,
         checkpoints: { specPublished: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.specPublished = true;
@@ -595,6 +600,7 @@ export async function advancePlanningStages({
           specCommit,
           checkpoints: { specReadyCommentPosted: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.specReadyCommentPosted = true;
@@ -629,6 +635,7 @@ export async function advancePlanningStages({
           specCommit,
           checkpoints: { readyLabelRestored: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.readyLabelRestored = true;
@@ -669,6 +676,7 @@ export async function advancePlanningStages({
           ...(planCreated ? { planCreated: true } : {}),
         },
       },
+      lease,
       timestamp,
     );
     checkpoints.planPathResolved = true;
@@ -744,6 +752,7 @@ export async function advancePlanningStages({
         planCommit,
         checkpoints: { planPathResolved: true, planCreated: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.planPathResolved = true;
@@ -815,6 +824,7 @@ export async function advancePlanningStages({
         planCommit,
         checkpoints: { planPublished: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.planPublished = true;
@@ -865,6 +875,7 @@ export async function advancePlanningStages({
           planCommit,
           checkpoints: { planReadyCommentPosted: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.planReadyCommentPosted = true;
@@ -902,6 +913,7 @@ export async function advancePlanningStages({
           planCommit,
           checkpoints: { readyLabelRestored: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.readyLabelRestored = true;
@@ -917,6 +929,7 @@ export async function advancePlanningStages({
         planPath,
         planCommit,
       },
+      lease,
       timestamp,
     );
     const planStatus = planCreated ? "plan-created" : "plan-found";

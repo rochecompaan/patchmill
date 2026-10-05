@@ -6,7 +6,8 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { runOneIssue as runCurrentOneIssue } from "./pipeline.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
-import { readRunState, writeRunState } from "./run-state.ts";
+import { readRunState } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import {
   blockedRecoveryRunner,
   makeConfig,

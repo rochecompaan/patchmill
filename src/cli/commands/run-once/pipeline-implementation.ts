@@ -44,6 +44,7 @@ export type PipelineImplementationStageResult =
   | { kind: "unexpected"; error: Error };
 export type PipelineImplementationStageOptions = {
   runner: CommandRunner;
+  lease: import("./types.ts").IssueRunLease;
   host: Parameters<typeof developmentEnvironmentNotReady>[0]["host"];
   config: AgentIssueConfig;
   issue: IssueSummary;
@@ -132,6 +133,7 @@ export async function runPipelineImplementationStage(
         ...details,
         checkpoints: { worktreeReady: true },
       },
+      options.lease,
       options.timestamp,
     );
     options.checkpoints.worktreeReady = true;

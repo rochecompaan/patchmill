@@ -13,7 +13,7 @@ import {
 import { issue } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { collectProgressEvents } from "../../../../test-support/run-once/assertions.ts";
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
-import { writeRunState } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 
 test("explicit selection reads only the requested Issue", async () => {
   const config = await makeConfig({

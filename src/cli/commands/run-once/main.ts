@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import type { CommandRunner } from "../../../command/types.ts";
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, link, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
@@ -69,15 +70,22 @@ export async function finalLogPath(
   runStateDir: string,
   timestamp: string,
   result: AgentIssuePipelineResult,
+  attemptId: string,
 ): Promise<string> {
   const issueNumber = issueNumberFromResult(result);
   if (issueNumber === undefined) return preliminaryLogPath;
 
-  const issueLogPath = runLogPath(runStateDir, timestamp, issueNumber);
+  const issueLogPath = runLogPath(
+    runStateDir,
+    timestamp,
+    attemptId,
+    issueNumber,
+  );
   if (issueLogPath === preliminaryLogPath) return preliminaryLogPath;
 
   await mkdir(dirname(issueLogPath), { recursive: true });
-  await rename(preliminaryLogPath, issueLogPath);
+  await link(preliminaryLogPath, issueLogPath);
+  await unlink(preliminaryLogPath);
   return issueLogPath;
 }
 
@@ -146,6 +154,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   }
   const startedAt = new Date();
   const timestamp = startedAt.toISOString();
+  const attemptId = randomUUID();
 
   try {
     const config = await loadCliConfig(args);
@@ -154,7 +163,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       return 0;
     }
 
-    const logPath = runLogPath(config.runStateDir, timestamp);
+    const logPath = runLogPath(config.runStateDir, timestamp, attemptId);
     const interactiveOutput = process.stdout.isTTY === true;
     const consoleProgress = config.quiet
       ? undefined
@@ -171,6 +180,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     try {
       result = await runOneIssue(createCommandRunner(), config, {
         now: startedAt,
+        attemptId,
         progress,
         logPath,
         verbosePiOutput: config.verbosePiOutput,
@@ -214,6 +224,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       config.runStateDir,
       timestamp,
       result,
+      attemptId,
     );
     const summary = summarizeResult({ ...result, logPath: outputLogPath });
     await writeRunOnceResult(summary, {

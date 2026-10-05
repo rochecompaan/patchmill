@@ -7,8 +7,10 @@ import { issue } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
 import { renderRunCostSection } from "./pr-cost-summary.ts";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import type { RunCostReport } from "./run-cost.ts";
 
 const NOW = "2026-07-24T12:00:00.000Z";
@@ -97,39 +99,44 @@ async function finishWithCost(options: {
   const { host, updates } = hostWithBody(options.body, options.failUpdate);
   const { events, progress } = collectProgressEvents();
   const checkpoints: Record<string, boolean | undefined> = {};
-  const result = await runPipelineFinishStage({
-    runner: {
-      async run() {
-        return { code: 0, stdout: "", stderr: "" };
-      },
-    },
-    host,
-    config,
-    issue: issue(45, ["in-progress"], "Cost summary"),
-    labels: ["in-progress"],
-    readyLabel: "agent-ready",
-    inProgressLabel: "in-progress",
-    doneLabel: "completed-by-bot",
-    needsInfoLabel: "needs-info",
-    checkpoints,
-    implemented: {
-      status: "pr-created",
-      prUrl: "https://forgejo.example/acme/repo/pulls/45",
-      branch: "agent/issue-45-cost-summary",
-      commits: ["abc123"],
-      validation: ["npm test"],
-    },
-    runCostReport: options.report,
-    specPath: undefined,
-    specCommit: undefined,
-    planPath: "docs/plans/cost-summary.md",
-    planCommit: "plan123",
-    branch: "agent/issue-45-cost-summary",
-    worktreePath: ".worktrees/patchmill-issue-45-cost-summary",
-    timestamp: NOW,
-    runOptions: { progress },
-    runStep: async (_label, fn) => fn(),
-  });
+  const result = await withIssueRunLease(
+    { runStateDir: config.runStateDir, issueNumber: 45 },
+    (lease) =>
+      runPipelineFinishStage({
+        lease,
+        runner: {
+          async run() {
+            return { code: 0, stdout: "", stderr: "" };
+          },
+        },
+        host,
+        config,
+        issue: issue(45, ["in-progress"], "Cost summary"),
+        labels: ["in-progress"],
+        readyLabel: "agent-ready",
+        inProgressLabel: "in-progress",
+        doneLabel: "completed-by-bot",
+        needsInfoLabel: "needs-info",
+        checkpoints,
+        implemented: {
+          status: "pr-created",
+          prUrl: "https://forgejo.example/acme/repo/pulls/45",
+          branch: "agent/issue-45-cost-summary",
+          commits: ["abc123"],
+          validation: ["npm test"],
+        },
+        runCostReport: options.report,
+        specPath: undefined,
+        specCommit: undefined,
+        planPath: "docs/plans/cost-summary.md",
+        planCommit: "plan123",
+        branch: "agent/issue-45-cost-summary",
+        worktreePath: ".worktrees/patchmill-issue-45-cost-summary",
+        timestamp: NOW,
+        runOptions: { progress },
+        runStep: async (_label, fn) => fn(),
+      }),
+  );
   if (result.kind === "unexpected") throw result.error;
   const state = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),

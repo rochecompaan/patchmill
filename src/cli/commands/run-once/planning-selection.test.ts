@@ -9,7 +9,7 @@ import {
   planningImplementationNeedsMergeReconciliation,
   selectRunOnceWorkflow,
 } from "./planning-selection.ts";
-import { writeRunState } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { assertPlanningStateReplacement } from "../../../workflow/planning-state.ts";
 
 const issue = (number: number, labels: string[]) => ({

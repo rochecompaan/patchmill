@@ -4,6 +4,10 @@ import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { readRunState, writeRunState } from "./run-state.ts";
+import {
+  assertIssueRunLeaseOwned,
+  requireIssueRunLease,
+} from "./recovery-lease.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
@@ -45,6 +49,11 @@ export async function unexpectedFailure(
   error: unknown,
   options: PipelineProgressOptions,
 ): Promise<AgentIssuePipelineResult> {
+  const lease = requireIssueRunLease(options.lease);
+  await assertIssueRunLeaseOwned(lease, {
+    runStateDir: config.runStateDir,
+    issueNumber: issue.number,
+  });
   const reason = errorMessage(error);
   const formatted = formatErrorWithCauses(error);
   const status =
@@ -80,6 +89,7 @@ export async function unexpectedFailure(
       worktreePath: details.worktreePath,
       lastError: reason,
     },
+    lease,
     timestamp,
   );
   const state = await readRunState(config.runStateDir, issue.number);
@@ -104,6 +114,7 @@ export async function unexpectedFailure(
           worktreePath: details.worktreePath,
           failureCommentKeys: [failureCommentKey],
         },
+        lease,
         timestamp,
       );
     }
@@ -140,6 +151,11 @@ export async function blockIssue(
   timestamp: string,
   options: PipelineProgressOptions,
 ): Promise<AgentIssuePipelineResult> {
+  const lease = requireIssueRunLease(options.lease);
+  await assertIssueRunLeaseOwned(lease, {
+    runStateDir: config.runStateDir,
+    issueNumber: issue.number,
+  });
   const { inProgress, needsInfo } = lifecycleLabels(config);
   await progress(options, "error", "blocked", `blocked: ${result.reason}`, {
     issueNumber: issue.number,
@@ -174,6 +190,7 @@ export async function blockIssue(
       validation: result.validation,
       blockerQuestions: result.questions,
     },
+    lease,
     timestamp,
   );
   const commentKey = blockerCommentKey(result);
@@ -195,6 +212,7 @@ export async function blockIssue(
           status: "blocked",
           blockerCommentKeys: [commentKey],
         },
+        lease,
         timestamp,
       );
   }

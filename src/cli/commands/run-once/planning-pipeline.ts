@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { runPiSessionPath } from "./progress.ts";
 import { withLogPath } from "./pipeline-progress.ts";
@@ -155,6 +156,9 @@ export async function runPlanningWorkflow(input: {
   const piSessionPath = runPiSessionPath(
     input.config.runStateDir,
     attemptTimestamp,
+    input.options.attemptId ??
+      input.options.lease?.record.ownerToken ??
+      randomUUID(),
     input.issue.number,
   );
   const runOptions = { ...input.options, piSessionPath };
@@ -164,6 +168,8 @@ export async function runPlanningWorkflow(input: {
     stage: "run",
     message: `issue #${input.issue.number} · ${input.issue.title}`,
     issueNumber: input.issue.number,
+    ...(input.options.attemptId ? { attemptId: input.options.attemptId } : {}),
+    runId: input.state.runId,
     step: {
       type: "run-start",
       issueNumber: input.issue.number,
