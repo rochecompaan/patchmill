@@ -29,6 +29,12 @@ import {
   resolvePathLikeSkillPath,
 } from "../../../workflow/skills.ts";
 import { requiredSkillFiles } from "../../../workflow/skill-pack.ts";
+import { retiredManagedImplementationSkill } from "../../../workflow/implementation-skill-migration.ts";
+import {
+  INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
+  INLINE_IMPLEMENTATION_RUNTIME_FILES,
+} from "../../../workflow/skill-runtime-requirements.ts";
+import { assertSkillFile } from "../init/skill-installer.ts";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -297,6 +303,31 @@ async function validateRequiredSkillFiles(
   return undefined;
 }
 
+async function validateInlineRuntime(
+  label: string,
+  configuredPath: string,
+  skillFilePath: string,
+): Promise<SkillCheckEntry | undefined> {
+  const skillDir = dirname(skillFilePath);
+  for (const requirement of INLINE_IMPLEMENTATION_RUNTIME_FILES) {
+    const path =
+      requirement.skillName === INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL
+        ? join(skillDir, requirement.path)
+        : join(dirname(skillDir), requirement.skillName, requirement.path);
+    try {
+      await assertSkillFile(path, path, undefined, {
+        executable: requirement.executable,
+      });
+    } catch (error) {
+      return {
+        status: "fail",
+        summary: `${label}: \`${configuredPath}\` (${error instanceof Error ? error.message : String(error)})`,
+      };
+    }
+  }
+  return undefined;
+}
+
 async function validateResolvedLocalSkill(
   label: string,
   configuredPath: string,
@@ -332,6 +363,14 @@ async function validateResolvedLocalSkill(
       resolvedRequiredFiles,
     );
     if (missingRequired) return missingRequired;
+    if (frontmatter.name === INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL) {
+      const brokenRuntime = await validateInlineRuntime(
+        label,
+        configuredPath,
+        resolvedPath,
+      );
+      if (brokenRuntime) return brokenRuntime;
+    }
 
     return {
       status: "pass",
@@ -441,6 +480,15 @@ async function checkSkills(
 
   const entries: SkillCheckEntry[] = await Promise.all(
     configuredSkills.map(async ({ key, skill }) => {
+      if (
+        key === "implementation" &&
+        retiredManagedImplementationSkill(skill, repoRoot)
+      ) {
+        return {
+          status: "fail" as const,
+          summary: `${key}: \`${skill}\` is a retired managed implementation skill. Run \`patchmill skills update\`, then explicitly set skills.implementation to \`.patchmill/skills/inline-dev-with-validation-and-pr-checks\`. Updates do not rewrite config or replace customized files.`,
+        };
+      }
       const bundledSkill = bundledSkillByConfigReference(skill);
       if (bundledSkill) {
         return await verifyBundledSkill(

@@ -19,6 +19,20 @@ async function writeSkill(repoRoot: string, skillRoot: string, name: string) {
     join(dir, "SKILL.md"),
     `---\nname: ${name}\ndescription: Test skill\n---\n`,
   );
+  if (name === "inline-dev-with-validation-and-pr-checks") {
+    await writeFile(join(dir, "review-appendix.md"), "appendix\n");
+  }
+  if (name === "executing-plans") {
+    await mkdir(join(dir, "scripts"), { recursive: true });
+    for (const scriptName of ["task-start", "task-done"]) {
+      const scriptPath = join(dir, "scripts", scriptName);
+      await writeFile(scriptPath, "#!/usr/bin/env bash\n");
+      await chmod(scriptPath, 0o755);
+    }
+  }
+  if (name === "requesting-code-review") {
+    await writeFile(join(dir, "code-reviewer.md"), "review\n");
+  }
   if (name === "subagent-driven-development") {
     await writeFile(join(dir, "implementer-prompt.md"), "implement\n");
     await writeFile(join(dir, "task-reviewer-prompt.md"), "review\n");
@@ -243,14 +257,11 @@ test("interactive init add-to-git with path skills commits the provided skill ro
   await writeSkill(
     repoRoot,
     "custom-skills",
-    "subagent-dev-with-validation-and-pr-checks",
+    "inline-dev-with-validation-and-pr-checks",
   );
+  await writeSkill(repoRoot, "custom-skills", "executing-plans");
   await writeSkill(repoRoot, "custom-skills", "subagent-driven-development");
-  await writeSkill(
-    repoRoot,
-    "custom-skills",
-    "subagent-dev-with-codex-and-thermo-reviews",
-  );
+  await writeSkill(repoRoot, "custom-skills", "requesting-code-review");
   await mkdir(
     join(
       repoRoot,

@@ -10,6 +10,18 @@ export function renderPlanningSkillStep(skills: PatchmillSkillsConfig): string {
   );
 }
 
+export function renderPlanningExecutionHandoffStep(
+  skills: PatchmillSkillsConfig,
+): string {
+  return [
+    `Configured implementation choice: \`${skills.implementation}\`.`,
+    "Record this choice in the plan and preserve any explicit operator execution method.",
+    "Do not ask for another execution-method choice in this unattended phase.",
+    "For inline-dev-with-validation-and-pr-checks, record Native through its sibling executing-plans skill.",
+    "Keep existing planning review gates. This choice does not authorize implementation before approval.",
+  ].join("\n");
+}
+
 export function renderImplementationSkillSteps(
   skills: PatchmillSkillsConfig,
 ): string[] {

@@ -28,6 +28,7 @@ import {
   renderImplementationSkillSteps,
   renderLandingSkillStep,
   renderPlanningSkillStep,
+  renderPlanningExecutionHandoffStep,
   renderVisualEvidenceSkillStep,
 } from "./prompt-workflow.ts";
 import {
@@ -242,7 +243,8 @@ function formatSubagentSupport(): string {
   return [
     "Subagent support:",
     "- Patchmill bundles `pi-subagents`; the implementation session can use the Pi `subagent` tool for delegated implementation and review workflows.",
-    "- Use pi-subagents-discovered `worker` agents for implementation handoffs and `reviewer` agents for review checkpoints unless the configured implementation skill directs a different pi-subagents workflow.",
+    "- The configured implementation skill owns dispatch. Do not require task workers or task review checkpoints unless that workflow requires them.",
+    "- For required dispatches, use pi-subagents-discovered `worker` and `reviewer` agents as directed by that workflow.",
     "- Use the user's pi-subagents agent definitions, chains, settings, and builtin defaults for model, thinking, tools, context mode, skills, and output behavior.",
     "- If required subagents are unavailable or disabled, return the blocker JSON with actionable setup guidance instead of inventing a local replacement workflow.",
     "- Users control subagent models, thinking, tools, context mode, skills, and nesting behavior through pi-subagents configuration.",
@@ -389,7 +391,8 @@ function renderTaskContractTodoWorkflowLines(
       : []),
     "- Do not create a single broad implementation todo.",
     "- Claim or update the current task todo before doing work on that task.",
-    `- Set a task todo status to \`${completionStatus}\` only after code, tests, review, fixes, and verification for that task are done.`,
+    `- Set a task todo status to \`${completionStatus}\` only after the task's required commands and ledger completion succeed.`,
+    "- Whole-branch review, accepted fixes, final validation, and handoff remain separate and mandatory before successful completion.",
     terminalStatusLine,
   ];
 
@@ -537,7 +540,7 @@ function renderSubagentFinalizationGate(): string {
   return `Patchmill subagent finalization gate:
 Before returning any terminal result:
 1. Call \`subagent({ action: "status" })\` and confirm no subagent run is unresolved.
-2. Confirm every task, review, accepted fix, re-review, validation command, PR check, todo, and landing step required by the configured workflow is complete.
+2. Confirm every task, review, accepted fix, validation command, PR check, todo, and landing step required by the configured workflow is complete. Do not add an automatic re-review.
 3. Resolve, await, resume, or interrupt every outstanding run before returning.
 4. Return only the specified \`merged\`, \`pr-created\`, or genuine human-input blocker JSON object.
 Never return progress prose or promise to continue after the response. This non-interactive Pi invocation has no subsequent turn.`;
@@ -634,6 +637,7 @@ export function buildPlanCreationPrompt(
     renderPlanContextInstruction(projectPolicy),
     ...(reviewInstruction === undefined ? [] : [reviewInstruction]),
     specSourceInstruction(input.reviewContext ?? "legacy-label", specPath),
+    renderPlanningExecutionHandoffStep(skills),
     `Treat \`${ready}\` as meaning the issue is already clear and unambiguous enough to plan. Do not run a separate brainstorming/requirements-discovery process by default.`,
     renderPlanningSkillStep(skills),
     `Do not substitute an ad-hoc planning process for the configured planning skill. The plan must be saved to ${planPath} and use checkbox steps suitable for agent execution.`,

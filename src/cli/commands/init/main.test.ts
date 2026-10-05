@@ -8,15 +8,14 @@ import { HELP_TEXT, runInit } from "./main.ts";
 const PROJECT_LOCAL_SKILLS = {
   triage: ".patchmill/skills/patchmill-issue-triage",
   planning: ".patchmill/skills/patchmill-planning",
-  implementation:
-    ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
+  implementation: ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
   visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
 };
 
 const GLOBAL_SKILLS = {
   triage: "patchmill-issue-triage",
   planning: "superpowers:writing-plans",
-  implementation: "superpowers:subagent-driven-development",
+  implementation: "superpowers:executing-plans",
   visualEvidence: "patchmill-visual-evidence",
 };
 
@@ -127,7 +126,7 @@ test("runInit installs project-local skills by default", async () => {
       repoRoot,
       ".patchmill",
       "skills",
-      "subagent-dev-with-validation-and-pr-checks",
+      "inline-dev-with-validation-and-pr-checks",
       "SKILL.md",
     ),
   );
@@ -155,7 +154,7 @@ test("runInit installs project-local skills by default", async () => {
       repoRoot,
       ".patchmill",
       "skills",
-      "subagent-dev-with-codex-and-thermo-reviews",
+      "inline-dev-with-validation-and-pr-checks",
       "SKILL.md",
     ),
   );
@@ -164,7 +163,7 @@ test("runInit installs project-local skills by default", async () => {
       repoRoot,
       ".patchmill",
       "skills",
-      "single-subagent-dev-with-codex-and-thermo-reviews",
+      "inline-dev-with-validation-and-pr-checks",
       "SKILL.md",
     ),
   );

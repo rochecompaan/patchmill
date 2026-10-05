@@ -19,7 +19,7 @@ test("DEFAULT_PATCHMILL_SKILLS uses the bundled fallback triage reference", () =
   assert.deepEqual(DEFAULT_PATCHMILL_SKILLS, {
     triage: BUNDLED_TRIAGE_SKILL_REFERENCE,
     planning: "superpowers:writing-plans",
-    implementation: "superpowers:subagent-driven-development",
+    implementation: "superpowers:executing-plans",
     visualEvidence: BUNDLED_VISUAL_EVIDENCE_SKILL_REFERENCE,
   });
 });
@@ -28,7 +28,7 @@ test("GLOBAL_PATCHMILL_SKILLS keeps the global named triage skill", () => {
   assert.deepEqual(GLOBAL_PATCHMILL_SKILLS, {
     triage: "patchmill-issue-triage",
     planning: "superpowers:writing-plans",
-    implementation: "superpowers:subagent-driven-development",
+    implementation: "superpowers:executing-plans",
     visualEvidence: "patchmill-visual-evidence",
   });
 });

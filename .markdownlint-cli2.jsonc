@@ -17,7 +17,6 @@
     "site/src/content/docs/**/*.md",
   ],
   "ignores": [
-    "skills/subagent-dev-with-codex-and-thermo-reviews/rubrics/**",
     "vendor/**",
     "node_modules/**",
     "site/.astro/**",

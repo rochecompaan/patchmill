@@ -110,13 +110,29 @@ Common `skills` keys include:
 - `visualEvidence`: default-configured skill used when visible UI changes.
 - `landing`: guides direct-land versus pull-request decisions.
 
-Initialized repositories that use project-local skills default to paths under
-`.patchmill/skills/`, including `.patchmill/skills/patchmill-planning` for
-planning, `.patchmill/skills/subagent-dev-with-validation-and-pr-checks` for
-implementation, and `.patchmill/skills/patchmill-visual-evidence` for visual
-evidence. The implementation wrapper delegates task execution to the installed
-Superpowers skill and adds final validation plus PR-check readiness without the
-optional Codex/thermo full-worktree loops.
+Initialized repositories use these project-local entrypoints:
+
+- Planning: `.patchmill/skills/patchmill-planning`.
+- Implementation: `.patchmill/skills/inline-dev-with-validation-and-pr-checks`.
+- Visual evidence: `.patchmill/skills/patchmill-visual-evidence`.
+
+The implementation session executes the whole plan through the sibling
+Superpowers `executing-plans` skill. It does not dispatch task workers or
+per-task reviewers. One fresh independent reviewer receives the full delivery,
+the upstream template, and the Patchmill review appendix. The session completes
+one ordered fix pass and reruns all final commands. Code-related PR check errors
+permit at most two repair passes. A ready PR handoff requires observable passing
+checks, or evidence that no required checks exist.
+
+Namespace and user-global defaults use `superpowers:executing-plans`. This
+compatibility path does not automatically include the Patchmill appendix. Use
+the managed local pack for the complete Patchmill workflow.
+
+Explicit custom implementation skills remain supported. An explicit
+`skills.review` adds the operator's review workflow. An absent value adds no
+extra review pass. Planning preserves explicit execution choices and unattended
+config choices. A supplied execution method does not waive existing planning
+review gates.
 
 ## Landing skill
 
@@ -263,8 +279,30 @@ Run this command when Patchmill publishes a newer bundled skill pack:
 npx patchmill@latest skills update
 ```
 
-The update command only changes Patchmill-managed project-local skills. It stops
-if managed skill files were edited locally.
+The update command changes only Patchmill-managed project-local files. It stops
+when managed files contain custom changes or new files collide with unmanaged
+files. It does not rewrite `patchmill.config.json`.
+
+Pack version `2026.10.1` retires these managed wrappers:
+
+- `subagent-dev-with-validation-and-pr-checks`
+- `subagent-dev-with-codex-and-thermo-reviews`
+- `single-subagent-dev-with-codex-and-thermo-reviews`
+
+After the update, explicitly change the implementation reference:
+
+```json
+{
+  "skills": {
+    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"
+  }
+}
+```
+
+If a managed file contains custom changes, preserve those changes first. Choose
+explicitly whether to port them or keep a separate custom skill. Doctor reports
+the same migration guidance for readable and missing retired managed paths.
+Unrelated custom paths with matching names remain valid.
 
 ## Review discipline
 

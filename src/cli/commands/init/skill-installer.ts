@@ -24,15 +24,14 @@ import {
   DEFAULT_PROJECT_SKILL_DIR,
   PATCHMILL_PLANNING_SKILL,
   PATCHMILL_RECOMMENDED_SKILL_PACK,
-  SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
-  SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
+  INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
   SKILL_PACK_METADATA_FILE,
   buildRecommendedProjectSkillConfig,
   buildSkillPackMetadata,
   projectSkillPath,
-  requiredSkillFiles,
   type SkillPackSkill,
 } from "../../../workflow/skill-pack.ts";
+import { requiredRuntimeFiles } from "../../../workflow/skill-runtime-requirements.ts";
 import type { PatchmillSkillsConfig } from "../../../workflow/skills.ts";
 
 const require = createRequire(import.meta.url);
@@ -139,9 +138,13 @@ export async function assertSkillFile(
   }
 
   if (options.executable) {
+    const mode = (await dependencies.stat(path)).mode;
     try {
       await dependencies.access(path, constants.X_OK);
     } catch {
+      throw new Error(`Missing required executable skill file: ${displayPath}`);
+    }
+    if ((mode & 0o111) === 0) {
       throw new Error(`Missing required executable skill file: ${displayPath}`);
     }
   }
@@ -159,12 +162,13 @@ async function assertRequiredSkillFiles(
   displayRoot: string,
   dependencies: SkillInstallerDependencies = defaultDependencies,
 ): Promise<void> {
-  for (const relativeFile of requiredSkillFiles(skillName)) {
-    const displayPath = `${displayRoot}/${relativeFile}`;
+  for (const requirement of requiredRuntimeFiles(skillName)) {
+    const displayPath = `${displayRoot}/${requirement.path}`;
     await assertSkillFile(
-      join(skillDir, relativeFile),
+      join(skillDir, requirement.path),
       displayPath,
       dependencies,
+      { executable: requirement.executable },
     );
   }
 }
@@ -342,6 +346,15 @@ export async function installProjectSkills(options: {
       installedSkills.push(targetRelativeDir);
     }
 
+    for (const skill of packSkills) {
+      await assertRequiredSkillFiles(
+        skill.name,
+        join(stagingSkillDir, skill.name),
+        projectSkillPath(skill.name, skillDir),
+        dependencies,
+      );
+    }
+
     await dependencies.writeFile(
       join(stagingSkillDir, SKILL_PACK_METADATA_FILE),
       `${JSON.stringify(metadata, null, 2)}\n`,
@@ -381,86 +394,35 @@ export async function validateExistingSkillDirectory(
   >
 > {
   const skillConfig = buildRecommendedProjectSkillConfig(skillDir);
-  const bundledRecommendedSkills = BUNDLED_PATCHMILL_SKILLS.flatMap((skill) =>
-    skill.recommendedProjectLocal && skill.projectSkillConfigKey
-      ? [
-          {
-            name: skill.globalName,
-            skillPath: skillConfig[skill.projectSkillConfigKey],
-          },
-        ]
-      : [],
-  );
+  const packSkill = (name: string): SkillPackSkill => {
+    const skill = PATCHMILL_RECOMMENDED_SKILL_PACK.skills.find(
+      (entry) => entry.name === name,
+    );
+    if (!skill) throw new Error(`Missing recommended skill ${name}`);
+    return skill;
+  };
 
-  for (const { name, skillPath } of [
-    ...bundledRecommendedSkills,
-    { name: PATCHMILL_PLANNING_SKILL, skillPath: skillConfig.planning },
-    {
-      name: "brainstorming",
-      skillPath: projectSkillPath("brainstorming", skillDir),
-    },
-    {
-      name: "writing-plans",
-      skillPath: projectSkillPath("writing-plans", skillDir),
-    },
-    {
-      name: "simple-english",
-      skillPath: projectSkillPath("simple-english", skillDir),
-    },
-    {
-      name: SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
-      skillPath: skillConfig.implementation,
-    },
+  for (const skill of [
+    ...BUNDLED_PATCHMILL_SKILLS.filter(
+      (skill) => skill.recommendedProjectLocal,
+    ).map((skill) => ({
+      name: skill.globalName,
+      source: "patchmill" as const,
+    })),
+    { name: PATCHMILL_PLANNING_SKILL, source: "patchmill" as const },
+    packSkill("brainstorming"),
+    packSkill("writing-plans"),
+    packSkill("simple-english"),
+    packSkill(INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL),
+    packSkill("executing-plans"),
+    packSkill("subagent-driven-development"),
+    packSkill("requesting-code-review"),
   ]) {
-    if (skillPath === undefined) {
-      throw new Error(`Missing configured path for required skill ${name}`);
-    }
+    const skillPath = projectSkillPath(skill.name, skillDir);
     await assertRequiredSkillFiles(
-      name,
+      skill.name,
       resolve(repoRoot, skillPath),
       skillPath,
-    );
-  }
-
-  const taskImplementationSkillPath = projectSkillPath(
-    "subagent-driven-development",
-    skillDir,
-  );
-  for (const relativeFile of [
-    "SKILL.md",
-    "implementer-prompt.md",
-    "task-reviewer-prompt.md",
-  ]) {
-    await assertSkillFile(
-      resolve(repoRoot, taskImplementationSkillPath, relativeFile),
-      `${taskImplementationSkillPath}/${relativeFile}`,
-    );
-  }
-  for (const relativeFile of [
-    "scripts/review-package",
-    "scripts/sdd-workspace",
-    "scripts/task-brief",
-  ]) {
-    await assertSkillFile(
-      resolve(repoRoot, taskImplementationSkillPath, relativeFile),
-      `${taskImplementationSkillPath}/${relativeFile}`,
-      defaultDependencies,
-      { executable: true },
-    );
-  }
-
-  const sharedPromptSkillPath = projectSkillPath(
-    SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
-    skillDir,
-  );
-  for (const relativeFile of [
-    "prompts/final-validation-review.md",
-    "prompts/fix-pr-checks.md",
-    "prompts/fix-review-findings.md",
-  ]) {
-    await assertSkillFile(
-      resolve(repoRoot, sharedPromptSkillPath, relativeFile),
-      `${sharedPromptSkillPath}/${relativeFile}`,
     );
   }
 
