@@ -24,11 +24,13 @@ export class IssueRunLeaseConflictError extends Error {
   readonly resource: "lease" | "lease-guard" | "repair-lock";
   readonly issueNumber: number;
   readonly owner?: IssueRunLeaseRecord;
+  readonly liveOwner: boolean;
   constructor(
     leasePath: string,
     resource: "lease" | "lease-guard" | "repair-lock",
     issueNumber: number,
     owner?: IssueRunLeaseRecord,
+    liveOwner = false,
   ) {
     const ownerDetail = owner
       ? ` (owned by ${owner.hostname} process ${owner.pid})`
@@ -41,6 +43,7 @@ export class IssueRunLeaseConflictError extends Error {
     this.leasePath = leasePath;
     this.resource = resource;
     this.issueNumber = issueNumber;
+    this.liveOwner = liveOwner;
     if (owner !== undefined) this.owner = owner;
   }
 }
@@ -129,8 +132,18 @@ async function guard(
   try {
     await exclusive(p.guard, record);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST")
-      throw new IssueRunLeaseConflictError(p.guard, "lease-guard", issue);
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      const owner = parseIssueRunLeaseRecord(await readFile(p.guard, "utf8"));
+      throw new IssueRunLeaseConflictError(
+        p.guard,
+        "lease-guard",
+        issue,
+        owner,
+        owner?.issueNumber === issue &&
+          owner.hostname === record.hostname &&
+          processState(owner.pid) === "alive",
+      );
+    }
     throw error;
   }
   return async () => {
@@ -202,15 +215,17 @@ export async function acquireIssueRunLease(
       const owner = parseIssueRunLeaseRecord(raw);
       if (!owner || owner.issueNumber !== issueNumber)
         throw new IssueRunLeaseConflictError(p.lease, "lease", issueNumber);
-      if (
-        owner.hostname !== mine.hostname ||
-        (options.processState ?? processState)(owner.pid) !== "dead"
-      )
+      const ownerState =
+        owner.hostname === mine.hostname
+          ? (options.processState ?? processState)(owner.pid)
+          : "unverifiable";
+      if (ownerState !== "dead")
         throw new IssueRunLeaseConflictError(
           p.lease,
           "lease",
           issueNumber,
           owner,
+          ownerState === "alive",
         );
       // Never derive archive paths from lease contents: corrupt lease metadata
       // is untrusted, while this name is entirely controlled by Patchmill.

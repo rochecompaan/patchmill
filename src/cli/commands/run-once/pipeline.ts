@@ -84,7 +84,23 @@ export async function runOneIssue(
         host,
         issueStateProvider,
       ),
-  );
+  ).catch((error: unknown) => {
+    if (runtimeConfig.issueNumber === undefined) throw error;
+    // Contention occurs before authoritative reads. Use only the requested
+    // number for this diagnostic; do not read or mutate the winner's Issue.
+    const stopped = stoppedForLiveLease(
+      {
+        number: runtimeConfig.issueNumber,
+        title: `Issue ${runtimeConfig.issueNumber}`,
+        body: "",
+        labels: [],
+        state: "open",
+      },
+      error,
+    );
+    if (stopped) return withLogPath(stopped, attemptOptions);
+    throw error;
+  });
 }
 
 async function runAdmittedOneIssue(
@@ -234,7 +250,8 @@ function stoppedForLiveLease(
 ): AgentIssuePipelineResult | undefined {
   if (
     !(error instanceof IssueRunLeaseConflictError) ||
-    error.owner === undefined
+    error.owner === undefined ||
+    !error.liveOwner
   )
     return undefined;
   return {
