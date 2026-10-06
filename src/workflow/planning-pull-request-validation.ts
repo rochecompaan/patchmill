@@ -61,6 +61,7 @@ type PlanningPullRequestValidationInput = Readonly<{
   phase: PlanningPhaseKind;
   publication: PlanningPublicationEvidence;
   expectedReference?: PullRequestReference;
+  ownershipMarkerRequired?: boolean;
 }>;
 
 function validatePlanningPullRequest(
@@ -96,13 +97,15 @@ function validatePlanningPullRequest(
       fail("head-branch");
     if (requireExactHead && summary.headSha !== publication.headOid)
       fail("head-oid");
-    const marker = parsePlanningPullRequestMarker(summary.body);
-    if (
-      marker === undefined ||
-      marker.issueNumber !== input.issueNumber ||
-      marker.phase !== input.phase
-    )
-      fail("ownership-marker");
+    if (input.ownershipMarkerRequired !== false) {
+      const marker = parsePlanningPullRequestMarker(summary.body);
+      if (
+        marker === undefined ||
+        marker.issueNumber !== input.issueNumber ||
+        marker.phase !== input.phase
+      )
+        fail("ownership-marker");
+    }
     const canonical = parseCanonicalPullRequestUrl(
       summary.url,
       summary.targetRepository,
