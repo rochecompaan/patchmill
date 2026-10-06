@@ -1,4 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import type { CommandRunOptions } from "../../src/command/types.ts";
+import { createCommandRunner } from "../../src/cli/commands/triage/command.ts";
 import { dirname, join } from "node:path";
 import { promptPath } from "./mock-runner.ts";
 import { git, recordCarriedArtifacts } from "./planning-provider-git.ts";
@@ -33,7 +35,12 @@ export function createPlanningProviderRunner(input: {
   record(effect: PlanningScenarioEffect): void;
 }) {
   return {
-    async run(command: string, args: string[], options: { cwd?: string } = {}) {
+    supportsOwnedGit: true as const,
+    async run(
+      command: string,
+      args: string[],
+      options: CommandRunOptions = {},
+    ) {
       const name = command === process.execPath ? "pi" : command;
       const values = name === "pi" ? args.slice(1) : args;
       if (name === "git") {
@@ -45,7 +52,12 @@ export function createPlanningProviderRunner(input: {
             stderr: "",
           };
         }
-        const result = await git(options.cwd ?? input.repoRoot, values);
+        const result = options.ownedGit
+          ? await createCommandRunner().run("git", values, {
+              ...options,
+              cwd: options.cwd ?? input.repoRoot,
+            })
+          : await git(options.cwd ?? input.repoRoot, values);
         if (
           values[0] === "worktree" &&
           values[1] === "add" &&

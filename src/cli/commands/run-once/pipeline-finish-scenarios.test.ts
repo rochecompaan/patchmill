@@ -630,7 +630,8 @@ test("runOneIssue runs configured cleanup hook script", async () => {
       return { code: 0, stdout: "", stderr: "" };
     if (
       call.command === "git" &&
-      call.args.join(" ") === "branch -D agent/issue-45-cleanup-example"
+      call.args.join(" ") ===
+        "update-ref -d refs/heads/agent/issue-45-cleanup-example 0123456789abcdef0123456789abcdef01234567"
     )
       return { code: 0, stdout: "", stderr: "" };
     throw new Error(
@@ -666,14 +667,19 @@ test("runOneIssue runs configured cleanup hook script", async () => {
   const cleanupGitCalls = runner.calls.filter(
     (call) =>
       call.command === "git" &&
-      (call.args[0] === "worktree" || call.args[0] === "branch") &&
-      (call.args.includes("remove") || call.args.includes("-D")),
+      (call.args[0] === "worktree" || call.args[0] === "update-ref") &&
+      (call.args.includes("remove") || call.args.includes("-d")),
   );
   assert.deepEqual(
     cleanupGitCalls.map((call) => call.args),
     [
       ["worktree", "remove", worktreePath],
-      ["branch", "-D", "agent/issue-45-cleanup-example"],
+      [
+        "update-ref",
+        "-d",
+        "refs/heads/agent/issue-45-cleanup-example",
+        "0123456789abcdef0123456789abcdef01234567",
+      ],
     ],
   );
   const hookIndex = runner.calls.findIndex(

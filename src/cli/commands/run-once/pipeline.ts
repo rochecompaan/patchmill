@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { RepositoryMutationBusyError } from "../../../git/repository-mutation.ts";
+import { repositoryBusyResult } from "./repository-busy-result.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import {
   createPullRequestHost,
@@ -97,6 +99,17 @@ export async function runOneIssue(
       ),
   ).catch((error: unknown) => {
     if (runtimeConfig.issueNumber === undefined) throw error;
+    if (error instanceof RepositoryMutationBusyError)
+      return repositoryBusyResult(
+        {
+          number: runtimeConfig.issueNumber,
+          title: `Issue ${runtimeConfig.issueNumber}`,
+          body: "",
+          labels: [],
+          state: "open",
+        },
+        attemptOptions,
+      );
     // Contention occurs before authoritative reads. Use only the requested
     // number for this diagnostic; do not read or mutate the winner's Issue.
     const stopped = stoppedForLiveLease(
@@ -219,6 +232,8 @@ async function runAdmittedOneIssue(
                 )
               : await runLegacy();
         } catch (error) {
+          if (error instanceof RepositoryMutationBusyError)
+            return repositoryBusyResult(selected.issue, options);
           const stopped = stoppedForLiveLease(selected.issue, error);
           if (stopped) return stopped;
           throw error;
@@ -315,6 +330,8 @@ function withPlanningLease(
         host,
       }),
   ).catch((error: unknown) => {
+    if (error instanceof RepositoryMutationBusyError)
+      return repositoryBusyResult(issue, options);
     const stopped = stoppedForLiveLease(issue, error);
     if (stopped) return stopped;
     throw error;

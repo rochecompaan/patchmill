@@ -85,6 +85,15 @@ export const GENERAL_DIAGNOSTICS = {
       "Retry now only with the normal command, without --plan-only.",
     ),
   }),
+  "repository-busy": definition({
+    summary: "Shared Git transaction is busy",
+    explanation:
+      "Another Run attempt owns a shared Git transaction. Patchmill preserved this Issue's checkpoint.",
+    action: "Wait for the current transaction to stop, then rerun this Issue.",
+    command: "run-once",
+    safety: "Do not remove another attempt's Git guard or reset its workspace.",
+    retry: after("Retry when the current Git transaction stops."),
+  }),
   "issue-locked": definition({
     summary: "issue already in progress.",
     explanation:

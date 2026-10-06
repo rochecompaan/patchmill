@@ -9,6 +9,8 @@ import { ensureAutomationLabel } from "./automation-labels.ts";
 import { blockerComment, startedComment } from "./pipeline-comments.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
+import { repositoryMutationContext } from "./repository-mutation-context.ts";
+import { assertPlanningIssueLockOwned } from "../../../workflow/planning-issue-lock.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
 import {
   planningCleanupPendingResult,
@@ -266,6 +268,21 @@ export async function runPlanningWorkflow(input: {
       return claimedLabels;
     },
     coordinate: async (state, lock, issue, currentLabels) => {
+      const commonMutation = repositoryMutationContext(
+        input.runner,
+        input.options,
+        issue.number,
+      );
+      const mutation = commonMutation && {
+        ...commonMutation,
+        assertOwned: async () => {
+          await commonMutation.assertOwned();
+          await assertPlanningIssueLockOwned(lock, {
+            issueNumber: issue.number,
+            runId: state.runId,
+          });
+        },
+      };
       const runtime = createPlanningRuntime({
         runner: input.runner,
         config: input.config,
@@ -283,6 +300,7 @@ export async function runPlanningWorkflow(input: {
         heartbeatMs: input.options.heartbeatMs,
         piSessionPath,
         host,
+        ...(mutation ? { mutation } : {}),
         ...(input.options.now === undefined
           ? {}
           : { now: () => input.options.now! }),

@@ -27,6 +27,7 @@ export type PipelineFinishStageResult =
 
 export type PipelineFinishStageOptions = {
   lease: import("./types.ts").IssueRunLease;
+  mutation?: import("../../../git/repository-mutation.ts").RepositoryMutationContext;
   runner: CommandRunner;
   host: RunOnceHostProvider;
   config: AgentIssueConfig;
@@ -349,6 +350,7 @@ export async function runPipelineFinishStage(
           branch,
           worktreePath,
         },
+        options.mutation,
       );
       for (const cleanup of workspaceCleanupResults) {
         await emitProgress(

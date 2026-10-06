@@ -50,6 +50,7 @@ export type PlanningRuntimeInput = {
   piSessionPath?: string | undefined;
   now?: () => Date;
   host?: RunOnceHostProvider;
+  mutation?: import("../../../git/repository-mutation.ts").RepositoryMutationContext;
 };
 
 /** Constructs boring Git, host, and coordinator services for planning-pr-v1. */
@@ -69,11 +70,13 @@ export function createPlanningRuntime(
     repoRoot: input.config.repoRoot,
     specsDir: input.config.specsDir,
     plansDir: input.config.plansDir,
+    ...(input.mutation ? { mutation: input.mutation } : {}),
   });
   const workspaces = new PlanningWorkspaceGit({
     runner: input.runner,
     repoRoot: input.config.repoRoot,
     worktreeRoot: resolve(input.config.repoRoot, input.config.worktreeDir),
+    ...(input.mutation ? { mutation: input.mutation } : {}),
   });
   const publicationGit = new PlanningPublicationGit({
     runner: input.runner,

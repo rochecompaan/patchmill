@@ -69,6 +69,13 @@ import {
 import { loadLegacyPipelineSelectionIssues } from "./pipeline-legacy-selection.ts";
 import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
+import { repositoryMutationContext } from "./repository-mutation-context.ts";
+import {
+  RepositoryMutationBusyError,
+  RepositoryMutationInterruptedError,
+  RepositoryMutationOwnershipError,
+} from "../../../git/repository-mutation.ts";
+import { repositoryBusyResult } from "./repository-busy-result.ts";
 import {
   assertIssueRunLeaseOwned,
   requireIssueRunLease,
@@ -382,6 +389,7 @@ async function runLegacyOneIssueInternal(
   }
 
   const lease = requireIssueRunLease(options.lease);
+  const mutation = repositoryMutationContext(runner, options, issue.number);
   const ignoredPaths = cleanStatusIgnoredPaths(
     config,
     runOptions.logPath === undefined ? {} : { logPath: runOptions.logPath },
@@ -479,6 +487,7 @@ async function runLegacyOneIssueInternal(
     ignoredPaths,
     resolvedArtifacts,
     lease: options.lease,
+    ...(mutation ? { mutation } : {}),
   });
   if (
     blockedRecovery?.decision.action === "resume" &&
@@ -545,6 +554,7 @@ async function runLegacyOneIssueInternal(
       worktreeStrategy,
       undefined,
       ignoredPaths,
+      mutation,
     );
     await emitSimpleStep(
       runOptions,
@@ -1006,6 +1016,7 @@ async function runLegacyOneIssueInternal(
       timestamp,
       runOptions,
       runStep,
+      ...(mutation ? { mutation } : {}),
     });
 
     if (finishStage.kind === "unexpected") {
@@ -1014,6 +1025,13 @@ async function runLegacyOneIssueInternal(
 
     return finishStage.result;
   } catch (error) {
+    if (error instanceof RepositoryMutationBusyError)
+      return repositoryBusyResult(issue, runOptions);
+    if (
+      error instanceof RepositoryMutationInterruptedError ||
+      error instanceof RepositoryMutationOwnershipError
+    )
+      throw error;
     if (error instanceof AgentIssueSafetyError) {
       throw error;
     }

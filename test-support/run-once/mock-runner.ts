@@ -88,7 +88,7 @@ export function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
 ): MockRunner {
   const calls: Call[] = [];
-  return {
+  const runner: MockRunner = {
     calls,
     async run(command, args, options = {}) {
       const call = normalizeRecordedPiCall({
@@ -135,6 +135,17 @@ export function createMockRunner(
           return gitFallback;
         }
         throw error;
+      }
+    },
+  };
+  return {
+    ...runner,
+    supportsOwnedGit: true,
+    async run(command, args, options) {
+      try {
+        return await runner.run(command, args, options);
+      } finally {
+        await options?.ownedGit?.onStopped(true);
       }
     },
   };

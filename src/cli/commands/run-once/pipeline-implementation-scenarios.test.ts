@@ -127,7 +127,10 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       return { code: 0, stdout: "", stderr: "" };
     }
 
-    if (call.command === "git" && call.args[0] === "branch") {
+    if (
+      call.command === "git" &&
+      (call.args[0] === "branch" || call.args[0] === "update-ref")
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
 

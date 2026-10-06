@@ -268,6 +268,10 @@ export type AgentIssueStoppedResult = {
       reason: "issue-locked";
       publicFailure: RunOnceFailure<"issue-locked">;
     }
+  | {
+      reason: "repository-busy";
+      publicFailure: RunOnceFailure<"repository-busy">;
+    }
 );
 
 type AgentIssuePipelineResultLog = {

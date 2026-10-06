@@ -92,6 +92,7 @@ export async function recoverBlockedWorkspace(input: {
   ignoredPaths: string[];
   resolvedArtifacts: ResolvedIssueArtifactSources;
   lease: IssueRunLease | undefined;
+  mutation?: import("../../../git/repository-mutation.ts").RepositoryMutationContext;
 }): Promise<BlockedWorkspaceRecoveryOutcome | undefined> {
   if (!hasBlockedRunRecoveryState(input.existingState) || !input.lease)
     return undefined;
@@ -157,6 +158,7 @@ export async function recoverBlockedWorkspace(input: {
     runner: input.runner,
     repoRoot: input.config.repoRoot,
     reassess,
+    ...(input.mutation ? { mutation: input.mutation } : {}),
   });
   return { decision, mutation };
 }

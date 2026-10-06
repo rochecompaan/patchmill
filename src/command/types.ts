@@ -10,9 +10,16 @@ export type CommandRunOptions = {
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
   signal?: AbortSignal;
+  /** Opt-in lifecycle for Patchmill-owned Git groups, not agent processes. */
+  ownedGit?: {
+    onSpawn: (processGroupId: number) => Promise<void>;
+    onStopped: (verified: boolean) => Promise<void>;
+    shutdownMs?: number;
+  };
 };
 
 export type CommandRunner = {
+  supportsOwnedGit?: true;
   run(
     command: string,
     args: string[],

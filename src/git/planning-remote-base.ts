@@ -1,5 +1,7 @@
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { CommandRunner } from "../command/types.ts";
+import type { RepositoryMutationContext } from "./repository-mutation.ts";
+import { withRepositoryMutationRunner } from "./repository-mutation-runner.ts";
 import {
   isPlanningArtifactPath,
   isPlanningBranch,
@@ -40,12 +42,15 @@ export class PlanningRemoteBaseGit {
   readonly repoRoot: string;
   readonly specsDir: string;
   readonly plansDir: string;
+  private readonly mutation: RepositoryMutationContext | undefined;
   constructor(input: {
     runner: CommandRunner;
     repoRoot: string;
     specsDir: string;
     plansDir: string;
+    mutation?: RepositoryMutationContext;
   }) {
+    this.mutation = input.mutation;
     this.runner = input.runner;
     this.repoRoot = resolve(input.repoRoot);
     this.specsDir = directory(this.repoRoot, input.specsDir);
@@ -56,6 +61,18 @@ export class PlanningRemoteBaseGit {
     remote: string;
     baseBranch: string;
   }): Promise<PlanningRemoteBaseSnapshot> {
+    if (this.mutation)
+      return withRepositoryMutationRunner(
+        this.runner,
+        this.mutation,
+        (runner) =>
+          new PlanningRemoteBaseGit({
+            runner,
+            repoRoot: this.repoRoot,
+            specsDir: this.specsDir,
+            plansDir: this.plansDir,
+          }).fetch(input),
+      );
     if (
       !Number.isSafeInteger(input.issueNumber) ||
       input.issueNumber < 1 ||
