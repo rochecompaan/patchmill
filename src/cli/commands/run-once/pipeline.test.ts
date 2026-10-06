@@ -543,7 +543,7 @@ test("runOneIssue repairs an implementation prose finish without unresolved suba
   assert.equal(sessions[0], sessions[1]);
 });
 
-test("runOneIssue facade returns merged for direct landing", async () => {
+test("runOneIssue facade refuses an agent-supplied direct merge", async () => {
   const { result } = await runPlanApprovedImplementationScenario({
     issueNumber: 10,
     title: "Merged issue",
@@ -568,8 +568,8 @@ test("runOneIssue facade returns merged for direct landing", async () => {
     }),
   });
 
-  assert.equal(result.status, "merged");
-  assert.equal(result.mergeCommit, "abc123");
+  assert.equal(result.status, "blocked");
+  if (result.status === "blocked") assert.match(result.reason, /PR-only/iu);
 });
 
 test("runOneIssue facade returns blocked implementation result", async () => {

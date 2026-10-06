@@ -61,7 +61,7 @@ export function renderVisualEvidenceSkillStep(
 
 export function renderLandingSkillStep(skills: PatchmillSkillsConfig): string {
   return renderConfiguredSkillLine(
-    "Use the configured landing skill for the direct-land versus PR decision",
+    "Use the configured landing skill for PR review and handoff",
     skills.landing,
   );
 }

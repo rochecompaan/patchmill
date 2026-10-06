@@ -18,7 +18,6 @@ import type { CommandRunner } from "../../../command/types.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssueDevelopmentEnvironmentNotReadyResult,
-  AgentIssueMergedResult,
   AgentIssuePiResult,
   AgentIssuePrCreatedResult,
 } from "../../../issue-run/types.ts";
@@ -30,7 +29,7 @@ import type { AgentIssueConfig } from "./types.ts";
 export type ImplementationAgentOutcome =
   | {
       kind: "implemented";
-      result: AgentIssuePrCreatedResult | AgentIssueMergedResult;
+      result: AgentIssuePrCreatedResult;
     }
   | { kind: "blocked"; result: AgentIssueBlockedResult }
   | {
@@ -202,9 +201,13 @@ export async function runImplementationAgent(
   }
   if (!result) throw new Error("Pi implementation completed without a result");
   if (result.status === "blocked") return { kind: "blocked", result };
-  if (result.status !== "pr-created" && result.status !== "merged")
+  if (result.status === "merged")
     throw new Error(
-      `Expected pr-created or merged from Pi but received ${result.status}`,
+      "Pi returned merged. PR-only publication cannot accept an agent-supplied merge; preserve the evidence for migration.",
+    );
+  if (result.status !== "pr-created")
+    throw new Error(
+      `Expected pr-created from Pi but received ${result.status}`,
     );
   await assertIssueTodosComplete(
     worktreeRoot,

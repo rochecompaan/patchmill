@@ -647,7 +647,7 @@ test("runOneIssue restores a retryable label after resumed development environme
   );
 });
 
-test("runOneIssue replaces stale implementation result fields when Pi changes implementationStatus", async () => {
+test("runOneIssue preserves PR evidence when an agent claims an unverified merge", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -756,13 +756,13 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "merged");
+  assert.equal(result.status, "blocked");
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   ) as Record<string, unknown>;
-  assert.equal(runState.implementationStatus, "merged");
-  assert.equal(runState.mergeCommit, "def456");
-  assert.equal(runState.prUrl, undefined);
-  assert.equal(runState.reviewSummary, undefined);
-  assert.equal(runState.landingDecision, undefined);
+  assert.equal(runState.implementationStatus, "pr-created");
+  assert.equal(runState.mergeCommit, undefined);
+  assert.equal(runState.prUrl, "https://forgejo/pr/stale-45");
+  assert.equal(runState.reviewSummary, "stale review");
+  assert.equal(runState.landingDecision, "stale landing");
 });

@@ -12,23 +12,8 @@ import {
 } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { createMockRunner } from "../../../../test-support/run-once/mock-runner.ts";
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
-import {
-  collectProgressEvents,
-  commentBody,
-} from "../../../../test-support/run-once/assertions.ts";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
-
-function withRepo(args: string[], repoRoot: string): string[] {
-  const separator = args.indexOf("--");
-  if (separator === -1) return [...args, "--repo", repoRoot];
-  return [
-    ...args.slice(0, separator),
-    "--repo",
-    repoRoot,
-    ...args.slice(separator),
-  ];
-}
 
 const LANDING_SKILLS = {
   ...DEFAULT_PATCHMILL_CONFIG.skills,
@@ -264,7 +249,7 @@ test("runOneIssue accepts pr-created handoff when issue task todos are complete"
   assert.equal(result.status, "pr-created", JSON.stringify(result));
 });
 
-test("runOneIssue accepts direct squash-landed implementation results when skills.landing is configured", async () => {
+test("runOneIssue rejects an agent merge even with a custom landing skill", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -334,61 +319,20 @@ test("runOneIssue accepts direct squash-landed implementation results when skill
     );
   });
 
-  const { events, progress } = collectProgressEvents();
-  const result = await runOneIssue(runner, config, { now: NOW, progress });
-
-  assert.equal(result.status, "merged");
-  assert.equal(result.mergeCommit, "abc999");
-  assert.equal(result.branch, "agent/issue-22-fix-direct-landing");
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "blocked");
+  if (result.status === "blocked") assert.match(result.reason, /PR-only/iu);
   assert.equal(
-    result.planPath,
-    "docs/plans/2026-05-01-issue-22-fix-direct-landing.md",
-  );
-  assert.equal(
-    result.worktreePath,
-    ".worktrees/patchmill-issue-22-fix-direct-landing",
-  );
-  assert.deepEqual(result.validation, ["just issue-runner-test ok"]);
-  assert.equal(result.reviewSummary, "reviewed");
-  assert.equal(
-    result.landingDecision,
-    "direct squash-landed: simple localized bug fix",
-  );
-  assert.ok(events.some((event) => event.message === "Merged to main: abc999"));
-
-  const editCalls = runner.calls.filter(
-    (call) =>
-      call.command === "tea" &&
-      call.args[0] === "issues" &&
-      call.args[1] === "edit",
-  );
-  assert.equal(editCalls.length, 2);
-  assert.deepEqual(
-    editCalls[1]?.args,
-    withRepo(
-      [
-        "issues",
-        "edit",
-        "22",
-        "--remove-labels",
-        "in-progress",
-        "--add-labels",
-        "agent-done",
-      ],
-      config.repoRoot,
+    runner.calls.some(
+      (call) => call.command === "tea" && call.args.includes("agent-done"),
     ),
+    false,
   );
-
-  const comments = runner.calls.filter(
-    (call) => call.command === "tea" && call.args[0] === "comment",
+  const saved = JSON.parse(
+    await readFile(runStatePath(config.runStateDir, 22), "utf8"),
   );
-  assert.equal(comments.length, 2);
-  assert.match(commentBody(comments[1]), /Merged to `main`: abc999/);
-  assert.match(
-    commentBody(comments[1]),
-    /direct squash-landed: simple localized bug fix/,
-  );
-  assert.match(commentBody(comments[1]), /just issue-runner-test ok/);
+  assert.equal(saved.checkpoints?.implementationCompleted ?? false, false);
+  assert.equal(saved.checkpoints?.doneLabelApplied ?? false, false);
 });
 
 test("runOneIssue rejects Pi merged results when skills.landing is not configured", async () => {
@@ -457,10 +401,10 @@ test("runOneIssue rejects Pi merged results when skills.landing is not configure
     );
   });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /Pi returned merged but direct landing requires git\.allowDirectLand=true and configured skills\.landing/,
-  );
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "blocked");
+  if (result.status === "blocked")
+    assert.match(result.reason, /Pi returned merged.*PR-only/iu);
 });
 
 test("runOneIssue rejects Pi merged results when direct landing is disabled", async () => {
@@ -533,8 +477,8 @@ test("runOneIssue rejects Pi merged results when direct landing is disabled", as
     );
   });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /Pi returned merged while git\.allowDirectLand is false/,
-  );
+  const result = await runOneIssue(runner, config, { now: NOW });
+  assert.equal(result.status, "blocked");
+  if (result.status === "blocked")
+    assert.match(result.reason, /Pi returned merged.*PR-only/iu);
 });

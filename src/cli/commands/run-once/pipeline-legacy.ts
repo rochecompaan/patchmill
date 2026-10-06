@@ -324,6 +324,14 @@ async function runLegacyOneIssueInternal(
         }),
     );
   }
+  if (
+    !config.dryRun &&
+    options.lease &&
+    existingState?.implementationStatus === "merged"
+  )
+    throw new AgentIssueSafetyError(
+      "Saved implementation state returned merged. PR-only publication requires verified PR merge evidence; preserve this checkpoint for migration.",
+    );
   if (!config.dryRun && options.lease)
     existingState = await adoptLegacyRecoveryLease({
       config,

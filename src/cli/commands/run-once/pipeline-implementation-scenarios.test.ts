@@ -617,7 +617,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
       );
       assert.match(
         prompt,
-        /Use the configured landing skill for the direct-land versus PR decision: `sentinel-landing`\./,
+        /Use the configured landing skill for PR review and handoff: `sentinel-landing`\./,
       );
       assert.match(
         prompt,
@@ -627,10 +627,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
         prompt,
         /"screenshotPath": "docs\/sentinel\/web\/sentinel-after\.png"/,
       );
-      assert.match(
-        prompt,
-        /Update local `release\/2\.0` from the `upstream` remote\./,
-      );
+      assert.match(prompt, /Do not land directly on `release\/2\.0`\./);
       assert.doesNotMatch(
         prompt,
         /capturing proof screenshots|Reviewer must confirm Sentinel screenshot approval|policyText|webScreenshotSkill|mobileScreenshotSkill/,
@@ -739,13 +736,10 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
         prompt,
         /Worktree: \.patchmill\/worktrees\/pm-issue-16-use-custom-worktrees/,
       );
+      assert.match(prompt, /Do not land directly on `release\/1\.2`\./);
       assert.match(
         prompt,
-        /Update local `release\/1\.2` from the `upstream` remote\./,
-      );
-      assert.match(
-        prompt,
-        /Push `release\/1\.2` to `upstream` without force-pushing\./,
+        /Push the branch to `upstream` and open a pull request/u,
       );
       assert.match(
         prompt,

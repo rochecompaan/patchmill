@@ -308,16 +308,11 @@ export function successfulImplementationFromState(
 
 export function assertDirectLandAllowed(
   result: Extract<AgentIssuePiResult, { status: "pr-created" | "merged" }>,
-  config: Pick<AgentIssueConfig, "allowDirectLand" | "skills">,
+  _config: Pick<AgentIssueConfig, "allowDirectLand" | "skills">,
   source: string,
 ): void {
   if (result.status !== "merged") return;
-  if (!config.allowDirectLand)
-    throw new AgentIssueSafetyError(
-      `${source} returned merged while git.allowDirectLand is false`,
-    );
-  if (!config.skills.landing)
-    throw new AgentIssueSafetyError(
-      `${source} returned merged but direct landing requires git.allowDirectLand=true and configured skills.landing`,
-    );
+  throw new AgentIssueSafetyError(
+    `${source} returned merged. PR-only publication requires verified PR merge evidence; preserve this checkpoint for migration.`,
+  );
 }

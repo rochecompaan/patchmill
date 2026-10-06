@@ -23,7 +23,7 @@ test("worktree strategy uses patchmill defaults for generic worktree naming", ()
     worktreeDir: ".worktrees",
     worktreePrefix: "patchmill-issue-",
     slugLength: 48,
-    allowDirectLand: true,
+    allowDirectLand: false,
   });
 });
 

@@ -542,7 +542,7 @@ Before returning any terminal result:
 1. Call \`subagent({ action: "status" })\` and confirm no subagent run is unresolved.
 2. Confirm every task, review, accepted fix, validation command, PR check, todo, and landing step required by the configured workflow is complete. Do not add an automatic re-review.
 3. Resolve, await, resume, or interrupt every outstanding run before returning.
-4. Return only the specified \`merged\`, \`pr-created\`, or genuine human-input blocker JSON object.
+4. Return only the specified \`pr-created\` or genuine human-input blocker JSON object.
 Never return progress prose or promise to continue after the response. This non-interactive Pi invocation has no subsequent turn.`;
 }
 
@@ -813,7 +813,7 @@ export function buildImplementationPrompt(
     renderImplementationValidationStep(projectPolicy),
     renderTestingValueGateStep(),
     "Follow the visual-change evidence requirements below whenever the issue changes visible UI.",
-    "Apply the landing policy below. Follow its direct-land and PR handoff requirements, or report the exact blocker if PR creation is impossible.",
+    "Apply the PR-only publication policy below. Report the exact blocker if PR creation is impossible.",
     ...(requiredPullRequestMarker === undefined
       ? []
       : [

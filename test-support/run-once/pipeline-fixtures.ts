@@ -104,7 +104,7 @@ export async function makeConfig(
     branchPrefix: "agent/issue-",
     worktreePrefix: "patchmill-issue-",
     slugLength: 48,
-    allowDirectLand: true,
+    allowDirectLand: false,
     skills: { ...DEFAULT_PATCHMILL_CONFIG.skills },
     ...overrides,
   };

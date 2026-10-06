@@ -9,7 +9,7 @@ export const DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG: GitWorktreeStrategyConfig = {
   worktreeDir: ".worktrees",
   worktreePrefix: "patchmill-issue-",
   slugLength: 48,
-  allowDirectLand: true,
+  allowDirectLand: false,
 };
 
 function slugify(value: string): string {

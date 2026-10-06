@@ -829,7 +829,7 @@ test("runOneIssue reports pr cleanup failures without failing handoff", async ()
   );
 });
 
-test("runOneIssue finishes saved merged handoff when direct landing is enabled and skills.landing is configured", async () => {
+test("runOneIssue preserves an unverified saved direct merge even with a landing skill", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -918,23 +918,23 @@ test("runOneIssue finishes saved merged handoff when direct landing is enabled a
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "merged");
-  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
-  assert.ok(
-    runner.calls.some(
-      (call) => call.command === "tea" && call.args[0] === "comment",
-    ),
+  const before = await readFile(runStatePath(config.runStateDir, 45), "utf8");
+  await assert.rejects(
+    runOneIssue(runner, config, { now: NOW }),
+    /PR-only.*preserve.*migration/iu,
   );
-  assert.ok(
+  assert.equal(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+    before,
+  );
+  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+  assert.equal(
     runner.calls.some(
       (call) =>
         call.command === "tea" &&
-        call.args[0] === "issues" &&
-        call.args[1] === "edit" &&
-        call.args.includes("agent-done"),
+        (call.args[0] === "comment" || call.args.includes("agent-done")),
     ),
+    false,
   );
 });
 
@@ -1023,7 +1023,7 @@ test("runOneIssue rejects saved merged handoff when skills.landing is not config
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Saved implementation state returned merged but direct landing requires git\.allowDirectLand=true and configured skills\.landing/,
+    /Saved implementation state returned merged.*PR-only.*migration/iu,
   );
   assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
@@ -1114,7 +1114,7 @@ test("runOneIssue rejects saved merged handoff when direct landing is disabled",
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Saved implementation state returned merged while git\.allowDirectLand is false/,
+    /Saved implementation state returned merged.*PR-only.*migration/iu,
   );
   assert.equal((await workflowPiCalls(runner.calls)).length, 0);
 });
@@ -1192,7 +1192,7 @@ test("runOneIssue rejects stale finished implementationCompleted state before re
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
+    /PR-only.*preserve.*migration/iu,
   );
   assert.equal((await workflowPiCalls(runner.calls)).length, 0);
   assert.equal(
@@ -1299,7 +1299,7 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
+    /PR-only.*preserve.*migration/iu,
   );
   const firstRunState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
@@ -1316,7 +1316,7 @@ test("runOneIssue rejects stale finished branch and worktree before resetting st
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
+    /PR-only.*preserve.*migration/iu,
   );
 
   const secondRunState = JSON.parse(
@@ -1430,7 +1430,7 @@ test("runOneIssue rejects stale finished branch and worktree when title changed"
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Non-resumable run state for issue #45 has stale branch\/worktree; clean up before starting a fresh run/,
+    /PR-only.*preserve.*migration/iu,
   );
   assert.equal(
     runner.calls.some(
@@ -1725,9 +1725,10 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
     );
   });
 
-  const result = await runOneIssue(runner, config, { now: NOW });
-
-  assert.equal(result.status, "merged");
+  await assert.rejects(
+    runOneIssue(runner, config, { now: NOW }),
+    /PR-only.*migration/iu,
+  );
   assert.equal(
     runner.calls.some(
       (call) => call.command === "tea" && call.args[0] === "comment",
@@ -1749,6 +1750,6 @@ test("runOneIssue skips handoff and done labels when checkpoints are complete", 
   ) as Record<string, unknown> & {
     checkpoints?: Record<string, unknown>;
   };
-  assert.equal(runState.status, "finished");
+  assert.equal(runState.status, "implementing");
   assert.equal(runState.checkpoints?.doneLabelApplied, true);
 });

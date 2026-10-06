@@ -292,10 +292,7 @@ test("PiRunner implementation uses the worktree root, derives the default landin
     );
     assert.match(call.prompt, /Existing commit: abc123/);
     assert.match(call.prompt, /Worktree: worktrees\/issue-42-fix/);
-    assert.match(
-      call.prompt,
-      /Update local `release\/1\.2` from the `origin` remote\./,
-    );
+    assert.match(call.prompt, /Do not land directly on `release\/1\.2`\./);
     assert.doesNotMatch(
       call.prompt,
       /Update local `main` from the `origin` remote\./,
