@@ -165,12 +165,13 @@ export async function runPipelineImplementationStage(
           `Implementation requires a plan and branch for issue #${options.issue.number}`,
         );
       const existingPullRequest = options.resumableState
-        ? await discoverLegacyImplementationPr(
+        ? (options.existingState?.implementationPr ??
+          (await discoverLegacyImplementationPr(
             options.runner,
             options.config,
             options.issue.number,
             options.branch,
-          )
+          )))
         : undefined;
       const outcome = await runImplementationAgent({
         runner: options.runner,

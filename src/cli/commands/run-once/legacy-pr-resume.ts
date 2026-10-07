@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
@@ -32,7 +32,7 @@ import type {
 } from "./types.ts";
 import type { RunOneIssueOptions } from "./pipeline-legacy-types.ts";
 
-/** Finish-only recovery runs before workspace creation, artifact loading, or agents. */
+/** Reconciles before effects; undefined requests checks on the proven open PR. */
 export async function resumeLegacyPublishedPr(input: {
   runner: CommandRunner;
   config: AgentIssueConfig;
@@ -41,7 +41,7 @@ export async function resumeLegacyPublishedPr(input: {
   state: AgentIssueRunState;
   lease: IssueRunLease;
   options: RunOneIssueOptions;
-}): Promise<AgentIssuePipelineResult> {
+}): Promise<AgentIssuePipelineResult | undefined> {
   const { runner, config, issue, lease } = input;
   const assertOwned = () =>
     assertIssueRunLeaseOwned(lease, {
@@ -181,10 +181,20 @@ export async function resumeLegacyPublishedPr(input: {
     lease,
   );
   const implemented = successfulImplementationFromState(state);
-  if (!implemented || implemented.status !== "pr-created")
+  if (!implemented || implemented.status !== "pr-created") {
+    if (result.kind === "open") {
+      const workspace = await lstat(
+        resolve(config.repoRoot, state.worktreePath!),
+      ).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+        return undefined;
+      });
+      if (workspace?.isDirectory()) return undefined;
+    }
     return blocked(
-      "Saved PR has no complete validation receipt; preserve it for explicit checks and review.",
+      "Saved PR has no complete validation receipt or owned workspace for checks; preserve its evidence.",
     );
+  }
   const labels = lifecycleLabels(config);
   const outcome = await runPipelineFinishStage({
     lease,

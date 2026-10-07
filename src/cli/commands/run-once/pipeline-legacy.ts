@@ -334,8 +334,8 @@ async function runLegacyOneIssueInternal(
     existingState &&
     (legacyImplementationNeedsMergeReconciliation(existingState) ||
       existingState.implementationStatus === "merged")
-  )
-    return resumeLegacyPublishedPr({
+  ) {
+    const published = await resumeLegacyPublishedPr({
       runner,
       config,
       host,
@@ -344,6 +344,10 @@ async function runLegacyOneIssueInternal(
       lease: options.lease,
       options,
     });
+    if (published) return published;
+    // A proven open PR without validation uses ordinary owned-workspace checks.
+    existingState = await readRunState(config.runStateDir, issue.number);
+  }
   if (!config.dryRun && options.lease)
     existingState = await adoptLegacyRecoveryLease({
       config,
