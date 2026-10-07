@@ -98,7 +98,7 @@ export class PlanningRemoteBaseGit {
         "fetch",
         "--no-tags",
         "--",
-        target?.url ?? input.remote,
+        target?.remote ?? input.remote,
         `+refs/heads/${input.baseBranch}:${ref}`,
       ],
       { cwd: this.repoRoot },

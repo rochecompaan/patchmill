@@ -1,4 +1,5 @@
 import type { CommandRunner } from "../command/types.ts";
+import { isPlanningBranch } from "../git/planning-git-validation.ts";
 import {
   PullRequestIdentityError,
   sameRepositoryIdentity,
@@ -57,7 +58,7 @@ export async function resolveImplementationPrTargetRemote(
   };
   const candidates: ImplementationPrTargetRemote[] = [];
   for (const remote of await command(["remote"])) {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u.test(remote))
+    if (!isPlanningBranch(remote))
       throw new ImplementationPrTargetRemoteError(
         "invalid configured remote name",
       );

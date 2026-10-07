@@ -59,6 +59,11 @@ test("fork publication selects only the configured fetch endpoint for the saved 
     },
   );
   assert.equal(await git("config", "--local", "--list"), config);
+  await git("remote", "rename", "upstream", "team/upstream");
+  assert.equal(
+    (await resolveImplementationPrTargetRemote(runner, root, target)).remote,
+    "team/upstream",
+  );
 });
 
 test("missing, ambiguous and conflicting target fetch endpoints fail closed without config changes", async (t) => {
@@ -126,7 +131,7 @@ test("target-base fetch proves the upstream merge instead of the publishing fork
   const ssh = join(root, "owned-fixture-ssh");
   await writeFile(
     ssh,
-    `#!/bin/sh\ncase "$*" in\n *team/project.git*) exec git-upload-pack '${upstream}' ;;\n *fork/project.git*) exec git-upload-pack '${fork}' ;;\n *) exit 99 ;;\nesac\n`,
+    `#!/bin/sh\ncase "$*" in\n *other.example*) exec git-upload-pack '${fork}' ;;\n *team/project.git*) exec git-upload-pack '${upstream}' ;;\n *fork/project.git*) exec git-upload-pack '${fork}' ;;\n *) exit 99 ;;\nesac\n`,
   );
   await chmod(ssh, 0o700);
   const controlled: CommandRunner = {
@@ -160,6 +165,30 @@ test("target-base fetch proves the upstream merge instead of the publishing fork
     old,
   );
   assert.equal(snapshot.remote, "upstream");
+  // Git expands an original configured URL once. Refetching its expanded URL
+  // as a new remote would apply a second, unrelated rewrite.
+  await git("remote", "set-url", "upstream", "alias://team/project.git");
+  await git("config", "url.ssh://git@forge.example/.insteadOf", "alias://");
+  await git(
+    "config",
+    "url.ssh://git@other.example/.insteadOf",
+    "ssh://git@forge.example/",
+  );
+  assert.equal(
+    (await git("remote", "get-url", "upstream")).trim(),
+    "ssh://git@forge.example/team/project.git",
+  );
+  const aliased = await base.fetch({
+    issueNumber: 226,
+    remote: "origin",
+    baseBranch: "main",
+    targetRepository: target,
+  });
+  assert.equal(
+    aliased.baseOid,
+    merged,
+    "a verified remote must not reapply URL rewriting to a different repository",
+  );
 });
 
 test("expanded insteadOf endpoint, not an apparent target URL, determines fetch authority", async (t) => {
