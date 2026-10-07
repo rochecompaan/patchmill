@@ -158,6 +158,7 @@ test(
       assert.deepEqual(
         publications.map((result) => result.output.status),
         ["pr-created", "pr-created"],
+        JSON.stringify(publications),
       );
       assert.ok(
         scenario.host.issues.every((issue) =>

@@ -147,6 +147,7 @@ async function acquireGuard(
   signal?: AbortSignal,
 ): Promise<() => Promise<void>> {
   const guard = join(root, "admission-guard");
+  let incompleteSince: number | undefined;
   while (true) {
     if (signal?.aborted) throw signal.reason ?? new Error("Admission aborted");
     const mine: GuardRecord = {
@@ -178,14 +179,25 @@ async function acquireGuard(
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      let raw: string;
+      let raw: string | undefined;
       try {
         raw = await readFile(guardOwnerPath(guard), "utf8");
-      } catch {
-        throw new RunAdmissionConflictError(guard);
+      } catch (readError) {
+        if ((readError as NodeJS.ErrnoException).code !== "ENOENT")
+          throw new RunAdmissionConflictError(guard);
       }
-      const owner = parseGuard(raw);
-      if (!owner || owner.hostname !== hostname())
+      const owner = raw === undefined ? undefined : parseGuard(raw);
+      if (!owner || raw === undefined) {
+        // mkdir/open/write and recursive release have observable owner gaps.
+        // Wait without mutating unknown records; persistent gaps fail closed.
+        incompleteSince ??= performance.now();
+        if (performance.now() - incompleteSince >= 1_000)
+          throw new RunAdmissionConflictError(guard);
+        await waits(10);
+        continue;
+      }
+      incompleteSince = undefined;
+      if (owner.hostname !== hostname())
         throw new RunAdmissionConflictError(guard);
       if (live(owner)) {
         await waits(10);
