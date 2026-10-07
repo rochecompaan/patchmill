@@ -231,7 +231,10 @@ export async function finishPlanningImplementation(
           pushedHeadOid: phase.workspace.cleanup.pushedHeadOid,
         },
       },
-      authorization: { kind: "publication" },
+      authorization: {
+        kind:
+          reconciliation.kind === "merged" ? "merged-terminal" : "publication",
+      },
     });
     phase = {
       ...phase,
