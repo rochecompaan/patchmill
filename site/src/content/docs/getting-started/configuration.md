@@ -230,9 +230,12 @@ Make cleanup idempotent, namespace resources to the current issue or worktree,
 tolerate resources that are already absent, and leave Patchmill's Git worktree
 and branch intact.
 
-Implementation cleanup follows verified PR merge and the saved finish
-checkpoints. Each hook must affect only its owned issue's resources. Shared
-service cleanup is unsupported during concurrent explicit work. See
+Planning implementation runs its cleanup hook after PR publication, before the
+PR merge. Legacy implementation runs its cleanup hook after verified PR merge.
+Both workflows save finish checkpoints for retries.
+
+Each hook must affect only its owned issue's resources. Shared service cleanup
+is unsupported during concurrent explicit work. See
 [recovery and operator safety](/using-patchmill/run-once/#recovery-and-operator-safety)
 for ordering, retry, failure-reporting, and workspace-ownership details.
 
