@@ -125,8 +125,10 @@ unfinished legacy runs; adding an approved label never advances fresh state.
 Review and merge the exact planning pull request, then rerun Run-once. See the
 [gate matrix](/using-patchmill/run-once/#gate-matrix) for every sequence.
 
-`git.allowDirectLand` can still govern legacy behavior, but `planning-pr-v1`
-always requires a validated implementation pull request.
+All implementation workflows require a validated pull request.
+`git.allowDirectLand` defaults to `false`. An explicit `true` value is rejected
+with migration guidance. A custom landing skill cannot authorize target-branch
+updates.
 
 ## Teach agents how to work in this repository
 
@@ -173,8 +175,8 @@ Add only the optional hooks your repository needs:
 - `toolchain`: describe how to install dependencies, run tests, start servers,
   and validate changes.
 - `review`: require explicit review passes before final handoff.
-- `landing`: describe when direct landing is allowed versus when the agent must
-  open a pull request. Direct landing also requires the matching git policy.
+- `landing`: describe PR review, validation, checks, and handoff requirements.
+  The skill cannot authorize direct target-branch publication.
 - `visualEvidence`: describe how to capture screenshots or other proof for UI
   changes.
 
@@ -228,7 +230,9 @@ Make cleanup idempotent, namespace resources to the current issue or worktree,
 tolerate resources that are already absent, and leave Patchmill's Git worktree
 and branch intact.
 
-The hook runs only after a successful PR or merge handoff. See
+Implementation cleanup follows verified PR merge and the saved finish
+checkpoints. Each hook must affect only its owned issue's resources. Shared
+service cleanup is unsupported during concurrent explicit work. See
 [recovery and operator safety](/using-patchmill/run-once/#recovery-and-operator-safety)
 for ordering, retry, failure-reporting, and workspace-ownership details.
 
@@ -323,6 +327,16 @@ Configure the main Pi orchestrator and role-specific subagent defaults in
 [Pi and subagents](/guides/pi-and-subagents/). Keep those settings local with
 the rest of `.patchmill/pi-agent/`.
 
+Concurrent explicit commands share one bound namespace. The namespace binds the
+clone root, host repository, state directory, workspace root, and todo
+definition. Before changing these values or upgrading Patchmill, stop all
+affected processes. See the
+[operator contract](/using-patchmill/run-once/#concurrent-explicit-commands).
+
+The default todo root remains `.pi/todos` within each owned workspace. Relative
+custom todo roots also use that workspace. Absolute shared roots preserve other
+issues' tasks through issue scoping. Resume retains an existing todo location.
+
 ## What not to configure first
 
 You usually do not need to set `git.baseBranch`. When it is omitted, `run-once`
@@ -330,7 +344,7 @@ detects the pull-request target branch from local git metadata and falls back to
 `main` only when detection cannot find a better answer.
 
 Only set git policy when your repository has unusual branch, remote, worktree,
-or direct-landing rules. Otherwise, start with workflow gates, skills,
+or publication rules. Otherwise, start with workflow gates, skills,
 development-environment setup, and validation policy.
 
 ## Check the result

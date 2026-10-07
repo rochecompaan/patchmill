@@ -32,9 +32,11 @@ state blocks without fallback.
 3. A required spec or plan gate produces one non-closing planning pull request.
    Its exact verified merge unlocks the next phase.
 4. The implementation phase produces an independently validated, open,
-   issue-closing pull request regardless of legacy direct-land configuration.
-5. Checkpointed handoff, cleanup hook, workspace cleanup, and done labels occur
-   only after implementation pull-request validation.
+   issue-closing pull request. Both planning and legacy workflows require PRs.
+5. Publication returns `pr-created` and leaves the Issue run in progress.
+6. After the saved PR merges, explicit resume verifies its merge commit against
+   the fetched target base. Remaining cleanup and done-label checkpoints then
+   complete the Issue run without new agent work.
 
 When ordinary Git status is clean but ignored phase-workspace paths remain,
 Patchmill checkpoints `cleanup-pending` before removing the worktree. It posts
@@ -44,8 +46,13 @@ applies the configured ready label, the next Run attempt refreshes cleanup only;
 it does not replay a successful cleanup hook or other checkpointed finish
 effects. Once cleanup succeeds, the existing done-label transition completes.
 
-`review-pending`, `cleanup-pending`, and `stopped` with reason `plan-only` are
-exit-zero nonfailure results. Normal recovery is an ordinary rerun:
+`review-pending`, `cleanup-pending`, and supported `stopped` results are
+exit-zero nonfailure results. Same-issue contention reports
+`issue already in progress.` without repair advice.
+
+Independent `--issue N` processes can overlap in one clone. Automatic selection
+remains serial and excludes other active attempts. A process exit does not
+complete the Issue run. Normal recovery is an ordinary rerun:
 
 ```sh
 patchmill run-once --issue N

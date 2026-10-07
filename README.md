@@ -58,6 +58,16 @@ patchmill triage
 patchmill run-once
 ```
 
+For independent issues, run `patchmill run-once --issue N` in separate terminals
+from the same local clone. Automatic selection remains serial. Each explicit
+process owns only its issue and phase workspaces.
+
+Implementation always creates a PR. An open PR does not complete the Issue run.
+After the PR merges, rerun the same explicit command to finish saved
+checkpoints. See the
+[operator contract](https://patchmill.dev/using-patchmill/run-once/#concurrent-explicit-commands)
+for resource responsibilities, safe resume, and unsupported concurrency.
+
 ## Main commands
 
 - `patchmill init` initializes local configuration and recommended skills.

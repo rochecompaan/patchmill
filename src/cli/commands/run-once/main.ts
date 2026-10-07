@@ -38,6 +38,11 @@ Use --dry-run to preview the next eligible issue without mutating the configured
 Progress is written to stderr by default. Interactive stdout ends with a readable formatted result; redirected stdout remains compact JSON.
 --quiet suppresses progress but not the final result. NO_COLOR disables result styling without changing output mode.
 Run logs are written under the configured run state directory (default: .patchmill/runs/) and end with a structured result event.
+Independent explicit issues can run concurrently in one clone. Automatic selection remains serial.
+An owned issue stops with "issue already in progress." and exit code 0. Retry a busy Git transaction after its owner stops.
+Implementation publishes a PR, not the target branch. After the PR merges, rerun the same explicit issue to finish its checkpoints.
+Use one version and bound configuration namespace. Manage spending, CPU, ports, and test databases per issue.
+Do not remove another run's locks or mutate shared Git/configuration during active attempts.
 
 Options:
   --help, -h          Show this help and exit.
@@ -45,7 +50,7 @@ Options:
   --plan-only         ${legacyPlanningDeprecation("--plan-only").help}
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
-  --issue <number>    Process one specific open actionable issue.
+  --issue <number>    Process or resume only this issue, including verified PR finish recovery.
   --host-login <name> Use a named host login when the provider supports named logins.
   --tea-login <name>  Compatibility alias for --host-login.
 

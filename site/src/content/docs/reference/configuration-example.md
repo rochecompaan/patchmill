@@ -75,7 +75,7 @@ skills, and git policy from defaults.
     "branchPrefix": "agent/issue-",
     "worktreePrefix": "patchmill-issue-",
     "slugLength": 48,
-    "allowDirectLand": true
+    "allowDirectLand": false
   },
   "cleanupHook": "./scripts/cleanup.sh",
   "projectPolicy": {
