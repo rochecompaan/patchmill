@@ -50,12 +50,19 @@ function input(overrides: Record<string, unknown> = {}) {
   return {
     state,
     phaseIndex: 0,
+    workspaceCreated: true,
     lock: {} as never,
     stateStore: { replace: async ({ next }: { next: unknown }) => next },
     host: {
       id: "github-gh" as const,
       resolveTargetRepositoryIdentity: async () => repository,
       resolveRemoteRepositoryIdentity: async () => repository,
+      findPullRequests: async () => [],
+      createPullRequest: async () => assert.fail("the agent owns publication"),
+      readPullRequestBody: async () =>
+        assert.fail("no PR body lookup expected"),
+      updatePullRequestBody: async () =>
+        assert.fail("no PR body mutation expected"),
       getPullRequest: async () => {
         throw new Error("host transport failure");
       },
@@ -90,6 +97,119 @@ function input(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as never;
 }
+
+test("publication crash reuses the exact owned PR for validation instead of publishing again", async () => {
+  let publications = 0;
+  let saved:
+    | Parameters<typeof runPlanningImplementation>[0]["state"]
+    | undefined;
+  const pull = {
+    number: 189,
+    url: "https://github.com/acme/patchmill/pull/189",
+    targetRepository: repository,
+    headRepository: repository,
+    baseBranch: "main",
+    headBranch: "agent/189",
+    headSha: oid("b"),
+    body: "Closes #189\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+    status: "open" as const,
+  };
+  const host = {
+    id: "github-gh" as const,
+    resolveTargetRepositoryIdentity: async () => repository,
+    resolveRemoteRepositoryIdentity: async () => repository,
+    findPullRequests: async () => (publications ? [pull] : []),
+    getPullRequest: async () => pull,
+    createPullRequest: async () =>
+      assert.fail("parent must not duplicate publication"),
+    readPullRequestBody: async () => pull.body,
+    updatePullRequestBody: async () => {},
+  };
+  const stateStore = {
+    replace: async ({
+      next,
+    }: {
+      next: Parameters<typeof runPlanningImplementation>[0]["state"];
+    }) => {
+      saved = validatePlanningState(next);
+      return saved;
+    },
+  };
+  const first = input({
+    host,
+    stateStore,
+    runAgent: async () => {
+      publications += 1;
+      throw new Error("crash after publication");
+    },
+  }) as Parameters<typeof runPlanningImplementation>[0];
+  const prepared = first.state.phases[0];
+  if (!prepared || prepared.status !== "workspace-ready")
+    assert.fail("invalid prepared fixture");
+  first.state = validatePlanningState({
+    ...first.state,
+    phases: [
+      {
+        ...prepared,
+        workspace: { ...prepared.workspace, headOid: oid("b") },
+        artifacts: [
+          {
+            kind: "spec",
+            path: "docs/specs/issue-189-spec.md",
+            source: "workspace",
+            commitOid: oid("b"),
+          },
+          {
+            kind: "plan",
+            path: "docs/plans/issue-189-plan.md",
+            source: "workspace",
+            commitOid: oid("b"),
+          },
+        ],
+      },
+    ],
+  });
+  saved = first.state;
+  await assert.rejects(
+    runPlanningImplementation(first),
+    /crash after publication/u,
+  );
+  assert.ok(saved);
+  const result = await runPlanningImplementation(
+    input({
+      state: saved,
+      host,
+      stateStore,
+      workspaceCreated: false,
+      runAgent: async (
+        request: Parameters<
+          Parameters<typeof runPlanningImplementation>[0]["runAgent"]
+        >[0],
+      ) => {
+        if (!request.existingPullRequest) publications += 1;
+        assert.equal(
+          request.existingPullRequest?.url,
+          "https://github.com/acme/patchmill/pull/189",
+        );
+        return {
+          status: "pr-created",
+          prUrl: pull.url,
+          branch: "agent/189",
+          commits: [oid("b")],
+          validation: ["npm test passed"],
+          reviewSummary: "reviewed existing PR",
+        };
+      },
+    }),
+  );
+  assert.equal(result.kind, "validated", JSON.stringify(result));
+  assert.equal(publications, 1);
+  assert.equal(
+    (result.state.phases[0] as { pullRequest?: { url: string } }).pullRequest
+      ?.url,
+    "https://github.com/acme/patchmill/pull/189",
+  );
+});
 
 test("passes the post-prepare durable state and implementation workspace to the agent", async () => {
   let received:

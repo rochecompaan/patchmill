@@ -1,4 +1,7 @@
-import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
+import type {
+  AgentIssuePrCreatedResult,
+  AgentIssueMergedResult,
+} from "../../../issue-run/types.ts";
 import type {
   ImplementationCompletePlanningPhase,
   ImplementationPullRequestOpenPlanningPhase,
@@ -50,6 +53,20 @@ export function durableImplementationResult(
       ...(evidence.url === undefined ? {} : { url: evidence.url }),
     })),
   };
+}
+
+export function durableMergedImplementationResult(
+  phase: ImplementationCompletePlanningPhase,
+): AgentIssueMergedResult {
+  if (!phase.merge)
+    throw new Error("Implementation completion has no verified PR merge proof");
+  const {
+    status: _status,
+    prUrl: _prUrl,
+    visualEvidence: _visualEvidence,
+    ...result
+  } = durableImplementationResult(phase);
+  return { ...result, status: "merged", mergeCommit: phase.merge.mergeOid };
 }
 
 export function requiredImplementationFinishContext(

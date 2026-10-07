@@ -60,6 +60,7 @@ export type ImplementationAgentInput = {
   heartbeatMs?: number | undefined;
   piSessionPath?: string | undefined;
   requiredPullRequestMarker?: string | undefined;
+  existingPullRequestUrl?: string;
   /** Planning runs pin operator todo state outside their owned worktree. */
   taskContract?: PatchmillPiTaskContract | undefined;
   progress: (
@@ -163,6 +164,9 @@ export async function runImplementationAgent(
           priorBlockerQuestions: input.resume.existingState?.blockerQuestions,
           priorValidation: input.resume.existingState?.validation,
         },
+        ...(input.existingPullRequestUrl
+          ? { existingPullRequestUrl: input.existingPullRequestUrl }
+          : {}),
         ...(developmentEnvironment === undefined
           ? {}
           : { developmentEnvironment }),

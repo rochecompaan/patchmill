@@ -96,6 +96,13 @@ test("a ready-only cleanup acknowledgement resumes cleared pending cleanup", asy
 
     const complete = await scenario.run();
     assert.equal(complete.status, "pr-created", JSON.stringify(complete));
+    assert.equal(
+      (await scenario.state())?.phases.at(-1)?.status,
+      "pull-request-open",
+    );
+    assert.deepEqual(scenario.issueSnapshot().labels, ["in-progress"]);
+    await scenario.mergeOpenImplementationPull({ closeIssue: false });
+    assert.equal((await scenario.run()).status, "merged");
     assert.deepEqual(scenario.issueSnapshot().labels, ["agent-done"]);
     assert.equal((await scenario.state())?.phases.at(-1)?.status, "complete");
     assert.equal(
@@ -200,6 +207,12 @@ test("an implementation cleanup pending preserves ignored artifacts through an a
     scenario.applyReadyLabel();
     const complete = await scenario.run();
     assert.equal(complete.status, "pr-created", JSON.stringify(complete));
+    assert.equal(
+      (await scenario.state())?.phases.at(-1)?.status,
+      "pull-request-open",
+    );
+    await scenario.mergeOpenImplementationPull({ closeIssue: false });
+    assert.equal((await scenario.run()).status, "merged");
     assert.equal((await scenario.state())?.phases.at(-1)?.status, "complete");
     assert.equal(
       scenario.effects().filter((effect) => effect.operation === "cleanup-hook")

@@ -106,6 +106,75 @@ export class PlanningStateStore {
     await this.write(path, next, true);
     return next;
   }
+  /** Compatibility only: archive an old false completion without weakening normal transitions. */
+  async reopenUnverifiedImplementation(input: {
+    issueNumber: number;
+    expectedRunId: string;
+    expectedRevision: number;
+    lock: PlanningIssueLock;
+  }): Promise<PlanningStateV1> {
+    const path = this.path(input.issueNumber);
+    const raw = await readFile(path, "utf8");
+    const current = parsePlanningState(raw);
+    if (current.runId !== input.expectedRunId)
+      throw new PlanningStateConflictError("run-id-mismatch", path);
+    if (current.revision !== input.expectedRevision)
+      throw new PlanningStateConflictError("revision-mismatch", path);
+    const phaseIndex = current.phases.length - 1;
+    const phase = current.phases[phaseIndex];
+    if (
+      phase?.kind !== "implementation" ||
+      phase.status !== "complete" ||
+      phase.merge !== undefined
+    )
+      throw new PlanningStateValidationError(
+        "not-unverified-implementation",
+        `$.phases[${phaseIndex}]`,
+        path,
+      );
+    await this.owned(input.lock, current.issueNumber, current.runId, path);
+    const archive = join(
+      this.runStateDir,
+      "planning-pr-v1",
+      "archive",
+      `issue-${current.issueNumber}-${randomUUID()}.json`,
+    );
+    await mkdir(dirname(archive), { recursive: true });
+    const handle = await open(archive, "wx", 0o600);
+    try {
+      await handle.writeFile(raw);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    const { completion: _completion, ...publication } = phase;
+    const {
+      doneLabelEnsured: _ensured,
+      doneLabelApplied: _applied,
+      ...finish
+    } = phase.finish;
+    const phases = [...current.phases];
+    phases[phaseIndex] = {
+      ...publication,
+      status: "pull-request-open",
+      finish,
+    };
+    const next = validatePlanningState({
+      ...current,
+      phases,
+      revision: current.revision + 1,
+      updatedAt: new Date(
+        Math.max(Date.now(), Date.parse(current.updatedAt)),
+      ).toISOString(),
+    });
+    await this.write(path, next, true, async () => {
+      await this.owned(input.lock, current.issueNumber, current.runId, path);
+      if ((await readFile(path, "utf8")) !== raw)
+        throw new PlanningStateConflictError("revision-mismatch", path);
+    });
+    return next;
+  }
+
   private async owned(
     lock: PlanningIssueLock,
     issue: number,
@@ -132,6 +201,7 @@ export class PlanningStateStore {
     path: string,
     state: PlanningStateV1,
     replace: boolean,
+    beforeReplace?: () => Promise<void>,
   ): Promise<void> {
     const temporary = `${path}.${randomUUID()}.tmp`;
     let renamed = false;
@@ -152,6 +222,7 @@ export class PlanningStateStore {
       await handle.close();
       handle = undefined;
       await this.beforeRename?.(temporary, path);
+      await beforeReplace?.();
       await rename(temporary, path);
       renamed = true;
       try {

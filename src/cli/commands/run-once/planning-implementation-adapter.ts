@@ -60,6 +60,7 @@ export function createPlanningImplementationAdapter(
       git,
       requiredPullRequestMarker,
       workspaceCreated,
+      existingPullRequest,
     }) => {
       const result = await runImplementationAgent({
         runner: input.runner,
@@ -91,6 +92,9 @@ export function createPlanningImplementationAdapter(
         heartbeatMs: input.heartbeatMs,
         piSessionPath: input.piSessionPath,
         requiredPullRequestMarker,
+        ...(existingPullRequest
+          ? { existingPullRequestUrl: existingPullRequest.url }
+          : {}),
         taskContract: resolveIssueTodoContract(
           phase.workspace.identity.worktreePath,
           input.config.projectPolicy.pi.taskContract,

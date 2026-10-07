@@ -45,19 +45,40 @@ export function createPlanningProviderRunner(input: {
       const values = name === "pi" ? args.slice(1) : args;
       if (name === "git") {
         if (values[0] === "remote" && values[1] === "get-url") {
+          if (options.ownedGit) {
+            const inspected = await createCommandRunner().run("git", values, {
+              ...options,
+              cwd: options.cwd ?? input.repoRoot,
+            });
+            if (inspected.code !== 0) return inspected;
+          }
           input.record({ kind: "read", operation: "repository-read" });
+          const endpoint =
+            input.provider === "github-gh"
+              ? "github.test/acme/patchmill"
+              : values.at(-1) === "upstream"
+                ? "forge.test/acme/patchmill"
+                : "forge.test/acme/patchmill-head";
           return {
             code: 0,
-            stdout: `https://${input.provider === "github-gh" ? "github.test/acme/patchmill" : "forge.test/acme/patchmill-head"}.git\n`,
+            stdout: `https://${endpoint}.git\n`,
             stderr: "",
           };
         }
+        const gitValues =
+          values[0] === "fetch"
+            ? values.map((value) =>
+                value.startsWith("https://")
+                  ? join(input.repoRoot, "remote.git")
+                  : value,
+              )
+            : values;
         const result = options.ownedGit
-          ? await createCommandRunner().run("git", values, {
+          ? await createCommandRunner().run("git", gitValues, {
               ...options,
               cwd: options.cwd ?? input.repoRoot,
             })
-          : await git(options.cwd ?? input.repoRoot, values);
+          : await git(options.cwd ?? input.repoRoot, gitValues);
         if (
           values[0] === "worktree" &&
           values[1] === "add" &&

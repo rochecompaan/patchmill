@@ -127,6 +127,62 @@ export async function mergePlanningPull(input: {
   await git(input.repoRoot, ["push", "origin", "main"]);
 }
 
+export async function mergeImplementationPull(input: {
+  repoRoot: string;
+  pulls: PlanningScenarioPull[];
+  deleteHeadBranch?: boolean;
+}): Promise<void> {
+  const pull = input.pulls.find(
+    (candidate) => candidate.number === 99 && !candidate.merged,
+  );
+  assert.ok(pull, "an open implementation PR is required");
+  const remote = join(input.repoRoot, "remote.git");
+  const base = await git(remote, ["rev-parse", "refs/heads/main"]);
+  assert.equal(base.code, 0, base.stderr);
+  const old = base.stdout.trim();
+  const tree = await git(remote, [
+    "merge-tree",
+    "--write-tree",
+    old,
+    pull.headOid,
+  ]);
+  assert.equal(tree.code, 0, tree.stderr);
+  const commit = await git(remote, [
+    "-c",
+    "user.name=Host",
+    "-c",
+    "user.email=host@example.test",
+    "commit-tree",
+    tree.stdout.trim(),
+    "-p",
+    old,
+    "-p",
+    pull.headOid,
+    "-m",
+    "Merge implementation PR",
+  ]);
+  assert.equal(commit.code, 0, commit.stderr);
+  const mergeOid = commit.stdout.trim();
+  const updated = await git(remote, [
+    "update-ref",
+    "refs/heads/main",
+    mergeOid,
+    old,
+  ]);
+  assert.equal(updated.code, 0, updated.stderr);
+  if (input.deleteHeadBranch) {
+    const deleted = await git(remote, [
+      "update-ref",
+      "-d",
+      `refs/heads/${pull.branch}`,
+      pull.headOid,
+    ]);
+    assert.equal(deleted.code, 0, deleted.stderr);
+  }
+  pull.mergeOid = mergeOid;
+  pull.merged = true;
+}
+
 export async function recordCarriedArtifacts(
   cwd: string,
   carriedArtifacts: Map<string, string>,

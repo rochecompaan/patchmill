@@ -117,6 +117,11 @@ function input(initial = state(), fail?: string) {
       state: initial,
       phaseIndex: 0,
       lock: {} as never,
+      reconcilePr: async () => ({
+        kind: "merged" as const,
+        mergeOid: oid("c"),
+        mergedBaseOid: oid("d"),
+      }),
       stateStore: {
         replace: async ({ next }: { next: PlanningStateV1 }) => {
           const validated = validatePlanningState(next);
@@ -165,6 +170,18 @@ function input(initial = state(), fail?: string) {
     },
   };
 }
+test("open implementation PR leaves the Issue run unfinished", async () => {
+  const run = input();
+  const result = await finishPlanningImplementation({
+    ...run.value,
+    reconcilePr: async () => ({ kind: "open" as const }),
+  });
+  assert.equal(result.kind, "implementation-published");
+  assert.equal(result.state.phases[0]?.status, "pull-request-open");
+  assert.equal(run.events.includes("ensureDoneLabel"), false);
+  assert.equal(run.events.includes("applyDoneLabels"), false);
+});
+
 test("finishes in durable external-effect and cleanup order", async () => {
   const run = input();
   const result = await finishPlanningImplementation(run.value);
@@ -179,7 +196,7 @@ test("finishes in durable external-effect and cleanup order", async () => {
     "ensureDoneLabel",
     "applyDoneLabels",
   ]);
-  assert.equal(run.checkpoints.length, 9);
+  assert.equal(run.checkpoints.length, 10);
 });
 test("warns before checkpointing a best-effort cost publication failure", async () => {
   const run = input(state(), "publishCost");
@@ -188,7 +205,7 @@ test("warns before checkpointing a best-effort cost publication failure", async 
   assert.equal(run.checkpoints[0]?.phases[0]?.status, "pull-request-open");
   assert.equal(
     (
-      run.checkpoints[0]?.phases[0] as {
+      run.checkpoints[1]?.phases[0] as {
         finish?: { costPublicationCompleted?: boolean };
       }
     ).finish?.costPublicationCompleted,

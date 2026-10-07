@@ -1,6 +1,10 @@
 import { planningPhasePlan } from "../../../workflow/planning-pull-requests.ts";
+import { durableMergedImplementationResult } from "./planning-runtime-state.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
-import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
+import type {
+  AgentIssuePrCreatedResult,
+  AgentIssueMergedResult,
+} from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
 import type { PlanningCleanupPendingOutcome } from "./planning-phase-runner-shared.ts";
@@ -27,6 +31,11 @@ export type PlanningCoordinatorOutcome =
     }
   | {
       kind: "complete";
+      state: PlanningStateV1;
+      result: AgentIssueMergedResult;
+    }
+  | {
+      kind: "implementation-published";
       state: PlanningStateV1;
       result: AgentIssuePrCreatedResult;
     };
@@ -58,8 +67,20 @@ export async function coordinatePlanningPhases(
     const phaseIndex = state.phases.findIndex(
       (phase) => phase.status !== "complete",
     );
-    if (phaseIndex < 0)
-      throw new Error("Planning state has no implementation result");
+    if (phaseIndex < 0) {
+      const implementation = state.phases.at(-1);
+      if (
+        implementation?.kind === "implementation" &&
+        implementation.status === "complete" &&
+        implementation.merge
+      )
+        return {
+          kind: "complete",
+          state,
+          result: durableMergedImplementationResult(implementation),
+        };
+      throw new Error("Planning state has no verified implementation result");
+    }
     const phase = plan[phaseIndex];
     if (phase === undefined)
       throw new Error("Planning phase plan is inconsistent");
@@ -73,6 +94,7 @@ export async function coordinatePlanningPhases(
       case "cleanup-pending":
       case "blocked":
       case "complete":
+      case "implementation-published":
         return outcome;
       case "review-pending":
         if (phase.kind === "implementation")

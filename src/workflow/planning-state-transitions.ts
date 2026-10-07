@@ -351,7 +351,7 @@ export function assertPlanningPhaseReplacement(
       same(current.implementation, next.implementation, index);
       if (
         next.status === "pull-request-open" &&
-        Object.keys(next.finish).length
+        (Object.keys(next.finish).length || next.merge !== undefined)
       )
         fail("invalid-finish-transition", index, ".finish");
     }
@@ -375,11 +375,25 @@ export function assertPlanningPhaseReplacement(
       if (!("implementation" in next) || !("finish" in next))
         fail("invalid-transition", index, ".implementation");
       same(current.implementation, next.implementation, index);
+      if (current.merge !== undefined) same(current.merge, next.merge, index);
+      const mergeAdded =
+        current.merge === undefined && next.merge !== undefined;
       const finishAdvanced = assertImplementationFinish(
         current.finish as Record<string, unknown>,
         next.finish as Record<string, unknown>,
         index,
       );
+      if (
+        mergeAdded &&
+        (finishAdvanced ||
+          current.workspace.cleanup.state !== next.workspace.cleanup.state)
+      )
+        fail("invalid-merge-transition", index, ".merge");
+      if (
+        (next.finish.doneLabelEnsured || next.finish.doneLabelApplied) &&
+        next.merge === undefined
+      )
+        fail("unverified-implementation-merge", index, ".merge");
       if (
         finishAdvanced &&
         current.workspace.cleanup.state !== next.workspace.cleanup.state
@@ -418,6 +432,9 @@ export function assertPlanningPhaseReplacement(
     same(current.implementation, next.implementation, index);
     same(current.artifacts, next.artifacts, index);
     same(current.finish, next.finish, index);
+    if (current.merge === undefined || next.merge === undefined)
+      fail("unverified-implementation-merge", index, ".merge");
+    same(current.merge, next.merge, index);
     return;
   }
   if (

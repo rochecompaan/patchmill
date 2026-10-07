@@ -1,5 +1,7 @@
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { CommandRunner } from "../command/types.ts";
+import type { RepositoryIdentity } from "../host/pull-requests.ts";
+import { resolveImplementationPrTargetRemote } from "./implementation-pr-target-base.ts";
 import type { RepositoryMutationContext } from "./repository-mutation.ts";
 import { withRepositoryMutationRunner } from "./repository-mutation-runner.ts";
 import {
@@ -60,6 +62,7 @@ export class PlanningRemoteBaseGit {
     issueNumber: number;
     remote: string;
     baseBranch: string;
+    targetRepository?: RepositoryIdentity;
   }): Promise<PlanningRemoteBaseSnapshot> {
     if (this.mutation)
       return withRepositoryMutationRunner(
@@ -80,14 +83,22 @@ export class PlanningRemoteBaseGit {
       !isPlanningBranch(input.baseBranch)
     )
       throw new RangeError("Invalid planning remote-base input");
-    const ref = `refs/remotes/${input.remote}/${input.baseBranch}`;
+    const target = input.targetRepository
+      ? await resolveImplementationPrTargetRemote(
+          this.runner,
+          this.repoRoot,
+          input.targetRepository,
+        )
+      : undefined;
+    const remote = target?.remote ?? input.remote;
+    const ref = `refs/remotes/${remote}/${input.baseBranch}`;
     let result = await this.runner.run(
       "git",
       [
         "fetch",
         "--no-tags",
         "--",
-        input.remote,
+        target?.url ?? input.remote,
         `+refs/heads/${input.baseBranch}:${ref}`,
       ],
       { cwd: this.repoRoot },
@@ -171,7 +182,7 @@ export class PlanningRemoteBaseGit {
       }
     }
     return Object.freeze({
-      remote: input.remote,
+      remote,
       baseBranch: input.baseBranch,
       baseOid,
       artifactCandidates: Object.freeze({

@@ -10,6 +10,7 @@ import { blockerComment, startedComment } from "./pipeline-comments.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
 import { createPlanningRuntime } from "./planning-runtime.ts";
 import { repositoryMutationContext } from "./repository-mutation-context.ts";
+import { reconcileSavedPlanningImplementation } from "./planning-implementation-receipt.ts";
 import { assertPlanningIssueLockOwned } from "../../../workflow/planning-issue-lock.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
 import {
@@ -19,6 +20,7 @@ import {
 import { reconcilePlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
   planningFinishReachedDoneLabelBoundary,
+  planningImplementationNeedsMergeReconciliation,
   planningIssueEligible,
 } from "./planning-selection.ts";
 import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts";
@@ -119,6 +121,7 @@ export function mapPlanningOutcome(
         ...outcome.result,
         publicFailure: publicFailureForBlocked(issue, outcome.result, paths),
       };
+    case "implementation-published":
     case "complete":
       if (!paths.planPath || !paths.branch || !paths.worktreePath)
         throw new Error(
@@ -214,6 +217,16 @@ export async function runPlanningWorkflow(input: {
         input.config.issueStateProvider
           ?.resolveRoles(issue)
           .roles.includes("agent-ready") === true),
+    reconcileImplementationState: ({ state, lock, issue }) =>
+      reconcileSavedPlanningImplementation({
+        runner: input.runner,
+        config: input.config,
+        options: input.options,
+        issue,
+        state,
+        lock,
+        stateStore,
+      }),
     reconcileCleanupPendingPublication: ({ issue, state }) =>
       reconcilePlanningCleanupPendingPublication({
         host,
@@ -227,6 +240,31 @@ export async function runPlanningWorkflow(input: {
         },
       }),
     mutate: async (issue, fresh, state) => {
+      const finishOnly = planningImplementationNeedsMergeReconciliation(state);
+      const restoringOldOpenPr =
+        input.state.phases.some(
+          (phase) =>
+            phase.kind === "implementation" &&
+            phase.status === "complete" &&
+            phase.merge === undefined,
+        ) &&
+        state.phases.some(
+          (phase) =>
+            phase.kind === "implementation" &&
+            phase.status === "pull-request-open" &&
+            phase.merge === undefined,
+        );
+      const readyAcknowledgement =
+        issue.labels.includes(labels.ready) ||
+        input.config.issueStateProvider
+          ?.resolveRoles(issue)
+          .roles.includes("agent-ready");
+      if (
+        finishOnly &&
+        !restoringOldOpenPr &&
+        (issue.state !== "open" || !readyAcknowledgement)
+      )
+        return [...issue.labels];
       const mustClaim = planningIssueNeedsClaim({
         issue,
         fresh,
@@ -237,7 +275,10 @@ export async function runPlanningWorkflow(input: {
       const claimedLabels = mustClaim
         ? [
             ...issue.labels.filter(
-              (label) => label !== labels.ready && label !== labels.needsInfo,
+              (label) =>
+                label !== labels.ready &&
+                label !== labels.needsInfo &&
+                label !== labels.done,
             ),
             labels.inProgress,
           ]
@@ -259,6 +300,7 @@ export async function runPlanningWorkflow(input: {
           );
         }
       }
+      if (finishOnly) return claimedLabels;
       const body = startedComment(issue);
       if (
         input.config.issueState?.provider !== "comments" &&

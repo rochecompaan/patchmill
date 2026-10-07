@@ -113,7 +113,13 @@ export function planningIssueEligible(input: {
   const excluded =
     config.triagePolicy?.runOnceSelection?.excludedLabels ??
     DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
-  const doneCheckpoint = planningFinishReachedDoneLabelBoundary(state);
+  const doneCheckpoint =
+    planningFinishReachedDoneLabelBoundary(state) ||
+    Boolean(
+      activeOwnedWorkflow &&
+      state &&
+      planningImplementationNeedsMergeReconciliation(state),
+    );
   const blocked = selectionBlockingLabels(
     issue.labels.filter((label) => {
       if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
@@ -215,7 +221,7 @@ export async function selectRunOnceWorkflow(
   for (const issue of issues) {
     if (config.issueNumber !== undefined && issue.number !== config.issueNumber)
       continue;
-    if (issue.state !== "open") continue;
+    if (issue.state !== "open" && config.issueNumber === undefined) continue;
     if (
       config.issueNumber === undefined &&
       !automaticWorkflowRolesEligible(
@@ -238,6 +244,12 @@ export async function selectRunOnceWorkflow(
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
+    if (
+      issue.state !== "open" &&
+      !(state && planningImplementationNeedsMergeReconciliation(state)) &&
+      !(legacy && legacyImplementationNeedsMergeReconciliation(legacy))
+    )
+      continue;
     const legacyActive = legacyActiveForIssue(issue, config, legacy);
     const legacyConflict = legacyConflictsWithPlanning(legacy);
     const ordinaryLegacyResume = Boolean(
@@ -249,7 +261,12 @@ export async function selectRunOnceWorkflow(
       !hasBlockedRunRecoveryState(legacy) ||
       (config.issueNumber === issue.number &&
         hasWorkflowRole(issue, config, "agent-ready"));
-    if (state && active(state) && legacyConflict)
+    const planningActive =
+      state &&
+      (active(state) ||
+        (config.issueNumber === issue.number &&
+          planningImplementationNeedsMergeReconciliation(state)));
+    if (planningActive && legacyConflict)
       return {
         kind: "invalid-planning-state",
         issue,
@@ -257,7 +274,7 @@ export async function selectRunOnceWorkflow(
       };
     if (
       state &&
-      active(state) &&
+      planningActive &&
       (planningIssueEligible({
         issue,
         config,

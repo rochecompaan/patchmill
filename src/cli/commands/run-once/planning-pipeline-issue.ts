@@ -16,6 +16,7 @@ import type { IssueSummary } from "../../../issue/types.ts";
 import {
   legacyConflictsWithPlanning,
   planningIssueEligible,
+  planningImplementationNeedsMergeReconciliation,
 } from "./planning-selection.ts";
 import {
   planningBlocked,
@@ -49,6 +50,14 @@ export type PlanningIssueInput = {
     issue: IssueSummary;
     state: PlanningStateV1;
   }) => Promise<PlanningCoordinatorOutcome | undefined>;
+  reconcileImplementationState?: (input: {
+    state: PlanningStateV1;
+    lock: PlanningIssueLock;
+    issue: IssueSummary;
+  }) => Promise<
+    | { kind: "ready"; state: PlanningStateV1 }
+    | { kind: "blocked"; reason: string }
+  >;
   mutate: (
     issue: IssueSummary,
     fresh: boolean,
@@ -213,7 +222,9 @@ export async function runPlanningIssue(
             ],
           }),
         );
-      const current = saved ?? input.state;
+      let current = saved ?? input.state;
+      const finishRecovery =
+        planningImplementationNeedsMergeReconciliation(current);
       const planningActive = current.phases.some(
         (phase) => phase.status !== "complete",
       );
@@ -222,8 +233,10 @@ export async function runPlanningIssue(
         issue.number !== input.issue.number ||
         issue.title !== input.issue.title ||
         current.issueNumber !== input.issue.number ||
-        issue.state !== "open" ||
-        !planningActive ||
+        (issue.state !== "open" &&
+          !(finishRecovery && input.config.issueNumber === issue.number)) ||
+        (!planningActive &&
+          !(finishRecovery && input.config.issueNumber === issue.number)) ||
         legacyConflict
       )
         return planningBlocked(
@@ -311,6 +324,24 @@ export async function runPlanningIssue(
             lockRunId: lock.record.runId,
           }),
         );
+      if (finishRecovery && input.reconcileImplementationState) {
+        const receipt = await input.reconcileImplementationState({
+          state: current,
+          lock,
+          issue,
+        });
+        if (receipt.kind === "blocked")
+          return planningBlocked(
+            input.issue,
+            "implementation-evidence",
+            runOnceFailure("implementation-evidence", {
+              issueNumber: issue.number,
+              status: "blocked",
+              validation: receipt.reason,
+            }),
+          );
+        current = receipt.state;
+      }
       const reconciled = await input.reconcileCleanupPendingPublication?.({
         issue,
         state: current,
@@ -321,7 +352,8 @@ export async function runPlanningIssue(
         issue,
         config: input.config,
         state: current,
-        activeOwnedWorkflow: saved !== undefined && planningActive,
+        activeOwnedWorkflow:
+          saved !== undefined && (planningActive || finishRecovery),
       });
       if (
         !eligible ||
