@@ -2,13 +2,18 @@ import {
   inspectIssueRunLeaseRepair,
   repairIssueRunLease,
 } from "../../run-once/recovery-lease-repair.ts";
-import { loadRunStateCommandConfig } from "../config.ts";
+import {
+  loadRunStateCommandConfig,
+  withRunStateMutationAdmission,
+} from "../config.ts";
+import { IssueRunLeaseConflictError } from "../../run-once/recovery-lease.ts";
 export async function runLeaseRepairCommand(
   args: string[],
   dependencies: Partial<{
     loadConfig: typeof loadRunStateCommandConfig;
     inspect: typeof inspectIssueRunLeaseRepair;
     repair: typeof repairIssueRunLease;
+    admitMutation: typeof withRunStateMutationAdmission;
     stdout: Pick<NodeJS.WriteStream, "write">;
     stderr: Pick<NodeJS.WriteStream, "write">;
   }> = {},
@@ -17,7 +22,7 @@ export async function runLeaseRepairCommand(
   const stderr = dependencies.stderr ?? process.stderr;
   if (args.includes("--help") || args.includes("-h")) {
     stdout.write(
-      "Usage: patchmill run lease repair --issue <number> [--expect-lease-sha256 HASH --confirm-owner-stopped | --expect-guard-sha256 HASH --confirm-all-runners-stopped | --expect-state-sha256 HASH --confirm-all-runners-stopped]\n",
+      "Usage: patchmill run lease repair --issue <number> [--expect-lease-sha256 HASH --confirm-owner-stopped | --expect-guard-sha256 HASH --confirm-all-runners-stopped | --expect-state-sha256 HASH --confirm-all-runners-stopped | --expect-repair-sha256 HASH [--expect-paired-guard-sha256 HASH] --confirm-all-runners-stopped]\n",
     );
     return 0;
   }
@@ -28,6 +33,8 @@ export async function runLeaseRepairCommand(
     "--expect-lease-sha256",
     "--expect-guard-sha256",
     "--expect-state-sha256",
+    "--expect-repair-sha256",
+    "--expect-paired-guard-sha256",
   ]);
   const confirmationFlags = new Set([
     "--confirm-owner-stopped",
@@ -56,8 +63,14 @@ export async function runLeaseRepairCommand(
     throw new Error("patchmill run lease repair requires --issue <number>");
   const lease = value("--expect-lease-sha256"),
     guard = value("--expect-guard-sha256"),
-    state = value("--expect-state-sha256");
-  const count = [lease, guard, state].filter(Boolean).length;
+    state = value("--expect-state-sha256"),
+    repair = value("--expect-repair-sha256"),
+    paired = value("--expect-paired-guard-sha256");
+  if (paired && !repair)
+    throw new Error(
+      "Paired guard fingerprint requires a repair guard fingerprint",
+    );
+  const count = [lease, guard, state, repair].filter(Boolean).length;
   const config = await (dependencies.loadConfig ?? loadRunStateCommandConfig)(
     args,
   );
@@ -83,13 +96,19 @@ export async function runLeaseRepairCommand(
         ? "--expect-lease-sha256"
         : inspection.kind === "abandoned-guard"
           ? "--expect-guard-sha256"
-          : "--expect-state-sha256";
+          : inspection.kind === "interrupted-repair"
+            ? "--expect-repair-sha256"
+            : "--expect-state-sha256";
     const confirmation =
       inspection.kind === "remote-lease"
         ? "--confirm-owner-stopped"
         : "--confirm-all-runners-stopped";
+    const pairedFlag =
+      inspection.kind === "interrupted-repair" && inspection.pairedGuardSha256
+        ? ` --expect-paired-guard-sha256 ${inspection.pairedGuardSha256}`
+        : "";
     stderr.write(
-      `Inspect complete. Run: patchmill run lease repair --issue ${issue} ${flag} ${inspection.sha256} ${confirmation}\n`,
+      `Inspect complete. Run: patchmill run lease repair --issue ${issue} ${flag} ${inspection.sha256}${pairedFlag} ${confirmation}\n`,
     );
     return 0;
   }
@@ -98,19 +117,33 @@ export async function runLeaseRepairCommand(
   const allStopped = confirmations.has("--confirm-all-runners-stopped");
   const matchingConfirmation =
     (lease && ownerStopped && !allStopped) ||
-    ((guard || state) && allStopped && !ownerStopped);
+    ((guard || state || repair) && allStopped && !ownerStopped);
   if (!matchingConfirmation)
     throw new Error(
       "Repair requires the matching stopped-process confirmation",
     );
-  const result = await (dependencies.repair ?? repairIssueRunLease)({
-    runStateDir: config.runStateDir,
-    issueNumber: issue,
-    ...(lease === undefined ? {} : { expectedLeaseSha256: lease }),
-    ...(guard === undefined ? {} : { expectedGuardSha256: guard }),
-    ...(state === undefined ? {} : { expectedStateSha256: state }),
-    confirmedProcessesStopped: matchingConfirmation,
-  });
+  let result;
+  try {
+    result = await (
+      dependencies.admitMutation ?? withRunStateMutationAdmission
+    )(config, issue, () =>
+      (dependencies.repair ?? repairIssueRunLease)({
+        runStateDir: config.runStateDir,
+        issueNumber: issue,
+        ...(lease === undefined ? {} : { expectedLeaseSha256: lease }),
+        ...(guard === undefined ? {} : { expectedGuardSha256: guard }),
+        ...(state === undefined ? {} : { expectedStateSha256: state }),
+        ...(repair === undefined ? {} : { expectedRepairSha256: repair }),
+        ...(paired === undefined ? {} : { expectedPairedGuardSha256: paired }),
+        confirmedProcessesStopped: matchingConfirmation,
+      }),
+    );
+  } catch (error) {
+    if (!(error instanceof IssueRunLeaseConflictError) || !error.liveOwner)
+      throw error;
+    stderr.write("issue already in progress.\n");
+    return 0;
+  }
   stderr.write(`${result.kind}: ${result.path}\n`);
   return 0;
 }

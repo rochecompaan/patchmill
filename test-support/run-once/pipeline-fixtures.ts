@@ -353,6 +353,12 @@ export function blockedRecoveryRunner(
         stderr: "",
       };
     }
+    if (
+      call.command === "git" &&
+      call.args.join(" ") ===
+        "rev-parse --path-format=absolute --git-common-dir"
+    )
+      return { code: 0, stdout: `${config.repoRoot}\n`, stderr: "" };
     if (call.command === "git" && call.args[0] === "rev-parse") {
       return {
         code: 0,

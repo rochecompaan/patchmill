@@ -33,6 +33,33 @@ async function namespace(): Promise<RunRepositoryNamespace> {
   };
 }
 
+test("failed admission release preserves the original action failure", async () => {
+  const ns = await namespace();
+  const original = new Error("owned work failed");
+  try {
+    await assert.rejects(
+      withRunAdmission(
+        { namespace: ns, attemptId: "failing", mode: "explicit" },
+        async () => {
+          const guard = join(
+            ns.commonDir,
+            "patchmill",
+            "run-once",
+            "admission-guard",
+          );
+          await mkdir(guard);
+          await writeFile(join(guard, "owner.json"), "unknown-owner");
+          throw original;
+        },
+      ),
+      (error: unknown) =>
+        error instanceof AggregateError && error.errors.includes(original),
+    );
+  } finally {
+    await rm(ns.commonDir, { recursive: true, force: true });
+  }
+});
+
 test("explicit attempts coexist", async () => {
   const ns = await namespace();
   try {

@@ -130,22 +130,23 @@ export async function runResetCommand(
       });
     }
 
-    await progress.event({
-      time: new Date().toISOString(),
-      level: "info",
-      stage: "recovery",
-      message: `Recovery action: ${result.recoveryAction}`,
-      consoleMessage: [
-        `Recovery action: ${result.recoveryAction}`,
-        `Archive: ${result.archivePath}`,
-        ...result.quarantinePaths.map((path) => `Quarantine: ${path}`),
-      ].join("\n"),
-      data: {
-        recoveryAction: result.recoveryAction,
-        archivePath: result.archivePath,
-        quarantinePaths: result.quarantinePaths,
-      },
-    });
+    if (result.status === "reset-started")
+      await progress.event({
+        time: new Date().toISOString(),
+        level: "info",
+        stage: "recovery",
+        message: `Recovery action: ${result.recoveryAction}`,
+        consoleMessage: [
+          `Recovery action: ${result.recoveryAction}`,
+          `Archive: ${result.archivePath}`,
+          ...result.quarantinePaths.map((path) => `Quarantine: ${path}`),
+        ].join("\n"),
+        data: {
+          recoveryAction: result.recoveryAction,
+          archivePath: result.archivePath,
+          quarantinePaths: result.quarantinePaths,
+        },
+      });
     const outputLogPath = await finalLogPath(
       logPath,
       config.runStateDir,

@@ -279,14 +279,31 @@ export async function withRunAdmission<T>(
   } finally {
     await releaseGuard();
   }
+  let result: T | undefined;
+  let workFailed = false;
+  let workFailure: unknown;
   try {
-    return await action(admission);
-  } finally {
+    result = await action(admission);
+  } catch (error) {
+    workFailed = true;
+    workFailure = error;
+  }
+  try {
     const release = await acquireGuard(root);
     try {
       await removeOwned(admission);
     } finally {
       await release();
     }
+  } catch (releaseFailure) {
+    if (workFailed)
+      throw new AggregateError(
+        [workFailure, releaseFailure],
+        "Run admission work and release failed",
+        { cause: releaseFailure },
+      );
+    throw releaseFailure;
   }
+  if (workFailed) throw workFailure;
+  return result as T;
 }

@@ -2,15 +2,12 @@ import { randomUUID } from "node:crypto";
 import { RepositoryMutationBusyError } from "../../../git/repository-mutation.ts";
 import { repositoryBusyResult } from "./repository-busy-result.ts";
 import type { CommandRunner } from "../../../command/types.ts";
-import {
-  createPullRequestHost,
-  createRunOnceHostProvider,
-} from "../../../host/factory.ts";
+import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import type { RunOnceHostProvider } from "../../../host/types.ts";
 import { createIssueStateProvider } from "../../../issue-state/index.ts";
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import { withRunAdmission } from "../../../workflow/run-admission.ts";
-import { resolveRunRepositoryNamespace } from "../../../workflow/run-repository-namespace.ts";
+import { resolveRunOnceRepositoryNamespace } from "./repository-admission.ts";
 import {
   runLegacyOneIssue,
   runLegacyOneIssueAfterReset,
@@ -26,10 +23,8 @@ import {
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
-import {
-  IssueRunLeaseConflictError,
-  withIssueRunLease,
-} from "./recovery-lease.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
+import { liveIssueContentionResult as stoppedForLiveLease } from "./issue-contention-result.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
@@ -67,19 +62,10 @@ export async function runOneIssue(
   const runtimeConfig: AgentIssueConfig = { ...config, issueStateProvider };
   if (config.dryRun)
     return runLegacyOneIssue(runner, runtimeConfig, attemptOptions);
-  const hostRepository = await createPullRequestHost({
+  const namespace = await resolveRunOnceRepositoryNamespace(
     runner,
-    repoRoot: config.repoRoot,
-    remote: config.remote,
-    host: config.host,
-  }).resolveTargetRepositoryIdentity();
-  const namespace = await resolveRunRepositoryNamespace(runner, {
-    repoRoot: runtimeConfig.repoRoot,
-    hostRepository,
-    runStateDir: runtimeConfig.runStateDir,
-    worktreeRoot: runtimeConfig.worktreeDir,
-    todoRoot: runtimeConfig.projectPolicy.pi.taskContract.todoRoot,
-  });
+    runtimeConfig,
+  );
   return withRunAdmission(
     {
       namespace,
@@ -268,37 +254,6 @@ async function runAdmittedOneIssue(
         );
     }
   }
-}
-
-function stoppedForLiveLease(
-  issue: import("../../../issue/types.ts").IssueSummary,
-  error: unknown,
-): AgentIssuePipelineResult | undefined {
-  if (
-    !(error instanceof IssueRunLeaseConflictError) ||
-    error.owner === undefined ||
-    !error.liveOwner
-  )
-    return undefined;
-  return {
-    status: "stopped",
-    issue,
-    reason: "issue-locked",
-    publicFailure: runOnceFailure("issue-locked", {
-      issueNumber: issue.number,
-      status: "stopped",
-      lockPath: error.leasePath,
-      fingerprint: "",
-      resource: "common-lease",
-      owner: {
-        issueNumber: error.owner.issueNumber,
-        runId: error.owner.ownerToken,
-        pid: error.owner.pid,
-        hostname: error.owner.hostname,
-        acquiredAt: error.owner.acquiredAt,
-      },
-    }),
-  };
 }
 
 function withPlanningLease(
