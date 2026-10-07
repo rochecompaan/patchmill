@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { link, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { hostname as systemHostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type {
@@ -115,11 +115,19 @@ async function exclusive(
   path: string,
   record: IssueRunLeaseRecord,
 ): Promise<void> {
-  const handle = await open(path, "wx", 0o600);
+  const temporary = `${path}.${record.ownerToken}.${randomUUID()}.tmp`;
+  const handle = await open(temporary, "wx", 0o600);
   try {
-    await handle.writeFile(`${JSON.stringify(record)}\n`);
+    try {
+      await handle.writeFile(`${JSON.stringify(record)}\n`);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    // No-replace publication exposes only a complete owner record.
+    await link(temporary, path);
   } finally {
-    await handle.close();
+    await unlink(temporary);
   }
 }
 async function guard(
@@ -129,11 +137,28 @@ async function guard(
 ): Promise<() => Promise<void>> {
   const p = paths(dir, issue);
   await mkdir(p.locks, { recursive: true });
-  try {
-    await exclusive(p.guard, record);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      const owner = parseIssueRunLeaseRecord(await readFile(p.guard, "utf8"));
+  const started = performance.now();
+  while (true) {
+    try {
+      await exclusive(p.guard, record);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      let raw: string | undefined;
+      try {
+        raw = await readFile(p.guard, "utf8");
+      } catch (readError) {
+        if ((readError as NodeJS.ErrnoException).code !== "ENOENT")
+          throw readError;
+      }
+      const owner =
+        raw === undefined ? undefined : parseIssueRunLeaseRecord(raw);
+      if (!owner && performance.now() - started < 1_000) {
+        // A disappearing or older partially published guard is not takeover
+        // authority. Retry read-only; persistent unknown records fail closed.
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        continue;
+      }
       throw new IssueRunLeaseConflictError(
         p.guard,
         "lease-guard",
@@ -144,7 +169,6 @@ async function guard(
           processState(owner.pid) === "alive",
       );
     }
-    throw error;
   }
   return async () => {
     let current: string | undefined;
