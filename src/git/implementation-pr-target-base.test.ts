@@ -3,11 +3,11 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createCommandRunner } from "../cli/commands/triage/command.ts";
+import { createCommandRunner } from "../../test-support/command-runner.ts";
 import type { CommandRunner } from "../command/types.ts";
 import { PlanningRemoteBaseGit } from "./planning-remote-base.ts";
 import type { RepositoryIdentity } from "../host/pull-requests.ts";
-import { resolveImplementationPrTargetRemote } from "./implementation-pr-target-base.ts";
+import { resolveImplementationPrTargetRemote } from "../workflow/implementation-pr-target-remote.ts";
 
 const target: RepositoryIdentity = {
   provider: "forgejo-tea",

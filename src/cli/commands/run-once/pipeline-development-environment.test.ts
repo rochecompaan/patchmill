@@ -134,7 +134,7 @@ test("runOneIssue starts implementation without an agent team", async () => {
         code: 0,
         stdout: JSON.stringify({
           status: "pr-created",
-          prUrl: "https://forgejo.example/repo/pulls/14",
+          prUrl: "https://forgejo.test/test-owner/test-repo/pulls/14",
           branch: "agent/issue-14-needs-explicit-team",
           commits: ["abc1234"],
           validation: ["npm test: pass"],

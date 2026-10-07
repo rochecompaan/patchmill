@@ -147,7 +147,10 @@ export type AgentIssueRunCheckpoint =
   | "visualEvidenceValidated"
   | "handoffCommentPosted"
   | "doneLabelEnsured"
-  | "doneLabelApplied";
+  | "doneLabelApplied"
+  | "cleanupHookCompleted"
+  | "worktreeRemoved"
+  | "branchRemoved";
 
 export type AgentIssueRunCheckpoints = Partial<
   Record<AgentIssueRunCheckpoint, true>
@@ -165,6 +168,10 @@ export type AgentIssueRunState = {
   planPath?: string | undefined;
   planCommit?: string | undefined;
   checkpoints?: AgentIssueRunCheckpoints | undefined;
+  implementationPr?:
+    | import("../../../workflow/implementation-pr-reconciliation.ts").ImplementationPrEvidence
+    | undefined;
+  merge?: { mergeOid: string; mergedBaseOid: string } | undefined;
   implementationStatus?: "pr-created" | "merged" | undefined;
   prUrl?: string | undefined;
   mergeCommit?: string | undefined;
@@ -202,6 +209,10 @@ export type AgentIssueRunStateUpdate = {
   planCommit?: string | undefined;
   checkpoints?: AgentIssueRunCheckpoints | undefined;
   resetCheckpoints?: boolean | undefined;
+  implementationPr?:
+    | import("../../../workflow/implementation-pr-reconciliation.ts").ImplementationPrEvidence
+    | undefined;
+  merge?: { mergeOid: string; mergedBaseOid: string } | undefined;
   implementationStatus?: "pr-created" | "merged" | undefined;
   prUrl?: string | undefined;
   mergeCommit?: string | undefined;

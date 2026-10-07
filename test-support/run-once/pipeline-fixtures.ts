@@ -14,6 +14,7 @@ import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
 } from "../../src/cli/commands/run-once/types.ts";
+import { buildIssueBranchName } from "../../src/git/worktree-strategy.ts";
 import { issue, issueListPayload, labelListPayload } from "./issue-fixtures.ts";
 import {
   createMockRunner,
@@ -212,7 +213,11 @@ export async function runPlanApprovedImplementationScenario(
             stdout: JSON.stringify({
               status: "pr-created",
               prUrl: `https://forgejo.example/pr/${scenario.issueNumber}`,
-              branch: `agent/issue-${scenario.issueNumber}-implementation`,
+              branch: buildIssueBranchName(
+                scenario.issueNumber,
+                scenario.title,
+                config,
+              ),
               commits: ["123abc"],
               validation: ["npm test"],
               reviewSummary: "reviewed",

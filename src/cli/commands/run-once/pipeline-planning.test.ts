@@ -2581,7 +2581,7 @@ test("runOneIssue preserves approvals while clearing review labels", async () =>
   assert.equal(removedLabels.includes("plan-approved"), false);
   assert.equal(removedLabels.includes("spec-review"), true);
   assert.equal(removedLabels.includes("plan-review"), true);
-  assert.equal(removedLabels.includes("in-progress"), true);
+  assert.equal(removedLabels.includes("in-progress"), false);
 });
 
 test("runOneIssue claims the issue, comments automation start, writes run state, and exits plan-created for plan-only mode", async () => {

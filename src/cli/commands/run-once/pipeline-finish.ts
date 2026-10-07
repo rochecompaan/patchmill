@@ -1,10 +1,10 @@
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { join } from "node:path";
-import { runCleanupHookScript } from "../../../pi/hooks.ts";
+import { captureLegacyImplementationPr } from "./legacy-pr-evidence.ts";
+import { cleanupLegacyPublishedWorkspace } from "./legacy-pr-cleanup.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
-import { cleanupIssueWorkspace } from "./git.ts";
 import { handoffComment } from "./pipeline-comments.ts";
 import { nextLabels } from "./pipeline-lifecycle.ts";
 import {
@@ -39,6 +39,8 @@ export type PipelineFinishStageOptions = {
   needsInfoLabel: string;
   checkpoints: Record<string, boolean | undefined>;
   implemented: PipelineSuccessfulImplementationResult;
+  implementationPr?: import("../../../workflow/implementation-pr-reconciliation.ts").ImplementationPrEvidence;
+  merge?: { mergeOid: string; mergedBaseOid: string };
   runCostReport?: RunCostReport | undefined;
   specPath: string | undefined;
   specCommit: string | undefined;
@@ -87,6 +89,39 @@ export async function runPipelineFinishStage(
       );
     }
 
+    if (implemented.status !== "pr-created")
+      throw new Error(
+        "Agent direct landing cannot authorize legacy completion",
+      );
+    const captured = options.implementationPr
+      ? undefined
+      : await captureLegacyImplementationPr({
+          runner,
+          config,
+          state: {
+            issueNumber: issue.number,
+            title: issue.title,
+            status: "implementing",
+            branch,
+            worktreePath,
+            prUrl: implemented.prUrl,
+            commits: implemented.commits,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          ...(options.mutation ? { mutation: options.mutation } : {}),
+        });
+    const implementationPr = options.implementationPr ?? captured!.evidence;
+    const merge =
+      options.merge ??
+      (captured?.kind === "merged"
+        ? { mergeOid: captured.mergeOid, mergedBaseOid: captured.mergedBaseOid }
+        : undefined);
+    const ownedOptions = {
+      ...options,
+      implementationPr,
+      ...(merge ? { merge } : {}),
+    };
     await writeRunState(
       config.runStateDir,
       {
@@ -98,11 +133,12 @@ export async function runPipelineFinishStage(
         planCommit,
         branch,
         worktreePath,
-        implementationStatus: implemented.status,
+        implementationStatus: "pr-created",
+        implementationPr,
+        merge,
         prUrl:
           implemented.status === "pr-created" ? implemented.prUrl : undefined,
-        mergeCommit:
-          implemented.status === "merged" ? implemented.mergeCommit : undefined,
+        mergeCommit: merge?.mergeOid,
         commits: implemented.commits,
         validation: implemented.validation,
         reviewSummary: implemented.reviewSummary,
@@ -234,6 +270,41 @@ export async function runPipelineFinishStage(
       );
       checkpoints.handoffCommentPosted = true;
     }
+    // Publication is a durable unfinished checkpoint, never completion authority.
+    if (merge === undefined) {
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issue.number,
+          status: "implementing",
+          clearLastError: true,
+          clearBlockerQuestions: true,
+        },
+        options.lease,
+        timestamp,
+      );
+      await emitProgress(
+        runOptions,
+        "info",
+        "pr",
+        `PR created: ${implemented.prUrl}`,
+        { issueNumber: issue.number },
+      );
+      await runStep("final result pr-created", async () => undefined);
+      return {
+        kind: "finished",
+        result: withLogPath(
+          { ...implemented, issue, specPath, planPath, worktreePath },
+          runOptions,
+        ),
+      };
+    }
+    const cleanupPending = await cleanupLegacyPublishedWorkspace(ownedOptions);
+    if (cleanupPending)
+      return {
+        kind: "finished",
+        result: withLogPath(cleanupPending, runOptions),
+      };
     if (!checkpoints.doneLabelEnsured) {
       if (config.issueState?.provider !== "comments") {
         await ensureAutomationLabel(host, config, doneLabel);
@@ -300,10 +371,8 @@ export async function runPipelineFinishStage(
     await emitProgress(
       runOptions,
       "info",
-      implemented.status === "pr-created" ? "pr" : "merge",
-      implemented.status === "pr-created"
-        ? `PR created: ${implemented.prUrl}`
-        : `Merged to ${config.baseBranch}: ${implemented.mergeCommit}`,
+      "merge",
+      `Merged to ${config.baseBranch}: ${merge.mergeOid}`,
       { issueNumber: issue.number },
     );
     await writeRunState(
@@ -323,64 +392,24 @@ export async function runPipelineFinishStage(
       timestamp,
     );
 
-    const cleanupResults = await runCleanupHookScript(
-      runner,
-      config.repoRoot,
-      worktreePath,
-      config.cleanupHook,
-    );
-    for (const cleanup of cleanupResults) {
-      await emitProgress(
-        runOptions,
-        cleanup.status === "failed" ? "error" : "info",
-        "cleanup",
-        cleanup.message,
-        {
-          issueNumber: issue.number,
-          data: { hook: cleanup.name, status: cleanup.status },
-        },
-      );
-    }
-
-    if (implemented.status === "pr-created") {
-      const workspaceCleanupResults = await cleanupIssueWorkspace(
-        runner,
-        config.repoRoot,
-        {
-          branch,
-          worktreePath,
-        },
-        options.mutation,
-      );
-      for (const cleanup of workspaceCleanupResults) {
-        await emitProgress(
-          runOptions,
-          cleanup.status === "failed" ? "error" : "info",
-          "cleanup",
-          cleanup.message,
-          {
-            issueNumber: issue.number,
-            data: {
-              step: cleanup.step,
-              status: cleanup.status,
-              command: cleanup.command,
-              args: cleanup.args,
-              cwd: cleanup.cwd,
-              code: cleanup.code,
-              stdout: cleanup.stdout,
-              stderr: cleanup.stderr,
-            },
-          },
-        );
-      }
-    }
-
-    await runStep(`final result ${implemented.status}`, async () => undefined);
+    await runStep("final result merged", async () => undefined);
 
     return {
       kind: "finished",
       result: withLogPath(
-        { ...implemented, issue, specPath, planPath, worktreePath },
+        {
+          status: "merged",
+          mergeCommit: merge.mergeOid,
+          branch,
+          commits: implemented.commits,
+          validation: implemented.validation,
+          reviewSummary: implemented.reviewSummary,
+          landingDecision: implemented.landingDecision,
+          issue,
+          specPath,
+          planPath,
+          worktreePath,
+        },
         runOptions,
       ),
     };

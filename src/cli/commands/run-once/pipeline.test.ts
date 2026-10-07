@@ -495,8 +495,11 @@ test("runOneIssue facade returns pr-created after implementation", async () => {
     title: "PR issue",
   });
 
-  assert.equal(result.status, "pr-created");
-  assert.equal(result.prUrl, "https://forgejo.example/pr/9");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    result.prUrl,
+    "https://forgejo.test/test-owner/test-repo/pulls/9",
+  );
 });
 
 test("runOneIssue repairs an implementation prose finish without unresolved subagents", async () => {
@@ -530,7 +533,7 @@ test("runOneIssue repairs an implementation prose finish without unresolved suba
       },
     });
 
-  assert.equal(result.status, "pr-created");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.equal(piPrompts.length, 2);
   assert.match(piPrompts[1] ?? "", /previous response was invalid/i);
   assert.match(

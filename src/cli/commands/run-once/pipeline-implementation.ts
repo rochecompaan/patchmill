@@ -14,6 +14,8 @@ import {
   successfulImplementationFromState,
 } from "./pipeline-lifecycle.ts";
 import { writeRunState } from "./run-state.ts";
+import { discoverLegacyImplementationPr } from "./legacy-pr-evidence.ts";
+import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import {
   resolveIssueTodoContract,
   resolveResumedIssueTodoContract,
@@ -162,6 +164,14 @@ export async function runPipelineImplementationStage(
         throw new Error(
           `Implementation requires a plan and branch for issue #${options.issue.number}`,
         );
+      const existingPullRequest = options.resumableState
+        ? await discoverLegacyImplementationPr(
+            options.runner,
+            options.config,
+            options.issue.number,
+            options.branch,
+          )
+        : undefined;
       const outcome = await runImplementationAgent({
         runner: options.runner,
         config: options.config,
@@ -173,6 +183,13 @@ export async function runPipelineImplementationStage(
         worktree: options.worktree,
         git: options.worktreeStrategy,
         taskContract,
+        ...(existingPullRequest
+          ? { existingPullRequestUrl: existingPullRequest.url }
+          : {}),
+        requiredPullRequestMarker: renderPlanningPullRequestMarker({
+          issueNumber: options.issue.number,
+          phase: "implementation",
+        }),
         resume: {
           resumed: options.resumableState,
           existingState: options.existingState,
@@ -227,6 +244,14 @@ export async function runPipelineImplementationStage(
           result: await options.blockIssue(outcome.result, details),
         };
       implemented = outcome.result;
+      if (
+        existingPullRequest &&
+        (implemented.status !== "pr-created" ||
+          implemented.prUrl !== existingPullRequest.url)
+      )
+        throw new Error(
+          "Publication recovery must retain the existing implementation PR",
+        );
       assertDirectLandAllowed(implemented, options.config, "Pi");
     }
     await assertIssueTodosComplete(

@@ -125,6 +125,36 @@ async function finishWithCost(options: {
           commits: ["abc123"],
           validation: ["npm test"],
         },
+        implementationPr: {
+          reference: {
+            targetRepository: {
+              provider: "forgejo-tea",
+              host: "forgejo.example",
+              owner: "acme",
+              repository: "repo",
+            },
+            number: 45,
+          },
+          url: "https://forgejo.example/acme/repo/pulls/45",
+          publication: {
+            targetRepository: {
+              provider: "forgejo-tea",
+              host: "forgejo.example",
+              owner: "acme",
+              repository: "repo",
+            },
+            headRepository: {
+              provider: "forgejo-tea",
+              host: "forgejo.example",
+              owner: "acme",
+              repository: "repo",
+            },
+            baseBranch: "main",
+            headBranch: "agent/issue-45-cost-summary",
+            headOid: "b".repeat(40),
+          },
+          ownershipMarkerRequired: true,
+        },
         runCostReport: options.report,
         specPath: undefined,
         specCommit: undefined,

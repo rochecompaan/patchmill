@@ -10,6 +10,10 @@ import type {
 } from "./types.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { assertIssueRunLeaseOwned } from "./recovery-lease.ts";
+import {
+  assertImplementationPrEvidence,
+  assertImplementationMergeEvidence,
+} from "../../../workflow/implementation-pr-evidence.ts";
 
 const STATUS_TIMESTAMPS: Record<
   AgentIssueRunStateStatus,
@@ -99,12 +103,7 @@ function mergeRunState(
   const implementationStatus = hasImplementationUpdate
     ? update.implementationStatus
     : existingImplementation?.implementationStatus;
-  const prUrl =
-    update.implementationStatus === "merged"
-      ? undefined
-      : hasImplementationUpdate
-        ? update.prUrl
-        : existingImplementation?.prUrl;
+  const prUrl = update.prUrl ?? existingImplementation?.prUrl;
   const mergeCommit =
     update.implementationStatus === "pr-created"
       ? undefined
@@ -161,6 +160,9 @@ function mergeRunState(
     };
   }
 
+  const implementationPr =
+    update.implementationPr ?? existingImplementation?.implementationPr;
+  const merge = update.merge ?? existingImplementation?.merge;
   const next: AgentIssueRunState = {
     ...existing,
     issueNumber: update.issueNumber,
@@ -180,6 +182,10 @@ function mergeRunState(
     planCommit: update.planCommit ?? existing?.planCommit,
     checkpoints,
     implementationStatus,
+    ...(implementationPr || existing?.implementationPr
+      ? { implementationPr }
+      : {}),
+    ...(merge || existing?.merge ? { merge } : {}),
     prUrl,
     mergeCommit,
     commits,
@@ -367,6 +373,9 @@ export function validateRecoveryRunState(
     value.leaseProtocolVersion !== 1
   )
     throw new Error("Run recovery state has an unsupported lease protocol");
+  if (value.implementationPr !== undefined)
+    assertImplementationPrEvidence(value.implementationPr);
+  if (value.merge !== undefined) assertImplementationMergeEvidence(value.merge);
   if (value.checkpoints !== undefined) {
     if (!value.checkpoints || typeof value.checkpoints !== "object")
       throw new Error("Run recovery state has invalid checkpoints");

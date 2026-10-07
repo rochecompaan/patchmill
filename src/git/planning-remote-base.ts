@@ -1,7 +1,7 @@
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { CommandRunner } from "../command/types.ts";
 import type { RepositoryIdentity } from "../host/pull-requests.ts";
-import { resolveImplementationPrTargetRemote } from "./implementation-pr-target-base.ts";
+import { resolveImplementationPrTargetRemote } from "../workflow/implementation-pr-target-remote.ts";
 import type { RepositoryMutationContext } from "./repository-mutation.ts";
 import { withRepositoryMutationRunner } from "./repository-mutation-runner.ts";
 import {

@@ -168,6 +168,7 @@ export function legacyImplementationNeedsMergeReconciliation(
   state: import("./types.ts").AgentIssueRunState,
 ): boolean {
   return (
+    state.implementationPr !== undefined ||
     state.implementationStatus === "pr-created" ||
     (state.status === "finished" && typeof state.prUrl === "string")
   );
@@ -191,6 +192,7 @@ export function legacyConflictsWithPlanning(
   return Boolean(
     legacy &&
     (isResumableRunState(legacy) ||
+      legacyImplementationNeedsMergeReconciliation(legacy) ||
       hasFinishedPlanningWorkspaceState(legacy) ||
       hasBlockedRunRecoveryState(legacy)),
   );
@@ -244,8 +246,16 @@ export async function selectRunOnceWorkflow(
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
+    const legacyFinishRecovery =
+      config.execute &&
+      !config.dryRun &&
+      config.issueNumber === issue.number &&
+      legacy &&
+      (legacyImplementationNeedsMergeReconciliation(legacy) ||
+        legacy.implementationStatus === "merged");
     if (
       issue.state !== "open" &&
+      !legacyFinishRecovery &&
       !(state && planningImplementationNeedsMergeReconciliation(state)) &&
       !(legacy && legacyImplementationNeedsMergeReconciliation(legacy))
     )
@@ -272,6 +282,10 @@ export async function selectRunOnceWorkflow(
         issue,
         reason: "planning and legacy state are both active",
       };
+    if (legacyFinishRecovery) {
+      choices.push({ kind: "legacy", issue });
+      continue;
+    }
     if (
       state &&
       planningActive &&

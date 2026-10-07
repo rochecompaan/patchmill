@@ -259,9 +259,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       "creating plan with pi",
       "running implementation with pi",
       "Patchmill could not calculate the PR run-cost summary",
-      "PR created: https://forgejo.example/pr/15",
-      "removed local worktree .worktrees/patchmill-issue-15-ship-automation-pipeline",
-      "deleted local branch agent/issue-15-ship-automation-pipeline",
+      "PR created: https://forgejo.test/test-owner/test-repo/pulls/15",
     ],
   );
   assert.equal(result.planPath, expectedPlanPath);
@@ -270,7 +268,10 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
     result.worktreePath,
     ".worktrees/patchmill-issue-15-ship-automation-pipeline",
   );
-  assert.equal(result.prUrl, "https://forgejo.example/pr/15");
+  assert.equal(
+    result.prUrl,
+    "https://forgejo.test/test-owner/test-repo/pulls/15",
+  );
   assert.equal(piCalls, 3);
   assert.deepEqual(streamedPiOutput, []);
 
@@ -280,7 +281,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       call.args[0] === "issues" &&
       call.args[1] === "edit",
   );
-  assert.equal(editCalls.length, 2);
+  assert.equal(editCalls.length, 1);
   assert.deepEqual(
     editCalls[0]?.args,
     withRepo(
@@ -296,22 +297,6 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       config.repoRoot,
     ),
   );
-  assert.deepEqual(
-    editCalls[1]?.args,
-    withRepo(
-      [
-        "issues",
-        "edit",
-        "15",
-        "--remove-labels",
-        "in-progress",
-        "--add-labels",
-        "agent-done",
-      ],
-      config.repoRoot,
-    ),
-  );
-
   const doneLabelCreate = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -319,12 +304,12 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       call.args[1] === "create" &&
       call.args.includes("agent-done"),
   );
-  assert.ok(doneLabelCreate);
+  assert.equal(doneLabelCreate, undefined);
 
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 15), "utf8"),
   );
-  assert.equal(runState.status, "finished");
+  assert.equal(runState.status, "implementing");
   assert.equal(runState.planPath, expectedPlanPath);
   assert.equal(runState.planCommit, "abc123");
   assert.equal(runState.branch, "agent/issue-15-ship-automation-pipeline");
@@ -652,7 +637,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "pr-created");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.equal(piCalls, 3);
 });
 
@@ -786,7 +771,7 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "pr-created");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.equal(result.branch, "patchmill/issue-16-use-custom-worktrees");
   assert.equal(
     result.worktreePath,

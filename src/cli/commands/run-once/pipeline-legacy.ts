@@ -67,7 +67,11 @@ import {
   selectResumableIssue,
 } from "./pipeline-selection.ts";
 import { loadLegacyPipelineSelectionIssues } from "./pipeline-legacy-selection.ts";
-import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
+import {
+  hasFinishedPlanningWorkspaceState,
+  legacyImplementationNeedsMergeReconciliation,
+} from "./planning-selection.ts";
+import { resumeLegacyPublishedPr } from "./legacy-pr-resume.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
 import { repositoryMutationContext } from "./repository-mutation-context.ts";
 import {
@@ -327,11 +331,19 @@ async function runLegacyOneIssueInternal(
   if (
     !config.dryRun &&
     options.lease &&
-    existingState?.implementationStatus === "merged"
+    existingState &&
+    (legacyImplementationNeedsMergeReconciliation(existingState) ||
+      existingState.implementationStatus === "merged")
   )
-    throw new AgentIssueSafetyError(
-      "Saved implementation state returned merged. PR-only publication requires verified PR merge evidence; preserve this checkpoint for migration.",
-    );
+    return resumeLegacyPublishedPr({
+      runner,
+      config,
+      host,
+      issue,
+      state: existingState,
+      lease: options.lease,
+      options,
+    });
   if (!config.dryRun && options.lease)
     existingState = await adoptLegacyRecoveryLease({
       config,

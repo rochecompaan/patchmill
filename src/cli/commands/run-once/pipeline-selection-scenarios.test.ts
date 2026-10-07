@@ -1472,7 +1472,10 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.prUrl, "https://forgejo.example/pr/45");
+  assert.equal(
+    result.prUrl,
+    "https://forgejo.test/test-owner/test-repo/pulls/45",
+  );
   const claimCall = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -1502,7 +1505,7 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
-  assert.equal(runState.status, "finished");
+  assert.equal(runState.status, "implementing");
   assert.equal(runState.planPath, planPath);
   assert.equal(runState.branch, "agent/issue-45-finished-plan-only");
   assert.equal(

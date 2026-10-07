@@ -495,7 +495,7 @@ test("writeRunState treats implementation result state atomically across status 
 
   assert.equal(mergedState.implementationStatus, "merged");
   assert.equal(mergedState.mergeCommit, "def456");
-  assert.equal(mergedState.prUrl, undefined);
+  assert.equal(mergedState.prUrl, "https://forgejo/pr/50");
 });
 
 test("writeRunState clears stale optional implementation fields when replacing implementation results", async () => {
@@ -537,7 +537,7 @@ test("writeRunState clears stale optional implementation fields when replacing i
 
   assert.equal(mergedState.implementationStatus, "merged");
   assert.equal(mergedState.mergeCommit, "def456");
-  assert.equal(mergedState.prUrl, undefined);
+  assert.equal(mergedState.prUrl, "https://forgejo/pr/51");
   assert.equal(mergedState.reviewSummary, undefined);
   assert.equal(mergedState.landingDecision, undefined);
 });

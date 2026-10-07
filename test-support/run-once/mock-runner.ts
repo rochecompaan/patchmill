@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gitBaseContainmentResult } from "./assertions.ts";
+import {
+  legacyPublicationFixtureFallback,
+  normalizeLegacyFixturePublication,
+  type LegacyFixturePublication,
+} from "./legacy-publication-fixture.ts";
 
 export type Call = {
   command: string;
@@ -88,6 +93,7 @@ export function createMockRunner(
   handler: (call: Call) => Promise<CommandResult> | CommandResult,
 ): MockRunner {
   const calls: Call[] = [];
+  let publication: LegacyFixturePublication | undefined;
   const runner: MockRunner = {
     calls,
     async run(command, args, options = {}) {
@@ -102,12 +108,45 @@ export function createMockRunner(
       calls.push(call);
       if (call.command === "pi") {
         try {
-          return await normalizePiResult(call, await handler(call));
+          const result = normalizeLegacyFixturePublication(
+            await normalizePiResult(call, await handler(call)),
+          );
+          if (jsonStatus(result.stdout) === "pr-created") {
+            const prUrl = /"prUrl"\s*:\s*"([^"]+)"/u.exec(result.stdout)?.[1];
+            const branch = /"branch"\s*:\s*"([^"]+)"/u.exec(result.stdout)?.[1];
+            if (prUrl && branch) {
+              const prompt = await readFile(promptPath(call.args), "utf8");
+              publication = {
+                prUrl,
+                branch,
+                issueNumber: Number(
+                  /^Implement .* #(\d+):/mu.exec(prompt)?.[1] ??
+                    /issue-(\d+)/u.exec(branch)?.[1],
+                ),
+                baseBranch:
+                  /Do not land directly on `([^`]+)`/u.exec(prompt)?.[1] ??
+                  "main",
+              };
+            }
+          }
+          return result;
         } catch (error) {
           const fallback = await fallbackPiResultForError(call);
           if (fallback) return fallback;
           throw error;
         }
+      }
+      if (
+        call.command === "git" &&
+        call.args[0] === "rev-parse" &&
+        publication &&
+        call.args[2] === `refs/heads/${publication.branch}^{commit}`
+      ) {
+        const fixture = await legacyPublicationFixtureFallback(
+          call,
+          publication,
+        );
+        if (fixture) return fixture;
       }
       const baseContainment = gitBaseContainmentResult(call);
       if (baseContainment) {
@@ -124,9 +163,24 @@ export function createMockRunner(
         return baseContainment;
       }
       try {
-        return await handler(call);
+        const result = await handler(call);
+        const legacyFallback = await legacyPublicationFixtureFallback(
+          call,
+          publication,
+        );
+        if (
+          legacyFallback &&
+          (result.stdout === "" ||
+            (call.command === "git" &&
+              call.args[0] === "rev-parse" &&
+              !/^[a-f0-9]{40,64}\s*$/u.test(result.stdout)))
+        )
+          return legacyFallback;
+        return result;
       } catch (error) {
-        const gitFallback = defaultGitPreflightResult(call);
+        const gitFallback =
+          defaultGitPreflightResult(call) ??
+          (await legacyPublicationFixtureFallback(call, publication));
         if (
           gitFallback &&
           error instanceof Error &&
