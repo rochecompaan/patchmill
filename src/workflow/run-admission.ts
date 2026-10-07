@@ -111,11 +111,36 @@ async function archiveDeadDirectory(
   guard: string,
   raw: string,
 ): Promise<void> {
-  const current = await readFile(guardOwnerPath(guard), "utf8");
-  if (current !== raw) throw new RunAdmissionConflictError(guard);
-  const archiveRoot = join(root, "archive", "admission-guards");
-  await mkdir(archiveRoot, { recursive: true });
-  await rename(guard, join(archiveRoot, `${Date.now()}-${randomUUID()}`));
+  const reconciliation = join(root, "admission-reconciliation.lock");
+  const mine = `${JSON.stringify({ version: 1, ownerToken: randomUUID(), pid: process.pid, hostname: hostname() })}\n`;
+  let handle;
+  try {
+    handle = await open(reconciliation, "wx", 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST")
+      throw new RunAdmissionConflictError(reconciliation);
+    throw error;
+  }
+  try {
+    await handle.writeFile(mine);
+    await handle.sync();
+    const current = await readFile(guardOwnerPath(guard), "utf8");
+    const owner = parseGuard(current);
+    if (
+      current !== raw ||
+      !owner ||
+      owner.hostname !== hostname() ||
+      live(owner)
+    )
+      throw new RunAdmissionConflictError(guard);
+    const archiveRoot = join(root, "archive", "admission-guards");
+    await mkdir(archiveRoot, { recursive: true });
+    await rename(guard, join(archiveRoot, `${Date.now()}-${randomUUID()}`));
+  } finally {
+    await handle.close();
+    if ((await readFile(reconciliation, "utf8")) === mine)
+      await unlink(reconciliation);
+  }
 }
 async function acquireGuard(
   root: string,

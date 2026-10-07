@@ -146,7 +146,13 @@ export async function loadCliConfig(
   return parseArgs(args, repoRoot, env, runOnceConfig);
 }
 
-export async function main(args = process.argv.slice(2)): Promise<number> {
+export async function main(
+  args = process.argv.slice(2),
+  dependencies: Partial<{
+    loadConfig: typeof loadCliConfig;
+    createRunner: typeof createCommandRunner;
+  }> = {},
+): Promise<number> {
   if (!isHelpOnlyInvocation(args) && args.includes("--plan-only")) {
     process.stderr.write(
       `${legacyPlanningDeprecation("--plan-only").warning}\n`,
@@ -157,7 +163,13 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   const attemptId = randomUUID();
 
   try {
-    const config = await loadCliConfig(args);
+    const runner = (dependencies.createRunner ?? createCommandRunner)();
+    const config = await (dependencies.loadConfig ?? loadCliConfig)(
+      args,
+      cwd(),
+      process.env,
+      runner,
+    );
     if (config.showHelp) {
       console.log(HELP_TEXT);
       return 0;
@@ -176,9 +188,16 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       ...(consoleProgress ? [consoleProgress] : []),
     ]);
 
+    await progress.event({
+      time: timestamp,
+      level: "debug",
+      stage: "run-attempt",
+      message: "run attempt started",
+      attemptId,
+    });
     let result: AgentIssuePipelineResult;
     try {
-      result = await runOneIssue(createCommandRunner(), config, {
+      result = await runOneIssue(runner, config, {
         now: startedAt,
         attemptId,
         progress,

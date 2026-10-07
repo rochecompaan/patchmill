@@ -81,6 +81,13 @@ export async function runResetCommand(
       new JsonlProgressReporter(logPath),
       ...(consoleProgress ? [consoleProgress] : []),
     ]);
+    await progress.event({
+      time: timestamp,
+      level: "debug",
+      stage: "run-attempt",
+      message: "recovery attempt started",
+      attemptId,
+    });
     let result;
     try {
       result = await (dependencies.executeReset ?? resetIssueRun)(
