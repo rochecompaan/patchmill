@@ -17,7 +17,7 @@
       }
     ]
   },
-  "installedAt": "2026-10-04T20:10:48.073Z",
+  "installedAt": "<generated-by-init>",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
@@ -75,7 +75,7 @@
     },
     {
       "path": ".patchmill/skills/inline-dev-with-validation-and-pr-checks/SKILL.md",
-      "sha256": "7270ce3c83a9e37bbb90388f849a5deb21524b998e484fd2cd1b983f435fd022"
+      "sha256": "7d585e0a975c334ed87e0d88b1f71fbf17b3cf1221993f14702eb3e9692a6b6b"
     },
     {
       "path": ".patchmill/skills/inline-dev-with-validation-and-pr-checks/review-appendix.md",

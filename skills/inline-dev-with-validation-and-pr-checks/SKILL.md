@@ -117,6 +117,6 @@ observable passing checks, or evidence that no required checks exist, before a
 ready PR handoff.
 
 Carry rulings, deferred minors, structural recommendations, command evidence,
-and human-review callouts into the PR body or permitted direct-landing channel.
+and human-review callouts into the PR body. Direct landing is not permitted.
 Keep the plan workspace while blocked. Remove only this plan's scratch workspace
 after durable reporting is complete.

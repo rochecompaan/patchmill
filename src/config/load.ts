@@ -715,6 +715,10 @@ function parseConfigFile(data: unknown): PartialConfig {
     if (branchPrefix !== undefined) parsed.branchPrefix = branchPrefix;
     if (worktreePrefix !== undefined) parsed.worktreePrefix = worktreePrefix;
     if (slugLength !== undefined) parsed.slugLength = slugLength;
+    if (allowDirectLand === true)
+      throw new Error(
+        "PR-only publication requires git.allowDirectLand=false. Remove the setting or set it to false.",
+      );
     if (allowDirectLand !== undefined) parsed.allowDirectLand = allowDirectLand;
     if (hasEntries(parsed)) config.git = parsed;
   }

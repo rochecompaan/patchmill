@@ -85,7 +85,7 @@ test("defaults match the current patchmill baseline configuration", () => {
       branchPrefix: "agent/issue-",
       worktreePrefix: "patchmill-issue-",
       slugLength: 48,
-      allowDirectLand: true,
+      allowDirectLand: false,
     },
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
   });

@@ -1,4 +1,11 @@
 import type { CommandRunner } from "../../../command/types.ts";
+import type { RepositoryMutationContext } from "../../../git/repository-mutation.ts";
+import {
+  RepositoryMutationBusyError,
+  RepositoryMutationInterruptedError,
+  RepositoryMutationOwnershipError,
+} from "../../../git/repository-mutation.ts";
+import { withRepositoryMutationRunner } from "../../../git/repository-mutation-runner.ts";
 import type { RunRecoveryDecision } from "./types.ts";
 export class RunRecoveryMutationError extends Error {
   readonly action: Exclude<RunRecoveryDecision["action"], "refuse">;
@@ -55,7 +62,20 @@ export async function executeRunRecoveryMutation(input: {
   runner: CommandRunner;
   repoRoot: string;
   reassess: () => Promise<RunRecoveryDecision>;
+  mutation?: RepositoryMutationContext;
 }): Promise<RunRecoveryMutationResult> {
+  if (input.mutation)
+    return withRepositoryMutationRunner(
+      input.runner,
+      input.mutation,
+      async (runner) => {
+        const { mutation: _mutation, ...owned } = input;
+        const decision = await input.reassess();
+        if (decision.action === "refuse")
+          throw new Error("Recovery changed before its Git transaction");
+        return executeRunRecoveryMutation({ ...owned, runner, decision });
+      },
+    );
   const completed: RunRecoveryMutationResult["completed"] = [];
   const quarantinePaths: string[] = [];
   const stagingPaths: string[] = [];
@@ -106,6 +126,12 @@ export async function executeRunRecoveryMutation(input: {
       stagingPaths,
     };
   } catch (error) {
+    if (
+      error instanceof RepositoryMutationBusyError ||
+      error instanceof RepositoryMutationInterruptedError ||
+      error instanceof RepositoryMutationOwnershipError
+    )
+      throw error;
     throw new RunRecoveryMutationError(
       error,
       input.decision.action,

@@ -1,7 +1,12 @@
 import type { AgentIssueVisualEvidence } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { IssueHostProvider } from "../../../host/types.ts";
-import { isResumableRunState, readRunState } from "./run-state.ts";
+import {
+  isResumableRunState,
+  readRunState,
+  validateRecoveryRunState,
+} from "./run-state.ts";
+import { legacyImplementationNeedsMergeReconciliation } from "./planning-selection.ts";
 import { selectIssue, selectIssueWithDiagnostics } from "./selection.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
@@ -216,6 +221,21 @@ export async function selectResumableIssue(
   const { inProgress, ready } = lifecycleLabels(config);
   const shouldResume = config.execute && !config.dryRun;
   const resumable: IssueSummary[] = [];
+  if (shouldResume && config.issueNumber !== undefined) {
+    const explicit = issues.find(
+      (issue) => issue.number === config.issueNumber,
+    );
+    const checkpoint =
+      explicit && (await readRunState(config.runStateDir, explicit.number));
+    if (checkpoint) validateRecoveryRunState(checkpoint, config.issueNumber);
+    if (
+      explicit &&
+      checkpoint &&
+      (legacyImplementationNeedsMergeReconciliation(checkpoint) ||
+        checkpoint.implementationStatus === "merged")
+    )
+      return { issue: explicit, resumed: true };
+  }
   if (shouldResume) {
     for (const issue of issues) {
       const roles = workflowRolesForIssue(issue, config);
@@ -335,13 +355,7 @@ export async function loadSelectionIssues(
           await host.viewIssue(config.issueNumber),
         ])
       : [await host.viewIssue(config.issueNumber)];
-  const shouldResume = config.execute && !config.dryRun;
-  if (!shouldResume) return requestedIssues;
-  await progress(options, "info", "select", "listing open issues");
-  const openIssues = await host.listOpenIssues();
-  const hydratedOpenIssues =
-    config.issueState?.provider === "comments"
-      ? await host.hydrateIssueComments(openIssues)
-      : openIssues;
-  return mergeIssueLists(requestedIssues, hydratedOpenIssues);
+  // Explicit attempts own only the requested Issue.  Cross-issue resume
+  // precedence belongs to automatic selection and must not read other state.
+  return requestedIssues;
 }

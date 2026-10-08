@@ -53,3 +53,41 @@ Fix the repository state by doing one of the following:
 
 `patchmill run-once --dry-run` performs the same check because it previews
 whether a real `run-once` can safely start.
+
+## Shared mutations during explicit concurrency
+
+Independent explicit issues can use one local clone concurrently. Short,
+token-owned Git transactions protect shared fetches, worktree registration,
+recovery refs, and branch deletion. Agent work, validation, and review do not
+hold this guard.
+
+Transactions wait at most 10 seconds by default. A busy transaction stops before
+its action starts and returns `repository-busy`. Each owned Git command has a
+60-second default timeout and bounded shutdown. An interrupted command can leave
+partial mutations. Unknown shutdown evidence remains blocked.
+
+Fetch operations pin the fetched OID before another transaction can replace
+shared fetch data. Branch deletion requires the observed OID. Patchmill does not
+force-update a changed branch, prune unrelated worktrees, or reset the shared
+clone worktree.
+
+## PR-only publication and merge proof
+
+Implementation agents publish only their owned issue branch and a pull request.
+They cannot update or push the target branch directly. `git.allowDirectLand`
+defaults to `false`, and an explicit `true` value is rejected.
+
+An open PR leaves the Issue run in progress. Completion requires the saved PR's
+verified identity and merge commit, plus the remaining finish checkpoints.
+Patchmill verifies the merge commit against a pinned target-base fetch. A
+missing issue branch does not prove completion.
+
+For a fork PR, the publishing remote can differ from the target repository.
+Configure a fetch remote for the target before starting Run attempts. Patchmill
+accepts exactly one preconfigured fetch endpoint with the saved target's
+repository identity. Missing or ambiguous matches block. Patchmill does not
+synthesize URLs or change Git configuration.
+
+During active Run attempts, do not change Git configuration or mutate shared Git
+state manually. Stop affected processes before an upgrade or namespace
+migration. Do not remove another process's locks or force-clean its workspace.

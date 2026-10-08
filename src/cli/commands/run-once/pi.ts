@@ -26,6 +26,11 @@ import {
 import { finalJsonCandidates } from "./final-json.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
+  resolveIssueTodoContract,
+  sharedIssueTodoScope,
+} from "./issue-todo-contract.ts";
+import { PI_TODO_ISSUE_SCOPE_ENV } from "../../../policy/todo-issue-scope.ts";
+import {
   createExactPiSessionObservationStreamer,
   createExactPiSessionProgressState,
   createPiSessionMessageStreamer,
@@ -404,6 +409,15 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
   prompt: string,
   options?: RunPiPromptOptions<Result>,
 ): Promise<Result> {
+  const taskContract = resolveIssueTodoContract(
+    cwd,
+    options?.taskContract ?? DEFAULT_PI_TASK_CONTRACT,
+  );
+  const todoScope =
+    options?.issueNumber === undefined
+      ? undefined
+      : sharedIssueTodoScope(cwd, taskContract, options.issueNumber);
+  if (options) options = { ...options, taskContract };
   const dir = await mkdtemp(join(tmpdir(), "agent-issue-prompt-"));
   const promptPath = join(dir, "prompt.md");
   const causes: PiErrorCause[] = [];
@@ -560,9 +574,11 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
             env: piAgentCommandEnv(
               options?.piAgentDir ?? localPiAgentDir(cwd),
               {
-                PI_TODO_PATH:
-                  options?.taskContract?.todoRoot ??
-                  DEFAULT_PI_TASK_CONTRACT.todoRoot,
+                PI_TODO_PATH: taskContract.todoRoot,
+                [PI_TODO_ISSUE_SCOPE_ENV]:
+                  todoScope === undefined
+                    ? undefined
+                    : JSON.stringify(todoScope),
                 [PI_TODO_DONE_STATUSES_ENV]: serializeTodoDoneStatuses(
                   options?.taskContract?.doneStatuses ??
                     DEFAULT_PI_TASK_CONTRACT.doneStatuses,

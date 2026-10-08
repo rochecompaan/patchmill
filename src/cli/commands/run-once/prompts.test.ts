@@ -614,12 +614,9 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assertMultilineSafePrGuidance(prompt);
   assert.match(
     prompt,
-    /Direct squash-landing requires a configured landing skill/,
+    /Direct squash-landing is disabled for this repository\./,
   );
-  assert.match(
-    prompt,
-    /No landing skill is configured, so use PR fallback and do not land directly on `main`\./,
-  );
+  assert.match(prompt, /Do not land directly on `main`\./);
   assert.match(
     prompt,
     /keep the reason and questions concise enough to post directly as a `needs-info` comment/i,
@@ -686,15 +683,35 @@ test("buildImplementationPrompt renders configured skills", () => {
   );
   assert.match(
     prompt,
-    /Use the configured landing skill for the direct-land versus PR decision: `project-landing`\./,
+    /Use the configured landing skill for PR review and handoff: `project-landing`\./,
   );
-  assert.match(prompt, /If eligible for direct squash-land:/);
-  assert.match(prompt, /Successful final response for direct squash-land:/);
-  assert.match(prompt, /"status": "merged"/);
+  assert.doesNotMatch(prompt, /If eligible for direct squash-land:/);
+  assert.doesNotMatch(
+    prompt,
+    /Successful final response for direct squash-land:/,
+  );
+  assert.doesNotMatch(prompt, /"status": "merged"/);
   assert.doesNotMatch(
     prompt,
     /old implementation prompt fragment|toolchainInstruction|hostToolingInstruction|subagentWorkflowInstruction/,
   );
+});
+
+test("a custom landing skill cannot add a direct-merge result contract", () => {
+  for (const allowDirectLand of [false, true]) {
+    const prompt = buildImplementationPrompt({
+      issue,
+      planPath,
+      branch: "agent/issue-42",
+      worktreePath: ".worktrees/issue-42",
+      git: { baseBranch: "main", remote: "origin", allowDirectLand },
+      projectPolicy: examplePolicy,
+      skills: { ...DEFAULT_PATCHMILL_SKILLS, landing: "custom-landing" },
+    });
+    assert.match(prompt, /"status": "pr-created"/u);
+    assert.doesNotMatch(prompt, /"status": "merged"|Squash-merge|Push `main`/u);
+    assert.match(prompt, /Do not land directly on `main`/u);
+  }
 });
 
 test("generic policy plan prompt does not include legacy project text", () => {
@@ -748,7 +765,11 @@ test("buildImplementationPrompt uses configured direct-land policy inputs", () =
     },
   });
 
-  assert.match(prompt, /Update local `main` from the `upstream` remote\./);
+  assert.match(
+    prompt,
+    /Push the branch to `upstream` and open a pull request/u,
+  );
+  assert.doesNotMatch(prompt, /Update local `main`/u);
   assert.doesNotMatch(
     prompt,
     /Update local `release\/1\.2` from the `upstream` remote\./,
@@ -806,9 +827,9 @@ test("policy-driven prompts render validation and landing contract text from run
   );
   assert.match(
     implementationPrompt,
-    /Update local `main` from the `upstream` remote\./,
+    /Push the branch to `upstream` and open a pull request/u,
   );
-  assert.match(
+  assert.doesNotMatch(
     implementationPrompt,
     /Squash-merge the implementation branch into `main`\./,
   );

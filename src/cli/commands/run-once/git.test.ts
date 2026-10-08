@@ -880,6 +880,9 @@ test("git helpers include exit code and fallback output when commands fail silen
 
 test("cleanupIssueWorkspace removes the local worktree then local branch", async () => {
   const runner = createStaticCommandRunner([
+    { code: 0, stdout: `${"a".repeat(40)}\n`, stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
   ]);
@@ -893,7 +896,7 @@ test("cleanupIssueWorkspace removes the local worktree then local branch", async
     results.map((result) => result.status),
     ["cleaned", "cleaned"],
   );
-  assert.deepEqual(runner.calls, [
+  assert.deepEqual(runner.calls.slice(3), [
     {
       command: "git",
       args: [
@@ -905,7 +908,12 @@ test("cleanupIssueWorkspace removes the local worktree then local branch", async
     },
     {
       command: "git",
-      args: ["branch", "-D", "agent/issue-42-add-user-tags"],
+      args: [
+        "update-ref",
+        "-d",
+        "refs/heads/agent/issue-42-add-user-tags",
+        "a".repeat(40),
+      ],
       cwd: "/repo",
     },
   ]);
@@ -921,6 +929,9 @@ test("cleanupIssueWorkspace removes the local worktree then local branch", async
 
 test("cleanupIssueWorkspace skips local branch deletion when worktree removal fails", async () => {
   const runner = createStaticCommandRunner([
+    { code: 0, stdout: `${"a".repeat(40)}\n`, stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
     { code: 128, stdout: "", stderr: "fatal: worktree is dirty" },
   ]);
 
@@ -937,13 +948,16 @@ test("cleanupIssueWorkspace skips local branch deletion when worktree removal fa
   assert.equal(results[0]?.stdout, "");
   assert.equal(results[0]?.stderr, "fatal: worktree is dirty");
   assert.deepEqual(
-    runner.calls.map((call) => call.args),
+    runner.calls.slice(3).map((call) => call.args),
     [["worktree", "remove", ".worktrees/patchmill-issue-42-add-user-tags"]],
   );
 });
 
 test("cleanupIssueWorkspace reports branch deletion failures without throwing", async () => {
   const runner = createStaticCommandRunner([
+    { code: 0, stdout: `${"a".repeat(40)}\n`, stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
+    { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
     { code: 1, stdout: "", stderr: "error: branch not found" },
   ]);
@@ -958,5 +972,8 @@ test("cleanupIssueWorkspace reports branch deletion failures without throwing", 
     ["cleaned", "failed"],
   );
   assert.equal(results[1]?.step, "branch");
-  assert.match(results[1]?.message ?? "", /git branch -D failed/);
+  assert.match(
+    results[1]?.message ?? "",
+    /Expected-head branch deletion failed/,
+  );
 });

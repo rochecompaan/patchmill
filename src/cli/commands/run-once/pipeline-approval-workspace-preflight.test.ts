@@ -4,7 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
-import { writeRunState } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import {
   issue,
   issueListPayload,

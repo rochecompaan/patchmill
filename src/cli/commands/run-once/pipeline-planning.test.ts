@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import {
   configuredWorktreeStrategy,
@@ -2580,7 +2581,7 @@ test("runOneIssue preserves approvals while clearing review labels", async () =>
   assert.equal(removedLabels.includes("plan-approved"), false);
   assert.equal(removedLabels.includes("spec-review"), true);
   assert.equal(removedLabels.includes("plan-review"), true);
-  assert.equal(removedLabels.includes("in-progress"), true);
+  assert.equal(removedLabels.includes("in-progress"), false);
 });
 
 test("runOneIssue claims the issue, comments automation start, writes run state, and exits plan-created for plan-only mode", async () => {

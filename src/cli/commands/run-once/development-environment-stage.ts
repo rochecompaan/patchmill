@@ -33,6 +33,7 @@ type DevelopmentEnvironmentDetails = {
 export type DevelopmentEnvironmentStageOptions =
   DevelopmentEnvironmentDetails & {
     runner: CommandRunner;
+    lease: import("./types.ts").IssueRunLease;
     host: IssueHostProvider;
     config: AgentIssueConfig;
     issue: IssueSummary;
@@ -132,6 +133,7 @@ export async function developmentEnvironmentNotReady(
       worktreePath: options.worktreePath,
       lastError: result.reason,
     },
+    options.lease,
     timestamp,
   );
   await options.emitSimpleStep(

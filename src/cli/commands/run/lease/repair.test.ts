@@ -55,6 +55,7 @@ test("delegates every confirmed repair mode with its matching confirmation", asy
       ["--issue", "45", flag, "abc", confirmation],
       {
         loadConfig: async () => ({ repoRoot: ".", runStateDir: "runs" }),
+        admitMutation: async (_config, _issue, action) => action(),
         repair: async (value) => {
           input = value;
           return { kind: result, path: "runs/archive" };
@@ -66,6 +67,69 @@ test("delegates every confirmed repair mode with its matching confirmation", asy
     assert.equal(input?.confirmedProcessesStopped, true);
   }
 });
+test("interrupted repair inspection reserves no admission and carries both fingerprints", async () => {
+  const err = stream();
+  const code = await runLeaseRepairCommand(["--issue", "45"], {
+    loadConfig: async () => ({ repoRoot: ".", runStateDir: "runs" }),
+    admitMutation: async () => assert.fail("inspection must remain read-only"),
+    inspect: async () => ({
+      kind: "interrupted-repair",
+      sha256: "primary",
+      pairedGuardSha256: "paired",
+      owner: {
+        version: 1,
+        issueNumber: 45,
+        pid: 9,
+        hostname: "local",
+        ownerToken: "guard",
+        acquiredAt: "2026-01-01T00:00:00Z",
+      },
+    }),
+    stderr: err as never,
+  });
+  assert.equal(code, 0);
+  assert.match(
+    err.text,
+    /--expect-repair-sha256 primary --expect-paired-guard-sha256 paired --confirm-all-runners-stopped/u,
+  );
+  let admitted = false;
+  await runLeaseRepairCommand(
+    [
+      "--issue",
+      "45",
+      "--expect-repair-sha256",
+      "primary",
+      "--expect-paired-guard-sha256",
+      "paired",
+      "--confirm-all-runners-stopped",
+    ],
+    {
+      loadConfig: async () => ({ repoRoot: ".", runStateDir: "runs" }),
+      admitMutation: async (_config, _issue, action) => {
+        admitted = true;
+        return action();
+      },
+      repair: async (input) => {
+        assert.equal(admitted, true);
+        assert.equal(input.expectedRepairSha256, "primary");
+        assert.equal(input.expectedPairedGuardSha256, "paired");
+        return { kind: "repair-guards-quarantined", path: "archive" };
+      },
+      stderr: stream() as never,
+    },
+  );
+  await assert.rejects(
+    runLeaseRepairCommand([
+      "--issue",
+      "45",
+      "--expect-paired-guard-sha256",
+      "paired",
+      "--confirm-all-runners-stopped",
+    ]),
+    /requires a repair guard fingerprint/u,
+  );
+});
+
 test("rejects mismatched and confirmation-only repair confirmations", async () => {
   await assert.rejects(
     runLeaseRepairCommand([

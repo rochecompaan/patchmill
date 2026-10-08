@@ -51,7 +51,7 @@ export async function writeRunOnceResult(
 ): Promise<void> {
   const severity = terminalResultSeverity(summary.status);
   if (options.logPath)
-    await new JsonlProgressReporter(options.logPath).event({
+    await new JsonlProgressReporter(options.logPath, "append-owned").event({
       time: (options.time ?? new Date()).toISOString(),
       level:
         severity === "success"

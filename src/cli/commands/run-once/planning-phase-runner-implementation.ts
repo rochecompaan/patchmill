@@ -7,7 +7,8 @@ import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces
 import { assertPlanningImplementationBase } from "./planning-implementation-base.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
-import { durableImplementationResult } from "./planning-runtime-state.ts";
+import { durableMergedImplementationResult } from "./planning-runtime-state.ts";
+import { reconcileImplementationPullRequest } from "../../../workflow/implementation-pr-reconciliation.ts";
 import {
   blocked,
   operations,
@@ -131,7 +132,7 @@ export async function runPlanningImplementationPhase(
     return {
       kind: "complete",
       state,
-      result: durableImplementationResult(phase),
+      result: durableMergedImplementationResult(phase),
     };
   if (phase.status === "pending") {
     try {
@@ -206,7 +207,46 @@ export async function runPlanningImplementationPhase(
     lock: input.lock,
     stateStore: input.stateStore,
     workspaces: input.workspaces,
+    reconcilePr: async (published) => {
+      const reconciliation = await reconcileImplementationPullRequest({
+        host: input.host,
+        issueNumber: state.issueNumber,
+        evidence: {
+          ...published.pullRequest,
+          publication: published.publication,
+          ownershipMarkerRequired: true,
+        },
+        fetchBase: () =>
+          input.remoteBase.fetch({
+            issueNumber: state.issueNumber,
+            remote: input.config.remote,
+            baseBranch: published.publication.baseBranch,
+            targetRepository: published.publication.targetRepository,
+          }),
+        git: input.publicationGit,
+      });
+      if (input.issue.state !== "open" && reconciliation.kind === "open")
+        return {
+          kind: "blocked",
+          reason: "Issue is closed but its saved PR is unmerged",
+        };
+      return reconciliation;
+    },
   });
+  if (finished.kind === "blocked")
+    return {
+      kind: "blocked",
+      state: finished.state,
+      result: blocked(
+        finished.reason,
+        runOnceFailure("implementation-evidence", {
+          issueNumber: state.issueNumber,
+          status: "blocked",
+          validation: finished.reason,
+        }),
+      ),
+    };
+  if (finished.kind === "implementation-published") return finished;
   if (finished.kind === "cleanup-pending")
     return {
       kind: "cleanup-pending",

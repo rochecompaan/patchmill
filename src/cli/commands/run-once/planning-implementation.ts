@@ -3,6 +3,10 @@ import { parseCanonicalPullRequestUrl } from "../../../host/pull-request-referen
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import type { PullRequestHost } from "../../../host/pull-requests.ts";
+import {
+  findOwnedImplementationPullRequest,
+  type ImplementationPrEvidence,
+} from "../../../workflow/implementation-pr-reconciliation.ts";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import { PlanningStateValidationError } from "../../../workflow/planning-state.ts";
@@ -64,11 +68,15 @@ export type PlanningImplementationInput = {
     git: GitWorktreeStrategyConfig;
     requiredPullRequestMarker: string;
     workspaceCreated: boolean;
+    existingPullRequest?: ImplementationPrEvidence;
   }): Promise<
     | AgentIssuePrCreatedResult
     | AgentIssueMergedResult
     | AgentIssueInternalBlockedResult
   >;
+  resolveTodoRoot?: (
+    phase: ImplementationWorkspaceReadyPlanningPhase,
+  ) => Promise<string>;
   resolveRunCost?: () => Promise<RunCostReport | undefined>;
   workspaceCreated?: boolean;
   now?: () => Date;
@@ -113,6 +121,32 @@ export async function runPlanningImplementation(
           }),
         ),
       };
+    if (input.resolveTodoRoot && phase.workspace.todoRoot === undefined) {
+      const todoRoot = await input.resolveTodoRoot(phase);
+      phase = { ...phase, workspace: { ...phase.workspace, todoRoot } };
+      state = await replace(state, phase);
+    }
+    let existingPullRequest: ImplementationPrEvidence | undefined;
+    if (!input.workspaceCreated) {
+      const [targetRepository, headRepository] = await Promise.all([
+        input.host.resolveTargetRepositoryIdentity(),
+        input.host.resolveRemoteRepositoryIdentity(phase.workspace.remote),
+      ]);
+      existingPullRequest = await findOwnedImplementationPullRequest({
+        host: input.host,
+        issueNumber: state.issueNumber,
+        evidence: {
+          publication: {
+            targetRepository,
+            headRepository,
+            baseBranch: phase.base.baseBranch,
+            headBranch: phase.workspace.identity.branch,
+            headOid: phase.workspace.headOid,
+          },
+          ownershipMarkerRequired: true,
+        },
+      });
+    }
     let result: Awaited<ReturnType<PlanningImplementationInput["runAgent"]>>;
     try {
       result = await input.runAgent({
@@ -125,6 +159,7 @@ export async function runPlanningImplementation(
           allowDirectLand: false,
         },
         workspaceCreated: input.workspaceCreated ?? false,
+        ...(existingPullRequest ? { existingPullRequest } : {}),
         requiredPullRequestMarker: renderPlanningPullRequestMarker({
           issueNumber: state.issueNumber,
           phase: "implementation",
@@ -206,6 +241,19 @@ export async function runPlanningImplementation(
             ...implementationDiagnosticBase(state, phase),
             reportedBranch: result.branch,
             mergeCommit: result.mergeCommit,
+          }),
+        ),
+      };
+    if (existingPullRequest && result.prUrl !== existingPullRequest.url)
+      return {
+        kind: "blocked",
+        state,
+        result: implementationBlocked(
+          "implementation-url",
+          runOnceFailure("implementation-url", {
+            ...implementationDiagnosticBase(state, phase),
+            reportedUrl: result.prUrl,
+            expectedRepository: existingPullRequest.url,
           }),
         ),
       };

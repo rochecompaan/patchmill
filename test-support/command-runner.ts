@@ -1,4 +1,5 @@
 import type { CommandResult, CommandRunner } from "../src/command/types.ts";
+export { createCommandRunner } from "../src/cli/commands/triage/command.ts";
 
 export type RecordedCommandCall = {
   command: string;

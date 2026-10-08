@@ -18,7 +18,8 @@ import {
 } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { createMockRunner } from "../../../../test-support/run-once/mock-runner.ts";
 import { runOneIssue } from "./pipeline.ts";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { exitCodeForRunOnceResult } from "./result-output.ts";
 import { summarizeResult } from "./result-summary.ts";
 
@@ -388,7 +389,7 @@ test("facade exhausts each safely rejected legacy candidate once", async () => {
     assert.equal(
       runner.calls.some(
         (call) =>
-          call.command === "git" ||
+          (call.command === "git" && call.args[0] !== "rev-parse") ||
           call.command === "pi" ||
           call.args.includes("edit"),
       ),

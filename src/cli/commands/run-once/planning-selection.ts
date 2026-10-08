@@ -113,7 +113,13 @@ export function planningIssueEligible(input: {
   const excluded =
     config.triagePolicy?.runOnceSelection?.excludedLabels ??
     DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
-  const doneCheckpoint = planningFinishReachedDoneLabelBoundary(state);
+  const doneCheckpoint =
+    planningFinishReachedDoneLabelBoundary(state) ||
+    Boolean(
+      activeOwnedWorkflow &&
+      state &&
+      planningImplementationNeedsMergeReconciliation(state),
+    );
   const blocked = selectionBlockingLabels(
     issue.labels.filter((label) => {
       if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
@@ -145,6 +151,29 @@ export function planningIssueEligible(input: {
   );
 }
 
+/** Routes saved implementation PR handoffs to later merge reconciliation. */
+export function planningImplementationNeedsMergeReconciliation(
+  state: PlanningStateV1,
+): boolean {
+  return state.phases.some(
+    (phase) =>
+      phase.kind === "implementation" &&
+      (phase.status === "pull-request-open" ||
+        (phase.status === "complete" && "pullRequest" in phase)),
+  );
+}
+
+/** Identifies legacy PR handoffs without treating PR creation as a merge. */
+export function legacyImplementationNeedsMergeReconciliation(
+  state: import("./types.ts").AgentIssueRunState,
+): boolean {
+  return (
+    state.implementationPr !== undefined ||
+    state.implementationStatus === "pr-created" ||
+    (state.status === "finished" && typeof state.prUrl === "string")
+  );
+}
+
 export function hasFinishedPlanningWorkspaceState(
   state: Awaited<ReturnType<typeof readRunState>>,
 ): boolean {
@@ -163,6 +192,7 @@ export function legacyConflictsWithPlanning(
   return Boolean(
     legacy &&
     (isResumableRunState(legacy) ||
+      legacyImplementationNeedsMergeReconciliation(legacy) ||
       hasFinishedPlanningWorkspaceState(legacy) ||
       hasBlockedRunRecoveryState(legacy)),
   );
@@ -193,7 +223,7 @@ export async function selectRunOnceWorkflow(
   for (const issue of issues) {
     if (config.issueNumber !== undefined && issue.number !== config.issueNumber)
       continue;
-    if (issue.state !== "open") continue;
+    if (issue.state !== "open" && config.issueNumber === undefined) continue;
     if (
       config.issueNumber === undefined &&
       !automaticWorkflowRolesEligible(
@@ -216,6 +246,20 @@ export async function selectRunOnceWorkflow(
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
+    const legacyFinishRecovery =
+      config.execute &&
+      !config.dryRun &&
+      config.issueNumber === issue.number &&
+      legacy &&
+      (legacyImplementationNeedsMergeReconciliation(legacy) ||
+        legacy.implementationStatus === "merged");
+    if (
+      issue.state !== "open" &&
+      !legacyFinishRecovery &&
+      !(state && planningImplementationNeedsMergeReconciliation(state)) &&
+      !(legacy && legacyImplementationNeedsMergeReconciliation(legacy))
+    )
+      continue;
     const legacyActive = legacyActiveForIssue(issue, config, legacy);
     const legacyConflict = legacyConflictsWithPlanning(legacy);
     const ordinaryLegacyResume = Boolean(
@@ -227,15 +271,24 @@ export async function selectRunOnceWorkflow(
       !hasBlockedRunRecoveryState(legacy) ||
       (config.issueNumber === issue.number &&
         hasWorkflowRole(issue, config, "agent-ready"));
-    if (state && active(state) && legacyConflict)
+    const planningActive =
+      state &&
+      (active(state) ||
+        (config.issueNumber === issue.number &&
+          planningImplementationNeedsMergeReconciliation(state)));
+    if (planningActive && legacyConflict)
       return {
         kind: "invalid-planning-state",
         issue,
         reason: "planning and legacy state are both active",
       };
+    if (legacyFinishRecovery) {
+      choices.push({ kind: "legacy", issue });
+      continue;
+    }
     if (
       state &&
-      active(state) &&
+      planningActive &&
       (planningIssueEligible({
         issue,
         config,

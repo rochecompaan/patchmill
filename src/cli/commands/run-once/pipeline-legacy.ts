@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
@@ -66,9 +67,24 @@ import {
   selectResumableIssue,
 } from "./pipeline-selection.ts";
 import { loadLegacyPipelineSelectionIssues } from "./pipeline-legacy-selection.ts";
-import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
+import {
+  hasFinishedPlanningWorkspaceState,
+  legacyImplementationNeedsMergeReconciliation,
+} from "./planning-selection.ts";
+import { resumeLegacyPublishedPr } from "./legacy-pr-resume.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
-import { withIssueRunLease } from "./recovery-lease.ts";
+import { repositoryMutationContext } from "./repository-mutation-context.ts";
+import {
+  RepositoryMutationBusyError,
+  RepositoryMutationInterruptedError,
+  RepositoryMutationOwnershipError,
+} from "../../../git/repository-mutation.ts";
+import { repositoryBusyResult } from "./repository-busy-result.ts";
+import {
+  assertIssueRunLeaseOwned,
+  requireIssueRunLease,
+  withIssueRunLease,
+} from "./recovery-lease.ts";
 import { formatRunRecoveryDecision } from "./recovery.ts";
 import {
   adoptLegacyRecoveryLease,
@@ -111,7 +127,10 @@ export async function runLegacyOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  return runLegacyOneIssueInternal(runner, config, options);
+  return runLegacyOneIssueInternal(runner, config, {
+    ...options,
+    attemptId: options.attemptId ?? randomUUID(),
+  });
 }
 
 /** Runs one already-selected legacy issue without returning to advisory selection. */
@@ -126,6 +145,8 @@ export async function runLegacyOneIssueForSelection(
       kind: "pipeline-result",
       result: await runLegacyOneIssueInternal(runner, config, {
         ...options,
+        attemptId:
+          options.attemptId ?? options.lease?.record.ownerToken ?? randomUUID(),
         leasedIssueNumber: issueNumber,
         classifySelectionRejection: true,
       }),
@@ -150,6 +171,7 @@ export async function runLegacyOneIssueAfterReset(
   return runLegacyOneIssueInternal(runner, config, {
     ...options,
     lease: reset.lease,
+    attemptId: reset.lease.record.ownerToken,
     reset: { seed: reset.seed },
   });
 }
@@ -159,6 +181,12 @@ async function runLegacyOneIssueInternal(
   config: AgentIssueConfig,
   options: LeasedRunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
+  if (options.lease)
+    await assertIssueRunLeaseOwned(options.lease, {
+      runStateDir: config.runStateDir,
+      issueNumber:
+        options.leasedIssueNumber ?? options.lease.record.issueNumber,
+    });
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
@@ -248,6 +276,16 @@ async function runLegacyOneIssueInternal(
       `Leased selection changed from issue #${options.leasedIssueNumber} to issue #${issue.number}`,
     );
 
+  if (
+    options.lease &&
+    options.leasedIssueNumber !== undefined &&
+    !options.authoritativeLeaseChecked
+  )
+    return runLegacyOneIssueInternal(runner, config, {
+      ...options,
+      authoritativeLeaseChecked: true,
+    });
+
   let existingState: AgentIssueRunState | undefined = options.reset
     ? {
         issueNumber: issue.number,
@@ -275,7 +313,13 @@ async function runLegacyOneIssueInternal(
   // A caller-supplied lease (reset) is borrowed and is therefore not released.
   if (!config.dryRun && !options.lease) {
     return withIssueRunLease(
-      { runStateDir: config.runStateDir, issueNumber: issue.number },
+      {
+        runStateDir: config.runStateDir,
+        issueNumber: issue.number,
+        ...(options.attemptId === undefined
+          ? {}
+          : { ownerToken: options.attemptId }),
+      },
       (lease) =>
         runLegacyOneIssueInternal(runner, config, {
           ...options,
@@ -283,6 +327,26 @@ async function runLegacyOneIssueInternal(
           leasedIssueNumber: issue.number,
         }),
     );
+  }
+  if (
+    !config.dryRun &&
+    options.lease &&
+    existingState &&
+    (legacyImplementationNeedsMergeReconciliation(existingState) ||
+      existingState.implementationStatus === "merged")
+  ) {
+    const published = await resumeLegacyPublishedPr({
+      runner,
+      config,
+      host,
+      issue,
+      state: existingState,
+      lease: options.lease,
+      options,
+    });
+    if (published) return published;
+    // A proven open PR without validation uses ordinary owned-workspace checks.
+    existingState = await readRunState(config.runStateDir, issue.number);
   }
   if (!config.dryRun && options.lease)
     existingState = await adoptLegacyRecoveryLease({
@@ -321,6 +385,7 @@ async function runLegacyOneIssueInternal(
   const piSessionPath = runPiSessionPath(
     config.runStateDir,
     timestamp,
+    options.attemptId ?? options.lease?.record.ownerToken ?? randomUUID(),
     issue.number,
   );
   const runOptions = { ...options, piSessionPath };
@@ -347,6 +412,8 @@ async function runLegacyOneIssueInternal(
     );
   }
 
+  const lease = requireIssueRunLease(options.lease);
+  const mutation = repositoryMutationContext(runner, options, issue.number);
   const ignoredPaths = cleanStatusIgnoredPaths(
     config,
     runOptions.logPath === undefined ? {} : { logPath: runOptions.logPath },
@@ -444,6 +511,7 @@ async function runLegacyOneIssueInternal(
     ignoredPaths,
     resolvedArtifacts,
     lease: options.lease,
+    ...(mutation ? { mutation } : {}),
   });
   if (
     blockedRecovery?.decision.action === "resume" &&
@@ -510,6 +578,7 @@ async function runLegacyOneIssueInternal(
       worktreeStrategy,
       undefined,
       ignoredPaths,
+      mutation,
     );
     await emitSimpleStep(
       runOptions,
@@ -630,6 +699,7 @@ async function runLegacyOneIssueInternal(
             title: issue.title,
             seed: options.reset.seed,
           },
+          lease,
           timestamp,
         );
       } else {
@@ -651,6 +721,7 @@ async function runLegacyOneIssueInternal(
                 status: existingState.status,
                 blockerCommentKeys: [blockerCommentKey(blocked)],
               },
+              lease,
               timestamp,
             );
         }
@@ -666,6 +737,7 @@ async function runLegacyOneIssueInternal(
             clearBlockerQuestions: recoveringBlocked,
             leaseProtocolVersion: 1,
           },
+          lease,
           timestamp,
         );
       }
@@ -687,6 +759,7 @@ async function runLegacyOneIssueInternal(
           status: "claimed",
           checkpoints: { startedCommentPosted: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.startedCommentPosted = true;
@@ -789,11 +862,13 @@ async function runLegacyOneIssueInternal(
           planPath: resolvedArtifacts.plan?.path,
           planCommit: resolvedArtifacts.plan?.commit,
         },
+        lease,
         timestamp,
       );
     }
 
     const planningStages = await advancePlanningStages({
+      lease,
       runner,
       host,
       config,
@@ -876,6 +951,7 @@ async function runLegacyOneIssueInternal(
       );
     }
     const implementationStage = await runPipelineImplementationStage({
+      lease,
       runner,
       host,
       config,
@@ -942,6 +1018,7 @@ async function runLegacyOneIssueInternal(
     });
 
     const finishStage = await runPipelineFinishStage({
+      lease,
       runner,
       host,
       config,
@@ -963,6 +1040,7 @@ async function runLegacyOneIssueInternal(
       timestamp,
       runOptions,
       runStep,
+      ...(mutation ? { mutation } : {}),
     });
 
     if (finishStage.kind === "unexpected") {
@@ -971,6 +1049,13 @@ async function runLegacyOneIssueInternal(
 
     return finishStage.result;
   } catch (error) {
+    if (error instanceof RepositoryMutationBusyError)
+      return repositoryBusyResult(issue, runOptions);
+    if (
+      error instanceof RepositoryMutationInterruptedError ||
+      error instanceof RepositoryMutationOwnershipError
+    )
+      throw error;
     if (error instanceof AgentIssueSafetyError) {
       throw error;
     }

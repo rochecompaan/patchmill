@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import type { CommandRunner } from "../../../command/types.ts";
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, link, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
@@ -37,6 +38,11 @@ Use --dry-run to preview the next eligible issue without mutating the configured
 Progress is written to stderr by default. Interactive stdout ends with a readable formatted result; redirected stdout remains compact JSON.
 --quiet suppresses progress but not the final result. NO_COLOR disables result styling without changing output mode.
 Run logs are written under the configured run state directory (default: .patchmill/runs/) and end with a structured result event.
+Independent explicit issues can run concurrently in one clone. Automatic selection remains serial.
+An owned issue stops with "issue already in progress." and exit code 0. Retry a busy Git transaction after its owner stops.
+Implementation publishes a PR, not the target branch. After the PR merges, rerun the same explicit issue to finish its checkpoints.
+Use one version and bound configuration namespace. Manage spending, CPU, ports, and test databases per issue.
+Do not remove another run's locks or mutate shared Git/configuration during active attempts.
 
 Options:
   --help, -h          Show this help and exit.
@@ -44,7 +50,7 @@ Options:
   --plan-only         ${legacyPlanningDeprecation("--plan-only").help}
   --quiet             Suppress terminal progress; still write JSONL run log.
   --verbose-pi-output Stream raw Pi assistant/tool text in addition to concise progress.
-  --issue <number>    Process one specific open actionable issue.
+  --issue <number>    Process or resume only this issue, including verified PR finish recovery.
   --host-login <name> Use a named host login when the provider supports named logins.
   --tea-login <name>  Compatibility alias for --host-login.
 
@@ -69,15 +75,22 @@ export async function finalLogPath(
   runStateDir: string,
   timestamp: string,
   result: AgentIssuePipelineResult,
+  attemptId: string,
 ): Promise<string> {
   const issueNumber = issueNumberFromResult(result);
   if (issueNumber === undefined) return preliminaryLogPath;
 
-  const issueLogPath = runLogPath(runStateDir, timestamp, issueNumber);
+  const issueLogPath = runLogPath(
+    runStateDir,
+    timestamp,
+    attemptId,
+    issueNumber,
+  );
   if (issueLogPath === preliminaryLogPath) return preliminaryLogPath;
 
   await mkdir(dirname(issueLogPath), { recursive: true });
-  await rename(preliminaryLogPath, issueLogPath);
+  await link(preliminaryLogPath, issueLogPath);
+  await unlink(preliminaryLogPath);
   return issueLogPath;
 }
 
@@ -138,7 +151,13 @@ export async function loadCliConfig(
   return parseArgs(args, repoRoot, env, runOnceConfig);
 }
 
-export async function main(args = process.argv.slice(2)): Promise<number> {
+export async function main(
+  args = process.argv.slice(2),
+  dependencies: Partial<{
+    loadConfig: typeof loadCliConfig;
+    createRunner: typeof createCommandRunner;
+  }> = {},
+): Promise<number> {
   if (!isHelpOnlyInvocation(args) && args.includes("--plan-only")) {
     process.stderr.write(
       `${legacyPlanningDeprecation("--plan-only").warning}\n`,
@@ -146,15 +165,22 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   }
   const startedAt = new Date();
   const timestamp = startedAt.toISOString();
+  const attemptId = randomUUID();
 
   try {
-    const config = await loadCliConfig(args);
+    const runner = (dependencies.createRunner ?? createCommandRunner)();
+    const config = await (dependencies.loadConfig ?? loadCliConfig)(
+      args,
+      cwd(),
+      process.env,
+      runner,
+    );
     if (config.showHelp) {
       console.log(HELP_TEXT);
       return 0;
     }
 
-    const logPath = runLogPath(config.runStateDir, timestamp);
+    const logPath = runLogPath(config.runStateDir, timestamp, attemptId);
     const interactiveOutput = process.stdout.isTTY === true;
     const consoleProgress = config.quiet
       ? undefined
@@ -167,10 +193,18 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       ...(consoleProgress ? [consoleProgress] : []),
     ]);
 
+    await progress.event({
+      time: timestamp,
+      level: "debug",
+      stage: "run-attempt",
+      message: "run attempt started",
+      attemptId,
+    });
     let result: AgentIssuePipelineResult;
     try {
-      result = await runOneIssue(createCommandRunner(), config, {
+      result = await runOneIssue(runner, config, {
         now: startedAt,
+        attemptId,
         progress,
         logPath,
         verbosePiOutput: config.verbosePiOutput,
@@ -214,6 +248,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       config.runStateDir,
       timestamp,
       result,
+      attemptId,
     );
     const summary = summarizeResult({ ...result, logPath: outputLogPath });
     await writeRunOnceResult(summary, {

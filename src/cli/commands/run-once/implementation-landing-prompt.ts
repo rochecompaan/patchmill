@@ -72,8 +72,6 @@ export function renderLandingResultContracts(input: {
   requiredPullRequestMarker?: string;
 }): string {
   const {
-    allowDirectLand,
-    hasLandingSkill,
     targetBranch,
     remote,
     issueNumber,
@@ -85,8 +83,7 @@ export function renderLandingResultContracts(input: {
     issueNumber,
     requiredPullRequestMarker,
   );
-  if (!allowDirectLand)
-    return `Landing result contracts:
+  return `Landing result contracts:
 Direct squash-landing is disabled for this repository.
 ${prInstruction}
 Do not land directly on \`${targetBranch}\`.
@@ -97,46 +94,6 @@ If human review is required:
 3. Return the \`pr-created\` final response.
 
 ${renderBlockedContract()}
-
-${renderPrCreatedContract(branch)}`;
-  if (!hasLandingSkill)
-    return `Landing result contracts:
-Direct squash-landing requires a configured landing skill for this repository. No landing skill is configured, so use PR fallback and do not land directly on \`${targetBranch}\`.
-
-If human review is required:
-1. ${prInstruction}
-2. Explain briefly why human review is required.
-3. Return the \`pr-created\` final response.
-
-${renderBlockedContract()}
-
-${renderPrCreatedContract(branch)}`;
-  return `Landing result contracts:
-If eligible for direct squash-land:
-1. Update local \`${targetBranch}\` from the \`${remote}\` remote.
-2. Squash-merge the implementation branch into \`${targetBranch}\`.
-3. Create one Conventional Commit that references issue #${issueNumber}.
-4. Push \`${targetBranch}\` to \`${remote}\` without force-pushing.
-5. Return the \`merged\` final response.
-
-If human review is required:
-1. ${prInstruction}
-2. Explain briefly why human review is required.
-3. Return the \`pr-created\` final response.
-
-${renderBlockedContract()}
-
-Successful final response for direct squash-land:
-Return this exact JSON object after \`${targetBranch}\` is pushed successfully:
-{
-  "status": "merged",
-  "branch": "${branch}",
-  "mergeCommit": "<squash commit sha on ${targetBranch}>",
-  "commits": ["<implementation commit sha>"],
-  "validation": ["command and result summary"],
-  "reviewSummary": "short reviewer/fix summary",
-  "landingDecision": "direct squash-landed: policy-approved change"
-}
 
 ${renderPrCreatedContract(branch)}`;
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -15,6 +15,30 @@ async function fixture() {
   await mkdir(join(root, "locks"), { recursive: true });
   return root;
 }
+test("repair excludes a live common owner despite a stopped-process confirmation", async () => {
+  const root = await fixture();
+  const source = join(root, "locks", "issue-45.lock");
+  const raw = JSON.stringify({
+    version: 1,
+    issueNumber: 45,
+    pid: process.pid,
+    hostname: hostname(),
+    ownerToken: "live-owner",
+    acquiredAt: "2026-01-01T00:00:00Z",
+  });
+  await writeFile(source, raw);
+  await assert.rejects(
+    repairIssueRunLease({
+      runStateDir: root,
+      issueNumber: 45,
+      expectedLeaseSha256: sha(raw),
+      confirmedProcessesStopped: true,
+    }),
+    /active|live/u,
+  );
+  assert.equal(await readFile(source, "utf8"), raw);
+});
+
 test("inspects and quarantines exact remote lease bytes", async () => {
   const root = await fixture();
   const raw =
@@ -33,6 +57,87 @@ test("inspects and quarantines exact remote lease bytes", async () => {
   assert.equal(repaired.kind, "lease-quarantined");
   assert.equal(await readFile(repaired.path, "utf8"), raw);
 });
+test("repair preserves replacement fingerprints and cannot release a replacement repair guard", async () => {
+  for (const replaceGuard of [false, true]) {
+    const root = await fixture();
+    const source = join(root, "locks", "issue-45.lock");
+    const raw =
+      '{"version":1,"issueNumber":45,"pid":9,"hostname":"remote","ownerToken":"original","acquiredAt":"2026-01-01T00:00:00Z"}';
+    const replacement = raw.replace("original", "replacement");
+    await writeFile(source, raw);
+    const target = replaceGuard
+      ? join(root, "locks", "issue-45.repair.lock")
+      : source;
+    await assert.rejects(
+      repairIssueRunLease({
+        runStateDir: root,
+        issueNumber: 45,
+        expectedLeaseSha256: sha(raw),
+        confirmedProcessesStopped: true,
+        afterArchive: async () => {
+          await writeFile(target, replacement);
+        },
+      }),
+      /fingerprint changed|ownership changed/u,
+    );
+    assert.equal(await readFile(target, "utf8"), replacement);
+    if (replaceGuard) assert.equal(await readFile(source, "utf8"), raw);
+  }
+});
+
+test("repair refuses a replaced paired guard before deleting the target lease", async () => {
+  const root = await fixture();
+  const source = join(root, "locks", "issue-45.lock");
+  const paired = join(root, "locks", "issue-45.lease-guard");
+  const raw =
+    '{"version":1,"issueNumber":45,"pid":9,"hostname":"remote","ownerToken":"original","acquiredAt":"2026-01-01T00:00:00Z"}';
+  await writeFile(source, raw);
+  await assert.rejects(
+    repairIssueRunLease({
+      runStateDir: root,
+      issueNumber: 45,
+      expectedLeaseSha256: sha(raw),
+      confirmedProcessesStopped: true,
+      afterArchive: async () => {
+        await writeFile(paired, raw);
+      },
+    }),
+    /ownership changed/u,
+  );
+  assert.equal(await readFile(source, "utf8"), raw);
+  assert.equal(await readFile(paired, "utf8"), raw);
+});
+
+test("unverifiable local shutdown never becomes an ordinary live-owner stop", async (t) => {
+  const root = await fixture();
+  const source = join(root, "locks", "issue-45.lock");
+  const raw = JSON.stringify({
+    version: 1,
+    issueNumber: 45,
+    pid: process.pid,
+    hostname: hostname(),
+    ownerToken: "owner",
+    acquiredAt: "2026-01-01T00:00:00Z",
+  });
+  await writeFile(source, raw);
+  t.mock.method(process, "kill", () => {
+    throw Object.assign(new Error("not permitted"), { code: "EPERM" });
+  });
+  await assert.rejects(
+    repairIssueRunLease({
+      runStateDir: root,
+      issueNumber: 45,
+      expectedLeaseSha256: sha(raw),
+      confirmedProcessesStopped: true,
+    }),
+    (error: unknown) =>
+      error instanceof Error &&
+      "liveOwner" in error &&
+      error.liveOwner === false,
+  );
+  assert.equal(await readFile(source, "utf8"), raw);
+});
+
 test("retains both same-clock repair archives without overwriting bytes", async () => {
   const root = await fixture();
   const source = join(root, "locks", "issue-45.lock");

@@ -5,12 +5,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { resetIssueRun, validateResetIssueEligibility } from "./reset.ts";
+import { createResetFixtureRunner } from "../../../../../test-support/run-once/reset-runner.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../../triage/labels.ts";
 import {
   configuredWorktreeStrategy,
   expectedIssueWorkspace,
 } from "../../run-once/pipeline-workspace.ts";
-import { runStatePath, writeRunState } from "../../run-once/run-state.ts";
+import { runStatePath } from "../../run-once/run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../../test-support/run-once/run-state-fixture.ts";
 import {
   blockedRecoveryRunner,
   makeConfig,
@@ -246,31 +248,7 @@ test("reset archives a registered checkout then enters the pipeline with its bor
       labels: [...labels],
       comments: [],
     };
-    const runner = {
-      async run(_command: string, args: string[], options?: { cwd?: string }) {
-        try {
-          return {
-            code: 0,
-            stdout: execFileSync("git", args, {
-              cwd: options?.cwd ?? runConfig.repoRoot,
-              encoding: "utf8",
-            }),
-            stderr: "",
-          };
-        } catch (error) {
-          const result = error as {
-            status?: number;
-            stdout?: string;
-            stderr?: string;
-          };
-          return {
-            code: result.status ?? 1,
-            stdout: result.stdout ?? "",
-            stderr: result.stderr ?? "",
-          };
-        }
-      },
-    };
+    const runner = createResetFixtureRunner(runConfig);
     const calls: unknown[] = [];
     const result = await resetIssueRun(
       runner,
@@ -282,8 +260,8 @@ test("reset archives a registered checkout then enters the pipeline with its bor
           hydrateIssueComments: async () => [issue],
           trustedTriageCommentAuthors: async () => [],
         })) as never,
-        runPipeline: async (_runner, _config, options) => {
-          calls.push(options);
+        runPipeline: async (_runner, _config, options, reset) => {
+          calls.push({ ...options, reset });
           return { status: "no-issue" } as never;
         },
       },
@@ -349,33 +327,7 @@ async function resetFixture(fail?: (args: string[]) => boolean) {
     comments: [],
   };
   const calls: unknown[] = [];
-  const runner = {
-    async run(_command: string, args: string[], options?: { cwd?: string }) {
-      if (fail?.(args))
-        return { code: 1, stdout: "", stderr: "injected failure" };
-      try {
-        return {
-          code: 0,
-          stdout: execFileSync("git", args, {
-            cwd: options?.cwd ?? runConfig.repoRoot,
-            encoding: "utf8",
-          }),
-          stderr: "",
-        };
-      } catch (error) {
-        const e = error as {
-          status?: number;
-          stdout?: string;
-          stderr?: string;
-        };
-        return {
-          code: e.status ?? 1,
-          stdout: e.stdout ?? "",
-          stderr: e.stderr ?? "",
-        };
-      }
-    },
-  };
+  const runner = createResetFixtureRunner(runConfig, fail);
   const dependencies = {
     createHost: (() => ({
       viewIssue: async () => issue,
@@ -640,7 +592,11 @@ test("returns absent-state guidance without recovery mutation", async () => {
   const result = await resetIssueRun(runner, runConfig, { now: NOW });
   assert.equal(result.status, "nothing-to-reset");
   assert.equal(
-    runner.calls.some((call) => call.command === "git"),
+    runner.calls.some(
+      (call) =>
+        call.command === "git" &&
+        ["worktree", "update-ref", "reset"].includes(call.args[0] ?? ""),
+    ),
     false,
   );
   assert.match(result.guidance, /run-once --issue 45/);

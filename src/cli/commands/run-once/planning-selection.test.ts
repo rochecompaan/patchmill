@@ -5,9 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   legacyActiveForIssue,
+  legacyImplementationNeedsMergeReconciliation,
+  planningImplementationNeedsMergeReconciliation,
   selectRunOnceWorkflow,
 } from "./planning-selection.ts";
-import { writeRunState } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { assertPlanningStateReplacement } from "../../../workflow/planning-state.ts";
 
 const issue = (number: number, labels: string[]) => ({
@@ -458,4 +460,26 @@ test("keeps explicit approval-wait legacy resume pinned for its approval diagnos
   } finally {
     await rm(runStateDir, { recursive: true, force: true });
   }
+});
+
+test("identifies saved implementation PR handoffs for later reconciliation", () => {
+  assert.equal(
+    planningImplementationNeedsMergeReconciliation({
+      phases: [{ kind: "implementation", status: "pull-request-open" }],
+    } as never),
+    true,
+  );
+  assert.equal(
+    planningImplementationNeedsMergeReconciliation({
+      phases: [{ kind: "implementation", status: "workspace-ready" }],
+    } as never),
+    false,
+  );
+  assert.equal(
+    legacyImplementationNeedsMergeReconciliation({
+      status: "finished",
+      prUrl: "https://example.test/pr/1",
+    } as never),
+    true,
+  );
 });

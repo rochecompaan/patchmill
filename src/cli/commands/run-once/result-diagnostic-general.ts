@@ -85,14 +85,22 @@ export const GENERAL_DIAGNOSTICS = {
       "Retry now only with the normal command, without --plan-only.",
     ),
   }),
-  "issue-locked": definition({
-    summary: "Planning lock is active",
+  "repository-busy": definition({
+    summary: "Shared Git transaction is busy",
     explanation:
-      "Another owner holds the active planning-pr-v1 lock for this Issue.",
-    action: "Wait for the recorded owner to finish, then rerun this Issue.",
+      "Another Run attempt owns a shared Git transaction. Patchmill preserved this Issue's checkpoint.",
+    action: "Wait for the current transaction to stop, then rerun this Issue.",
     command: "run-once",
-    safety:
-      "Never remove an active planning lock and never use Issue run lease repair for it.",
+    safety: "Do not remove another attempt's Git guard or reset its workspace.",
+    retry: after("Retry when the current Git transaction stops."),
+  }),
+  "issue-locked": definition({
+    summary: "issue already in progress.",
+    explanation:
+      "Another Run attempt holds the active ownership resource for this Issue.",
+    action: "Wait for the owner to finish, then rerun this Issue.",
+    command: "run-once",
+    safety: "Never remove an active ownership resource.",
     retry: same(
       "An immediate retry will give the same result while the owner is active.",
     ),

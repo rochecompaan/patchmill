@@ -17,6 +17,29 @@ test("loadPatchmillConfig returns defaults when no file or env is present", asyn
   assert.equal(config.cleanupHook, undefined);
 });
 
+test("direct landing configuration cannot authorize target-branch publication", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "patchmill-pr-only-"));
+  for (const git of [{}, { allowDirectLand: false }]) {
+    await writeFile(
+      join(dir, "patchmill.config.json"),
+      JSON.stringify({ git }),
+    );
+    const config = await loadPatchmillConfig(dir, {}, []);
+    assert.equal(config.git.allowDirectLand, false);
+  }
+  await writeFile(
+    join(dir, "patchmill.config.json"),
+    JSON.stringify({
+      git: { allowDirectLand: true },
+      skills: { landing: "custom-policy" },
+    }),
+  );
+  await assert.rejects(
+    loadPatchmillConfig(dir, {}, []),
+    /PR-only.*allowDirectLand.*false/iu,
+  );
+});
+
 test("loadPatchmillConfig uses label issue state by default", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-config-"));
   const config = await loadPatchmillConfig(dir, {}, []);

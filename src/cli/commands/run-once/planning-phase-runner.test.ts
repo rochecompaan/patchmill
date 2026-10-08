@@ -1103,10 +1103,11 @@ test("finishes implementation only after the implementation runner validates it"
   assert.equal(finished, true);
 });
 
-test("returns durable terminal implementation result without rerunning implementation", async () => {
+test("returns verified terminal implementation result without rerunning implementation", async () => {
   const terminal = state({
     kind: "implementation",
     status: "complete",
+    merge: { mergeOid: oid("c"), mergedBaseOid: oid("d") },
     workspace,
     artifacts: [],
     pullRequest: { url: "https://example.test/pr/189" },
@@ -1159,26 +1160,14 @@ test("returns durable terminal implementation result without rerunning implement
   );
   assert.equal(result.kind, "complete");
   assert.deepEqual(result.result, {
-    status: "pr-created",
-    prUrl: "https://example.test/pr/189",
+    status: "merged",
+    mergeCommit: oid("c"),
     branch: workspace.identity.branch,
     commits: ["abc123"],
     validation: ["npm test"],
     reviewSummary: "approved",
     landingDecision: "no-direct-land",
-    visualEvidence: [
-      {
-        screenshotPath: "artifacts/terminal.png",
-        caption: "terminal",
-        referencePaths: ["reference.png"],
-        url: "https://example.test/evidence",
-      },
-    ],
   });
-  assert.notEqual(
-    result.result.visualEvidence[0]?.referencePaths,
-    terminal.phases[0]!.implementation.visualEvidence[0]!.referencePaths,
-  );
   assert.equal(implementationRuns, 0);
   assert.equal(finishEffects, 0);
 });

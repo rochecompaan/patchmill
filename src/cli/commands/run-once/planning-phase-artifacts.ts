@@ -1,4 +1,8 @@
 import { isAbsolute, relative, resolve } from "node:path";
+import {
+  resolveIssueTodoContract,
+  resolveResumedIssueTodoContract,
+} from "./issue-todo-contract.ts";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningRemoteBaseSnapshot } from "../../../git/planning-workspaces.ts";
@@ -46,6 +50,7 @@ export interface PlanningArtifactAgent {
     kind: PlanningArtifactKind;
     cwd: string;
     prompt: string;
+    taskContract?: PatchmillPiTaskContract;
   }): Promise<AgentIssuePiResult>;
 }
 export type PlanningArtifactWorkspacePhase =
@@ -72,7 +77,7 @@ export function createPlanningArtifactAgent(input: {
   >;
 }): PlanningArtifactAgent {
   return {
-    async run({ cwd, prompt }) {
+    async run({ cwd, prompt, taskContract }) {
       const profile = runOncePlanningPiProfile(input.skills, cwd);
       return runPiPrompt(input.runner, cwd, prompt, {
         ...input.runOptions,
@@ -80,10 +85,8 @@ export function createPlanningArtifactAgent(input: {
         issueNumber: input.issueNumber,
         repoRoot: cwd,
         piAgentDir: localPiAgentDir(input.repoRoot),
-        taskContract: {
-          ...input.taskContract,
-          todoRoot: resolve(input.repoRoot, input.taskContract.todoRoot),
-        },
+        taskContract:
+          taskContract ?? resolveIssueTodoContract(cwd, input.taskContract),
         skillPaths: profile.additionalSkillPaths,
         extensionArgs: profileExtensionArgs(profile),
         observeSession: true,
@@ -209,6 +212,27 @@ export async function runPlanningPhaseArtifacts(input: {
   const missing = input.phase.artifactKinds.filter(
     (kind) => !current.artifacts.some((artifact) => artifact.kind === kind),
   );
+  if (missing.length === 0) return { kind: "workspace-ready", phase: current };
+  const taskContract = await resolveResumedIssueTodoContract({
+    repoRoot: input.repoRoot,
+    worktreeRoot: current.workspace.identity.worktreePath,
+    contract: input.projectPolicy.pi.taskContract,
+    issueNumber: input.issue.number,
+    ...(current.workspace.todoRoot === undefined
+      ? {}
+      : { savedTodoRoot: current.workspace.todoRoot }),
+  });
+  if (current.workspace.todoRoot === undefined) {
+    current = {
+      ...current,
+      workspace: { ...current.workspace, todoRoot: taskContract.todoRoot },
+    };
+    await input.checkpoint(current);
+  }
+  const projectPolicy = {
+    ...input.projectPolicy,
+    pi: { ...input.projectPolicy.pi, taskContract },
+  };
   for (const kind of missing) {
     const expectedPath =
       kind === "spec"
@@ -236,7 +260,7 @@ export async function runPlanningPhaseArtifacts(input: {
         ? buildSpecCreationPrompt({
             issue: input.issue,
             specPath: expectedPathInWorkspace,
-            projectPolicy: input.projectPolicy,
+            projectPolicy,
             skills: input.skills,
             triageLabels: input.triageLabels,
             reviewContext: reviewContext(input.phase, kind, current),
@@ -245,7 +269,7 @@ export async function runPlanningPhaseArtifacts(input: {
             issue: input.issue,
             ...(specPath === undefined ? {} : { specPath }),
             planPath: expectedPathInWorkspace,
-            projectPolicy: input.projectPolicy,
+            projectPolicy,
             skills: input.skills,
             triageLabels: input.triageLabels,
             reviewContext: reviewContext(input.phase, kind, current),
@@ -256,6 +280,7 @@ export async function runPlanningPhaseArtifacts(input: {
         kind,
         cwd: current.workspace.identity.worktreePath,
         prompt,
+        taskContract,
       }),
     );
     if ("status" in result) return { kind: "blocked", result };
