@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,6 +11,10 @@ import {
   runPlanningIssue,
 } from "./planning-pipeline.ts";
 import { AgentIssueConsoleProgressReporter } from "./console-progress.ts";
+import {
+  acquireIssueRunLease,
+  releaseIssueRunLease,
+} from "./recovery-lease.ts";
 import {
   JsonlProgressReporter,
   compositeProgressReporter,
@@ -65,6 +69,28 @@ test("does not reclaim an issue after its done-label checkpoint", () => {
           },
         ],
       } as never,
+      labels: {
+        ready: "agent-ready",
+        inProgress: "agent-in-progress",
+        done: "agent-done",
+      },
+    }),
+    false,
+  );
+});
+
+test("does not reclaim a comment-mode in-progress planning issue", () => {
+  assert.equal(
+    planningIssueNeedsClaim({
+      issue: {
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: [],
+      } as never,
+      fresh: false,
+      state: { phases: [{ kind: "spec", status: "pending" }] } as never,
+      roles: ["in-progress"],
       labels: {
         ready: "agent-ready",
         inProgress: "agent-in-progress",
@@ -213,6 +239,128 @@ test("reports stale-lock takeover before post-lock reads", async () => {
     "state",
     "legacy",
   ]);
+});
+
+test("blocks a changed saved Run ID when selection saw planning state", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "planning-pipeline-"));
+  const selectedRunId = "123e4567-e89b-42d3-a456-426614174000";
+  const changedRunId = "123e4567-e89b-42d3-a456-426614174001";
+  let mutated = false;
+  try {
+    const result = await runPlanningIssue({
+      issue: {
+        number: 189,
+        title: "Example",
+        state: "open",
+        labels: [],
+      } as never,
+      config: {} as never,
+      state: {
+        issueNumber: 189,
+        runId: selectedRunId,
+        phases: [{ status: "pending" }],
+      } as never,
+      expectedStatePresence: "present",
+      runStateDir: directory,
+      stateStore: {
+        read: async () =>
+          ({
+            issueNumber: 189,
+            runId: changedRunId,
+            phases: [{ status: "pending" }],
+          }) as never,
+      },
+      readIssue: async () =>
+        ({ number: 189, title: "Example", state: "open", labels: [] }) as never,
+      readLegacy: async () => undefined,
+      mutate: async () => {
+        mutated = true;
+        return [];
+      },
+      coordinate: async () => ({}) as never,
+      acquire: async (_dir, input) =>
+        ({
+          path: join(directory, "lock"),
+          record: { runId: input.runId },
+        }) as never,
+      release: async () => undefined,
+    });
+    assert.equal(result.status, "blocked");
+    assert.equal(mutated, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a replaced common lease after authoritative lock reacquisition", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "planning-pipeline-"));
+  const initialRunId = "123e4567-e89b-42d3-a456-426614174000";
+  const authoritativeRunId = "123e4567-e89b-42d3-a456-426614174001";
+  const lease = await acquireIssueRunLease(directory, 189, {
+    ownerToken: "common-owner",
+  });
+  let acquisitions = 0;
+  let mutated = false;
+  try {
+    await assert.rejects(
+      runPlanningIssue({
+        issue: {
+          number: 189,
+          title: "Example",
+          state: "open",
+          labels: [],
+        } as never,
+        config: {} as never,
+        state: {
+          issueNumber: 189,
+          runId: initialRunId,
+          phases: [{ status: "pending" }],
+        } as never,
+        expectedStatePresence: "absent",
+        runStateDir: directory,
+        lease,
+        stateStore: {
+          read: async () =>
+            ({
+              issueNumber: 189,
+              runId: authoritativeRunId,
+              phases: [{ status: "pending" }],
+            }) as never,
+        },
+        readIssue: async () =>
+          ({
+            number: 189,
+            title: "Example",
+            state: "open",
+            labels: [],
+          }) as never,
+        readLegacy: async () => undefined,
+        mutate: async () => {
+          mutated = true;
+          return [];
+        },
+        coordinate: async () => ({}) as never,
+        acquire: async (_dir, input) => {
+          acquisitions += 1;
+          if (acquisitions === 2)
+            await writeFile(
+              lease.path,
+              `${JSON.stringify({ ...lease.record, ownerToken: "replacement" })}\n`,
+            );
+          return {
+            path: join(directory, `lock-${acquisitions}`),
+            record: { runId: input.runId },
+          } as never;
+        },
+        release: async () => undefined,
+      }),
+      /not owned/,
+    );
+    assert.equal(mutated, false);
+  } finally {
+    await releaseIssueRunLease(lease).catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("reports a retry takeover through console and JSONL before authoritative revalidation", async () => {

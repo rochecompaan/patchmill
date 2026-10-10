@@ -2,6 +2,7 @@ import {
   PlanningStateStore,
   type PlanningStateV1,
 } from "../../src/workflow/planning-state-store.ts";
+import assert from "node:assert/strict";
 import { readFile, rm, rmdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { approvalPolicy, makeConfig } from "./pipeline-fixtures.ts";
@@ -17,6 +18,7 @@ import {
   createPlanningScenarioRepository,
   git,
   mergePlanningPull,
+  mergeImplementationPull,
   remoteArtifactContents,
 } from "./planning-provider-git.ts";
 import { createPlanningRecoveryControl } from "./planning-provider-recovery-control.ts";
@@ -48,7 +50,14 @@ const now = new Date("2099-01-01T00:00:00.000Z");
 type ScenarioState = ReturnType<PlanningStateStore["read"]>;
 
 export type PlanningProviderScenario = {
-  run(options?: { planOnly?: boolean }): Promise<AgentIssuePipelineResult>;
+  run(options?: {
+    planOnly?: boolean;
+    explicit?: boolean;
+  }): Promise<AgentIssuePipelineResult>;
+  mergeOpenImplementationPull(options?: {
+    closeIssue?: boolean;
+    deleteHeadBranch?: boolean;
+  }): Promise<void>;
   invocation(): Readonly<{
     runner: CommandRunner;
     config: AgentIssueConfig;
@@ -137,7 +146,7 @@ export async function createPlanningProviderScenario(input: {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
-    allowDirectLand: true,
+    allowDirectLand: false,
     approvalPolicy: approvalPolicy(input.gates),
     host: { provider: input.provider, login: "" },
     cleanupHook: "cleanup.sh",
@@ -154,6 +163,15 @@ export async function createPlanningProviderScenario(input: {
     config,
     ignoredArtifactPatterns,
   );
+  if (input.provider === "forgejo-tea") {
+    const remote = await git(config.repoRoot, [
+      "remote",
+      "add",
+      "upstream",
+      join(config.repoRoot, "remote.git"),
+    ]);
+    assert.equal(remote.code, 0, remote.stderr);
+  }
   const selected = issue(190, ["agent-ready"], "Provider scenario");
   const pulls: PlanningScenarioPull[] = [];
   const effects: PlanningScenarioEffect[] = [];
@@ -286,10 +304,16 @@ export async function createPlanningProviderScenario(input: {
     forgejo,
     record,
   });
-  const run = async (options = {}) =>
+  const run = async (
+    options: { planOnly?: boolean; explicit?: boolean } = {},
+  ) =>
     runOneIssue(
       runner,
-      { ...config, planOnly: options.planOnly ?? false },
+      {
+        ...config,
+        planOnly: options.planOnly ?? false,
+        ...(options.explicit ? { issueNumber: 190 } : {}),
+      },
       { now },
     );
   return {
@@ -300,6 +324,14 @@ export async function createPlanningProviderScenario(input: {
     pulls: () => pulls.map(recordedPull),
     effects: () => effects,
     remoteRefs: repository.remoteRefs,
+    mergeOpenImplementationPull: async (options = {}) => {
+      await mergeImplementationPull({
+        repoRoot: config.repoRoot,
+        pulls,
+        ...options,
+      });
+      if (options.closeIssue !== false) selected.state = "closed";
+    },
     mergeOpenPlanningPull: async (merge) => {
       await mergePlanningPull({ repoRoot: config.repoRoot, pulls, ...merge });
     },

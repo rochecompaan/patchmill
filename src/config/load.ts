@@ -27,6 +27,11 @@ import {
   readOptionalString,
   readOptionalStringArray,
 } from "./parse-helpers.ts";
+import {
+  cloneIssueStateConfig,
+  mergeIssueStateConfig,
+  readIssueStateConfig,
+} from "./issue-state.ts";
 import type {
   PartialConfig,
   PartialPiTaskContract,
@@ -268,6 +273,7 @@ function mergeConfig(
     host: { ...base.host, ...update.host },
     pi: { ...base.pi, ...update.pi },
     labels,
+    issueState: mergeIssueStateConfig(base.issueState, update.issueState),
     triage,
     workflow,
     skills: mergeSkillsConfig(base.skills, update.skills),
@@ -296,6 +302,7 @@ function absolutizePaths(
 ): PatchmillConfig {
   return {
     ...config,
+    issueState: cloneIssueStateConfig(config.issueState),
     triage: cloneTriageConfig(config.triage),
     workflow: cloneWorkflowConfig(config.workflow),
     skills: cloneSkillsConfig(config.skills),
@@ -591,6 +598,11 @@ function parseConfigFile(data: unknown): PartialConfig {
     if (hasEntries(parsed)) config.pi = parsed;
   }
 
+  const issueState = readIssueStateConfig(data);
+  if (issueState !== undefined) {
+    config.issueState = issueState;
+  }
+
   const labels = readOptionalSection(data, "labels");
   if (labels) {
     const parsed: Partial<PatchmillConfig["labels"]> = {};
@@ -703,6 +715,10 @@ function parseConfigFile(data: unknown): PartialConfig {
     if (branchPrefix !== undefined) parsed.branchPrefix = branchPrefix;
     if (worktreePrefix !== undefined) parsed.worktreePrefix = worktreePrefix;
     if (slugLength !== undefined) parsed.slugLength = slugLength;
+    if (allowDirectLand === true)
+      throw new Error(
+        "PR-only publication requires git.allowDirectLand=false. Remove the setting or set it to false.",
+      );
     if (allowDirectLand !== undefined) parsed.allowDirectLand = allowDirectLand;
     if (hasEntries(parsed)) config.git = parsed;
   }

@@ -16,6 +16,77 @@ Preview selection without mutation:
 patchmill run-once --dry-run
 ```
 
+## Concurrent explicit commands
+
+For independent issues, start separate commands from the same clone root:
+
+```sh
+# Terminal 1
+patchmill run-once --issue 101
+
+# Terminal 2
+patchmill run-once --issue 102
+```
+
+Each process owns its selected issue, phase workspaces, state, artifacts, logs,
+and Pi sessions. Explicit selection reads only the requested issue. Other active
+or resumable issues do not prevent new explicit work.
+
+If the requested issue already has an owner, Patchmill reports
+`issue already in progress.` and returns exit code `0`. The losing process
+leaves the issue unchanged. This result does not require lease repair.
+
+Without `--issue`, automatic selection remains serial. Automatic commands cannot
+overlap explicit commands, other automatic commands, or mutating recovery
+commands. Dry-run reserves no ownership.
+
+### Operator responsibilities
+
+Select independent issues. Control model spending and the number of processes.
+Allocate CPU capacity, ports, test databases, and external services for each
+workspace. Patchmill does not predict conflicts between independent changes.
+
+Use one supported Patchmill version and one clone root. The Git common directory
+binds the host repository, state directory, workspace root, and todo definition
+to one namespace. Symlinks do not create another namespace.
+
+Before an upgrade or state migration, stop all affected processes. A changed
+namespace requires deliberate migration while no process owns it.
+
+Unsupported cases include:
+
+- Coordination across separate clones or hosts.
+- Concurrent configuration changes or artifact-edit commands such as `set-plan`.
+- Manual shared Git mutations during active Run attempts.
+- Cleanup hooks that remove shared services or another issue's resources.
+- Multiple writers for the same issue.
+
+CAUTION: Do not remove another Run attempt's locks or use destructive cleanup as
+recovery. These actions can destroy owned work or permit conflicting writers.
+
+### Todos and evidence
+
+The default todo root remains `.pi/todos` inside the owned workspace. Relative
+custom roots use that workspace, not the shared clone root. Absolute shared
+roots use issue-scoped reads and mutations. Startup and cleanup preserve other
+issues' tasks and disable global todo garbage collection in shared roots.
+
+Resume preserves existing todo locations, titles, tags, and completion rules.
+Ambiguous locations block instead of combining or moving tasks. Each new Run
+attempt receives separate logs and sessions, even with identical timestamps.
+
+## Comment-backed issue state
+
+When `issueState.provider` is `comments`, Run-once reads the latest trusted
+Patchmill state comment instead of repository labels for workflow state such as
+`agent-ready`, `in-progress`, `spec-review`, `plan-review`, and `agent-done`.
+State changes append new comments and do not edit or delete older state
+comments.
+
+Priority labels still affect automatic issue ordering when they exist. If you
+cannot use priority labels, Run-once falls back to issue-number ordering among
+eligible issues.
+
 ## Fresh planning workflow
 
 The saved gate snapshot assigns spec and plan artifacts to a **phase
@@ -40,10 +111,14 @@ phase, pinned to saved remote-base evidence.
    target base before advancing. Comments and labels do not unlock a fresh
    phase.
 
-5. Implementation always produces an open, issue-closing pull request. Before
-   finish or cleanup, Patchmill verifies its marker, `Closes #N` reference,
-   repository, base, head, open status, remote/local/host OID equality, and
-   ancestry.
+5. Implementation always produces an open, issue-closing pull request. Patchmill
+   verifies its ownership marker, closing reference, repository, branches, and
+   head OID. Publication returns `pr-created` and leaves the Issue run in
+   progress.
+6. After the PR merges, rerun the same explicit command. Patchmill verifies its
+   merge against the fetched target base and resumes finish checkpoints without
+   another agent or PR. Only verified merge and completed finish checkpoints
+   produce `merged` and the done label.
 
 ### Gate matrix
 
@@ -162,6 +237,20 @@ lock is not an Issue run lease: lock diagnostics never recommend lease repair.
 
 ## Recovery and operator safety
 
+For intentional resume, run `patchmill run-once --issue N` again. A process
+exit, cancellation, crash, or open PR does not complete the Issue run. A merged
+PR can close the host issue before local finish checkpoints complete. Explicit
+recovery still verifies that saved PR and finishes only its owned issue.
+
+A busy shared Git transaction returns `stopped` with reason `repository-busy`.
+Retry the same explicit command after the other transaction ends. Patchmill
+preserves the selected checkpoint and lifecycle labels. Independent agent work
+does not hold the Git guard.
+
+A timed-out or interrupted Git command can leave partial mutations. Preserve its
+state and command evidence. A dead owner PID alone cannot authorize recovery of
+an unverified active Git command.
+
 A retry observes durable state, the remote, and the host before repeating an
 effect. It can adopt an exact pushed head or created pull request, complete a
 checkpointed cleanup, return the same open review, or verify a merge.
@@ -195,7 +284,19 @@ ambiguous, or closed-unmerged planning pull request.
 
 `patchmill run lease repair` and `patchmill run reset` do not authorize deleting
 a `planning-pr-v1` lock, state file, branch, or workspace. They retain their
-legacy recovery behavior only.
+legacy recovery behavior only. Mutating reset and lease repair also use
+repository admission. Reset refuses planning state and published PR checkpoints.
+Use ordinary explicit resume for those checkpoints.
+
+Read-only `patchmill run lease repair --issue N` reserves no ownership. For a
+known interrupted local repair, inspection prints exact primary and paired guard
+fingerprints. The confirmed repair command verifies shutdown and archives only
+those linked guards. It preserves the target lease and earlier interrupted
+evidence. Inspect again before any separate lease repair.
+
+Unknown, foreign, malformed, unlinked, or unverified repair guards remain
+blocked. Interrupted reconciliation guards also remain blocked. Preserve this
+evidence for operator inspection. No lock-bypass flag exists.
 
 ## Legacy compatibility
 
@@ -204,3 +305,8 @@ available for unfinished legacy Issue runs during the compatibility window. They
 are deprecated for fresh work. Use Run-once review gates for automated review
 stops, or the human-invoked `patchmill-plan` skill for local planning without
 automated implementation.
+
+Legacy implementation also requires a PR. `git.allowDirectLand: true` is no
+longer supported. An old direct-land checkpoint without verifiable PR evidence
+blocks with migration guidance. Preserve that checkpoint instead of creating
+replacement work.

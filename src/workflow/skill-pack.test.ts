@@ -95,14 +95,14 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
     triage: ".patchmill/skills/patchmill-issue-triage",
     planning: ".patchmill/skills/patchmill-planning",
     implementation:
-      ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
+      ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
     visualEvidence: ".patchmill/skills/patchmill-visual-evidence",
   });
 });
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.09.2");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.10.1");
   assert.deepEqual(
     PATCHMILL_RECOMMENDED_SKILL_PACK.source,
     expectedSuperpowersSource,
@@ -113,15 +113,7 @@ test("default pack records pinned external source", () => {
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
     { name: "patchmill-issue-triage", source: "patchmill" },
     {
-      name: "subagent-dev-with-validation-and-pr-checks",
-      source: "patchmill",
-    },
-    {
-      name: "subagent-dev-with-codex-and-thermo-reviews",
-      source: "patchmill",
-    },
-    {
-      name: "single-subagent-dev-with-codex-and-thermo-reviews",
+      name: "inline-dev-with-validation-and-pr-checks",
       source: "patchmill",
     },
     { name: "module-size", source: "patchmill" },
@@ -156,8 +148,14 @@ test("Patchmill planning wrapper annotates sibling Superpowers skills", () => {
   assert.match(planning, /\.\.\/brainstorming\/SKILL\.md/u);
   assert.match(planning, /\.\.\/writing-plans\/SKILL\.md/u);
   assert.match(planning, /\.\.\/simple-english\/SKILL\.md/u);
-  assert.match(planning, /docs\/specs\/YYYY-MM-DD-<topic>-design\.md/u);
-  assert.match(planning, /docs\/plans\/YYYY-MM-DD-<feature-name>\.md/u);
+  assert.match(
+    planning,
+    /docs\/specs\/YYYY-MM-DD-issue-<number>-<title-slug>-design\.md/u,
+  );
+  assert.match(
+    planning,
+    /docs\/plans\/YYYY-MM-DD-issue-<number>-<title-slug>\.md/u,
+  );
   assert.match(planning, /issue worktree/u);
   assert.match(planning, /Testing Value Gate/u);
   assert.match(planning, /direct verification/u);
@@ -193,7 +191,7 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.09.2",
+      version: "2026.10.1",
       source: expectedSuperpowersSource,
       additionalSources: [expectedSimpleEnglishSource],
     },

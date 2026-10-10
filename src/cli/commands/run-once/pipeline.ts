@@ -1,6 +1,13 @@
+import { randomUUID } from "node:crypto";
+import { RepositoryMutationBusyError } from "../../../git/repository-mutation.ts";
+import { repositoryBusyResult } from "./repository-busy-result.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
+import type { RunOnceHostProvider } from "../../../host/types.ts";
+import { createIssueStateProvider } from "../../../issue-state/index.ts";
 import { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
+import { withRunAdmission } from "../../../workflow/run-admission.ts";
+import { resolveRunOnceRepositoryNamespace } from "./repository-admission.ts";
 import {
   runLegacyOneIssue,
   runLegacyOneIssueAfterReset,
@@ -16,48 +23,149 @@ import {
 import { selectIssueWithDiagnostics } from "./selection.ts";
 import { withLogPath } from "./pipeline-progress.ts";
 import { lifecycleLabels } from "./pipeline-lifecycle.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
+import { liveIssueContentionResult as stoppedForLiveLease } from "./issue-contention-result.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import type { AgentIssueConfig, AgentIssuePipelineResult } from "./types.ts";
 
 export type { RunOneIssueOptions } from "./pipeline-legacy.ts";
 
-/** Public facade that safely reselects rejected legacy candidates before one substantive workflow. */
+/** Public facade that admits a Run attempt before non-dry-run selection. */
 export async function runOneIssue(
   runner: CommandRunner,
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  // Preserve legacy dry-run output and its non-mutating diagnostic contract.
-  if (config.dryRun) return runLegacyOneIssue(runner, config, options);
-  const labels = lifecycleLabels(config);
+  const attemptId = options.attemptId ?? randomUUID();
+  const attemptOptions = {
+    ...options,
+    attemptId,
+    ...(options.progress
+      ? {
+          progress: {
+            event: (event: import("./progress.ts").AgentIssueProgressEvent) =>
+              options.progress!.event({ ...event, attemptId }),
+          },
+        }
+      : {}),
+  };
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
     host: config.host,
   });
-  const issues = await loadSelectionIssues(host, config, options);
-  const planningState = new PlanningStateStore(config.runStateDir);
+  const issueStateProvider = await createIssueStateProvider(
+    host,
+    config,
+    config.labelCatalog,
+  );
+  const runtimeConfig: AgentIssueConfig = { ...config, issueStateProvider };
+  if (config.dryRun)
+    return runLegacyOneIssue(runner, runtimeConfig, attemptOptions);
+  const namespace = await resolveRunOnceRepositoryNamespace(
+    runner,
+    runtimeConfig,
+  );
+  return withRunAdmission(
+    {
+      namespace,
+      attemptId,
+      mode: runtimeConfig.issueNumber === undefined ? "automatic" : "explicit",
+      ...(runtimeConfig.issueNumber === undefined
+        ? {}
+        : { issueNumber: runtimeConfig.issueNumber }),
+    },
+    (admission) =>
+      runAdmittedOneIssue(
+        runner,
+        runtimeConfig,
+        { ...attemptOptions, admission },
+        host,
+        issueStateProvider,
+      ),
+  ).catch((error: unknown) => {
+    if (runtimeConfig.issueNumber === undefined) throw error;
+    if (error instanceof RepositoryMutationBusyError)
+      return repositoryBusyResult(
+        {
+          number: runtimeConfig.issueNumber,
+          title: `Issue ${runtimeConfig.issueNumber}`,
+          body: "",
+          labels: [],
+          state: "open",
+        },
+        attemptOptions,
+      );
+    // Contention occurs before authoritative reads. Use only the requested
+    // number for this diagnostic; do not read or mutate the winner's Issue.
+    const stopped = stoppedForLiveLease(
+      {
+        number: runtimeConfig.issueNumber,
+        title: `Issue ${runtimeConfig.issueNumber}`,
+        body: "",
+        labels: [],
+        state: "open",
+      },
+      error,
+    );
+    if (stopped) return withLogPath(stopped, attemptOptions);
+    throw error;
+  });
+}
+
+async function runAdmittedOneIssue(
+  runner: CommandRunner,
+  runtimeConfig: AgentIssueConfig,
+  options: RunOneIssueOptions,
+  host: RunOnceHostProvider,
+  issueStateProvider: NonNullable<AgentIssueConfig["issueStateProvider"]>,
+): Promise<AgentIssuePipelineResult> {
+  if (runtimeConfig.issueNumber !== undefined && options.lease === undefined)
+    return withIssueRunLease(
+      {
+        runStateDir: runtimeConfig.runStateDir,
+        issueNumber: runtimeConfig.issueNumber,
+        ...(options.attemptId === undefined
+          ? {}
+          : { ownerToken: options.attemptId }),
+      },
+      (lease) =>
+        runAdmittedOneIssue(
+          runner,
+          runtimeConfig,
+          { ...options, lease },
+          host,
+          issueStateProvider,
+        ),
+    );
+  const labels = lifecycleLabels(runtimeConfig);
+  const issues = await loadSelectionIssues(host, runtimeConfig, options);
+  const planningState = new PlanningStateStore(runtimeConfig.runStateDir);
   const rejectedIssueNumbers = new Set<number>();
   while (true) {
     const selected = await selectRunOnceWorkflow(
       issues.filter((issue) => !rejectedIssueNumbers.has(issue.number)),
-      config,
+      runtimeConfig,
       planningState,
       options.now?.toISOString(),
     );
     switch (selected.kind) {
       case "none": {
-        const diagnosticCandidates = issues.filter(
-          (issue) =>
-            (config.issueNumber === undefined ||
-              issue.number === config.issueNumber) &&
-            !rejectedIssueNumbers.has(issue.number),
+        const diagnostics = selectIssueWithDiagnostics(
+          issues.filter(
+            (issue) =>
+              (runtimeConfig.issueNumber === undefined ||
+                issue.number === runtimeConfig.issueNumber) &&
+              !rejectedIssueNumbers.has(issue.number),
+          ),
+          {
+            readyLabel: labels.ready,
+            triagePolicy: runtimeConfig.triagePolicy,
+            approvalPolicy: runtimeConfig.approvalPolicy,
+            issueState: runtimeConfig.issueState,
+            issueStateProvider,
+          },
         );
-        const diagnostics = selectIssueWithDiagnostics(diagnosticCandidates, {
-          readyLabel: labels.ready,
-          triagePolicy: config.triagePolicy,
-          approvalPolicy: config.approvalPolicy,
-        });
         await emitSelectionDiagnostics(
           diagnostics.rejections,
           options,
@@ -84,39 +192,105 @@ export async function runOneIssue(
           options,
         );
       case "legacy": {
-        const legacy = await runLegacyOneIssueForSelection(
-          runner,
-          config,
-          selected.issue.number,
-          options,
-        );
-        if (legacy.kind === "pipeline-result") return legacy.result;
-        if (config.issueNumber !== undefined) return legacy.result;
+        const runLegacy = (lease?: import("./types.ts").IssueRunLease) =>
+          runLegacyOneIssueForSelection(
+            runner,
+            runtimeConfig,
+            selected.issue.number,
+            {
+              ...options,
+              ...(lease === undefined ? {} : { lease }),
+            },
+          );
+        let legacy;
+        try {
+          legacy =
+            runtimeConfig.issueNumber === undefined
+              ? await withIssueRunLease(
+                  {
+                    runStateDir: runtimeConfig.runStateDir,
+                    issueNumber: selected.issue.number,
+                    ...(options.attemptId === undefined
+                      ? {}
+                      : { ownerToken: options.attemptId }),
+                  },
+                  runLegacy,
+                )
+              : await runLegacy();
+        } catch (error) {
+          if (error instanceof RepositoryMutationBusyError)
+            return repositoryBusyResult(selected.issue, options);
+          const stopped = stoppedForLiveLease(selected.issue, error);
+          if (stopped) return stopped;
+          throw error;
+        }
+        if (
+          legacy.kind === "pipeline-result" ||
+          runtimeConfig.issueNumber !== undefined
+        )
+          return legacy.result;
         rejectedIssueNumbers.add(selected.issue.number);
         continue;
       }
       case "planning":
-        return runPlanningWorkflow({
+        return withPlanningLease(
           runner,
-          config,
+          runtimeConfig,
           options,
-          issue: selected.issue,
-          state: selected.state,
-          expectedStatePresence: "present",
+          selected.issue,
+          selected.state,
+          "present",
           host,
-        });
+        );
       case "fresh-planning":
-        return runPlanningWorkflow({
+        return withPlanningLease(
           runner,
-          config,
+          runtimeConfig,
           options,
-          issue: selected.issue,
-          state: selected.initialState,
-          expectedStatePresence: "absent",
+          selected.issue,
+          selected.initialState,
+          "absent",
           host,
-        });
+        );
     }
   }
+}
+
+function withPlanningLease(
+  runner: CommandRunner,
+  config: AgentIssueConfig,
+  options: RunOneIssueOptions,
+  issue: import("../../../issue/types.ts").IssueSummary,
+  state: import("../../../workflow/planning-state.ts").PlanningStateV1,
+  expectedStatePresence: "present" | "absent",
+  host: RunOnceHostProvider,
+): Promise<AgentIssuePipelineResult> {
+  return withIssueRunLease(
+    {
+      runStateDir: config.runStateDir,
+      issueNumber: issue.number,
+      ...(options.lease === undefined ? {} : { lease: options.lease }),
+      ...(options.attemptId === undefined
+        ? {}
+        : { ownerToken: options.attemptId }),
+    },
+    (lease) =>
+      runPlanningWorkflow({
+        runner,
+        config,
+        options: { ...options, lease },
+        issue,
+        state,
+        expectedStatePresence,
+        host,
+      }),
+  ).catch((error: unknown) => {
+    if (error instanceof RepositoryMutationBusyError)
+      return repositoryBusyResult(issue, options);
+    const stopped = stoppedForLiveLease(issue, error);
+    if (stopped) return stopped;
+    throw error;
+  });
 }
 
 /** Reset is intentionally pinned to the legacy recovery contract. */

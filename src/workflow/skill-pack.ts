@@ -2,18 +2,17 @@ import { createHash } from "node:crypto";
 import {
   BUNDLED_PATCHMILL_SKILLS,
   bundledSkillByKey,
-  requiredFilesForBundledSkillName,
 } from "./bundled-skills.ts";
+import {
+  INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
+  requiredRuntimeFiles,
+} from "./skill-runtime-requirements.ts";
+
+export { INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL } from "./skill-runtime-requirements.ts";
 import type { PatchmillSkillsConfig } from "./skills.ts";
 
 export const DEFAULT_PROJECT_SKILL_DIR = ".patchmill/skills";
 export const SKILL_PACK_METADATA_FILE = "patchmill-skill-pack.json";
-export const SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL =
-  "subagent-dev-with-validation-and-pr-checks";
-export const SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
-  "subagent-dev-with-codex-and-thermo-reviews";
-export const SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL =
-  "single-subagent-dev-with-codex-and-thermo-reviews";
 export const PATCHMILL_PLANNING_SKILL = "patchmill-planning";
 const bundledTriageSkill = bundledSkillByKey("triage");
 const bundledVisualEvidenceSkill = bundledSkillByKey("visualEvidence");
@@ -62,12 +61,12 @@ export type SkillPackMetadataFile = {
 };
 
 export function requiredSkillFiles(skillName: string): string[] {
-  return requiredFilesForBundledSkillName(skillName);
+  return requiredRuntimeFiles(skillName).map((requirement) => requirement.path);
 }
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
-  version: "2026.09.2",
+  version: "2026.10.1",
   source: {
     type: "github-release",
     repository: "obra/superpowers",
@@ -87,15 +86,7 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   skills: [
     { name: bundledTriageSkill.globalName, source: "patchmill" },
     {
-      name: SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
-      source: "patchmill",
-    },
-    {
-      name: SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
-      source: "patchmill",
-    },
-    {
-      name: SINGLE_SUBAGENT_DEV_WITH_CODEX_AND_THERMO_REVIEWS_SKILL,
+      name: INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
       source: "patchmill",
     },
     { name: "module-size", source: "patchmill" },
@@ -158,7 +149,7 @@ export function buildRecommendedProjectSkillConfig(
     triage,
     planning: projectSkillPath(PATCHMILL_PLANNING_SKILL, skillDir),
     implementation: projectSkillPath(
-      SUBAGENT_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
+      INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL,
       skillDir,
     ),
     visualEvidence,

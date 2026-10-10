@@ -58,6 +58,36 @@ For Forgejo/Gitea through the `tea` CLI, set the configured login name:
 `PATCHMILL_HOST_LOGIN` can override `host.login` for providers that use named
 logins, which is useful when local machines need different credentials.
 
+## Choose where Patchmill stores issue workflow state
+
+Patchmill stores workflow state in labels by default:
+
+```json
+{
+  "issueState": {
+    "provider": "labels"
+  }
+}
+```
+
+Use comment-backed state when you can comment on issues but cannot create or
+apply repository labels:
+
+```json
+{
+  "issueState": {
+    "provider": "comments",
+    "trustedAuthors": ["your-login"]
+  }
+}
+```
+
+To set this up after `patchmill init`, run `patchmill init` without `--yes`,
+answer `no` when asked to create missing labels, then edit
+`patchmill.config.json` to set `issueState.provider` to `comments`. Omit
+`trustedAuthors` to trust the authenticated host user, or set it when other
+users may write authoritative Patchmill state comments.
+
 ## Decide when humans approve work
 
 `workflow.specApproval.required` and `workflow.planApproval.required` choose
@@ -95,8 +125,10 @@ unfinished legacy runs; adding an approved label never advances fresh state.
 Review and merge the exact planning pull request, then rerun Run-once. See the
 [gate matrix](/using-patchmill/run-once/#gate-matrix) for every sequence.
 
-`git.allowDirectLand` can still govern legacy behavior, but `planning-pr-v1`
-always requires a validated implementation pull request.
+All implementation workflows require a validated pull request.
+`git.allowDirectLand` defaults to `false`. An explicit `true` value is rejected
+with migration guidance. A custom landing skill cannot authorize target-branch
+updates.
 
 ## Teach agents how to work in this repository
 
@@ -108,7 +140,7 @@ Patchmill gives agents at each workflow stage.
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
+    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence"
   }
 }
@@ -143,8 +175,8 @@ Add only the optional hooks your repository needs:
 - `toolchain`: describe how to install dependencies, run tests, start servers,
   and validate changes.
 - `review`: require explicit review passes before final handoff.
-- `landing`: describe when direct landing is allowed versus when the agent must
-  open a pull request. Direct landing also requires the matching git policy.
+- `landing`: describe PR review, validation, checks, and handoff requirements.
+  The skill cannot authorize direct target-branch publication.
 - `visualEvidence`: describe how to capture screenshots or other proof for UI
   changes.
 
@@ -152,16 +184,17 @@ Prefer project-local skill paths under `.patchmill/skills/` when the team wants
 reviewable, versioned agent instructions. Use global or bundled skill names only
 when the exact skill text does not need to live in the repository.
 
-For heavier implementation review loops, the recommended skill pack also
-installs opt-in implementation skills such as:
+The managed inline workflow uses one final independent reviewer and one fix
+pass. It reruns final commands and permits at most two code-related PR check
+repairs. Namespace and global `superpowers:executing-plans` defaults do not
+automatically include the Patchmill review appendix. Use the managed local pack
+for the complete workflow. Explicit custom implementation and review skills
+remain operator overrides.
 
-```json
-{
-  "skills": {
-    "implementation": ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews"
-  }
-}
-```
+To migrate an older managed pack, run `npx patchmill@latest skills update`. Then
+explicitly set `skills.implementation` to
+`.patchmill/skills/inline-dev-with-validation-and-pr-checks`. Updates preserve
+customized files and do not rewrite config.
 
 See [Skills configuration](/guides/skills-configuration/) for the full skill
 surface.
@@ -200,7 +233,12 @@ Make cleanup idempotent, namespace resources to the current issue or worktree,
 tolerate resources that are already absent, and leave Patchmill's Git worktree
 and branch intact.
 
-The hook runs only after a successful PR or merge handoff. See
+Planning implementation runs its cleanup hook after PR publication, before the
+PR merge. Legacy implementation runs its cleanup hook after verified PR merge.
+Both workflows save finish checkpoints for retries.
+
+Each hook must affect only its owned issue's resources. Shared service cleanup
+is unsupported during concurrent explicit work. See
 [recovery and operator safety](/using-patchmill/run-once/#recovery-and-operator-safety)
 for ordering, retry, failure-reporting, and workspace-ownership details.
 
@@ -295,6 +333,16 @@ Configure the main Pi orchestrator and role-specific subagent defaults in
 [Pi and subagents](/guides/pi-and-subagents/). Keep those settings local with
 the rest of `.patchmill/pi-agent/`.
 
+Concurrent explicit commands share one bound namespace. The namespace binds the
+clone root, host repository, state directory, workspace root, and todo
+definition. Before changing these values or upgrading Patchmill, stop all
+affected processes. See the
+[operator contract](/using-patchmill/run-once/#concurrent-explicit-commands).
+
+The default todo root remains `.pi/todos` within each owned workspace. Relative
+custom todo roots also use that workspace. Absolute shared roots preserve other
+issues' tasks through issue scoping. Resume retains an existing todo location.
+
 ## What not to configure first
 
 You usually do not need to set `git.baseBranch`. When it is omitted, `run-once`
@@ -302,7 +350,7 @@ detects the pull-request target branch from local git metadata and falls back to
 `main` only when detection cannot find a better answer.
 
 Only set git policy when your repository has unusual branch, remote, worktree,
-or direct-landing rules. Otherwise, start with workflow gates, skills,
+or publication rules. Otherwise, start with workflow gates, skills,
 development-environment setup, and validation policy.
 
 ## Check the result

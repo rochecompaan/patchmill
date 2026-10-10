@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { archiveRunRecovery } from "./recovery-archive.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
 import type { RunRecoveryAssessment, RunStateSnapshot } from "./types.ts";
 test("archives exact state bytes before reset mutation", async () => {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-archive-"));
@@ -36,21 +37,26 @@ test("archives exact state bytes before reset mutation", async () => {
     artifacts: { spec: { valid: false }, plan: { valid: false } },
     classification: "resumable-current",
   } satisfies RunRecoveryAssessment;
-  const archived = await archiveRunRecovery({
-    runStateDir: dir,
-    issueNumber: 45,
-    snapshot,
-    assessment,
-    decision: {
-      action: "archive-reset-and-start",
-      assessment,
-      seed: { issueNumber: 45, title: "Recover" },
-      cleanup: {},
-    },
-    command: "patchmill run reset",
-    baseRef: "HEAD",
-    now: new Date("2026-08-28T12:00:00.000Z"),
-  });
+  const archived = await withIssueRunLease(
+    { runStateDir: dir, issueNumber: 45 },
+    (lease) =>
+      archiveRunRecovery({
+        lease,
+        runStateDir: dir,
+        issueNumber: 45,
+        snapshot,
+        assessment,
+        decision: {
+          action: "archive-reset-and-start",
+          assessment,
+          seed: { issueNumber: 45, title: "Recover" },
+          cleanup: {},
+        },
+        command: "patchmill run reset",
+        baseRef: "HEAD",
+        now: new Date("2026-08-28T12:00:00.000Z"),
+      }),
+  );
   assert.equal(
     await readFile(join(archived.path, "run-state.json"), "utf8"),
     raw,
@@ -78,6 +84,7 @@ test("archives under the trusted leased issue rather than state data", async () 
   const dir = await mkdtemp(join(tmpdir(), "patchmill-archive-trusted-"));
   const raw = '{"issueNumber":"../escape","title":"x","status":"blocked"}';
   const path = join(dir, "issue-45.json");
+  await writeFile(path, raw);
   const snapshot: RunStateSnapshot = {
     path,
     raw,
@@ -101,20 +108,25 @@ test("archives under the trusted leased issue rather than state data", async () 
     artifacts: { spec: { valid: false }, plan: { valid: false } },
     classification: "recreatable-clean",
   } satisfies RunRecoveryAssessment;
-  const archived = await archiveRunRecovery({
-    runStateDir: dir,
-    issueNumber: 45,
-    snapshot,
-    assessment,
-    decision: {
-      action: "archive-reset-and-start",
-      assessment,
-      seed: { issueNumber: 45, title: "x" },
-      cleanup: {},
-    },
-    command: "patchmill run reset",
-    baseRef: "HEAD",
-    now: new Date("2026-08-28T12:00:00.000Z"),
-  });
+  const archived = await withIssueRunLease(
+    { runStateDir: dir, issueNumber: 45 },
+    (lease) =>
+      archiveRunRecovery({
+        lease,
+        runStateDir: dir,
+        issueNumber: 45,
+        snapshot,
+        assessment,
+        decision: {
+          action: "archive-reset-and-start",
+          assessment,
+          seed: { issueNumber: 45, title: "x" },
+          cleanup: {},
+        },
+        command: "patchmill run reset",
+        baseRef: "HEAD",
+        now: new Date("2026-08-28T12:00:00.000Z"),
+      }),
+  );
   assert.match(archived.path, /archive\/issue-45\//);
 });

@@ -52,6 +52,7 @@ const contexts = {
     worktreePath: ".worktrees/issue-242-implementation",
     nextPhase: "implementation",
   },
+  "repository-busy": { issueNumber: 242, status: "stopped" },
   "issue-locked": {
     issueNumber: 242,
     status: "stopped",

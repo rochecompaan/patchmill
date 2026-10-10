@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { open, readFile, rename, unlink } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type {
   AgentIssueRunState,
   AgentIssueRunStateStatus,
@@ -9,6 +9,11 @@ import type {
   RunStateSnapshot,
 } from "./types.ts";
 import { createHash, randomUUID } from "node:crypto";
+import { assertIssueRunLeaseOwned } from "./recovery-lease.ts";
+import {
+  assertImplementationPrEvidence,
+  assertImplementationMergeEvidence,
+} from "../../../workflow/implementation-pr-evidence.ts";
 
 const STATUS_TIMESTAMPS: Record<
   AgentIssueRunStateStatus,
@@ -98,12 +103,7 @@ function mergeRunState(
   const implementationStatus = hasImplementationUpdate
     ? update.implementationStatus
     : existingImplementation?.implementationStatus;
-  const prUrl =
-    update.implementationStatus === "merged"
-      ? undefined
-      : hasImplementationUpdate
-        ? update.prUrl
-        : existingImplementation?.prUrl;
+  const prUrl = update.prUrl ?? existingImplementation?.prUrl;
   const mergeCommit =
     update.implementationStatus === "pr-created"
       ? undefined
@@ -160,6 +160,9 @@ function mergeRunState(
     };
   }
 
+  const implementationPr =
+    update.implementationPr ?? existingImplementation?.implementationPr;
+  const merge = update.merge ?? existingImplementation?.merge;
   const next: AgentIssueRunState = {
     ...existing,
     issueNumber: update.issueNumber,
@@ -170,12 +173,19 @@ function mergeRunState(
     worktreePath:
       update.worktreePath ??
       (update.resetCheckpoints ? undefined : existing?.worktreePath),
+    todoRoot:
+      update.todoRoot ??
+      (update.resetCheckpoints ? undefined : existing?.todoRoot),
     specPath: update.specPath ?? existing?.specPath,
     specCommit: update.specCommit ?? existing?.specCommit,
     planPath: update.planPath ?? existing?.planPath,
     planCommit: update.planCommit ?? existing?.planCommit,
     checkpoints,
     implementationStatus,
+    ...(implementationPr || existing?.implementationPr
+      ? { implementationPr }
+      : {}),
+    ...(merge || existing?.merge ? { merge } : {}),
     prUrl,
     mergeCommit,
     commits,
@@ -206,6 +216,7 @@ function mergeRunState(
   if (next.worktreePath === undefined) {
     delete next.worktreePath;
   }
+  if (next.todoRoot === undefined) delete next.todoRoot;
   if (next.specPath === undefined) {
     delete next.specPath;
   }
@@ -270,13 +281,21 @@ export function isResumableRunState(state: AgentIssueRunState): boolean {
 export async function writeRunState(
   runStateDir: string,
   update: AgentIssueRunStateUpdate,
+  lease: IssueRunLease,
   now = new Date().toISOString(),
 ): Promise<AgentIssueRunState> {
-  await mkdir(runStateDir, { recursive: true });
-  const path = runStatePath(runStateDir, update.issueNumber);
+  await assertIssueRunLeaseOwned(lease, {
+    runStateDir,
+    issueNumber: update.issueNumber,
+  });
   const existing = await readRunState(runStateDir, update.issueNumber);
+  if (existing) validateRecoveryRunState(existing, update.issueNumber);
   const next = mergeRunState(existing, update, now);
-  await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await atomicStateWrite(
+    runStatePath(runStateDir, update.issueNumber),
+    next,
+    lease,
+  );
   return next;
 }
 
@@ -288,6 +307,7 @@ const RUN_STATUSES = new Set([
   "finished",
 ]);
 const RECOVERY_STRING_FIELDS = [
+  "todoRoot",
   "branch",
   "worktreePath",
   "specPath",
@@ -353,6 +373,9 @@ export function validateRecoveryRunState(
     value.leaseProtocolVersion !== 1
   )
     throw new Error("Run recovery state has an unsupported lease protocol");
+  if (value.implementationPr !== undefined)
+    assertImplementationPrEvidence(value.implementationPr);
+  if (value.merge !== undefined) assertImplementationMergeEvidence(value.merge);
   if (value.checkpoints !== undefined) {
     if (!value.checkpoints || typeof value.checkpoints !== "object")
       throw new Error("Run recovery state has invalid checkpoints");
@@ -378,18 +401,43 @@ export async function readRunStateSnapshot(
 async function atomicStateWrite(
   path: string,
   state: AgentIssueRunState,
+  lease: IssueRunLease,
 ): Promise<void> {
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-  await rename(temporary, path);
+  const runStateDir = dirname(path);
+  await assertIssueRunLeaseOwned(lease, {
+    runStateDir,
+    issueNumber: state.issueNumber,
+  });
+  const temporary = `${path}.${lease.record.ownerToken}.${randomUUID()}.tmp`;
+  const handle = await open(temporary, "wx", 0o600);
+  try {
+    try {
+      await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await assertIssueRunLeaseOwned(lease, {
+      runStateDir,
+      issueNumber: state.issueNumber,
+    });
+    await rename(temporary, path);
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function replaceRunStateAfterReset(
   runStateDir: string,
   input: { issueNumber: number; title: string; seed: RunResetSeed },
+  lease: IssueRunLease,
   now = new Date().toISOString(),
 ): Promise<AgentIssueRunState> {
-  await mkdir(runStateDir, { recursive: true });
+  await assertIssueRunLeaseOwned(lease, {
+    runStateDir,
+    issueNumber: input.issueNumber,
+  });
   const state: AgentIssueRunState = {
     issueNumber: input.issueNumber,
     title: input.title,
@@ -409,7 +457,11 @@ export async function replaceRunStateAfterReset(
     updatedAt: now,
     claimedAt: now,
   };
-  await atomicStateWrite(runStatePath(runStateDir, input.issueNumber), state);
+  await atomicStateWrite(
+    runStatePath(runStateDir, input.issueNumber),
+    state,
+    lease,
+  );
   return state;
 }
 
@@ -419,6 +471,10 @@ export async function adoptRunStateLeaseProtocol(input: {
   lease: IssueRunLease;
   now?: string;
 }): Promise<AgentIssueRunState> {
+  await assertIssueRunLeaseOwned(input.lease, {
+    runStateDir: dirname(input.snapshot.path),
+    issueNumber: input.snapshot.state.issueNumber,
+  });
   if (input.lease.record.issueNumber !== input.snapshot.state.issueNumber)
     throw new Error("Issue run lease does not match recovery state");
   if (
@@ -444,6 +500,6 @@ export async function adoptRunStateLeaseProtocol(input: {
     leaseProtocolVersion: 1,
     updatedAt: input.now ?? new Date().toISOString(),
   };
-  await atomicStateWrite(input.snapshot.path, state);
+  await atomicStateWrite(input.snapshot.path, state, input.lease);
   return state;
 }

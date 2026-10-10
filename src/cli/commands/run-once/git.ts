@@ -1,4 +1,6 @@
 import type { CommandResult, CommandRunner } from "../../../command/types.ts";
+import type { RepositoryMutationContext } from "../../../git/repository-mutation.ts";
+import { withRepositoryMutationRunner } from "../../../git/repository-mutation-runner.ts";
 import { access } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import {
@@ -558,7 +560,20 @@ export async function ensureIssueWorktree(
     | string = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.baseRef,
   worktreeDir = DEFAULT_GIT_WORKTREE_STRATEGY_CONFIG.worktreeDir,
   ignoredPaths: string[] = [],
+  mutation?: RepositoryMutationContext,
 ): Promise<IssueWorktreeResult> {
+  if (mutation)
+    return withRepositoryMutationRunner(runner, mutation, (ownedRunner) =>
+      ensureIssueWorktree(
+        ownedRunner,
+        repoRoot,
+        issueNumber,
+        title,
+        strategyOrBaseRef,
+        worktreeDir,
+        ignoredPaths,
+      ),
+    );
   const strategy = resolveStrategy(strategyOrBaseRef, worktreeDir);
   const branch = buildIssueBranchName(issueNumber, title, strategy);
   const worktreePath = buildIssueWorktreePath(issueNumber, title, strategy);
@@ -687,8 +702,45 @@ function cleanupResult(config: {
 export async function cleanupIssueWorkspace(
   runner: CommandRunner,
   repoRoot: string,
-  workspace: { branch: string; worktreePath: string },
+  workspace: { branch: string; worktreePath: string; expectedHeadOid?: string },
+  mutation?: RepositoryMutationContext,
 ): Promise<CleanupIssueWorkspaceResult[]> {
+  if (mutation)
+    return withRepositoryMutationRunner(runner, mutation, (ownedRunner) =>
+      cleanupIssueWorkspace(ownedRunner, repoRoot, workspace),
+    );
+  const observed = await runner.run(
+    "git",
+    ["rev-parse", "--verify", `refs/heads/${workspace.branch}^{commit}`],
+    { cwd: repoRoot },
+  );
+  const expectedHeadOid = workspace.expectedHeadOid ?? observed.stdout.trim();
+  if (
+    observed.code !== 0 ||
+    !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(expectedHeadOid) ||
+    observed.stdout.trim() !== expectedHeadOid
+  )
+    return [
+      cleanupResult({
+        step: "worktree",
+        successMessage: "",
+        failureMessage: "Issue branch changed before cleanup",
+        command: "git",
+        args: [
+          "rev-parse",
+          "--verify",
+          `refs/heads/${workspace.branch}^{commit}`,
+        ],
+        cwd: repoRoot,
+        result: {
+          code: 1,
+          stdout: observed.stdout,
+          stderr:
+            "Expected issue head is no longer current; workspace preserved",
+        },
+      }),
+    ];
+  await inspectIssueWorkspace(runner, repoRoot, workspace);
   const worktreeArgs = ["worktree", "remove", workspace.worktreePath];
   let worktreeResult: CommandResult;
   try {
@@ -722,7 +774,12 @@ export async function cleanupIssueWorkspace(
 
   if (worktreeResult.code !== 0) return results;
 
-  const branchArgs = ["branch", "-D", workspace.branch];
+  const branchArgs = [
+    "update-ref",
+    "-d",
+    `refs/heads/${workspace.branch}`,
+    expectedHeadOid,
+  ];
   let branchResult: CommandResult;
   try {
     branchResult = await runner.run("git", branchArgs, { cwd: repoRoot });
@@ -731,7 +788,7 @@ export async function cleanupIssueWorkspace(
       cleanupResult({
         step: "branch",
         successMessage: `deleted local branch ${workspace.branch}`,
-        failureMessage: `git branch -D failed for ${workspace.branch}: ${errorMessage(error)}`,
+        failureMessage: `Expected-head branch deletion failed for ${workspace.branch}: ${errorMessage(error)}`,
         command: "git",
         args: branchArgs,
         cwd: repoRoot,
@@ -744,7 +801,7 @@ export async function cleanupIssueWorkspace(
     cleanupResult({
       step: "branch",
       successMessage: `deleted local branch ${workspace.branch}`,
-      failureMessage: `git branch -D failed for ${workspace.branch}`,
+      failureMessage: `Expected-head branch deletion failed for ${workspace.branch}`,
       command: "git",
       args: branchArgs,
       cwd: repoRoot,

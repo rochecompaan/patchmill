@@ -472,7 +472,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   );
   assert.match(
     prompt,
-    /Set a task todo status to `closed` only after code, tests, review, fixes, and verification/,
+    /Set a task todo status to `closed` only after the task's required commands and ledger completion succeed/,
   );
   assert.match(
     prompt,
@@ -511,7 +511,7 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assert.match(prompt, /Read AGENTS\.md and the implementation plan at/);
   assert.match(
     prompt,
-    /Use the configured implementation skill: `superpowers:subagent-driven-development`\./,
+    /Use the configured implementation skill: `superpowers:executing-plans`\./,
   );
   assert.match(prompt, /Subagent support:/);
   assert.match(prompt, /Patchmill bundles `pi-subagents`/);
@@ -521,9 +521,12 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   );
   assert.match(
     prompt,
-    /Use pi-subagents-discovered `worker` agents for implementation handoffs/,
+    /For required dispatches, use pi-subagents-discovered `worker` and `reviewer` agents/,
   );
-  assert.match(prompt, /`reviewer` agents for review checkpoints/);
+  assert.match(
+    prompt,
+    /Do not require task workers or task review checkpoints/,
+  );
   assert.match(
     prompt,
     /If required subagents are unavailable or disabled, return the blocker JSON/,
@@ -611,12 +614,9 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
   assertMultilineSafePrGuidance(prompt);
   assert.match(
     prompt,
-    /Direct squash-landing requires a configured landing skill/,
+    /Direct squash-landing is disabled for this repository\./,
   );
-  assert.match(
-    prompt,
-    /No landing skill is configured, so use PR fallback and do not land directly on `main`\./,
-  );
+  assert.match(prompt, /Do not land directly on `main`\./);
   assert.match(
     prompt,
     /keep the reason and questions concise enough to post directly as a `needs-info` comment/i,
@@ -683,15 +683,35 @@ test("buildImplementationPrompt renders configured skills", () => {
   );
   assert.match(
     prompt,
-    /Use the configured landing skill for the direct-land versus PR decision: `project-landing`\./,
+    /Use the configured landing skill for PR review and handoff: `project-landing`\./,
   );
-  assert.match(prompt, /If eligible for direct squash-land:/);
-  assert.match(prompt, /Successful final response for direct squash-land:/);
-  assert.match(prompt, /"status": "merged"/);
+  assert.doesNotMatch(prompt, /If eligible for direct squash-land:/);
+  assert.doesNotMatch(
+    prompt,
+    /Successful final response for direct squash-land:/,
+  );
+  assert.doesNotMatch(prompt, /"status": "merged"/);
   assert.doesNotMatch(
     prompt,
     /old implementation prompt fragment|toolchainInstruction|hostToolingInstruction|subagentWorkflowInstruction/,
   );
+});
+
+test("a custom landing skill cannot add a direct-merge result contract", () => {
+  for (const allowDirectLand of [false, true]) {
+    const prompt = buildImplementationPrompt({
+      issue,
+      planPath,
+      branch: "agent/issue-42",
+      worktreePath: ".worktrees/issue-42",
+      git: { baseBranch: "main", remote: "origin", allowDirectLand },
+      projectPolicy: examplePolicy,
+      skills: { ...DEFAULT_PATCHMILL_SKILLS, landing: "custom-landing" },
+    });
+    assert.match(prompt, /"status": "pr-created"/u);
+    assert.doesNotMatch(prompt, /"status": "merged"|Squash-merge|Push `main`/u);
+    assert.match(prompt, /Do not land directly on `main`/u);
+  }
 });
 
 test("generic policy plan prompt does not include legacy project text", () => {
@@ -745,7 +765,11 @@ test("buildImplementationPrompt uses configured direct-land policy inputs", () =
     },
   });
 
-  assert.match(prompt, /Update local `main` from the `upstream` remote\./);
+  assert.match(
+    prompt,
+    /Push the branch to `upstream` and open a pull request/u,
+  );
+  assert.doesNotMatch(prompt, /Update local `main`/u);
   assert.doesNotMatch(
     prompt,
     /Update local `release\/1\.2` from the `upstream` remote\./,
@@ -803,9 +827,9 @@ test("policy-driven prompts render validation and landing contract text from run
   );
   assert.match(
     implementationPrompt,
-    /Update local `main` from the `upstream` remote\./,
+    /Push the branch to `upstream` and open a pull request/u,
   );
-  assert.match(
+  assert.doesNotMatch(
     implementationPrompt,
     /Squash-merge the implementation branch into `main`\./,
   );
@@ -1042,7 +1066,7 @@ test("task contract overrides drive todo instructions in plan and implementation
   );
   assert.match(
     implementationPrompt,
-    /Set a task todo status to `shipped` only after code, tests, review, fixes, and verification/,
+    /Set a task todo status to `shipped` only after the task's required commands and ledger completion succeed/,
   );
   assert.doesNotMatch(
     implementationPrompt,
@@ -1120,5 +1144,96 @@ test("buildImplementationPrompt renders an optional planning pull request marker
   assert.match(
     prompt,
     /Closes #189\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->\n```/,
+  );
+});
+
+// Catches loss of configured execution choices and default extra review/fanout.
+test("unattended planning carries the configured implementation choice", () => {
+  for (const implementation of [
+    ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
+    "superpowers:executing-plans",
+    "custom/team-implementation",
+  ]) {
+    const prompt = buildPlanCreationPrompt({
+      issue,
+      planPath,
+      projectPolicy: examplePolicy,
+      skills: { ...DEFAULT_PATCHMILL_SKILLS, implementation },
+    });
+    assert.ok(
+      prompt.includes(
+        `Configured implementation choice: \`${implementation}\``,
+      ),
+    );
+    assert.match(prompt, /Record this choice in the plan/);
+    assert.match(prompt, /Do not ask for another execution-method choice/);
+    assert.match(prompt, untrustedInputBoundary);
+    assert.match(prompt, /"status": "blocked"/);
+  }
+});
+
+test("inline prompts do not require task dispatch or task review", () => {
+  const prompt = buildImplementationPrompt({
+    issue,
+    planPath,
+    projectPolicy: examplePolicy,
+    branch: "agent/issue-42",
+    worktreePath: ".worktrees/issue-42",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    skills: {
+      ...DEFAULT_PATCHMILL_SKILLS,
+      implementation:
+        ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
+    },
+  });
+  assert.doesNotMatch(
+    prompt,
+    /Use pi-subagents-discovered `worker` agents for implementation handoffs/,
+  );
+  assert.doesNotMatch(
+    prompt,
+    /only after code, tests, review, fixes, and verification for that task/,
+  );
+  assert.match(
+    prompt,
+    /task's required commands and ledger completion succeed/,
+  );
+  assert.match(
+    prompt,
+    /Whole-branch review, accepted fixes, final validation, and handoff remain separate/,
+  );
+  assert.doesNotMatch(prompt, /accepted fix, re-review, validation/);
+  assert.match(prompt, /unresolved run prohibits the final response/);
+  assert.match(prompt, untrustedInputBoundary);
+});
+
+test("custom review remains explicit rather than a default extra pass", () => {
+  const skills = {
+    ...DEFAULT_PATCHMILL_SKILLS,
+    implementation:
+      ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
+  };
+  const absent = buildImplementationPrompt({
+    issue,
+    planPath,
+    projectPolicy: examplePolicy,
+    branch: "agent/issue-42",
+    worktreePath: ".worktrees/issue-42",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    skills,
+  });
+  assert.doesNotMatch(absent, /Use the configured review skill/);
+  const explicit = buildImplementationPrompt({
+    issue,
+    planPath,
+    projectPolicy: examplePolicy,
+    branch: "agent/issue-42",
+    worktreePath: ".worktrees/issue-42",
+    git: { baseBranch: "main", remote: "origin", allowDirectLand: false },
+    skills: { ...skills, review: "custom/team-review" },
+  });
+  assert.match(
+    explicit,
+    /Use the configured review skill for explicit review passes: `custom\/team-review`/,
   );
 });

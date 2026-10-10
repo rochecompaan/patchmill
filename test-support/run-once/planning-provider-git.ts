@@ -45,21 +45,14 @@ export async function createPlanningScenarioRepository(
   await git(paths.repoRoot, ["config", "user.email", "test@example.test"]);
   await git(paths.repoRoot, ["config", "user.name", "Test"]);
   await writeFile(join(paths.repoRoot, "README.md"), "# test\n", "utf8");
-  if (ignoredArtifactPaths.length > 0) {
-    const patterns = [...new Set(ignoredArtifactPaths)].sort();
-    await writeFile(
-      join(paths.repoRoot, ".gitignore"),
-      `${patterns.join("\n")}\n`,
-    );
-  }
+  const patterns = [...new Set([".pi/todos/", ...ignoredArtifactPaths])].sort();
+  await writeFile(
+    join(paths.repoRoot, ".gitignore"),
+    `${patterns.join("\n")}\n`,
+  );
   await writeFile(join(paths.specsDir, ".gitkeep"), "", "utf8");
   await writeFile(join(paths.plansDir, ".gitkeep"), "", "utf8");
-  await git(paths.repoRoot, [
-    "add",
-    "README.md",
-    "docs",
-    ...(ignoredArtifactPaths.length > 0 ? [".gitignore"] : []),
-  ]);
+  await git(paths.repoRoot, ["add", "README.md", "docs", ".gitignore"]);
   await git(paths.repoRoot, ["commit", "-m", "initial"]);
   await git(paths.repoRoot, ["init", "--bare", remote]);
   await git(paths.repoRoot, ["remote", "add", "origin", remote]);
@@ -132,6 +125,62 @@ export async function mergePlanningPull(input: {
   ).stdout.trim();
   pull.merged = true;
   await git(input.repoRoot, ["push", "origin", "main"]);
+}
+
+export async function mergeImplementationPull(input: {
+  repoRoot: string;
+  pulls: PlanningScenarioPull[];
+  deleteHeadBranch?: boolean;
+}): Promise<void> {
+  const pull = input.pulls.find(
+    (candidate) => candidate.number === 99 && !candidate.merged,
+  );
+  assert.ok(pull, "an open implementation PR is required");
+  const remote = join(input.repoRoot, "remote.git");
+  const base = await git(remote, ["rev-parse", "refs/heads/main"]);
+  assert.equal(base.code, 0, base.stderr);
+  const old = base.stdout.trim();
+  const tree = await git(remote, [
+    "merge-tree",
+    "--write-tree",
+    old,
+    pull.headOid,
+  ]);
+  assert.equal(tree.code, 0, tree.stderr);
+  const commit = await git(remote, [
+    "-c",
+    "user.name=Host",
+    "-c",
+    "user.email=host@example.test",
+    "commit-tree",
+    tree.stdout.trim(),
+    "-p",
+    old,
+    "-p",
+    pull.headOid,
+    "-m",
+    "Merge implementation PR",
+  ]);
+  assert.equal(commit.code, 0, commit.stderr);
+  const mergeOid = commit.stdout.trim();
+  const updated = await git(remote, [
+    "update-ref",
+    "refs/heads/main",
+    mergeOid,
+    old,
+  ]);
+  assert.equal(updated.code, 0, updated.stderr);
+  if (input.deleteHeadBranch) {
+    const deleted = await git(remote, [
+      "update-ref",
+      "-d",
+      `refs/heads/${pull.branch}`,
+      pull.headOid,
+    ]);
+    assert.equal(deleted.code, 0, deleted.stderr);
+  }
+  pull.mergeOid = mergeOid;
+  pull.merged = true;
 }
 
 export async function recordCarriedArtifacts(

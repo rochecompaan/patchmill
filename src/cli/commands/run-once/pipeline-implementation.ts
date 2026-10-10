@@ -14,6 +14,12 @@ import {
   successfulImplementationFromState,
 } from "./pipeline-lifecycle.ts";
 import { writeRunState } from "./run-state.ts";
+import { discoverLegacyImplementationPr } from "./legacy-pr-evidence.ts";
+import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
+import {
+  resolveIssueTodoContract,
+  resolveResumedIssueTodoContract,
+} from "./issue-todo-contract.ts";
 import type { IssueWorktreeResult } from "./git.ts";
 import type {
   AgentIssueConfig,
@@ -44,6 +50,7 @@ export type PipelineImplementationStageResult =
   | { kind: "unexpected"; error: Error };
 export type PipelineImplementationStageOptions = {
   runner: CommandRunner;
+  lease: import("./types.ts").IssueRunLease;
   host: Parameters<typeof developmentEnvironmentNotReady>[0]["host"];
   config: AgentIssueConfig;
   issue: IssueSummary;
@@ -124,14 +131,30 @@ export async function runPipelineImplementationStage(
         "Saved implementation state",
       );
 
+    const taskContract = options.resumableState
+      ? await resolveResumedIssueTodoContract({
+          repoRoot: options.config.repoRoot,
+          worktreeRoot: join(options.config.repoRoot, options.worktreePath),
+          contract: options.config.projectPolicy.pi.taskContract,
+          issueNumber: options.issue.number,
+          ...(options.existingState?.todoRoot === undefined
+            ? {}
+            : { savedTodoRoot: options.existingState.todoRoot }),
+        })
+      : resolveIssueTodoContract(
+          join(options.config.repoRoot, options.worktreePath),
+          options.config.projectPolicy.pi.taskContract,
+        );
     await writeRunState(
       options.config.runStateDir,
       {
         issueNumber: options.issue.number,
         status: "implementing",
         ...details,
+        todoRoot: taskContract.todoRoot,
         checkpoints: { worktreeReady: true },
       },
+      options.lease,
       options.timestamp,
     );
     options.checkpoints.worktreeReady = true;
@@ -141,6 +164,15 @@ export async function runPipelineImplementationStage(
         throw new Error(
           `Implementation requires a plan and branch for issue #${options.issue.number}`,
         );
+      const existingPullRequest = options.resumableState
+        ? (options.existingState?.implementationPr ??
+          (await discoverLegacyImplementationPr(
+            options.runner,
+            options.config,
+            options.issue.number,
+            options.branch,
+          )))
+        : undefined;
       const outcome = await runImplementationAgent({
         runner: options.runner,
         config: options.config,
@@ -151,6 +183,14 @@ export async function runPipelineImplementationStage(
         worktreePath: options.worktreePath,
         worktree: options.worktree,
         git: options.worktreeStrategy,
+        taskContract,
+        ...(existingPullRequest
+          ? { existingPullRequestUrl: existingPullRequest.url }
+          : {}),
+        requiredPullRequestMarker: renderPlanningPullRequestMarker({
+          issueNumber: options.issue.number,
+          phase: "implementation",
+        }),
         resume: {
           resumed: options.resumableState,
           existingState: options.existingState,
@@ -205,12 +245,20 @@ export async function runPipelineImplementationStage(
           result: await options.blockIssue(outcome.result, details),
         };
       implemented = outcome.result;
+      if (
+        existingPullRequest &&
+        (implemented.status !== "pr-created" ||
+          implemented.prUrl !== existingPullRequest.url)
+      )
+        throw new Error(
+          "Publication recovery must retain the existing implementation PR",
+        );
       assertDirectLandAllowed(implemented, options.config, "Pi");
     }
     await assertIssueTodosComplete(
       join(options.config.repoRoot, options.worktreePath),
       options.issue.number,
-      options.config.projectPolicy.pi.taskContract,
+      taskContract,
     );
     return {
       kind: alreadyImplemented ? "already-implemented" : "implemented",

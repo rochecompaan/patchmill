@@ -1,8 +1,10 @@
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { planLabelChange } from "../triage/labels.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
 import { assertApprovedArtifactsResolvable } from "./approval-artifact-preflight.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
@@ -61,13 +63,28 @@ import {
 } from "./pipeline-workspace.ts";
 import {
   legacySelectionDiagnostics,
-  loadSelectionIssues,
   prepareAutomaticLegacyCandidates,
   selectResumableIssue,
 } from "./pipeline-selection.ts";
-import { hasFinishedPlanningWorkspaceState } from "./planning-selection.ts";
+import { loadLegacyPipelineSelectionIssues } from "./pipeline-legacy-selection.ts";
+import {
+  hasFinishedPlanningWorkspaceState,
+  legacyImplementationNeedsMergeReconciliation,
+} from "./planning-selection.ts";
+import { resumeLegacyPublishedPr } from "./legacy-pr-resume.ts";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
-import { withIssueRunLease } from "./recovery-lease.ts";
+import { repositoryMutationContext } from "./repository-mutation-context.ts";
+import {
+  RepositoryMutationBusyError,
+  RepositoryMutationInterruptedError,
+  RepositoryMutationOwnershipError,
+} from "../../../git/repository-mutation.ts";
+import { repositoryBusyResult } from "./repository-busy-result.ts";
+import {
+  assertIssueRunLeaseOwned,
+  requireIssueRunLease,
+  withIssueRunLease,
+} from "./recovery-lease.ts";
 import { formatRunRecoveryDecision } from "./recovery.ts";
 import {
   adoptLegacyRecoveryLease,
@@ -76,11 +93,13 @@ import {
 import { runPipelineImplementationStage } from "./pipeline-implementation.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
 import { resolvePipelineRunCost } from "./pipeline-run-cost.ts";
+import { runPiSessionPath, type AgentIssueProgressEvent } from "./progress.ts";
 import {
-  runPiSessionPath,
-  type AgentIssueProgressEvent,
-  type ProgressReporter,
-} from "./progress.ts";
+  LegacySelectionRejected,
+  type LeasedRunOneIssueOptions,
+  type LegacySelectionRunResult,
+  type RunOneIssueOptions,
+} from "./pipeline-legacy-types.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type {
@@ -89,49 +108,10 @@ import type {
   AgentIssueRunState,
 } from "./types.ts";
 
-type PiOutputStream = (chunk: string) => void;
-
-export type RunOneIssueOptions = {
-  now?: Date | undefined;
-  progress?: ProgressReporter | undefined;
-  logPath?: string | undefined;
-  streamPiOutput?: PiOutputStream | undefined;
-  verbosePiOutput?: boolean | undefined;
-  heartbeatMs?: number | undefined;
-};
-
-export type LegacySelectionRunResult =
-  | { kind: "pipeline-result"; result: AgentIssuePipelineResult }
-  | {
-      kind: "selection-rejected";
-      result: AgentIssuePipelineResult & {
-        status: "no-issue" | "approval-required";
-      };
-    };
-
-type LeasedRunOneIssueOptions = RunOneIssueOptions & {
-  lease?: import("./types.ts").IssueRunLease;
-  /** Internal selection pin; never exposed to ordinary callers. */
-  leasedIssueNumber?: number;
-  /** Distinguishes a pinned rejection before any Issue effect begins. */
-  classifySelectionRejection?: boolean;
-  reset?: { seed: import("./types.ts").RunResetSeed };
-};
-
-class LegacySelectionRejected extends Error {
-  readonly result: AgentIssuePipelineResult & {
-    status: "no-issue" | "approval-required";
-  };
-
-  constructor(
-    result: AgentIssuePipelineResult & {
-      status: "no-issue" | "approval-required";
-    },
-  ) {
-    super(`Pinned legacy selection rejected: ${result.status}`);
-    this.result = result;
-  }
-}
+export type {
+  LegacySelectionRunResult,
+  RunOneIssueOptions,
+} from "./pipeline-legacy-types.ts";
 
 function preMutationSelectionResult(
   result: LegacySelectionRejected["result"],
@@ -147,7 +127,10 @@ export async function runLegacyOneIssue(
   config: AgentIssueConfig,
   options: RunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
-  return runLegacyOneIssueInternal(runner, config, options);
+  return runLegacyOneIssueInternal(runner, config, {
+    ...options,
+    attemptId: options.attemptId ?? randomUUID(),
+  });
 }
 
 /** Runs one already-selected legacy issue without returning to advisory selection. */
@@ -162,6 +145,8 @@ export async function runLegacyOneIssueForSelection(
       kind: "pipeline-result",
       result: await runLegacyOneIssueInternal(runner, config, {
         ...options,
+        attemptId:
+          options.attemptId ?? options.lease?.record.ownerToken ?? randomUUID(),
         leasedIssueNumber: issueNumber,
         classifySelectionRejection: true,
       }),
@@ -186,6 +171,7 @@ export async function runLegacyOneIssueAfterReset(
   return runLegacyOneIssueInternal(runner, config, {
     ...options,
     lease: reset.lease,
+    attemptId: reset.lease.record.ownerToken,
     reset: { seed: reset.seed },
   });
 }
@@ -195,16 +181,23 @@ async function runLegacyOneIssueInternal(
   config: AgentIssueConfig,
   options: LeasedRunOneIssueOptions = {},
 ): Promise<AgentIssuePipelineResult> {
+  if (options.lease)
+    await assertIssueRunLeaseOwned(options.lease, {
+      runStateDir: config.runStateDir,
+      issueNumber:
+        options.leasedIssueNumber ?? options.lease.record.issueNumber,
+    });
   const host = createRunOnceHostProvider({
     runner,
     repoRoot: config.repoRoot,
     host: config.host,
   });
   // Re-read only the leased issue; never priority-select under another issue's lease.
-  const loadedIssues =
-    options.leasedIssueNumber === undefined
-      ? await loadSelectionIssues(host, config, options)
-      : [await host.viewIssue(options.leasedIssueNumber)];
+  const loadedIssues = await loadLegacyPipelineSelectionIssues(
+    host,
+    config,
+    options,
+  );
   // Blocked retries are never implicit; approval waits stay diagnostic-only.
   const automaticCandidates =
     config.issueNumber === undefined
@@ -283,6 +276,16 @@ async function runLegacyOneIssueInternal(
       `Leased selection changed from issue #${options.leasedIssueNumber} to issue #${issue.number}`,
     );
 
+  if (
+    options.lease &&
+    options.leasedIssueNumber !== undefined &&
+    !options.authoritativeLeaseChecked
+  )
+    return runLegacyOneIssueInternal(runner, config, {
+      ...options,
+      authoritativeLeaseChecked: true,
+    });
+
   let existingState: AgentIssueRunState | undefined = options.reset
     ? {
         issueNumber: issue.number,
@@ -310,7 +313,13 @@ async function runLegacyOneIssueInternal(
   // A caller-supplied lease (reset) is borrowed and is therefore not released.
   if (!config.dryRun && !options.lease) {
     return withIssueRunLease(
-      { runStateDir: config.runStateDir, issueNumber: issue.number },
+      {
+        runStateDir: config.runStateDir,
+        issueNumber: issue.number,
+        ...(options.attemptId === undefined
+          ? {}
+          : { ownerToken: options.attemptId }),
+      },
       (lease) =>
         runLegacyOneIssueInternal(runner, config, {
           ...options,
@@ -318,6 +327,26 @@ async function runLegacyOneIssueInternal(
           leasedIssueNumber: issue.number,
         }),
     );
+  }
+  if (
+    !config.dryRun &&
+    options.lease &&
+    existingState &&
+    (legacyImplementationNeedsMergeReconciliation(existingState) ||
+      existingState.implementationStatus === "merged")
+  ) {
+    const published = await resumeLegacyPublishedPr({
+      runner,
+      config,
+      host,
+      issue,
+      state: existingState,
+      lease: options.lease,
+      options,
+    });
+    if (published) return published;
+    // A proven open PR without validation uses ordinary owned-workspace checks.
+    existingState = await readRunState(config.runStateDir, issue.number);
   }
   if (!config.dryRun && options.lease)
     existingState = await adoptLegacyRecoveryLease({
@@ -356,15 +385,23 @@ async function runLegacyOneIssueInternal(
   const piSessionPath = runPiSessionPath(
     config.runStateDir,
     timestamp,
+    options.attemptId ?? options.lease?.record.ownerToken ?? randomUUID(),
     issue.number,
   );
   const runOptions = { ...options, piSessionPath };
   if (config.dryRun) {
     const { ready } = lifecycleLabels(config);
-    const state = resolveWorkflowState(issue.labels, {
-      readyLabel: ready,
-      policy: config.approvalPolicy,
-    });
+    const state = resolveWorkflowState(
+      config.issueStateProvider?.resolveRoles(issue).roles ??
+        workflowRolesFromLabels(issue.labels, {
+          triagePolicy: config.labelCatalog.triagePolicy,
+          approvalPolicy: config.approvalPolicy,
+        }),
+      {
+        readyLabel: ready,
+        policy: config.approvalPolicy,
+      },
+    );
     return withLogPath(
       {
         status: "dry-run",
@@ -375,6 +412,8 @@ async function runLegacyOneIssueInternal(
     );
   }
 
+  const lease = requireIssueRunLease(options.lease);
+  const mutation = repositoryMutationContext(runner, options, issue.number);
   const ignoredPaths = cleanStatusIgnoredPaths(
     config,
     runOptions.logPath === undefined ? {} : { logPath: runOptions.logPath },
@@ -472,6 +511,7 @@ async function runLegacyOneIssueInternal(
     ignoredPaths,
     resolvedArtifacts,
     lease: options.lease,
+    ...(mutation ? { mutation } : {}),
   });
   if (
     blockedRecovery?.decision.action === "resume" &&
@@ -509,11 +549,14 @@ async function runLegacyOneIssueInternal(
       );
     }
   };
-  const hasApprovalLabel = [
-    config.approvalPolicy.specApproval.approvedLabel,
-    config.approvalPolicy.planApproval.approvedLabel,
-  ].some((label) => issueForRun.labels.includes(label));
-  const artifactWorkspace = hasApprovalLabel
+  const hasApprovalRole = (
+    config.issueStateProvider?.resolveRoles(issueForRun).roles ??
+    workflowRolesFromLabels(issueForRun.labels, {
+      triagePolicy: config.labelCatalog.triagePolicy,
+      approvalPolicy: config.approvalPolicy,
+    })
+  ).some((role) => role === "spec-approved" || role === "plan-approved");
+  const artifactWorkspace = hasApprovalRole
     ? await (async () => {
         assertExpectedWorkspaceIdentity();
         return await inspectIssueWorkspace(runner, config.repoRoot, {
@@ -535,6 +578,7 @@ async function runLegacyOneIssueInternal(
       worktreeStrategy,
       undefined,
       ignoredPaths,
+      mutation,
     );
     await emitSimpleStep(
       runOptions,
@@ -625,10 +669,21 @@ async function runLegacyOneIssueInternal(
         `ensuring ${inProgress} label exists`,
         { issueNumber: issue.number },
       );
-      await ensureAutomationLabel(host, config, inProgress);
-      await host.applyLabels(
-        planLabelChange(issue.number, issue.labels, labels),
-      );
+      if (
+        config.issueState?.provider === "comments" &&
+        config.issueStateProvider
+      ) {
+        await config.issueStateProvider.setRoles({
+          issue,
+          roles: ["in-progress"],
+          message: startedComment(issue),
+        });
+      } else {
+        await ensureAutomationLabel(host, config, inProgress);
+        await host.applyLabels(
+          planLabelChange(issue.number, issue.labels, labels),
+        );
+      }
       await progress(
         runOptions,
         "info",
@@ -644,6 +699,7 @@ async function runLegacyOneIssueInternal(
             title: issue.title,
             seed: options.reset.seed,
           },
+          lease,
           timestamp,
         );
       } else {
@@ -665,6 +721,7 @@ async function runLegacyOneIssueInternal(
                 status: existingState.status,
                 blockerCommentKeys: [blockerCommentKey(blocked)],
               },
+              lease,
               timestamp,
             );
         }
@@ -680,6 +737,7 @@ async function runLegacyOneIssueInternal(
             clearBlockerQuestions: recoveringBlocked,
             leaseProtocolVersion: 1,
           },
+          lease,
           timestamp,
         );
       }
@@ -688,7 +746,10 @@ async function runLegacyOneIssueInternal(
   }
 
   try {
-    if (!checkpoints.startedCommentPosted) {
+    if (
+      !checkpoints.startedCommentPosted &&
+      config.issueState?.provider !== "comments"
+    ) {
       await host.commentIssue(issueForRun.number, startedComment(issueForRun));
       await writeRunState(
         config.runStateDir,
@@ -698,6 +759,7 @@ async function runLegacyOneIssueInternal(
           status: "claimed",
           checkpoints: { startedCommentPosted: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.startedCommentPosted = true;
@@ -800,11 +862,13 @@ async function runLegacyOneIssueInternal(
           planPath: resolvedArtifacts.plan?.path,
           planCommit: resolvedArtifacts.plan?.commit,
         },
+        lease,
         timestamp,
       );
     }
 
     const planningStages = await advancePlanningStages({
+      lease,
       runner,
       host,
       config,
@@ -868,7 +932,10 @@ async function runLegacyOneIssueInternal(
       [],
       [inProgress],
     );
-    if (implementationLabels.join("\0") !== labels.join("\0")) {
+    if (
+      config.issueState?.provider !== "comments" &&
+      implementationLabels.join("\0") !== labels.join("\0")
+    ) {
       await host.applyLabels(
         planLabelChange(issue.number, labels, implementationLabels),
       );
@@ -884,6 +951,7 @@ async function runLegacyOneIssueInternal(
       );
     }
     const implementationStage = await runPipelineImplementationStage({
+      lease,
       runner,
       host,
       config,
@@ -950,6 +1018,7 @@ async function runLegacyOneIssueInternal(
     });
 
     const finishStage = await runPipelineFinishStage({
+      lease,
       runner,
       host,
       config,
@@ -971,6 +1040,7 @@ async function runLegacyOneIssueInternal(
       timestamp,
       runOptions,
       runStep,
+      ...(mutation ? { mutation } : {}),
     });
 
     if (finishStage.kind === "unexpected") {
@@ -979,6 +1049,13 @@ async function runLegacyOneIssueInternal(
 
     return finishStage.result;
   } catch (error) {
+    if (error instanceof RepositoryMutationBusyError)
+      return repositoryBusyResult(issue, runOptions);
+    if (
+      error instanceof RepositoryMutationInterruptedError ||
+      error instanceof RepositoryMutationOwnershipError
+    )
+      throw error;
     if (error instanceof AgentIssueSafetyError) {
       throw error;
     }

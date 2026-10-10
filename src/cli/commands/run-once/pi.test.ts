@@ -68,7 +68,7 @@ function assertBundledPiCall(call: Call): string[] {
   assert.equal(call.command, process.execPath);
   assert.match(
     call.args[0] ?? "",
-    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\](?:bundle[/\\])?cli\.js$/,
   );
   return call.args.slice(1);
 }
@@ -234,7 +234,7 @@ test("runPiPrompt passes configured skill files before the prompt argument", asy
 
 test("runPiPrompt passes the configured todo root to Pi", async () => {
   const runner = createMockRunner((call) => {
-    assert.equal(call.env?.PI_TODO_PATH, ".patchmill/todos");
+    assert.equal(call.env?.PI_TODO_PATH, "/repo/.patchmill/todos");
     return {
       code: 0,
       stdout: '{"status":"plan-created","planPath":"docs/plans/p.md"}',
@@ -273,7 +273,7 @@ test("runPiPrompt passes resolved todo done statuses to Pi", async () => {
 test("runPiPrompt passes the local Pi agent dir to Pi", async () => {
   const runner = createMockRunner((call) => {
     assert.equal(call.env?.PI_CODING_AGENT_DIR, "/repo/.patchmill/pi-agent");
-    assert.equal(call.env?.PI_TODO_PATH, DEFAULT_PI_TASK_CONTRACT.todoRoot);
+    assert.equal(call.env?.PI_TODO_PATH, "/repo/.pi/todos");
     assert.equal(
       call.env?.PI_TODO_DONE_STATUSES,
       JSON.stringify(["closed", "completed", "complete", "done"]),

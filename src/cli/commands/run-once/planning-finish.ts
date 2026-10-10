@@ -14,14 +14,28 @@ import type {
   PlanningPhaseStateV1,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
-import { durableImplementationResult } from "./planning-runtime-state.ts";
-import type { AgentIssuePrCreatedResult } from "../../../issue-run/types.ts";
+import {
+  durableImplementationResult,
+  durableMergedImplementationResult,
+} from "./planning-runtime-state.ts";
+import type { ImplementationPrReconciliation } from "../../../workflow/implementation-pr-reconciliation.ts";
+import type {
+  AgentIssuePrCreatedResult,
+  AgentIssueMergedResult,
+} from "../../../issue-run/types.ts";
 
-export type PlanningImplementationFinishOutcome = Readonly<{
-  kind: "complete";
-  state: PlanningStateV1;
-  result: AgentIssuePrCreatedResult;
-}>;
+export type PlanningImplementationFinishOutcome =
+  | Readonly<{
+      kind: "complete";
+      state: PlanningStateV1;
+      result: AgentIssueMergedResult;
+    }>
+  | Readonly<{
+      kind: "implementation-published";
+      state: PlanningStateV1;
+      result: AgentIssuePrCreatedResult;
+    }>
+  | Readonly<{ kind: "blocked"; state: PlanningStateV1; reason: string }>;
 
 export type PlanningFinishInput = {
   state: PlanningStateV1;
@@ -29,6 +43,11 @@ export type PlanningFinishInput = {
   lock: PlanningIssueLock;
   stateStore: Pick<PlanningStateStore, "replace">;
   git: Pick<PlanningPublicationOperations, "inspectRemoteHead">;
+  reconcilePr: (
+    phase:
+      | ImplementationPullRequestOpenPlanningPhase
+      | ImplementationCompletePlanningPhase,
+  ) => Promise<ImplementationPrReconciliation>;
   workspaces: Pick<
     PlanningWorkspaceLifecycle,
     "removeWorktree" | "removeBranch"
@@ -72,11 +91,34 @@ export async function finishPlanningImplementation(
     return {
       kind: "complete",
       state,
-      result: durableImplementationResult(initial),
+      result: durableMergedImplementationResult(initial),
     };
   if (initial.status !== "pull-request-open")
     throw new RangeError("Implementation pull request has not been validated");
   let phase: ImplementationPullRequestOpenPlanningPhase = initial;
+  const reconciliation = await input.reconcilePr(phase);
+  if (reconciliation.kind === "blocked")
+    return { kind: "blocked", state, reason: reconciliation.reason };
+  if (reconciliation.kind === "merged" && phase.merge === undefined) {
+    phase = {
+      ...phase,
+      merge: {
+        mergeOid: reconciliation.mergeOid,
+        mergedBaseOid: reconciliation.mergedBaseOid,
+      },
+    };
+    state = await checkpoint(input, state, phase);
+  }
+  if (
+    phase.merge &&
+    (reconciliation.kind !== "merged" ||
+      phase.merge.mergeOid !== reconciliation.mergeOid)
+  )
+    return {
+      kind: "blocked",
+      state,
+      reason: "Saved merge evidence conflicts with the host PR",
+    };
   const effect = async (
     key: keyof ImplementationPullRequestOpenPlanningPhase["finish"],
     run: () => Promise<void>,
@@ -124,19 +166,22 @@ export async function finishPlanningImplementation(
     phase.workspace.cleanup.state === "ready" ||
     phase.workspace.cleanup.state === "cleanup-pending"
   ) {
-    // Saved finish checkpoints do not prove the current remote HEAD.
-    const remoteHead = await input.git.inspectRemoteHead({
-      remote: phase.workspace.remote,
-      branch: phase.publication.headBranch,
-    });
-    if (
-      remoteHead.state !== "present" ||
-      remoteHead.headOid !== phase.publication.headOid
-    )
-      throw new PlanningWorkspaceConflictError(
-        "remote-head-mismatch",
-        phase.workspace.identity,
-      );
+    // A verified merge authorizes cleanup even if the remote branch is gone.
+    if (reconciliation.kind === "open") {
+      // Saved finish checkpoints do not prove the current remote HEAD.
+      const remoteHead = await input.git.inspectRemoteHead({
+        remote: phase.workspace.remote,
+        branch: phase.publication.headBranch,
+      });
+      if (
+        remoteHead.state !== "present" ||
+        remoteHead.headOid !== phase.publication.headOid
+      )
+        throw new PlanningWorkspaceConflictError(
+          "remote-head-mismatch",
+          phase.workspace.identity,
+        );
+    }
     const removal = await input.workspaces.removeWorktree({
       runId: state.runId,
       phase: "implementation",
@@ -172,7 +217,10 @@ export async function finishPlanningImplementation(
           pushedHeadOid: phase.workspace.cleanup.pushedHeadOid,
         },
       },
-      authorization: { kind: "publication" },
+      authorization: {
+        kind:
+          reconciliation.kind === "merged" ? "merged-terminal" : "publication",
+      },
     });
     phase = {
       ...phase,
@@ -189,6 +237,12 @@ export async function finishPlanningImplementation(
       input.phaseIndex
     ] as ImplementationPullRequestOpenPlanningPhase;
   }
+  if (reconciliation.kind === "open")
+    return {
+      kind: "implementation-published",
+      state,
+      result: durableImplementationResult(phase),
+    };
   await effect("doneLabelEnsured", input.effects.ensureDoneLabel);
   await effect("doneLabelApplied", input.effects.applyDoneLabels);
   const complete = {
@@ -210,6 +264,6 @@ export async function finishPlanningImplementation(
   return {
     kind: "complete",
     state,
-    result: durableImplementationResult(complete),
+    result: durableMergedImplementationResult(complete),
   };
 }

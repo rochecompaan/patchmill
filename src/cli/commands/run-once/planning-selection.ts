@@ -6,17 +6,22 @@ import {
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import { isResumableRunState, readRunState } from "./run-state.ts";
 import {
-  automaticWorkflowStateEligible,
+  automaticWorkflowRolesEligible,
   hasBlockedRunRecoveryState,
   lifecycleLabels,
+  selectionBlockingLabels,
 } from "./pipeline-lifecycle.ts";
-import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import {
+  DEFAULT_LABEL_CATALOG,
+  DEFAULT_TRIAGE_POLICY,
+} from "../triage/labels.ts";
 import { needsPlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
 import {
   isActionableWorkflowState,
   resolveWorkflowState,
 } from "./workflow-state.ts";
 import { compareIssuesByPriority } from "./selection.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { AgentIssueConfig } from "./types.ts";
 
@@ -38,6 +43,30 @@ export function planningStateDiagnostic(
   if (error instanceof PlanningStateValidationError)
     return `${error.statePath ?? fallbackPath}: ${error.reason} at ${error.path}`;
   return `${fallbackPath}: planning state read failed`;
+}
+
+function workflowRolesForIssue(
+  issue: IssueSummary,
+  config: AgentIssueConfig,
+): string[] {
+  if (config.issueStateProvider) {
+    return config.issueStateProvider.resolveRoles(issue).roles;
+  }
+  return workflowRolesFromLabels(issue.labels, {
+    triagePolicy: config.triagePolicy?.labels
+      ? config.triagePolicy
+      : DEFAULT_TRIAGE_POLICY,
+    approvalPolicy:
+      config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy,
+  });
+}
+
+function hasWorkflowRole(
+  issue: IssueSummary,
+  config: AgentIssueConfig,
+  role: string,
+): boolean {
+  return workflowRolesForIssue(issue, config).includes(role);
 }
 
 function active(state: PlanningStateV1): boolean {
@@ -80,26 +109,68 @@ export function planningIssueEligible(input: {
 }): boolean {
   const { issue, config, state, activeOwnedWorkflow } = input;
   const lifecycle = lifecycleLabels(config);
+  const roles = workflowRolesForIssue(issue, config);
   const excluded =
     config.triagePolicy?.runOnceSelection?.excludedLabels ??
     DEFAULT_TRIAGE_POLICY.runOnceSelection.excludedLabels;
-  const doneCheckpoint = planningFinishReachedDoneLabelBoundary(state);
-  const blocked = issue.labels.filter((label) => {
-    if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
-    if (doneCheckpoint && label === lifecycle.done) return false;
-    return (
-      label === lifecycle.done ||
-      label === lifecycle.needsInfo ||
-      excluded.includes(label)
+  const doneCheckpoint =
+    planningFinishReachedDoneLabelBoundary(state) ||
+    Boolean(
+      activeOwnedWorkflow &&
+      state &&
+      planningImplementationNeedsMergeReconciliation(state),
+    );
+  const blocked = selectionBlockingLabels(
+    issue.labels.filter((label) => {
+      if (activeOwnedWorkflow && label === lifecycle.inProgress) return false;
+      if (doneCheckpoint && label === lifecycle.done) return false;
+      return (
+        label === lifecycle.done ||
+        label === lifecycle.needsInfo ||
+        excluded.includes(label)
+      );
+    }),
+    excluded,
+    config,
+  );
+  const roleBlocked = roles.some((role) => {
+    if (activeOwnedWorkflow && role === "in-progress") return false;
+    if (doneCheckpoint && role === "agent-done") return false;
+    return ["agent-done", "needs-info", "agent-unsuitable", "blocked"].includes(
+      role,
     );
   });
-  if (blocked.length === 0)
-    return !cleanupPending(state) || issue.labels.includes(lifecycle.ready);
+  const ready = roles.includes("agent-ready");
+  if (blocked.length === 0 && !roleBlocked)
+    return !cleanupPending(state) || ready;
   // Ready acknowledges only the lifecycle needs-info blocker for both retries.
   return (
     activeOwnedWorkflow &&
-    issue.labels.includes(lifecycle.ready) &&
-    blocked.every((label) => label === lifecycle.needsInfo)
+    ready &&
+    roles.every((role) => role === "needs-info" || role === "agent-ready")
+  );
+}
+
+/** Routes saved implementation PR handoffs to later merge reconciliation. */
+export function planningImplementationNeedsMergeReconciliation(
+  state: PlanningStateV1,
+): boolean {
+  return state.phases.some(
+    (phase) =>
+      phase.kind === "implementation" &&
+      (phase.status === "pull-request-open" ||
+        (phase.status === "complete" && "pullRequest" in phase)),
+  );
+}
+
+/** Identifies legacy PR handoffs without treating PR creation as a merge. */
+export function legacyImplementationNeedsMergeReconciliation(
+  state: import("./types.ts").AgentIssueRunState,
+): boolean {
+  return (
+    state.implementationPr !== undefined ||
+    state.implementationStatus === "pr-created" ||
+    (state.status === "finished" && typeof state.prUrl === "string")
   );
 }
 
@@ -121,6 +192,7 @@ export function legacyConflictsWithPlanning(
   return Boolean(
     legacy &&
     (isResumableRunState(legacy) ||
+      legacyImplementationNeedsMergeReconciliation(legacy) ||
       hasFinishedPlanningWorkspaceState(legacy) ||
       hasBlockedRunRecoveryState(legacy)),
   );
@@ -151,10 +223,13 @@ export async function selectRunOnceWorkflow(
   for (const issue of issues) {
     if (config.issueNumber !== undefined && issue.number !== config.issueNumber)
       continue;
-    if (issue.state !== "open") continue;
+    if (issue.state !== "open" && config.issueNumber === undefined) continue;
     if (
       config.issueNumber === undefined &&
-      !automaticWorkflowStateEligible(issue.labels, config)
+      !automaticWorkflowRolesEligible(
+        workflowRolesForIssue(issue, config),
+        config,
+      )
     )
       continue;
     let state: PlanningStateV1 | undefined;
@@ -171,26 +246,49 @@ export async function selectRunOnceWorkflow(
       };
     }
     const legacy = await readRunState(config.runStateDir, issue.number);
+    const legacyFinishRecovery =
+      config.execute &&
+      !config.dryRun &&
+      config.issueNumber === issue.number &&
+      legacy &&
+      (legacyImplementationNeedsMergeReconciliation(legacy) ||
+        legacy.implementationStatus === "merged");
+    if (
+      issue.state !== "open" &&
+      !legacyFinishRecovery &&
+      !(state && planningImplementationNeedsMergeReconciliation(state)) &&
+      !(legacy && legacyImplementationNeedsMergeReconciliation(legacy))
+    )
+      continue;
     const legacyActive = legacyActiveForIssue(issue, config, legacy);
     const legacyConflict = legacyConflictsWithPlanning(legacy);
     const ordinaryLegacyResume = Boolean(
       legacy &&
       isResumableRunState(legacy) &&
-      issue.labels.includes(lifecycleLabels(config).inProgress),
+      hasWorkflowRole(issue, config, "in-progress"),
     );
     const blockedLegacyRetryAcknowledged =
       !hasBlockedRunRecoveryState(legacy) ||
       (config.issueNumber === issue.number &&
-        issue.labels.includes(lifecycleLabels(config).ready));
-    if (state && active(state) && legacyConflict)
+        hasWorkflowRole(issue, config, "agent-ready"));
+    const planningActive =
+      state &&
+      (active(state) ||
+        (config.issueNumber === issue.number &&
+          planningImplementationNeedsMergeReconciliation(state)));
+    if (planningActive && legacyConflict)
       return {
         kind: "invalid-planning-state",
         issue,
         reason: "planning and legacy state are both active",
       };
+    if (legacyFinishRecovery) {
+      choices.push({ kind: "legacy", issue });
+      continue;
+    }
     if (
       state &&
-      active(state) &&
+      planningActive &&
       (planningIssueEligible({
         issue,
         config,
@@ -200,6 +298,7 @@ export async function selectRunOnceWorkflow(
         needsPlanningCleanupPendingPublication({
           state,
           labels: issue.labels,
+          roles: workflowRolesForIssue(issue, config),
           readyLabel: lifecycleLabels(config).ready,
           needsInfoLabel: lifecycleLabels(config).needsInfo,
         }))
@@ -214,11 +313,11 @@ export async function selectRunOnceWorkflow(
           config,
           activeOwnedWorkflow: true,
         })) &&
-      (issue.labels.includes(lifecycleLabels(config).inProgress) ||
-        issue.labels.includes(lifecycleLabels(config).ready) ||
+      (hasWorkflowRole(issue, config, "in-progress") ||
+        hasWorkflowRole(issue, config, "agent-ready") ||
         (hasFinishedPlanningWorkspaceState(legacy) &&
           isActionableWorkflowState(
-            resolveWorkflowState(issue.labels, {
+            resolveWorkflowState(workflowRolesForIssue(issue, config), {
               readyLabel: lifecycleLabels(config).ready,
               policy: config.approvalPolicy,
             }),
@@ -227,7 +326,7 @@ export async function selectRunOnceWorkflow(
       choices.push({ kind: "legacy", issue });
     else if (
       !hasBlockedRunRecoveryState(legacy) &&
-      issue.labels.includes(config.readyLabel) &&
+      hasWorkflowRole(issue, config, "agent-ready") &&
       planningIssueEligible({
         issue,
         config,

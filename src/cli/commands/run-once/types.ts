@@ -1,4 +1,8 @@
-import type { PatchmillHostConfig } from "../../../config/types.ts";
+import type {
+  PatchmillHostConfig,
+  PatchmillIssueStateConfig,
+} from "../../../config/types.ts";
+import type { IssueStateProvider } from "../../../issue-state/index.ts";
 import type { PatchmillTriagePolicy } from "../../../policy/triage.ts";
 import type { PatchmillProjectPolicy } from "../../../policy/types.ts";
 import type { PatchmillLabelCatalog } from "../../../policy/label-catalog.ts";
@@ -73,6 +77,8 @@ export type AgentIssueConfig = {
   issueLimit: 1;
   labelCatalog: PatchmillLabelCatalog;
   approvalPolicy: WorkflowApprovalPolicy;
+  issueState: PatchmillIssueStateConfig;
+  issueStateProvider?: IssueStateProvider | undefined;
   baseBranch: string;
   baseRef: string;
   remote: string;
@@ -84,9 +90,10 @@ export type AgentIssueConfig = {
 
 export type IssueSelectionOptions = Pick<
   AgentIssueConfig,
-  "issueNumber" | "readyLabel" | "triagePolicy"
+  "issueNumber" | "readyLabel" | "triagePolicy" | "issueState"
 > & {
   approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
+  issueStateProvider?: IssueStateProvider | undefined;
   priorityLabels?: readonly string[] | undefined;
   excludedLabels?: readonly string[] | undefined;
 };
@@ -140,7 +147,10 @@ export type AgentIssueRunCheckpoint =
   | "visualEvidenceValidated"
   | "handoffCommentPosted"
   | "doneLabelEnsured"
-  | "doneLabelApplied";
+  | "doneLabelApplied"
+  | "cleanupHookCompleted"
+  | "worktreeRemoved"
+  | "branchRemoved";
 
 export type AgentIssueRunCheckpoints = Partial<
   Record<AgentIssueRunCheckpoint, true>
@@ -152,11 +162,16 @@ export type AgentIssueRunState = {
   status: AgentIssueRunStateStatus;
   branch?: string | undefined;
   worktreePath?: string | undefined;
+  todoRoot?: string | undefined;
   specPath?: string | undefined;
   specCommit?: string | undefined;
   planPath?: string | undefined;
   planCommit?: string | undefined;
   checkpoints?: AgentIssueRunCheckpoints | undefined;
+  implementationPr?:
+    | import("../../../workflow/implementation-pr-reconciliation.ts").ImplementationPrEvidence
+    | undefined;
+  merge?: { mergeOid: string; mergedBaseOid: string } | undefined;
   implementationStatus?: "pr-created" | "merged" | undefined;
   prUrl?: string | undefined;
   mergeCommit?: string | undefined;
@@ -187,12 +202,17 @@ export type AgentIssueRunStateUpdate = {
   title?: string | undefined;
   branch?: string | undefined;
   worktreePath?: string | undefined;
+  todoRoot?: string | undefined;
   specPath?: string | undefined;
   specCommit?: string | undefined;
   planPath?: string | undefined;
   planCommit?: string | undefined;
   checkpoints?: AgentIssueRunCheckpoints | undefined;
   resetCheckpoints?: boolean | undefined;
+  implementationPr?:
+    | import("../../../workflow/implementation-pr-reconciliation.ts").ImplementationPrEvidence
+    | undefined;
+  merge?: { mergeOid: string; mergedBaseOid: string } | undefined;
   implementationStatus?: "pr-created" | "merged" | undefined;
   prUrl?: string | undefined;
   mergeCommit?: string | undefined;
@@ -258,6 +278,10 @@ export type AgentIssueStoppedResult = {
   | {
       reason: "issue-locked";
       publicFailure: RunOnceFailure<"issue-locked">;
+    }
+  | {
+      reason: "repository-busy";
+      publicFailure: RunOnceFailure<"repository-busy">;
     }
 );
 

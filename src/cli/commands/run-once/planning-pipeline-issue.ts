@@ -16,6 +16,7 @@ import type { IssueSummary } from "../../../issue/types.ts";
 import {
   legacyConflictsWithPlanning,
   planningIssueEligible,
+  planningImplementationNeedsMergeReconciliation,
 } from "./planning-selection.ts";
 import {
   planningBlocked,
@@ -27,6 +28,7 @@ import type { PlanningCoordinatorOutcome } from "./planning-phase-coordinator.ts
 import type { PlanningPipelineResult } from "./planning-pipeline.ts";
 import type { AgentIssueConfig } from "./types.ts";
 import type { ProgressReporter } from "./progress.ts";
+import { assertIssueRunLeaseOwned } from "./recovery-lease.ts";
 
 export type PlanningIssueInput = {
   issue: IssueSummary;
@@ -48,6 +50,14 @@ export type PlanningIssueInput = {
     issue: IssueSummary;
     state: PlanningStateV1;
   }) => Promise<PlanningCoordinatorOutcome | undefined>;
+  reconcileImplementationState?: (input: {
+    state: PlanningStateV1;
+    lock: PlanningIssueLock;
+    issue: IssueSummary;
+  }) => Promise<
+    | { kind: "ready"; state: PlanningStateV1 }
+    | { kind: "blocked"; reason: string }
+  >;
   mutate: (
     issue: IssueSummary,
     fresh: boolean,
@@ -63,6 +73,7 @@ export type PlanningIssueInput = {
   release?: typeof releasePlanningIssueLock;
   progress?: ProgressReporter;
   now?: () => Date;
+  lease?: import("./types.ts").IssueRunLease;
 };
 
 async function releaseOwnedPlanningLock(input: {
@@ -118,6 +129,11 @@ async function emitPlanningLockTakeover(
 export async function runPlanningIssue(
   input: PlanningIssueInput,
 ): Promise<PlanningPipelineResult> {
+  if (input.lease)
+    await assertIssueRunLeaseOwned(input.lease, {
+      runStateDir: input.runStateDir,
+      issueNumber: input.issue.number,
+    });
   const acquire = input.acquire ?? acquirePlanningIssueLock;
   const release = input.release ?? releasePlanningIssueLock;
   let lock: PlanningIssueLock | undefined;
@@ -128,6 +144,11 @@ export async function runPlanningIssue(
         issueNumber: input.issue.number,
         runId: input.state.runId,
       });
+      if (input.lease)
+        await assertIssueRunLeaseOwned(input.lease, {
+          runStateDir: input.runStateDir,
+          issueNumber: input.issue.number,
+        });
       await emitPlanningLockTakeover(lock, input);
     } catch (error) {
       if (error instanceof PlanningIssueLockConflictError) {
@@ -152,6 +173,11 @@ export async function runPlanningIssue(
     }
     let retriedAuthoritativeRun = false;
     while (true) {
+      if (input.lease)
+        await assertIssueRunLeaseOwned(input.lease, {
+          runStateDir: input.runStateDir,
+          issueNumber: input.issue.number,
+        });
       let issue: IssueSummary;
       let saved: PlanningStateV1 | undefined;
       let legacy: Awaited<ReturnType<PlanningIssueInput["readLegacy"]>>;
@@ -196,7 +222,9 @@ export async function runPlanningIssue(
             ],
           }),
         );
-      const current = saved ?? input.state;
+      let current = saved ?? input.state;
+      const finishRecovery =
+        planningImplementationNeedsMergeReconciliation(current);
       const planningActive = current.phases.some(
         (phase) => phase.status !== "complete",
       );
@@ -205,8 +233,10 @@ export async function runPlanningIssue(
         issue.number !== input.issue.number ||
         issue.title !== input.issue.title ||
         current.issueNumber !== input.issue.number ||
-        issue.state !== "open" ||
-        !planningActive ||
+        (issue.state !== "open" &&
+          !(finishRecovery && input.config.issueNumber === issue.number)) ||
+        (!planningActive &&
+          !(finishRecovery && input.config.issueNumber === issue.number)) ||
         legacyConflict
       )
         return planningBlocked(
@@ -253,6 +283,11 @@ export async function runPlanningIssue(
             issueNumber: input.issue.number,
             runId: saved.runId,
           });
+          if (input.lease)
+            await assertIssueRunLeaseOwned(input.lease, {
+              runStateDir: input.runStateDir,
+              issueNumber: input.issue.number,
+            });
           await emitPlanningLockTakeover(lock, input);
         } catch (error) {
           if (error instanceof PlanningIssueLockConflictError) {
@@ -289,6 +324,24 @@ export async function runPlanningIssue(
             lockRunId: lock.record.runId,
           }),
         );
+      if (finishRecovery && input.reconcileImplementationState) {
+        const receipt = await input.reconcileImplementationState({
+          state: current,
+          lock,
+          issue,
+        });
+        if (receipt.kind === "blocked")
+          return planningBlocked(
+            input.issue,
+            "implementation-evidence",
+            runOnceFailure("implementation-evidence", {
+              issueNumber: issue.number,
+              status: "blocked",
+              validation: receipt.reason,
+            }),
+          );
+        current = receipt.state;
+      }
       const reconciled = await input.reconcileCleanupPendingPublication?.({
         issue,
         state: current,
@@ -299,7 +352,8 @@ export async function runPlanningIssue(
         issue,
         config: input.config,
         state: current,
-        activeOwnedWorkflow: saved !== undefined && planningActive,
+        activeOwnedWorkflow:
+          saved !== undefined && (planningActive || finishRecovery),
       });
       if (
         !eligible ||

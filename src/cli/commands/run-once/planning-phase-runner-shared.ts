@@ -32,6 +32,7 @@ import {
 import type { PlanningArtifactAgent } from "./planning-phase-artifacts.ts";
 import type {
   AgentIssuePrCreatedResult,
+  AgentIssueMergedResult,
   PromptTriageLabels,
 } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
@@ -61,6 +62,11 @@ export type PlanningPhaseRunnerOutcome =
   | {
       kind: "complete";
       state: PlanningStateV1;
+      result: AgentIssueMergedResult;
+    }
+  | {
+      kind: "implementation-published";
+      state: PlanningStateV1;
       result: AgentIssuePrCreatedResult;
     }
   | { kind: "advanced"; state: PlanningStateV1 };
@@ -80,7 +86,13 @@ export type PlanningImplementationAdapter = Readonly<{
     state: PlanningStateV1,
   ) => Omit<
     PlanningFinishInput,
-    "state" | "phaseIndex" | "lock" | "stateStore" | "workspaces" | "git"
+    | "state"
+    | "phaseIndex"
+    | "lock"
+    | "stateStore"
+    | "workspaces"
+    | "reconcilePr"
+    | "git"
   >;
 }>;
 

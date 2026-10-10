@@ -20,8 +20,8 @@ test("keeps planning implementation todos in the primary repository", async () =
       return {
         code: 0,
         stdout: JSON.stringify({
-          status: "merged",
-          mergeCommit: "a".repeat(40),
+          status: "pr-created",
+          prUrl: "https://forgejo.test/owner/repo/pulls/1",
           branch: "agent/issue-189",
           commits: ["a".repeat(40)],
           validation: ["npm test"],
@@ -60,6 +60,6 @@ test("keeps planning implementation todos in the primary repository", async () =
   });
   assert.equal(outcome.kind, "implemented");
   if (outcome.kind === "implemented")
-    assert.equal(outcome.result.status, "merged");
+    assert.equal(outcome.result.status, "pr-created");
   assert.equal(todoPath, join(config.repoRoot, ".pi/todos"));
 });

@@ -11,6 +11,7 @@ export const RUN_ONCE_REASON_CODES = [
   "waiting-plan-approval",
   "plan-only",
   "issue-locked",
+  "repository-busy",
   "ignored-worktree-content",
   "issue-lock-stale",
   "issue-lock-unverifiable",
@@ -59,6 +60,7 @@ export type GeneralDiagnosticReasonCode = Extract<
   | IssueSelectionReasonCode
   | "plan-only"
   | "issue-locked"
+  | "repository-busy"
   | "ignored-worktree-content"
   | "agent-blocked"
   | "development-environment-not-ready"
@@ -129,7 +131,7 @@ type Workspace = Base & {
 type Lock = Base & {
   lockPath: string;
   fingerprint: string;
-  resource: "canonical-lock" | "takeover-transition";
+  resource: "canonical-lock" | "takeover-transition" | "common-lease";
   owner?: {
     issueNumber: number;
     runId: string;
@@ -166,6 +168,7 @@ export type RunOnceDiagnosticContextByReason = {
   };
   "plan-only": Workspace & { nextPhase?: "implementation" };
   "issue-locked": Lock;
+  "repository-busy": Base;
   "ignored-worktree-content": Workspace & {
     ignoredPaths: readonly string[];
     blockedAction?: string;

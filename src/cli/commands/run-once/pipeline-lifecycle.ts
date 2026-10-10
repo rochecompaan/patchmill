@@ -2,7 +2,11 @@ import type {
   AgentIssuePiResult,
   AgentIssueVisualEvidence,
 } from "../../../issue-run/types.ts";
-import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
+import {
+  DEFAULT_LABEL_CATALOG,
+  DEFAULT_TRIAGE_POLICY,
+} from "../triage/labels.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import {
   isActionableWorkflowState,
   resolveWorkflowState,
@@ -60,6 +64,21 @@ export function hasBlockedRunRecoveryState(
   );
 }
 
+export function automaticWorkflowRolesEligible(
+  roles: readonly string[],
+  config: Pick<
+    AgentIssueConfig,
+    "readyLabel" | "triagePolicy" | "approvalPolicy"
+  >,
+): boolean {
+  const state = resolveWorkflowState(roles, {
+    readyLabel: lifecycleLabels(config).ready,
+    policy:
+      config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy,
+  });
+  return isActionableWorkflowState(state) || state.kind === "not-actionable";
+}
+
 export function automaticWorkflowStateEligible(
   labels: string[],
   config: Pick<
@@ -67,11 +86,16 @@ export function automaticWorkflowStateEligible(
     "readyLabel" | "triagePolicy" | "approvalPolicy"
   >,
 ): boolean {
-  const state = resolveWorkflowState(labels, {
-    readyLabel: lifecycleLabels(config).ready,
-    policy: config.approvalPolicy,
-  });
-  return isActionableWorkflowState(state) || state.kind === "not-actionable";
+  return automaticWorkflowRolesEligible(
+    workflowRolesFromLabels(labels, {
+      triagePolicy: config.triagePolicy?.labels
+        ? config.triagePolicy
+        : DEFAULT_TRIAGE_POLICY,
+      approvalPolicy:
+        config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy,
+    }),
+    config,
+  );
 }
 
 export function lifecycleLabels(
@@ -93,6 +117,49 @@ export function lifecycleLabels(
       config.triagePolicy?.labels?.needsInfo ??
       DEFAULT_TRIAGE_POLICY.labels.needsInfo,
   };
+}
+
+export function issueWorkflowLabels(
+  config: Pick<AgentIssueConfig, "readyLabel"> & {
+    triagePolicy?: AgentIssueConfig["triagePolicy"] | undefined;
+    approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
+  },
+): Set<string> {
+  const labels = lifecycleLabels(config);
+  const triageLabels =
+    config.triagePolicy?.labels ?? DEFAULT_TRIAGE_POLICY.labels;
+  const approvalPolicy =
+    config.approvalPolicy ?? DEFAULT_LABEL_CATALOG.workflowApprovalPolicy;
+  return new Set([
+    labels.ready,
+    labels.inProgress,
+    labels.done,
+    labels.needsInfo,
+    triageLabels.unsuitable,
+    triageLabels.blocked,
+    approvalPolicy.specApproval.reviewLabel,
+    approvalPolicy.specApproval.approvedLabel,
+    approvalPolicy.planApproval.reviewLabel,
+    approvalPolicy.planApproval.approvedLabel,
+  ]);
+}
+
+export function selectionBlockingLabels(
+  labels: readonly string[],
+  excludedLabels: readonly string[],
+  config: Pick<AgentIssueConfig, "readyLabel"> & {
+    triagePolicy?: AgentIssueConfig["triagePolicy"] | undefined;
+    approvalPolicy?: AgentIssueConfig["approvalPolicy"] | undefined;
+    issueState?: AgentIssueConfig["issueState"] | undefined;
+  },
+): string[] {
+  const workflowLabels =
+    config.issueState?.provider === "comments"
+      ? issueWorkflowLabels(config)
+      : new Set<string>();
+  return labels.filter(
+    (label) => excludedLabels.includes(label) && !workflowLabels.has(label),
+  );
 }
 
 const RESUME_ONLY_SIDE_EFFECT_CHECKPOINTS = new Set<
@@ -241,16 +308,11 @@ export function successfulImplementationFromState(
 
 export function assertDirectLandAllowed(
   result: Extract<AgentIssuePiResult, { status: "pr-created" | "merged" }>,
-  config: Pick<AgentIssueConfig, "allowDirectLand" | "skills">,
+  _config: Pick<AgentIssueConfig, "allowDirectLand" | "skills">,
   source: string,
 ): void {
   if (result.status !== "merged") return;
-  if (!config.allowDirectLand)
-    throw new AgentIssueSafetyError(
-      `${source} returned merged while git.allowDirectLand is false`,
-    );
-  if (!config.skills.landing)
-    throw new AgentIssueSafetyError(
-      `${source} returned merged but direct landing requires git.allowDirectLand=true and configured skills.landing`,
-    );
+  throw new AgentIssueSafetyError(
+    `${source} returned merged. PR-only publication requires verified PR merge evidence; preserve this checkpoint for migration.`,
+  );
 }

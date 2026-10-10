@@ -19,7 +19,7 @@ test("resolveBundledPiCommand returns node and installed Pi CLI script", () => {
   assert.equal(spec.argsPrefix.length, 1);
   assert.match(
     spec.argsPrefix[0] ?? "",
-    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/,
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\](?:bundle[/\\])?cli\.js$/,
   );
   assert.equal(existsSync(spec.argsPrefix[0] ?? ""), true);
 });

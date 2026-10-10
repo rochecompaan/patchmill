@@ -6,7 +6,8 @@ import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { runOneIssue as runCurrentOneIssue } from "./pipeline.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
-import { readRunState, writeRunState } from "./run-state.ts";
+import { readRunState } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import {
   blockedRecoveryRunner,
   makeConfig,
@@ -250,6 +251,48 @@ test("runOneIssue facade returns dry-run selection", async () => {
   assert.equal(result.issue.number, 7);
 });
 
+test("runOneIssue dry-run uses comment issue-state roles", async () => {
+  const selected = issue(7, [], "Dry run issue");
+  const config = await makeConfig({
+    dryRun: true,
+    issueState: { provider: "comments", trustedAuthors: ["bot"] },
+  } as never);
+  const runner = createMockRunner((call) => {
+    if (call.command === "tea" && call.args[0] === "issues") {
+      const page = call.args[call.args.indexOf("--page") + 1];
+      return {
+        code: 0,
+        stdout: page === "1" ? issueListPayload([selected]) : "[]",
+        stderr: "",
+      };
+    }
+    if (call.command === "tea" && call.args[0] === "api") {
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          {
+            body: "---\nPatchmill: agent-ready\n---\n",
+            author: { login: "bot" },
+            created_at: "2026-05-09T11:00:00Z",
+          },
+        ]),
+        stderr: "",
+      };
+    }
+    if (call.command === "git" && call.args[0] === "merge-base")
+      return { code: 0, stdout: "", stderr: "" };
+    throw new Error(
+      `unexpected command: ${call.command} ${call.args.join(" ")}`,
+    );
+  });
+
+  const result = await runCurrentOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "dry-run");
+  assert.equal(result.issue.number, 7);
+  assert.equal(result.transition, "agent-ready -> agent-done");
+});
+
 test("runOneIssue facade returns plan-created in plan-only mode", async () => {
   const { result } = await runPlanApprovedImplementationScenario({
     issueNumber: 8,
@@ -452,8 +495,11 @@ test("runOneIssue facade returns pr-created after implementation", async () => {
     title: "PR issue",
   });
 
-  assert.equal(result.status, "pr-created");
-  assert.equal(result.prUrl, "https://forgejo.example/pr/9");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal(
+    result.prUrl,
+    "https://forgejo.test/test-owner/test-repo/pulls/9",
+  );
 });
 
 test("runOneIssue repairs an implementation prose finish without unresolved subagents", async () => {
@@ -487,7 +533,7 @@ test("runOneIssue repairs an implementation prose finish without unresolved suba
       },
     });
 
-  assert.equal(result.status, "pr-created");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.equal(piPrompts.length, 2);
   assert.match(piPrompts[1] ?? "", /previous response was invalid/i);
   assert.match(
@@ -500,7 +546,7 @@ test("runOneIssue repairs an implementation prose finish without unresolved suba
   assert.equal(sessions[0], sessions[1]);
 });
 
-test("runOneIssue facade returns merged for direct landing", async () => {
+test("runOneIssue facade refuses an agent-supplied direct merge", async () => {
   const { result } = await runPlanApprovedImplementationScenario({
     issueNumber: 10,
     title: "Merged issue",
@@ -525,8 +571,8 @@ test("runOneIssue facade returns merged for direct landing", async () => {
     }),
   });
 
-  assert.equal(result.status, "merged");
-  assert.equal(result.mergeCommit, "abc123");
+  assert.equal(result.status, "blocked");
+  if (result.status === "blocked") assert.match(result.reason, /PR-only/iu);
 });
 
 test("runOneIssue facade returns blocked implementation result", async () => {

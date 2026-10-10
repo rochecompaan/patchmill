@@ -187,6 +187,8 @@ async function fixture(cleanup: "ready" | "legacy") {
     ),
   );
   let failCheckpoint: string | undefined;
+  let merged = false;
+  let changedPrHead = false;
   events.length = 0;
   calls.length = 0;
   return {
@@ -202,6 +204,15 @@ async function fixture(cleanup: "ready" | "legacy") {
     failNextCheckpoint(cleanupState: string) {
       failCheckpoint = cleanupState;
     },
+    changePrHead() {
+      changedPrHead = true;
+    },
+    markMerged(deleteHead = false) {
+      git(remote, "update-ref", "refs/heads/main", headOid, baseOid);
+      if (deleteHead)
+        git(remote, "update-ref", "-d", `refs/heads/${branch}`, headOid);
+      merged = true;
+    },
     run() {
       return runPlanningImplementationPhase({
         state: current,
@@ -211,9 +222,9 @@ async function fixture(cleanup: "ready" | "legacy") {
           artifactKinds: [],
           pullRequestRequired: true,
         },
-        issue: {} as never,
+        issue: { number: 262, state: "open" } as never,
         lock: {} as never,
-        config: {} as never,
+        config: { remote: "origin" } as never,
         stateStore: {
           replace: async ({ next }: { next: PlanningStateV1 }) => {
             const valid = validatePlanningState(next);
@@ -228,8 +239,28 @@ async function fixture(cleanup: "ready" | "legacy") {
             return valid;
           },
         },
-        host: {} as never,
-        remoteBase: {} as never,
+        host: {
+          resolveTargetRepositoryIdentity: async () => repository,
+          getPullRequest: async () => ({
+            number: 263,
+            url: prUrl,
+            targetRepository: repository,
+            headRepository: repository,
+            baseBranch: "main",
+            headBranch: branch,
+            headSha: changedPrHead ? baseOid : headOid,
+            body: "Closes #262\n\n<!-- patchmill:planning-pr-v1 issue=262 phase=implementation -->",
+            ...(merged
+              ? { status: "merged", mergeCommit: headOid }
+              : { status: "open" }),
+          }),
+        } as never,
+        remoteBase: {
+          fetch: async () => ({
+            ...base,
+            baseOid: git(remote, "rev-parse", "refs/heads/main"),
+          }),
+        },
         artifactAgent: {} as never,
         workspaces,
         publicationGit,
@@ -329,7 +360,7 @@ for (const cleanup of ["ready", "legacy"] as const) {
     const setup = await fixture(cleanup);
     try {
       const result = await setup.run();
-      assert.equal(result.kind, "complete");
+      assert.equal(result.kind, "implementation-published");
       await assert.rejects(access(setup.path), { code: "ENOENT" });
       assert.deepEqual(setup.events, [
         "remote",
@@ -337,12 +368,51 @@ for (const cleanup of ["ready", "legacy"] as const) {
         "checkpoint:worktree-removed",
         "remote",
         "checkpoint:removed",
-        "ensureDoneLabel",
-        "checkpoint:removed",
-        "applyDoneLabels",
-        "checkpoint:removed",
-        "checkpoint:removed",
       ]);
+      setup.markMerged();
+      assert.equal((await setup.run()).kind, "complete");
+      assert.equal(
+        setup.events.filter((event) => event === "applyDoneLabels").length,
+        1,
+      );
+    } finally {
+      await setup.cleanup();
+    }
+  });
+  test(`${cleanup} implementation retry preserves ignored bytes when PR publication changes`, async () => {
+    const setup = await fixture(cleanup);
+    try {
+      const saved = setup.state();
+      setup.changePrHead();
+      assert.equal((await setup.run()).kind, "blocked");
+      assert.equal(
+        await readFile(join(setup.path, ".env"), "utf8"),
+        ignoredBytes,
+      );
+      assert.deepEqual(setup.state(), saved);
+      assert.deepEqual(setup.events, []);
+      assert.equal(setup.calls.length, 0);
+    } finally {
+      await setup.cleanup();
+    }
+  });
+  test(`${cleanup} verified merged retry removes ignored content after remote branch deletion`, async () => {
+    const setup = await fixture(cleanup);
+    try {
+      setup.markMerged(true);
+      assert.equal((await setup.run()).kind, "complete");
+      await assert.rejects(access(setup.path), { code: "ENOENT" });
+      assert.equal(setup.events.includes("remote"), false);
+      assert.equal(
+        setup.events.filter((event) => event === "worktree").length,
+        1,
+      );
+      assert.equal(
+        setup.events.some((event) =>
+          ["cost", "visual", "handoff", "hook"].includes(event),
+        ),
+        false,
+      );
     } finally {
       await setup.cleanup();
     }
@@ -357,7 +427,9 @@ for (const failedCheckpoint of ["worktree-removed", "removed"] as const) {
       await assert.rejects(setup.run(), /checkpoint failed/);
       await assert.rejects(access(setup.path), { code: "ENOENT" });
       const result = await setup.run();
-      assert.equal(result.kind, "complete");
+      assert.equal(result.kind, "implementation-published");
+      setup.markMerged();
+      assert.equal((await setup.run()).kind, "complete");
       assert.equal(
         setup.calls.filter(
           (args) => args[0] === "worktree" && args[1] === "remove",

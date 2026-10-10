@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { blockIssue, unexpectedFailure } from "./pipeline-failures.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
 import { issue } from "../../../../test-support/run-once/issue-fixtures.ts";
 import { collectProgressEvents } from "../../../../test-support/run-once/assertions.ts";
 import { makeConfig } from "../../../../test-support/run-once/pipeline-fixtures.ts";
@@ -27,21 +28,25 @@ test("blockIssue writes blocked state and returns blocked result", async () => {
   const config = await makeConfig();
   const issueSummary = issue(1, ["in-progress"]);
   const fakeHost = host();
-  const result = await blockIssue(
-    fakeHost,
-    config,
-    issueSummary,
-    issueSummary.labels,
-    {
-      status: "blocked",
-      reason: "need info",
-      questions: [],
-      commits: [],
-      validation: [],
-    },
-    {},
-    new Date().toISOString(),
-    {},
+  const result = await withIssueRunLease(
+    { runStateDir: config.runStateDir, issueNumber: 1 },
+    (lease) =>
+      blockIssue(
+        fakeHost,
+        config,
+        issueSummary,
+        issueSummary.labels,
+        {
+          status: "blocked",
+          reason: "need info",
+          questions: [],
+          commits: [],
+          validation: [],
+        },
+        {},
+        new Date().toISOString(),
+        { lease },
+      ),
   );
   assert.equal(result.status, "blocked");
   assert.equal(result.publicFailure?.reason, "agent-blocked");
@@ -55,21 +60,26 @@ test("unexpectedFailure comments once and retains aggregate diagnostic evidence"
   const config = await makeConfig();
   const { progress } = collectProgressEvents();
   const fakeHost = host();
-  const result = await unexpectedFailure(
-    fakeHost,
-    config,
-    issue(2, ["in-progress"]),
-    {},
-    {},
-    new Date().toISOString(),
-    new AggregateError(
-      [new Error("observer failed"), new Error("cleanup failed")],
-      "boom",
-    ),
-    {
-      progress,
-      logPath: "/repo/.patchmill/runs/issue-2/run.jsonl",
-    },
+  const result = await withIssueRunLease(
+    { runStateDir: config.runStateDir, issueNumber: 2 },
+    (lease) =>
+      unexpectedFailure(
+        fakeHost,
+        config,
+        issue(2, ["in-progress"]),
+        {},
+        {},
+        new Date().toISOString(),
+        new AggregateError(
+          [new Error("observer failed"), new Error("cleanup failed")],
+          "boom",
+        ),
+        {
+          lease,
+          progress,
+          logPath: "/repo/.patchmill/runs/issue-2/run.jsonl",
+        },
+      ),
   );
   assert.equal(result.status, "blocked");
   assert.equal(result.publicFailure?.reason, "unexpected-error");

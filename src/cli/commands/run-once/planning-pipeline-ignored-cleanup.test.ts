@@ -23,9 +23,9 @@ test("implementation cleanup removes ignored worktree content without a pending 
   try {
     const result = await scenario.run();
     assert.equal(result.status, "pr-created", JSON.stringify(result));
-    assert.deepEqual(scenario.issueSnapshot().labels, ["agent-done"]);
+    assert.deepEqual(scenario.issueSnapshot().labels, ["in-progress"]);
     const state = await scenario.state();
-    assert.equal(state?.phases.at(-1)?.status, "complete");
+    assert.equal(state?.phases.at(-1)?.status, "pull-request-open");
     assert.equal(
       scenario
         .stateHistory()
@@ -97,6 +97,22 @@ test("implementation cleanup removes ignored worktree content without a pending 
       color: false,
     });
     assert.doesNotMatch(terminal, /Cleanup pending|ignored-worktree-content/);
+
+    await scenario.mergeOpenImplementationPull({ closeIssue: false });
+    assert.equal((await scenario.run()).status, "merged");
+    assert.equal((await scenario.state())?.phases.at(-1)?.status, "complete");
+    assert.deepEqual(scenario.issueSnapshot().labels, ["agent-done"]);
+    for (const operation of [
+      "cleanup-hook",
+      "workspace-remove",
+      "branch-remove",
+    ]) {
+      assert.equal(
+        scenario.effects().filter((effect) => effect.operation === operation)
+          .length,
+        1,
+      );
+    }
   } finally {
     await scenario.cleanup();
   }

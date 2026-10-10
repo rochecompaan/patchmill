@@ -299,7 +299,7 @@ export function implementationPhaseState(
     };
   }
   if (status === "pull-request-open") {
-    const parsed = object(
+    const parsed = objectWithOptionalKeys(
       value,
       [
         "kind",
@@ -312,6 +312,7 @@ export function implementationPhaseState(
         "implementation",
         "finish",
       ],
+      ["merge"],
       path,
     );
     const workspaceEvidence = workspace(parsed.workspace, `${path}.workspace`);
@@ -343,6 +344,9 @@ export function implementationPhaseState(
       pullRequest: pullRequestEvidence,
       implementation: evidence,
       finish: implementationFinish(parsed.finish, `${path}.finish`),
+      ...(parsed.merge === undefined
+        ? {}
+        : { merge: implementationMerge(parsed.merge, `${path}.merge`) }),
     };
   }
   if (status !== "complete") failState("invalid-status", `${path}.status`);
@@ -350,7 +354,7 @@ export function implementationPhaseState(
     string,
     unknown
   >;
-  const parsed = object(
+  const parsed = objectWithOptionalKeys(
     value,
     completion?.kind === "remote-base"
       ? ["kind", "status", "base", "artifacts", "completion"]
@@ -366,6 +370,7 @@ export function implementationPhaseState(
           "finish",
           "completion",
         ],
+    ["merge"],
     path,
   );
   const terminal = object(parsed.completion, ["kind"], `${path}.completion`);
@@ -409,5 +414,16 @@ export function implementationPhaseState(
     implementation: evidence,
     finish: finish as Required<PlanningImplementationFinishCheckpoints>,
     completion: { kind: "implementation-pull-request" },
+    ...(parsed.merge === undefined
+      ? {}
+      : { merge: implementationMerge(parsed.merge, `${path}.merge`) }),
+  };
+}
+
+function implementationMerge(value: unknown, path: string) {
+  const parsed = object(value, ["mergeOid", "mergedBaseOid"], path);
+  return {
+    mergeOid: oid(parsed.mergeOid, `${path}.mergeOid`),
+    mergedBaseOid: oid(parsed.mergedBaseOid, `${path}.mergedBaseOid`),
   };
 }

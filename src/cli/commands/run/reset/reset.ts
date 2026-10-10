@@ -1,3 +1,9 @@
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { withRunRecoveryAdmission } from "../../run-once/repository-admission.ts";
+import { repositoryMutationContext } from "../../run-once/repository-mutation-context.ts";
+import { legacyImplementationNeedsMergeReconciliation } from "../../run-once/planning-selection.ts";
 import type { IssueSummary } from "../../../../issue/types.ts";
 import type { CommandRunner } from "../../../../command/types.ts";
 import { createRunOnceHostProvider } from "../../../../host/factory.ts";
@@ -16,6 +22,9 @@ import {
 } from "../../run-once/run-state.ts";
 import { archiveRunRecovery } from "../../run-once/recovery-archive.ts";
 import { withIssueRunLease } from "../../run-once/recovery-lease.ts";
+import { liveIssueContentionResult } from "../../run-once/issue-contention-result.ts";
+import { RepositoryMutationBusyError } from "../../../../git/repository-mutation.ts";
+import { repositoryBusyResult } from "../../run-once/repository-busy-result.ts";
 import { readRunLegacyMigrationFence } from "../../run-once/recovery-lease-repair.ts";
 import {
   executeRunRecoveryMutation,
@@ -55,6 +64,7 @@ export class ResetIssueRunRecoveryError extends Error {
 }
 export type ResetIssueRunResult =
   | { status: "nothing-to-reset"; issueNumber: number; guidance: string }
+  | { status: "stopped"; pipelineResult: AgentIssuePipelineResult }
   | {
       status: "reset-started";
       issueNumber: number;
@@ -134,6 +144,73 @@ export async function resetIssueRun(
   options: RunOneIssueOptions = {},
   dependencies: Partial<ResetIssueRunDependencies> = {},
 ): Promise<ResetIssueRunResult> {
+  if (config.dryRun) throw new Error("Legacy reset does not support dry-run");
+  const snapshot = await readRunStateSnapshot(
+    config.runStateDir,
+    config.issueNumber,
+  );
+  if (snapshot) validateRecoveryRunState(snapshot.state, config.issueNumber);
+  const attemptId = options.attemptId ?? randomUUID();
+  return withRunRecoveryAdmission(
+    runner,
+    config,
+    config.issueNumber,
+    (admission) =>
+      resetAdmittedIssueRun(
+        runner,
+        config,
+        { ...options, admission, attemptId },
+        dependencies,
+      ),
+    attemptId,
+  ).catch((error: unknown) => {
+    const issue: IssueSummary = {
+      number: config.issueNumber,
+      title: `Issue ${config.issueNumber}`,
+      body: "",
+      state: "open",
+      labels: [],
+    };
+    const stopped = liveIssueContentionResult(issue, error);
+    if (stopped) return { status: "stopped" as const, pipelineResult: stopped };
+    const cause =
+      error instanceof ResetIssueRunRecoveryError ? error.cause : error;
+    if (cause instanceof RepositoryMutationBusyError)
+      return {
+        status: "stopped" as const,
+        pipelineResult: repositoryBusyResult(issue, options),
+      };
+    throw error;
+  });
+}
+async function assertNoPlanningReset(
+  config: AgentIssueConfig,
+  issueNumber: number,
+) {
+  try {
+    await access(
+      join(
+        config.runStateDir,
+        "planning-pr-v1",
+        "issues",
+        `issue-${issueNumber}.json`,
+      ),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  throw new Error(
+    "Legacy reset refuses planning state; resume its owned planning workflow instead",
+  );
+}
+async function resetAdmittedIssueRun(
+  runner: CommandRunner,
+  config: AgentIssueConfig & { issueNumber: number },
+  options: RunOneIssueOptions,
+  dependencies: Partial<ResetIssueRunDependencies>,
+): Promise<ResetIssueRunResult> {
+  await assertNoPlanningReset(config, config.issueNumber);
   const host = (dependencies.createHost ?? createRunOnceHostProvider)({
     runner,
     repoRoot: config.repoRoot,
@@ -151,15 +228,33 @@ export async function resetIssueRun(
     config,
   });
   return withIssueRunLease(
-    { runStateDir: config.runStateDir, issueNumber: config.issueNumber },
+    {
+      runStateDir: config.runStateDir,
+      issueNumber: config.issueNumber,
+      ...(options.attemptId ? { ownerToken: options.attemptId } : {}),
+    },
     async (lease) => {
+      await assertNoPlanningReset(config, config.issueNumber);
+      const mutationContext = repositoryMutationContext(
+        runner,
+        { ...options, lease },
+        config.issueNumber,
+      );
       const issue = await host.viewIssue(config.issueNumber);
       const snapshot = await readRunStateSnapshot(
         config.runStateDir,
         config.issueNumber,
       );
-      if (snapshot)
+      if (snapshot) {
         validateRecoveryRunState(snapshot.state, config.issueNumber);
+        if (
+          legacyImplementationNeedsMergeReconciliation(snapshot.state) ||
+          snapshot.state.implementationStatus === "merged"
+        )
+          throw new Error(
+            "Published implementation PR needs PR reconciliation, not a legacy reset",
+          );
+      }
       validateResetIssueEligibility({ issue, state: snapshot?.state, config });
       if (!snapshot)
         return {
@@ -211,6 +306,7 @@ export async function resetIssueRun(
         dependencies.archiveRecovery ?? archiveRunRecovery
       )({
         runStateDir: config.runStateDir,
+        lease,
         issueNumber: config.issueNumber,
         snapshot,
         assessment: decision.assessment,
@@ -227,6 +323,7 @@ export async function resetIssueRun(
           decision,
           runner,
           repoRoot: config.repoRoot,
+          ...(mutationContext ? { mutation: mutationContext } : {}),
           reassess: async () => {
             const current = await readRunStateSnapshot(
               config.runStateDir,
@@ -244,7 +341,12 @@ export async function resetIssueRun(
       try {
         pipelineResult = await (
           dependencies.runPipeline ?? runLegacyOneIssueAfterReset
-        )(runner, config, options, { lease, seed: decision.seed });
+        )(
+          runner,
+          config,
+          { ...options, lease },
+          { lease, seed: decision.seed },
+        );
       } catch (error) {
         throw new ResetIssueRunRecoveryError(
           error,

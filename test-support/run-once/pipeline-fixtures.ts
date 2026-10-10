@@ -8,14 +8,13 @@ import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { createPatchmillLabelCatalog } from "../../src/policy/label-catalog.ts";
 import { createWorkflowApprovalPolicy } from "../../src/workflow/approval-policy.ts";
 import { runLegacyOneIssue as runOneIssue } from "../../src/cli/commands/run-once/pipeline-legacy.ts";
-import {
-  runStatePath,
-  writeRunState,
-} from "../../src/cli/commands/run-once/run-state.ts";
+import { runStatePath } from "../../src/cli/commands/run-once/run-state.ts";
+import { writeFixtureRunState as writeRunState } from "./run-state-fixture.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
 } from "../../src/cli/commands/run-once/types.ts";
+import { buildIssueBranchName } from "../../src/git/worktree-strategy.ts";
 import { issue, issueListPayload, labelListPayload } from "./issue-fixtures.ts";
 import {
   createMockRunner,
@@ -106,7 +105,7 @@ export async function makeConfig(
     branchPrefix: "agent/issue-",
     worktreePrefix: "patchmill-issue-",
     slugLength: 48,
-    allowDirectLand: true,
+    allowDirectLand: false,
     skills: { ...DEFAULT_PATCHMILL_CONFIG.skills },
     ...overrides,
   };
@@ -214,7 +213,11 @@ export async function runPlanApprovedImplementationScenario(
             stdout: JSON.stringify({
               status: "pr-created",
               prUrl: `https://forgejo.example/pr/${scenario.issueNumber}`,
-              branch: `agent/issue-${scenario.issueNumber}-implementation`,
+              branch: buildIssueBranchName(
+                scenario.issueNumber,
+                scenario.title,
+                config,
+              ),
               commits: ["123abc"],
               validation: ["npm test"],
               reviewSummary: "reviewed",
@@ -350,6 +353,12 @@ export function blockedRecoveryRunner(
         stderr: "",
       };
     }
+    if (
+      call.command === "git" &&
+      call.args.join(" ") ===
+        "rev-parse --path-format=absolute --git-common-dir"
+    )
+      return { code: 0, stdout: `${config.repoRoot}\n`, stderr: "" };
     if (call.command === "git" && call.args[0] === "rev-parse") {
       return {
         code: 0,

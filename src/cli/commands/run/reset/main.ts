@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createCommandRunner } from "../../triage/command.ts";
 import {
   finalLogPath,
@@ -45,6 +46,7 @@ export async function runResetCommand(
   }
   const startedAt = dependencies.now?.() ?? new Date();
   const timestamp = startedAt.toISOString();
+  const attemptId = randomUUID();
   const stdout = dependencies.stdout ?? process.stdout;
   const stderr = dependencies.stderr ?? process.stderr;
   const env = dependencies.env ?? process.env;
@@ -66,7 +68,7 @@ export async function runResetCommand(
         "patchmill run reset rejects --dry-run: no reset preview contract exists",
       );
 
-    const logPath = runLogPath(config.runStateDir, timestamp);
+    const logPath = runLogPath(config.runStateDir, timestamp, attemptId);
     const interactiveOutput = stdout.isTTY === true;
     const consoleProgress = config.quiet
       ? undefined
@@ -79,6 +81,13 @@ export async function runResetCommand(
       new JsonlProgressReporter(logPath),
       ...(consoleProgress ? [consoleProgress] : []),
     ]);
+    await progress.event({
+      time: timestamp,
+      level: "debug",
+      stage: "run-attempt",
+      message: "recovery attempt started",
+      attemptId,
+    });
     let result;
     try {
       result = await (dependencies.executeReset ?? resetIssueRun)(
@@ -86,6 +95,7 @@ export async function runResetCommand(
         config as typeof config & { issueNumber: number },
         {
           now: startedAt,
+          attemptId,
           progress,
           logPath,
           verbosePiOutput: config.verbosePiOutput,
@@ -127,27 +137,29 @@ export async function runResetCommand(
       });
     }
 
-    await progress.event({
-      time: new Date().toISOString(),
-      level: "info",
-      stage: "recovery",
-      message: `Recovery action: ${result.recoveryAction}`,
-      consoleMessage: [
-        `Recovery action: ${result.recoveryAction}`,
-        `Archive: ${result.archivePath}`,
-        ...result.quarantinePaths.map((path) => `Quarantine: ${path}`),
-      ].join("\n"),
-      data: {
-        recoveryAction: result.recoveryAction,
-        archivePath: result.archivePath,
-        quarantinePaths: result.quarantinePaths,
-      },
-    });
+    if (result.status === "reset-started")
+      await progress.event({
+        time: new Date().toISOString(),
+        level: "info",
+        stage: "recovery",
+        message: `Recovery action: ${result.recoveryAction}`,
+        consoleMessage: [
+          `Recovery action: ${result.recoveryAction}`,
+          `Archive: ${result.archivePath}`,
+          ...result.quarantinePaths.map((path) => `Quarantine: ${path}`),
+        ].join("\n"),
+        data: {
+          recoveryAction: result.recoveryAction,
+          archivePath: result.archivePath,
+          quarantinePaths: result.quarantinePaths,
+        },
+      });
     const outputLogPath = await finalLogPath(
       logPath,
       config.runStateDir,
       timestamp,
       result.pipelineResult,
+      attemptId,
     );
     const summary = summarizeResult({
       ...result.pipelineResult,

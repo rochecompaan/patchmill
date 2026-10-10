@@ -127,7 +127,10 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       return { code: 0, stdout: "", stderr: "" };
     }
 
-    if (call.command === "git" && call.args[0] === "branch") {
+    if (
+      call.command === "git" &&
+      (call.args[0] === "branch" || call.args[0] === "update-ref")
+    ) {
       return { code: 0, stdout: "", stderr: "" };
     }
 
@@ -190,6 +193,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   const streamedPiOutput: string[] = [];
   const result = await runOneIssue(runner, config, {
     now: NOW,
+    attemptId: "implementation-attempt",
     progress,
     logPath,
     streamPiOutput: (chunk) => streamedPiOutput.push(chunk),
@@ -200,7 +204,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
   const expectedPiSessionPath = join(
     config.runStateDir,
     "issue-15",
-    "run-2026-05-09T12-00-00-000Z-pi-sessions",
+    "run-2026-05-09T12-00-00-000Z-implementation-attempt-pi-sessions",
   );
   assert.equal(result.piSessionPath, expectedPiSessionPath);
   const piSessionDirs = sessionDirs(workflowPiCalls(runner.calls));
@@ -255,9 +259,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       "creating plan with pi",
       "running implementation with pi",
       "Patchmill could not calculate the PR run-cost summary",
-      "PR created: https://forgejo.example/pr/15",
-      "removed local worktree .worktrees/patchmill-issue-15-ship-automation-pipeline",
-      "deleted local branch agent/issue-15-ship-automation-pipeline",
+      "PR created: https://forgejo.test/test-owner/test-repo/pulls/15",
     ],
   );
   assert.equal(result.planPath, expectedPlanPath);
@@ -266,7 +268,10 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
     result.worktreePath,
     ".worktrees/patchmill-issue-15-ship-automation-pipeline",
   );
-  assert.equal(result.prUrl, "https://forgejo.example/pr/15");
+  assert.equal(
+    result.prUrl,
+    "https://forgejo.test/test-owner/test-repo/pulls/15",
+  );
   assert.equal(piCalls, 3);
   assert.deepEqual(streamedPiOutput, []);
 
@@ -276,7 +281,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       call.args[0] === "issues" &&
       call.args[1] === "edit",
   );
-  assert.equal(editCalls.length, 2);
+  assert.equal(editCalls.length, 1);
   assert.deepEqual(
     editCalls[0]?.args,
     withRepo(
@@ -292,22 +297,6 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       config.repoRoot,
     ),
   );
-  assert.deepEqual(
-    editCalls[1]?.args,
-    withRepo(
-      [
-        "issues",
-        "edit",
-        "15",
-        "--remove-labels",
-        "in-progress",
-        "--add-labels",
-        "agent-done",
-      ],
-      config.repoRoot,
-    ),
-  );
-
   const doneLabelCreate = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -315,12 +304,12 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
       call.args[1] === "create" &&
       call.args.includes("agent-done"),
   );
-  assert.ok(doneLabelCreate);
+  assert.equal(doneLabelCreate, undefined);
 
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 15), "utf8"),
   );
-  assert.equal(runState.status, "finished");
+  assert.equal(runState.status, "implementing");
   assert.equal(runState.planPath, expectedPlanPath);
   assert.equal(runState.planCommit, "abc123");
   assert.equal(runState.branch, "agent/issue-15-ship-automation-pipeline");
@@ -613,7 +602,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
       );
       assert.match(
         prompt,
-        /Use the configured landing skill for the direct-land versus PR decision: `sentinel-landing`\./,
+        /Use the configured landing skill for PR review and handoff: `sentinel-landing`\./,
       );
       assert.match(
         prompt,
@@ -623,10 +612,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
         prompt,
         /"screenshotPath": "docs\/sentinel\/web\/sentinel-after\.png"/,
       );
-      assert.match(
-        prompt,
-        /Update local `release\/2\.0` from the `upstream` remote\./,
-      );
+      assert.match(prompt, /Do not land directly on `release\/2\.0`\./);
       assert.doesNotMatch(
         prompt,
         /capturing proof screenshots|Reviewer must confirm Sentinel screenshot approval|policyText|webScreenshotSkill|mobileScreenshotSkill/,
@@ -651,7 +637,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "pr-created");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.equal(piCalls, 3);
 });
 
@@ -735,13 +721,10 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
         prompt,
         /Worktree: \.patchmill\/worktrees\/pm-issue-16-use-custom-worktrees/,
       );
+      assert.match(prompt, /Do not land directly on `release\/1\.2`\./);
       assert.match(
         prompt,
-        /Update local `release\/1\.2` from the `upstream` remote\./,
-      );
-      assert.match(
-        prompt,
-        /Push `release\/1\.2` to `upstream` without force-pushing\./,
+        /Push the branch to `upstream` and open a pull request/u,
       );
       assert.match(
         prompt,
@@ -788,7 +771,7 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "pr-created");
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
   assert.equal(result.branch, "patchmill/issue-16-use-custom-worktrees");
   assert.equal(
     result.worktreePath,

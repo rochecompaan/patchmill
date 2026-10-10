@@ -1,4 +1,5 @@
 import type { CommandResult, CommandRunner } from "../src/command/types.ts";
+export { createCommandRunner } from "../src/cli/commands/triage/command.ts";
 
 export type RecordedCommandCall = {
   command: string;
@@ -13,7 +14,7 @@ export function normalizeRecordedPiCall(
 ): RecordedCommandCall {
   if (
     command === process.execPath &&
-    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/.test(
+    /@earendil-works[/\\]pi-coding-agent[/\\]dist[/\\](?:bundle[/\\])?cli\.js$/.test(
       args[0] ?? "",
     )
   ) {

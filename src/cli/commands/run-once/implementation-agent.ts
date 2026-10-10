@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { resolveIssueTodoContract } from "./issue-todo-contract.ts";
 import type { PatchmillPiTaskContract } from "../../../policy/task-contract.ts";
 import {
   profileExtensionArgs,
@@ -17,7 +18,6 @@ import type { CommandRunner } from "../../../command/types.ts";
 import type {
   AgentIssueBlockedResult,
   AgentIssueDevelopmentEnvironmentNotReadyResult,
-  AgentIssueMergedResult,
   AgentIssuePiResult,
   AgentIssuePrCreatedResult,
 } from "../../../issue-run/types.ts";
@@ -29,7 +29,7 @@ import type { AgentIssueConfig } from "./types.ts";
 export type ImplementationAgentOutcome =
   | {
       kind: "implemented";
-      result: AgentIssuePrCreatedResult | AgentIssueMergedResult;
+      result: AgentIssuePrCreatedResult;
     }
   | { kind: "blocked"; result: AgentIssueBlockedResult }
   | {
@@ -60,6 +60,7 @@ export type ImplementationAgentInput = {
   heartbeatMs?: number | undefined;
   piSessionPath?: string | undefined;
   requiredPullRequestMarker?: string | undefined;
+  existingPullRequestUrl?: string;
   /** Planning runs pin operator todo state outside their owned worktree. */
   taskContract?: PatchmillPiTaskContract | undefined;
   progress: (
@@ -81,6 +82,11 @@ export async function runImplementationAgent(
   input: ImplementationAgentInput,
 ): Promise<ImplementationAgentOutcome> {
   const worktreeRoot = resolve(input.config.repoRoot, input.worktreePath);
+  const taskContract = resolveIssueTodoContract(
+    worktreeRoot,
+    input.taskContract ?? input.config.projectPolicy.pi.taskContract,
+    input.resume.existingState?.todoRoot,
+  );
   let developmentEnvironment;
   if (input.config.skills.developmentEnvironment) {
     const environment = await runDevelopmentEnvironmentAgent({
@@ -115,8 +121,6 @@ export async function runImplementationAgent(
       issueNumber: input.issue.number,
     },
   );
-  const taskContract =
-    input.taskContract ?? input.config.projectPolicy.pi.taskContract;
   const taskProgress = await createImplementationTaskProgress({
     repoRoot: input.config.repoRoot,
     worktreeRoot,
@@ -160,6 +164,9 @@ export async function runImplementationAgent(
           priorBlockerQuestions: input.resume.existingState?.blockerQuestions,
           priorValidation: input.resume.existingState?.validation,
         },
+        ...(input.existingPullRequestUrl
+          ? { existingPullRequestUrl: input.existingPullRequestUrl }
+          : {}),
         ...(developmentEnvironment === undefined
           ? {}
           : { developmentEnvironment }),
@@ -198,9 +205,13 @@ export async function runImplementationAgent(
   }
   if (!result) throw new Error("Pi implementation completed without a result");
   if (result.status === "blocked") return { kind: "blocked", result };
-  if (result.status !== "pr-created" && result.status !== "merged")
+  if (result.status === "merged")
     throw new Error(
-      `Expected pr-created or merged from Pi but received ${result.status}`,
+      "Pi returned merged. PR-only publication cannot accept an agent-supplied merge; preserve the evidence for migration.",
+    );
+  if (result.status !== "pr-created")
+    throw new Error(
+      `Expected pr-created from Pi but received ${result.status}`,
     );
   await assertIssueTodosComplete(
     worktreeRoot,

@@ -40,7 +40,13 @@ export function createPlanningFinishEffects(
   state: PlanningStateV1,
 ) => Omit<
   PlanningFinishInput,
-  "state" | "phaseIndex" | "lock" | "stateStore" | "workspaces" | "git"
+  | "state"
+  | "phaseIndex"
+  | "lock"
+  | "stateStore"
+  | "workspaces"
+  | "reconcilePr"
+  | "git"
 > {
   return (durable) => {
     const implementation = requiredImplementationFinishContext(
@@ -116,18 +122,26 @@ export function createPlanningFinishEffects(
             throw new Error("Planning cleanup hook failed");
         },
         ensureDoneLabel: () =>
-          ensureAutomationLabel(input.host, input.config, input.doneLabel),
+          input.config.issueState?.provider === "comments"
+            ? Promise.resolve()
+            : ensureAutomationLabel(input.host, input.config, input.doneLabel),
         applyDoneLabels: () =>
-          applyPlanningDoneLabels({
-            host: input.host,
-            issueNumber: input.issue.number,
-            labels: {
-              ready: input.readyLabel,
-              inProgress: input.inProgressLabel,
-              needsInfo: input.needsInfoLabel,
-              done: input.doneLabel,
-            },
-          }),
+          input.config.issueState?.provider === "comments" &&
+          input.config.issueStateProvider
+            ? input.config.issueStateProvider.setRoles({
+                issue: input.issue,
+                roles: ["agent-done"],
+              })
+            : applyPlanningDoneLabels({
+                host: input.host,
+                issueNumber: input.issue.number,
+                labels: {
+                  ready: input.readyLabel,
+                  inProgress: input.inProgressLabel,
+                  needsInfo: input.needsInfoLabel,
+                  done: input.doneLabel,
+                },
+              }),
       },
       onCostPublicationFailure: async (error) =>
         progress(

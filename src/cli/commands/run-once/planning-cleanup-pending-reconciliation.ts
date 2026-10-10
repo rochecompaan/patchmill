@@ -48,6 +48,7 @@ export async function reconcilePlanningCleanupPendingPublication(input: {
     !needsPlanningCleanupPendingPublication({
       state: input.state,
       labels: input.issue.labels,
+      roles: input.config.issueStateProvider?.resolveRoles(input.issue).roles,
       readyLabel: input.labels.ready,
       needsInfoLabel: input.labels.needsInfo,
     })
@@ -72,6 +73,7 @@ export async function reconcilePlanningCleanupPendingPublication(input: {
 export function needsPlanningCleanupPendingPublication(input: {
   state: PlanningStateV1 | undefined;
   labels: readonly string[];
+  roles?: readonly string[] | undefined;
   readyLabel: string;
   needsInfoLabel: string;
 }): boolean {
@@ -79,6 +81,9 @@ export function needsPlanningCleanupPendingPublication(input: {
     input.state !== undefined &&
     !input.labels.includes(input.readyLabel) &&
     !input.labels.includes(input.needsInfoLabel) &&
+    !(input.roles ?? []).some((role) =>
+      ["agent-ready", "needs-info"].includes(role),
+    ) &&
     cleanupPendingOutcome(input.state) !== undefined
   );
 }

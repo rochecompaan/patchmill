@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
-import { readRunState, runStatePath, writeRunState } from "./run-state.ts";
+import { readRunState, runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import {
   issue,
@@ -133,7 +134,7 @@ test("runOneIssue starts implementation without an agent team", async () => {
         code: 0,
         stdout: JSON.stringify({
           status: "pr-created",
-          prUrl: "https://forgejo.example/repo/pulls/14",
+          prUrl: "https://forgejo.test/test-owner/test-repo/pulls/14",
           branch: "agent/issue-14-needs-explicit-team",
           commits: ["abc1234"],
           validation: ["npm test: pass"],
@@ -235,12 +236,15 @@ test("runOneIssue runs development environment before implementation when config
     });
 
   assert.equal(result.status, "pr-created");
-  const expectedPiSessionPath = join(
-    config.runStateDir,
-    "issue-46",
-    "run-2026-05-09T12-00-00-000Z-pi-sessions",
+  const expectedPiSessionPath = result.piSessionPath!;
+  assert.equal(
+    dirname(expectedPiSessionPath),
+    join(config.runStateDir, "issue-46"),
   );
-  assert.equal(result.piSessionPath, expectedPiSessionPath);
+  assert.match(
+    basename(expectedPiSessionPath),
+    /^run-2026-05-09T12-00-00-000Z-[0-9a-f-]{36}-pi-sessions$/u,
+  );
   const piSessionDirs = sessionDirs(workflowPiCalls(runner.calls));
   const developmentEnvironmentDir = piSessionDirs.find(
     (dir) =>
@@ -643,7 +647,7 @@ test("runOneIssue restores a retryable label after resumed development environme
   );
 });
 
-test("runOneIssue replaces stale implementation result fields when Pi changes implementationStatus", async () => {
+test("runOneIssue preserves PR evidence when an agent claims an unverified merge", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -752,13 +756,13 @@ test("runOneIssue replaces stale implementation result fields when Pi changes im
 
   const result = await runOneIssue(runner, config, { now: NOW });
 
-  assert.equal(result.status, "merged");
+  assert.equal(result.status, "blocked");
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   ) as Record<string, unknown>;
-  assert.equal(runState.implementationStatus, "merged");
-  assert.equal(runState.mergeCommit, "def456");
-  assert.equal(runState.prUrl, undefined);
-  assert.equal(runState.reviewSummary, undefined);
-  assert.equal(runState.landingDecision, undefined);
+  assert.equal(runState.implementationStatus, "pr-created");
+  assert.equal(runState.mergeCommit, undefined);
+  assert.equal(runState.prUrl, "https://forgejo/pr/stale-45");
+  assert.equal(runState.reviewSummary, "stale review");
+  assert.equal(runState.landingDecision, "stale landing");
 });

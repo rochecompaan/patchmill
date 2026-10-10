@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import {
@@ -256,21 +257,11 @@ test("runOneIssue resumes clean blocked implementation workspace after external 
       call.args.includes("--add-labels") &&
       call.args.includes("agent-done"),
   );
-  assert.ok(finalLabelCall, "expected final done label update");
-  assert.equal(
-    finalLabelCall.args.includes("--remove-labels"),
-    true,
-    "expected final label update to remove stale labels",
-  );
-  assert.match(
-    finalLabelCall.args[finalLabelCall.args.indexOf("--remove-labels") + 1] ??
-      "",
-    /in-progress/,
-  );
+  assert.equal(finalLabelCall, undefined, "an open PR must retain in-progress");
   const state = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
-  assert.equal(state.status, "finished");
+  assert.equal(state.status, "implementing");
   assert.equal(state.branch, "agent/issue-45-recover-blocked-run");
   assert.equal(
     state.worktreePath,

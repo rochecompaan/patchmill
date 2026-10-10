@@ -879,7 +879,7 @@ test("runOneIssue validates committed visual evidence before cleanup", async () 
         code: 0,
         stdout: JSON.stringify({
           status: "pr-created",
-          prUrl: "https://forgejo.example/owner/patchmill/pulls/77",
+          prUrl: "https://forgejo.test/test-owner/test-repo/pulls/77",
           branch: "agent/issue-31-dashboard-visual-evidence",
           commits: ["def456"],
           validation: ["just playwright-test ok"],
@@ -911,7 +911,7 @@ test("runOneIssue validates committed visual evidence before cleanup", async () 
   assert.match(
     commentBodies.find((body) => body.includes("Automation handoff ready")) ??
       "",
-    /PR: https:\/\/forgejo\.example\/owner\/patchmill\/pulls\/77/,
+    /PR: https:\/\/forgejo\.test\/test-owner\/test-repo\/pulls\/77/,
   );
 });
 
@@ -993,7 +993,7 @@ test("runOneIssue blocks temporary visual evidence before cleanup", async () => 
         code: 0,
         stdout: JSON.stringify({
           status: "pr-created",
-          prUrl: "https://forgejo.example/owner/patchmill/pulls/78",
+          prUrl: "https://forgejo.test/test-owner/test-repo/pulls/78",
           branch: "agent/issue-32-temporary-visual-evidence",
           commits: ["def456"],
           validation: ["just playwright-test ok"],

@@ -108,34 +108,45 @@ Common `skills` keys include:
 - `toolchain`: prepares setup or validation commands.
 - `review`: runs explicit review passes.
 - `visualEvidence`: default-configured skill used when visible UI changes.
-- `landing`: guides direct-land versus pull-request decisions.
+- `landing`: guides PR review, validation, checks, and handoff requirements.
 
-Initialized repositories that use project-local skills default to paths under
-`.patchmill/skills/`, including `.patchmill/skills/patchmill-planning` for
-planning, `.patchmill/skills/subagent-dev-with-validation-and-pr-checks` for
-implementation, and `.patchmill/skills/patchmill-visual-evidence` for visual
-evidence. The implementation wrapper delegates task execution to the installed
-Superpowers skill and adds final validation plus PR-check readiness without the
-optional Codex/thermo full-worktree loops.
+Initialized repositories use these project-local entrypoints:
+
+- Planning: `.patchmill/skills/patchmill-planning`.
+- Implementation: `.patchmill/skills/inline-dev-with-validation-and-pr-checks`.
+- Visual evidence: `.patchmill/skills/patchmill-visual-evidence`.
+
+The implementation session executes the whole plan through the sibling
+Superpowers `executing-plans` skill. It does not dispatch task workers or
+per-task reviewers. One fresh independent reviewer receives the full delivery,
+the upstream template, and the Patchmill review appendix. The session completes
+one ordered fix pass and reruns all final commands. Code-related PR check errors
+permit at most two repair passes. A ready PR handoff requires observable passing
+checks, or evidence that no required checks exist.
+
+Namespace and user-global defaults use `superpowers:executing-plans`. This
+compatibility path does not automatically include the Patchmill appendix. Use
+the managed local pack for the complete Patchmill workflow.
+
+Explicit custom implementation skills remain supported. An explicit
+`skills.review` adds the operator's review workflow. An absent value adds no
+extra review pass. Planning preserves explicit execution choices and unattended
+config choices. A supplied execution method does not waive existing planning
+review gates.
 
 ## Landing skill
 
-The `landing` skill guides the final direct-land versus pull-request decision.
-Patchmill does not configure a default landing skill; create a project-specific
-skill when a repository wants direct landing. The skill does not return a
-separate standalone result. Instead, Patchmill adds the configured landing skill
-to the implementation prompt, and the implementation agent returns the normal
-final JSON for either `merged` or `pr-created`.
+The `landing` skill defines PR review, validation, checks, and handoff policy.
+It does not return a standalone result. Patchmill adds it to the implementation
+prompt, and the agent returns `pr-created` or `blocked`.
 
-Patchmill accepts a `merged` result only when both conditions are true:
+Both planning and legacy workflows require implementation PRs. A custom skill
+cannot authorize direct target-branch updates. `git.allowDirectLand` defaults to
+`false`. An explicit `true` value is rejected with migration guidance.
 
-- `git.allowDirectLand` is `true`.
-- `skills.landing` is configured.
-
-Otherwise direct landing is rejected as a safety error and the agent must create
-a pull request. `planning-pr-v1` is stricter: its implementation phase always
-requires a validated implementation pull request, even when legacy direct
-landing is configured.
+Only Patchmill's saved-PR reconciliation can return `merged`. It verifies the
+PR's identity and merge against the target base before completing finish
+checkpoints.
 
 ```json
 {
@@ -143,7 +154,7 @@ landing is configured.
     "landing": ".patchmill/skills/project-landing"
   },
   "git": {
-    "allowDirectLand": true
+    "allowDirectLand": false
   }
 }
 ```
@@ -154,47 +165,18 @@ and final-response requirements:
 ````markdown
 ---
 name: project-landing
-description: Decide when Patchmill may direct-land and when it must open a PR.
+description: Define PR review, validation, checks, and handoff requirements.
 ---
 
 # Project Landing
 
-Use this skill for the final direct-land versus pull-request decision.
-
-Direct-land only when all of these are true:
-
-- The issue is a trivial docs, copy, or config change; or a simple bug that was
-  reproduced, fixed, and covered by validation.
-- The change is small, localized, and easy to inspect from the diff.
-- Required validation commands passed.
-- No visible UI state requires human inspection.
-- No migration, schema change, dependency change, security-sensitive behavior,
-  public API change, large refactor, or ambiguous product/UX decision is
-  involved.
-
-If direct-land is eligible and Patchmill's prompt says direct landing is
-allowed, squash-merge the implementation branch into the target branch, push the
-target branch, close the source issue on the issue host, and return `merged`
-final JSON. Include a `landingDecision` that explains why direct landing was
-safe and confirms the issue was closed:
-
-```json
-{
-  "status": "merged",
-  "branch": "agent/issue-123-fix-empty-state",
-  "mergeCommit": "<squash commit sha on target branch>",
-  "commits": ["<implementation commit sha>"],
-  "validation": ["npm test passed"],
-  "reviewSummary": "reviewed simple localized bug fix; closed issue #123",
-  "landingDecision": "direct squash-landed and closed issue: reproduced simple bug and validation passed"
-}
-```
-
-For everything else, create or update a pull request and return `pr-created`
-final JSON. Prefer PR fallback for visual UI changes, migrations, large
-refactors, dependency updates, security-sensitive changes, and anything that
-needs human product, UX, or architecture review. Include a `landingDecision`
-that explains why human review is required:
+Create or update an implementation PR from the owned branch. Do not update or
+push the target branch directly. Do not merge the PR or close the issue as an
+implementation handoff. Run the required validation and independent review. Wait
+for passing required PR checks before the final handoff. For visible UI changes,
+commit reference screenshots. For migrations or security-sensitive changes,
+identify the human review requirements. Return `pr-created` JSON with validation
+and review evidence:
 
 ```json
 {
@@ -263,8 +245,30 @@ Run this command when Patchmill publishes a newer bundled skill pack:
 npx patchmill@latest skills update
 ```
 
-The update command only changes Patchmill-managed project-local skills. It stops
-if managed skill files were edited locally.
+The update command changes only Patchmill-managed project-local files. It stops
+when managed files contain custom changes or new files collide with unmanaged
+files. It does not rewrite `patchmill.config.json`.
+
+Pack version `2026.10.1` retires these managed wrappers:
+
+- `subagent-dev-with-validation-and-pr-checks`
+- `subagent-dev-with-codex-and-thermo-reviews`
+- `single-subagent-dev-with-codex-and-thermo-reviews`
+
+After the update, explicitly change the implementation reference:
+
+```json
+{
+  "skills": {
+    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"
+  }
+}
+```
+
+If a managed file contains custom changes, preserve those changes first. Choose
+explicitly whether to port them or keep a separate custom skill. Doctor reports
+the same migration guidance for readable and missing retired managed paths.
+Unrelated custom paths with matching names remain valid.
 
 ## Review discipline
 

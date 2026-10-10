@@ -156,6 +156,7 @@ export type ImplementationPullRequestOpenPlanningPhase = Readonly<{
   pullRequest: PlanningPullRequestEvidence;
   implementation: PlanningImplementationAgentEvidence;
   finish: PlanningImplementationFinishCheckpoints;
+  merge?: Readonly<{ mergeOid: string; mergedBaseOid: string }>;
 }>;
 export type ImplementationCompletePlanningPhase = Readonly<{
   kind: "implementation";
@@ -171,6 +172,8 @@ export type ImplementationCompletePlanningPhase = Readonly<{
   implementation: PlanningImplementationAgentEvidence;
   finish: Required<PlanningImplementationFinishCheckpoints>;
   completion: Readonly<{ kind: "implementation-pull-request" }>;
+  /** Absent only in older, unverified completion checkpoints. */
+  merge?: Readonly<{ mergeOid: string; mergedBaseOid: string }>;
 }>;
 export type PlanningPhaseStateV1 =
   | Readonly<{ kind: PlanningPhaseKind; status: "pending" }>

@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { selectResumableIssue } from "./pipeline-selection.ts";
 import { DEFAULT_TRIAGE_POLICY } from "../triage/labels.ts";
 import { JsonlProgressReporter } from "./progress.ts";
+import { withIssueRunLease } from "./recovery-lease.ts";
 import {
   issue,
   issueListPayload,
@@ -96,21 +98,11 @@ test("post-lease revalidation never selects a newly higher-priority issue under 
       `unexpected command: ${call.command} ${call.args.join(" ")}`,
     );
   });
-  const result = await runOneIssue(runner, config, {
-    now: NOW,
-    leasedIssueNumber: 45,
-    lease: {
-      path: "lease",
-      record: {
-        version: 1,
-        issueNumber: 45,
-        ownerToken: "owner",
-        pid: 1,
-        hostname: "host",
-        startedAt: NOW.toISOString(),
-      },
-    },
-  });
+  const result = await withIssueRunLease(
+    { runStateDir: config.runStateDir, issueNumber: 45 },
+    (lease) =>
+      runOneIssue(runner, config, { now: NOW, leasedIssueNumber: 45, lease }),
+  );
   assert.deepEqual(result, { status: "no-issue" });
   assert.equal(
     runner.calls.some(
@@ -1139,10 +1131,10 @@ test("runOneIssue rejects an explicit open issue that is not agent-ready with a 
     () => runOneIssue(runner, config, { now: NOW }),
     /Issue #7 is open but not labeled agent-ready/,
   );
-  assert.equal(runner.calls.length, 3);
+  assert.equal(runner.calls.length, 1);
 });
 
-test("runOneIssue rejects a different explicit issue when a resumable run exists", async () => {
+test("explicit fresh issue reaches pre-claim checks beside unrelated resumable state", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -1192,13 +1184,32 @@ test("runOneIssue rejects a different explicit issue when a resumable run exists
     );
   });
 
+  // The runner intentionally stops at the first pre-claim workspace check.
+  // Cross-issue rejection would prevent the requested issue reaching it.
+  const unrelated = await readFile(
+    runStatePath(config.runStateDir, 45),
+    "utf8",
+  );
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Resumable in-progress automation run #45 exists; resume it before processing #46/,
+    /unexpected command: git status/u,
+  );
+  assert.equal(
+    await readFile(runStatePath(config.runStateDir, 45), "utf8"),
+    unrelated,
+  );
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        call.command === "tea" &&
+        call.args[1] === "list" &&
+        call.args[call.args.indexOf("--state") + 1] === "open",
+    ),
+    false,
   );
 });
 
-test("runOneIssue rejects a different explicit blocked recovery issue when a resumable run exists", async () => {
+test("explicit blocked recovery applies its own eligibility beside unrelated resumable state", async () => {
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -1261,7 +1272,7 @@ test("runOneIssue rejects a different explicit blocked recovery issue when a res
 
   await assert.rejects(
     () => runOneIssue(runner, config, { now: NOW }),
-    /Resumable in-progress automation run #46 exists; resume it before processing #45/,
+    /Issue #45 has a blocked Run recovery state but is not marked agent-ready/,
   );
   assert.equal(
     runner.calls.some(
@@ -1461,7 +1472,10 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const result = await runOneIssue(runner, config, { now: NOW, progress });
 
   assert.equal(result.status, "pr-created");
-  assert.equal(result.prUrl, "https://forgejo.example/pr/45");
+  assert.equal(
+    result.prUrl,
+    "https://forgejo.test/test-owner/test-repo/pulls/45",
+  );
   const claimCall = runner.calls.find(
     (call) =>
       call.command === "tea" &&
@@ -1491,7 +1505,7 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
   const runState = JSON.parse(
     await readFile(runStatePath(config.runStateDir, 45), "utf8"),
   );
-  assert.equal(runState.status, "finished");
+  assert.equal(runState.status, "implementing");
   assert.equal(runState.planPath, planPath);
   assert.equal(runState.branch, "agent/issue-45-finished-plan-only");
   assert.equal(

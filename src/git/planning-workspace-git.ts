@@ -1,4 +1,6 @@
 import type { CommandRunner } from "../command/types.ts";
+import type { RepositoryMutationContext } from "./repository-mutation.ts";
+import { withRepositoryMutationRunner } from "./repository-mutation-runner.ts";
 import type { PlanningPhaseKind } from "../workflow/planning-pull-request-markers.ts";
 import { PlanningHeadAdoptionGit } from "./planning-head-adoption-git.ts";
 import { PlanningWorkspaceCleanupGit } from "./planning-workspace-cleanup.ts";
@@ -26,12 +28,15 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   private readonly repository: PlanningWorkspaceRepositoryGit;
   private readonly cleanup: PlanningWorkspaceCleanupGit;
   private readonly headAdoption: PlanningHeadAdoptionGit;
+  private readonly mutation: RepositoryMutationContext | undefined;
 
   constructor(input: {
     runner: CommandRunner;
     repoRoot: string;
     worktreeRoot: string;
+    mutation?: RepositoryMutationContext;
   }) {
+    this.mutation = input.mutation;
     this.repository = new PlanningWorkspaceRepositoryGit(input);
     this.cleanup = new PlanningWorkspaceCleanupGit(this.repository);
     this.headAdoption = new PlanningHeadAdoptionGit({
@@ -51,7 +56,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
   adoptPlanningHead(
     input: PlanningHeadAdoptionInput,
   ): Promise<PlanningHeadAdoptionResult> {
-    return this.headAdoption.adopt(input);
+    return this.transaction((git) => git.headAdoption.adopt(input));
   }
 
   async prepare(input: {
@@ -60,6 +65,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
     identity: PlanningWorkspaceIdentity;
     base: PlanningRemoteBaseSnapshot;
   }): Promise<PreparedPlanningWorkspace> {
+    if (this.mutation) return this.transaction((git) => git.prepare(input));
     assertPlanningWorkspacePrepareInput(input);
     const path = this.repository.path(input.identity);
     const before = await this.repository.inspect(input.identity);
@@ -155,7 +161,7 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
       { state: "ready" } | PlanningWorkspaceCleanupPending
     >;
   }): Promise<PlanningWorkspaceRemovalOutcome> {
-    return this.cleanup.removeWorktree(input);
+    return this.transaction((git) => git.cleanup.removeWorktree(input));
   }
 
   removeBranch(input: {
@@ -167,6 +173,20 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
     }>;
     authorization: PlanningWorkspaceBranchRemovalAuthorization;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "missing" }>> {
-    return this.cleanup.removeBranch(input);
+    return this.transaction((git) => git.cleanup.removeBranch(input));
+  }
+
+  private transaction<T>(
+    action: (git: PlanningWorkspaceGit) => Promise<T>,
+  ): Promise<T> {
+    return withRepositoryMutationRunner(this.runner, this.mutation, (runner) =>
+      action(
+        new PlanningWorkspaceGit({
+          runner,
+          repoRoot: this.repoRoot,
+          worktreeRoot: this.worktreeRoot,
+        }),
+      ),
+    );
   }
 }

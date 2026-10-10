@@ -9,6 +9,7 @@ import {
   runOncePlanningPiProfile,
 } from "../../../pi/resource-profiles.ts";
 import { planLabelChange } from "../triage/labels.ts";
+import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { runPiPrompt, type RunPiPromptOptions } from "./pi.ts";
@@ -87,6 +88,7 @@ export type PlanningStageAdvanceResult =
   | { kind: "finished"; result: AgentIssuePipelineResult };
 
 export type AdvancePlanningStagesOptions = {
+  lease: import("./types.ts").IssueRunLease;
   runner: CommandRunner;
   host: IssueHostProvider;
   config: AgentIssueConfig;
@@ -237,6 +239,7 @@ export async function advancePlanningStages({
   artifactPolicy,
   ensurePlanningArtifactWorkspace,
   checkpoints,
+  lease,
   timestamp,
   now,
   runOptions,
@@ -402,6 +405,7 @@ export async function advancePlanningStages({
           ...(specCreated ? { specCreated: true } : {}),
         },
       },
+      lease,
       timestamp,
     );
     checkpoints.specPathResolved = true;
@@ -479,6 +483,7 @@ export async function advancePlanningStages({
         specCommit,
         checkpoints: { specPathResolved: true, specCreated: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.specPathResolved = true;
@@ -548,15 +553,21 @@ export async function advancePlanningStages({
         specCommit,
         checkpoints: { specPublished: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.specPublished = true;
     await emitSimpleStep(issue.number, "publish spec");
   }
 
+  const currentRoles =
+    config.issueStateProvider?.resolveRoles(issue).roles ??
+    workflowRolesFromLabels(issue.labels, {
+      triagePolicy: config.labelCatalog.triagePolicy,
+      approvalPolicy: config.approvalPolicy,
+    });
   const hasCurrentSpecApproval =
-    approvalGatesSatisfied ||
-    issue.labels.includes(config.approvalPolicy.specApproval.approvedLabel);
+    approvalGatesSatisfied || currentRoles.includes("spec-approved");
   const mustStopForSpecReview =
     config.approvalPolicy.specApproval.required &&
     specPath !== undefined &&
@@ -573,7 +584,12 @@ export async function advancePlanningStages({
       [],
     );
     if (!checkpoints.specReadyCommentPosted) {
-      await host.commentIssue(issue.number, specComment(specPath, specCreated));
+      if (config.issueState?.provider !== "comments") {
+        await host.commentIssue(
+          issue.number,
+          specComment(specPath, specCreated),
+        );
+      }
       await writeRunState(
         config.runStateDir,
         {
@@ -584,29 +600,46 @@ export async function advancePlanningStages({
           specCommit,
           checkpoints: { specReadyCommentPosted: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.specReadyCommentPosted = true;
     }
-    await ensureAutomationLabel(
-      host,
-      config,
-      config.approvalPolicy.specApproval.reviewLabel,
-    );
-    await host.applyLabels(planLabelChange(issue.number, labels, finalLabels));
-    await writeRunState(
-      config.runStateDir,
-      {
-        issueNumber: issue.number,
-        status: reviewStopStatus(existingState),
-        ...planningWorkspaceState(),
-        specPath,
-        specCommit,
-        checkpoints: { readyLabelRestored: true },
-      },
-      timestamp,
-    );
-    checkpoints.readyLabelRestored = true;
+    if (!checkpoints.readyLabelRestored) {
+      if (
+        config.issueState?.provider === "comments" &&
+        config.issueStateProvider
+      ) {
+        await config.issueStateProvider.setRoles({
+          issue,
+          roles: ["spec-review"],
+          message: specComment(specPath, specCreated),
+        });
+      } else {
+        await ensureAutomationLabel(
+          host,
+          config,
+          config.approvalPolicy.specApproval.reviewLabel,
+        );
+        await host.applyLabels(
+          planLabelChange(issue.number, labels, finalLabels),
+        );
+      }
+      await writeRunState(
+        config.runStateDir,
+        {
+          issueNumber: issue.number,
+          status: reviewStopStatus(existingState),
+          ...planningWorkspaceState(),
+          specPath,
+          specCommit,
+          checkpoints: { readyLabelRestored: true },
+        },
+        lease,
+        timestamp,
+      );
+      checkpoints.readyLabelRestored = true;
+    }
     const specStatus = specCreated ? "spec-created" : "spec-found";
     await emitSimpleStep(issue.number, `final result ${specStatus}`);
     return {
@@ -643,6 +676,7 @@ export async function advancePlanningStages({
           ...(planCreated ? { planCreated: true } : {}),
         },
       },
+      lease,
       timestamp,
     );
     checkpoints.planPathResolved = true;
@@ -718,6 +752,7 @@ export async function advancePlanningStages({
         planCommit,
         checkpoints: { planPathResolved: true, planCreated: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.planPathResolved = true;
@@ -789,6 +824,7 @@ export async function advancePlanningStages({
         planCommit,
         checkpoints: { planPublished: true },
       },
+      lease,
       timestamp,
     );
     checkpoints.planPublished = true;
@@ -798,7 +834,12 @@ export async function advancePlanningStages({
   const planGate = approvalGatesSatisfied
     ? ({ action: "proceed" } as const)
     : decidePlanApprovalGate({
-        labels,
+        roles:
+          config.issueStateProvider?.resolveRoles(issue).roles ??
+          workflowRolesFromLabels(labels, {
+            triagePolicy: config.labelCatalog.triagePolicy,
+            approvalPolicy: config.approvalPolicy,
+          }),
         planOnly: config.planOnly,
         policy: config.approvalPolicy,
       });
@@ -816,7 +857,12 @@ export async function advancePlanningStages({
           )
         : nextLabels(labels, [inProgress], [ready]);
     if (!checkpoints.planReadyCommentPosted) {
-      await host.commentIssue(issue.number, planComment(planPath, planCreated));
+      if (config.issueState?.provider !== "comments") {
+        await host.commentIssue(
+          issue.number,
+          planComment(planPath, planCreated),
+        );
+      }
       await writeRunState(
         config.runStateDir,
         {
@@ -829,17 +875,32 @@ export async function advancePlanningStages({
           planCommit,
           checkpoints: { planReadyCommentPosted: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.planReadyCommentPosted = true;
     }
     if (!checkpoints.readyLabelRestored) {
-      if (planGate.action === "stop-for-plan-review") {
-        await ensureAutomationLabel(host, config, planGate.reviewLabel);
+      if (
+        config.issueState?.provider === "comments" &&
+        config.issueStateProvider
+      ) {
+        await config.issueStateProvider.setRoles({
+          issue,
+          roles:
+            planGate.action === "stop-for-plan-review"
+              ? ["plan-review"]
+              : ["agent-ready"],
+          message: planComment(planPath, planCreated),
+        });
+      } else {
+        if (planGate.action === "stop-for-plan-review") {
+          await ensureAutomationLabel(host, config, planGate.reviewLabel);
+        }
+        await host.applyLabels(
+          planLabelChange(issue.number, labels, finalLabels),
+        );
       }
-      await host.applyLabels(
-        planLabelChange(issue.number, labels, finalLabels),
-      );
       await writeRunState(
         config.runStateDir,
         {
@@ -852,6 +913,7 @@ export async function advancePlanningStages({
           planCommit,
           checkpoints: { readyLabelRestored: true },
         },
+        lease,
         timestamp,
       );
       checkpoints.readyLabelRestored = true;
@@ -867,6 +929,7 @@ export async function advancePlanningStages({
         planPath,
         planCommit,
       },
+      lease,
       timestamp,
     );
     const planStatus = planCreated ? "plan-created" : "plan-found";

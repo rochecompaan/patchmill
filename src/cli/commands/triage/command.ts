@@ -1,5 +1,6 @@
 import type { CommandResult, CommandRunner } from "../../../command/types.ts";
 import { spawn } from "node:child_process";
+import { runOwnedGitCommand } from "../../../process/owned-git-command.ts";
 
 function appendAbortMarker(stderr: string): string {
   return `${stderr}${stderr.length > 0 && !stderr.endsWith("\n") ? "\n" : ""}command aborted\n`;
@@ -7,7 +8,13 @@ function appendAbortMarker(stderr: string): string {
 
 export function createCommandRunner(): CommandRunner {
   return {
+    supportsOwnedGit: true,
     run(command, args, options = {}) {
+      if (options.ownedGit) {
+        if (command !== "git")
+          return Promise.reject(new Error("Owned lifecycle requires Git"));
+        return runOwnedGitCommand(args, options);
+      }
       if (options.signal?.aborted) {
         return Promise.resolve({
           code: 1,

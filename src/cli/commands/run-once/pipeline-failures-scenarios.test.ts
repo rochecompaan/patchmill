@@ -4,7 +4,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_PATCHMILL_CONFIG } from "../../../config/defaults.ts";
 import { createTriagePolicy } from "../../../policy/triage.ts";
-import { runStatePath, writeRunState } from "./run-state.ts";
+import { runStatePath } from "./run-state.ts";
+import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import {
   DEFAULT_LABEL_NAMES,
@@ -1225,7 +1226,7 @@ test("runOneIssue resumes required plan approval after unexpected implementation
           status: "pr-created",
           prUrl: "https://forgejo/pr/43",
           branch:
-            "agent/issue-43-handle-plan-approval-implementation-parse-failure",
+            "agent/issue-43-handle-plan-approval-implementation-parse-failur",
           commits: ["abc123"],
           validation: ["just issue-runner-test ok"],
         }),
@@ -1239,7 +1240,7 @@ test("runOneIssue resumes required plan approval after unexpected implementation
 
   const resumed = await runOneIssue(resumeRunner, config, { now: NOW });
 
-  assert.equal(resumed.status, "pr-created");
+  assert.equal(resumed.status, "pr-created", JSON.stringify(resumed));
   assert.equal(resumed.issue.number, 43);
 });
 

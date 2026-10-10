@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RunRecoveryMutationError } from "../../run-once/recovery-mutation.ts";
 import { ResetIssueRunRecoveryError } from "./reset.ts";
-import { runLogPath } from "../../run-once/progress.ts";
+import { readdir } from "node:fs/promises";
 import { runResetCommand } from "./main.ts";
 
 function output(
@@ -197,8 +197,12 @@ test("successful reset reports action, archive, and quarantines on stderr withou
   assert.match(captured.read().stderr, /Quarantine: quarantine-two/);
   assert.match(captured.read().stdout, /^\{"status":"no-issue"/);
   assert.doesNotMatch(captured.read().stdout, /archive-path|quarantine-one/);
+  const logs = (await readdir(runStateDir)).filter((name) =>
+    name.endsWith(".jsonl"),
+  );
+  assert.equal(logs.length, 1);
   const log = await import("node:fs/promises").then(({ readFile }) =>
-    readFile(runLogPath(runStateDir, NOW.toISOString()), "utf8"),
+    readFile(join(runStateDir, logs[0]), "utf8"),
   );
   assert.match(log, /"archivePath":"archive-path"/);
   assert.match(log, /"quarantinePaths":\["quarantine-one","quarantine-two"\]/);

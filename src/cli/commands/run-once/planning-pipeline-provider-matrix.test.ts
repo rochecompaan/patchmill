@@ -56,6 +56,18 @@ for (const provider of [
         }
         const result = await scenario.run();
         assert.equal(result.status, "pr-created", JSON.stringify(result));
+        assert.equal(
+          (await scenario.state())?.phases.at(-1)?.status,
+          "pull-request-open",
+        );
+        assert.ok(scenario.issueSnapshot().labels.includes("in-progress"));
+        assert.equal(
+          scenario.issueSnapshot().labels.includes("agent-done"),
+          false,
+        );
+        await scenario.mergeOpenImplementationPull({ closeIssue: false });
+        const merged = await scenario.run();
+        assert.equal(merged.status, "merged", JSON.stringify(merged));
         const durable = await scenario.state();
         assert.equal(durable?.phases.at(-1)?.status, "complete");
         assert.deepEqual(

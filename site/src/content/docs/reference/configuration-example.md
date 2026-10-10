@@ -54,7 +54,7 @@ skills, and git policy from defaults.
   "skills": {
     "triage": ".patchmill/skills/patchmill-issue-triage",
     "planning": ".patchmill/skills/patchmill-planning",
-    "implementation": ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
+    "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks",
     "toolchain": ".patchmill/skills/project-toolchain",
     "review": ".patchmill/skills/project-review",
     "visualEvidence": ".patchmill/skills/patchmill-visual-evidence",
@@ -75,7 +75,7 @@ skills, and git policy from defaults.
     "branchPrefix": "agent/issue-",
     "worktreePrefix": "patchmill-issue-",
     "slugLength": 48,
-    "allowDirectLand": true
+    "allowDirectLand": false
   },
   "cleanupHook": "./scripts/cleanup.sh",
   "projectPolicy": {
@@ -118,3 +118,13 @@ skills, and git policy from defaults.
 - `projectPolicy.pi.taskContract` exists for advanced workflow coordination, but
   most repositories should keep the default task contract.
 - Run `patchmill doctor` after configuration changes.
+
+The managed implementation skill uses one final independent review, one fix
+pass, and all final validation commands. It permits at most two code-related PR
+check repairs. Namespace and global `superpowers:executing-plans` defaults do
+not include the Patchmill appendix automatically. Explicit custom implementation
+and review references remain operator overrides.
+
+To migrate, run `npx patchmill@latest skills update`. Then explicitly change the
+implementation reference to the path in this example. The updater preserves
+customized files and does not rewrite config.

@@ -15,6 +15,64 @@ const providers = [
   "github-gh",
   "forgejo-tea",
 ] as const satisfies readonly PlanningScenarioProvider[];
+for (const provider of providers) {
+  test(`${provider} keeps an open implementation PR unfinished and resumes a merged closed Issue without agents`, async () => {
+    const scenario = await createPlanningProviderScenario({
+      provider,
+      gates: { specRequired: false, planRequired: false },
+    });
+    try {
+      const published = await scenario.run({ explicit: true });
+      assert.equal(published.status, "pr-created", JSON.stringify(published));
+      const phase = (await scenario.state())?.phases.at(-1);
+      assert.equal(phase?.status, "pull-request-open");
+      assert.ok(scenario.issueSnapshot().labels.includes("in-progress"));
+      assert.equal(
+        scenario.issueSnapshot().labels.includes("agent-done"),
+        false,
+      );
+      const agents = scenario
+        .effects()
+        .filter(
+          (effect) =>
+            effect.kind === "write" && effect.operation === "agent-run",
+        ).length;
+      await scenario.mergeOpenImplementationPull({ deleteHeadBranch: true });
+      assert.equal(scenario.issueSnapshot().state, "closed");
+      const merged = await scenario.run({ explicit: true });
+      assert.equal(merged.status, "merged", JSON.stringify(merged));
+      assert.equal(
+        scenario
+          .effects()
+          .filter(
+            (effect) =>
+              effect.kind === "write" && effect.operation === "agent-run",
+          ).length,
+        agents,
+      );
+      assert.equal(
+        scenario.pulls().filter((pull) => pull.phase === "implementation")
+          .length,
+        1,
+      );
+      const complete = (await scenario.state())?.phases.at(-1);
+      assert.equal(complete?.status, "complete");
+      if (
+        !complete ||
+        complete.kind !== "implementation" ||
+        complete.status !== "complete"
+      )
+        assert.fail("implementation did not finish");
+      assert.ok(complete.merge);
+      if (published.status === "pr-created")
+        assert.equal(complete.pullRequest.url, published.prUrl);
+      assert.ok(scenario.issueSnapshot().labels.includes("agent-done"));
+    } finally {
+      await scenario.cleanup();
+    }
+  });
+}
+
 const interruptionPoints: readonly PlanningScenarioFailurePoint[] = [
   "after-phase-push",
   "after-planning-pull-request-create",
@@ -42,7 +100,11 @@ async function advanceToImplementation(scenario: PlanningProviderScenario) {
 async function finish(scenario: PlanningProviderScenario) {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const result = await scenario.run();
-    if (result.status === "pr-created") return result;
+    if (result.status === "merged") return result;
+    if (result.status === "pr-created") {
+      await scenario.mergeOpenImplementationPull({ closeIssue: false });
+      continue;
+    }
     if (result.status === "review-pending") {
       await scenario.mergeOpenPlanningPull({
         editArtifact: (content) => `${content}reviewed by a human\n`,
@@ -205,7 +267,7 @@ const interruptionStateExpectations: Readonly<
 > = {
   "after-phase-push": {
     preDeniedWrite: {
-      revision: 2,
+      revision: 3,
       phases: [
         phase("spec", "workspace-ready", "ready"),
         phase("plan", "pending"),
@@ -213,7 +275,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 3,
+      revision: 4,
       phases: [
         phase("spec", "branch-pushed", "ready"),
         phase("plan", "pending"),
@@ -223,7 +285,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-planning-pull-request-create": {
     preDeniedWrite: {
-      revision: 3,
+      revision: 4,
       phases: [
         phase("spec", "branch-pushed", "ready"),
         phase("plan", "pending"),
@@ -231,7 +293,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 4,
+      revision: 5,
       phases: [
         phase("spec", "pull-request-open", "ready"),
         phase("plan", "pending"),
@@ -241,7 +303,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-worktree-remove": {
     preDeniedWrite: {
-      revision: 4,
+      revision: 5,
       phases: [
         phase("spec", "pull-request-open", "ready"),
         phase("plan", "pending"),
@@ -249,7 +311,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 5,
+      revision: 6,
       phases: [
         phase("spec", "pull-request-open", "worktree-removed"),
         phase("plan", "pending"),
@@ -259,7 +321,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-local-branch-remove": {
     preDeniedWrite: {
-      revision: 5,
+      revision: 6,
       phases: [
         phase("spec", "pull-request-open", "worktree-removed"),
         phase("plan", "pending"),
@@ -267,7 +329,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 6,
+      revision: 7,
       phases: [
         phase("spec", "pull-request-open", "removed"),
         phase("plan", "pending"),
@@ -277,7 +339,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-planning-merge-observation": {
     preDeniedWrite: {
-      revision: 6,
+      revision: 7,
       phases: [
         phase("spec", "pull-request-open", "removed"),
         phase("plan", "pending"),
@@ -285,7 +347,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 7,
+      revision: 8,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "pending"),
@@ -295,7 +357,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-implementation-pull-request-validation": {
     preDeniedWrite: {
-      revision: 17,
+      revision: 20,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -303,7 +365,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 18,
+      revision: 21,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -313,7 +375,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-handoff-comment": {
     preDeniedWrite: {
-      revision: 20,
+      revision: 23,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -324,7 +386,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 21,
+      revision: 24,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -338,7 +400,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-cleanup-hook": {
     preDeniedWrite: {
-      revision: 21,
+      revision: 24,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -350,7 +412,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 22,
+      revision: 25,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -365,7 +427,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-implementation-worktree-remove": {
     preDeniedWrite: {
-      revision: 22,
+      revision: 25,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -378,7 +440,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 23,
+      revision: 26,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -393,7 +455,7 @@ const interruptionStateExpectations: Readonly<
   },
   "after-done-label": {
     preDeniedWrite: {
-      revision: 25,
+      revision: 29,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -407,7 +469,7 @@ const interruptionStateExpectations: Readonly<
       ],
     },
     firstRetry: {
-      revision: 26,
+      revision: 30,
       phases: [
         phase("spec", "complete", "removed"),
         phase("plan", "complete", "removed"),
@@ -555,6 +617,10 @@ for (const provider of providers) {
         }
         if (requiresImplementation(point))
           await advanceToImplementation(scenario);
+        if (point === "after-done-label") {
+          assert.equal((await scenario.run()).status, "pr-created");
+          await scenario.mergeOpenImplementationPull({ closeIssue: false });
+        }
         scenario.interruptAt(point);
         await assert.rejects(scenario.run());
         const interrupted = await scenario.state();
@@ -574,7 +640,7 @@ for (const provider of providers) {
         const refsBeforeRetry = await scenario.remoteRefs();
         await scenario.restorePersistence();
         const finished = await finish(scenario);
-        assert.equal(finished.status, "pr-created");
+        assert.equal(finished.status, "merged");
         assert.equal(
           (await scenario.state())?.phases.at(-1)?.status,
           "complete",

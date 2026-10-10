@@ -41,15 +41,12 @@ if (!versionAtLeast(version, workflowEngineVersion)) {
   process.exit(0);
 }
 
-const enginePath = join(
-  packageRoot,
-  "src",
-  "workflows",
-  "scripted-workflow.ts",
-);
-assert.equal(
-  existsSync(enginePath),
-  true,
+// New releases ship compiled JavaScript; older releases ship TypeScript.
+const enginePath = ["scripted-workflow.js", "scripted-workflow.ts"]
+  .map((filename) => join(packageRoot, "src", "workflows", filename))
+  .find(existsSync);
+assert.ok(
+  enginePath,
   `pi-subagents ${version} workflow engine moved; update the Bun compatibility contract`,
 );
 

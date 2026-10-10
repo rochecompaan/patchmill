@@ -4,6 +4,10 @@ import type { IssueHostProvider } from "../../../host/types.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import { readRunState, writeRunState } from "./run-state.ts";
+import {
+  assertIssueRunLeaseOwned,
+  requireIssueRunLease,
+} from "./recovery-lease.ts";
 import type {
   AgentIssueConfig,
   AgentIssuePipelineResult,
@@ -45,6 +49,11 @@ export async function unexpectedFailure(
   error: unknown,
   options: PipelineProgressOptions,
 ): Promise<AgentIssuePipelineResult> {
+  const lease = requireIssueRunLease(options.lease);
+  await assertIssueRunLeaseOwned(lease, {
+    runStateDir: config.runStateDir,
+    issueNumber: issue.number,
+  });
   const reason = errorMessage(error);
   const formatted = formatErrorWithCauses(error);
   const status =
@@ -80,6 +89,7 @@ export async function unexpectedFailure(
       worktreePath: details.worktreePath,
       lastError: reason,
     },
+    lease,
     timestamp,
   );
   const state = await readRunState(config.runStateDir, issue.number);
@@ -104,6 +114,7 @@ export async function unexpectedFailure(
           worktreePath: details.worktreePath,
           failureCommentKeys: [failureCommentKey],
         },
+        lease,
         timestamp,
       );
     }
@@ -140,13 +151,28 @@ export async function blockIssue(
   timestamp: string,
   options: PipelineProgressOptions,
 ): Promise<AgentIssuePipelineResult> {
+  const lease = requireIssueRunLease(options.lease);
+  await assertIssueRunLeaseOwned(lease, {
+    runStateDir: config.runStateDir,
+    issueNumber: issue.number,
+  });
   const { inProgress, needsInfo } = lifecycleLabels(config);
   await progress(options, "error", "blocked", `blocked: ${result.reason}`, {
     issueNumber: issue.number,
   });
   const blockedLabels = nextLabels(labels, [inProgress], [needsInfo]);
-  await ensureAutomationLabel(host, config, needsInfo);
-  await host.applyLabels(planLabelChange(issue.number, labels, blockedLabels));
+  if (config.issueState?.provider === "comments" && config.issueStateProvider) {
+    await config.issueStateProvider.setRoles({
+      issue,
+      roles: ["needs-info"],
+      message: blockerComment(result),
+    });
+  } else {
+    await ensureAutomationLabel(host, config, needsInfo);
+    await host.applyLabels(
+      planLabelChange(issue.number, labels, blockedLabels),
+    );
+  }
   await writeRunState(
     config.runStateDir,
     {
@@ -164,15 +190,19 @@ export async function blockIssue(
       validation: result.validation,
       blockerQuestions: result.questions,
     },
+    lease,
     timestamp,
   );
   const commentKey = blockerCommentKey(result);
   const persisted = await readRunState(config.runStateDir, issue.number);
   if (!persisted?.blockerCommentKeys?.includes(commentKey)) {
-    const commented = await host
-      .commentIssue(issue.number, blockerComment(result))
-      .then(() => true)
-      .catch(() => false);
+    const commented =
+      config.issueState?.provider === "comments"
+        ? true
+        : await host
+            .commentIssue(issue.number, blockerComment(result))
+            .then(() => true)
+            .catch(() => false);
     if (commented)
       await writeRunState(
         config.runStateDir,
@@ -182,6 +212,7 @@ export async function blockIssue(
           status: "blocked",
           blockerCommentKeys: [commentKey],
         },
+        lease,
         timestamp,
       );
   }
