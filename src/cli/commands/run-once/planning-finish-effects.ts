@@ -40,7 +40,13 @@ export function createPlanningFinishEffects(
   state: PlanningStateV1,
 ) => Omit<
   PlanningFinishInput,
-  "state" | "phaseIndex" | "lock" | "stateStore" | "workspaces" | "reconcilePr"
+  | "state"
+  | "phaseIndex"
+  | "lock"
+  | "stateStore"
+  | "workspaces"
+  | "reconcilePr"
+  | "git"
 > {
   return (durable) => {
     const implementation = requiredImplementationFinishContext(

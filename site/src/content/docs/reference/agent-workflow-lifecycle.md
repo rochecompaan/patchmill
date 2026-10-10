@@ -38,13 +38,19 @@ state blocks without fallback.
    the fetched target base. Remaining cleanup and done-label checkpoints then
    complete the Issue run without new agent work.
 
-When ordinary Git status is clean but ignored phase-workspace paths remain,
-Patchmill checkpoints `cleanup-pending` before removing the worktree. It posts
-an actionable comment, applies `needs-info`, and removes ready/in-progress, so
-automatic selection stops. After an operator handles every reported path and
-applies the configured ready label, the next Run attempt refreshes cleanup only;
-it does not replay a successful cleanup hook or other checkpointed finish
-effects. Once cleanup succeeds, the existing done-label transition completes.
+When ordinary Git status is clean and the existing safeguards pass, Patchmill
+removes the phase worktree with normal `git worktree remove` without `--force`.
+This operation permanently deletes all ignored content. Staged, tracked, and
+non-ignored untracked changes block cleanup. Git can refuse removal if an
+ordinary change appears after the last status check. Patchmill does not retry
+with force.
+
+New cleanup does not create ignored-content `cleanup-pending` state. Older saved
+records remain readable. After the operator applies the configured ready label,
+a retry rechecks the saved workspace and publication evidence. It advances
+legacy pending cleanup through `worktree-removed` and `removed`. The retry does
+not replay a completed cleanup hook or earlier finish effect. After cleanup,
+implementation continues through the existing done-label transition.
 
 `review-pending`, `cleanup-pending`, and supported `stopped` results are
 exit-zero nonfailure results. Same-issue contention reports

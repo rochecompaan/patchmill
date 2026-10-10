@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   PlanningStateValidationError,
   assertPlanningStateReplacement,
+  parsePlanningState,
+  serializePlanningState,
   validatePlanningState,
 } from "./planning-state.ts";
 
@@ -158,6 +160,20 @@ test("persists raw cleanup-pending ignored paths and permits their refresh", () 
     ),
   );
   assert.doesNotThrow(() => assertPlanningStateReplacement(current, next));
+});
+
+test("legacy pending records retain raw paths through serialization", () => {
+  const current = validatePlanningState(
+    state({
+      state: "cleanup-pending",
+      reason: "ignored-worktree-content",
+      ignoredPaths: [".env", "build/output\nname.bin", "safe\\..\\artifact"],
+    }),
+  );
+  assert.deepEqual(
+    parsePlanningState(serializePlanningState(current)),
+    current,
+  );
 });
 
 test("rejects implementation cleanup pending before its cleanup hook", () => {

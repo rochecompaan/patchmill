@@ -207,6 +207,7 @@ export async function runPlanningImplementationPhase(
     lock: input.lock,
     stateStore: input.stateStore,
     workspaces: input.workspaces,
+    git: input.publicationGit,
     reconcilePr: async (published) => {
       const reconciliation = await reconcileImplementationPullRequest({
         host: input.host,
@@ -247,14 +248,5 @@ export async function runPlanningImplementationPhase(
       ),
     };
   if (finished.kind === "implementation-published") return finished;
-  if (finished.kind === "cleanup-pending")
-    return {
-      kind: "cleanup-pending",
-      state: finished.state,
-      phase: "implementation",
-      prUrl: finished.result.prUrl,
-      reason: finished.reason,
-      ignoredPaths: finished.ignoredPaths,
-    };
   return { kind: "complete", state: finished.state, result: finished.result };
 }

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertPlanningStateReplacement,
+  parsePlanningState,
+  serializePlanningState,
   validatePlanningState,
   type PlanningImplementationFinishCheckpoints,
   type PlanningStateV1,
@@ -11,7 +13,7 @@ import { finishPlanningImplementation } from "./planning-finish.ts";
 const oid = (v: string) => v.repeat(40);
 function state(
   finish: PlanningImplementationFinishCheckpoints = {},
-  cleanup: "ready" | "worktree-removed" | "removed" = "ready",
+  cleanup: "ready" | "legacy" | "worktree-removed" | "removed" = "ready",
 ): PlanningStateV1 {
   const workspace = {
     runId: "123e4567-e89b-42d3-a456-426614174000",
@@ -24,7 +26,13 @@ function state(
     cleanup:
       cleanup === "ready"
         ? { state: "ready" as const }
-        : { state: cleanup, pushedHeadOid: oid("b") },
+        : cleanup === "legacy"
+          ? {
+              state: "cleanup-pending" as const,
+              reason: "ignored-worktree-content" as const,
+              ignoredPaths: [".env", "build/output\nname.bin"],
+            }
+          : { state: cleanup, pushedHeadOid: oid("b") },
   };
   return validatePlanningState({
     version: 1,
@@ -130,6 +138,12 @@ function input(initial = state(), fail?: string) {
           checkpoints.push(validated);
           return validated;
         },
+      },
+      git: {
+        inspectRemoteHead: async () => ({
+          state: "present" as const,
+          headOid: oid("b"),
+        }),
       },
       workspaces: {
         removeWorktree: async () => {
@@ -257,51 +271,58 @@ test("effect failure prevents later effects", async () => {
   assert.deepEqual(run.events, ["publishCost", "validateVisualEvidence"]);
 });
 
-test("refreshes cleanup pending without replaying finish effects and completes after blockers clear", async () => {
-  const run = input();
-  let assessment = 0;
-  run.value.workspaces = {
-    removeWorktree: async () => {
-      run.events.push("worktree");
-      assessment += 1;
-      if (assessment < 3)
-        return {
-          kind: "cleanup-pending" as const,
-          reason: "ignored-worktree-content" as const,
-          ignoredPaths: assessment === 1 ? [".env"] : [".env", "build/"],
-        };
-      return {
-        kind: "removed" as const,
-        snapshot: {
-          state: "branch-only" as const,
-          identity: {
-            branch: "agent/189",
-            worktreePath: ".worktrees/189",
-          },
-          headOid: oid("b"),
-        },
-      };
+test("a legacy pending record survives serialization and completes without replaying finish effects", async () => {
+  const saved = state(
+    {
+      costPublicationCompleted: true,
+      visualEvidenceValidated: true,
+      handoffCommentPosted: true,
+      cleanupHookCompleted: true,
     },
-    removeBranch: async () => run.events.push("branch"),
-  } as never;
+    "legacy",
+  );
+  const restored = parsePlanningState(serializePlanningState(saved));
+  assert.deepEqual(restored, saved);
+  assert.deepEqual(restored.phases[0]?.workspace?.cleanup, {
+    state: "cleanup-pending",
+    reason: "ignored-worktree-content",
+    ignoredPaths: [".env", "build/output\nname.bin"],
+  });
+  const run = input(restored);
+  const result = await finishPlanningImplementation(run.value);
+  assert.equal(result.kind, "complete");
+  assert.deepEqual(run.events, [
+    "worktree",
+    "branch",
+    "ensureDoneLabel",
+    "applyDoneLabels",
+  ]);
+  assert.equal(result.state.phases[0]?.status, "complete");
+});
 
-  const first = await finishPlanningImplementation(run.value);
-  assert.equal(first.kind, "cleanup-pending");
-  const afterFirst = run.checkpoints.length;
-  const second = await finishPlanningImplementation({
-    ...run.value,
-    state: run.state(),
-  });
-  assert.equal(second.kind, "cleanup-pending");
-  assert.equal(run.checkpoints.length, afterFirst + 1);
-  const complete = await finishPlanningImplementation({
-    ...run.value,
-    state: run.state(),
-  });
-  assert.equal(complete.kind, "complete");
-  assert.equal(run.events.filter((event) => event === "cleanupHook").length, 1);
-  assert.equal(run.events.filter((event) => event === "publishCost").length, 1);
-  assert.equal(run.events.filter((event) => event === "worktree").length, 3);
+test("rechecks publication after the cleanup hook before removing local data", async () => {
+  const run = input();
+  run.value.effects.cleanupHook = async () => {
+    run.events.push("cleanupHook");
+    run.value.git.inspectRemoteHead = async () => ({
+      state: "present",
+      headOid: oid("c"),
+    });
+  };
+  await assert.rejects(
+    finishPlanningImplementation({
+      ...run.value,
+      reconcilePr: async () => ({ kind: "open" }),
+    }),
+    /remote-head-mismatch/,
+  );
+  assert.deepEqual(run.events, [
+    "publishCost",
+    "validateVisualEvidence",
+    "postHandoff",
+    "cleanupHook",
+  ]);
+  assert.equal(run.state().phases[0]?.workspace?.cleanup.state, "ready");
 });
 
 test("invalid worktree removal outcome cannot checkpoint or delete a branch", async () => {
@@ -324,34 +345,4 @@ test("invalid worktree removal outcome cannot checkpoint or delete a branch", as
     false,
   );
   assert.equal(run.events.includes("branch"), false);
-});
-
-test("checkpoints ignored cleanup pending after one successful cleanup hook", async () => {
-  const run = input();
-  run.value.workspaces = {
-    removeWorktree: async () => ({
-      kind: "cleanup-pending" as const,
-      reason: "ignored-worktree-content" as const,
-      ignoredPaths: [".env", "build/"],
-    }),
-    removeBranch: async () => assert.fail("branch must not be removed"),
-  } as never;
-  const result = await finishPlanningImplementation(run.value);
-  assert.equal(result.kind, "cleanup-pending");
-  if (result.kind !== "cleanup-pending")
-    assert.fail("expected cleanup pending");
-  assert.deepEqual(result.ignoredPaths, [".env", "build/"]);
-  assert.equal(run.state().phases[0]?.status, "pull-request-open");
-  assert.deepEqual(
-    (run.state().phases[0] as { workspace: { cleanup: unknown } }).workspace
-      .cleanup,
-    {
-      state: "cleanup-pending",
-      reason: "ignored-worktree-content",
-      ignoredPaths: [".env", "build/"],
-    },
-  );
-  assert.equal(run.events.includes("cleanupHook"), true);
-  assert.equal(run.events.includes("branch"), false);
-  assert.equal(run.events.includes("applyDoneLabels"), false);
 });

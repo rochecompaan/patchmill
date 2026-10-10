@@ -73,15 +73,6 @@ async function reconcile(
     ...(input.now === undefined ? {} : { now: input.now }),
   });
   switch (result.outcome.kind) {
-    case "cleanup-pending":
-      return {
-        kind: "cleanup-pending",
-        state: result.state,
-        phase,
-        prUrl: result.outcome.prUrl,
-        reason: result.outcome.reason,
-        ignoredPaths: result.outcome.ignoredPaths,
-      };
     case "review-pending":
       return {
         kind: "review-pending",
@@ -272,7 +263,6 @@ export async function runPlanningSpecPlanPhase(
     workspaces: input.workspaces,
     ...(input.now === undefined ? {} : { now: input.now }),
   });
-  if (published.kind === "cleanup-pending") return published;
   if (published.kind === "head-adoption-blocked")
     return adoptionBlocked(published.state, phase.kind, published);
   if (published.kind === "ambiguous")

@@ -69,19 +69,13 @@ export type PlanningWorkspaceBranchRemovalAuthorization =
   | Readonly<{ kind: "publication" }>
   | Readonly<{ kind: "merged-terminal" }>;
 
-export type PlanningWorkspaceRemovalOutcome =
-  | Readonly<{
-      kind: "removed";
-      snapshot: Extract<
-        PlanningWorkspaceSnapshot,
-        { state: "branch-only" | "missing" }
-      >;
-    }>
-  | Readonly<{
-      kind: "cleanup-pending";
-      reason: "ignored-worktree-content";
-      ignoredPaths: readonly string[];
-    }>;
+export type PlanningWorkspaceRemovalOutcome = Readonly<{
+  kind: "removed";
+  snapshot: Extract<
+    PlanningWorkspaceSnapshot,
+    { state: "branch-only" | "missing" }
+  >;
+}>;
 
 export type PlanningWorkspaceOwnership<
   Cleanup extends PlanningWorkspaceCleanup = PlanningWorkspaceCleanup,

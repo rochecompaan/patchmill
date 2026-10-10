@@ -143,10 +143,13 @@ patchmill run-once --issue N > result.json
 ```
 
 `review-pending`, `cleanup-pending`, and `stopped` with reason `plan-only` are
-exit-zero nonfailure results. `cleanup-pending` preserves a valid planning or
-implementation pull request while its Issue run remains incomplete. An open
-planning review takes precedence over a plan-only stop; a later invocation
-without the option resumes the saved phase and gate snapshot.
+exit-zero nonfailure results. `cleanup-pending` can still appear during
+reconciliation of state from an older release. It preserves a valid pull request
+while its Issue run remains incomplete. New ignored-only phase cleanup does not
+return this result.
+
+An open planning review takes precedence over a plan-only stop. A later
+invocation without the option resumes the saved phase and gate snapshot.
 
 ### Failure diagnostics
 
@@ -250,17 +253,28 @@ an unverified active Git command.
 
 A retry observes durable state, the remote, and the host before repeating an
 effect. It can adopt an exact pushed head or created pull request, complete a
-checkpointed cleanup, return the same open review, or verify a merge. Ignored
-paths are never classified as disposable by name: familiar agent, environment,
-build, and unknown files receive the same preservation rule. Ordinary tracked or
-untracked changes remain hard failures. Patchmill never force-cleans a phase
-workspace, force-updates a conflicting branch, or replaces a missing, ambiguous,
-or closed-unmerged planning pull request.
+checkpointed cleanup, return the same open review, or verify a merge.
+
+For spec, plan, and implementation cleanup, empty
+`git status --porcelain=v1 --untracked-files=all` output satisfies the workspace
+content requirement. Removal still requires valid ownership, path identity,
+registration, HEAD, and publication evidence. Staged, tracked, and non-ignored
+untracked changes remain blockers. Ignored content alone does not block cleanup
+or require an operator retry.
+
+**CAUTION:** Do not store unique data in ignored files inside disposable phase
+workspaces. Cleanup permanently deletes all ignored content, including `.env`,
+`.pi/`, unknown files, and operator-created files.
+
+Non-destructive in-place recovery preserves ignored files. That preservation
+rule does not apply to final phase cleanup. Patchmill never force-cleans a phase
+workspace or force-updates a conflicting branch. It does not replace a missing,
+ambiguous, or closed-unmerged planning pull request.
 
 | Situation                                            | Operator action                                                                                                                                                                                                                                                                     |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Open review                                          | Review or merge the same pull request, then rerun Run-once.                                                                                                                                                                                                                         |
-| Cleanup pending                                      | Inspect and preserve or remove every reported ignored path in the phase workspace, apply the configured ready label, then rerun the same issue.                                                                                                                                     |
+| Legacy cleanup pending                               | Apply the configured ready label. Then rerun the same issue. Patchmill rechecks ownership, HEAD, ordinary status, and remote evidence before cleanup.                                                                                                                               |
 | Closed-unmerged, proven missing, or ambiguous review | Repair the host state manually; Patchmill does not replace the pull request.                                                                                                                                                                                                        |
 | Dirty or uncheckpointed phase workspace              | Inspect and preserve local work before retrying.                                                                                                                                                                                                                                    |
 | Transient host failure                               | Repair authentication or connectivity, then retry.                                                                                                                                                                                                                                  |

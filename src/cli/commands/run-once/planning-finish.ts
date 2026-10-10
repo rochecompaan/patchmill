@@ -1,4 +1,5 @@
-import { isDeepStrictEqual } from "node:util";
+import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
+import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
 import type {
   PlanningWorkspaceCleanupPending,
   PlanningWorkspaceLifecycle,
@@ -34,20 +35,14 @@ export type PlanningImplementationFinishOutcome =
       state: PlanningStateV1;
       result: AgentIssuePrCreatedResult;
     }>
-  | Readonly<{ kind: "blocked"; state: PlanningStateV1; reason: string }>
-  | Readonly<{
-      kind: "cleanup-pending";
-      state: PlanningStateV1;
-      result: AgentIssuePrCreatedResult;
-      reason: "ignored-worktree-content";
-      ignoredPaths: readonly string[];
-    }>;
+  | Readonly<{ kind: "blocked"; state: PlanningStateV1; reason: string }>;
 
 export type PlanningFinishInput = {
   state: PlanningStateV1;
   phaseIndex: number;
   lock: PlanningIssueLock;
   stateStore: Pick<PlanningStateStore, "replace">;
+  git: Pick<PlanningPublicationOperations, "inspectRemoteHead">;
   reconcilePr: (
     phase:
       | ImplementationPullRequestOpenPlanningPhase
@@ -171,6 +166,22 @@ export async function finishPlanningImplementation(
     phase.workspace.cleanup.state === "ready" ||
     phase.workspace.cleanup.state === "cleanup-pending"
   ) {
+    // A verified merge authorizes cleanup even if the remote branch is gone.
+    if (reconciliation.kind === "open") {
+      // Saved finish checkpoints do not prove the current remote HEAD.
+      const remoteHead = await input.git.inspectRemoteHead({
+        remote: phase.workspace.remote,
+        branch: phase.publication.headBranch,
+      });
+      if (
+        remoteHead.state !== "present" ||
+        remoteHead.headOid !== phase.publication.headOid
+      )
+        throw new PlanningWorkspaceConflictError(
+          "remote-head-mismatch",
+          phase.workspace.identity,
+        );
+    }
     const removal = await input.workspaces.removeWorktree({
       runId: state.runId,
       phase: "implementation",
@@ -178,33 +189,8 @@ export async function finishPlanningImplementation(
         { state: "ready" } | PlanningWorkspaceCleanupPending
       >,
     });
-    switch (removal?.kind) {
-      case "cleanup-pending": {
-        const cleanup = {
-          state: "cleanup-pending" as const,
-          reason: removal.reason,
-          ignoredPaths: [...removal.ignoredPaths],
-        };
-        if (!isDeepStrictEqual(phase.workspace.cleanup, cleanup)) {
-          phase = { ...phase, workspace: { ...phase.workspace, cleanup } };
-          state = await checkpoint(input, state, phase);
-          phase = state.phases[
-            input.phaseIndex
-          ] as ImplementationPullRequestOpenPlanningPhase;
-        }
-        return {
-          kind: "cleanup-pending",
-          state,
-          result: durableImplementationResult(phase),
-          reason: cleanup.reason,
-          ignoredPaths: cleanup.ignoredPaths,
-        };
-      }
-      case "removed":
-        break;
-      default:
-        throw new TypeError("Invalid planning worktree removal outcome");
-    }
+    if (removal?.kind !== "removed")
+      throw new TypeError("Invalid planning worktree removal outcome");
     phase = {
       ...phase,
       workspace: {

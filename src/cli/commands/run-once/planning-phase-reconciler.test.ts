@@ -49,7 +49,11 @@ function base() {
 }
 
 function workspace(
-  cleanup: "ready" | "worktree-removed" | "removed" = "ready",
+  cleanup:
+    | "ready"
+    | "cleanup-pending"
+    | "worktree-removed"
+    | "removed" = "ready",
 ) {
   return {
     runId: "123e4567-e89b-42d3-a456-426614174000",
@@ -62,7 +66,13 @@ function workspace(
     cleanup:
       cleanup === "ready"
         ? ({ state: "ready" } as const)
-        : ({ state: cleanup, pushedHeadOid: headOid } as const),
+        : cleanup === "cleanup-pending"
+          ? ({
+              state: "cleanup-pending",
+              reason: "ignored-worktree-content",
+              ignoredPaths: [".env"],
+            } as const)
+          : ({ state: cleanup, pushedHeadOid: headOid } as const),
   };
 }
 
@@ -92,6 +102,7 @@ function planningState(
     | "remote-base"
     | "branch-pushed"
     | "open-ready"
+    | "open-cleanup-pending"
     | "open-worktree-removed"
     | "open-removed" = "open-ready",
 ) {
@@ -129,9 +140,11 @@ function planningState(
             workspace: workspace(
               phase === "open-ready"
                 ? "ready"
-                : phase === "open-worktree-removed"
-                  ? "worktree-removed"
-                  : "removed",
+                : phase === "open-cleanup-pending"
+                  ? "cleanup-pending"
+                  : phase === "open-worktree-removed"
+                    ? "worktree-removed"
+                    : "removed",
             ),
             artifacts: artifacts(),
             publication: publication(),
@@ -184,7 +197,6 @@ function fixture(
     getError?: Error;
     findError?: Error;
     removeWorktreeError?: Error;
-    cleanupPending?: boolean;
     removeBranchError?: Error;
     replaceErrorAt?: number;
     fetchError?: Error;
@@ -275,12 +287,6 @@ function fixture(
         async removeWorktree() {
           events.push("remove-worktree");
           if (input.removeWorktreeError) throw input.removeWorktreeError;
-          if (input.cleanupPending)
-            return {
-              kind: "cleanup-pending" as const,
-              reason: "ignored-worktree-content" as const,
-              ignoredPaths: [".env"],
-            };
           return {
             kind: "removed" as const,
             snapshot: {
@@ -346,15 +352,18 @@ test("cleans up open pull requests but blocks closed-unmerged before local effec
   assert.deepEqual(closed.events, ["get"]);
 });
 
-test("returns cleanup pending before a second planning pull-request classification", async () => {
-  const testFixture = fixture({ cleanupPending: true });
+test("removes saved legacy pending state before returning an open planning review", async () => {
+  const testFixture = fixture({ state: planningState("open-cleanup-pending") });
   const result = await reconcilePlanningPhase(testFixture.input);
-  assert.equal(result.outcome.kind, "cleanup-pending");
+  assert.equal(result.outcome.kind, "review-pending");
+  assert.equal(result.state.phases[0]!.workspace!.cleanup.state, "removed");
   assert.deepEqual(testFixture.events, [
     "get",
     "remote-head",
     "remove-worktree",
-    "replace:pull-request-open:cleanup-pending",
+    "replace:pull-request-open:worktree-removed",
+    "remove-branch",
+    "replace:pull-request-open:removed",
   ]);
 });
 
@@ -593,10 +602,13 @@ test("repeats merged terminal proof on cleanup and completion retries without so
   ];
   const attempts = [
     {
-      name: "cleanup-pending",
-      first: { state: planningState("open-ready"), cleanupPending: true },
-      retryState: planningState("open-ready"),
-      firstOutcome: "cleanup-pending",
+      name: "legacy cleanup-pending checkpoint failure",
+      first: {
+        state: planningState("open-cleanup-pending"),
+        replaceErrorAt: 1,
+      },
+      retryState: planningState("open-cleanup-pending"),
+      firstOutcome: undefined,
       retryTail: [
         "remove-worktree",
         "replace:pull-request-open:worktree-removed",
@@ -644,24 +656,13 @@ test("repeats merged terminal proof on cleanup and completion retries without so
   for (const attempt of attempts) {
     const first = fixture({ ...attempt.first, pullRequest: merged });
     preventMergedSourceBranchEffects(first);
-    let retryState = attempt.retryState;
-    if (attempt.firstOutcome === undefined)
-      await assert.rejects(
-        () => reconcilePlanningPhase(first.input),
-        /store failed/,
-        attempt.name,
-      );
-    else {
-      const firstResult = await reconcilePlanningPhase(first.input);
-      assert.equal(
-        firstResult.outcome.kind,
-        attempt.firstOutcome,
-        attempt.name,
-      );
-      retryState = firstResult.state;
-    }
+    await assert.rejects(
+      () => reconcilePlanningPhase(first.input),
+      /store failed/,
+      attempt.name,
+    );
 
-    const retry = fixture({ state: retryState, pullRequest: merged });
+    const retry = fixture({ state: attempt.retryState, pullRequest: merged });
     preventMergedSourceBranchEffects(retry);
     const retryResult = await reconcilePlanningPhase(retry.input);
     assert.equal(retryResult.outcome.kind, "merged", attempt.name);

@@ -91,7 +91,6 @@ export async function coordinatePlanningPhases(
       planOnly: input.planOnly === true,
     });
     switch (outcome.kind) {
-      case "cleanup-pending":
       case "blocked":
       case "complete":
       case "implementation-published":

@@ -244,11 +244,19 @@ test("creates, checkpoints, and cleans up one discovered-missing pull request", 
     "get",
   ]);
 });
-test("returns cleanup pending before a second planning pull-request classification", async () => {
+test("removes a saved legacy pending workspace before planning review", async () => {
   const pending = structuredClone(state);
   pending.phases[0] = {
     ...pending.phases[0],
     status: "pull-request-open",
+    workspace: {
+      ...pending.phases[0].workspace,
+      cleanup: {
+        state: "cleanup-pending",
+        reason: "ignored-worktree-content",
+        ignoredPaths: [".env"],
+      },
+    },
     pullRequest: {
       reference: { targetRepository: repository, number: 188 },
       url: "https://github.com/acme/patchmill/pull/188",
@@ -278,21 +286,27 @@ test("returns cleanup pending before a second planning pull-request classificati
       },
     } as never,
     workspaces: {
-      async removeWorktree() {
+      async removeWorktree({ workspace }) {
+        assert.equal(workspace.cleanup.state, "cleanup-pending");
         events.push("worktree");
-        return {
-          kind: "cleanup-pending" as const,
-          reason: "ignored-worktree-content" as const,
-          ignoredPaths: [".env"],
-        };
+        return removedWorktree();
       },
       async removeBranch() {
-        throw new Error("branch cleanup must not run");
+        events.push("branch");
       },
     } as never,
   });
-  assert.equal(result.kind, "cleanup-pending");
-  assert.deepEqual(events, ["get", "inspect", "worktree", "replace"]);
+  assert.equal(result.kind, "published");
+  assert.equal(result.state.phases[0].workspace.cleanup.state, "removed");
+  assert.deepEqual(events, [
+    "get",
+    "inspect",
+    "worktree",
+    "replace",
+    "branch",
+    "replace",
+    "get",
+  ]);
 });
 
 test("adopts one exact pull request without creating or rewriting it", async () => {

@@ -65,13 +65,10 @@ test("preserves supported terminal outcomes after one call", async () => {
   const gates = { specRequired: true, planRequired: true };
   const initial = state(gates);
   const returnedState = state(gates, undefined, 2);
-  const cleanupPending = {
-    kind: "cleanup-pending" as const,
+  const published = {
+    kind: "implementation-published" as const,
     state: returnedState,
-    phase: "spec" as const,
-    prUrl: "https://example.test/pr/cleanup",
-    reason: "ignored-worktree-content" as const,
-    ignoredPaths: [".env"],
+    result: { status: "pr-created" } as never,
   };
   const blocked = {
     kind: "blocked" as const,
@@ -81,10 +78,10 @@ test("preserves supported terminal outcomes after one call", async () => {
   const complete = {
     kind: "complete" as const,
     state: returnedState,
-    result: { status: "pr-created" } as never,
+    result: { status: "merged" } as never,
   };
 
-  for (const terminal of [cleanupPending, blocked, complete]) {
+  for (const terminal of [published, blocked, complete]) {
     let calls = 0;
     const actual = await coordinatePlanningPhases({
       state: initial,
@@ -160,6 +157,35 @@ test("preserves supported terminal outcomes after one call", async () => {
     assert.strictEqual(actual.state, returnedState);
     assert.equal(calls, 1);
   }
+});
+
+test("advances to implementation after a completed planning checkpoint", async () => {
+  const gates = { specRequired: true, planRequired: false };
+  const advanced = {
+    issueNumber: 189,
+    gates,
+    phases: [
+      { kind: "spec", status: "complete" },
+      { kind: "implementation", status: "pending" },
+    ],
+  } as never;
+  const seen: string[] = [];
+  const result = await coordinatePlanningPhases({
+    state: state(gates),
+    issue: { number: 189 } as never,
+    runPlanningPhase: async ({ state: current, phase }) => {
+      seen.push(phase.kind);
+      if (phase.kind === "spec") return { kind: "advanced", state: advanced };
+      assert.equal(current, advanced);
+      return {
+        kind: "implementation-published",
+        state: current,
+        result: { status: "pr-created" } as never,
+      };
+    },
+  });
+  assert.equal(result.kind, "implementation-published");
+  assert.deepEqual(seen, ["spec", "implementation"]);
 });
 
 test("rejects implementation review pending after one call", async () => {

@@ -212,11 +212,14 @@ remove:
 ```
 
 Patchmill invokes the configured path through `bash` from the issue worktree.
-The hook owns external resources, not deletion of worktree-local files. If it
-succeeds and ignored local paths later require operator cleanup, Patchmill
-checkpoints that successful hook and does not rerun it on the acknowledged
-retry. For example, a repository using a worktree-scoped Docker Compose project
-could provide:
+The hook owns external resources, not removal of worktree-local files. Phase
+cleanup removes all worktree-local ignored files after ordinary Git status is
+clean and the existing safeguards pass. Ignored content alone does not require
+an operator retry. Patchmill checkpoints a successful hook and does not repeat
+it during cleanup retries.
+
+For example, a repository with a worktree-scoped Docker Compose project can
+provide:
 
 ```bash
 #!/usr/bin/env bash

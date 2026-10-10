@@ -18,7 +18,6 @@ import {
 
 export type PlanningWorkspaceRemovalStatus = Readonly<{
   ordinaryDirty: boolean;
-  ignoredPaths: readonly string[];
 }>;
 
 /** Parses complete NUL-delimited porcelain without altering Git path spelling. */
@@ -27,23 +26,7 @@ export function parsePlanningWorkspaceRemovalStatus(
 ): PlanningWorkspaceRemovalStatus {
   if (stdout !== "" && !stdout.endsWith("\0"))
     throw new PlanningWorkspaceResponseError("status", "missing-trailing-nul");
-  const ignored = new Set<string>();
-  let ordinaryDirty = false;
-  for (const record of stdout.split("\0")) {
-    if (record === "") continue;
-    if (record.startsWith("!! ")) {
-      const path = record.slice(3);
-      if (path === "")
-        throw new PlanningWorkspaceResponseError(
-          "status",
-          "empty-ignored-path",
-        );
-      ignored.add(path);
-    } else {
-      ordinaryDirty = true;
-    }
-  }
-  return { ordinaryDirty, ignoredPaths: [...ignored].sort() };
+  return { ordinaryDirty: stdout !== "" };
 }
 
 export class PlanningWorkspaceRepositoryGit {
@@ -172,7 +155,6 @@ export class PlanningWorkspaceRepositoryGit {
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
-        "--ignored=matching",
       ],
       "status",
     );
