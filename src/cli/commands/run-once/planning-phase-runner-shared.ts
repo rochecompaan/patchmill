@@ -80,7 +80,7 @@ export type PlanningImplementationAdapter = Readonly<{
     state: PlanningStateV1,
   ) => Omit<
     PlanningFinishInput,
-    "state" | "phaseIndex" | "lock" | "stateStore" | "workspaces"
+    "state" | "phaseIndex" | "lock" | "stateStore" | "workspaces" | "git"
   >;
 }>;
 

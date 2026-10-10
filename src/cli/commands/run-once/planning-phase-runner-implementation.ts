@@ -206,6 +206,7 @@ export async function runPlanningImplementationPhase(
     lock: input.lock,
     stateStore: input.stateStore,
     workspaces: input.workspaces,
+    git: input.publicationGit,
   });
   return { kind: "complete", state: finished.state, result: finished.result };
 }

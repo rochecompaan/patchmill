@@ -1,3 +1,5 @@
+import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
+import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
 import type {
   PlanningWorkspaceCleanupPending,
   PlanningWorkspaceLifecycle,
@@ -26,6 +28,7 @@ export type PlanningFinishInput = {
   phaseIndex: number;
   lock: PlanningIssueLock;
   stateStore: Pick<PlanningStateStore, "replace">;
+  git: Pick<PlanningPublicationOperations, "inspectRemoteHead">;
   workspaces: Pick<
     PlanningWorkspaceLifecycle,
     "removeWorktree" | "removeBranch"
@@ -121,6 +124,19 @@ export async function finishPlanningImplementation(
     phase.workspace.cleanup.state === "ready" ||
     phase.workspace.cleanup.state === "cleanup-pending"
   ) {
+    // Saved finish checkpoints do not prove the current remote HEAD.
+    const remoteHead = await input.git.inspectRemoteHead({
+      remote: phase.workspace.remote,
+      branch: phase.publication.headBranch,
+    });
+    if (
+      remoteHead.state !== "present" ||
+      remoteHead.headOid !== phase.publication.headOid
+    )
+      throw new PlanningWorkspaceConflictError(
+        "remote-head-mismatch",
+        phase.workspace.identity,
+      );
     const removal = await input.workspaces.removeWorktree({
       runId: state.runId,
       phase: "implementation",

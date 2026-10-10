@@ -134,6 +134,12 @@ function input(initial = state(), fail?: string) {
           return validated;
         },
       },
+      git: {
+        inspectRemoteHead: async () => ({
+          state: "present" as const,
+          headOid: oid("b"),
+        }),
+      },
       workspaces: {
         removeWorktree: async () => {
           events.push("worktree");
@@ -275,6 +281,28 @@ test("a legacy pending record survives serialization and completes without repla
     "applyDoneLabels",
   ]);
   assert.equal(result.state.phases[0]?.status, "complete");
+});
+
+test("rechecks publication after the cleanup hook before removing local data", async () => {
+  const run = input();
+  run.value.effects.cleanupHook = async () => {
+    run.events.push("cleanupHook");
+    run.value.git.inspectRemoteHead = async () => ({
+      state: "present",
+      headOid: oid("c"),
+    });
+  };
+  await assert.rejects(
+    finishPlanningImplementation(run.value),
+    /remote-head-mismatch/,
+  );
+  assert.deepEqual(run.events, [
+    "publishCost",
+    "validateVisualEvidence",
+    "postHandoff",
+    "cleanupHook",
+  ]);
+  assert.equal(run.state().phases[0]?.workspace?.cleanup.state, "ready");
 });
 
 test("invalid worktree removal outcome cannot checkpoint or delete a branch", async () => {
