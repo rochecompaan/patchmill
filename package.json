@@ -104,8 +104,8 @@
     "typescript-eslint": "^8.59.4"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.0.2",
-    "@earendil-works/pi-tui": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@earendil-works/pi-tui": "1.1.0",
     "pi-subagents": "0.75.0",
     "simple-english": "file:vendor/simple-english",
     "superpowers": "https://github.com/obra/superpowers/archive/refs/tags/v6.4.2.tar.gz",
