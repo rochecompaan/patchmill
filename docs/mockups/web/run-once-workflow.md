@@ -29,26 +29,66 @@ browser.
 ## How we get from the mockup to a working page
 
 1. **Static mockup.** This file. We change it until the page feels right.
-2. **Serve it.** `patchmill serve` serves the same page, still with fake data.
-3. **Real board.** The board shows real issues and labels.
-4. **Real threads, view only.** The issue page shows real progress from runs.
-5. **Live chat.** **Start planning**, chat, **Pause** and **Resume** reach
-   run-once through the server. The open client-server questions below come back
-   at this step.
+2. **Serve it (#301).** `patchmill serve` serves the page with sample data from
+   a JSON API.
+3. **Real board (#302).** The board shows real issues, labels and run state.
+4. **Finished threads (#303).** The issue page shows the thread of a run that
+   has finished or stopped.
+5. **Live progress (#304).** The issue page updates while a run is active.
+6. **Live chat.** **Start planning**, chat, **Pause** and **Resume** reach
+   run-once through the server. This step needs #225, Pi's RPC mode in run-once
+   (#305), and a design for how runs and the server connect. The open questions
+   below come back at this step.
+
+Steps 2–5 are view only. They show the whole page, but nothing on it changes a
+run. Umbrella issue #300 tracks them, with one sub-issue per step. The
+umbrella's decisions are the ones in this file. If a decision changes, update
+both.
 
 ## Decisions so far
 
 ### Scope
 
-- The page is the first slice of #225 (interactive operator console). It uses
-  #225's `RunControl` interface (`snapshot`, `dispatch`, `subscribe`) and
-  replaces `pi -p` with Pi's RPC mode, which gives prompt, steer, follow-up and
-  abort. #225 stays open for the terminal console, subagent controls and live
-  cost.
+- The web page has its own umbrella issue, #300. It isn't a slice of #225
+  (interactive operator console), because steps 2–5 don't need #225.
+- Live chat does need #225. It uses #225's `RunControl` interface (`snapshot`,
+  `dispatch`, `subscribe`) and replaces `pi -p` with Pi's RPC mode, which gives
+  prompt, steer, follow-up and abort. The switch to RPC mode is #305, a
+  sub-issue of #225, because the terminal console needs it too. #225 stays open
+  for the terminal console, subagent controls and live cost.
 - The page doesn't show subagents or live cost. Subagent work appears as the
   main agent's tool calls. The cost appears when the run ends.
 - The page builds on #295 (concurrent explicit runs). Its ownership rules stop
   the page and a terminal from working on the same issue.
+
+### The view-only steps
+
+- **Run data.** The server gets run data through one read-only interface with
+  two operations: the current state (`snapshot`) and a change feed
+  (`subscribe`). This is the read half of #225's `RunControl`. For now, the
+  interface reads the files that runs write under `.patchmill/runs/`. The API
+  and the page never read those files directly. Until live chat, the server must
+  run on the same host as the runs. This lets steps 3–5 start before the
+  connection design is settled. When live chat needs the connection, only the
+  inside of the interface changes.
+- **Browser code.** Plain HTML, CSS and JavaScript in `web/`, with no build step
+  and no framework. `tsc` checks the JavaScript through JSDoc type comments. The
+  page imports the API response types from the server's TypeScript. The npm
+  package and the Nix build stay without a build step. If live chat makes the
+  page much bigger, we can move to a bundler then.
+- **Server code.** TypeScript in `src/`, using Node's `node:http`. No new npm
+  dependencies.
+- **Requests.** The page uses `fetch` for API calls and `EventSource` for live
+  updates.
+- **Fonts.** The page ships its fonts in `web/` and makes no requests to other
+  hosts. It then works offline, and it sends nothing to other hosts while it
+  holds a secret token.
+- **The whole page from the start.** Every step shows the message box, the
+  header controls and the name prompt, as the mockup does. The team sees the
+  whole intended page while it is still view only. Until live chat, the message
+  box and the controls change nothing. Using one shows a short note that it
+  comes with live chat. The name prompt works as in the mockup and saves the
+  name in the browser.
 
 ### Planning flow
 
@@ -113,19 +153,32 @@ request.
 
 ### The board
 
-| Column          | Issues                                                   |
-| --------------- | -------------------------------------------------------- |
-| Triage          | No workflow label, or `needs-info`                       |
-| Ready           | `agent-ready`                                            |
-| Planning        | Brainstorm, spec or plan in progress                     |
-| Planning review | A spec or plan pull request is open                      |
-| Implementing    | The implementation step is running                       |
-| Code review     | The implementation pull request is open                  |
-| Blocked         | `blocked`, or a run that Patchmill stopped with an error |
+| Column          | Issues                                                                                  |
+| --------------- | --------------------------------------------------------------------------------------- |
+| Triage          | No workflow role, or `needs-info`                                                       |
+| Ready           | `agent-ready`                                                                           |
+| Planning        | `in-progress`, `spec-approved` or `plan-approved`, or run state `claimed` or `planning` |
+| Planning review | `spec-review` or `plan-review`, or an open planning pull request                        |
+| Implementing    | Run state `implementing`                                                                |
+| Code review     | `agent-done`, or run state shows an implementation pull request                         |
+| Blocked         | `blocked`, or run state `blocked`                                                       |
 
-Cards show the issue number, title and pull request links. A **Live** marker
-shows that an agent is working. A **Waiting for reply** marker shows that the
-agent asked something.
+- Labels are matched through workflow roles, so repositories with custom label
+  names work.
+- If more than one column fits, **Blocked** wins. Otherwise, the furthest step
+  wins.
+- Issues labelled `agent-unsuitable` don't appear on the board.
+- Cards show the issue number and title, and links to the spec, the plan and the
+  pull requests.
+- A **Live** marker shows that a run is active. The server reads this from
+  run-once's admission records, small files that name the process running each
+  issue. A record whose process has ended doesn't count.
+- A **Waiting for reply** marker shows that the agent asked something. It comes
+  with live chat. Today's runs never wait for a reply. If the agent has
+  questions, the run stops and goes to **Blocked** with them.
+- The page refreshes the board every 15 seconds and shows when it last synced.
+  The server fetches the issue list from the host at most once a minute, however
+  many browsers are open.
 
 ### The issue page
 
@@ -146,10 +199,19 @@ agent asked something.
 
 ### Access
 
-- `patchmill serve` accepts only local connections by default. `--host` shares
-  it on a trusted network, such as an office network or a VPN.
-- The server prints a link with a secret token. Every request must include the
-  token. `PATCHMILL_SERVE_TOKEN` keeps the same token across restarts.
+- `patchmill serve` listens on `127.0.0.1`, port `4280`, by default. `--host`
+  shares it on a trusted network, such as an office network or a VPN. `--port`
+  changes the port.
+- The server prints a link with a secret token. Opening the link stores the
+  token in an `HttpOnly`, `SameSite=Strict` cookie and removes it from the
+  address bar. The browser then sends the cookie with every request, including
+  `EventSource` requests, which can't set headers. `PATCHMILL_SERVE_TOKEN` keeps
+  the same token across restarts.
+- The server checks the `Host` header on every request, and the `Origin` header
+  on every request that changes state. These checks stop other websites open in
+  the same browser from using the server.
+- The page inserts issue and run text as text, never as HTML. Pi session logs
+  can hold sensitive data, so only people with the token can see them.
 - People enter a name, not an account. The browser remembers it, and the agent
   sees it on each message. Several people can chat in one thread. Messages reach
   the agent in the order they arrive.
@@ -163,10 +225,13 @@ agent asked something.
   runs and the server are on different hosts or Kubernetes pods. This matches
   the roadmap's Phase IV: a remote controller, worker leases and Kubernetes
   Jobs.
+- Steps 2–5 read run files, so the server must run on the same host as the runs.
+  The connection design below removes that limit.
 
-## Open questions
+## Open questions for live chat
 
-These were still under discussion when we switched to the mockup.
+We postponed these until live chat. Steps 2–5 don't need the answers, because
+the run-data interface hides where the data comes from.
 
 - **Proposed, not yet agreed:** run-once connects to the server, not the other
   way round. The server learns about runs only through that connection, and
@@ -180,9 +245,17 @@ These were still under discussion when we switched to the mockup.
 - What the connection design changes for terminal runs, server restarts and
   issue ownership.
 
-## Things the plan must check
+## Things to test before live chat
 
-- Pi's `--fork` option works with `--mode rpc`.
+Issue #305 (Pi RPC mode in run-once) tests these first and records the answers
+here.
+
+- Pi's `--fork` option works with `--mode rpc`. If it doesn't, the RPC `fork`
+  command may meet the same need.
 - A resumed Pi session can use a different tool list. If it can't, a small
   Patchmill extension can block writing tools during the brainstorm.
-- The page's static files are included in the npm package and the Nix build.
+
+One difference is already known. In RPC mode, Pi tells extensions that a user
+interface exists (`ctx.hasUI` is `true`), and extension dialogs wait for the
+client to answer. In print mode (`pi -p`), dialogs return at once with no
+answer. So run-once must answer every dialog itself, or a run could hang.
