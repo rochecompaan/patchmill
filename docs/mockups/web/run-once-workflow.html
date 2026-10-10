@@ -1,0 +1,4167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Patchmill · run-once workflow · mockup</title>
+    <!--
+  MOCKUP. Fake data, no server, no build step. Open this file in a browser.
+  It shows the web page for the run-once workflow: the board and the issue page.
+  Decisions behind it: run-once-workflow.md in this folder.
+-->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;500;700&family=Atkinson+Hyperlegible+Next:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Set the theme before the first paint: a saved choice, else the OS setting.
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem("patchmill-theme") ||
+          (matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark");
+      } catch {
+        /* file:// may block storage; keep the dark default */
+      }
+    </script>
+    <style>
+      :root {
+        /* Logo palette: night background, light grey, brass arcs, + green, = grey, − red */
+        color-scheme: dark;
+        --bg: #08090b;
+        --bg-raise: #0d0f12;
+        --panel: #121418;
+        --panel-2: #181b20;
+        --line: #262a31;
+        --line-soft: #1a1d22;
+        --line-hover: #3b4048;
+        --text: #e4e4e4;
+        --dim: #a39e98;
+        --faint: #6f6a65;
+        --brass: #c4a882;
+        --brass-soft: color-mix(in srgb, var(--brass) 13%, transparent);
+        --live: #39c96b;
+        --live-soft: color-mix(in srgb, var(--live) 12%, transparent);
+        --stop: #ff4c4c;
+        --stop-soft: color-mix(in srgb, var(--stop) 10%, transparent);
+        --stop-text: #ff8a8a;
+        --neutral: #9a9590;
+        --on-brass: #15110b;
+        --on-live: #04150a;
+        --mock-bg: #0b0b0c;
+        --scrim: rgba(0, 0, 0, 0.6);
+        --grain: 0.035;
+        /* Chat name colours */
+        --who-1: #c4a882;
+        --who-2: #8fb8a4;
+        --who-3: #b7a0cf;
+        --who-4: #d29b8a;
+        --who-5: #93aed1;
+
+        --font-ui: "Atkinson Hyperlegible Next", "Noto Sans", sans-serif;
+        --font-mono:
+          "Atkinson Hyperlegible Mono", "DejaVu Sans Mono", monospace;
+
+        --r-s: 4px;
+        --r-m: 8px;
+        --r-l: 12px;
+        --topbar-h: 56px;
+        --mockbar-h: 52px;
+        --thread-w: 880px;
+      }
+      :root[data-theme="light"] {
+        /* Daylight: warm paper and ink. Brass and the + = − colours are
+           deepened so text in them stays readable (4.5:1 or better). */
+        color-scheme: light;
+        --bg: #f3f0ea;
+        --bg-raise: #f9f7f3;
+        --panel: #fffefb;
+        --panel-2: #ece7df;
+        --line: #dcd5ca;
+        --line-soft: #e7e1d7;
+        --line-hover: #c2b9ab;
+        --text: #1c1a17;
+        --dim: #5c564f;
+        --faint: #847c73;
+        --brass: #7f6038;
+        --live: #187a41;
+        --stop: #c42b2b;
+        --stop-text: #a82020;
+        --neutral: #8a847c;
+        --on-brass: #fffaf1;
+        --on-live: #f3fff7;
+        --mock-bg: #e9e3d9;
+        --scrim: rgba(40, 32, 22, 0.35);
+        --grain: 0.05;
+        --who-1: #7f6038;
+        --who-2: #2f6f55;
+        --who-3: #6b4f93;
+        --who-4: #a14d36;
+        --who-5: #345f95;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding-bottom: var(--mockbar-h);
+        background:
+          radial-gradient(
+            1200px 500px at 85% -10%,
+            color-mix(in srgb, var(--brass) 7%, transparent),
+            transparent 60%
+          ),
+          var(--bg);
+        color: var(--text);
+        font: 15px/1.55 var(--font-ui);
+        -webkit-font-smoothing: antialiased;
+      }
+      body::before {
+        /* faint grain */
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--grain);
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        z-index: 0;
+      }
+      body.mockbar-min {
+        --mockbar-h: 34px;
+      }
+      a {
+        color: inherit;
+      }
+      code {
+        font-family: var(--font-mono);
+        font-size: 0.86em;
+        background: var(--panel-2);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-s);
+        padding: 0.05em 0.35em;
+      }
+      :focus-visible {
+        outline: 2px solid var(--brass);
+        outline-offset: 2px;
+      }
+      .mono {
+        font-family: var(--font-mono);
+      }
+
+      /* ---------- top bar ---------- */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        height: var(--topbar-h);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 20px;
+        background: color-mix(in srgb, var(--bg) 94%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line-soft);
+        font-size: 13px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+      }
+      .brand-mark {
+        width: 28px;
+        height: 28px;
+      }
+      .brand-word {
+        font-family: var(--font-mono);
+        font-weight: 500;
+        letter-spacing: 0.32em;
+        font-size: 13px;
+      }
+      .tb-sep {
+        width: 1px;
+        height: 22px;
+        background: var(--line);
+      }
+      .tb-repo {
+        font-family: var(--font-mono);
+        color: var(--dim);
+      }
+      .tb-spacer {
+        flex: 1;
+      }
+      .tb-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--dim);
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+      .tb-status.faint {
+        color: var(--faint);
+      }
+      .name-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 3px 12px 3px 3px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .name-chip:hover {
+        border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+      }
+
+      /* Night/day switch: a brass knob slides under the active icon. */
+      .theme-switch {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        height: 30px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--faint);
+        cursor: pointer;
+      }
+      .theme-switch:hover {
+        border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+      }
+      .theme-switch::before {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 24px;
+        height: 22px;
+        border-radius: 999px;
+        background: var(--brass-soft);
+        box-shadow: inset 0 0 0 1px
+          color-mix(in srgb, var(--brass) 45%, transparent);
+        transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.2, 1);
+      }
+      :root[data-theme="light"] .theme-switch::before {
+        transform: translateX(24px);
+      }
+      .theme-switch svg {
+        position: relative;
+        width: 24px;
+        height: 22px;
+        padding: 4px 5px;
+        transition: color 0.2s;
+      }
+      :root:not([data-theme="light"]) .ts-moon,
+      :root[data-theme="light"] .ts-sun {
+        color: var(--brass);
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        flex: none;
+        background: var(--neutral);
+      }
+      .dot-live {
+        background: var(--live);
+        box-shadow: 0 0 0 3px var(--live-soft);
+      }
+      .dot-wait {
+        background: var(--brass);
+        box-shadow: 0 0 0 3px var(--brass-soft);
+      }
+      .dot-blocked {
+        background: var(--stop);
+        box-shadow: 0 0 0 3px var(--stop-soft);
+      }
+
+      main {
+        position: relative;
+        z-index: 1;
+      }
+
+      /* ---------- board ---------- */
+      .glyph {
+        font-family: var(--font-mono);
+        font-weight: 700;
+      }
+      .g-plus {
+        color: var(--live);
+      }
+      .g-eq {
+        color: var(--neutral);
+      }
+      .g-minus {
+        color: var(--stop);
+      }
+      .board-watermark {
+        /* Centred in the space between the top bar and the mockup bar.
+           z-index -1 keeps it under the columns inside main. */
+        position: fixed;
+        z-index: -1;
+        left: 50%;
+        top: calc(
+          var(--topbar-h) + (100vh - var(--topbar-h) - var(--mockbar-h)) / 2
+        );
+        width: min(560px, 62vmin);
+        height: min(560px, 62vmin);
+        transform: translate(-50%, -50%);
+        opacity: 0.07;
+        pointer-events: none;
+      }
+
+      .board {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(268px, 1fr);
+        gap: 12px;
+        overflow-x: auto;
+        padding: 24px 24px 28px;
+        align-items: start;
+      }
+      .col {
+        /* See-through, so the watermark shows behind the columns. Cards stay solid. */
+        background: color-mix(in srgb, var(--bg-raise) 60%, transparent);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-l);
+      }
+      .col-head {
+        padding: 14px 14px 12px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .col-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .col-count {
+        color: var(--faint);
+        letter-spacing: 0;
+      }
+      .col-desc {
+        margin-top: 3px;
+        font-size: 12px;
+        color: var(--faint);
+      }
+      .cards {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+      }
+      .col-empty {
+        padding: 18px 6px;
+        text-align: center;
+        color: var(--faint);
+        font-size: 12px;
+        font-family: var(--font-mono);
+      }
+
+      .card {
+        display: block;
+        text-decoration: none;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-m);
+        padding: 11px 12px 12px;
+        transition:
+          border-color 0.15s,
+          transform 0.15s;
+      }
+      .card:hover {
+        border-color: var(--line-hover);
+        transform: translateY(-1px);
+      }
+      .card.is-live {
+        box-shadow: inset 2px 0 0 var(--live);
+      }
+      .card.is-waiting {
+        box-shadow: inset 2px 0 0 var(--brass);
+      }
+      .card.is-blocked {
+        box-shadow: inset 2px 0 0 var(--stop);
+      }
+      .card-num {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--faint);
+      }
+      .card-title {
+        margin-top: 2px;
+        font-size: 14px;
+        line-height: 1.4;
+        font-weight: 500;
+      }
+      .card-step {
+        margin-top: 6px;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--dim);
+      }
+      .card-error {
+        margin-top: 6px;
+        font-size: 12.5px;
+        color: var(--stop);
+      }
+      .card-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 9px;
+        align-items: center;
+      }
+      .card-pr {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--dim);
+      }
+
+      .label {
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        padding: 1px 6px;
+        border-radius: var(--r-s);
+        border: 1px solid var(--line);
+        color: var(--dim);
+      }
+      .label.l-ready {
+        color: var(--live);
+        border-color: color-mix(in srgb, var(--live) 35%, transparent);
+      }
+      .label.l-info {
+        color: var(--brass);
+        border-color: color-mix(in srgb, var(--brass) 40%, transparent);
+      }
+      .label.l-unsuitable,
+      .label.l-blocked {
+        color: var(--stop-text);
+        border-color: color-mix(in srgb, var(--stop) 35%, transparent);
+      }
+
+      .mk {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+      }
+      .mk i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .mk-live {
+        color: var(--live);
+        background: var(--live-soft);
+      }
+      .mk-live i {
+        animation: pulse 1.8s infinite;
+      }
+      .mk-wait {
+        color: var(--brass);
+        background: var(--brass-soft);
+      }
+      .mk-paused {
+        color: var(--dim);
+        background: var(--panel-2);
+      }
+      .mk-term {
+        color: var(--dim);
+        background: var(--panel-2);
+        font-weight: 500;
+      }
+
+      /* ---------- issue page ---------- */
+      .ihead {
+        position: sticky;
+        top: var(--topbar-h);
+        z-index: 5;
+        background: color-mix(in srgb, var(--bg) 93%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .ihead-inner {
+        max-width: calc(var(--thread-w) + 220px);
+        margin: 0 auto;
+        padding: 12px 24px 14px;
+      }
+      .back {
+        font-size: 13px;
+        color: var(--dim);
+        text-decoration: none;
+      }
+      .back:hover {
+        color: var(--text);
+      }
+      .ihead-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 20px;
+        margin-top: 6px;
+      }
+      .ititle {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.3;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .inum {
+        font-family: var(--font-mono);
+        font-weight: 500;
+        color: var(--brass);
+        text-decoration: none;
+        margin-right: 10px;
+      }
+      .inum:hover {
+        text-decoration: underline;
+      }
+      .control {
+        flex: none;
+      }
+
+      .rail {
+        display: flex;
+        list-style: none;
+        margin: 14px 0 0;
+        padding: 0;
+        overflow-x: auto;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      /* Equal steps when there is room. Otherwise each step keeps its label and the rail scrolls. */
+      .rail li {
+        flex: 1 0 0;
+        min-width: max-content;
+        padding: 7px 10px 0 0;
+        margin-right: 4px;
+        border-top: 2px solid var(--line);
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .rail li .pr-tag {
+        margin-left: 6px;
+        color: inherit;
+        opacity: 0.7;
+        letter-spacing: 0;
+      }
+      .rail li.done {
+        border-color: color-mix(in srgb, var(--live) 55%, transparent);
+        color: var(--dim);
+      }
+      .rail li.current {
+        border-color: var(--brass);
+        color: var(--text);
+      }
+      .rail li.current.is-blocked {
+        border-color: var(--stop);
+        color: var(--stop);
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 22px;
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .meta b {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .meta .mono b {
+        font-weight: 400;
+      }
+      .meta-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .pr-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text);
+        text-decoration: none;
+        border-bottom: 1px dotted var(--faint);
+      }
+      .pr-state {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--live);
+      }
+      .presence {
+        display: inline-flex;
+        align-items: center;
+      }
+      .presence .av {
+        margin-left: -6px;
+        box-shadow: 0 0 0 2px var(--bg);
+      }
+      .presence .av:first-child {
+        margin-left: 0;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font: 700 14px var(--font-ui);
+        color: var(--text);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: var(--r-m);
+        padding: 8px 14px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          filter 0.15s,
+          border-color 0.15s;
+      }
+      .btn:hover {
+        border-color: var(--line-hover);
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        background: var(--brass);
+        border-color: var(--brass);
+        color: var(--on-brass);
+      }
+      .btn-primary:hover {
+        filter: brightness(1.08);
+        border-color: var(--brass);
+      }
+      .btn-live {
+        background: var(--live);
+        border-color: var(--live);
+        color: var(--on-live);
+      }
+      .btn-live:hover {
+        filter: brightness(1.08);
+        border-color: var(--live);
+      }
+      .btn-danger {
+        color: var(--stop-text);
+        background: var(--stop-soft);
+        border-color: color-mix(in srgb, var(--stop) 40%, transparent);
+      }
+      .btn-stop {
+        color: var(--dim);
+        background: transparent;
+        font-weight: 500;
+      }
+      .note-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--dim);
+        border: 1px dashed var(--line);
+        border-radius: var(--r-m);
+        padding: 7px 12px;
+      }
+      .btn-sm {
+        gap: 6px;
+        padding: 5px 11px;
+        font-size: 13px;
+        text-decoration: none;
+      }
+
+      /* ---------- artifacts ---------- */
+      .artifacts {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 22px;
+        margin-top: 10px;
+      }
+      .art-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .art-label {
+        margin-right: 4px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .art-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px 3px 8px;
+        font: 500 13px var(--font-ui);
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .art-chip:hover {
+        border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+      }
+      .art-chip.is-draft {
+        border-style: dashed;
+      }
+      .art-chip svg,
+      .art-card-icon svg {
+        flex: none;
+        color: var(--brass);
+      }
+      .art-count {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--faint);
+      }
+      .art-draft {
+        padding: 0 6px;
+        border-radius: 999px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        font-weight: 500;
+        color: var(--brass);
+        background: var(--brass-soft);
+      }
+      .ev-art {
+        margin: 8px 0;
+      }
+      .ev-art .gutter::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 1px;
+        background: var(--line);
+      }
+      .art-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        max-width: 560px;
+        padding: 10px 10px 10px 12px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-m);
+      }
+      .art-card-icon {
+        display: grid;
+        place-items: center;
+        flex: none;
+        width: 30px;
+        height: 30px;
+        border-radius: var(--r-s);
+        background: var(--brass-soft);
+      }
+      .art-card-text {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+        font-size: 14px;
+      }
+      .art-card-text b {
+        font-weight: 500;
+      }
+      .art-card-text code {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 0;
+        background: none;
+        border: 0;
+        border-radius: 0;
+        font-size: 12px;
+        color: var(--dim);
+      }
+
+      /* ---------- artifact viewer ---------- */
+      dialog.viewer {
+        inset: 0 0 0 auto;
+        width: min(860px, 100vw);
+        max-width: none;
+        height: 100dvh;
+        max-height: none;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-left: 1px solid var(--line);
+        border-radius: 0;
+        background: var(--bg-raise);
+      }
+      /* The panel spans the whole screen here, so its edge line has nothing to separate. */
+      @media (max-width: 860px) {
+        dialog.viewer {
+          border-left: 0;
+        }
+      }
+      dialog.viewer[open] {
+        display: flex;
+        animation: slide-in 0.2s ease-out;
+      }
+      body:has(dialog.viewer[open]) {
+        overflow: hidden;
+      }
+      .vw {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+      }
+      .vw-head {
+        position: relative;
+        padding: 16px 64px 14px 24px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .vw-kind {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      dialog.viewer h2 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 4px 0 6px;
+        font-size: 19px;
+      }
+      dialog.viewer h2 svg {
+        color: var(--brass);
+      }
+      .vw-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 14px;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .vw-meta code {
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .vw-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .vw-close {
+        position: absolute;
+        top: 14px;
+        right: 16px;
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-m);
+        background: transparent;
+        color: var(--dim);
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .vw-close:hover {
+        color: var(--text);
+        border-color: var(--line-hover);
+      }
+      .vw-body {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 22px 28px 36px;
+      }
+      .vw-body.is-frame {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 16px;
+      }
+      .art-frame {
+        flex: 1;
+        width: 100%;
+        min-height: 320px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-m);
+        background: #fff;
+      }
+      .vw-note {
+        font-size: 12.5px;
+        color: var(--faint);
+      }
+
+      .md-body {
+        max-width: 72ch;
+        font-size: 15px;
+      }
+      .md-body h1 {
+        margin: 0 0 10px;
+        font-size: 24px;
+        line-height: 1.25;
+      }
+      dialog.viewer .md-body h2 {
+        display: block;
+        margin: 24px 0 6px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--line-soft);
+        font-size: 17px;
+      }
+      dialog.viewer .md-body p {
+        margin: 0 0 10px;
+        color: var(--text);
+        font-size: 15px;
+      }
+      .md-body ul,
+      .md-body ol {
+        margin: 0 0 10px;
+        padding-left: 22px;
+      }
+      .md-body li {
+        margin: 3px 0;
+      }
+      .md-body li::marker {
+        color: var(--faint);
+      }
+      .md-body table {
+        width: 100%;
+        margin: 4px 0 12px;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      .md-body th,
+      .md-body td {
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+      }
+      .md-body th {
+        color: var(--dim);
+        font-weight: 500;
+      }
+      .md-body td.num,
+      .md-body th.num {
+        text-align: right;
+        font-family: var(--font-mono);
+        font-size: 13px;
+      }
+      .md-body .md-meta {
+        color: var(--dim);
+        font-size: 14px;
+      }
+
+      .gallery {
+        margin: 0;
+      }
+      .shot {
+        display: grid;
+        place-items: center;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-m);
+        background: var(--panel-2);
+      }
+      .shot svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: 56vh;
+        border-radius: var(--r-s);
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+      }
+      .gallery figcaption {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 12px;
+        margin-top: 10px;
+      }
+      .gallery figcaption b {
+        font-weight: 500;
+      }
+      .gallery figcaption code {
+        font-size: 12px;
+        color: var(--dim);
+      }
+      /* When the thumbnails do not fit beside the arrows, they move to their own row. */
+      .gal-nav {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px 10px;
+        margin-top: 14px;
+      }
+      .gal-count {
+        min-width: 4ch;
+        white-space: nowrap;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        color: var(--dim);
+        text-align: center;
+      }
+      .thumbs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-left: auto;
+      }
+      .thumb {
+        display: grid;
+        place-items: center;
+        width: 84px;
+        height: 54px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-s);
+        background: var(--panel-2);
+        cursor: pointer;
+      }
+      .thumb svg {
+        display: block;
+        max-width: 100%;
+        max-height: 100%;
+      }
+      .thumb[aria-current="true"] {
+        border-color: var(--brass);
+        box-shadow: 0 0 0 2px var(--brass-soft);
+      }
+
+      /* ---------- thread ---------- */
+      .thread {
+        max-width: var(--thread-w);
+        margin: 0 auto;
+        padding: 22px 24px 8px;
+      }
+      .ev {
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr);
+        column-gap: 14px;
+      }
+      .ev.is-new {
+        animation: rise 0.25s ease-out;
+      }
+      .gutter {
+        position: relative;
+        display: flex;
+        justify-content: center;
+      }
+      .ev-machine .gutter::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 1px;
+        background: var(--line);
+      }
+      .ev-machine {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        color: var(--dim);
+        line-height: 1.5;
+      }
+      .ev-machine > :last-child {
+        padding: 2px 0;
+        min-width: 0;
+      }
+      .node {
+        position: relative;
+        z-index: 1;
+        margin-top: 8px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 2px solid var(--brass);
+      }
+      .ev-step {
+        margin-top: 10px;
+      }
+      .ev-step .step-line {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .step-num {
+        color: var(--brass);
+        margin-right: 6px;
+      }
+      .tokens,
+      .info-line {
+        color: var(--faint);
+        white-space: pre-wrap;
+      }
+
+      .tool summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        border-radius: var(--r-s);
+        padding: 0 4px;
+        margin-left: -4px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .tool summary::-webkit-details-marker {
+        display: none;
+      }
+      .tool summary:hover {
+        background: var(--panel);
+        color: var(--text);
+      }
+      .tool summary svg {
+        flex: none;
+        color: var(--faint);
+      }
+      .tool-name {
+        color: var(--text);
+      }
+      .tool-name.is-advance {
+        color: var(--live);
+      }
+      .tool-args {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tool-state {
+        margin-left: auto;
+        padding-left: 10px;
+        font-size: 11px;
+        color: var(--faint);
+        flex: none;
+      }
+      .tool.is-running .tool-state {
+        color: var(--live);
+      }
+      .tool-detail {
+        margin: 4px 0 8px;
+        border: 1px solid var(--line);
+        background: var(--bg-raise);
+        border-radius: var(--r-m);
+        padding: 8px 12px 10px;
+      }
+      .td-label {
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--faint);
+        margin-top: 4px;
+      }
+      .tool-detail pre {
+        margin: 2px 0 6px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--dim);
+        font: inherit;
+      }
+      .spinner {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid var(--live-soft);
+        border-top-color: var(--live);
+        animation: spin 0.9s linear infinite;
+        flex: none;
+      }
+
+      .ev-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 18px 0 12px;
+        font-size: 13px;
+        color: var(--dim);
+      }
+      .ev-divider::before,
+      .ev-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+      .ev-divider .glyph {
+        display: inline-grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        font-size: 13px;
+        line-height: 1;
+      }
+      .ev-divider.tone-advance {
+        color: var(--text);
+      }
+      .ev-divider.tone-advance .glyph {
+        color: var(--live);
+        border-color: color-mix(in srgb, var(--live) 40%, transparent);
+      }
+      .ev-divider.tone-neutral .glyph {
+        color: var(--neutral);
+      }
+      .ev-divider.tone-blocked {
+        color: var(--stop-text);
+      }
+      .ev-divider.tone-blocked .glyph {
+        color: var(--stop);
+        border-color: color-mix(in srgb, var(--stop) 40%, transparent);
+      }
+      .ev-divider time {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--faint);
+      }
+      .div-text {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .ev-msg {
+        margin: 14px 0 6px;
+      }
+      .msg-head {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .msg-name {
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .ev-msg.person .msg-name {
+        color: var(--who, var(--brass));
+      }
+      .msg-tag {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--faint);
+      }
+      .msg-head time {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--faint);
+      }
+      .prose {
+        margin-top: 3px;
+      }
+      .prose p {
+        margin: 0 0 8px;
+      }
+      .prose p:last-child {
+        margin-bottom: 0;
+      }
+      .prose ol,
+      .prose ul {
+        margin: 0 0 8px;
+        padding-left: 22px;
+      }
+      .prose li {
+        margin: 2px 0;
+      }
+      .prose li::marker {
+        color: var(--faint);
+      }
+      .prose a {
+        color: var(--brass);
+      }
+      .msg-note {
+        margin-top: 5px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--faint);
+      }
+      .msg-note .glyph {
+        margin-right: 4px;
+      }
+      .ev-msg.is-mock .prose {
+        color: var(--dim);
+      }
+
+      .av {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        flex: none;
+      }
+      .av.sm {
+        width: 24px;
+        height: 24px;
+        font-size: 10px !important;
+      }
+      .av-person {
+        border: 1.5px solid var(--who, var(--brass));
+        color: var(--who, var(--brass));
+        background: var(--bg-raise);
+        font: 700 12px var(--font-mono);
+        text-transform: lowercase;
+      }
+      .av-agent {
+        background: var(--panel-2);
+        color: var(--text);
+      }
+      .av-agent .ring {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        color: var(--line);
+      }
+      .av-agent .head {
+        width: 17px;
+        height: 13px;
+      }
+      .av-agent.is-live .ring {
+        color: var(--live);
+        animation: spin 7s linear infinite;
+      }
+
+      .ev-live {
+        margin: 12px 0 4px;
+        align-items: center;
+      }
+      .live-text {
+        font-size: 13px;
+        color: var(--live);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .dots i {
+        display: inline-block;
+        width: 4px;
+        height: 4px;
+        margin-left: 3px;
+        border-radius: 50%;
+        background: var(--live);
+        animation: blink 1.2s infinite;
+      }
+      .dots i:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .dots i:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      .ev-error {
+        margin: 6px 0 10px;
+      }
+      .error-box {
+        border: 1px solid color-mix(in srgb, var(--stop) 35%, transparent);
+        background: var(--stop-soft);
+        border-radius: var(--r-m);
+        padding: 10px 14px 12px;
+      }
+      .error-title {
+        color: var(--stop-text);
+        font-weight: 700;
+        font-size: 14px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .error-box pre {
+        margin: 6px 0 0;
+        font: 12.5px/1.55 var(--font-mono);
+        color: var(--dim);
+        white-space: pre-wrap;
+      }
+
+      .earlier {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        margin: 0 0 6px;
+        padding: 7px 12px;
+        border: 1px dashed var(--line);
+        border-radius: var(--r-m);
+        background: transparent;
+        color: var(--dim);
+        font: 12.5px var(--font-mono);
+        cursor: pointer;
+        text-align: left;
+      }
+      .earlier:hover {
+        color: var(--text);
+        border-color: var(--line-hover);
+      }
+
+      .empty {
+        max-width: 520px;
+        margin: 9vh auto 0;
+        text-align: center;
+        color: var(--dim);
+      }
+      .empty > svg {
+        width: 120px;
+        height: 120px;
+        opacity: 0.22;
+      }
+      .empty h2 {
+        margin: 18px 0 6px;
+        color: var(--text);
+        font-size: 20px;
+      }
+      .empty p {
+        margin: 0 0 20px;
+      }
+
+      /* ---------- composer ---------- */
+      .composer {
+        position: sticky;
+        bottom: var(--mockbar-h);
+        z-index: 4;
+        padding: 18px 24px 14px;
+        background: linear-gradient(to bottom, transparent, var(--bg) 26px);
+      }
+      .composer-box {
+        max-width: calc(var(--thread-w) - 48px);
+        margin: 0 auto;
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        padding: 8px 8px 8px 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-l);
+        transition: border-color 0.15s;
+      }
+      .composer-box:focus-within {
+        border-color: color-mix(in srgb, var(--brass) 70%, transparent);
+      }
+      .composer-box.is-disabled {
+        opacity: 0.6;
+      }
+      .composer textarea {
+        flex: 1;
+        min-height: 26px;
+        max-height: 200px;
+        padding: 6px 0;
+        resize: none;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: var(--text);
+        font: 15px/1.5 var(--font-ui);
+      }
+      .composer textarea::placeholder {
+        color: var(--faint);
+      }
+      .composer-hint {
+        max-width: calc(var(--thread-w) - 48px);
+        margin: 7px auto 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--dim);
+      }
+      .kbd-hint {
+        margin-left: auto;
+        color: var(--faint);
+        font-family: var(--font-mono);
+        font-size: 11px;
+      }
+      .note-bar {
+        max-width: calc(var(--thread-w) - 48px);
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border: 1px dashed var(--line);
+        border-radius: var(--r-l);
+        background: var(--bg-raise);
+        color: var(--dim);
+        font-size: 13.5px;
+      }
+      .note-bar a {
+        color: var(--brass);
+      }
+
+      /* ---------- mockup controls (not part of the product) ---------- */
+      .mockbar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        height: var(--mockbar-h);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px 0 0;
+        background: var(--mock-bg);
+        border-top: 1px dashed color-mix(in srgb, var(--brass) 55%, transparent);
+        font: 12px var(--font-mono);
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+      .mock-tag {
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px 0 0;
+        color: var(--brass);
+        font-weight: 700;
+        letter-spacing: 0.14em;
+      }
+      .mock-tag::before {
+        content: "";
+        align-self: stretch;
+        width: 14px;
+        background: repeating-linear-gradient(
+          -45deg,
+          var(--brass) 0 5px,
+          var(--mock-bg) 5px 10px
+        );
+      }
+      .mb-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding-left: 10px;
+        border-left: 1px solid var(--line);
+      }
+      .mb-label {
+        color: var(--faint);
+        margin-right: 4px;
+      }
+      .mb-btn {
+        font: inherit;
+        color: var(--dim);
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+      .mb-btn:hover {
+        color: var(--text);
+      }
+      .mb-btn[aria-pressed="true"] {
+        color: var(--brass);
+        background: var(--brass-soft);
+        border-color: color-mix(in srgb, var(--brass) 50%, transparent);
+      }
+      .mb-toggle {
+        margin-right: 4px;
+      }
+      body.mockbar-min .mb-group {
+        display: none;
+      }
+
+      dialog {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: var(--r-l);
+        padding: 22px 22px 18px;
+        width: min(420px, 92vw);
+      }
+      dialog::backdrop {
+        background: var(--scrim);
+      }
+      dialog h2 {
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+      dialog p {
+        margin: 0 0 14px;
+        color: var(--dim);
+        font-size: 14px;
+      }
+      dialog input {
+        width: 100%;
+        padding: 9px 12px;
+        background: var(--bg-raise);
+        border: 1px solid var(--line);
+        border-radius: var(--r-m);
+        color: var(--text);
+        font: 15px var(--font-ui);
+      }
+      dialog menu {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin: 16px 0 0;
+        padding: 0;
+      }
+
+      /* Theme change: the new theme opens as a circle from the switch (see applyTheme). */
+      ::view-transition-old(root),
+      ::view-transition-new(root) {
+        animation: none;
+        mix-blend-mode: normal;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent);
+        }
+        70% {
+          box-shadow: 0 0 0 6px color-mix(in srgb, var(--live) 0%, transparent);
+        }
+        100% {
+          box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 0%, transparent);
+        }
+      }
+      @keyframes blink {
+        0%,
+        80%,
+        100% {
+          opacity: 0.25;
+        }
+        40% {
+          opacity: 1;
+        }
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes slide-in {
+        from {
+          opacity: 0;
+          transform: translateX(24px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+      @media (max-width: 760px) {
+        .tb-repo,
+        .tb-status.faint {
+          display: none;
+        }
+        .ihead-top {
+          flex-direction: column;
+        }
+        .ititle {
+          font-size: 19px;
+        }
+        .kbd-hint {
+          display: none;
+        }
+      }
+      /* Phones: the wheel alone stands for the brand. */
+      @media (max-width: 520px) {
+        .topbar {
+          gap: 10px;
+          padding: 0 14px;
+        }
+        .brand-word,
+        .tb-sep {
+          display: none;
+        }
+        .thumbs {
+          margin-left: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="sym-head" viewBox="-60 -45 120 90">
+        <rect
+          x="-43"
+          y="-30"
+          width="86"
+          height="60"
+          rx="12"
+          fill="currentColor"
+        />
+        <rect
+          x="-54"
+          y="-13"
+          width="5"
+          height="26"
+          rx="2"
+          fill="currentColor"
+        />
+        <rect x="49" y="-13" width="5" height="26" rx="2" fill="currentColor" />
+        <rect x="-5" y="-38" width="10" height="9" rx="2" fill="currentColor" />
+        <circle cx="-21" cy="0" r="11" style="fill: var(--bg)" />
+        <circle cx="21" cy="0" r="11" style="fill: var(--bg)" />
+      </symbol>
+      <symbol id="sym-ring" viewBox="-250 -250 500 500">
+        <circle r="222" fill="none" stroke="currentColor" stroke-width="20" />
+        <circle cx="0" cy="-222" r="30" style="fill: var(--live)" />
+        <circle cx="157" cy="-157" r="30" style="fill: var(--neutral)" />
+        <circle cx="222" cy="0" r="30" style="fill: var(--stop)" />
+        <circle cx="157" cy="157" r="30" style="fill: var(--neutral)" />
+        <circle cx="0" cy="222" r="30" style="fill: var(--live)" />
+        <circle cx="-157" cy="157" r="30" style="fill: var(--stop)" />
+        <circle cx="-222" cy="0" r="30" style="fill: var(--live)" />
+        <circle cx="-157" cy="-157" r="30" style="fill: var(--stop)" />
+      </symbol>
+      <symbol id="sym-wheel" viewBox="-250 -250 500 500">
+        <circle r="232" fill="none" stroke="currentColor" stroke-width="20" />
+        <g stroke="currentColor" stroke-width="20" stroke-linecap="round">
+          <line x1="0" y1="-160" x2="0" y2="-96" />
+          <line x1="0" y1="96" x2="0" y2="160" />
+          <line x1="-160" y1="0" x2="-96" y2="0" />
+          <line x1="96" y1="0" x2="160" y2="0" />
+          <line x1="-113" y1="-113" x2="-72" y2="-72" />
+          <line x1="113" y1="-113" x2="72" y2="-72" />
+          <line x1="-113" y1="113" x2="-72" y2="72" />
+          <line x1="113" y1="113" x2="72" y2="72" />
+        </g>
+        <circle cx="0" cy="-196" r="18" style="fill: var(--live)" />
+        <circle cx="139" cy="-139" r="18" style="fill: var(--neutral)" />
+        <circle cx="196" cy="0" r="18" style="fill: var(--stop)" />
+        <circle cx="139" cy="139" r="18" style="fill: var(--neutral)" />
+        <circle cx="0" cy="196" r="18" style="fill: var(--live)" />
+        <circle cx="-139" cy="139" r="18" style="fill: var(--stop)" />
+        <circle cx="-196" cy="0" r="18" style="fill: var(--live)" />
+        <circle cx="-139" cy="-139" r="18" style="fill: var(--stop)" />
+        <g transform="scale(1.35)">
+          <use href="#sym-head" x="-60" y="-45" width="120" height="90" />
+        </g>
+      </symbol>
+    </svg>
+
+    <header class="topbar">
+      <a class="brand" href="#/board" aria-label="Patchmill board">
+        <svg class="brand-mark" aria-hidden="true">
+          <use href="#sym-wheel" />
+        </svg>
+        <span class="brand-word">PATCHMILL</span>
+      </a>
+      <span class="tb-sep"></span>
+      <span class="tb-repo">rochecompaan/patchmill</span>
+      <span class="tb-spacer"></span>
+      <span class="tb-status"><i class="dot dot-live"></i>localhost:7420</span>
+      <span class="tb-status faint">GitHub synced 38s ago</span>
+      <button
+        class="theme-switch"
+        id="theme-switch"
+        type="button"
+        role="switch"
+        aria-checked="false"
+        aria-label="Light theme"
+        title="Switch to light theme"
+        data-action="theme"
+      >
+        <svg
+          class="ts-moon"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M13.6 9.9A5.8 5.8 0 0 1 6.1 2.4a5.8 5.8 0 1 0 7.5 7.5Z" />
+        </svg>
+        <svg
+          class="ts-sun"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="8" cy="8" r="2.9" />
+          <path
+            d="M8 1.4v1.5M8 13.1v1.5M1.4 8h1.5M13.1 8h1.5M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M3.3 12.7l1.1-1.1M11.6 4.4l1.1-1.1"
+          />
+        </svg>
+      </button>
+      <button
+        class="name-chip"
+        type="button"
+        data-action="name"
+        title="Change the name others see"
+      >
+        <span class="av av-person sm" id="me-initials">ro</span
+        ><span id="me-name">roche</span>
+      </button>
+    </header>
+
+    <main id="app"></main>
+    <nav class="mockbar" id="mockbar" aria-label="Mockup controls"></nav>
+
+    <dialog id="name-dialog">
+      <form method="dialog" id="name-form">
+        <h2>What name should others see?</h2>
+        <p>
+          Your name appears on your chat messages, and the agent sees it too.
+          Nobody checks it.
+        </p>
+        <input
+          id="name-input"
+          name="name"
+          autocomplete="nickname"
+          maxlength="32"
+          required
+        />
+        <menu>
+          <button class="btn" value="cancel" formnovalidate>Cancel</button>
+          <button class="btn btn-primary" value="save">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog class="viewer" id="viewer" aria-labelledby="vw-title">
+      <div class="vw" id="vw"></div>
+    </dialog>
+
+    <script>
+      "use strict";
+
+      // ---------------------------------------------------------------------------
+      // Fake data
+      // ---------------------------------------------------------------------------
+
+      const REPO = "rochecompaan/patchmill";
+      const gh = (kind, n) => `https://github.com/${REPO}/${kind}/${n}`;
+
+      const COLUMNS = [
+        {
+          id: "triage",
+          name: "Triage",
+          desc: "No workflow label, or needs-info",
+        },
+        { id: "ready", name: "Ready", desc: "agent-ready" },
+        {
+          id: "planning",
+          name: "Planning",
+          desc: "Brainstorm, spec or plan in progress",
+        },
+        {
+          id: "review",
+          name: "Planning review",
+          desc: "Spec or plan pull request open",
+        },
+        {
+          id: "implementing",
+          name: "Implementing",
+          desc: "Implementation step running",
+        },
+        {
+          id: "code",
+          name: "Code review",
+          desc: "Implementation pull request open",
+        },
+        {
+          id: "blocked",
+          name: "Blocked",
+          desc: "blocked label, or a run stopped by an error",
+        },
+      ];
+
+      // Workflow phases for the run-once workflow. `pr` marks a planning or code pull request.
+      const PHASES = [
+        { name: "Brainstorm" },
+        { name: "Spec" },
+        { name: "Spec review", pr: true },
+        { name: "Plan" },
+        { name: "Plan review", pr: true },
+        { name: "Implement" },
+        { name: "Code review", pr: true },
+      ];
+
+      // status: none | working | waiting | idle | paused | blocked | done
+      const ISSUES = [
+        {
+          n: 298,
+          title: "Show queued issues in patchmill status",
+          labels: [],
+          col: "triage",
+          status: "none",
+        },
+        {
+          n: 282,
+          title:
+            "Patchmill should, at least optionally, create draft pull requests.",
+          labels: ["needs-info"],
+          col: "triage",
+          status: "none",
+        },
+        {
+          n: 262,
+          title:
+            "Implementation cleanup blocks on ignored worktree content (regression of the #243 policy)",
+          labels: ["bug", "needs-info", "priority:critical"],
+          col: "triage",
+          status: "none",
+        },
+        {
+          n: 225,
+          title: "Explore an interactive Patchmill operator console",
+          labels: ["agent-unsuitable"],
+          col: "triage",
+          status: "none",
+        },
+        {
+          n: 293,
+          title: "Reduce avoidable Patchmill run blockers",
+          labels: ["agent-unsuitable"],
+          col: "triage",
+          status: "none",
+        },
+
+        {
+          n: 227,
+          title:
+            "PR run-cost report only covers the final run of a multi-run issue",
+          labels: ["agent-ready"],
+          thread: "t227",
+          presence: ["roche", "Naledi"],
+        },
+        {
+          n: 206,
+          title: "Add per-issue planning artifact requirements",
+          labels: ["agent-ready"],
+          col: "ready",
+          status: "none",
+        },
+        {
+          n: 233,
+          title: "Add the clone-local SQLite event ledger foundation",
+          labels: ["agent-ready"],
+          col: "ready",
+          status: "none",
+        },
+        {
+          n: 268,
+          title:
+            "planning-pr-v1 rejects abbreviated implementation commit OIDs after PR creation",
+          labels: ["bug", "agent-ready"],
+          col: "ready",
+          status: "none",
+        },
+        {
+          n: 194,
+          title:
+            "Roll standalone quality checks into CI with baseline-aware ratchets",
+          labels: ["agent-ready"],
+          col: "ready",
+          status: "none",
+        },
+        {
+          n: 177,
+          title: "Add adversarial spec and plan review to planning",
+          labels: ["agent-ready"],
+          col: "ready",
+          status: "none",
+        },
+
+        {
+          n: 250,
+          title:
+            "run-once: selection diverges from --dry-run and review-pending planning work starves actionable issues",
+          labels: ["agent-ready"],
+          col: "planning",
+          status: "working",
+          step: "brainstorm",
+          elapsed: "6m 12s",
+          phase: 0,
+          thread: "t250",
+          presence: ["Naledi"],
+        },
+
+        {
+          n: 210,
+          title:
+            "Add frontend design and independent design-review skills to UI workflows",
+          labels: ["agent-ready", "priority:high"],
+          col: "review",
+          status: "idle",
+          step: "plan review",
+          elapsed: "2h 41m",
+          phase: 4,
+          thread: "t210",
+          prs: [{ label: "Plan PR #301", n: 301, state: "open" }],
+        },
+
+        {
+          n: 276,
+          title:
+            "run-once drops comment author attribution, so trusted-owner answers are treated as untrusted",
+          labels: ["bug", "agent-ready"],
+          col: "implementing",
+          status: "working",
+          step: "implement task 2/4 carry blocker context into retries",
+          elapsed: "1h 52m",
+          phase: 5,
+          thread: "t276",
+          presence: ["roche"],
+        },
+        {
+          n: 263,
+          title:
+            "Prevent final-validation host gates from using two-minute shorthand timeouts",
+          labels: ["bug", "agent-ready"],
+          col: "implementing",
+          status: "working",
+          terminal: true,
+          step: "implement task 2/3 reject shorthand timeouts",
+          elapsed: "24m 08s",
+          phase: 5,
+          thread: "t263",
+        },
+
+        {
+          n: 231,
+          title:
+            "Add shared run identity types and the normalized outcome seam",
+          labels: ["agent-ready"],
+          col: "code",
+          status: "done",
+          step: "final result pr-created",
+          elapsed: "2h 18m",
+          phase: 6,
+          thread: "tDone",
+          prs: [{ label: "PR #300", n: 300, state: "open" }],
+          cost: "$3.84",
+          tokens: "412k",
+        },
+        {
+          n: 173,
+          title: "Show blocked reasons on board cards",
+          labels: ["agent-ready", "priority:medium"],
+          col: "code",
+          status: "done",
+          step: "final result pr-created",
+          elapsed: "3h 05m",
+          phase: 6,
+          thread: "tDone",
+          prs: [{ label: "PR #297", n: 297, state: "open" }],
+          cost: "$5.10",
+          tokens: "571k",
+        },
+
+        {
+          n: 247,
+          title:
+            "Implementation orchestrator can exhaust spawn budget before an oracle-authorized repair",
+          labels: ["bug", "agent-ready", "priority:high"],
+          col: "blocked",
+          colRunning: "implementing",
+          status: "blocked",
+          error: "Final validation failed",
+          step: "final review and landing",
+          elapsed: "3h 12m",
+          phase: 5,
+          thread: "t247",
+        },
+        {
+          n: 232,
+          title: "Support graceful cancellation in the run-once workflow",
+          labels: ["blocked"],
+          col: "blocked",
+          status: "none",
+        },
+        {
+          n: 234,
+          title: "Normalize and ingest Pi usage into the event ledger",
+          labels: ["blocked"],
+          col: "blocked",
+          status: "none",
+        },
+        {
+          n: 236,
+          title: "Add the continuous coordinator core for patchmill run",
+          labels: ["blocked"],
+          col: "blocked",
+          status: "none",
+        },
+      ];
+
+      // Issue #227 can be switched through every planning state from the mockup bar.
+      const SPEC_PR = { label: "Spec PR #302", n: 302, state: "open" };
+      const S227 = {
+        none: { label: "Not started", status: "none", col: "ready", phase: -1 },
+        working: {
+          label: "Agent working",
+          status: "working",
+          col: "planning",
+          step: "create spec",
+          elapsed: "14m 52s",
+          phase: 1,
+        },
+        waiting: {
+          label: "Waiting for reply",
+          status: "waiting",
+          col: "planning",
+          step: "create spec",
+          elapsed: "15m 40s",
+          phase: 1,
+        },
+        review: {
+          label: "In review",
+          status: "idle",
+          col: "review",
+          step: "spec review",
+          elapsed: "57m 12s",
+          phase: 2,
+          prs: [SPEC_PR],
+        },
+        paused: {
+          label: "Paused",
+          status: "paused",
+          prev: "waiting",
+          col: "planning",
+          step: "create spec",
+          elapsed: "28m 05s",
+          phase: 1,
+        },
+        blocked: {
+          label: "Blocked",
+          status: "blocked",
+          col: "blocked",
+          colRunning: "review",
+          error: "PR #302 changed files outside the spec",
+          step: "spec review",
+          elapsed: "1h 04m",
+          phase: 2,
+          prs: [SPEC_PR],
+        },
+      };
+
+      // ---------------------------------------------------------------------------
+      // Threads
+      // ---------------------------------------------------------------------------
+
+      const step = (n, label) => ({ t: "step", n, label });
+      const tok = (task, total, time) => ({ t: "tokens", task, total, time });
+      const tool = (name, args, result = "", extra = {}) => ({
+        t: "tool",
+        name,
+        args,
+        result,
+        ...extra,
+      });
+      const msg = (who, time, html, extra = {}) => ({
+        t: "msg",
+        who,
+        time,
+        html,
+        ...extra,
+      });
+      const div = (tone, text, time) => ({ t: "divider", tone, text, time });
+      const err = (title, body) => ({ t: "error", title, body });
+      const earlier = (text) => ({ t: "earlier", text });
+      // A progress line run-once prints, such as the visual-evidence check.
+      const info = (text) => ({ t: "info", text });
+      // A card for an artifact the agent wrote. It opens the artifact viewer.
+      const art = (kind, text) => ({ t: "art", kind, text });
+
+      const SPEC_PATH = "docs/specs/2026-10-10-multi-run-cost-report-design.md";
+
+      const T227 = {
+        base: [
+          div("neutral", "roche started planning", "09:12"),
+          step("01", "claim issue"),
+          tok("0.0k", "0.0k", "0m03s"),
+          step("02", "brainstorm"),
+          tool(
+            "bash",
+            { command: "gh issue view 227 --json title,body,comments" },
+            "title: PR run-cost report only covers the final run of a multi-run issue\nbody:  When an issue needs several run-once invocations, the cost table in the\n       pull request only reflects the last one…",
+          ),
+          tool(
+            "read",
+            { path: "src/cli/commands/run-once/pipeline-run-cost.ts" },
+            "212 lines",
+          ),
+          tool(
+            "grep",
+            { pattern: "runCost", path: "src" },
+            "14 matches in 6 files",
+          ),
+          msg(
+            "agent",
+            "09:14",
+            `<p>I read #227 and the run-cost code. The cost table in the pull request comes from <code>pipeline-run-cost.ts</code>, which only reads the Pi session of the run that opens the pull request. Earlier runs keep their own sessions, but nothing adds them up.</p><p>First question: what should the table show?</p><ol type="A"><li><strong>One total</strong> for the whole issue.</li><li><strong>One row per run</strong>, plus a total.</li></ol><p>I recommend B, so a reviewer can see which run made the issue expensive.</p>`,
+          ),
+          msg("roche", "09:16", "<p>B. Keep it to one line per run.</p>"),
+          msg(
+            "Naledi",
+            "09:17",
+            "<p>Count the blocked runs too. That's usually where the money goes.</p>",
+          ),
+          msg(
+            "agent",
+            "09:17",
+            `<p>Good point, Naledi. Blocked runs get their own rows, marked as blocked.</p><p>Next question: where should each run's cost be saved?</p><ol type="A"><li><strong>In the issue's run state</strong>, which already survives retries.</li><li><strong>In a new file per run</strong> under <code>.patchmill/runs/</code>.</li></ol><p>I recommend A. Retries already read run state, so nothing new has to find the file.</p>`,
+          ),
+          msg("roche", "09:19", "<p>A</p>"),
+          msg(
+            "agent",
+            "09:20",
+            `<p>That's everything I need. Here is the design:</p><ul><li>After each run, run-once saves that run's tokens and cost in the issue's run state.</li><li>The pull request table lists every run: start time, result, tokens and cost.</li><li>Blocked runs are included and marked.</li><li>Runs from before this change show <em>not recorded</em>.</li></ul><p>Shall I write the spec?</p>`,
+          ),
+          msg("roche", "09:21", "<p>Looks good, go ahead.</p>"),
+          tool(
+            "patchmill_advance",
+            { to: "create spec", reason: "roche agreed to the design" },
+            "ok: next step is create spec",
+          ),
+          div("advance", "Design agreed. Writing the spec.", "09:21"),
+          tok("18.2k", "18.2k", "9m14s"),
+          step("03", "create spec"),
+          tool(
+            "read",
+            { path: "src/run-state/issue-run-state.ts" },
+            "148 lines",
+          ),
+          tool("write", { path: SPEC_PATH }, "wrote 96 lines"),
+          art("spec", "Spec draft written"),
+        ],
+        working: [
+          msg(
+            "agent",
+            "09:26",
+            "<p>Writing the spec now. It covers the run-state change, the new table, and how older runs without a saved cost appear.</p>",
+          ),
+          tool("bash", { command: `npx prettier --check ${SPEC_PATH}` }, "", {
+            running: true,
+          }),
+        ],
+        draftReady: [
+          tool(
+            "bash",
+            { command: `npx prettier --check ${SPEC_PATH}` },
+            "All matched files use Prettier code style!",
+          ),
+          tool(
+            "bash",
+            {
+              command:
+                'git commit -m "docs(spec): add multi-run cost report design"',
+            },
+            "[agent/issue-227-spec 3e1a9c0] docs(spec): add multi-run cost report design\n 1 file changed, 96 insertions(+)",
+          ),
+          msg(
+            "agent",
+            "09:27",
+            `<p>The spec draft is ready: <code>${SPEC_PATH}</code>. Three things worth checking:</p><ul><li>The table has one row per run, oldest first.</li><li>Runs from before this change show <em>not recorded</em> instead of a guess.</li><li>A retry that stops before Pi starts gets no row.</li></ul><p>Any changes, or should I open the spec pull request?</p>`,
+          ),
+        ],
+        paused: [
+          div(
+            "neutral",
+            "Paused by roche. The worktree and the agent's session are kept.",
+            "09:40",
+          ),
+        ],
+        review: [
+          msg("roche", "09:31", "<p>Ship it.</p>"),
+          tool(
+            "patchmill_advance",
+            { to: "open spec pull request", reason: "roche approved the spec" },
+            "ok: next step is spec review",
+          ),
+          div("advance", "Spec approved. Opening the pull request.", "09:31"),
+          tok("31.6k", "31.6k", "19m02s"),
+          step("04", "spec review"),
+          tool(
+            "bash",
+            {
+              command:
+                'gh pr create --title "spec: multi-run cost report (#227)" --base main',
+            },
+            gh("pull", 302),
+          ),
+          msg(
+            "agent",
+            "09:32",
+            `<p>Spec PR <a href="${gh("pull", 302)}" target="_blank" rel="noreferrer">#302</a> is open. I'll watch it and pick up review comments. You can keep chatting here while it's in review.</p>`,
+          ),
+          msg("Naledi", "10:05", "<p>Left two comments on #302.</p>"),
+          tool(
+            "bash",
+            { command: "git pull --ff-only" },
+            "Already up to date.",
+          ),
+          tool(
+            "bash",
+            { command: "gh pr view 302 --comments" },
+            'naledi: Show the cost in the currency the provider reports. Don\'t convert it.\nnaledi: Call the column "Result", not "Outcome".',
+          ),
+          msg(
+            "agent",
+            "10:06",
+            "<p>I see both comments:</p><ol><li>Show the cost in the currency the provider reports, without converting it.</li><li>Call the column <em>Result</em> instead of <em>Outcome</em>.</li></ol><p>Both are small. Should I make the changes and reply on the pull request?</p>",
+          ),
+          msg("Naledi", "10:07", "<p>Yes please.</p>"),
+          tool("edit", { path: SPEC_PATH }, "2 edits applied"),
+          tool(
+            "bash",
+            {
+              command:
+                'git commit -am "docs(spec): address review comments" && git push',
+            },
+            "To github.com:rochecompaan/patchmill.git\n   3e1a9c0..8b7d2f4  agent/issue-227-spec -> agent/issue-227-spec",
+          ),
+          art("spec", "Spec updated in spec PR #302"),
+          tool(
+            "bash",
+            {
+              command:
+                'gh pr comment 302 --body "Both changes are in 8b7d2f4."',
+            },
+            `${gh("pull", 302)}#issuecomment-3391020417`,
+          ),
+          msg(
+            "agent",
+            "10:09",
+            "<p>Done. I pushed one commit to #302 and replied to both comments. When someone merges the pull request, I'll start the plan straight away.</p>",
+          ),
+        ],
+        blocked: [
+          div("blocked", "Run blocked.", "10:16"),
+          err(
+            "PR #302 changed files outside the spec",
+            `New head 4f1c9e2, pushed by naledi, changes:\n  ${SPEC_PATH}\n  src/cli/commands/run-once/pipeline-run-cost.ts\n\nA planning pull request may only change its spec or plan file.\nFix the branch with Git, then click Retry.`,
+          ),
+        ],
+      };
+
+      const THREADS = {
+        t227: () => {
+          const s = app.s227;
+          if (s === "none") return [];
+          if (s === "working") return [...T227.base, ...T227.working];
+          const t = [...T227.base, ...T227.draftReady];
+          if (s === "paused") t.push(...T227.paused);
+          if (s === "review" || s === "blocked") t.push(...T227.review);
+          if (s === "blocked") t.push(...T227.blocked);
+          return t;
+        },
+
+        t250: () => [
+          div("neutral", "Naledi started planning", "11:02"),
+          step("01", "claim issue"),
+          tok("0.0k", "0.0k", "0m02s"),
+          step("02", "brainstorm"),
+          tool(
+            "read",
+            { path: "src/cli/commands/run-once/pipeline-selection.ts" },
+            "264 lines",
+          ),
+          tool(
+            "bash",
+            { command: "patchmill run-once --dry-run" },
+            "would select #250 (review-pending planning work is skipped)",
+          ),
+          msg(
+            "agent",
+            "11:05",
+            "<p>I compared the two selection paths. <code>--dry-run</code> skips issues whose planning pull request is in review, but a real run picks them up again and then waits on them.</p><p>Should both skip review-pending issues, or should both pick them only when nothing else is ready?</p>",
+          ),
+          msg(
+            "Naledi",
+            "11:07",
+            "<p>Skip them in both. A review can take days.</p>",
+          ),
+        ],
+
+        t210: () => [
+          earlier("Brainstorm, spec, spec review and plan · 5 steps"),
+          art("plan", "Plan draft written"),
+          art("diagram", "Show-me diagram written"),
+          msg("roche", "08:50", "<p>The plan looks right. Open it.</p>"),
+          tool(
+            "patchmill_advance",
+            { to: "open plan pull request", reason: "roche approved the plan" },
+            "ok: next step is plan review",
+          ),
+          div("advance", "Plan approved. Opening the pull request.", "08:50"),
+          step("06", "plan review"),
+          tool(
+            "bash",
+            {
+              command:
+                'gh pr create --title "plan: design skills for UI workflows (#210)" --base main',
+            },
+            gh("pull", 301),
+          ),
+          msg(
+            "agent",
+            "08:51",
+            `<p>Plan PR <a href="${gh("pull", 301)}" target="_blank" rel="noreferrer">#301</a> is open. I'm watching it. When it merges, I'll start implementation straight away.</p>`,
+          ),
+        ],
+
+        t276: () => [
+          earlier("Brainstorm, spec, plan and plan review · 6 steps"),
+          div(
+            "advance",
+            "Plan PR #296 merged by roche. Starting implementation.",
+            "10:41",
+          ),
+          step(
+            "07",
+            "implement task 1/4 keep comment authors in issue context",
+          ),
+          tool("read", { path: "src/issues/issue-context.ts" }, "188 lines"),
+          tool(
+            "edit",
+            { path: "src/issues/issue-context.ts" },
+            "3 edits applied",
+          ),
+          tool(
+            "bash",
+            { command: "npm test -- src/issues/issue-context.test.ts" },
+            "✓ 14 tests passed",
+          ),
+          tok("22.9k", "164.0k", "1h 39m"),
+          step("08", "implement task 2/4 carry blocker context into retries"),
+          tool(
+            "subagent",
+            { agent: "worker", model: "claude-sonnet-5-5" },
+            "worker started in the issue worktree",
+          ),
+          tool(
+            "read",
+            { path: "src/cli/commands/run-once/pipeline-recovery.ts" },
+            "301 lines",
+          ),
+          msg(
+            "roche",
+            "10:58",
+            "<p>Heads-up: trusted owners live in <code>.patchmill/config.json</code> under <code>trustedAuthors</code>, not in an environment variable.</p>",
+            { steer: true },
+          ),
+          msg(
+            "agent",
+            "10:59",
+            "<p>Thanks. I'll read trusted owners from <code>trustedAuthors</code> in the config.</p>",
+          ),
+          tool("read", { path: ".patchmill/config.json" }, "42 lines"),
+          tool(
+            "edit",
+            { path: "src/cli/commands/run-once/pipeline-recovery.ts" },
+            "",
+            { running: true },
+          ),
+        ],
+
+        t263: () => [
+          div("neutral", "roche started this run in a terminal", "10:22"),
+          step("01", "select issue"),
+          tok("0.0k", "0.0k", "0m02s"),
+          step("02", "claim issue"),
+          tok("0.0k", "0.0k", "0m04s"),
+          step("03", "use existing plan"),
+          art("plan", "Using the merged plan"),
+          tok("1.2k", "1.2k", "0m31s"),
+          step(
+            "04",
+            "implement task 1/3 add timeout units to host gate config",
+          ),
+          tool("read", { path: "src/gates/host-gates.ts" }, "176 lines"),
+          tool("edit", { path: "src/gates/host-gates.ts" }, "4 edits applied"),
+          tool(
+            "bash",
+            { command: "npm test -- src/gates" },
+            "✓ 31 tests passed",
+          ),
+          tok("19.4k", "20.6k", "14m50s"),
+          step("05", "implement task 2/3 reject shorthand timeouts"),
+          tool(
+            "subagent",
+            { agent: "worker", model: "claude-sonnet-5-5" },
+            "worker started in the issue worktree",
+          ),
+          tool(
+            "edit",
+            { path: "src/gates/timeout-parsing.ts" },
+            "2 edits applied",
+          ),
+          tool("bash", { command: "npm run typecheck" }, "", { running: true }),
+        ],
+
+        t247: () => [
+          earlier("Brainstorm, spec, plan and 4 tasks · 9 steps"),
+          step("10", "final review and landing"),
+          tool(
+            "subagent",
+            { agent: "reviewer", model: "claude-opus-5-5" },
+            "review: 1 important finding, fixed in 9c41d2e",
+          ),
+          tool("bash", { command: "npm test" }, "3 failing, 1,284 passing"),
+          div("blocked", "Run stopped by an error.", "13:47"),
+          err(
+            "Final validation failed",
+            "npm test exited with code 1.\n  ✗ spawn budget › reserves a slot for oracle-authorized repairs\n  ✗ spawn budget › releases the reserved slot after landing\n  ✗ orchestrator › retries once after an authorized repair\n\nPatchmill stopped the run and kept the worktree.\nFix the cause, then click Retry.",
+          ),
+        ],
+
+        tDone: (v) => [
+          earlier("Brainstorm, spec, plan and 5 tasks · 8 steps"),
+          step("09", "final review and landing"),
+          tool(
+            "subagent",
+            { agent: "reviewer", model: "claude-opus-5-5" },
+            "review passed with no findings",
+          ),
+          tool(
+            "bash",
+            { command: "npm run check" },
+            "✓ lint  ✓ typecheck  ✓ test",
+          ),
+          tool(
+            "bash",
+            { command: `gh pr create --title "feat: #${v.n}" --base main` },
+            gh("pull", v.prs[0].n),
+          ),
+          ...shotEvents(v),
+          tok("64.0k", v.tokens, v.elapsed),
+          step("10", "final result pr-created"),
+          div(
+            "advance",
+            `Implementation ${v.prs[0].label} opened. The run has finished.`,
+            "12:40",
+          ),
+        ],
+      };
+
+      const startingThread = (n, who, time) => [
+        div("neutral", `${who} started planning`, time),
+        step("01", "claim issue"),
+        tok("0.0k", "0.0k", "0m03s"),
+        step("02", "brainstorm"),
+        tool(
+          "bash",
+          { command: `gh issue view ${n} --json title,body,comments` },
+          "…",
+        ),
+      ];
+
+      // ---------------------------------------------------------------------------
+      // Artifacts
+      // ---------------------------------------------------------------------------
+
+      // Patchmill already records the spec and plan (path and commit) and the
+      // screenshots the agent returns as visualEvidence. It doesn't record mockups
+      // (#210) or show-me diagrams (#179) yet. The page reads each file from git at
+      // its recorded commit, or from the worktree while it is still a draft.
+      const ART_KINDS = {
+        spec: { name: "Spec", group: "planning", type: "md" },
+        plan: { name: "Plan", group: "planning", type: "md" },
+        mockup: { name: "Mockup", group: "planning", type: "html" },
+        diagram: {
+          name: "Diagram",
+          long: "Show-me diagram",
+          group: "planning",
+          type: "html",
+        },
+        shots: {
+          name: "Screenshots",
+          long: "Visual evidence",
+          group: "review",
+          type: "gallery",
+        },
+      };
+      const ART_GROUPS = { planning: "Planning", review: "Code review" };
+
+      // Markdown files are shown rendered, so the sample docs are written as HTML.
+      const ul = (items) =>
+        `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+      const mdDoc = (title, meta, sections) =>
+        `<h1>${title}</h1><p class="md-meta">${meta}</p>${sections.map(([h, body]) => `<h2>${h}</h2>${body}`).join("")}`;
+
+      // The draft says "Outcome"; review comments on #302 renamed it and added the currency rule.
+      function spec227Doc(reviewed) {
+        const rows = [
+          ["1", "9 Oct 16:20", "failed", "not recorded", "not recorded"],
+          ["2", "10 Oct 08:02", "blocked", "96.1k", "$0.88"],
+          ["3", "10 Oct 11:15", "pr-created", "188.4k", "$1.72"],
+        ]
+          .map(
+            (r) =>
+              `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="num">${r[3]}</td><td class="num">${r[4]}</td></tr>`,
+          )
+          .join("");
+        const table = `<table><thead><tr><th>Run</th><th>Started</th><th>${reviewed ? "Result" : "Outcome"}</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead><tbody>${rows}<tr><td colspan="3"><b>Total</b>, 2 of 3 runs recorded</td><td class="num"><b>284.5k</b></td><td class="num"><b>$2.60</b></td></tr></tbody></table>`;
+        return mdDoc(
+          "Multi-run cost report",
+          `Issue #227 · Design spec${reviewed ? "" : " · draft"}`,
+          [
+            [
+              "Problem",
+              "<p>The cost table in the pull request comes from <code>pipeline-run-cost.ts</code>, which reads only the Pi session of the run that opens the pull request. Earlier runs of the same issue keep their own sessions, but nothing adds them up.</p>",
+            ],
+            [
+              "Design",
+              ul([
+                "After each run, run-once saves that run's tokens and cost in the issue's run state. Retries already read run state, so nothing new has to find it.",
+                "The pull request table lists every run, oldest first, then a total.",
+                "Blocked runs get their own rows, marked as blocked.",
+                "Runs from before this change show <em>not recorded</em> instead of a guess.",
+                "A retry that stops before Pi starts gets no row.",
+                ...(reviewed
+                  ? [
+                      "Costs appear in the currency the provider reports. Patchmill doesn't convert them.",
+                    ]
+                  : []),
+              ]),
+            ],
+            ["Example", table],
+            [
+              "Out of scope",
+              ul([
+                "Costs on the board or in <code>patchmill status</code>.",
+                "Budgets or alerts based on cost.",
+              ]),
+            ],
+          ],
+        );
+      }
+
+      const specDoc = (n, title, p) =>
+        mdDoc(title, `Issue #${n} · Design spec`, [
+          ["Problem", `<p>${p.problem}</p>`],
+          ["Design", ul(p.design)],
+        ]);
+      const planDoc = (n, title, p, specPath) =>
+        mdDoc(
+          `Plan: ${title}`,
+          `Issue #${n} · Implements <code>${specPath}</code>`,
+          [
+            [
+              "Tasks",
+              `<ol>${p.tasks.map((t) => `<li>${t}</li>`).join("")}</ol>`,
+            ],
+            [
+              "Checks",
+              ul([
+                "Each task adds or updates tests and ends with <code>npm test</code> passing.",
+                "Final validation runs <code>npm run check</code>.",
+              ]),
+            ],
+          ],
+        );
+
+      // Mockups and show-me diagrams are agent-written HTML files.
+      const SAMPLE_CSS =
+        "body{margin:0;padding:28px 32px;font:15px/1.5 system-ui,sans-serif;background:#fbfaf7;color:#25211b}h1{margin:0 0 4px;font-size:20px}p{margin:0 0 22px;color:#6b6457}";
+      const sampleDoc = (title, css, body) =>
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>${SAMPLE_CSS}${css}</style></head><body><h1>${title}</h1>${body}</body></html>`;
+
+      const FLOW_CSS =
+        ".flow,.s{display:flex;align-items:center;gap:10px}.flow{flex-wrap:wrap}.n{min-width:120px;padding:12px 14px;border:1.5px solid #cfc6b4;border-radius:10px;background:#fff}.n b{display:block;font-weight:600}.n span{font:12px ui-monospace,monospace;color:#6b6457}.n.hot{border-color:#b7862f;background:#fdf6e7}.a{color:#a39a88;font-size:20px}.key{margin:22px 0 0;font-size:13px}.key i{display:inline-block;width:11px;height:11px;margin-right:6px;border:1.5px solid #b7862f;border-radius:3px;background:#fdf6e7;vertical-align:-1px}";
+      const flowDoc = ([title, sub, nodes]) =>
+        sampleDoc(
+          title,
+          FLOW_CSS,
+          // Each arrow stays with the step after it, so a wrapped row never ends in an arrow.
+          `<p>${sub}</p><div class="flow">${nodes
+            .map(
+              ([t, s, hot], i) =>
+                `<div class="s">${i ? '<div class="a">→</div>' : ""}<div class="n${hot ? " hot" : ""}"><b>${t}</b><span>${s}</span></div></div>`,
+            )
+            .join("")}</div><p class="key"><i></i>Changed by this plan</p>`,
+        );
+
+      const MOCKUP_173 = [
+        "Board: blocked reasons",
+        ".cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.col h2{margin:0 0 8px;font:600 12px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b6457}.card{margin-bottom:8px;padding:10px 12px;border:1px solid #ddd5c5;border-radius:8px;background:#fff;font-size:14px}.card small{display:block;font:12px ui-monospace,monospace;color:#8a8170}.card.blocked{border-left:3px solid #c2412d}.why{margin-top:6px;padding:6px 8px;border-radius:6px;background:#fbe9e5;color:#8f2a1b;font-size:13px}",
+        '<p>Each blocked card shows the first line of its error. Focus or hover shows the rest.</p><div class="cols"><div class="col"><h2>Planning</h2><div class="card"><small>#250</small>run-once selection diverges from --dry-run</div></div><div class="col"><h2>Implementing</h2><div class="card"><small>#276</small>run-once drops comment author attribution</div><div class="card"><small>#263</small>Prevent two-minute shorthand timeouts</div></div><div class="col"><h2>Blocked</h2><div class="card blocked"><small>#247</small>Orchestrator can exhaust its spawn budget<div class="why">Final validation failed: 3 tests</div></div><div class="card blocked"><small>#227</small>PR run-cost report covers only the final run<div class="why">PR #302 changed files outside the spec</div></div></div></div>',
+      ];
+      const MOCKUP_210 = [
+        "Design review comment",
+        ".c{max-width:640px;border:1px solid #ddd5c5;border-radius:10px;background:#fff}.hd{padding:10px 14px;border-bottom:1px solid #ddd5c5;background:#f4f1ea;font-size:14px}.bd{padding:6px 18px 14px}.bd p{margin:10px 0;color:#25211b}li{margin:6px 0}.tag{padding:1px 8px;border-radius:999px;background:#fdf6e7;color:#7f6038;font:12px ui-monospace,monospace}",
+        '<p>What the design reviewer posts on a pull request that changes the UI.</p><div class="c"><div class="hd"><b>patchmill</b> commented · <span class="tag">design review</span></div><div class="bd"><p>The change matches the mockup in four of five places.</p><ol><li><b>Spacing.</b> The card list uses 12 px gaps. The mockup uses 8 px.</li><li><b>Focus.</b> The new button has no visible focus ring in the dark theme.</li></ol><p>Checked against <code>docs/mockups/…</code> and 3 screenshots.</p></div></div>',
+      ];
+
+      const PLANNING = {
+        210: {
+          date: "2026-10-08",
+          slug: "design-review-skills",
+          commits: ["a41c7e2", "c93b0d5"],
+          planWhere: "In plan PR #301, open",
+          problem:
+            "UI changes go through the same planning and review as any other change. Nobody checks the design until a person opens the pull request.",
+          design: [
+            "Planning and implementation for UI issues use the frontend-design skill.",
+            "The spec links a full-page HTML mockup under <code>docs/mockups/</code>.",
+            "After code review, a design reviewer with fresh context compares the result with the mockup and the screenshots.",
+            "Issues that don't change the UI are not affected.",
+          ],
+          tasks: [
+            "Detect UI issues from labels and changed paths",
+            "Use frontend-design in planning and implementation",
+            "Require a mockup link in UI specs",
+            "Add the design review after code review",
+          ],
+          mockup: MOCKUP_210,
+          diagram: [
+            "Design review in UI workflows",
+            "Where the two new skills join run-once for issues that change the UI.",
+            [
+              ["Issue", "label: ui"],
+              ["Brainstorm", "frontend-design", true],
+              ["Spec", "links a mockup", true],
+              ["Plan", "writing-plans"],
+              ["Implement", "frontend-design", true],
+              ["Code review", "reviewer"],
+              ["Design review", "fresh context", true],
+            ],
+          ],
+        },
+        276: {
+          date: "2026-10-09",
+          slug: "comment-author-trust",
+          commits: ["c5e7a21", "08b3f6d"],
+          problem:
+            "Issue context keeps comment bodies but drops their authors. An answer from a trusted owner looks like anyone else's, so run-once treats it as untrusted.",
+          design: [
+            "Issue context keeps the author of each comment.",
+            "Run-once checks authors against the trusted owners in the project config.",
+            "Retries carry the blocker context, including who answered.",
+            "Comments from other people stay untrusted.",
+          ],
+          tasks: [
+            "Keep comment authors in issue context",
+            "Carry blocker context into retries",
+            "Check authors against the trusted owners",
+            "Mark untrusted answers in the prompt",
+          ],
+          diagram: [
+            "Comment authors in run-once",
+            "How an answer from a trusted owner reaches the agent.",
+            [
+              ["GitHub comment", "author: naledi"],
+              ["Issue context", "keeps the author", true],
+              ["Trust check", "trustedAuthors", true],
+              ["Blocker context", "carried into retries", true],
+              ["Agent prompt", "trusted or untrusted"],
+            ],
+          ],
+        },
+        263: {
+          date: "2026-10-09",
+          slug: "host-gate-timeout-units",
+          commits: ["61d0a9c", "f27b8e3"],
+          problem:
+            "Host gate timeouts accept a bare number such as 2, which Patchmill reads as two minutes. Long final-validation gates are stopped too early.",
+          design: [
+            "Every timeout needs a unit, such as <code>90s</code>, <code>10m</code> or <code>1h</code>.",
+            "A number without a unit is rejected when the config loads. The error names the gate.",
+          ],
+          tasks: [
+            "Add timeout units to host gate config",
+            "Reject shorthand timeouts",
+            "Update the config docs and examples",
+          ],
+          diagram: [
+            "Host gate timeouts",
+            "Where a timeout without a unit is now rejected.",
+            [
+              [".patchmill/config.json", 'timeout: "10m"'],
+              ["Config loader", "parses the unit", true],
+              ["Validation", 'rejects "2"', true],
+              ["Host gate runner", "stops the gate"],
+            ],
+          ],
+        },
+        247: {
+          date: "2026-10-07",
+          slug: "spawn-budget-repair-slot",
+          commits: ["9a1f3b7", "2c84d1e"],
+          problem:
+            "The orchestrator can use its whole subagent spawn budget before final review. When the oracle authorizes a repair, no slot is left and the run fails.",
+          design: [
+            "Reserve one spawn slot for an oracle-authorized repair.",
+            "Release the slot after landing.",
+            "Retry once after an authorized repair.",
+          ],
+          tasks: [
+            "Reserve a repair slot in the spawn budget",
+            "Release the reserved slot after landing",
+            "Retry once after an authorized repair",
+          ],
+        },
+        231: {
+          date: "2026-10-05",
+          slug: "run-identity-seam",
+          commits: ["3fa91d0", "b6c27e5"],
+          problem:
+            "Each command builds its own run identity and outcome, so the event ledger can't compare runs.",
+          design: [
+            "One run identity type, shared by run-once, triage and status.",
+            "Outcomes reduce to a small set: <code>pr-created</code>, <code>blocked</code>, <code>failed</code> and <code>cancelled</code>.",
+            "Callers adapt at one seam. Nothing else changes.",
+          ],
+          tasks: [
+            "Add the run identity and outcome types",
+            "Adapt run-once to the seam",
+            "Adapt triage to the seam",
+            "Adapt status to the seam",
+            "Remove the old outcome shapes",
+          ],
+        },
+        173: {
+          date: "2026-10-06",
+          slug: "board-blocked-reasons",
+          commits: ["7b20e4f", "e18a3c9"],
+          problem:
+            "A blocked card on the board shows only that it is blocked. To learn why, you have to open the issue.",
+          design: [
+            "Blocked cards show the first line of the error under the title.",
+            "Keyboard focus or hover shows the full reason.",
+            "On narrow screens, the columns stack and the reason wraps.",
+            "The reason comes from the run state the board already loads, so the board makes no extra requests.",
+          ],
+          tasks: [
+            "Add the blocked reason to the board card data",
+            "Show the first line on blocked cards",
+            "Show the full reason on focus and hover",
+            "Stack the columns on narrow screens",
+            "Add reference screenshots",
+          ],
+          mockup: MOCKUP_173,
+          shots: {
+            commit: "5d2e8a1",
+            where: "In PR #297, open",
+            items: [
+              {
+                path: "docs/screenshots/173-board-blocked-reasons.png",
+                caption:
+                  "The Blocked column shows each card's reason under its title.",
+              },
+              {
+                path: "docs/screenshots/173-blocked-card-focus.png",
+                caption:
+                  "Keyboard focus on a blocked card shows the full reason.",
+              },
+              {
+                path: "docs/screenshots/173-board-narrow.png",
+                caption: "At 390 px wide, the columns stack and reasons wrap.",
+              },
+            ],
+          },
+        },
+      };
+
+      function planningArts(n, p) {
+        const title = ISSUES.find((i) => i.n === n).title;
+        const merged = "Merged into main";
+        const planWhere = p.planWhere || merged;
+        const specPath = `docs/specs/${p.date}-${p.slug}-design.md`;
+        const arts = [
+          {
+            kind: "spec",
+            title,
+            path: specPath,
+            commit: p.commits[0],
+            where: merged,
+            doc: specDoc(n, title, p),
+          },
+          {
+            kind: "plan",
+            title: `Plan: ${title}`,
+            path: `docs/plans/${p.date}-${p.slug}.md`,
+            commit: p.commits[1],
+            where: planWhere,
+            doc: planDoc(n, title, p, specPath),
+          },
+        ];
+        if (p.mockup)
+          arts.push({
+            kind: "mockup",
+            title: p.mockup[0],
+            path: `docs/mockups/${p.date}-${p.slug}.html`,
+            commit: p.commits[0],
+            where: merged,
+            html: sampleDoc(...p.mockup),
+          });
+        if (p.diagram)
+          arts.push({
+            kind: "diagram",
+            title: p.diagram[0],
+            path: `docs/visuals/${p.date}-${p.slug}.html`,
+            commit: p.commits[1],
+            where: planWhere,
+            html: flowDoc(p.diagram),
+          });
+        if (p.shots)
+          arts.push({
+            kind: "shots",
+            title: "Screenshots",
+            path: "docs/screenshots/",
+            summary: `${p.shots.items.length} files in docs/screenshots/`,
+            commit: p.shots.commit,
+            where: p.shots.where,
+            shots: p.shots.items.map((s, i) => ({ ...s, draw: i })),
+          });
+        return arts;
+      }
+
+      const ARTS = Object.fromEntries(
+        Object.entries(PLANNING).map(([n, p]) => [
+          n,
+          planningArts(Number(n), p),
+        ]),
+      );
+
+      // #227 follows the state picked in the mockup bar.
+      const spec227 = (fields) => ({
+        kind: "spec",
+        title: "Multi-run cost report",
+        path: SPEC_PATH,
+        ...fields,
+      });
+      const SPEC_227_DRAFT = spec227({
+        draft: true,
+        commit: "3e1a9c0",
+        pushed: false,
+        where: "Committed in the worktree. Not pushed yet.",
+        doc: spec227Doc(false),
+      });
+      const SPEC_227_PR = spec227({
+        commit: "8b7d2f4",
+        where: "In spec PR #302, open",
+        doc: spec227Doc(true),
+      });
+      const ARTS_227 = {
+        none: [],
+        working: [
+          spec227({
+            draft: true,
+            commit: "",
+            where: "In the issue worktree. Not committed yet.",
+            doc: spec227Doc(false),
+          }),
+        ],
+        waiting: [SPEC_227_DRAFT],
+        paused: [SPEC_227_DRAFT],
+        review: [SPEC_227_PR],
+        blocked: [SPEC_227_PR],
+      };
+
+      function artifactsFor(v) {
+        return (v.n === 227 ? ARTS_227[app.s227] : ARTS[v.n]) || [];
+      }
+
+      // Patchmill reports this progress line after it validates visualEvidence.
+      function shotEvents(v) {
+        const a = artifactsFor(v).find((x) => x.kind === "shots");
+        if (!a) return [];
+        return [
+          info(
+            `validated ${a.shots.length} committed visual evidence reference screenshots`,
+          ),
+          art("shots", "Screenshots attached as visual proof"),
+        ];
+      }
+
+      // Sample screenshots, drawn inline so the mockup stays one file.
+      function shotSvg(i, label = "") {
+        const C = {
+          bg: "#f4f1ea",
+          line: "#dcd4c4",
+          ink: "#2b2620",
+          dim: "#c3baa9",
+          head: "#8a8170",
+          red: "#c2412d",
+          soft: "#fbe9e5",
+          brass: "#b7862f",
+        };
+        const bar = (x, y, w, fill = C.dim, h = 5) =>
+          `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}"/>`;
+        const box = (x, y, w, h, fill = "#fff", stroke = C.line, r = 6) =>
+          `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" stroke="${stroke}"/>`;
+        const heading = (x, y, s) =>
+          `<text x="${x}" y="${y}" font-family="ui-monospace, monospace" font-size="9" letter-spacing="1" fill="${C.head}">${s}</text>`;
+        const card = (x, y, w, lines = 0) => {
+          const h = lines ? 44 + lines * 9 : 36;
+          let s = box(x, y, w, h) + bar(x + 10, y + 10, 26);
+          s += bar(x + 10, y + 21, w - 28, C.ink);
+          if (lines) {
+            s += `<rect x="${x}" y="${y + 3}" width="3" height="${h - 6}" rx="1.5" fill="${C.red}"/>`;
+            s += box(x + 8, y + 32, w - 16, lines * 9 + 6, C.soft, "none", 4);
+            for (let k = 0; k < lines; k++)
+              s += bar(
+                x + 13,
+                y + 36 + k * 9,
+                (k === lines - 1 ? 0.55 : 0.85) * (w - 26),
+                C.red,
+                4,
+              );
+          }
+          return { s, h };
+        };
+
+        let out = "";
+        if (i === 0) {
+          out += `<rect width="640" height="400" fill="${C.bg}"/><rect width="640" height="32" fill="${C.ink}"/>`;
+          out += bar(16, 13, 64, "#e9e2d3", 6) + bar(560, 13, 64, "#6b6457", 6);
+          const cols = [
+            ["TRIAGE", 3],
+            ["READY", 4],
+            ["PLANNING", 1],
+            ["IMPLEMENTING", 2],
+            ["BLOCKED", 3],
+          ];
+          cols.forEach(([name, count], k) => {
+            const x = 14 + k * 125;
+            out += heading(x, 54, name);
+            let y = 64;
+            for (let j = 0; j < count; j++) {
+              const c = card(x, y, 113, k === 4 ? 1 : 0);
+              out += c.s;
+              y += c.h + 8;
+            }
+          });
+        } else if (i === 1) {
+          const [x, y, w, h] = [170, 84, 300, 230];
+          out += `<rect width="640" height="400" fill="${C.bg}"/>`;
+          out += heading(x, 68, "BLOCKED");
+          out += `<rect x="${x - 5}" y="${y - 5}" width="${w + 10}" height="${h + 10}" rx="11" fill="none" stroke="${C.brass}" stroke-width="2.5"/>`;
+          out += box(x, y, w, h, "#fff", C.line, 8);
+          out += `<rect x="${x}" y="${y + 4}" width="4" height="${h - 8}" rx="2" fill="${C.red}"/>`;
+          out += bar(x + 18, y + 18, 40);
+          out +=
+            bar(x + 18, y + 34, 230, C.ink, 7) +
+            bar(x + 18, y + 48, 160, C.ink, 7);
+          out += box(x + 14, y + 70, w - 28, 140, C.soft, "none", 6);
+          [0.8, 0.9, 0.7, 0.85, 0.6, 0.75, 0.4].forEach((f, k) => {
+            out += bar(x + 26, y + 84 + k * 17, f * (w - 52), C.red, 6);
+          });
+          out += `<g opacity="0.5">${card(x, 330, w, 1).s}</g>`;
+        } else {
+          const [x, w] = [228, 184];
+          out += `<rect width="640" height="400" fill="#e7e2d8"/>`;
+          out += `<rect x="${x}" y="10" width="${w}" height="380" rx="22" fill="${C.bg}" stroke="${C.line}" stroke-width="2"/>`;
+          out += `<path d="M${x + 1} 41V33a22 22 0 0 1 22-22h${w - 46}a22 22 0 0 1 22 22v8z" fill="${C.ink}"/>`;
+          let y = 62;
+          out += heading(x + 14, y, "PLANNING");
+          let c = card(x + 12, y + 8, w - 24);
+          out += c.s;
+          y += 8 + c.h + 22;
+          out += heading(x + 14, y, "BLOCKED");
+          y += 8;
+          for (const lines of [2, 2, 3]) {
+            c = card(x + 12, y, w - 24, lines);
+            out += c.s;
+            y += c.h + 8;
+          }
+        }
+        const a11y = label
+          ? `role="img" aria-label="${esc(label)}"`
+          : 'aria-hidden="true"';
+        return `<svg viewBox="0 0 640 400" ${a11y}>${out}</svg>`;
+      }
+
+      // ---------------------------------------------------------------------------
+      // State
+      // ---------------------------------------------------------------------------
+
+      const app = {
+        route: { view: "board" },
+        s227: "waiting",
+        ov: {}, // per-issue changes made by clicking in the mockup
+        extra: {}, // per-issue thread events added in the mockup
+        timers: {},
+        seen: {},
+        me: readName(),
+        viewer: null, // the open artifact, if any
+      };
+
+      function readName() {
+        try {
+          return localStorage.getItem("patchmill-mockup-name") || "roche";
+        } catch {
+          return "roche";
+        }
+      }
+      function saveName(name) {
+        try {
+          localStorage.setItem("patchmill-mockup-name", name);
+        } catch {
+          /* file:// may block storage */
+        }
+      }
+
+      function view(n) {
+        const base = ISSUES.find((i) => i.n === n);
+        const v = { ...base };
+        if (n === 227) Object.assign(v, S227[app.s227]);
+        if (app.ov[n]) Object.assign(v, app.ov[n]);
+        return v;
+      }
+
+      function threadFor(v) {
+        const base = THREADS[v.thread] ? THREADS[v.thread](v) : [];
+        return [...base, ...(app.extra[v.n] || [])];
+      }
+
+      function resetIssue(n) {
+        clearTimers(n);
+        delete app.ov[n];
+        delete app.extra[n];
+        delete app.seen[n];
+      }
+      function clearTimers(n) {
+        (app.timers[n] || []).forEach(clearTimeout);
+        app.timers[n] = [];
+      }
+      function later(n, ms, fn) {
+        const id = setTimeout(() => {
+          fn();
+          render();
+        }, ms);
+        (app.timers[n] ||= []).push(id);
+      }
+      function push(n, ev) {
+        (app.extra[n] ||= []).push(ev);
+      }
+      function setOv(n, patch) {
+        app.ov[n] = { ...(app.ov[n] || {}), ...patch };
+      }
+      function now() {
+        const d = new Date();
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      }
+
+      // ---------------------------------------------------------------------------
+      // Rendering helpers
+      // ---------------------------------------------------------------------------
+
+      const esc = (s) =>
+        String(s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+
+      const ICON = {
+        play: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>',
+        pause:
+          '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/><rect x="9.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/></svg>',
+        retry:
+          '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg>',
+        stop: '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor"/></svg>',
+        term: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M4.5 6l2 2-2 2M8.5 10.5h3"/></svg>',
+        wrench:
+          '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.2a3.5 3.5 0 0 0-4.3 4.6L2.4 10.6a1.4 1.4 0 0 0 2 2l3.8-3.8a3.5 3.5 0 0 0 4.6-4.3l-2 2-1.9-.4-.4-1.9z"/></svg>',
+        robot:
+          '<svg width="15" height="11" aria-hidden="true" style="color:var(--dim)"><use href="#sym-head"/></svg>',
+        pr: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="12.5" r="1.6"/><path d="M4 5.1v5.8M12 10.9V6.5a2 2 0 0 0-2-2H7.5M9 3L7.5 4.5 9 6"/></svg>',
+      };
+
+      const ART_ICON = {
+        spec: '<path d="M4 1.5h5.5l3 3v10h-8.5z"/><path d="M9.5 1.5v3h3M6 8h4.5M6 10.5h4.5"/>',
+        plan: '<path d="M2.5 4l1.2 1.2L6 3M2.5 9l1.2 1.2L6 8M8.5 4.5h5M8.5 9.5h5M3 13h1M8.5 13h5"/>',
+        mockup:
+          '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 5.5h13M6 5.5v8"/>',
+        diagram:
+          '<rect x="1.5" y="2" width="5" height="4" rx="1"/><rect x="9.5" y="10" width="5" height="4" rx="1"/><path d="M4 6v2.5A1.5 1.5 0 0 0 5.5 10h4"/>',
+        shots:
+          '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5.5" cy="6" r="1.3"/><path d="M14.5 11L11 7.5l-6.5 6"/>',
+        external:
+          '<path d="M9 2.5h4.5V7M13.5 2.5l-6 6M12 9.5V13a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1H7"/>',
+      };
+      const artIcon = (kind, size = 13) =>
+        `<svg viewBox="0 0 16 16" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ART_ICON[kind]}</svg>`;
+
+      const GLYPH = {
+        advance: '<span class="glyph g-plus">+</span>',
+        neutral: '<span class="glyph g-eq">=</span>',
+        blocked: '<span class="glyph g-minus">−</span>',
+      };
+      // Name colours live in the theme (--who-1 to --who-5) so they stay readable.
+      const PERSON_COLOURS = [1, 2, 3, 4, 5].map((i) => `var(--who-${i})`);
+
+      function personColour(name) {
+        if (name === "roche") return PERSON_COLOURS[0];
+        let h = 0;
+        for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+        return PERSON_COLOURS[1 + (h % (PERSON_COLOURS.length - 1))];
+      }
+      function avatarPerson(name, small = false) {
+        return `<span class="av av-person${small ? " sm" : ""}" style="--who:${personColour(name)}" title="${esc(name)}">${esc(name.slice(0, 2))}</span>`;
+      }
+      function avatarAgent(live = false) {
+        return `<span class="av av-agent${live ? " is-live" : ""}" aria-hidden="true"><svg class="ring"><use href="#sym-ring"/></svg><svg class="head"><use href="#sym-head"/></svg></span>`;
+      }
+
+      function labelChip(l) {
+        const cls =
+          l === "agent-ready"
+            ? "l-ready"
+            : l === "needs-info"
+              ? "l-info"
+              : l === "agent-unsuitable"
+                ? "l-unsuitable"
+                : l === "blocked"
+                  ? "l-blocked"
+                  : "";
+        return `<span class="label ${cls}">${esc(l)}</span>`;
+      }
+
+      function formatArgs(args) {
+        return Object.entries(args)
+          .map(([k, v]) => {
+            const s = typeof v === "string" ? v : JSON.stringify(v);
+            return `${k}=${s.length > 90 ? s.slice(0, 87) + "..." : s}`;
+          })
+          .join(", ");
+      }
+
+      // ---------------------------------------------------------------------------
+      // Board
+      // ---------------------------------------------------------------------------
+
+      function renderBoard() {
+        const all = ISSUES.map((i) => view(i.n));
+        return `
+    <section aria-label="Issues">
+      <svg class="board-watermark" aria-hidden="true"><use href="#sym-wheel"/></svg>
+      <div class="board">
+        ${COLUMNS.map((c) =>
+          renderColumn(
+            c,
+            all.filter((v) => v.col === c.id),
+          ),
+        ).join("")}
+      </div>
+    </section>`;
+      }
+
+      function renderColumn(c, items) {
+        return `
+    <section class="col" aria-label="${esc(c.name)}">
+      <header class="col-head">
+        <div class="col-title"><span>${esc(c.name)}</span><span class="col-count">${items.length}</span></div>
+        <div class="col-desc">${esc(c.desc)}</div>
+      </header>
+      <div class="cards">${items.length ? items.map(renderCard).join("") : '<div class="col-empty">Nothing here</div>'}</div>
+    </section>`;
+      }
+
+      function renderCard(v) {
+        const markers = [];
+        if (v.status === "working")
+          markers.push('<span class="mk mk-live"><i></i>Live</span>');
+        if (v.status === "waiting")
+          markers.push(
+            '<span class="mk mk-wait"><i></i>Waiting for reply</span>',
+          );
+        if (v.status === "paused")
+          markers.push('<span class="mk mk-paused">Paused</span>');
+        if (v.terminal)
+          markers.push(`<span class="mk mk-term">${ICON.term}Terminal</span>`);
+        const cls =
+          v.status === "working"
+            ? "is-live"
+            : v.status === "waiting"
+              ? "is-waiting"
+              : v.status === "blocked"
+                ? "is-blocked"
+                : "";
+        const running =
+          ["working", "waiting", "idle", "paused"].includes(v.status) && v.step;
+        const prs = (v.prs || [])
+          .map((p) => `<span class="card-pr">${ICON.pr}${esc(p.label)}</span>`)
+          .join("");
+        return `
+    <a class="card ${cls}" href="#/issue/${v.n}">
+      <div class="card-num">#${v.n}</div>
+      <div class="card-title">${esc(v.title)}</div>
+      ${running ? `<div class="card-step">${esc(v.step)}</div>` : ""}
+      ${v.status === "blocked" && v.error ? `<div class="card-error">${GLYPH.blocked} ${esc(v.error)}</div>` : ""}
+      ${markers.length || prs ? `<div class="card-row">${markers.join("")}${prs}</div>` : ""}
+      ${v.labels.length ? `<div class="card-row">${v.labels.map(labelChip).join("")}</div>` : ""}
+    </a>`;
+      }
+
+      // ---------------------------------------------------------------------------
+      // Issue page
+      // ---------------------------------------------------------------------------
+
+      function renderIssue(n) {
+        const v = view(n);
+        const events = threadFor(v);
+        const body =
+          v.status === "none" && events.length === 0
+            ? renderEmpty()
+            : renderThread(v, events);
+        return `${renderHeader(v)}<section class="thread" aria-live="polite">${body}</section>${renderComposer(v)}`;
+      }
+
+      function renderHeader(v) {
+        return `
+    <header class="ihead"><div class="ihead-inner">
+      <a class="back" href="#/board">← Board</a>
+      <div class="ihead-top">
+        <h1 class="ititle"><a class="inum" href="${gh("issues", v.n)}" target="_blank" rel="noreferrer">#${v.n}</a>${esc(v.title)}</h1>
+        <div class="control">${renderControl(v)}</div>
+      </div>
+      ${renderRail(v)}
+      <div class="meta">${renderMeta(v)}</div>
+      ${renderArtifacts(v)}
+    </div></header>`;
+      }
+
+      function renderControl(v) {
+        if (v.terminal)
+          return `<span class="note-pill">${ICON.term} Running in a terminal</span>`;
+        switch (v.status) {
+          case "none":
+            return `<button class="btn btn-primary" data-action="start">${ICON.play} Start planning</button>`;
+          case "working":
+          case "waiting":
+          case "idle":
+            return `<button class="btn" data-action="pause" title="Stops the run like Ctrl-C. The worktree and session are kept.">${ICON.pause} Pause</button>`;
+          case "paused":
+            return `<button class="btn btn-live" data-action="resume">${ICON.play} Resume</button>`;
+          case "blocked":
+            return `<button class="btn btn-danger" data-action="retry">${ICON.retry} Retry</button>`;
+          default:
+            return "";
+        }
+      }
+
+      function renderRail(v) {
+        const phase = v.phase ?? -1;
+        const items = PHASES.map((p, i) => {
+          let cls = "";
+          if (i < phase) cls = "done";
+          if (i === phase)
+            cls = v.status === "blocked" ? "current is-blocked" : "current";
+          return `<li class="${cls}"${i === phase ? ' aria-current="step"' : ""}>${esc(p.name)}${p.pr ? '<span class="pr-tag">PR</span>' : ""}</li>`;
+        });
+        return `<ol class="rail" aria-label="Workflow" data-key="${v.n}:${phase}:${v.status}">${items.join("")}</ol>`;
+      }
+
+      const STATUS_TEXT = {
+        none: ["dot", "Not started"],
+        working: ["dot dot-live", "Agent working"],
+        waiting: ["dot dot-wait", "Waiting for reply"],
+        idle: ["dot", "Agent idle"],
+        paused: ["dot", "Paused"],
+        blocked: ["dot dot-blocked", "Blocked"],
+        done: ["dot", "Finished"],
+      };
+
+      function renderMeta(v) {
+        const [dot, text] = STATUS_TEXT[v.status];
+        const parts = [
+          `<span class="meta-item"><i class="${dot}"></i><b>${text}</b></span>`,
+        ];
+        if (v.step)
+          parts.push(
+            `<span class="meta-item mono">step <b>${esc(v.step)}</b></span>`,
+          );
+        if (v.elapsed)
+          parts.push(
+            `<span class="meta-item mono">elapsed <b>${esc(v.elapsed)}</b></span>`,
+          );
+        for (const p of v.prs || []) {
+          parts.push(
+            `<span class="meta-item"><a class="pr-link" href="${gh("pull", p.n)}" target="_blank" rel="noreferrer">${ICON.pr}${esc(p.label)}</a><span class="pr-state">${esc(p.state)}</span></span>`,
+          );
+        }
+        if (v.status === "done" && v.cost)
+          parts.push(
+            `<span class="meta-item mono">cost <b>${esc(v.cost)}</b> · ${esc(v.tokens)} tokens</span>`,
+          );
+        const here = v.presence
+          ? [...new Set([app.me, ...v.presence])]
+          : [app.me];
+        parts.push(
+          `<span class="meta-item">here now <span class="presence">${here.map((p) => avatarPerson(p, true)).join("")}</span></span>`,
+        );
+        return parts.join("");
+      }
+
+      function renderArtifacts(v) {
+        const arts = artifactsFor(v);
+        if (!arts.length) return "";
+        const groups = Object.entries(ART_GROUPS).map(([group, label]) => {
+          const items = arts.filter((a) => ART_KINDS[a.kind].group === group);
+          if (!items.length) return "";
+          return `<div class="art-group" role="group" aria-label="${label} artifacts"><span class="art-label" aria-hidden="true">${label}</span>${items.map(renderChip).join("")}</div>`;
+        });
+        return `<div class="artifacts">${groups.join("")}</div>`;
+      }
+
+      function renderChip(a) {
+        const count = a.shots
+          ? `<span class="art-count">${a.shots.length}</span>`
+          : "";
+        const draft = a.draft ? '<span class="art-draft">draft</span>' : "";
+        return `<button type="button" class="art-chip${a.draft ? " is-draft" : ""}" data-action="art" data-kind="${a.kind}" data-art-key="chip:${a.kind}" aria-haspopup="dialog">${artIcon(a.kind)}${ART_KINDS[a.kind].name}${count}${draft}</button>`;
+      }
+
+      function renderEmpty() {
+        return `
+    <div class="empty">
+      <svg aria-hidden="true"><use href="#sym-wheel"/></svg>
+      <h2>No run yet</h2>
+      <p>Start planning to brainstorm this issue with an agent. The agent starts with read-only tools. It writes the spec only after you agree on a design.</p>
+      <button class="btn btn-primary" data-action="start">${ICON.play} Start planning</button>
+    </div>`;
+      }
+
+      function renderThread(v, events) {
+        const seen = app.seen[v.n] ?? events.length;
+        let stepLabel = "";
+        const out = events.map((e, i) => {
+          if (e.t === "step") stepLabel = e.label;
+          const isNew = i >= seen ? " is-new" : "";
+          return renderEvent(v, e, i, stepLabel, isNew);
+        });
+        const last = events[events.length - 1];
+        if (
+          v.status === "working" &&
+          !(last && last.t === "tool" && last.running)
+        ) {
+          out.push(
+            `<div class="ev ev-live"><div class="gutter">${avatarAgent(true)}</div><div class="live-text">The agent is working<span class="dots"><i></i><i></i><i></i></span></div></div>`,
+          );
+        }
+        app.seen[v.n] = events.length;
+        return out.join("");
+      }
+
+      function renderEvent(v, e, i, stepLabel, isNew) {
+        switch (e.t) {
+          case "divider":
+            return `<div class="ev-divider tone-${e.tone}${isNew}"><span class="div-text">${GLYPH[e.tone]}<span>${esc(e.text)}</span>${e.time ? `<time>${e.time}</time>` : ""}</span></div>`;
+          case "step":
+            return `<div class="ev ev-machine ev-step${isNew}"><div class="gutter"><i class="node"></i></div><div class="step-line"><span class="step-num">${esc(e.n)}</span>${esc(e.label)}</div></div>`;
+          case "tokens":
+            return `<div class="ev ev-machine${isNew}"><div class="gutter"></div><div class="tokens">tokens: task ${e.task} total ${e.total}   time elapsed: ${e.time}</div></div>`;
+          case "tool":
+            return renderTool(v, e, i, isNew);
+          case "msg":
+            return renderMessage(e, stepLabel, isNew);
+          case "error":
+            return `<div class="ev ev-error${isNew}"><div class="gutter"></div><div class="error-box"><div class="error-title">${GLYPH.blocked}${esc(e.title)}</div><pre>${esc(e.body)}</pre></div></div>`;
+          case "earlier":
+            return `<div class="ev${isNew}"><div class="gutter"></div><button class="earlier" data-action="earlier">▸ ${esc(e.text)}. Show earlier steps</button></div>`;
+          case "info":
+            return `<div class="ev ev-machine${isNew}"><div class="gutter"></div><div class="info-line">${esc(e.text)}</div></div>`;
+          case "art":
+            return renderArtCard(v, e, i, isNew);
+          default:
+            return "";
+        }
+      }
+
+      function renderTool(v, e, i, isNew) {
+        const running = e.running && v.status === "working";
+        const stopped = e.running && v.status !== "working";
+        const isSub = e.name === "subagent";
+        const lead = running
+          ? '<span class="spinner" aria-label="running"></span>'
+          : isSub
+            ? ICON.robot
+            : ICON.wrench;
+        const nameCls =
+          e.name === "patchmill_advance" ? "tool-name is-advance" : "tool-name";
+        const state = running ? "running" : stopped ? "stopped" : "";
+        const detail = `<div class="td-label">arguments</div><pre>${esc(JSON.stringify(e.args, null, 2))}</pre>${e.result ? `<div class="td-label">result</div><pre>${esc(e.result)}</pre>` : ""}`;
+        return `
+    <div class="ev ev-machine${isNew}"><div class="gutter"></div>
+      <details class="tool${running ? " is-running" : ""}" data-key="${v.n}:${i}">
+        <summary>${lead}<span class="${nameCls}">${esc(e.name)}</span><span class="tool-args">(${esc(formatArgs(e.args))})</span>${state ? `<span class="tool-state">${state}</span>` : ""}</summary>
+        <div class="tool-detail">${detail}</div>
+      </details>
+    </div>`;
+      }
+
+      function renderMessage(e, stepLabel, isNew) {
+        const isAgent = e.who === "agent";
+        const name = e.who === "me" ? app.me : e.who;
+        const tag =
+          isAgent && stepLabel
+            ? `<span class="msg-tag">${esc(stepLabel)}${stepLabel === "brainstorm" ? " · read-only tools" : ""}</span>`
+            : "";
+        const notes = [];
+        if (e.steer)
+          notes.push(
+            `<div class="msg-note">${GLYPH.neutral}sent while the agent was working · it read this after its current tool call</div>`,
+          );
+        if (e.mock) notes.push('<div class="msg-note">mockup reply</div>');
+        return `
+    <article class="ev ev-msg ${isAgent ? "agent" : "person"}${e.mock ? " is-mock" : ""}${isNew}"${isAgent ? "" : ` style="--who:${personColour(name)}"`}>
+      <div class="gutter">${isAgent ? avatarAgent(false) : avatarPerson(name)}</div>
+      <div class="msg-body">
+        <header class="msg-head"><span class="msg-name">${esc(isAgent ? "agent" : name)}</span>${tag}<time>${esc(e.time)}</time></header>
+        <div class="prose">${e.html}</div>
+        ${notes.join("")}
+      </div>
+    </article>`;
+      }
+
+      function renderArtCard(v, e, i, isNew) {
+        const a = artifactsFor(v).find((x) => x.kind === e.kind);
+        if (!a) return "";
+        const k = ART_KINDS[e.kind];
+        return `
+    <div class="ev ev-art${isNew}"><div class="gutter"></div>
+      <div class="art-card">
+        <span class="art-card-icon">${artIcon(e.kind, 16)}</span>
+        <span class="art-card-text"><b>${esc(e.text)}</b><code>${esc(a.summary || a.path)}</code></span>
+        <button type="button" class="btn btn-sm" data-action="art" data-kind="${e.kind}" data-art-key="card:${i}" aria-haspopup="dialog" aria-label="Open ${esc((k.long || k.name).toLowerCase())}">Open</button>
+      </div>
+    </div>`;
+      }
+
+      const COMPOSER = {
+        none: {
+          disabled: true,
+          dot: "dot",
+          hint: "Click Start planning to brainstorm this issue with an agent.",
+        },
+        working: {
+          stop: true,
+          dot: "dot dot-live",
+          hint: "The agent is working. Your message reaches it after its current tool call.",
+        },
+        waiting: {
+          dot: "dot dot-wait",
+          hint: "The agent is waiting for your reply.",
+        },
+        idle: {
+          dot: "dot",
+          hint: "The agent is idle. Your message starts a new turn.",
+        },
+        paused: {
+          disabled: true,
+          dot: "dot",
+          hint: "This run is paused. Click Resume to keep chatting.",
+        },
+        blocked: {
+          disabled: true,
+          dot: "dot dot-blocked",
+          hint: "This run is blocked. Fix the cause, then click Retry.",
+        },
+      };
+
+      function renderComposer(v) {
+        if (v.terminal) {
+          return `<footer class="composer"><div class="note-bar">${ICON.term}<span>View only. This run was started in a terminal with <code>patchmill run-once --issue ${v.n}</code>. Chat works only for runs started from this page.</span></div></footer>`;
+        }
+        if (v.status === "done") {
+          const pr = v.prs[0];
+          return `<footer class="composer"><div class="note-bar">${GLYPH.advance}<span>This run has finished. Review continues on <a href="${gh("pull", pr.n)}" target="_blank" rel="noreferrer">${esc(pr.label)}</a>.</span></div></footer>`;
+        }
+        const c = COMPOSER[v.status];
+        const dis = c.disabled ? " disabled" : "";
+        return `
+    <footer class="composer">
+      <form class="composer-box${c.disabled ? " is-disabled" : ""}" id="composer" data-n="${v.n}">
+        <textarea id="composer-input" rows="1" placeholder="Message the agent as ${esc(app.me)}" aria-label="Message the agent"${dis}></textarea>
+        ${c.stop ? `<button type="button" class="btn btn-stop" data-action="stop-reply" title="Stops only the agent's current reply">${ICON.stop} Stop reply</button>` : ""}
+        <button type="submit" class="btn btn-primary"${dis}>Send</button>
+      </form>
+      <p class="composer-hint"><i class="${c.dot}"></i><span>${c.hint}</span><span class="kbd-hint">Enter to send · Shift+Enter for a new line</span></p>
+    </footer>`;
+      }
+
+      // ---------------------------------------------------------------------------
+      // Mockup controls
+      // ---------------------------------------------------------------------------
+
+      const OTHER_RUNS = [
+        { n: 276, label: "Implementing #276" },
+        { n: 263, label: "Terminal run #263" },
+        { n: 231, label: "Code review #231" },
+        { n: 247, label: "Run error #247" },
+      ];
+
+      function renderMockbar() {
+        const r = app.route;
+        const pressed = (on) => `aria-pressed="${on ? "true" : "false"}"`;
+        const states = Object.entries(S227)
+          .map(
+            ([k, s]) =>
+              `<button class="mb-btn" data-mock-state="${k}" ${pressed(r.view === "issue" && r.n === 227 && app.s227 === k)}>${esc(s.label)}</button>`,
+          )
+          .join("");
+        const others = OTHER_RUNS.map(
+          (o) =>
+            `<button class="mb-btn" data-mock-issue="${o.n}" ${pressed(r.view === "issue" && r.n === o.n)}>${esc(o.label)}</button>`,
+        ).join("");
+        return `
+    <span class="mock-tag">MOCKUP</span>
+    <button class="mb-btn mb-toggle" data-mock-toggle>${document.body.classList.contains("mockbar-min") ? "show" : "hide"}</button>
+    <span class="mb-group"><button class="mb-btn" data-mock-board ${pressed(r.view === "board")}>Board</button></span>
+    <span class="mb-group"><span class="mb-label">#227</span>${states}</span>
+    <span class="mb-group"><span class="mb-label">other runs</span>${others}</span>`;
+      }
+
+      // ---------------------------------------------------------------------------
+      // Render and routing
+      // ---------------------------------------------------------------------------
+
+      let lastScrollKey = "";
+
+      function render() {
+        const appEl = document.getElementById("app");
+        const ta = document.getElementById("composer-input");
+        const draft = ta ? ta.value : "";
+        const hadFocus = ta && document.activeElement === ta;
+        const openTools = new Set(
+          [...document.querySelectorAll("details.tool[open]")].map(
+            (d) => d.dataset.key,
+          ),
+        );
+        const oldRail = document.querySelector(".rail");
+        const railWas = oldRail && {
+          key: oldRail.dataset.key,
+          left: oldRail.scrollLeft,
+        };
+
+        appEl.innerHTML =
+          app.route.view === "issue" ? renderIssue(app.route.n) : renderBoard();
+        document.getElementById("mockbar").innerHTML = renderMockbar();
+        document.getElementById("me-name").textContent = app.me;
+        document.getElementById("me-initials").textContent = app.me.slice(0, 2);
+        document
+          .getElementById("me-initials")
+          .style.setProperty("--who", personColour(app.me));
+
+        document.querySelectorAll("details.tool").forEach((d) => {
+          if (openTools.has(d.dataset.key)) d.open = true;
+        });
+        // On narrow screens the rail scrolls sideways. Centre the current step when
+        // the issue or step changes; otherwise keep where the person scrolled to.
+        const rail = document.querySelector(".rail");
+        const cur = rail?.querySelector('[aria-current="step"]');
+        if (rail && railWas?.key === rail.dataset.key)
+          rail.scrollLeft = railWas.left;
+        else if (cur)
+          rail.scrollLeft +=
+            cur.getBoundingClientRect().left -
+            rail.getBoundingClientRect().left -
+            (rail.clientWidth - cur.offsetWidth) / 2;
+        const nta = document.getElementById("composer-input");
+        if (nta) {
+          nta.value = draft;
+          autosize(nta);
+          if (hadFocus && !nta.disabled) nta.focus();
+        }
+
+        // Follow the newest activity, like a chat.
+        if (app.route.view === "issue") {
+          const key = `${app.route.n}:${(app.extra[app.route.n] || []).length}:${view(app.route.n).status}:${app.s227}`;
+          if (key !== lastScrollKey)
+            window.scrollTo({ top: document.body.scrollHeight });
+          lastScrollKey = key;
+        } else {
+          lastScrollKey = "";
+        }
+      }
+
+      function parseRoute() {
+        const h = location.hash.replace(/^#\/?/, "");
+        const [path, query] = h.split("?");
+        const parts = path.split("/");
+        if (
+          parts[0] === "issue" &&
+          ISSUES.some((i) => i.n === Number(parts[1]))
+        ) {
+          const n = Number(parts[1]);
+          const st = new URLSearchParams(query || "").get("state");
+          if (n === 227 && st && S227[st] && st !== app.s227) {
+            app.s227 = st;
+            resetIssue(227);
+          }
+          return { view: "issue", n };
+        }
+        return { view: "board" };
+      }
+
+      function go(hash) {
+        if (location.hash === hash) {
+          app.route = parseRoute();
+          render();
+        } else location.hash = hash;
+      }
+
+      window.addEventListener("hashchange", () => {
+        closeViewer(false);
+        const prev = app.route;
+        app.route = parseRoute();
+        if (app.route.view !== prev.view || app.route.n !== prev.n)
+          window.scrollTo({ top: 0 });
+        render();
+      });
+
+      // ---------------------------------------------------------------------------
+      // Actions
+      // ---------------------------------------------------------------------------
+
+      function act(kind, n) {
+        const v = view(n);
+        switch (kind) {
+          case "start":
+            resetIssue(n);
+            setOv(n, {
+              status: "working",
+              col: "planning",
+              step: "brainstorm",
+              elapsed: "0m 03s",
+              phase: 0,
+              presence: [app.me],
+            });
+            app.extra[n] = startingThread(n, app.me, now());
+            later(n, 2600, () => {
+              push(
+                n,
+                msg(
+                  "agent",
+                  now(),
+                  `<p>I've read #${n}. In the real page, my first brainstorming question would appear here, and we'd talk until you're happy with the design.</p>`,
+                  { mock: true },
+                ),
+              );
+              setOv(n, { status: "waiting" });
+            });
+            break;
+          case "pause":
+            clearTimers(n);
+            setOv(n, {
+              status: "paused",
+              prev: v.status === "working" ? "idle" : v.status,
+            });
+            push(
+              n,
+              div(
+                "neutral",
+                `Paused by ${app.me}. The worktree and the agent's session are kept.`,
+                now(),
+              ),
+            );
+            break;
+          case "resume": {
+            const prev = v.prev || "idle";
+            setOv(n, { status: "working" });
+            push(n, div("advance", `Resumed by ${app.me}.`, now()));
+            later(n, 2200, () => {
+              push(
+                n,
+                msg(
+                  "agent",
+                  now(),
+                  "<p>I'm back. My last turn was cut off, so I checked the worktree first. Nothing was lost.</p>",
+                  { mock: true },
+                ),
+              );
+              setOv(n, { status: prev });
+            });
+            break;
+          }
+          case "retry":
+            clearTimers(n);
+            setOv(n, { status: "working", col: v.colRunning || v.col });
+            push(
+              n,
+              div(
+                "advance",
+                `Retried by ${app.me}. The run continues from its saved state.`,
+                now(),
+              ),
+            );
+            later(n, 2400, () => {
+              push(
+                n,
+                msg(
+                  "agent",
+                  now(),
+                  "<p>The run is going again. In the real page, I'd pick up from the step that failed.</p>",
+                  { mock: true },
+                ),
+              );
+              setOv(n, { status: "idle" });
+            });
+            break;
+          case "stop-reply":
+            clearTimers(n);
+            setOv(n, { status: "idle" });
+            push(
+              n,
+              div(
+                "neutral",
+                `${app.me} stopped the agent's reply. The run continues.`,
+                now(),
+              ),
+            );
+            break;
+          case "earlier":
+            alert("Mockup: earlier steps would load here.");
+            return;
+        }
+        render();
+      }
+
+      function send(n, text) {
+        const v = view(n);
+        const prev = v.status;
+        const steer = prev === "working";
+        const html = text
+          .split(/\n{2,}/)
+          .map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`)
+          .join("");
+        push(n, msg("me", now(), html, { steer }));
+        if (!steer) setOv(n, { status: "working" });
+        later(n, steer ? 2600 : 1800, () => {
+          const reply = steer
+            ? "<p>Noted. I'll take that into account in my next step.</p>"
+            : "<p>Got it. In the real page, my reply streams in here as I write it.</p>";
+          push(n, msg("agent", now(), reply, { mock: true }));
+          setOv(n, {
+            status: steer ? "working" : prev === "waiting" ? "waiting" : "idle",
+          });
+        });
+        render();
+      }
+
+      function autosize(ta) {
+        ta.style.height = "auto";
+        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      }
+
+      document.addEventListener("click", (e) => {
+        const t = e.target;
+        const action = t.closest("[data-action]");
+        if (action) {
+          if (action.dataset.action === "name") return openNameDialog();
+          if (action.dataset.action === "theme") return toggleTheme(action);
+          if (action.dataset.action === "art") return openViewer(action);
+          if (app.route.view === "issue")
+            act(action.dataset.action, app.route.n);
+          return;
+        }
+        const st = t.closest("[data-mock-state]");
+        if (st) {
+          app.s227 = st.dataset.mockState;
+          resetIssue(227);
+          return go(`#/issue/227?state=${app.s227}`);
+        }
+        const iss = t.closest("[data-mock-issue]");
+        if (iss) {
+          const n = Number(iss.dataset.mockIssue);
+          resetIssue(n);
+          return go(`#/issue/${n}`);
+        }
+        if (t.closest("[data-mock-board]")) return go("#/board");
+        if (t.closest("[data-mock-toggle]")) {
+          document.body.classList.toggle("mockbar-min");
+          render();
+        }
+      });
+
+      document.addEventListener("submit", (e) => {
+        if (e.target.id !== "composer") return;
+        e.preventDefault();
+        const ta = document.getElementById("composer-input");
+        const text = ta.value.trim();
+        if (!text) return;
+        ta.value = "";
+        send(Number(e.target.dataset.n), text);
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (
+          e.target.id === "composer-input" &&
+          e.key === "Enter" &&
+          !e.shiftKey &&
+          !e.isComposing
+        ) {
+          e.preventDefault();
+          document.getElementById("composer").requestSubmit();
+        }
+      });
+
+      document.addEventListener("input", (e) => {
+        if (e.target.id === "composer-input") autosize(e.target);
+      });
+
+      function openNameDialog() {
+        const dlg = document.getElementById("name-dialog");
+        document.getElementById("name-input").value = app.me;
+        dlg.showModal();
+      }
+
+      document.getElementById("name-dialog").addEventListener("close", (e) => {
+        const dlg = e.target;
+        const name = document.getElementById("name-input").value.trim();
+        if (dlg.returnValue === "save" && name) {
+          app.me = name;
+          saveName(name);
+          render();
+        }
+      });
+
+      // ---------- artifact viewer ----------
+      const VIEWER = document.getElementById("viewer");
+      let viewerUrl = "";
+
+      function openViewer(trigger) {
+        const a = artifactsFor(view(app.route.n)).find(
+          (x) => x.kind === trigger.dataset.kind,
+        );
+        if (!a) return;
+        // "Open in new tab" needs a URL. The real server serves the file itself.
+        if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+        viewerUrl = a.html
+          ? URL.createObjectURL(new Blob([a.html], { type: "text/html" }))
+          : "";
+        app.viewer = { a, idx: 0, key: trigger.dataset.artKey, restore: true };
+        renderViewer();
+        VIEWER.showModal();
+      }
+
+      function closeViewer(restore = true) {
+        if (!app.viewer) return;
+        app.viewer.restore = restore;
+        VIEWER.close();
+      }
+
+      // Focus goes back to the chip or card that opened the viewer. The page may
+      // have re-rendered while the viewer was open, so look the button up again.
+      VIEWER.addEventListener("close", () => {
+        const v = app.viewer;
+        app.viewer = null;
+        if (v?.restore)
+          document.querySelector(`[data-art-key="${v.key}"]`)?.focus();
+      });
+
+      VIEWER.addEventListener("click", (e) => {
+        if (e.target === VIEWER) return closeViewer(); // the backdrop
+        const b = e.target.closest("[data-vw]");
+        if (!b) return;
+        if (b.dataset.vw === "close") return closeViewer();
+        if (b.dataset.vw === "prev") moveShot(-1);
+        if (b.dataset.vw === "next") moveShot(1);
+        if (b.dataset.vw === "shot")
+          moveShot(Number(b.dataset.idx) - app.viewer.idx);
+      });
+
+      VIEWER.addEventListener("keydown", (e) => {
+        if (!app.viewer?.a.shots) return;
+        if (e.key === "ArrowLeft") moveShot(-1);
+        if (e.key === "ArrowRight") moveShot(1);
+      });
+
+      function moveShot(step) {
+        const count = app.viewer.a.shots.length;
+        app.viewer.idx = (app.viewer.idx + step + count) % count;
+        renderViewer();
+      }
+
+      // Re-render the panel and keep keyboard focus on the same control.
+      function renderViewer() {
+        const el = document.getElementById("vw");
+        const f = document.activeElement?.closest?.("[data-vw]");
+        const sel =
+          f && el.contains(f)
+            ? f.dataset.vw === "shot"
+              ? `[data-vw="shot"][data-idx="${app.viewer.idx}"]`
+              : `[data-vw="${f.dataset.vw}"]`
+            : "";
+        el.innerHTML = viewerHtml(app.viewer);
+        if (sel) el.querySelector(sel)?.focus();
+      }
+
+      function viewerHtml({ a, idx }) {
+        const k = ART_KINDS[a.kind];
+        const shot = a.shots?.[idx];
+        const path = shot ? shot.path : a.path;
+        const onGitHub = a.commit && a.pushed !== false;
+        const actions = [
+          onGitHub &&
+            `<a class="btn btn-sm" href="https://github.com/${REPO}/blob/${a.commit}/${path}" target="_blank" rel="noreferrer">${artIcon("external")} View on GitHub</a>`,
+          viewerUrl &&
+            `<a class="btn btn-sm" href="${viewerUrl}" target="_blank" rel="noopener">${artIcon("external")} Open in new tab</a>`,
+        ].filter(Boolean);
+        return `
+    <div class="vw-head">
+      <div class="vw-kind">${esc(k.long || k.name)}</div>
+      <h2 id="vw-title">${artIcon(a.kind, 18)}${esc(a.title)}${a.draft ? '<span class="art-draft">draft</span>' : ""}</h2>
+      <div class="vw-meta"><code>${esc(a.path)}</code><span>${a.commit ? `at <code>${a.commit}</code>` : "Not committed"}</span><span>${esc(a.where)}</span></div>
+      ${actions.length ? `<div class="vw-actions">${actions.join("")}</div>` : ""}
+      <button type="button" class="vw-close" data-vw="close" aria-label="Close" autofocus>×</button>
+    </div>
+    ${viewerBody(a, idx)}`;
+      }
+
+      function viewerBody(a, idx) {
+        if (a.doc)
+          return `<div class="vw-body"><article class="md-body">${a.doc}</article></div>`;
+        if (a.html)
+          return `<div class="vw-body is-frame"><iframe class="art-frame" title="${esc(a.title)}" sandbox="allow-scripts" srcdoc="${esc(a.html)}"></iframe><p class="vw-note">Shown in a sandbox. The file can't read this page or act as you.</p></div>`;
+        const s = a.shots[idx];
+        const thumbs = a.shots
+          .map(
+            (t, j) =>
+              `<button type="button" class="thumb" data-vw="shot" data-idx="${j}" aria-label="Screenshot ${j + 1}: ${esc(t.caption)}" aria-current="${j === idx}">${shotSvg(t.draw)}</button>`,
+          )
+          .join("");
+        return `
+    <div class="vw-body">
+      <figure class="gallery">
+        <div class="shot">${shotSvg(s.draw, s.caption)}</div>
+        <figcaption><b>${esc(s.caption)}</b><code>${esc(s.path)}</code></figcaption>
+      </figure>
+      <div class="gal-nav">
+        <button type="button" class="btn btn-sm" data-vw="prev" aria-label="Previous screenshot">←</button>
+        <span class="gal-count" aria-live="polite">${idx + 1} / ${a.shots.length}</span>
+        <button type="button" class="btn btn-sm" data-vw="next" aria-label="Next screenshot">→</button>
+        <div class="thumbs">${thumbs}</div>
+      </div>
+    </div>`;
+      }
+
+      // ---------- theme ----------
+      const THEME_KEY = "patchmill-theme";
+
+      function savedTheme() {
+        try {
+          return localStorage.getItem(THEME_KEY);
+        } catch {
+          return null;
+        }
+      }
+      function currentTheme() {
+        return document.documentElement.dataset.theme === "light"
+          ? "light"
+          : "dark";
+      }
+      function syncThemeSwitch() {
+        const light = currentTheme() === "light";
+        const sw = document.getElementById("theme-switch");
+        sw.setAttribute("aria-checked", String(light));
+        sw.title = light ? "Switch to dark theme" : "Switch to light theme";
+      }
+      function applyTheme(theme, origin) {
+        const swap = () => {
+          document.documentElement.dataset.theme = theme;
+          syncThemeSwitch();
+        };
+        const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (!origin || calm || !document.startViewTransition) return swap();
+        // The new theme opens as a circle from the switch.
+        const r = origin.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        const end = Math.hypot(
+          Math.max(x, innerWidth - x),
+          Math.max(y, innerHeight - y),
+        );
+        document.startViewTransition(swap).ready.then(() => {
+          document.documentElement.animate(
+            {
+              clipPath: [
+                `circle(0px at ${x}px ${y}px)`,
+                `circle(${end}px at ${x}px ${y}px)`,
+              ],
+            },
+            {
+              duration: 480,
+              easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",
+              pseudoElement: "::view-transition-new(root)",
+            },
+          );
+        });
+      }
+      function toggleTheme(origin) {
+        const next = currentTheme() === "light" ? "dark" : "light";
+        try {
+          localStorage.setItem(THEME_KEY, next);
+        } catch {
+          /* file:// may block storage */
+        }
+        applyTheme(next, origin);
+      }
+      // Until someone picks a theme, follow the OS setting as it changes.
+      matchMedia("(prefers-color-scheme: light)").addEventListener(
+        "change",
+        (e) => {
+          if (!savedTheme()) applyTheme(e.matches ? "light" : "dark");
+        },
+      );
+
+      syncThemeSwitch();
+      app.route = parseRoute();
+      render();
+    </script>
+  </body>
+</html>
