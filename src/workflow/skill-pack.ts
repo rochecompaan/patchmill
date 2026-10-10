@@ -70,9 +70,9 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   source: {
     type: "github-release",
     repository: "obra/superpowers",
-    tag: "v6.4.2",
+    tag: "v7.0.0",
     tarballUrl:
-      "https://github.com/obra/superpowers/archive/refs/tags/v6.4.2.tar.gz",
+      "https://github.com/obra/superpowers/archive/refs/tags/v7.0.0.tar.gz",
   },
   additionalSources: [
     {

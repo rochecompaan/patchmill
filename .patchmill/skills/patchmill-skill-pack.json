@@ -5,8 +5,8 @@
     "source": {
       "type": "github-release",
       "repository": "obra/superpowers",
-      "tag": "v6.4.2",
-      "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v6.4.2.tar.gz"
+      "tag": "v7.0.0",
+      "tarballUrl": "https://github.com/obra/superpowers/archive/refs/tags/v7.0.0.tar.gz"
     },
     "additionalSources": [
       {
@@ -17,13 +17,17 @@
       }
     ]
   },
-  "installedAt": "<generated-by-init>",
+  "installedAt": "2026-10-10T07:03:07.292Z",
   "skillDir": ".patchmill/skills",
   "metadataFile": "patchmill-skill-pack.json",
   "files": [
     {
       "path": ".patchmill/skills/brainstorming/SKILL.md",
-      "sha256": "a32d2255354775aa124855aa7100cf276bea096fff4ebb3a0edf57be216e6c72"
+      "sha256": "6ee10d1481b8a2580d5336ff66c5c08acc9d4b251b13bbc3bfd31be99c261d43"
+    },
+    {
+      "path": ".patchmill/skills/brainstorming/builder-check-prompt.md",
+      "sha256": "36d51a4723d6f0a3ce5811a0ea3b3a8424f07533947e1355f5d8cb8cce40c55e"
     },
     {
       "path": ".patchmill/skills/brainstorming/scripts/frame-template.html",
@@ -35,7 +39,7 @@
     },
     {
       "path": ".patchmill/skills/brainstorming/scripts/server.cjs",
-      "sha256": "2d2961ea8d11f56c5f4c3a1a68d22709efa5d7601a2246d8c880774e7e9e8412"
+      "sha256": "763abf96510e0b892a1141397b31aa82ef900cf87ed34dde94bc8782baf4a7ca"
     },
     {
       "path": ".patchmill/skills/brainstorming/scripts/start-server.sh",
@@ -44,10 +48,6 @@
     {
       "path": ".patchmill/skills/brainstorming/scripts/stop-server.sh",
       "sha256": "0b5ccbbd57f62d3ed88993f7940b5ee0e5c0fc9b21c550c623da4f6292e47daf"
-    },
-    {
-      "path": ".patchmill/skills/brainstorming/spec-document-reviewer-prompt.md",
-      "sha256": "95a0a195de9d984be2fffa95bab16fc8c563bc296a9cfc5e9c29cb3ece0d7457"
     },
     {
       "path": ".patchmill/skills/brainstorming/visual-companion.md",
@@ -63,7 +63,7 @@
     },
     {
       "path": ".patchmill/skills/executing-plans/scripts/task-done",
-      "sha256": "f704dc216e0602f95c601b9ee1113c9a55cc1c5f6e4d149dddfba0fd3ad1c314"
+      "sha256": "d0d4f2397c85a4426443ea955e699ef12568b41b408ec6122d4ec2433ee3a5f6"
     },
     {
       "path": ".patchmill/skills/executing-plans/scripts/task-start",
@@ -107,7 +107,7 @@
     },
     {
       "path": ".patchmill/skills/requesting-code-review/SKILL.md",
-      "sha256": "cfcee1b06774e7c0517f1e09be1a11f2d5680257072723e709ddbcf7e08b795a"
+      "sha256": "2180e14a448e9410bec88e6646a2d1f0ce7fdd58de27388c1e052e929679d2bc"
     },
     {
       "path": ".patchmill/skills/requesting-code-review/code-reviewer.md",
@@ -143,7 +143,7 @@
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/scripts/sdd-workspace",
-      "sha256": "75ca46c756ba4209ca36e0d3d65567257ceb33bc7a6775b9dad946707cb3bd7b"
+      "sha256": "4fd9770e7a49b6bde488c0e92bac1b3bd01fcbdaf8f06b6c4efbe3a1abd99f86"
     },
     {
       "path": ".patchmill/skills/subagent-driven-development/scripts/task-brief",
@@ -159,7 +159,7 @@
     },
     {
       "path": ".patchmill/skills/systematic-debugging/SKILL.md",
-      "sha256": "808fc5717aa88ad65efff312b11c186294d3e6ee301afb584e2f86599b137787"
+      "sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202"
     },
     {
       "path": ".patchmill/skills/systematic-debugging/condition-based-waiting-example.ts",
