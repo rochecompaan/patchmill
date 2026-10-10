@@ -3,14 +3,12 @@ import { runCleanupHookScript } from "../../../pi/hooks.ts";
 import { PlanningWorkspaceGit } from "../../../git/planning-workspace-git.ts";
 import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
 import { writeRunState } from "./run-state.ts";
-import { runOnceFailure } from "./result-diagnostics.ts";
 import type { PipelineFinishStageOptions } from "./pipeline-finish.ts";
-import type { AgentIssueCleanupPendingResult } from "./types.ts";
 
-/** Uses the same guarded expected-head and ignored-content cleanup as planning. */
+/** Uses guarded expected-HEAD cleanup after a verified legacy PR merge. */
 export async function cleanupLegacyPublishedWorkspace(
   options: PipelineFinishStageOptions,
-): Promise<AgentIssueCleanupPendingResult | undefined> {
+): Promise<void> {
   if (!options.implementationPr || !options.branch)
     throw new Error("Cleanup requires saved PR ownership");
   const publication = options.implementationPr.publication;
@@ -74,28 +72,8 @@ export async function cleanupLegacyPublishedWorkspace(
       phase: "implementation",
       workspace: { ...workspace, cleanup: { state: "ready" } },
     });
-    if (outcome.kind === "cleanup-pending")
-      return {
-        status: "cleanup-pending",
-        issue: options.issue,
-        phase: "implementation",
-        reason: "ignored-worktree-content",
-        prUrl: options.implementationPr.url,
-        branch: options.branch,
-        worktreePath: options.worktreePath,
-        ignoredPaths: [...outcome.ignoredPaths],
-        remediation: [
-          "Preserve or remove the listed ignored content, then rerun this explicit issue.",
-        ],
-        publicFailure: runOnceFailure("ignored-worktree-content", {
-          issueNumber: options.issue.number,
-          status: "cleanup-pending",
-          phase: "implementation",
-          branch: options.branch,
-          worktreePath: options.worktreePath,
-          ignoredPaths: outcome.ignoredPaths,
-        }),
-      };
+    if (outcome?.kind !== "removed")
+      throw new TypeError("Invalid planning worktree removal outcome");
     await checkpoint("worktreeRemoved");
   }
   if (!options.checkpoints.branchRemoved) {

@@ -105,7 +105,7 @@ test("failed cleanup hook preserves resumable ownership and does not apply done 
   }
 });
 
-test("ignored workspace content remains cleanup-pending after a verified merge", async () => {
+test("verified legacy merge cleanup removes ignored-only workspace content", async () => {
   const scenario = await createLegacyPrScenario();
   try {
     await writeFile(join(scenario.workspace, ".git", "unused"), "").catch(
@@ -125,13 +125,15 @@ test("ignored workspace content remains cleanup-pending after a verified merge",
     await scenario.run();
     await scenario.merge();
     const result = await scenario.run();
-    assert.equal(result.status, "cleanup-pending", JSON.stringify(result));
+    assert.equal(result.status, "merged", JSON.stringify(result));
+    await assert.rejects(access(scenario.workspace), { code: "ENOENT" });
+    assert.equal(scenario.effects.includes("labels"), true);
+    assert.equal((await scenario.state())?.status, "finished");
+    assert.deepEqual(scenario.selected.labels, ["agent-done"]);
     assert.equal(
-      await readFile(join(scenario.workspace, "cache", "owned.db"), "utf8"),
-      "preserve",
+      scenario.effects.filter((effect) => effect === "worktree-remove").length,
+      1,
     );
-    assert.equal(scenario.effects.includes("labels"), false);
-    assert.equal((await scenario.state())?.status, "implementing");
   } finally {
     await scenario.cleanup();
   }

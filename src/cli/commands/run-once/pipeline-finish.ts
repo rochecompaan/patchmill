@@ -299,12 +299,7 @@ export async function runPipelineFinishStage(
         ),
       };
     }
-    const cleanupPending = await cleanupLegacyPublishedWorkspace(ownedOptions);
-    if (cleanupPending)
-      return {
-        kind: "finished",
-        result: withLogPath(cleanupPending, runOptions),
-      };
+    await cleanupLegacyPublishedWorkspace(ownedOptions);
     if (!checkpoints.doneLabelEnsured) {
       if (config.issueState?.provider !== "comments") {
         await ensureAutomationLabel(host, config, doneLabel);

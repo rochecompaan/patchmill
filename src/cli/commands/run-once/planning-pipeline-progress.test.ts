@@ -426,7 +426,7 @@ test("planning and implementation steps share one attempt-wide token total", asy
       now,
       progress: harness.progress,
     });
-    assert.equal(result.status, "cleanup-pending", JSON.stringify(result));
+    assert.equal(result.status, "pr-created", JSON.stringify(result));
     assert.deepEqual(
       completions(harness.events)
         .filter((step) =>
