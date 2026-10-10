@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertPlanningStateReplacement,
+  parsePlanningState,
+  serializePlanningState,
   validatePlanningState,
   type PlanningImplementationFinishCheckpoints,
   type PlanningStateV1,
@@ -246,18 +248,24 @@ test("effect failure prevents later effects", async () => {
   assert.deepEqual(run.events, ["publishCost", "validateVisualEvidence"]);
 });
 
-test("a legacy pending record completes without replaying finish effects", async () => {
-  const run = input(
-    state(
-      {
-        costPublicationCompleted: true,
-        visualEvidenceValidated: true,
-        handoffCommentPosted: true,
-        cleanupHookCompleted: true,
-      },
-      "legacy",
-    ),
+test("a legacy pending record survives serialization and completes without replaying finish effects", async () => {
+  const saved = state(
+    {
+      costPublicationCompleted: true,
+      visualEvidenceValidated: true,
+      handoffCommentPosted: true,
+      cleanupHookCompleted: true,
+    },
+    "legacy",
   );
+  const restored = parsePlanningState(serializePlanningState(saved));
+  assert.deepEqual(restored, saved);
+  assert.deepEqual(restored.phases[0]?.workspace?.cleanup, {
+    state: "cleanup-pending",
+    reason: "ignored-worktree-content",
+    ignoredPaths: [".env", "build/output\nname.bin"],
+  });
+  const run = input(restored);
   const result = await finishPlanningImplementation(run.value);
   assert.equal(result.kind, "complete");
   assert.deepEqual(run.events, [

@@ -62,14 +62,21 @@ test("spec and plan cleanup resume legacy pending state directly to removed", as
     let current = phase(kind);
     const events: string[] = [];
     const checkpoints: string[] = [];
+    let remoteChecks = 0;
     const outcome = await finishPlanningPhaseCleanup({
       phase: current,
       authorization: {
         kind: "publication",
-        remoteHead: async () => ({ state: "present", headOid: oid }),
+        remoteHead: async (candidate) => {
+          assert.equal(candidate.workspace.identity.branch, `planning/${kind}`);
+          assert.equal(candidate.publication.headOid, oid);
+          remoteChecks += 1;
+          return { state: "present", headOid: oid };
+        },
       },
       workspaces: {
         removeWorktree: async (input) => {
+          assert.equal(remoteChecks, 1, "publication must be checked first");
           events.push(`worktree:${input.workspace.cleanup.state}`);
           return {
             kind: "removed",
@@ -91,6 +98,7 @@ test("spec and plan cleanup resume legacy pending state directly to removed", as
       },
     });
     assert.equal(outcome.kind, "cleaned");
+    assert.equal(remoteChecks, 1);
     assert.deepEqual(events, ["worktree:cleanup-pending", "branch"]);
     assert.deepEqual(checkpoints, ["worktree-removed", "removed"]);
     assert.equal(current.workspace.cleanup.state, "removed");
