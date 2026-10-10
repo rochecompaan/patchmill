@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -153,12 +160,14 @@ test("normal removal deletes ignored-only worktrees for every phase", async () =
         saved: { ...prepared.workspace, cleanup: { state: "ready" } },
       });
       assert.equal(resumed.clean, true);
-      assert.equal(
-        await (
-          await import("node:fs/promises")
-        ).readFile(join(prepared.path, ".env"), "utf8"),
-        "TOKEN=local\n",
-      );
+      for (const [path, bytes] of [
+        [".env", "TOKEN=local\n"],
+        [".pi/state.json", "{}\n"],
+        ["build/output.bin", "bytes\n"],
+        [".unknown/operator.txt", "local\n"],
+      ]) {
+        assert.equal(await readFile(join(prepared.path, path), "utf8"), bytes);
+      }
 
       const result = await setup.workspaces.removeWorktree({
         runId,
@@ -167,6 +176,12 @@ test("normal removal deletes ignored-only worktrees for every phase", async () =
       });
       assert.equal(result.kind, "removed");
       await assert.rejects(access(prepared.path), { code: "ENOENT" });
+      assert.deepEqual(
+        setup.calls
+          .filter((args) => args[0] === "worktree" && args[1] === "remove")
+          .at(-1),
+        ["worktree", "remove", "--", prepared.path],
+      );
     }
     const removeCalls = setup.calls.filter(
       (args) => args[0] === "worktree" && args[1] === "remove",
@@ -188,18 +203,85 @@ test("normal removal deletes ignored-only worktrees for every phase", async () =
   }
 });
 
+test("cleanup safeguards reject ready and legacy pending ownership before removal", async () => {
+  const cases = [
+    { kind: "run-id", reason: "invalid-saved-identity" },
+    { kind: "phase", reason: "invalid-saved-identity" },
+    { kind: "outside", reason: "outside-worktree-root" },
+    { kind: "locked", reason: "unsafe-registration" },
+    { kind: "elsewhere", reason: "branch-owned-by-other-worktree" },
+    { kind: "head", reason: "head-oid-mismatch" },
+  ] as const;
+  for (const cleanup of [
+    { state: "ready" as const },
+    {
+      state: "cleanup-pending" as const,
+      reason: "ignored-worktree-content" as const,
+      ignoredPaths: [".env"],
+    },
+  ]) {
+    for (const { kind, reason } of cases) {
+      const setup = await fixture();
+      try {
+        const prepared = await preparedWorkspace(setup, "spec", cleanup);
+        await writeFile(join(prepared.path, ".env"), "unique ignored data\n");
+        const workspace = {
+          ...prepared.workspace,
+          identity: { ...prepared.workspace.identity },
+        };
+        if (kind === "outside") workspace.identity.worktreePath = setup.repo;
+        if (kind === "locked")
+          git(setup.repo, "worktree", "lock", prepared.path);
+        if (kind === "elsewhere")
+          workspace.identity.worktreePath = join(setup.worktreeRoot, "other");
+        if (kind === "head") workspace.headOid = "b".repeat(40);
+        const start = setup.calls.length;
+        await assert.rejects(
+          setup.workspaces.removeWorktree({
+            runId: kind === "run-id" ? "different-run" : runId,
+            phase: kind === "phase" ? "plan" : "spec",
+            workspace,
+          }),
+          (error: unknown) => {
+            assert.ok(error instanceof PlanningWorkspaceConflictError);
+            assert.equal(error.reason, reason, `${cleanup.state}: ${kind}`);
+            return true;
+          },
+        );
+        assert.equal(
+          setup.calls
+            .slice(start)
+            .some(
+              (args) =>
+                (args[0] === "worktree" && args[1] === "remove") ||
+                (args[0] === "update-ref" && args[1] === "-d"),
+            ),
+          false,
+        );
+        assert.equal(
+          await readFile(join(prepared.path, ".env"), "utf8"),
+          "unique ignored data\n",
+        );
+        assert.equal(
+          git(setup.repo, "rev-parse", "refs/heads/planning/spec"),
+          prepared.workspace.headOid,
+        );
+      } finally {
+        await setup.cleanup();
+      }
+    }
+  }
+});
+
 test("ordinary changes remain on disk and block removal", async () => {
   for (const kind of ["tracked", "staged", "untracked"] as const) {
     const setup = await fixture();
     try {
       const prepared = await preparedWorkspace(setup, "spec");
-      const path = join(prepared.path, `${kind}.txt`);
+      const name = kind === "tracked" ? "README.md" : `${kind}.txt`;
+      const path = join(prepared.path, name);
       await writeFile(path, "preserve me\n");
-      if (kind === "tracked") {
-        git(prepared.path, "add", `${kind}.txt`);
-        await writeFile(path, "changed but preserved\n");
-      }
-      if (kind === "staged") git(prepared.path, "add", `${kind}.txt`);
+      if (kind === "staged") git(prepared.path, "add", name);
       await assert.rejects(
         setup.workspaces.removeWorktree({
           runId,
@@ -210,10 +292,7 @@ test("ordinary changes remain on disk and block removal", async () => {
           error instanceof PlanningWorkspaceConflictError &&
           error.reason === "dirty-worktree",
       );
-      assert.equal(
-        await (await import("node:fs/promises")).readFile(path, "utf8"),
-        kind === "tracked" ? "changed but preserved\n" : "preserve me\n",
-      );
+      assert.equal(await readFile(path, "utf8"), "preserve me\n");
     } finally {
       await setup.cleanup();
     }
@@ -240,9 +319,7 @@ test("normal Git removal preserves an ordinary file created after status", async
         error.operation === "worktree-remove",
     );
     assert.equal(
-      await (
-        await import("node:fs/promises")
-      ).readFile(join(prepared.path, "late.txt"), "utf8"),
+      await readFile(join(prepared.path, "late.txt"), "utf8"),
       "late\n",
     );
     const removals = setup.calls.filter(

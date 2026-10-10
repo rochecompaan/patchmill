@@ -20,7 +20,9 @@ test("removal status treats every ordinary porcelain record as dirty", () => {
   for (const stdout of [
     " M tracked.txt\0?? ordinary.txt\0",
     "M  staged.txt\0",
-    "R  before.txt\0after.txt\0",
+    " M tracked.txt\0",
+    "?? ordinary.txt\0",
+    "R  after.txt\0before.txt\0",
     "?? ordinary\nname.txt\0",
   ]) {
     assert.deepEqual(parsePlanningWorkspaceRemovalStatus(stdout), {
