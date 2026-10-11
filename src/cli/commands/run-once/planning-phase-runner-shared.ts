@@ -30,6 +30,7 @@ import {
   runPlanningPhaseArtifacts,
 } from "./planning-phase-artifacts.ts";
 import type { PlanningArtifactAgent } from "./planning-phase-artifacts.ts";
+import { reconcilePlanningWorkspaceArtifact } from "./planning-artifact-recovery.ts";
 import type {
   AgentIssuePrCreatedResult,
   AgentIssueMergedResult,
@@ -180,6 +181,29 @@ export function blocked(
   };
 }
 
+export async function reconcileWorkspaceArtifact(
+  input: PlanningPhaseRunnerInput,
+  state: PlanningStateV1,
+): Promise<PlanningStateV1> {
+  const current = state.phases[input.phaseIndex];
+  if (current?.status !== "workspace-ready")
+    throw new RangeError("Planning phase workspace is not ready");
+  await reconcilePlanningWorkspaceArtifact({
+    runId: state.runId,
+    issueNumber: state.issueNumber,
+    specsDir: input.config.specsDir,
+    plansDir: input.config.plansDir,
+    phase: input.phase,
+    current,
+    git: input.publicationGit,
+    workspaces: input.workspaces,
+    checkpoint: async (next) => {
+      state = await replacePhase(input, state, next);
+    },
+  });
+  return state;
+}
+
 export async function runWorkspaceArtifacts(
   input: PlanningPhaseRunnerInput,
   state: PlanningStateV1,
@@ -187,6 +211,7 @@ export async function runWorkspaceArtifacts(
   | PlanningPhaseRunnerOutcome
   | { kind: "workspace-ready"; state: PlanningStateV1 }
 > {
+  state = await reconcileWorkspaceArtifact(input, state);
   const current = state.phases[input.phaseIndex];
   if (current?.status !== "workspace-ready")
     throw new RangeError("Planning phase workspace is not ready");

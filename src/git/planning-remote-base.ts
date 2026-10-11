@@ -1,11 +1,14 @@
-import { basename, isAbsolute, relative, resolve } from "node:path";
+import { resolve } from "node:path";
+import {
+  parsePlanningArtifactCandidates,
+  planningArtifactDirectory,
+} from "./planning-artifact-tree.ts";
 import type { CommandRunner } from "../command/types.ts";
 import type { RepositoryIdentity } from "../host/pull-requests.ts";
 import { resolveImplementationPrTargetRemote } from "../workflow/implementation-pr-target-remote.ts";
 import type { RepositoryMutationContext } from "./repository-mutation.ts";
 import { withRepositoryMutationRunner } from "./repository-mutation-runner.ts";
 import {
-  isPlanningArtifactPath,
   isPlanningBranch,
   isPlanningSingleLine,
   planningOid,
@@ -15,20 +18,6 @@ import {
   PlanningWorkspaceResponseError,
 } from "./planning-workspaces.ts";
 import type { PlanningRemoteBaseSnapshot } from "./planning-workspaces.ts";
-function directory(root: string, value: string): string {
-  const absolute = isAbsolute(value) ? resolve(value) : resolve(root, value);
-  const path = relative(root, absolute).replaceAll("\\", "/");
-  if (
-    path === "" ||
-    isAbsolute(path) ||
-    path === ".." ||
-    path.startsWith("../")
-  )
-    throw new RangeError(
-      "Planning artifact directory must be inside repository root",
-    );
-  return path;
-}
 function check(
   result: { code: number },
   operation: "fetch" | "ref-resolution" | "tree-inspection",
@@ -55,8 +44,8 @@ export class PlanningRemoteBaseGit {
     this.mutation = input.mutation;
     this.runner = input.runner;
     this.repoRoot = resolve(input.repoRoot);
-    this.specsDir = directory(this.repoRoot, input.specsDir);
-    this.plansDir = directory(this.repoRoot, input.plansDir);
+    this.specsDir = planningArtifactDirectory(this.repoRoot, input.specsDir);
+    this.plansDir = planningArtifactDirectory(this.repoRoot, input.plansDir);
   }
   async fetch(input: {
     issueNumber: number;
@@ -131,64 +120,17 @@ export class PlanningRemoteBaseGit {
       { cwd: this.repoRoot },
     );
     check(result, "tree-inspection");
-    const spec: string[] = [];
-    const plan: string[] = [];
-    const seen = new Set<string>();
-    if (result.stdout !== "" && !result.stdout.endsWith("\0"))
-      throw new PlanningWorkspaceResponseError(
-        "tree-inspection",
-        "unterminated-record",
-      );
-    for (const record of result.stdout.split("\0").filter(Boolean)) {
-      const match =
-        /^(100644|100755|120000|160000) (blob|commit) ([0-9a-f]{40}|[0-9a-f]{64})\t([^\0\r\n]+)$/u.exec(
-          record,
-        );
-      if (match === null)
-        throw new PlanningWorkspaceResponseError(
-          "tree-inspection",
-          "malformed-record",
-        );
-      const [mode, type, objectId, path] = match.slice(1);
-      if (
-        !planningOid.test(objectId!) ||
-        !isPlanningArtifactPath(path!) ||
-        seen.has(path!)
-      ) {
-        throw new PlanningWorkspaceResponseError(
-          "tree-inspection",
-          seen.has(path!)
-            ? "duplicate-entry"
-            : !isPlanningArtifactPath(path!)
-              ? "invalid-path"
-              : "malformed-record",
-        );
-      }
-      if (
-        (mode === "160000" && type !== "commit") ||
-        (mode !== "160000" && type !== "blob")
-      )
-        throw new PlanningWorkspaceResponseError(
-          "tree-inspection",
-          "invalid-mode-type",
-        );
-      seen.add(path!);
-      if (mode === "120000" || mode === "160000") continue;
-      if (basename(path!).includes(`-issue-${input.issueNumber}-`)) {
-        if (path === this.specsDir || path!.startsWith(`${this.specsDir}/`))
-          spec.push(path!);
-        if (path === this.plansDir || path!.startsWith(`${this.plansDir}/`))
-          plan.push(path!);
-      }
-    }
+    const artifactCandidates = parsePlanningArtifactCandidates({
+      stdout: result.stdout,
+      issueNumber: input.issueNumber,
+      specsDir: this.specsDir,
+      plansDir: this.plansDir,
+    });
     return Object.freeze({
       remote,
       baseBranch: input.baseBranch,
       baseOid,
-      artifactCandidates: Object.freeze({
-        spec: Object.freeze(spec.sort()),
-        plan: Object.freeze(plan.sort()),
-      }),
+      artifactCandidates,
     });
   }
 }

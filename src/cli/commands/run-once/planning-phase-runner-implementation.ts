@@ -13,6 +13,7 @@ import {
   blocked,
   operations,
   replacePhase,
+  reconcileWorkspaceArtifact,
   runWorkspaceArtifacts,
   type PlanningPhaseRunnerInput,
   type PlanningPhaseRunnerOutcome,
@@ -170,6 +171,7 @@ export async function runPlanningImplementationPhase(
     throw new RangeError("Planning implementation state changed");
   if (phase.status === "workspace-ready") {
     await fetchVerifiedBase(input, state);
+    state = await reconcileWorkspaceArtifact(input, state);
     state = await adoptResumedImplementationHead(input, state);
     const result = await runWorkspaceArtifacts(input, state);
     if (result.kind !== "workspace-ready") return result;
