@@ -142,24 +142,26 @@ result:
 patchmill run-once --issue N > result.json
 ```
 
-`review-pending`, `cleanup-pending`, and `stopped` with reason `plan-only` are
-exit-zero nonfailure results. `cleanup-pending` can still appear during
-reconciliation of state from an older release. It preserves a valid pull request
-while its Issue run remains incomplete. New ignored-only phase cleanup does not
-return this result.
+`review-pending` and `stopped` with reason `plan-only` are exit-zero nonfailure
+results. Patchmill no longer returns the public `cleanup-pending` result, even
+for saved records from older releases.
+
+After a legacy workspace refresh, the result includes `quarantinePaths`. This
+array names the retained old checkouts. Recovery progress, final JSONL data, and
+the terminal's **Quarantine paths** section name the same paths. A later blocked
+result also retains this field.
 
 An open planning review takes precedence over a plan-only stop. A later
 invocation without the option resumes the saved phase and gate snapshot.
 
 ### Failure diagnostics
 
-Every reason-bearing blocked, stopped, cleanup, environment, and error result
-keeps its stable `reason` code and adds a `diagnostic` object. The object has a
-short `summary`, plain-language `explanation`, attributed `details`, safe
-`actions`, `safety` warnings, and `retry` guidance. Redirected stdout and the
-final JSONL `result` event contain the same object; terminal output renders the
-same fields as Reason, Explanation, Details, Recommended action, Safety, and
-Retry.
+Every reason-bearing blocked, stopped, environment, and error result keeps its
+stable `reason` code and adds a `diagnostic` object. The object has a short
+`summary`, plain-language `explanation`, attributed `details`, safe `actions`,
+`safety` warnings, and `retry` guidance. Redirected stdout and the final JSONL
+`result` event contain the same object; terminal output renders the same fields
+as Reason, Explanation, Details, Recommended action, Safety, and Retry.
 
 `retry.kind` states when another invocation can help: `retry-now` means the
 recommended normal command can make progress now; `after-action` means first
@@ -255,26 +257,51 @@ A retry observes durable state, the remote, and the host before repeating an
 effect. It can adopt an exact pushed head or created pull request, complete a
 checkpointed cleanup, return the same open review, or verify a merge.
 
-For spec, plan, and implementation cleanup, empty
-`git status --porcelain=v1 --untracked-files=all` output satisfies the workspace
-content requirement. Removal still requires valid ownership, path identity,
-registration, HEAD, and publication evidence. Staged, tracked, and non-ignored
-untracked changes remain blockers. Ignored content alone does not block cleanup
-or require an operator retry.
+Patchmill uses ordinary Git status for verification, recovery, and cleanup.
+Ignored content never blocks these operations or requires an operator label or
+retry. This rule applies to every ignored path, including collapsed directories
+such as `.pi/` and tool output such as `node_modules/`.
+
+Staged changes, tracked changes, and non-ignored untracked files remain
+blockers. A force-added ignored file counts as staged or committed content.
+Existing status and artifact-diff guards still apply. Read-only artifact
+verification preserves HEAD, the index, artifact files, and ignored files.
+
+Phase removal still requires valid ownership, path identity, registration, HEAD,
+and publication evidence.
 
 **CAUTION:** Do not store unique data in ignored files inside disposable phase
 workspaces. Cleanup permanently deletes all ignored content, including `.env`,
 `.pi/`, unknown files, and operator-created files.
 
-Non-destructive in-place recovery preserves ignored files. That preservation
-rule does not apply to final phase cleanup. Patchmill never force-cleans a phase
-workspace or force-updates a conflicting branch. It does not replace a missing,
-ambiguous, or closed-unmerged planning pull request.
+In-place recovery preserves ignored files. Legacy refresh and reset move the old
+checkout, with its ignored files, to a retained quarantine path. Patchmill never
+removes quarantine paths. The replacement checkout starts without those old
+ignored files. Reset reports the retained paths through its existing
+`quarantinePaths` result.
+
+This preservation rule does not apply to final phase cleanup. Patchmill never
+force-cleans a phase workspace or force-updates a conflicting branch. It does
+not replace a missing, ambiguous, or closed-unmerged planning pull request.
+
+A retry can recover one committed artifact that the agent completed before its
+checkpoint failed. Patchmill proves ownership, ordinary cleanliness, ancestry,
+and a single artifact-only delta from the saved HEAD. It selects the committed
+artifact by issue number and configured directory, not by the retry date. The
+checkpoint retains the original artifact path, commit, todo root, and todos. No
+second artifact agent runs for that artifact. Ambiguous candidates, unrelated
+commits, changed HEAD, or checkpoint errors stop before later agents or
+publication. Normal planning review and implementation PR gates still apply.
+
+Saved legacy `cleanup-pending` records resume normal cleanup without a ready
+label. Patchmill does not publish new needs-info state for these records.
+Existing needs-info state still blocks selection until the configured ready
+state acknowledges it.
 
 | Situation                                            | Operator action                                                                                                                                                                                                                                                                     |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Open review                                          | Review or merge the same pull request, then rerun Run-once.                                                                                                                                                                                                                         |
-| Legacy cleanup pending                               | Apply the configured ready label. Then rerun the same issue. Patchmill rechecks ownership, HEAD, ordinary status, and remote evidence before cleanup.                                                                                                                               |
+| Legacy cleanup pending                               | Rerun the same issue. No cleanup-specific ready label is necessary. Existing needs-info state still requires the normal ready acknowledgement.                                                                                                                                      |
 | Closed-unmerged, proven missing, or ambiguous review | Repair the host state manually; Patchmill does not replace the pull request.                                                                                                                                                                                                        |
 | Dirty or uncheckpointed phase workspace              | Inspect and preserve local work before retrying.                                                                                                                                                                                                                                    |
 | Transient host failure                               | Repair authentication or connectivity, then retry.                                                                                                                                                                                                                                  |

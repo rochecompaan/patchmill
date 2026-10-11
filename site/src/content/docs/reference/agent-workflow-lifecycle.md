@@ -38,6 +38,17 @@ state blocks without fallback.
    the fetched target base. Remaining cleanup and done-label checkpoints then
    complete the Issue run without new agent work.
 
+Ignored content never blocks verification, recovery, or cleanup. Patchmill uses
+ordinary Git status. Staged changes, tracked changes, and non-ignored untracked
+files remain blockers. Force-added ignored files remain subject to status and
+artifact-diff guards. Read-only verification preserves HEAD, the index,
+artifacts, and ignored bytes.
+
+In-place recovery preserves ignored files. Legacy refresh and reset move old
+checkouts to retained quarantine paths. Patchmill never removes these paths.
+Run-once refresh results and reset results name them in `quarantinePaths`.
+Recovery progress and final output report the actual retained paths.
+
 When ordinary Git status is clean and the existing safeguards pass, Patchmill
 removes the phase worktree with normal `git worktree remove` without `--force`.
 This operation permanently deletes all ignored content. Staged, tracked, and
@@ -45,16 +56,25 @@ non-ignored untracked changes block cleanup. Git can refuse removal if an
 ordinary change appears after the last status check. Patchmill does not retry
 with force.
 
-New cleanup does not create ignored-content `cleanup-pending` state. Older saved
-records remain readable. After the operator applies the configured ready label,
-a retry rechecks the saved workspace and publication evidence. It advances
-legacy pending cleanup through `worktree-removed` and `removed`. The retry does
-not replay a completed cleanup hook or earlier finish effect. After cleanup,
-implementation continues through the existing done-label transition.
+Older saved `cleanup-pending` records remain readable. They resume normal
+cleanup without a cleanup-specific ready label or new needs-info publication.
+Existing needs-info state still requires the normal ready acknowledgement. A
+retry rechecks saved workspace and publication evidence. It advances legacy
+pending cleanup through `worktree-removed` and `removed`. The retry does not
+replay a completed cleanup hook or earlier finish effect. Implementation
+completion still requires verified merge and the done-label transition.
 
-`review-pending`, `cleanup-pending`, and supported `stopped` results are
-exit-zero nonfailure results. Same-issue contention reports
-`issue already in progress.` without repair advice.
+A retry can recover one unrecorded committed artifact before saved-HEAD resume.
+Recovery proves workspace ownership, ordinary cleanliness, ancestry, and one
+unambiguous artifact-only delta. Committed-tree discovery retains the original
+path and commit, including custom artifact directories. Recovery preserves prior
+evidence, the todo root, and todos. Failed proof or checkpoint stops before
+later agents or publication. The normal review gates still apply.
+
+`review-pending` and supported `stopped` results are exit-zero nonfailure
+results. Patchmill no longer returns the public `cleanup-pending` result.
+Same-issue contention reports `issue already in progress.` without repair
+advice.
 
 Independent `--issue N` processes can overlap in one clone. Automatic selection
 remains serial and excludes other active attempts. A process exit does not
@@ -66,7 +86,8 @@ patchmill run-once --issue N
 
 See [Run-once recovery](/using-patchmill/run-once/#recovery-and-operator-safety)
 for exact operator actions. Legacy `run lease repair` and `run reset` do not
-authorize deleting planning locks, state, branches, or phase workspaces.
+authorize deleting planning locks, state, branches, or phase workspaces. Reset
+retains its legacy-only scope and refuses planning state.
 
 ## Logging and output
 
