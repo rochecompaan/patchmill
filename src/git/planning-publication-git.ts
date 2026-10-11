@@ -1,4 +1,12 @@
 import { isAbsolute, resolve } from "node:path";
+import {
+  parsePlanningArtifactCandidates,
+  planningArtifactDirectory,
+} from "./planning-artifact-tree.ts";
+import {
+  PlanningWorkspaceResponseError,
+  type PlanningArtifactCandidates,
+} from "./planning-workspaces.ts";
 import type { CommandResult, CommandRunner } from "../command/types.ts";
 import {
   isPlanningArtifactPath,
@@ -32,6 +40,12 @@ export type PlanningAncestryInput = Readonly<{
   ancestorOid: string;
   descendantOid: string;
 }>;
+export type PlanningArtifactCandidatesInput = Readonly<{
+  commitOid: string;
+  issueNumber: number;
+  specsDir: string;
+  plansDir: string;
+}>;
 export type PlanningRegularFilesInput = Readonly<{
   commitOid: string;
   paths: readonly string[];
@@ -47,6 +61,9 @@ export interface PlanningPublicationOperations {
   ): Promise<Readonly<{ pushed: boolean; headOid: string }>>;
   assertAncestor(input: PlanningAncestryInput): Promise<void>;
   assertRegularFiles(input: PlanningRegularFilesInput): Promise<void>;
+  inspectArtifactCandidates(
+    input: PlanningArtifactCandidatesInput,
+  ): Promise<PlanningArtifactCandidates>;
 }
 export type PlanningPublicationGitOperation =
   | "head"
@@ -168,6 +185,54 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
         result,
       );
   }
+  async inspectArtifactCandidates(
+    inputValue: PlanningArtifactCandidatesInput,
+  ): Promise<PlanningArtifactCandidates> {
+    this.validateOid("tree", inputValue.commitOid);
+    if (
+      !Number.isSafeInteger(inputValue.issueNumber) ||
+      inputValue.issueNumber < 1
+    )
+      throw new PlanningPublicationGitError("tree", "invalid-input");
+    const specsDir = planningArtifactDirectory(
+      this.repoRoot,
+      inputValue.specsDir,
+    );
+    const plansDir = planningArtifactDirectory(
+      this.repoRoot,
+      inputValue.plansDir,
+    );
+    const result = await this.run(
+      "tree",
+      [
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        inputValue.commitOid,
+        "--",
+        specsDir,
+        plansDir,
+      ],
+      this.repoRoot,
+    );
+    try {
+      return parsePlanningArtifactCandidates({
+        stdout: result.stdout,
+        issueNumber: inputValue.issueNumber,
+        specsDir,
+        plansDir,
+      });
+    } catch (error) {
+      if (error instanceof PlanningWorkspaceResponseError)
+        throw new PlanningPublicationGitError(
+          "tree",
+          "malformed-response",
+          result,
+        );
+      throw error;
+    }
+  }
   async assertRegularFiles(
     inputValue: PlanningRegularFilesInput,
   ): Promise<void> {
@@ -191,13 +256,13 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
     const result = await this.run(
       "status",
       [
+        "--no-optional-locks",
         "-C",
         workspacePath,
         "status",
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
-        "--ignored=matching",
       ],
       this.repoRoot,
     );
