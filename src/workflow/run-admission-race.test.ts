@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
@@ -51,6 +52,11 @@ test(
       finishFirst = barrier();
     const nativeRead = fs.readFile,
       nativeOpen = fs.open;
+    const reconciliationLock = join(
+      coordination,
+      "admission-reconciliation.lock",
+    );
+    const attempt = new AsyncLocalStorage<string>();
     let observations = 0;
     const firstAdmission =
       createHash("sha256").update("first").digest("hex") + ".json";
@@ -64,12 +70,19 @@ test(
           if (observations <= 2) {
             if (observations === 2) observed.release();
             await observed.promise;
-          } else if (observations === 4) await firstOwns.promise;
+          }
         }
         return raw;
       },
     );
     t.mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
+      // The second observer reconciles only after the first owns the newly
+      // acquired guard, so its dead-owner observation is stale.
+      if (
+        String(args[0]) === reconciliationLock &&
+        attempt.getStore() === "second"
+      )
+        await firstOwns.promise;
       if (
         String(args[0]) === join(coordination, "admissions", firstAdmission)
       ) {
@@ -80,16 +93,23 @@ test(
     });
     syncBuiltinESMExports();
     try {
-      const first = withRunAdmission(
-        { namespace: ns, mode: "explicit", attemptId: "first" },
-        async () => undefined,
+      const first = attempt.run("first", () =>
+        withRunAdmission(
+          { namespace: ns, mode: "explicit", attemptId: "first" },
+          async () => undefined,
+        ),
       );
       const firstResult = Promise.allSettled([first]);
-      const second = withRunAdmission(
-        { namespace: ns, mode: "explicit", attemptId: "second" },
-        async () => undefined,
+      const second = attempt.run("second", () =>
+        withRunAdmission(
+          { namespace: ns, mode: "explicit", attemptId: "second" },
+          async () => undefined,
+        ),
       );
-      await Promise.allSettled([second]);
+      await assert.rejects(second, {
+        name: "RunAdmissionConflictError",
+        recordPath: guard,
+      });
       finishFirst.release();
       assert.equal((await firstResult)[0]!.status, "fulfilled");
       const archive = join(coordination, "archive", "admission-guards");
