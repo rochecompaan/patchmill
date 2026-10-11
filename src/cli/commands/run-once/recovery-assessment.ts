@@ -67,12 +67,6 @@ async function exists(path: string): Promise<boolean> {
     throw error;
   }
 }
-function ignoredEntries(status: string): string[] {
-  return status
-    .split("\n")
-    .filter((line) => line.startsWith("!! "))
-    .map((line) => line.slice(3));
-}
 function blocked(state: PlanRunRecoveryInput["state"]): boolean {
   return !!(
     state.status === "blocked" ||
@@ -182,12 +176,17 @@ export async function assessRunRecovery(
   );
   const worktreeExists = await exists(worktreePath);
   let dirtyStatus: string | undefined;
-  let ignoredStatus: string | undefined;
-  let ignored: string[] = [];
   if (registered && worktreeExists) {
     const ordinary = await git(
       input,
-      ["-C", worktreePath, "status", "--porcelain=v1", "--untracked-files=all"],
+      [
+        "--no-optional-locks",
+        "-C",
+        worktreePath,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+      ],
       "cannot inspect worktree status",
       { trim: false },
     );
@@ -197,21 +196,6 @@ export async function assessRunRecovery(
         worktreePath,
         input.ignoredPaths ?? [],
       ).trim() || undefined;
-    const all = await git(
-      input,
-      [
-        "-C",
-        worktreePath,
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=all",
-        "--ignored=matching",
-      ],
-      "cannot inspect ignored worktree status",
-      { trim: false },
-    );
-    ignored = ignoredEntries(all);
-    ignoredStatus = ignored.length ? all : undefined;
   }
   let divergence: { ahead: number; behind: number } | undefined;
   let actualUniqueCommits: string[] = [];
@@ -323,10 +307,8 @@ export async function assessRunRecovery(
         ? {
             ordinaryClean: !dirtyStatus,
             dirtyStatus,
-            ignoredStatus,
           }
         : {}),
-      ignoredEntries: ignored,
     },
     divergence,
     actualUniqueCommits,

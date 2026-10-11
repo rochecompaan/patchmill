@@ -103,13 +103,6 @@ export function failureForPipelineError(
           observedStatus: assessment.status,
           guidance: decision.guidance,
         });
-      case "ignored-worktree-content":
-        return runOnceFailure("ignored-worktree-content", {
-          ...workspace,
-          ignoredPaths: assessment.worktree.ignoredEntries,
-          blockedAction: decision.blockedAction,
-          guidance: decision.guidance,
-        });
       default:
         return assertNever(decision);
     }

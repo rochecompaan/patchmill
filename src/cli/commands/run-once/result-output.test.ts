@@ -10,7 +10,10 @@ import {
   exitCodeForRunOnceResult,
   writeRunOnceResult,
 } from "./result-output.ts";
-import type { RunOnceResultSummary } from "./result-summary.ts";
+import {
+  summarizeResult,
+  type RunOnceResultSummary,
+} from "./result-summary.ts";
 import { diagnosticFor } from "./result-diagnostics.ts";
 
 const summary: RunOnceResultSummary = {
@@ -41,6 +44,49 @@ const cleanupPendingSummary: RunOnceResultSummary = {
     ignoredPaths: [".env"],
   }),
 };
+test("reports retained quarantine paths in JSON, JSONL, and TTY output", async () => {
+  const quarantinePath = "/tmp/old checkout-quarantine";
+  const result = summarizeResult({
+    status: "plan-found",
+    issue: {
+      number: 307,
+      title: "Recover",
+      body: "",
+      labels: [],
+      state: "open",
+    },
+    planPath: "docs/plans/original.md",
+    quarantinePaths: [quarantinePath],
+  });
+  assert.deepEqual(result.quarantinePaths, [quarantinePath]);
+  const dir = await mkdtemp(join(tmpdir(), "quarantine-output-"));
+  const logPath = join(dir, "run.jsonl");
+  const redirected: string[] = [];
+  await writeRunOnceResult(result, {
+    stdout: { isTTY: false, write: (chunk) => redirected.push(String(chunk)) },
+    env: {},
+    logPath,
+  });
+  assert.deepEqual(JSON.parse(redirected.join("")).quarantinePaths, [
+    quarantinePath,
+  ]);
+  assert.deepEqual(
+    JSON.parse((await readFile(logPath, "utf8")).trim()).data.quarantinePaths,
+    [quarantinePath],
+  );
+  const tty: string[] = [];
+  await writeRunOnceResult(result, {
+    stdout: {
+      isTTY: true,
+      columns: 100,
+      write: (chunk) => tty.push(String(chunk)),
+    },
+    env: { NO_COLOR: "1" },
+  });
+  assert.match(tty.join(""), /Quarantine paths/u);
+  assert.ok(tty.join("").includes(quarantinePath));
+});
+
 test("writes human TTY output but exact compact JSON when redirected", async () => {
   const interactive: string[] = [];
   await writeRunOnceResult(summary, {

@@ -29,8 +29,6 @@ test("archives exact state bytes before reset mutation", async () => {
       exists: true,
       registered: true,
       ordinaryClean: true,
-      ignoredStatus: "!! .pi/todos/issue-211-task.md\n",
-      ignoredEntries: [".pi/todos/issue-211-task.md"],
     },
     actualUniqueCommits: [],
     savedCommits: [],
@@ -74,8 +72,6 @@ test("archives exact state bytes before reset mutation", async () => {
     exists: true,
     registered: true,
     ordinaryClean: true,
-    ignoredStatus: "!! .pi/todos/issue-211-task.md\n",
-    ignoredEntries: [".pi/todos/issue-211-task.md"],
   });
   assert.doesNotMatch(archived.path, /:/);
 });
@@ -102,7 +98,7 @@ test("archives under the trusted leased issue rather than state data", async () 
     savedWorkspace: {},
     baseOid: "0123456789abcdef0123456789abcdef01234567",
     branch: { exists: false },
-    worktree: { exists: false, registered: false, ignoredEntries: [] },
+    worktree: { exists: false, registered: false },
     actualUniqueCommits: [],
     savedCommits: [],
     artifacts: { spec: { valid: false }, plan: { valid: false } },

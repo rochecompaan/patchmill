@@ -286,6 +286,7 @@ export type AgentIssueStoppedResult = {
 );
 
 type AgentIssuePipelineResultLog = {
+  quarantinePaths?: string[] | undefined;
   logPath?: string | undefined;
   piSessionPath?: string | undefined;
 };
@@ -372,7 +373,6 @@ export type RunRecoveryAction =
 export type RunRecoveryMutatingAction = Exclude<RunRecoveryAction, "resume">;
 export type RunRecoveryRefusalReason =
   | RunRecoveryUnsafeClassification
-  | "ignored-worktree-content"
   | "not-blocked";
 export type RunRecoveryLeaseOwner = {
   version: 1;
@@ -433,8 +433,6 @@ export type RunRecoveryAssessment = {
     registeredBranch?: string | undefined;
     ordinaryClean?: boolean | undefined;
     dirtyStatus?: string | undefined;
-    ignoredStatus?: string | undefined;
-    ignoredEntries: string[];
   };
   divergence?: { ahead: number; behind: number } | undefined;
   actualUniqueCommits: string[];
@@ -488,14 +486,7 @@ export type RunRecoveryDecision =
   | {
       action: "refuse";
       assessment: RunRecoveryAssessment;
-      reason: "ignored-worktree-content";
-      blockedAction: RunRecoveryMutatingAction;
-      guidance: string[];
-    }
-  | {
-      action: "refuse";
-      assessment: RunRecoveryAssessment;
-      reason: Exclude<RunRecoveryRefusalReason, "ignored-worktree-content">;
+      reason: RunRecoveryRefusalReason;
       guidance: string[];
     }
   | {

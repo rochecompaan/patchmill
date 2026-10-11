@@ -27,7 +27,10 @@ function runnerFor(
     async run(command, args, options = {}) {
       const call = { command, args: [...args], cwd: options.cwd };
       calls.push(call);
-      return handler(call);
+      return handler({
+        ...call,
+        args: call.args.filter((arg) => arg !== "--no-optional-locks"),
+      });
     },
   };
 }
@@ -420,9 +423,8 @@ test("typed recovery decision table selects only conservative actions", () => {
             registered: true,
             registeredBranch: "agent/recover",
             ordinaryClean: true,
-            ignoredEntries: [],
           }
-        : { exists: false, registered: false, ignoredEntries: [] },
+        : { exists: false, registered: false },
     actualUniqueCommits:
       classification === "resumable-with-commits" ? ["abc123 implement"] : [],
     savedCommits: [],
@@ -670,7 +672,7 @@ test("unverifiable workspace guidance identifies saved and expected workspaces",
       savedWorkspace: { branch: "agent/saved", worktreePath: "saved" },
       baseOid: "0123456789abcdef0123456789abcdef01234567",
       branch: { exists: true },
-      worktree: { exists: false, registered: false, ignoredEntries: [] },
+      worktree: { exists: false, registered: false },
       actualUniqueCommits: [],
       savedCommits: [],
       artifacts: { spec: { valid: false }, plan: { valid: false } },

@@ -39,33 +39,21 @@ export async function assertRecoveryBranchOid(
   if (result.code !== 0 || result.stdout.trim() !== expectedOid)
     throw new Error(`Recovery branch changed before publication: ${branch}`);
 }
-/** A late ordinary or ignored status change always preserves the workspace. */
+/** A late ordinary status change preserves the workspace and stops recovery. */
 export async function assertRecoveryWorkspaceUnchanged(
   runner: CommandRunner,
   path: string,
   label: string,
 ): Promise<void> {
   const ordinary = await runner.run("git", [
+    "--no-optional-locks",
     "-C",
     path,
     "status",
     "--porcelain=v1",
     "--untracked-files=all",
   ]);
-  const ignored = await runner.run("git", [
-    "-C",
-    path,
-    "status",
-    "--porcelain=v1",
-    "--untracked-files=all",
-    "--ignored=matching",
-  ]);
-  if (
-    ordinary.code !== 0 ||
-    ignored.code !== 0 ||
-    ordinary.stdout.trim() ||
-    ignored.stdout.trim()
-  )
+  if (ordinary.code !== 0 || ordinary.stdout.trim())
     throw new Error(
       `Recovery workspace changed at ${label}; preserved without publishing or ref update`,
     );

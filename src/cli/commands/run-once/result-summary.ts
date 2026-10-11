@@ -8,7 +8,11 @@ import type {
 import { summarizeFailure } from "./result-summary-diagnostics.ts";
 import { failureForPipelineError } from "./pipeline-error-diagnostics.ts";
 
-export type RunOnceResultLog = { logPath?: string; piSessionPath?: string };
+export type RunOnceResultLog = {
+  logPath?: string;
+  piSessionPath?: string;
+  quarantinePaths?: string[];
+};
 
 export type RunOncePipelineResultSummary = RunOnceResultLog &
   (
@@ -145,6 +149,9 @@ export function summarizeResult(
   const withLogPath = {
     ...(result.logPath ? { logPath: result.logPath } : {}),
     ...(result.piSessionPath ? { piSessionPath: result.piSessionPath } : {}),
+    ...(result.quarantinePaths?.length
+      ? { quarantinePaths: [...result.quarantinePaths] }
+      : {}),
   };
   switch (result.status) {
     case "no-issue":

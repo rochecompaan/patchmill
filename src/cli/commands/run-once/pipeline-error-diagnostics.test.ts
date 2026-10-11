@@ -64,7 +64,6 @@ function assessment(): RunRecoveryAssessment {
       exists: true,
       registered: true,
       dirtyStatus: " M src/file.ts",
-      ignoredEntries: [".agent/evidence.json"],
     },
     actualUniqueCommits: ["def456 preserve work"],
     savedCommits: [],
@@ -96,30 +95,6 @@ test("maps every typed Run recovery refusal without flattening its evidence", ()
     const failure = failureForPipelineError(error);
     assert.equal(failure.reason, reason);
     assert.equal(failure.diagnosticContext.issueNumber, 242);
-  }
-
-  const ignored: Extract<
-    RunRecoveryDecision,
-    { action: "refuse"; reason: "ignored-worktree-content" }
-  > = {
-    action: "refuse",
-    assessment: assessment(),
-    reason: "ignored-worktree-content",
-    blockedAction: "archive-reset-and-start",
-    guidance: ["Preserve ignored evidence before retrying."],
-  };
-  const ignoredFailure = failureForPipelineError(
-    new RunRecoveryRefusalError(ignored),
-  );
-  assert.equal(ignoredFailure.reason, "ignored-worktree-content");
-  if (ignoredFailure.reason === "ignored-worktree-content") {
-    assert.deepEqual(ignoredFailure.diagnosticContext.ignoredPaths, [
-      ".agent/evidence.json",
-    ]);
-    assert.equal(
-      ignoredFailure.diagnosticContext.blockedAction,
-      "archive-reset-and-start",
-    );
   }
 
   const active = new RunRecoveryRefusalError({

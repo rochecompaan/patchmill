@@ -254,6 +254,22 @@ export function formatTerminalResult(
       count: visualEvidence.length,
       blocks: [{ kind: "list", marker: "•", items: visualEvidence }],
     });
+  if (
+    "quarantinePaths" in summary &&
+    summary.quarantinePaths?.filter(nonblank).length
+  )
+    sections.push({
+      heading: "Quarantine paths",
+      blocks: [
+        {
+          kind: "list",
+          marker: "•",
+          items: summary.quarantinePaths
+            .filter(nonblank)
+            .map((text) => ({ value: value(text, "path") })),
+        },
+      ],
+    });
   const files = [
     "logPath" in summary && nonblank(summary.logPath)
       ? {
