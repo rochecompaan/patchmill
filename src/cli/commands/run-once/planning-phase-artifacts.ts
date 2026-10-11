@@ -190,6 +190,22 @@ function resultFor(
     return { path: result.planPath, commit: result.commit };
   throw new PlanningPhaseArtifactError("unexpected-agent-result");
 }
+export function appendPlanningArtifactEvidence(
+  current: PlanningArtifactWorkspacePhase,
+  phase: PlannedPhase,
+  evidence: PlanningArtifactEvidence,
+): PlanningArtifactWorkspacePhase {
+  return {
+    ...current,
+    workspace: { ...current.workspace, headOid: evidence.commitOid },
+    artifacts: [...current.artifacts, evidence].sort(
+      (left, right) =>
+        phase.artifactKinds.indexOf(left.kind) -
+        phase.artifactKinds.indexOf(right.kind),
+    ),
+  };
+}
+
 export async function runPlanningPhaseArtifacts(input: {
   issue: IssueSummary;
   phase: PlannedPhase;
@@ -295,24 +311,12 @@ export async function runPlanningPhaseArtifacts(input: {
       headOid: result.commit,
       artifactPath: path,
     });
-    const artifacts = [
-      ...current.artifacts.filter(
-        (artifact) => artifact.source === "remote-base",
-      ),
-      ...current.artifacts.filter(
-        (artifact) => artifact.source === "workspace",
-      ),
-      { kind, path, source: "workspace" as const, commitOid: result.commit },
-    ].sort(
-      (left, right) =>
-        input.phase.artifactKinds.indexOf(left.kind) -
-        input.phase.artifactKinds.indexOf(right.kind),
-    );
-    current = {
-      ...current,
-      workspace: { ...current.workspace, headOid: result.commit },
-      artifacts,
-    };
+    current = appendPlanningArtifactEvidence(current, input.phase, {
+      kind,
+      path,
+      source: "workspace",
+      commitOid: result.commit,
+    });
     await input.checkpoint(current);
   }
   return { kind: "workspace-ready", phase: current };

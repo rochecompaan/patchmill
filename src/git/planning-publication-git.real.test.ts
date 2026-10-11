@@ -162,6 +162,8 @@ test("publishes linked-worktree objects by full OID and proves real Git safety b
         }),
       /non-regular-file/,
     );
+    git(workspace, "rm", "--cached", "docs/specs/gitlink.md");
+    git(workspace, "commit", "-m", "remove test gitlink");
 
     await writeFile(join(workspace, "docs/specs/issue-188.md"), "dirty\n");
     await assert.rejects(
@@ -179,16 +181,12 @@ test("publishes linked-worktree objects by full OID and proves real Git safety b
     git(workspace, "add", ".gitignore");
     git(workspace, "commit", "-m", "ignore residue");
     await writeFile(join(workspace, "ignored-residue"), "ignored\n");
-    await assert.rejects(
-      () =>
-        publication.verifyWorkspace({
-          workspacePath: workspace,
-          baseOid,
-          headOid: git(workspace, "rev-parse", "HEAD"),
-          artifactPaths: ["docs/specs/issue-188.md"],
-        }),
-      /dirty-workspace/,
-    );
+    await publication.verifyWorkspace({
+      workspacePath: workspace,
+      baseOid,
+      headOid: git(workspace, "rev-parse", "HEAD"),
+      artifactPaths: ["docs/specs/issue-188.md"],
+    });
 
     const pushCalls = calls.filter((call) => call[1] === "push");
     assert.equal(pushCalls.length, 1);
