@@ -1,9 +1,17 @@
-import { formatPlanningCleanupPath } from "./planning-cleanup-pending.ts";
 import type { RunOnceResultSummary } from "./result-summary.ts";
 import type {
   TerminalSection,
   TerminalValue,
 } from "./terminal-result-layout.ts";
+
+/** Quotes diagnostic paths without admitting terminal controls. */
+export function formatPlanningCleanupPath(path: string): string {
+  return JSON.stringify(path).replace(
+    /[\x7f-\x9f]/gu,
+    (character) =>
+      `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+}
 
 const value = (
   text: string,

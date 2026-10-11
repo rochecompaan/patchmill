@@ -105,17 +105,6 @@ export const GENERAL_DIAGNOSTICS = {
       "An immediate retry will give the same result while the owner is active.",
     ),
   }),
-  "ignored-worktree-content": definition({
-    summary: "Ignored workspace content must be preserved",
-    explanation:
-      "A cleanup or recovery mutation cannot prove reported ignored files will survive.",
-    action:
-      "Inspect and preserve every reported path, complete only ownership-confirmed cleanup, apply the normal retry label when required, then rerun.",
-    command: "run-once",
-    safety:
-      "Do not assume ignored files are disposable and do not force-clean the workspace.",
-    retry: after("Retry after preservation and ownership-confirmed cleanup."),
-  }),
   "agent-blocked": {
     summary: "Agent needs human input",
     explanation: "The agent reported questions or missing human input.",

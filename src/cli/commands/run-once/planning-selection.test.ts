@@ -7,6 +7,7 @@ import {
   legacyActiveForIssue,
   legacyImplementationNeedsMergeReconciliation,
   planningImplementationNeedsMergeReconciliation,
+  planningIssueEligible,
   selectRunOnceWorkflow,
 } from "./planning-selection.ts";
 import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
@@ -62,7 +63,7 @@ test("prioritizes active planning over fresh ready work and reuses label orderin
   if (result.kind === "planning") assert.equal(result.issue.number, 3);
 });
 
-test("comment cleanup-pending publication is idempotent after needs-info role", async () => {
+test("comment-backed needs-info still blocks legacy pending cleanup", async () => {
   const pending = {
     phases: [
       {
@@ -88,7 +89,7 @@ test("comment cleanup-pending publication is idempotent after needs-info role", 
   assert.equal(result.kind, "none");
 });
 
-test("selects pending publication reconciliation but requires ready for cleanup retry", async () => {
+test("legacy pending cleanup resumes without ready state", async () => {
   const pending = {
     phases: [
       {
@@ -106,11 +107,75 @@ test("selects pending publication reconciliation but requires ready for cleanup 
     [["agent-ready"], "planning"],
     [["agent-ready", "needs-info"], "planning"],
   ] as const) {
+    assert.equal(
+      planningIssueEligible({
+        issue: issue(3, labels),
+        config,
+        state: pending,
+        activeOwnedWorkflow: true,
+      }),
+      kind === "planning",
+    );
     const result = await selectRunOnceWorkflow([issue(3, labels)], config, {
       path: () => "state",
       read: async () => pending,
     } as never);
     assert.equal(result.kind, kind);
+  }
+});
+
+test("legacy pending cleanup uses custom labels and comment roles without a ready gate", () => {
+  const state = {
+    phases: [
+      {
+        kind: "plan",
+        status: "pull-request-open",
+        workspace: { cleanup: { state: "cleanup-pending" } },
+      },
+    ],
+  } as never;
+  for (const comments of [false, true]) {
+    for (const [roles, expected] of [
+      [[], true],
+      [["in-progress"], true],
+      [["needs-info"], false],
+      [["agent-ready", "needs-info"], true],
+    ] as const) {
+      const custom = {
+        ...config,
+        triagePolicy: {
+          labels: {
+            ready: "queued",
+            inProgress: "working",
+            done: "finished",
+            needsInfo: "input",
+          },
+          runOnceSelection: {
+            excludedLabels: ["working", "finished", "input"],
+          },
+        },
+        ...(comments
+          ? {
+              issueState: { provider: "comments" },
+              issueStateProvider: { resolveRoles: () => ({ roles }) },
+            }
+          : {}),
+      } as never;
+      const labelFor = {
+        "in-progress": "working",
+        "needs-info": "input",
+        "agent-ready": "queued",
+      };
+      assert.equal(
+        planningIssueEligible({
+          issue: issue(3, comments ? [] : roles.map((role) => labelFor[role])),
+          config: custom,
+          state,
+          activeOwnedWorkflow: true,
+        }),
+        expected,
+      );
+    }
   }
 });
 

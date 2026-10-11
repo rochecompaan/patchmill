@@ -12,7 +12,6 @@ export const RUN_ONCE_REASON_CODES = [
   "plan-only",
   "issue-locked",
   "repository-busy",
-  "ignored-worktree-content",
   "issue-lock-stale",
   "issue-lock-unverifiable",
   "issue-lock-malformed",
@@ -61,7 +60,6 @@ export type GeneralDiagnosticReasonCode = Extract<
   | "plan-only"
   | "issue-locked"
   | "repository-busy"
-  | "ignored-worktree-content"
   | "agent-blocked"
   | "development-environment-not-ready"
   | "unexpected-error"
@@ -169,11 +167,6 @@ export type RunOnceDiagnosticContextByReason = {
   "plan-only": Workspace & { nextPhase?: "implementation" };
   "issue-locked": Lock;
   "repository-busy": Base;
-  "ignored-worktree-content": Workspace & {
-    ignoredPaths: readonly string[];
-    blockedAction?: string;
-    guidance?: readonly string[];
-  };
   "issue-lock-stale": Lock;
   "issue-lock-unverifiable": Lock;
   "issue-lock-malformed": Lock;

@@ -39,15 +39,6 @@ export async function applyPlanningBlockedLabels(input: {
   await applyPlanningNeedsInfoLabels(input);
 }
 
-/** Re-reads labels immediately before clearing retry eligibility. */
-export async function applyPlanningCleanupPendingLabels(input: {
-  host: Pick<RunOnceHostProvider, "viewIssue" | "applyLabels">;
-  issueNumber: number;
-  labels: { ready: string; inProgress: string; needsInfo: string };
-}): Promise<void> {
-  await applyPlanningNeedsInfoLabels(input);
-}
-
 export async function applyPlanningDoneLabels(input: {
   host: Pick<RunOnceHostProvider, "viewIssue" | "applyLabels">;
   issueNumber: number;

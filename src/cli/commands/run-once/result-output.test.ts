@@ -26,24 +26,6 @@ const summary: RunOnceResultSummary = {
   commits: ["abc123"],
   validation: ["npm test passed"],
 };
-const cleanupPendingSummary: RunOnceResultSummary = {
-  status: "cleanup-pending",
-  issueNumber: 174,
-  phase: "implementation",
-  prUrl: "https://example.test/pulls/174",
-  branch: "agent/issue-174",
-  worktreePath: ".worktrees/issue-174",
-  reason: "ignored-worktree-content",
-  ignoredPaths: [".env"],
-  remediation: ["Remove or preserve .env."],
-  diagnostic: diagnosticFor("ignored-worktree-content", {
-    issueNumber: 174,
-    phase: "implementation",
-    branch: "agent/issue-174",
-    worktreePath: ".worktrees/issue-174",
-    ignoredPaths: [".env"],
-  }),
-};
 test("reports retained quarantine paths in JSON, JSONL, and TTY output", async () => {
   const quarantinePath = "/tmp/old checkout-quarantine";
   const result = summarizeResult({
@@ -205,7 +187,6 @@ test("writes severity-specific complete JSONL result events", async () => {
       },
       "warning",
     ],
-    [cleanupPendingSummary, "warning"],
     [
       {
         status: "stopped",
@@ -276,7 +257,6 @@ test("preserves the exit-code contract for every status", () => {
       },
       0,
     ],
-    [cleanupPendingSummary, 0],
     [
       {
         status: "stopped",

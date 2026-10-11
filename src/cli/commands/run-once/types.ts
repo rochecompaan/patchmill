@@ -239,23 +239,6 @@ export type AgentIssueApprovalRequiredResult = {
   missingLabel: string;
 };
 
-export type AgentIssueCleanupPendingResult = {
-  status: "cleanup-pending";
-  publicFailure: RunOnceFailure<"ignored-worktree-content">;
-  issue: IssueSummary;
-  phase: "spec" | "plan" | "implementation";
-  prUrl: string;
-  branch: string;
-  worktreePath: string;
-  reason: "ignored-worktree-content";
-  ignoredPaths: string[];
-  remediation: string[];
-  specPath?: string | undefined;
-  planPath?: string | undefined;
-  commits?: string[] | undefined;
-  validation?: string[] | undefined;
-};
-
 export type AgentIssueReviewPendingResult = {
   status: "review-pending";
   issue: IssueSummary;
@@ -323,7 +306,6 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
       }
     | AgentIssueApprovalRequiredResult
     | AgentIssueReviewPendingResult
-    | AgentIssueCleanupPendingResult
     | AgentIssueStoppedResult
     | {
         status: "development-environment-not-ready";
