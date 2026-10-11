@@ -9,6 +9,12 @@ import { PlanningWorkspaceGit } from "../../src/git/planning-workspace-git.ts";
 import { DEFAULT_PATCHMILL_POLICY } from "../../src/policy/defaults.ts";
 import { DEFAULT_PATCHMILL_SKILLS } from "../../src/workflow/skills.ts";
 import type { PlanningStateV1 } from "../../src/workflow/planning-state-types.ts";
+import { planningPhasePlan } from "../../src/workflow/planning-pull-requests.ts";
+import {
+  assertPlanningStateReplacement,
+  createPlanningState,
+  validatePlanningState,
+} from "../../src/workflow/planning-state.ts";
 import type { PlanningPhaseRunnerInput } from "../../src/cli/commands/run-once/planning-phase-runner-shared.ts";
 
 export const recoveryGit = (cwd: string, ...args: string[]) =>
@@ -79,6 +85,12 @@ export async function planningArtifactRecoveryFixture(
     identity,
     base,
   });
+  const specPath = "docs/specs/2026-10-10-issue-307-spec.md";
+  await mkdir(join(workspace, "docs/specs"), { recursive: true });
+  await writeFile(join(workspace, specPath), "# Recorded specification\n");
+  recoveryGit(workspace, "add", specPath);
+  recoveryGit(workspace, "commit", "-m", "recorded specification");
+  const savedHeadOid = recoveryGit(workspace, "rev-parse", "HEAD");
   const todoRoot = join(workspace, ".pi/todos/issue-307");
   await mkdir(todoRoot, { recursive: true });
   await mkdir(join(workspace, "ignored-cache"));
@@ -88,33 +100,46 @@ export async function planningArtifactRecoveryFixture(
   ];
   for (const path of sentinels)
     await writeFile(path, Buffer.from([0, 255, 7, 10]));
-  const state: PlanningStateV1 = {
-    version: 1,
-    workflowVersion: "planning-pr-v1",
+  const initial = createPlanningState({
     runId,
     issueNumber: 307,
     issueTitle: "Planning artifact verification rejects ignored todos",
     gates: { specRequired: false, planRequired: kind === "plan" },
-    phases: [
-      {
-        kind,
-        status: "workspace-ready",
-        base,
-        workspace: { ...prepared.workspace, todoRoot },
-        artifacts: [],
-      },
-    ],
-    revision: 0,
-    createdAt: "2026-10-11T00:00:00.000Z",
-    updatedAt: "2026-10-11T00:00:00.000Z",
-  };
+    now: "2026-10-11T00:00:00.000Z",
+  });
+  const state = validatePlanningState({
+    ...initial,
+    phases: initial.phases.map((phase, index) =>
+      index === 0
+        ? {
+            kind,
+            status: "workspace-ready",
+            base,
+            workspace: {
+              ...prepared.workspace,
+              todoRoot,
+              headOid: savedHeadOid,
+            },
+            artifacts: [
+              {
+                kind: "spec",
+                path: specPath,
+                source: "workspace",
+                commitOid: savedHeadOid,
+              },
+            ],
+          }
+        : phase,
+    ),
+  });
+  let durableState = state;
   const checkpointStates: PlanningStateV1[] = [];
   const boundaries: PlanningStateV1[] = [];
   let artifactAgentCalls = 0;
   const input: PlanningPhaseRunnerInput = {
     state,
     phaseIndex: 0,
-    phase: { kind, artifactKinds: ["plan"], pullRequestRequired: true },
+    phase: planningPhasePlan(state.gates)[0]!,
     issue: {
       number: 307,
       title: state.issueTitle,
@@ -135,9 +160,12 @@ export async function planningArtifactRecoveryFixture(
       workspaceIdentity: () => identity,
     },
     stateStore: {
-      replace: async ({ next }) => {
-        checkpointStates.push(next);
-        return next;
+      replace: async ({ expectedRevision, next }) => {
+        assert.equal(expectedRevision, durableState.revision);
+        assertPlanningStateReplacement(durableState, next);
+        durableState = validatePlanningState(next);
+        checkpointStates.push(durableState);
+        return durableState;
       },
     },
     host: {} as never,
@@ -231,6 +259,8 @@ export async function planningArtifactRecoveryFixture(
     checkpointStates,
     boundaries,
     todoRoot,
+    specPath,
+    savedHeadOid,
     commit,
     preservation,
     assertPreserved,

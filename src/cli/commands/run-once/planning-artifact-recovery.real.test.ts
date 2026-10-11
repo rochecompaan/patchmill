@@ -7,6 +7,11 @@ import {
   recoveryGit as git,
 } from "../../../../test-support/run-once/planning-artifact-recovery-fixture.ts";
 import { runPlanningPhase } from "./planning-phase-runner.ts";
+import { planningPhasePlan } from "../../../workflow/planning-pull-requests.ts";
+import {
+  assertPlanningStateReplacement,
+  validatePlanningState,
+} from "../../../workflow/planning-state.ts";
 
 const originalPath = "docs/plans/2026-10-11-issue-307-original.md";
 
@@ -26,7 +31,11 @@ for (const kind of ["implementation", "plan"] as const) {
       ),
       /!! \.pi\//u,
     );
-    await runPlanningPhase(f.input);
+    validatePlanningState(f.input.state);
+    await runPlanningPhase({
+      ...f.input,
+      phase: planningPhasePlan(f.input.state.gates)[0]!,
+    });
     assert.equal(f.artifactAgentCalls(), 0);
     assert.equal(f.checkpointStates.length, 1);
     const checkpoint = f.checkpointStates[0]!;
@@ -35,6 +44,12 @@ for (const kind of ["implementation", "plan"] as const) {
     if (phase?.status !== "workspace-ready")
       assert.fail("missing recovery checkpoint");
     assert.deepEqual(phase.artifacts, [
+      {
+        kind: "spec",
+        path: f.specPath,
+        source: "workspace",
+        commitOid: f.savedHeadOid,
+      },
       {
         kind: "plan",
         path: originalPath,
@@ -84,13 +99,6 @@ for (const condition of [
       git(f.workspace, "add", "tracked.txt");
       git(f.workspace, "commit", "-m", "unrelated implementation");
     }
-    if (condition === "multiple unrecorded kinds") {
-      const path = "docs/specs/2026-10-11-issue-307-spec.md";
-      await mkdir(join(f.workspace, "docs/specs"), { recursive: true });
-      await writeFile(join(f.workspace, path), "# Unrecorded spec\n");
-      git(f.workspace, "add", path);
-      git(f.workspace, "commit", "-m", "second unrecorded artifact kind");
-    }
     if (condition === "ordinary dirty status")
       await writeFile(
         join(f.workspace, "untracked.txt"),
@@ -112,7 +120,16 @@ for (const condition of [
     if (condition === "multiple unrecorded kinds")
       input = {
         ...input,
-        phase: { ...input.phase, artifactKinds: ["spec", "plan"] },
+        state: {
+          ...input.state,
+          phases: [
+            {
+              ...saved,
+              artifacts: [],
+              workspace: { ...saved.workspace, headOid: f.base.baseOid },
+            },
+          ],
+        },
       };
     if (condition === "ownership mismatch")
       input = {
@@ -183,6 +200,46 @@ test("refuses late HEAD movement before checkpointing a recovered plan", async (
   assert.equal(f.boundaries.length, 0);
 });
 
+test("refuses late HEAD movement before checkpointing implementation-only recovery", async (t) => {
+  const f = await planningArtifactRecoveryFixture();
+  t.after(f.dispose);
+  await runPlanningPhase({
+    ...f.input,
+    artifactAgent: {
+      run: async () => ({
+        status: "plan-created",
+        planPath: originalPath,
+        commit: await f.commit(),
+      }),
+    },
+  });
+  const saved = f.checkpointStates[0]!;
+  await writeFile(
+    join(f.workspace, "tracked.txt"),
+    "implementation progress\n",
+  );
+  git(f.workspace, "add", "tracked.txt");
+  git(f.workspace, "commit", "-m", "implementation progress");
+  const real = f.input.publicationGit.assertAncestor.bind(
+    f.input.publicationGit,
+  );
+  let afterMovement: Awaited<ReturnType<typeof f.preservation>> | undefined;
+  f.input.publicationGit.assertAncestor = async (input) => {
+    await real(input);
+    git(f.workspace, "commit", "--allow-empty", "-m", "late head movement");
+    afterMovement = await f.preservation();
+  };
+  await assert.rejects(
+    () => runPlanningPhase({ ...f.input, state: saved }),
+    /head-oid-mismatch/u,
+  );
+  assert.ok(afterMovement);
+  await f.assertPreserved(afterMovement);
+  assert.equal(f.checkpointStates.length, 1);
+  assert.equal(f.artifactAgentCalls(), 0);
+  assert.equal(f.boundaries.length, 1);
+});
+
 test("propagates a recovery checkpoint failure before invoking any agent", async (t) => {
   const f = await planningArtifactRecoveryFixture();
   t.after(f.dispose);
@@ -195,12 +252,13 @@ test("propagates a recovery checkpoint failure before invoking any agent", async
         ...f.input,
         stateStore: {
           replace: async ({ next }) => {
+            assertPlanningStateReplacement(f.input.state, next);
             const phase = next.phases[0];
             if (phase?.status !== "workspace-ready")
               assert.fail("missing recovery phase");
             assert.deepEqual(
               phase.artifacts.map((artifact) => artifact.path),
-              [originalPath],
+              [f.specPath, originalPath],
             );
             throw failure;
           },
@@ -228,7 +286,7 @@ test("committed-tree recovery ignores an ignored uncommitted artifact lookalike"
       specsDir: "docs/specs",
       plansDir: "docs/plans",
     }),
-    { spec: [], plan: [originalPath] },
+    { spec: [f.specPath], plan: [originalPath] },
   );
   const before = await f.preservation();
   await runPlanningPhase(f.input);
@@ -243,37 +301,15 @@ test("committed-tree recovery ignores an ignored uncommitted artifact lookalike"
 test("recovery retains prior artifact evidence in assigned-kind order", async (t) => {
   const f = await planningArtifactRecoveryFixture();
   t.after(f.dispose);
-  const specPath = "docs/specs/2026-10-11-issue-307-spec.md";
-  await mkdir(join(f.workspace, "docs/specs"), { recursive: true });
-  await writeFile(join(f.workspace, specPath), "# Recorded spec\n");
-  git(f.workspace, "add", specPath);
-  git(f.workspace, "commit", "-m", "recorded spec");
-  const savedHead = git(f.workspace, "rev-parse", "HEAD");
-  const saved = f.input.state.phases[0];
-  if (saved?.status !== "workspace-ready")
-    assert.fail("missing fixture workspace");
   const spec = {
     kind: "spec" as const,
-    path: specPath,
+    path: f.specPath,
     source: "workspace" as const,
-    commitOid: savedHead,
+    commitOid: f.savedHeadOid,
   };
   const originalOid = await f.commit();
   const before = await f.preservation();
-  await runPlanningPhase({
-    ...f.input,
-    phase: { ...f.input.phase, artifactKinds: ["spec", "plan"] },
-    state: {
-      ...f.input.state,
-      phases: [
-        {
-          ...saved,
-          workspace: { ...saved.workspace, headOid: savedHead },
-          artifacts: [spec],
-        },
-      ],
-    },
-  });
+  await runPlanningPhase(f.input);
   const recovered = f.checkpointStates[0]?.phases[0];
   if (recovered?.status !== "workspace-ready")
     assert.fail("missing recovery checkpoint");
