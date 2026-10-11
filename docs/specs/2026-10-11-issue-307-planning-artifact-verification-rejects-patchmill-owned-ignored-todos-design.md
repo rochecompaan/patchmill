@@ -1,229 +1,323 @@
-# Permit owned todo metadata during planning artifact verification
+# Ignored content never blocks Patchmill operations
 
 - **Issue:** #307
 - **Status:** Proposed design
 - **Review context:** Current planning pull request
+- **Scope note:** During planning review, the operator widened this issue.
+  Ignored content must not block any Patchmill operation. The first version of
+  this spec covered only todo metadata during artifact verification.
 
 ## Purpose and evidence
 
 A planning agent can commit a plan and create ignored task todos in the same
-phase workspace. Read-only artifact verification must accept this expected
-metadata without removing the plan or todos.
+phase workspace. Patchmill then stops with `status/dirty-workspace`, although
+ordinary Git status is empty. `PlanningPublicationGit.assertClean()` reads
+status with `--ignored=matching` and rejects every record.
 
-`PlanningPublicationGit.assertClean()` requests ignored status and rejects every
-nonempty result. Neither verification input carries the recorded `todoRoot`.
-`runPlanningPhaseArtifacts()` already records this root before the agent starts,
-but does not pass it to verification.
+A todo-only exception would not fix the general problem:
 
-A disposable linked-worktree reproduction against the current source proved that
-both verification methods pass before todo creation. After todo creation,
-ordinary status stayed empty. Both methods rejected `!! .pi/todos/\0` with
-`status/dirty-workspace`. The commit and todo bytes remained intact.
+- Patchmill's own repository lists `.pi/` in `.git/info/exclude`. Git then
+  reports one collapsed `!! .pi/` record instead of `!! .pi/todos/`. A todo-root
+  exception cannot prove that this record holds only todos. The issue #262 run
+  output already shows this collapsed record.
+- Agents, tools and operators create other ignored content before verification.
+  Examples: `node_modules/` and `.husky/_/` from `npm ci`, `dist/` and
+  `coverage/` from builds and tests, `.devenv/` from direnv,
+  `.superpowers/brainstorm/` from skill helpers, and `*.log` from a global
+  ignore file.
+- Issues #240, #243 and #262 each removed one ignored-content blocker. Others
+  remain.
+
+Patchmill already uses only ordinary status for planning workspace cleanliness
+(`PlanningWorkspaceRepositoryGit.clean()`) and for final phase cleanup (#262).
+These places still treat ignored content as a blocker:
+
+| Place                                                                                              | Current behavior                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/git/planning-publication-git.ts`, `assertClean()`                                             | `verifyArtifactCommit()` and `verifyWorkspace()` reject any ignored record.                                                                                          |
+| `src/cli/commands/run-once/recovery-policy.ts`, `decideRunRecovery()`                              | Refresh, recreate and reset refuse with `ignored-worktree-content` when the worktree holds ignored entries. This refusal also applies to `patchmill run reset`.      |
+| `src/cli/commands/run-once/recovery-assessment.ts`, `assessRunRecovery()`                          | A failed ignored-status read stops recovery with "cannot inspect ignored worktree status".                                                                           |
+| `src/cli/commands/run-once/recovery-mutation-helpers.ts`, `assertRecoveryWorkspaceUnchanged()`     | A late ignored file in a quarantine, staging or published worktree aborts the mutation.                                                                              |
+| `src/cli/commands/run-once/planning-selection.ts` and `planning-cleanup-pending-reconciliation.ts` | A legacy `cleanup-pending` record waits for the ready label. Reconciliation can still publish the needs-info label and a `cleanup-pending` result for such a record. |
 
 A retry also needs artifact reconciliation. Verification fails before Patchmill
 records the artifact and its HEAD. The implementation phase can adopt the newer
 HEAD before artifact generation resumes. Reusing that commit then produces an
 empty artifact diff, which `verifyArtifactCommit()` rejects.
 
+## Policy
+
+Patchmill judges workspace cleanliness from ordinary Git status: staged changes,
+tracked changes, and untracked files that Git does not ignore. Ignored content
+never fails a check, refuses an action, pauses a run, or requires an operator
+label or retry.
+
+The policy adds no way to delete ignored content:
+
+- Read-only checks never change files.
+- Refresh and reset move the old checkout, with its ignored content, to a
+  retained quarantine path. Nothing in Patchmill deletes quarantine paths.
+- Recreate runs only when the expected worktree path is absent, so there is no
+  old ignored content to lose.
+- Final phase cleanup keeps the #262 policy. After the existing publication and
+  ownership safeguards pass, normal `git worktree remove` deletes ignored
+  content.
+
+The issue asks for a separate preservation decision before removal or
+replacement of unknown ignored content. Under this design, quarantine is that
+decision for replacement, and #262 is that decision for final removal. The
+change does not permit any new removal of ignored content.
+
+This policy matches the rule from #211, #243 and #262: every ignored path gets
+the same treatment, and a path name does not prove that content is disposable.
+The policy therefore has no path-based exceptions.
+
 ## Requirements and scope
 
-- Both `verifyArtifactCommit()` and `verifyWorkspace()` must permit ignored
-  metadata beneath the current phase workspace's recorded todo root.
-- Verification must preserve the plan commit, index, worktree files, and todo
-  bytes.
-- Staged changes, tracked changes, and ordinary untracked files must still fail,
-  including changes beneath the todo root.
-- HEAD mismatch, invalid ancestry, invalid artifact files, and unrelated
-  committed changes must retain their existing rejection rules.
-- Unknown ignored content must still fail publication verification.
-- A supported in-place retry must reuse the committed artifact and todos before
-  it continues through the existing workflow gates.
-- Verification success must not authorize workspace removal or replacement.
+### Publication verification
 
-No dependency, configuration, durable schema, or planning review gate change is
-required. This work does not add cleanup commands, force flags, backups, or todo
-content validation.
+- `verifyArtifactCommit()` and `verifyWorkspace()` pass whatever ignored content
+  the workspace holds, including collapsed directory records.
+- Both methods still reject staged changes, tracked changes and ordinary
+  untracked files with `status/dirty-workspace`.
+- HEAD mismatch, invalid ancestry, invalid artifact files, symlinks, gitlinks
+  and unrelated committed changes keep their existing rejection rules.
+- A force-added ignored file is staged or committed content. The status check or
+  the artifact-diff check still rejects it.
+- Verification preserves the plan commit, index, worktree files and ignored
+  bytes.
+- Verification needs no todo root or other ownership input.
+
+### Recovery
+
+- Retry recovery and `patchmill run reset` never refuse because of ignored
+  content. They choose an action from the remaining evidence.
+- Refresh and reset keep ignored content byte-identical in the quarantine
+  checkout. The new workspace starts without the old ignored content.
+- Run-once output names the quarantine path after a refresh, as
+  `patchmill run reset` already reports `quarantinePaths`.
+- A late ignored change in a quarantine, staging or published worktree does not
+  abort a mutation. A late ordinary change still aborts it and preserves the
+  workspace.
+- In-place resume keeps its current behavior.
+
+### Legacy pending cleanup
+
+- A saved `cleanup-pending` record from an older release resumes like `ready`
+  cleanup. It does not need the ready label.
+- Patchmill no longer publishes the needs-info label or a `cleanup-pending`
+  result for these records.
+- Saved records stay readable. The codec still decodes the `cleanup-pending`
+  state and its ignored paths.
+- An older release may already have applied the lifecycle needs-info label. That
+  label still blocks selection, as any needs-info label does, because Patchmill
+  cannot tell its own old label from one that a person added. The ready label
+  still acknowledges it, as it does today.
+
+### Supported in-place retry
+
+- A supported retry reuses the committed artifact and the existing todos, then
+  continues through the normal workflow gates.
+
+### Out of scope
+
+- Paths that Git does not ignore. A todo root that the repository does not
+  ignore appears in ordinary status and still fails verification. The
+  `.gitignore` entries that `patchmill init` adds include `.pi/todos/`.
+  `cleanStatusIgnorePrefixes` keeps its current users and is not added to
+  verification.
+- Changes to final cleanup policy, cleanup hooks, force flags, backups or todo
+  content validation.
+- Dependency, configuration and durable schema changes.
 
 ## Approaches considered
 
-**Recorded-root exception, selected.** Pass saved ownership evidence to both
-verification methods. Permit only ignored records within that root. This keeps
-the behavior change limited to expected task metadata.
+**Ordinary status everywhere, selected.** Remove the ignored-content blockers
+listed above. Behavior is the same for every repository, tool and ignore setup,
+and no list of paths needs upkeep.
 
-**Ordinary status only, rejected.** Removing `--ignored=matching` permits all
-ignored content, including unknown files. That change exceeds this issue's
-scope.
+**Recorded todo-root exception, rejected.** The first version of this spec used
+this approach. It fails on collapsed records such as `!! .pi/`, and every other
+ignored path still blocks. It is a one-entry allowlist, which #243 and #262
+rejected.
 
-**Remove todos before verification, rejected.** This removes required task state
-and violates the preservation requirement.
+**Configurable ignored-path allowlist, rejected.** Each repository and tool
+would need its own list, and any missed path would still block a run.
+
+**Remove todos before verification, rejected.** This deletes required task
+state.
 
 ## Proposed behavior
 
-### Ownership evidence
+### Publication verification
 
-Add optional `todoRoot` to `PlanningArtifactCommitInput` and
-`PlanningWorkspaceVerificationInput`. Callers must obtain this value from the
-current phase's saved workspace ownership, not from agent output or Git status.
+`assertClean()` runs
+`git --no-optional-locks status --porcelain=v1 -z --untracked-files=all` without
+`--ignored`. Any output produces `status/dirty-workspace`. `--no-optional-locks`
+stops status from refreshing the index, so verification writes nothing. Git
+failures keep their existing error mapping.
 
-The artifact runner will pass the root that it records through the existing
-Issue todo contract resolver. The publisher will pass `phase.workspace.todoRoot`
-after its existing workspace ownership verification.
+The HEAD, ancestry, tree and artifact-diff proofs do not change. The verifier
+does not remove files, change refs, reset the index or run worktree mutation
+commands.
 
-An absent root grants no exception. Older records remain readable. The normal
-resolver can record a root before a new artifact agent starts, as it does today.
-A valid external or shared root grants no exception inside the phase workspace.
+### Recovery
 
-For a local exception, the recorded root must be a proper directory descendant
-of the verified workspace. Path comparison must respect directory boundaries and
-canonical filesystem containment. Relative, malformed, workspace-wide, or
-symlink-escape roots must not grant an exception. Git failures and unsafe path
-evidence must fail closed.
+`decideRunRecovery()` drops the `ignored-worktree-content` refusal.
+`assessRunRecovery()` stops reading ignored status, so the "cannot inspect
+ignored worktree status" failure goes away. The assessment loses its
+`ignoredEntries` and `ignoredStatus` fields. Messages, progress events and
+refusal diagnostics stop reporting ignored entries.
 
-The recorded local root defines the owned metadata subtree. Verification does
-not parse todo titles, tags, statuses, or file contents. It must not treat the
-whole `.pi/` directory as owned because `.pi/todos` is recorded.
+`assertRecoveryWorkspaceUnchanged()` runs only the ordinary status read.
 
-### Status assessment
+Refresh and reset already move the old checkout with `git worktree move`, which
+keeps ignored files. The run-once refresh result and progress output report the
+quarantine path from the mutation result.
 
-Keep ordinary cleanliness and the ignored-content exception separate:
+### Legacy pending cleanup
 
-1. Read NUL-delimited ordinary porcelain status with all untracked files. Any
-   ordinary record retains `status/dirty-workspace`.
-2. Read NUL-delimited status with `--ignored=matching`. Permit only `!!` records
-   at the recorded todo directory or beneath it.
-3. Reject every other record with `status/dirty-workspace`.
+`planningIssueEligible()` stops requiring the ready label for a
+`cleanup-pending` record. No code path returns a `cleanup-pending` outcome or
+result or publishes its labels. That includes
+`reconcilePlanningCleanupPendingPublication()`.
 
-The shared assessment must preserve raw Git path spelling. It must not split on
-newlines, trim paths, or decode paths as display strings. A missing NUL
-terminator or malformed record produces `status/malformed-response`.
+Finish and phase cleanup already treat `cleanup-pending` like `ready`, and state
+transitions already permit `cleanup-pending` to `worktree-removed`. The next run
+removes the worktree under the #262 rules and records `worktree-removed` and
+`removed`.
 
-Directory records such as `!! .pi/todos/` must pass for that recorded root.
-Sibling prefixes such as `.pi/todos-backup/` must fail. A collapsed ancestor
-record such as `!! .pi/` must fail because it does not prove todo-only content.
-This rule prevents a broad ignore pattern from hiding unrelated metadata.
-
-Use `--no-optional-locks` for verification status reads. The verifier must not
-remove files, change refs, reset the index, or run worktree mutation commands.
-Existing HEAD, ancestry, tree, and artifact-diff proofs remain unchanged.
+After this change, nothing produces the `cleanup-pending` result status or the
+`ignored-worktree-content` diagnostic. This change removes both, along with
+their output helpers. The run-once docs list `cleanup-pending` as an exit-zero
+result, so scripts that read run-once results will no longer see that status.
 
 ### Supported in-place retry
 
 Reconciliation applies only to `workspace-ready` phases with incomplete artifact
-evidence and a live HEAD that differs from the saved HEAD. It must run before
-strict saved-HEAD resume or generic implementation HEAD adoption. Fresh
-workspaces at the saved HEAD continue through normal artifact generation.
+evidence and a live HEAD that differs from the saved HEAD. It runs before strict
+saved-HEAD resume or generic implementation HEAD adoption. Fresh workspaces at
+the saved HEAD continue through normal artifact generation.
 
 Recovery must prove all of these conditions:
 
-- The Issue run, phase, saved base, branch, path, and worktree registration
-  match the existing ownership rules.
+- The Issue run, phase, saved base, branch, path and worktree registration match
+  the existing ownership rules.
 - Ordinary status is clean, and the observed HEAD descends from the saved HEAD.
 - The committed tree contains one unambiguous candidate for the next missing
-  artifact kind and current issue, inside the configured artifact directory.
+  artifact kind and the current issue, inside the configured artifact directory.
 - `verifyArtifactCommit()` accepts that candidate against the earlier saved
-  HEAD, with the recorded todo root. The delta contains only that artifact path.
+  HEAD. The delta contains only that artifact path.
 
-Candidate discovery must inspect the committed tree and use the existing
-`-issue-<number>-` naming rule. It must preserve the original path, not derive a
+Candidate discovery inspects the committed tree and uses the existing
+`-issue-<number>-` naming rule. It keeps the original path and does not derive a
 new filename from the retry date.
 
-After proof, recovery must append the artifact evidence and advance workspace
-HEAD through the existing checkpoint operation. Strict resume then uses this
-checkpoint. The artifact agent must not recreate the recovered document or its
+After proof, recovery appends the artifact evidence and advances workspace HEAD
+through the existing checkpoint operation. Strict resume then uses this
+checkpoint. The artifact agent does not recreate the recovered document or its
 todos. Remaining artifact work and publication use the normal phase flow.
 
 This bounded retry supports one unrecorded artifact delta, which matches the
-reported interruption. Ambiguous candidates, unrelated changes, invalid
-ancestry, and unsafe workspace evidence must stop without changing files. A
-failed checkpoint must stop before publication or implementation.
+reported interruption. Ambiguous candidates, unrelated changes, invalid ancestry
+and unsafe workspace evidence stop the retry without changing files. A failed
+checkpoint stops before publication or implementation. Ignored content never
+causes a stop.
 
-Already recorded artifacts retain their existing skip behavior. Planning pull
-requests still require verified merge where the saved planning review gate
-requires it. Retry must preserve `plan-only` behavior and implementation PR
-requirements.
-
-### Cleanup boundary
-
-The exception belongs only to read-only publication verification. It must not
-filter ignored inventories used by destructive recovery. Refresh, reset,
-replacement, and removal retain their own authorization and preservation rules.
-
-Current final phase cleanup follows issue #262. Normal `git worktree remove` can
-remove ignored content after separate publication and ownership safeguards pass.
-That policy replaced issue #243's final-cleanup preservation rule. This design
-does not expand or reverse that existing authorization.
-
-The preservation guarantee covers verification and in-place retry, not later
-separately authorized final cleanup. Verification alone must never trigger
-cleanup or classify unknown ignored files as disposable.
+Already recorded artifacts keep their skip behavior. Planning pull requests
+still require verified merge where the saved planning review gate requires it.
+Retry keeps `plan-only` behavior and implementation PR requirements.
 
 ## Affected components
 
-- `src/git/planning-publication-git.ts`: Extend both verification inputs and add
-  the shared, read-only status assessment.
-- `src/cli/commands/run-once/planning-phase-artifacts.ts`: Pass the recorded
-  todo root and reuse recovered artifact evidence.
-- `src/cli/commands/run-once/planning-phase-publisher.ts`: Pass saved ownership
-  evidence to workspace verification.
-- `src/cli/commands/run-once/planning-phase-runner-shared.ts` and
-  `src/cli/commands/run-once/planning-phase-runner-implementation.ts`: Reconcile
-  an unrecorded artifact before saved-HEAD resume or generic HEAD adoption.
-- A focused artifact-recovery helper and committed-tree discovery operation:
-  Keep retry proof separate from agent execution and reuse artifact naming
-  rules.
-- Publication, artifact, publisher, and real-Git phase-runner tests: Cover both
-  verification entry points, ownership propagation, and the retry interruption.
-
-Workspace cleanup and destructive recovery guards require no policy changes.
-Existing state transitions already permit one artifact append with HEAD advance.
+- `src/git/planning-publication-git.ts`: Read ordinary status only in
+  `assertClean()`.
+- `src/cli/commands/run-once/recovery-policy.ts`, `recovery-assessment.ts`,
+  `recovery.ts`, `recovery-mutation-helpers.ts`, `pipeline-legacy.ts`,
+  `pipeline-recovery.ts`, `pipeline-error-diagnostics.ts` and `types.ts`: Remove
+  the ignored inventory and refusal, and report quarantine paths.
+- `src/cli/commands/run-once/planning-selection.ts`,
+  `planning-cleanup-pending.ts`, `planning-cleanup-pending-reconciliation.ts`,
+  `planning-pipeline.ts`, and the result and diagnostic modules: Resume legacy
+  pending cleanup without a label. Remove the `cleanup-pending` result and the
+  `ignored-worktree-content` diagnostic.
+- `src/cli/commands/run-once/planning-phase-artifacts.ts`,
+  `planning-phase-runner-shared.ts` and
+  `planning-phase-runner-implementation.ts`, plus a focused artifact-recovery
+  helper with committed-tree discovery: Reconcile an unrecorded artifact before
+  saved-HEAD resume or generic HEAD adoption. Keep retry proof separate from
+  agent execution and reuse the artifact naming rules.
+- `src/workflow/planning-state-workspace-codec.ts` and
+  `planning-state-transitions.ts`: No change. Legacy records still decode.
+- `site/src/content/docs/using-patchmill/run-once.md` and
+  `site/src/content/docs/reference/agent-workflow-lifecycle.md`: State the
+  policy, describe quarantine preservation, and remove the ready-label and
+  `cleanup-pending` result text.
 
 ## Verification strategy
 
 These automated tests pass the Testing Value Gate. They protect production Git
-validation, a durable retry regression, and a data-preservation boundary.
+validation, recovery data preservation and a durable retry regression.
 
-### Real-Git verification
+### Real-Git publication verification
 
 Extend `src/git/planning-publication-git.real.test.ts` with a linked phase
-workspace, committed artifact, recorded todo root, and ignored todo files. Both
-verification methods must pass. Artifact bytes, todo bytes, index state, and
-HEAD must remain unchanged across repeated calls.
+workspace and a committed artifact. Add these ignored items: files under
+`.pi/todos/`, `.pi/` collapsed through `.git/info/exclude`, `node_modules/`, and
+an ignored file inside the artifact directory. Both verification methods must
+pass. Artifact bytes, ignored bytes, index state and HEAD must stay unchanged
+across repeated calls.
 
-Cover a custom local todo root and absent ownership evidence. Cover external
-roots, unsafe roots, sibling prefixes, and collapsed ignored ancestors. Unknown
-ignored files beside the owned root must fail.
+Keep negative coverage for staged changes, tracked changes, ordinary untracked
+files, HEAD mismatch, invalid ancestry, missing artifacts, symlinks, gitlinks
+and extra committed paths. Add a force-added ignored file, both staged and
+committed, which must still fail.
 
-Retain negative coverage for staged changes and tracked changes. Cover ordinary
-untracked files inside and outside the todo root. Retain coverage for HEAD
-mismatch, invalid ancestry, missing artifacts, symlinks, gitlinks, and extra
-committed paths. Focused unit tests must cover malformed NUL records and Git
-command errors.
+### Recovery
 
-### Workflow retry and safety
+Invert the test "late ignored quarantine content prevents refresh ref update" in
+`recovery-mutation-ignored-content.test.ts`. Late ignored content must not stop
+refresh, and its bytes must remain at the quarantine path.
+
+Add real-Git refresh and `patchmill run reset` cases where the old worktree
+holds ignored files. The mutation must complete. The quarantine path must hold
+byte-identical ignored files, and the output must name that path.
+
+Keep the tests where a late ordinary change aborts the mutation and preserves
+the workspace. Remove tests that expect the `ignored-worktree-content` refusal.
+
+### Legacy pending cleanup
+
+A `cleanup-pending` record without the ready label must be eligible for
+selection. A rerun must remove the worktree with normal cleanup and record
+`worktree-removed` and `removed`. It must not apply the needs-info label or
+return a `cleanup-pending` result. Keep the test where an existing needs-info
+label plus the ready label resumes the run.
+
+### Workflow retry
 
 Extend the real-Git phase-runner coverage beyond the existing mocked artifact
 operation. Start from saved `workspace-ready` state at the pre-agent HEAD.
-Include a committed plan, missing plan evidence, and the recorded ignored todo
-root.
+Include a committed plan, missing plan evidence, ignored todos and a collapsed
+`.pi/` record.
 
 A supported retry must checkpoint the original plan path and commit without
 another plan-agent invocation. The next implementation-agent boundary must
 observe the same plan commit and byte-identical todos. Stop this scenario before
 final cleanup. Repeat from the updated checkpoint to prove idempotence.
 
-Caller tests must prove that both verification paths receive the saved root.
-Retain planning review gate, verified-merge, and `plan-only` tests. Add retry
-refusals for ambiguous candidates, unrelated commits, dirty status, invalid
-ancestry, and checkpoint failure. Each refusal must preserve the workspace.
-
-Retain destructive recovery tests that refuse unknown ignored content before
-refresh or reset. Retain final-cleanup tests under the separately approved
-policy. Command observations must show no cleanup or replacement during
+Keep the planning review gate, verified-merge and `plan-only` tests. Add retry
+refusals for ambiguous candidates, unrelated commits, dirty ordinary status,
+invalid ancestry and checkpoint failure. Each refusal must preserve the
+workspace. Command observations must show no cleanup or replacement during
 verification or artifact reconciliation.
 
-Implementation verification will run the focused Git and workflow suites, then
-`npm run test:run-once`, `npm test`, `npm run lint`, `npm run build`, and
-`git diff --check`. If npm dependency files change, a Nix build is required.
+Final cleanup tests under #262 stay as they are.
+
+Implementation verification will run the focused Git, recovery and workflow
+suites, then `npm run test:run-once`, `npm test`, `npm run lint`,
+`npm run build` and `git diff --check`. If npm dependency files change, a Nix
+build is required.
 
 ## Planning handoff
 
