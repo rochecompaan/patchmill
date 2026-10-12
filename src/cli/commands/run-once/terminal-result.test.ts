@@ -69,6 +69,20 @@ const summary: RunOnceResultSummary = {
   piSessionPath: "/tmp/run-pi-sessions",
 };
 
+test("quarantine paths retain spaces and cannot inject terminal controls", () => {
+  const output = formatTerminalResult(
+    {
+      ...summary,
+      quarantinePaths: ["/tmp/old checkout\u001b[31m\nquarantine"],
+    },
+    { width: 100, color: false },
+  );
+  assert.match(output, /Quarantine paths/u);
+  assert.match(output, /old checkout/u);
+  assert.match(output, /quarantine/u);
+  assert.doesNotMatch(output, /\u001b/u);
+});
+
 test("renders ordered sections, vertical arrays, and header metrics", () => {
   const output = formatTerminalResult(summary, {
     width: 100,

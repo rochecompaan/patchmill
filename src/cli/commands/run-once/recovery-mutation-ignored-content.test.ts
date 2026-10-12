@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,130 +15,140 @@ import {
   executeRunRecoveryMutation,
   RunRecoveryMutationError,
 } from "./recovery-mutation.ts";
-import type { RunRecoveryDecision } from "./types.ts";
+import { planRunRecovery } from "./recovery.ts";
+import type { CommandRunner } from "../../../command/types.ts";
 
-test("late ignored quarantine content prevents refresh ref update", async () => {
-  const root = await mkdtemp(join(tmpdir(), "patchmill-refresh-late-"));
-  const git = (...args: string[]) =>
-    execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-  git("init");
-  git("config", "user.email", "test@example.com");
-  git("config", "user.name", "Test");
-  await writeFile(join(root, ".gitignore"), ".cache/\n");
-  await writeFile(join(root, "file"), "old\n");
-  git("add", ".");
-  git("commit", "-m", "base");
-  const oldBranchOid = git("rev-parse", "HEAD");
-  const branch = "agent/refresh";
-  const expected = join(root, "expected");
-  const quarantine = join(root, "quarantine");
-  const staging = join(root, "staging");
-  git("worktree", "add", "-b", branch, expected, oldBranchOid);
-  await writeFile(join(root, "file"), "new\n");
-  git("add", "file");
-  git("commit", "-m", "new base");
-  const baseOid = git("rev-parse", "HEAD");
-  const assessment = {
-    runStatePath: "state",
-    issueNumber: 45,
-    title: "Recover",
-    status: "blocked",
-    lease: { status: "owned", ownerToken: "owner" },
-    legacyMigrationFenceValid: true,
-    blocked: true,
-    expectedWorkspace: { branch, worktreePath: expected },
-    savedWorkspace: { branch, worktreePath: expected },
-    baseOid,
-    branch: { exists: true, oid: oldBranchOid, checkedOutAt: expected },
-    worktree: {
-      exists: true,
-      registered: true,
-      registeredBranch: branch,
-      ordinaryClean: true,
-      ignoredEntries: [],
-    },
-    divergence: { behind: 1, ahead: 0 },
-    actualUniqueCommits: [],
-    savedCommits: [],
-    artifacts: { spec: { valid: false }, plan: { valid: false } },
-    classification: "resumable-stale-base" as const,
-  };
-  const decision: RunRecoveryDecision = {
-    action: "refresh-and-resume",
-    assessment,
-    refresh: {
-      branch,
-      expectedWorktreePath: expected,
-      expectedBranchOid: oldBranchOid,
-      baseOid,
-      quarantinePath: quarantine,
-      stagingPath: staging,
-    },
-  };
-  const calls: string[][] = [];
-  let injected = false;
-  const runner = {
-    async run(_command: string, args: string[], options?: { cwd?: string }) {
-      calls.push(args);
-      try {
-        const stdout = execFileSync("git", args, {
-          cwd: options?.cwd ?? root,
-          encoding: "utf8",
-        });
-        if (args[0] === "worktree" && args[1] === "move" && !injected) {
-          injected = true;
-          await (
-            await import("node:fs/promises")
-          ).mkdir(join(quarantine, ".cache"));
-          await writeFile(
-            join(quarantine, ".cache", "late.bin"),
-            Buffer.from([0, 211, 255]),
-          );
+for (const intent of ["retry", "reset"] as const) {
+  for (const boundary of intent === "reset"
+    ? ["quarantine"]
+    : ["quarantine", "staging", "published workspace"]) {
+    for (const ignored of [true, false]) {
+      test(`${ignored ? "late ignored writes pass at recovery boundaries" : "late ordinary writes preserve and stop recovery"}: ${intent}/${boundary}`, async (t) => {
+        const root = await mkdtemp(join(tmpdir(), "patchmill-refresh-late-"));
+        t.after(() => rm(root, { recursive: true, force: true }));
+        const git = (...args: string[]) =>
+          execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+        git("init", "-b", "main");
+        git("config", "user.email", "test@example.com");
+        git("config", "user.name", "Test");
+        await writeFile(join(root, ".gitignore"), ".cache/\n");
+        await writeFile(join(root, "file"), "old\n");
+        git("add", ".");
+        git("commit", "-m", "base");
+        const oldOid = git("rev-parse", "HEAD");
+        const branch = "agent/refresh";
+        const expected = join(root, "expected");
+        const quarantine = join(root, "quarantine with spaces");
+        const staging = join(root, "staging");
+        git("worktree", "add", "-b", branch, expected, oldOid);
+        await mkdir(join(expected, ".cache"));
+        const bytes = Buffer.from([0, 211, 255, 10]);
+        await writeFile(join(expected, ".cache/original.bin"), bytes);
+        if (intent === "retry") {
+          await writeFile(join(root, "file"), "new\n");
+          git("add", "file");
+          git("commit", "-m", "new base");
         }
-        return { code: 0, stdout, stderr: "" };
-      } catch (error) {
-        const e = error as {
-          status?: number;
-          stdout?: string;
-          stderr?: string;
+        const baseOid = git("rev-parse", "HEAD");
+        let inject = false;
+        let injectedPath = "";
+        const runner: CommandRunner = {
+          async run(command, args, options) {
+            if (args.some((arg) => arg.startsWith("--ignored")))
+              throw new Error("ignored status must not be read");
+            if (inject && args.includes("status")) {
+              const path = args[args.indexOf("-C") + 1]!;
+              const wanted =
+                boundary === "quarantine"
+                  ? quarantine
+                  : boundary === "staging"
+                    ? staging
+                    : expected;
+              if (!injectedPath && path === wanted) {
+                injectedPath = join(
+                  path,
+                  ignored ? ".cache/late.bin" : "late.txt",
+                );
+                await mkdir(join(injectedPath, ".."), { recursive: true });
+                await writeFile(injectedPath, bytes);
+              }
+            }
+            try {
+              return {
+                code: 0,
+                stdout: execFileSync(command, args, {
+                  cwd: options?.cwd ?? root,
+                  encoding: "utf8",
+                }),
+                stderr: "",
+              };
+            } catch (error) {
+              const e = error as {
+                status: number;
+                stdout: string;
+                stderr: string;
+              };
+              return { code: e.status, stdout: e.stdout, stderr: e.stderr };
+            }
+          },
         };
-        return {
-          code: e.status ?? 1,
-          stdout: e.stdout ?? "",
-          stderr: e.stderr ?? "",
-        };
-      }
-    },
-  };
-  await assert.rejects(
-    executeRunRecoveryMutation({
-      decision,
-      repoRoot: root,
-      runner,
-      reassess: async () => decision,
-    }),
-    (error: unknown) => {
-      assert.ok(error instanceof RunRecoveryMutationError);
-      assert.match(String(error), /quarantine/);
-      assert.match(String(error), /staging/);
-      return true;
-    },
-  );
-  assert.deepEqual(
-    await readFile(join(quarantine, ".cache", "late.bin")),
-    Buffer.from([0, 211, 255]),
-  );
-  assert.equal(git("rev-parse", branch), oldBranchOid);
-  assert.equal(
-    calls.some(
-      (args) =>
-        args[0] === "update-ref" &&
-        (args[1] === "--no-deref" || args[1] === `refs/heads/${branch}`),
-    ),
-    false,
-  );
-  assert.equal(
-    calls.filter((args) => args[0] === "worktree" && args[1] === "move").length,
-    1,
-  );
-});
+        const decision = await planRunRecovery({
+          intent,
+          runner,
+          repoRoot: root,
+          runStatePath: "state",
+          state: {
+            issueNumber: 45,
+            title: "Recover",
+            status: "blocked",
+            branch,
+            worktreePath: expected,
+            createdAt: "x",
+            updatedAt: "x",
+          },
+          baseRef: "HEAD",
+          expectedWorkspace: { branch, worktreePath: expected },
+          leaseOwnerToken: "owner",
+          snapshotRaw: "state",
+          recoveryPaths: { quarantinePath: quarantine, stagingPath: staging },
+        });
+        assert.equal(
+          decision.action,
+          intent === "retry" ? "refresh-and-resume" : "archive-reset-and-start",
+        );
+        inject = true;
+        const mutation = () =>
+          executeRunRecoveryMutation({
+            decision,
+            repoRoot: root,
+            runner,
+            reassess: async () => decision,
+          });
+        if (ignored) {
+          const result = await mutation();
+          assert.deepEqual(result.quarantinePaths, [quarantine]);
+          if (intent === "retry") {
+            assert.equal(git("rev-parse", branch), baseOid);
+            await assert.rejects(
+              stat(join(expected, ".cache/original.bin")),
+              /ENOENT/u,
+            );
+          } else assert.throws(() => git("rev-parse", "--verify", branch));
+        } else {
+          await assert.rejects(mutation, RunRecoveryMutationError);
+          if (boundary === "quarantine")
+            assert.equal(git("rev-parse", branch), oldOid);
+        }
+        const finalInjectedPath =
+          ignored && boundary === "staging"
+            ? join(expected, ".cache/late.bin")
+            : injectedPath;
+        assert.deepEqual(await readFile(finalInjectedPath), bytes);
+        assert.deepEqual(
+          await readFile(join(quarantine, ".cache/original.bin")),
+          bytes,
+        );
+      });
+    }
+  }
+}

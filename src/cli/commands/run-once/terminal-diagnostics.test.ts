@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { diagnosticFor } from "./result-diagnostics.ts";
 import { formatTerminalResult } from "./terminal-result.ts";
+import { formatPlanningCleanupPath } from "./terminal-diagnostic-sections.ts";
+
+test("diagnostic paths escape terminal control characters", () => {
+  const path = formatPlanningCleanupPath("line\nbreak\t\u001b[31m\u007f\u0080");
+  assert.equal(path, '"line\\nbreak\\t\\u001b[31m\\u007f\\u0080"');
+  assert.doesNotMatch(path, /\n|\t|\u001b/u);
+});
 
 test("renders shared diagnostic sections in stable actionable order", () => {
   const output = formatTerminalResult(

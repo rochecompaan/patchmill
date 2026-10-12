@@ -30,7 +30,6 @@ const STATUS = {
   "pr-created": { label: "PR created", severity: "success" },
   merged: { label: "Merged", severity: "success" },
   "review-pending": { label: "Review pending", severity: "warning" },
-  "cleanup-pending": { label: "Cleanup pending", severity: "warning" },
   stopped: { label: "Stopped", severity: "warning" },
   "approval-required": { label: "Approval required", severity: "warning" },
   "development-environment-not-ready": {
@@ -253,6 +252,22 @@ export function formatTerminalResult(
       heading: "Visual evidence",
       count: visualEvidence.length,
       blocks: [{ kind: "list", marker: "•", items: visualEvidence }],
+    });
+  if (
+    "quarantinePaths" in summary &&
+    summary.quarantinePaths?.filter(nonblank).length
+  )
+    sections.push({
+      heading: "Quarantine paths",
+      blocks: [
+        {
+          kind: "list",
+          marker: "•",
+          items: summary.quarantinePaths
+            .filter(nonblank)
+            .map((text) => ({ value: value(text, "path") })),
+        },
+      ],
     });
   const files = [
     "logPath" in summary && nonblank(summary.logPath)

@@ -67,16 +67,6 @@ const contexts = {
       acquiredAt: "2026-09-20T12:00:00.000Z",
     },
   },
-  "ignored-worktree-content": {
-    issueNumber: 242,
-    status: "cleanup-pending",
-    phase: "implementation",
-    branch: "agent/issue-242-implementation",
-    worktreePath: ".worktrees/issue-242-implementation",
-    ignoredPaths: [".agent/evidence.json"],
-    blockedAction: "archive-reset-and-start",
-    guidance: ["Preserve ignored content."],
-  },
   "issue-lock-stale": {
     issueNumber: 242,
     status: "blocked",
@@ -491,17 +481,6 @@ test("environment workspace blockers add preservation guidance", () => {
     /Inspect and preserve the implementation workspace/u,
   );
   assert.match(diagnostic.safety.join(" "), /Do not clean, reset, or delete/u);
-});
-
-test("ignored workspace diagnostics require the normal retry label", () => {
-  const diagnostic = diagnosticFor(
-    "ignored-worktree-content",
-    contexts["ignored-worktree-content"],
-  );
-  assert.match(
-    diagnostic.actions[0]?.description ?? "",
-    /apply the normal retry label when required/u,
-  );
 });
 
 test("unexpected-error action mentions a JSONL log only when retained", () => {

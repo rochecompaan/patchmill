@@ -7,11 +7,9 @@ import type {
 } from "../../../issue-run/types.ts";
 import type { IssueSummary } from "../../../issue/types.ts";
 import type { PlanningPhaseRunnerOutcome } from "./planning-phase-runner.ts";
-import type { PlanningCleanupPendingOutcome } from "./planning-phase-runner-shared.ts";
 import type { AgentIssueInternalBlockedResult } from "./types.ts";
 
 export type PlanningCoordinatorOutcome =
-  | PlanningCleanupPendingOutcome
   | {
       kind: "review-pending";
       state: PlanningStateV1;

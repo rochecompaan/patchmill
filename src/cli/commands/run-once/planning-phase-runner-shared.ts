@@ -43,15 +43,6 @@ import {
   type AnyRunOnceFailure,
 } from "./result-diagnostics.ts";
 
-export type PlanningCleanupPendingOutcome = Readonly<{
-  kind: "cleanup-pending";
-  state: PlanningStateV1;
-  phase: "spec" | "plan" | "implementation";
-  prUrl: string;
-  reason: "ignored-worktree-content";
-  ignoredPaths: readonly string[];
-}>;
-
 export type PlanningPhaseRunnerOutcome =
   | { kind: "review-pending"; state: PlanningStateV1; prUrl: string }
   | { kind: "stopped"; state: PlanningStateV1; reason: "plan-only" }

@@ -3,7 +3,6 @@ import type {
   RunRecoveryClassification,
   RunRecoveryDecision,
   RunRecoveryIntent,
-  RunRecoveryMutatingAction,
   RunRecoveryUnsafeClassification,
   RunResetSeed,
 } from "./types.ts";
@@ -12,10 +11,7 @@ type AssessedRefusal = Extract<
   RunRecoveryDecision,
   { action: "refuse"; assessment: RunRecoveryAssessment }
 >;
-type IntrinsicRefusalReason = Exclude<
-  AssessedRefusal["reason"],
-  "ignored-worktree-content"
->;
+type IntrinsicRefusalReason = AssessedRefusal["reason"];
 
 const unsafeClassifications = {
   "dirty-worktree": true,
@@ -70,23 +66,6 @@ function refusal(
         ? `Recovery is unsafe: ${detail}`
         : `Recovery is unsafe: ${reason}.`,
       ...(Array.isArray(guidance) ? guidance : [guidance]),
-    ],
-  };
-}
-
-function ignoredRefusal(
-  assessment: RunRecoveryAssessment,
-  blockedAction: RunRecoveryMutatingAction,
-): Extract<AssessedRefusal, { reason: "ignored-worktree-content" }> {
-  const entries = assessment.worktree.ignoredEntries.join(", ");
-  return {
-    action: "refuse",
-    assessment,
-    reason: "ignored-worktree-content",
-    blockedAction,
-    guidance: [
-      `Recovery action ${blockedAction} cannot prove ignored content will survive: ${entries}.`,
-      `Inspect and preserve ignored workspace content before retrying ${blockedAction}.`,
     ],
   };
 }
@@ -227,10 +206,5 @@ export function decideRunRecovery(
 
   if (candidate.action === "resume" && !canResumeInPlace(assessment))
     return refusal(assessment, "workspace-unverifiable");
-  if (
-    !assessment.worktree.ignoredEntries.length ||
-    candidate.action === "resume"
-  )
-    return candidate;
-  return ignoredRefusal(assessment, candidate.action);
+  return candidate;
 }

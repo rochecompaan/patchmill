@@ -34,7 +34,6 @@ test("normalizes an unannotated planning agent blocker at the public boundary", 
         validation: ["npm test failed"],
       },
     } as never,
-    "agent-ready",
   );
   assert.equal(result.status, "blocked");
   if (result.status === "blocked") {

@@ -14,11 +14,6 @@ import { reconcileSavedPlanningImplementation } from "./planning-implementation-
 import { assertPlanningIssueLockOwned } from "../../../workflow/planning-issue-lock.ts";
 import { applyPlanningBlockedLabels } from "./planning-lifecycle-labels.ts";
 import {
-  planningCleanupPendingResult,
-  publishPlanningCleanupPending,
-} from "./planning-cleanup-pending.ts";
-import { reconcilePlanningCleanupPendingPublication } from "./planning-cleanup-pending-reconciliation.ts";
-import {
   planningFinishReachedDoneLabelBoundary,
   planningImplementationNeedsMergeReconciliation,
   planningIssueEligible,
@@ -86,12 +81,9 @@ export function planningIssueNeedsClaim(input: {
 export function mapPlanningOutcome(
   issue: IssueSummary,
   outcome: PlanningCoordinatorOutcome,
-  readyLabel: string,
 ): AgentIssuePipelineResult {
   const paths = statePaths(outcome.state);
   switch (outcome.kind) {
-    case "cleanup-pending":
-      return planningCleanupPendingResult(issue, outcome, readyLabel);
     case "review-pending":
       return {
         status: "review-pending",
@@ -227,18 +219,6 @@ export async function runPlanningWorkflow(input: {
         lock,
         stateStore,
       }),
-    reconcileCleanupPendingPublication: ({ issue, state }) =>
-      reconcilePlanningCleanupPendingPublication({
-        host,
-        config: input.config,
-        issue,
-        state,
-        labels: {
-          ready: labels.ready,
-          inProgress: labels.inProgress,
-          needsInfo: labels.needsInfo,
-        },
-      }),
     mutate: async (issue, fresh, state) => {
       const finishOnly = planningImplementationNeedsMergeReconciliation(state);
       const restoringOldOpenPr =
@@ -348,23 +328,6 @@ export async function runPlanningWorkflow(input: {
           : { now: () => input.options.now! }),
       });
       const outcome = await runtime.coordinate(state, lock);
-      if (outcome.kind === "cleanup-pending") {
-        const result = planningCleanupPendingResult(
-          issue,
-          outcome,
-          labels.ready,
-        );
-        await publishPlanningCleanupPending({
-          host,
-          config: input.config,
-          result,
-          labels: {
-            ready: labels.ready,
-            inProgress: labels.inProgress,
-            needsInfo: labels.needsInfo,
-          },
-        });
-      }
       if (outcome.kind === "blocked") {
         const body = blockerComment(outcome.result);
         if (
@@ -396,7 +359,7 @@ export async function runPlanningWorkflow(input: {
   });
   if (planning.status === "coordinated")
     return withLogPath(
-      mapPlanningOutcome(planning.issue, planning.outcome, labels.ready),
+      mapPlanningOutcome(planning.issue, planning.outcome),
       runOptions,
     );
   if (planning.status === "blocked")

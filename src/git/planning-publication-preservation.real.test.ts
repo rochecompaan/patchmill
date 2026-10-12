@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,7 +24,10 @@ async function fixture() {
   execFileSync("git", ["init", "-b", "main", repo]);
   git(repo, "config", "user.name", "Patchmill Test");
   git(repo, "config", "user.email", "patchmill@example.test");
-  await writeFile(join(repo, ".gitignore"), ".pi/\nignored-cache/\n");
+  await writeFile(
+    join(repo, ".gitignore"),
+    ".pi/todos/\nignored-cache/\nnode_modules/\ndocs/plans/*.log\n",
+  );
   await writeFile(join(repo, "tracked.txt"), "base\n");
   git(repo, "add", ".");
   git(repo, "commit", "-m", "base");
@@ -30,7 +41,13 @@ async function fixture() {
   const headOid = git(workspace, "rev-parse", "HEAD");
   await mkdir(join(workspace, ".pi/todos/issue-307"), { recursive: true });
   await mkdir(join(workspace, "ignored-cache"));
-  const sentinels = [".pi/todos/issue-307/task.md", "ignored-cache/cache.bin"];
+  await mkdir(join(workspace, "node_modules"));
+  const sentinels = [
+    ".pi/todos/issue-307/task.md",
+    "ignored-cache/cache.bin",
+    "node_modules/cache.bin",
+    "docs/plans/agent.log",
+  ];
   for (const path of sentinels)
     await writeFile(join(workspace, path), Buffer.from([0, 1, 255, 10]));
   const indexPath = git(
@@ -84,27 +101,55 @@ async function fixture() {
   };
 }
 
-test("publication ignores ignored content without rewriting index or todo bytes", async () => {
+test("verifies committed artifacts with ignored content without writing", async () => {
   const f = await fixture();
   try {
-    assert.match(
-      git(f.workspace, "status", "--porcelain=v1", "--ignored=matching"),
-      /!! \.pi\//u,
-    );
-    const index = await readFile(f.indexPath);
-    await f.publication.verifyArtifactCommit({
-      workspacePath: f.workspace,
-      previousHeadOid: f.baseOid,
-      headOid: f.headOid,
-      artifactPath: f.artifactPath,
-    });
-    await f.publication.verifyWorkspace({
-      workspacePath: f.workspace,
-      baseOid: f.baseOid,
-      headOid: f.headOid,
-      artifactPaths: [f.artifactPath],
-    });
-    assert.deepEqual(await readFile(f.indexPath), index);
+    const artifact = await readFile(join(f.workspace, f.artifactPath));
+    for (const collapsed of [false, true]) {
+      if (collapsed)
+        await writeFile(join(f.repo, ".git/info/exclude"), ".pi/\n");
+      assert.equal(
+        git(f.workspace, "--no-optional-locks", "status", "--porcelain=v1"),
+        "",
+      );
+      const ignoredStatus = git(
+        f.workspace,
+        "--no-optional-locks",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--ignored=matching",
+      );
+      assert.match(
+        ignoredStatus,
+        collapsed ? /!! \.pi\/\0/u : /!! \.pi\/todos\/\0/u,
+      );
+      // Make tracked stat information stale, without changing its bytes.
+      const tracked = join(f.workspace, f.artifactPath);
+      const beforeStat = await stat(tracked);
+      await utimes(
+        tracked,
+        beforeStat.atime,
+        new Date(beforeStat.mtimeMs + 2000),
+      );
+      const index = await readFile(f.indexPath);
+      for (let repeat = 0; repeat < 2; repeat++) {
+        await f.publication.verifyArtifactCommit({
+          workspacePath: f.workspace,
+          previousHeadOid: f.baseOid,
+          headOid: f.headOid,
+          artifactPath: f.artifactPath,
+        });
+        await f.publication.verifyWorkspace({
+          workspacePath: f.workspace,
+          baseOid: f.baseOid,
+          headOid: f.headOid,
+          artifactPaths: [f.artifactPath],
+        });
+      }
+      assert.deepEqual(await readFile(f.indexPath), index);
+      assert.deepEqual(await readFile(tracked), artifact);
+    }
     for (const path of f.sentinels)
       assert.deepEqual(
         await readFile(join(f.workspace, path)),
@@ -133,19 +178,26 @@ for (const condition of [
   "tracked artifact",
   "tracked unrelated file",
   "staged file",
+  "staged artifact",
+  "force-added ignored file",
   "untracked file",
 ] as const) {
   test(`publication refuses ordinary dirty status: ${condition}`, async () => {
     const f = await fixture();
     try {
       const path =
-        condition === "tracked artifact"
+        condition === "tracked artifact" || condition === "staged artifact"
           ? f.artifactPath
           : condition === "tracked unrelated file"
             ? "tracked.txt"
-            : "new.txt";
+            : condition === "force-added ignored file"
+              ? "ignored-cache/cache.bin"
+              : "new.txt";
       await writeFile(join(f.workspace, path), "dirty\n");
-      if (condition === "staged file") git(f.workspace, "add", path);
+      if (condition === "staged file" || condition === "staged artifact")
+        git(f.workspace, "add", path);
+      if (condition === "force-added ignored file")
+        git(f.workspace, "add", "-f", path);
       const index = await readFile(f.indexPath);
       await assert.rejects(
         () =>
@@ -174,3 +226,31 @@ for (const condition of [
     }
   });
 }
+
+test("rejects committed force-added ignored content in the artifact delta", async () => {
+  const f = await fixture();
+  try {
+    git(f.workspace, "add", "-f", f.sentinels[0]!);
+    git(f.workspace, "commit", "-m", "force-add ignored content");
+    const headOid = git(f.workspace, "rev-parse", "HEAD");
+    await assert.rejects(
+      () =>
+        f.publication.verifyArtifactCommit({
+          workspacePath: f.workspace,
+          previousHeadOid: f.baseOid,
+          headOid,
+          artifactPath: f.artifactPath,
+        }),
+      /diff\/unexpected-changes/u,
+    );
+    // Whole-workspace verification intentionally has no committed-delta guard.
+    await f.publication.verifyWorkspace({
+      workspacePath: f.workspace,
+      baseOid: f.baseOid,
+      headOid,
+      artifactPaths: [f.artifactPath],
+    });
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});

@@ -239,23 +239,6 @@ export type AgentIssueApprovalRequiredResult = {
   missingLabel: string;
 };
 
-export type AgentIssueCleanupPendingResult = {
-  status: "cleanup-pending";
-  publicFailure: RunOnceFailure<"ignored-worktree-content">;
-  issue: IssueSummary;
-  phase: "spec" | "plan" | "implementation";
-  prUrl: string;
-  branch: string;
-  worktreePath: string;
-  reason: "ignored-worktree-content";
-  ignoredPaths: string[];
-  remediation: string[];
-  specPath?: string | undefined;
-  planPath?: string | undefined;
-  commits?: string[] | undefined;
-  validation?: string[] | undefined;
-};
-
 export type AgentIssueReviewPendingResult = {
   status: "review-pending";
   issue: IssueSummary;
@@ -286,6 +269,7 @@ export type AgentIssueStoppedResult = {
 );
 
 type AgentIssuePipelineResultLog = {
+  quarantinePaths?: string[] | undefined;
   logPath?: string | undefined;
   piSessionPath?: string | undefined;
 };
@@ -322,7 +306,6 @@ export type AgentIssuePipelineResult = AgentIssuePipelineResultLog &
       }
     | AgentIssueApprovalRequiredResult
     | AgentIssueReviewPendingResult
-    | AgentIssueCleanupPendingResult
     | AgentIssueStoppedResult
     | {
         status: "development-environment-not-ready";
@@ -372,7 +355,6 @@ export type RunRecoveryAction =
 export type RunRecoveryMutatingAction = Exclude<RunRecoveryAction, "resume">;
 export type RunRecoveryRefusalReason =
   | RunRecoveryUnsafeClassification
-  | "ignored-worktree-content"
   | "not-blocked";
 export type RunRecoveryLeaseOwner = {
   version: 1;
@@ -433,8 +415,6 @@ export type RunRecoveryAssessment = {
     registeredBranch?: string | undefined;
     ordinaryClean?: boolean | undefined;
     dirtyStatus?: string | undefined;
-    ignoredStatus?: string | undefined;
-    ignoredEntries: string[];
   };
   divergence?: { ahead: number; behind: number } | undefined;
   actualUniqueCommits: string[];
@@ -488,14 +468,7 @@ export type RunRecoveryDecision =
   | {
       action: "refuse";
       assessment: RunRecoveryAssessment;
-      reason: "ignored-worktree-content";
-      blockedAction: RunRecoveryMutatingAction;
-      guidance: string[];
-    }
-  | {
-      action: "refuse";
-      assessment: RunRecoveryAssessment;
-      reason: Exclude<RunRecoveryRefusalReason, "ignored-worktree-content">;
+      reason: RunRecoveryRefusalReason;
       guidance: string[];
     }
   | {

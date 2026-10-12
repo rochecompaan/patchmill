@@ -8,7 +8,11 @@ import type {
 import { summarizeFailure } from "./result-summary-diagnostics.ts";
 import { failureForPipelineError } from "./pipeline-error-diagnostics.ts";
 
-export type RunOnceResultLog = { logPath?: string; piSessionPath?: string };
+export type RunOnceResultLog = {
+  logPath?: string;
+  piSessionPath?: string;
+  quarantinePaths?: string[];
+};
 
 export type RunOncePipelineResultSummary = RunOnceResultLog &
   (
@@ -56,22 +60,6 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
         validation: string[];
         reviewSummary?: string | undefined;
         landingDecision?: string | undefined;
-      }
-    | {
-        status: "cleanup-pending";
-        issueNumber: number;
-        phase: "spec" | "plan" | "implementation";
-        prUrl: string;
-        branch: string;
-        worktreePath: string;
-        reason: "ignored-worktree-content";
-        ignoredPaths: string[];
-        remediation: string[];
-        specPath?: string;
-        planPath?: string;
-        commits?: string[];
-        validation?: string[];
-        diagnostic: RunOnceDiagnostic;
       }
     | {
         status: "review-pending";
@@ -145,6 +133,9 @@ export function summarizeResult(
   const withLogPath = {
     ...(result.logPath ? { logPath: result.logPath } : {}),
     ...(result.piSessionPath ? { piSessionPath: result.piSessionPath } : {}),
+    ...(result.quarantinePaths?.length
+      ? { quarantinePaths: [...result.quarantinePaths] }
+      : {}),
   };
   switch (result.status) {
     case "no-issue":
@@ -203,27 +194,6 @@ export function summarizeResult(
         validation: result.validation,
         reviewSummary: result.reviewSummary,
         landingDecision: result.landingDecision,
-        ...withLogPath,
-      };
-    case "cleanup-pending":
-      return {
-        status: result.status,
-        issueNumber: result.issue.number,
-        phase: result.phase,
-        prUrl: result.prUrl,
-        branch: result.branch,
-        worktreePath: result.worktreePath,
-        ignoredPaths: [...result.ignoredPaths],
-        remediation: [...result.remediation],
-        ...(result.specPath === undefined ? {} : { specPath: result.specPath }),
-        ...(result.planPath === undefined ? {} : { planPath: result.planPath }),
-        ...(result.commits === undefined
-          ? {}
-          : { commits: [...result.commits] }),
-        ...(result.validation === undefined
-          ? {}
-          : { validation: [...result.validation] }),
-        ...summarizeFailure(result.publicFailure),
         ...withLogPath,
       };
     case "review-pending":

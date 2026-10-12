@@ -46,10 +46,6 @@ export type PlanningIssueInput = {
     issue: IssueSummary,
     state: PlanningStateV1 | undefined,
   ) => boolean;
-  reconcileCleanupPendingPublication?: (input: {
-    issue: IssueSummary;
-    state: PlanningStateV1;
-  }) => Promise<PlanningCoordinatorOutcome | undefined>;
   reconcileImplementationState?: (input: {
     state: PlanningStateV1;
     lock: PlanningIssueLock;
@@ -342,12 +338,6 @@ export async function runPlanningIssue(
           );
         current = receipt.state;
       }
-      const reconciled = await input.reconcileCleanupPendingPublication?.({
-        issue,
-        state: current,
-      });
-      if (reconciled !== undefined)
-        return { status: "coordinated", issue, outcome: reconciled };
       const eligible = planningIssueEligible({
         issue,
         config: input.config,

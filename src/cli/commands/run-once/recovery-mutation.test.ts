@@ -22,7 +22,7 @@ const assessment = {
   savedWorkspace: {},
   baseOid: "0123456789abcdef0123456789abcdef01234567",
   branch: { exists: true, oid: "abcdefabcdefabcdefabcdefabcdefabcdefabcd" },
-  worktree: { exists: true, registered: true, ignoredEntries: [] },
+  worktree: { exists: true, registered: true },
   actualUniqueCommits: [],
   savedCommits: [],
   artifacts: { spec: { valid: false }, plan: { valid: false } },
@@ -406,7 +406,7 @@ test("real Git reset cleanup retains clean checkout as detached quarantine", asy
   );
   assert.ok(result.quarantinePaths.includes(quarantine));
 });
-test("late ignored quarantine content prevents reset ref deletion", async () => {
+test("late ignored quarantine content survives reset ref deletion", async () => {
   const root = await mkdtemp(join(tmpdir(), "patchmill-reset-late-"));
   const git = (...a: string[]) =>
     execFileSync("git", a, { cwd: root, encoding: "utf8" }).trim();
@@ -460,23 +460,15 @@ test("late ignored quarantine content prevents reset ref deletion", async () => 
       }
     },
   };
-  await assert.rejects(
-    executeRunRecoveryMutation({
-      decision,
-      repoRoot: root,
-      runner,
-      reassess: async () => decision,
-    }),
-    (e: unknown) => {
-      assert.ok(e instanceof RunRecoveryMutationError);
-      assert.deepEqual((e as RunRecoveryMutationError).quarantinePaths, [
-        quarantine,
-      ]);
-      return true;
-    },
-  );
+  const result = await executeRunRecoveryMutation({
+    decision,
+    repoRoot: root,
+    runner,
+    reassess: async () => decision,
+  });
+  assert.deepEqual(result.quarantinePaths, [quarantine]);
   assert.equal(await readFile(join(quarantine, ".env"), "utf8"), "secret\n");
-  assert.equal(git("rev-parse", branch), oid);
+  assert.throws(() => git("rev-parse", "--verify", branch));
 });
 async function planRealRecreation(input: {
   root: string;

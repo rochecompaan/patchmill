@@ -355,50 +355,47 @@ async function resetFixture(fail?: (args: string[]) => boolean) {
   };
 }
 
-test("ignored content refuses reset before archive or mutation", async () => {
+test("reset preserves ignored bytes before pipeline entry", async () => {
   const fixture = await resetFixture();
   await writeFile(
     join(fixture.runConfig.repoRoot, ".git", "info", "exclude"),
     ".env.local\n",
   );
   const sentinel = join(fixture.worktreePath, ".env.local");
-  await writeFile(sentinel, "secret\n");
-  const branchOid = fixture.git("rev-parse", fixture.workspace.branch).trim();
-  let archiveCalled = false;
-  let mutationCalled = false;
-  await assert.rejects(
-    resetIssueRun(
-      fixture.runner,
-      fixture.runConfig,
-      { now: NOW },
-      {
-        ...fixture.dependencies,
-        archiveRecovery: async () => {
-          archiveCalled = true;
-          return { path: "must-not-exist" } as never;
-        },
-        executeMutation: async () => {
-          mutationCalled = true;
-          throw new Error("mutation must not run");
-        },
+  const bytes = Buffer.from([0, 211, 255, 10]);
+  await writeFile(sentinel, bytes);
+  const quarantine = `${fixture.workspace.worktreePath}.recovery-${NOW.toISOString().replaceAll(/[:.]/gu, "-")}-quarantine`;
+  const result = await resetIssueRun(
+    fixture.runner,
+    fixture.runConfig,
+    { now: NOW },
+    {
+      ...fixture.dependencies,
+      runPipeline: async (_runner, _config, options, reset) => {
+        assert.equal(options?.lease, reset?.lease);
+        assert.deepEqual(
+          await (
+            await import("node:fs/promises")
+          ).readFile(
+            join(fixture.runConfig.repoRoot, quarantine, ".env.local"),
+          ),
+          bytes,
+        );
+        await assert.rejects(
+          (await import("node:fs/promises")).stat(sentinel),
+          /ENOENT/u,
+        );
+        return { status: "no-issue" } as never;
       },
-    ),
-    (error: unknown) => {
-      assert.match(String(error), /ignored-worktree-content/);
-      assert.match(String(error), /archive-reset-and-start/);
-      assert.match(String(error), /\.env\.local/);
-      return true;
     },
   );
-  assert.equal(archiveCalled, false);
-  assert.equal(mutationCalled, false);
-  assert.equal(
-    await (await import("node:fs/promises")).readFile(sentinel, "utf8"),
-    "secret\n",
-  );
-  assert.equal(
-    fixture.git("rev-parse", fixture.workspace.branch).trim(),
-    branchOid,
+  assert.equal(result.status, "reset-started");
+  assert.deepEqual(result.quarantinePaths, [quarantine]);
+  assert.match(
+    await (
+      await import("node:fs/promises")
+    ).readFile(join(result.archivePath, "run-state.json"), "utf8"),
+    /"blocked"/u,
   );
 });
 

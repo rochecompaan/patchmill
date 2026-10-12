@@ -513,19 +513,27 @@ async function runLegacyOneIssueInternal(
     lease: options.lease,
     ...(mutation ? { mutation } : {}),
   });
-  if (
-    blockedRecovery?.decision.action === "resume" &&
-    blockedRecovery.decision.assessment.worktree.ignoredEntries.length
-  ) {
-    const message = formatRunRecoveryDecision(blockedRecovery.decision);
+  const quarantinePaths = blockedRecovery?.mutation?.quarantinePaths ?? [];
+  const withRecovery = (
+    result: AgentIssuePipelineResult,
+  ): AgentIssuePipelineResult =>
+    quarantinePaths.length
+      ? { ...result, quarantinePaths: [...quarantinePaths] }
+      : result;
+  if (blockedRecovery) {
+    const message = [
+      formatRunRecoveryDecision(blockedRecovery.decision),
+      ...quarantinePaths.map(
+        (path) => `Retained quarantine path: ${JSON.stringify(path)}`,
+      ),
+    ].join("\n");
     await progress(runOptions, "info", "recovery", message, {
       issueNumber: issue.number,
       consoleMessage: message,
       data: {
-        action: "resume",
-        mutationApplied: false,
-        ignoredEntries:
-          blockedRecovery.decision.assessment.worktree.ignoredEntries,
+        action: blockedRecovery.decision.action,
+        mutationApplied: blockedRecovery.mutation !== undefined,
+        quarantinePaths,
       },
     });
   }
@@ -915,7 +923,7 @@ async function runLegacyOneIssueInternal(
         ),
     });
     if (planningStages.kind === "finished") {
-      return withLogPath(planningStages.result, runOptions);
+      return withRecovery(withLogPath(planningStages.result, runOptions));
     }
 
     labels = planningStages.labels;
@@ -996,7 +1004,7 @@ async function runLegacyOneIssueInternal(
     });
 
     if (implementationStage.kind === "blocked") {
-      return withLogPath(implementationStage.result, runOptions);
+      return withRecovery(withLogPath(implementationStage.result, runOptions));
     }
     if (implementationStage.kind === "unexpected") {
       throw implementationStage.error;
@@ -1047,10 +1055,10 @@ async function runLegacyOneIssueInternal(
       throw finishStage.error;
     }
 
-    return finishStage.result;
+    return withRecovery(finishStage.result);
   } catch (error) {
     if (error instanceof RepositoryMutationBusyError)
-      return repositoryBusyResult(issue, runOptions);
+      return withRecovery(repositoryBusyResult(issue, runOptions));
     if (
       error instanceof RepositoryMutationInterruptedError ||
       error instanceof RepositoryMutationOwnershipError
@@ -1062,15 +1070,17 @@ async function runLegacyOneIssueInternal(
     if (error instanceof PlanningArtifactSafetyError) {
       throw new AgentIssueSafetyError(error.message);
     }
-    return unexpectedFailure(
-      host,
-      config,
-      issue,
-      checkpoints,
-      { specPath, specCommit, planPath, planCommit, branch, worktreePath },
-      timestamp,
-      error,
-      runOptions,
+    return withRecovery(
+      await unexpectedFailure(
+        host,
+        config,
+        issue,
+        checkpoints,
+        { specPath, specCommit, planPath, planCommit, branch, worktreePath },
+        timestamp,
+        error,
+        runOptions,
+      ),
     );
   }
 }

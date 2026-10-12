@@ -315,7 +315,6 @@ export function blockedRecoveryRunner(
     worktreeRegistered?: boolean;
     dirtyStatus?: string;
     ordinaryStatus?: string;
-    ignoredStatus?: string;
     merged?: boolean;
     revList?: string;
     log?: string;
@@ -393,12 +392,12 @@ export function blockedRecoveryRunner(
     }
     if (
       call.command === "git" &&
-      call.args[0] === "-C" &&
-      call.args[2] === "status"
+      call.args.includes("-C") &&
+      call.args.includes("status")
     ) {
-      const status = call.args.includes("--ignored=matching")
-        ? (options.ignoredStatus ?? options.dirtyStatus ?? "")
-        : (options.ordinaryStatus ?? options.dirtyStatus ?? "");
+      if (call.args.some((arg) => arg.startsWith("--ignored")))
+        throw new Error("recovery must not inspect ignored status");
+      const status = options.ordinaryStatus ?? options.dirtyStatus ?? "";
       return { code: 0, stdout: status, stderr: "" };
     }
     if (

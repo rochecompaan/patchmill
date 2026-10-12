@@ -298,6 +298,59 @@ test("committed-tree recovery ignores an ignored uncommitted artifact lookalike"
   assert.equal(f.artifactAgentCalls(), 0);
 });
 
+test("discovers current-issue artifacts from the committed tree only", async (t) => {
+  const f = await planningArtifactRecoveryFixture();
+  t.after(f.dispose);
+  const plansDir = "custom plans/nested";
+  await mkdir(join(f.workspace, plansDir), { recursive: true });
+  const original = `${plansDir}/2026-10-11-issue-307-original.md`;
+  await f.commit(original);
+  await f.commit(`${plansDir}/2026-10-11-issue-3070-other.md`);
+  const headOid = git(f.workspace, "rev-parse", "HEAD");
+  const ignored = `${plansDir}/2026-10-12-issue-307-lookalike.md`;
+  await writeFile(join(f.repo, ".git/info/exclude"), `${ignored}\n`);
+  await writeFile(
+    join(f.workspace, ignored),
+    "ignored uncommitted lookalike\n",
+  );
+  const before = await f.preservation();
+  assert.deepEqual(
+    await f.input.publicationGit.inspectArtifactCandidates({
+      commitOid: headOid,
+      issueNumber: 307,
+      specsDir: "custom specs",
+      plansDir: "custom plans",
+    }),
+    { spec: [], plan: [original] },
+  );
+  await f.assertPreserved(before);
+});
+
+test("recovers an original plan in a configured directory with spaces", async (t) => {
+  const f = await planningArtifactRecoveryFixture();
+  t.after(f.dispose);
+  const plansDir = "custom plans";
+  await mkdir(join(f.workspace, plansDir), { recursive: true });
+  const original = `${plansDir}/2026-10-11-issue-307-original.md`;
+  const originalOid = await f.commit(original);
+  const before = await f.preservation();
+  await runPlanningPhase({
+    ...f.input,
+    config: { ...f.input.config, plansDir },
+  });
+  const recovered = f.checkpointStates[0]?.phases[0];
+  assert.ok(recovered && "artifacts" in recovered);
+  assert.deepEqual(recovered.artifacts.at(-1), {
+    kind: "plan",
+    path: original,
+    commitOid: originalOid,
+    source: "workspace",
+  });
+  assert.equal(f.artifactAgentCalls(), 0);
+  assert.deepEqual(f.boundaries, [f.checkpointStates[0]]);
+  await f.assertPreserved(before);
+});
+
 test("recovery retains prior artifact evidence in assigned-kind order", async (t) => {
   const f = await planningArtifactRecoveryFixture();
   t.after(f.dispose);
