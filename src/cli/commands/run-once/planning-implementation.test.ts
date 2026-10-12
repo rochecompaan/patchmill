@@ -1298,3 +1298,53 @@ test("classifies recovery OID errors after an agent OID failure", async () => {
     );
   }
 });
+
+test("classifies malformed base and artifacts before recovery proof or checkpoint", async () => {
+  for (const field of ["baseOid", "phases[0].artifacts[0].commitOid"]) {
+    for (const agentThrows of [false, true]) {
+      const value = input() as ImplementationInput;
+      const ready = value.state.phases[0]!;
+      if (field === "baseOid") {
+        value.state.phases[0] = {
+          ...ready,
+          base: { ...ready.base, baseOid: "short" },
+          workspace: { ...ready.workspace, baseOid: "short" },
+        } as never;
+      } else {
+        value.state.phases[0] = {
+          ...ready,
+          artifacts: [
+            {
+              kind: "spec",
+              path: "docs/specs/oid.md",
+              source: "workspace",
+              commitOid: "short",
+            },
+            {
+              kind: "plan",
+              path: "docs/plans/oid.md",
+              source: "workspace",
+              commitOid: oid("a"),
+            },
+          ],
+        } as never;
+      }
+      let proofs = 0,
+        checkpoints = 0;
+      value.git.assertAncestor = async () => {
+        proofs++;
+      };
+      value.stateStore.replace = async ({ next }) => {
+        checkpoints++;
+        return validatePlanningState(next);
+      };
+      if (agentThrows)
+        value.runAgent = async () => {
+          throw oidFailure();
+        };
+      invalidOidOutcome(await runPlanningImplementation(value), field);
+      assert.equal(proofs, 0);
+      assert.equal(checkpoints, 0);
+    }
+  }
+});

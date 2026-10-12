@@ -18,6 +18,33 @@ export class PlanningImplementationAncestryError extends Error {
   }
 }
 
+/** Validates workspace evidence before recovery or reported-commit proofs. */
+export function validatePlanningImplementationWorkspaceOids(input: {
+  state: PlanningStateV1;
+  baseOid: string;
+  savedHeadOid: string;
+  headOid: string;
+}): string[] {
+  for (const field of ["baseOid", "savedHeadOid", "headOid"] as const) {
+    assertImplementationOid(input[field], {
+      context: "planning-ancestry",
+      field,
+    });
+  }
+  return input.state.phases.flatMap((phase, phaseIndex) =>
+    "artifacts" in phase
+      ? phase.artifacts.flatMap((artifact, artifactIndex) => {
+          if (artifact.source !== "workspace") return [];
+          assertImplementationOid(artifact.commitOid, {
+            context: "planning-ancestry",
+            field: `phases[${phaseIndex}].artifacts[${artifactIndex}].commitOid`,
+          });
+          return [artifact.commitOid];
+        })
+      : [],
+  );
+}
+
 export async function assertPlanningImplementationAncestry(input: {
   state: PlanningStateV1;
   baseOid: string;
@@ -30,24 +57,7 @@ export async function assertPlanningImplementationAncestry(input: {
     input.commits,
     "planning-ancestry",
   );
-  for (const field of ["baseOid", "savedHeadOid", "headOid"] as const) {
-    assertImplementationOid(input[field], {
-      context: "planning-ancestry",
-      field,
-    });
-  }
-  const workspaceArtifacts = input.state.phases.flatMap((phase, phaseIndex) =>
-    "artifacts" in phase
-      ? phase.artifacts.flatMap((artifact, artifactIndex) => {
-          if (artifact.source !== "workspace") return [];
-          assertImplementationOid(artifact.commitOid, {
-            context: "planning-ancestry",
-            field: `phases[${phaseIndex}].artifacts[${artifactIndex}].commitOid`,
-          });
-          return [artifact.commitOid];
-        })
-      : [],
-  );
+  const workspaceArtifacts = validatePlanningImplementationWorkspaceOids(input);
   const commits = new Set([...reportedCommits, ...workspaceArtifacts]);
   try {
     await input.git.assertAncestor({

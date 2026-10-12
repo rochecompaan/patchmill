@@ -11,10 +11,9 @@ import type {
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
 
-import {
-  assertImplementationOid,
-  ImplementationOidValidationError,
-} from "./implementation-oid-validation.ts";
+import { ImplementationOidValidationError } from "./implementation-oid-validation.ts";
+
+import { validatePlanningImplementationWorkspaceOids } from "./planning-implementation-ancestry.ts";
 
 type UnsafeWorkspaceRecovery = Readonly<{
   kind: "unsafe";
@@ -55,13 +54,11 @@ export async function recoverPostAgentWorkspace(
       reason: "not-ready",
       workspace,
     };
-  assertImplementationOid(input.phase.workspace.headOid, {
-    context: "planning-ancestry",
-    field: "savedHeadOid",
-  });
-  assertImplementationOid(workspace.headOid, {
-    context: "planning-ancestry",
-    field: "headOid",
+  validatePlanningImplementationWorkspaceOids({
+    state: input.state,
+    baseOid: input.phase.base.baseOid,
+    savedHeadOid: input.phase.workspace.headOid,
+    headOid: workspace.headOid,
   });
   if (!workspace.clean)
     return {
