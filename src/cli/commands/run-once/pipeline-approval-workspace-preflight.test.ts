@@ -331,7 +331,7 @@ test("runOneIssue resumes an approved branch-only saved plan", async () => {
           status: "pr-created",
           prUrl: "https://forgejo/pr/68",
           branch,
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: ["focused test passed"],
         }),
         stderr: "",

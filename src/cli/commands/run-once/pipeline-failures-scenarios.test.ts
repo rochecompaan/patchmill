@@ -1071,7 +1071,7 @@ test("runOneIssue records and comments unexpected implementation failures withou
           status: "pr-created",
           prUrl: "https://forgejo/pr/42",
           branch: "agent/issue-42-handle-implementation-parse-failure",
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: ["just issue-runner-test ok"],
         }),
         stderr: "",
@@ -1227,7 +1227,7 @@ test("runOneIssue resumes required plan approval after unexpected implementation
           prUrl: "https://forgejo/pr/43",
           branch:
             "agent/issue-43-handle-plan-approval-implementation-parse-failur",
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: ["just issue-runner-test ok"],
         }),
         stderr: "",

@@ -161,7 +161,7 @@ test("runOneIssue implementation heartbeat reads task progress from the issue wo
   finishRun({
     code: 0,
     stdout:
-      '{"status":"pr-created","prUrl":"https://forgejo.example/pr/14","branch":"agent/issue-14-progress-root","commits":[],"validation":[]}',
+      '{"status":"pr-created","prUrl":"https://forgejo.example/pr/14","branch":"agent/issue-14-progress-root","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":[]}',
     stderr: "",
   });
   await run;
@@ -259,7 +259,7 @@ test("runOneIssue emits visible implementation subtask step labels", async () =>
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -622,7 +622,7 @@ test("runOneIssue renders streamed child outcomes under the active implementatio
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/77","branch":"agent/issue-77-agent-output","commits":["def456"],"validation":["ok"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/77","branch":"agent/issue-77-agent-output","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -881,7 +881,7 @@ test("runOneIssue validates committed visual evidence before cleanup", async () 
           status: "pr-created",
           prUrl: "https://forgejo.test/test-owner/test-repo/pulls/77",
           branch: "agent/issue-31-dashboard-visual-evidence",
-          commits: ["def456"],
+          commits: ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
           validation: ["just playwright-test ok"],
           reviewSummary: "Fresh reviewer screenshot review: passed",
           visualEvidence: [
@@ -995,7 +995,7 @@ test("runOneIssue blocks temporary visual evidence before cleanup", async () => 
           status: "pr-created",
           prUrl: "https://forgejo.test/test-owner/test-repo/pulls/78",
           branch: "agent/issue-32-temporary-visual-evidence",
-          commits: ["def456"],
+          commits: ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
           validation: ["just playwright-test ok"],
           reviewSummary: "Fresh reviewer screenshot review: passed",
           visualEvidence: [
@@ -1188,7 +1188,7 @@ test("runOneIssue keeps implementation task totals anchored to the plan when tra
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/19","branch":"agent/issue-19-dashboard-date-ranges","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/19","branch":"agent/issue-19-dashboard-date-ranges","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -1296,7 +1296,7 @@ test("runOneIssue uses an existing plan without legacy team lookup", async () =>
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/21","branch":"agent/issue-21-fix-isolated-issue-runner","commits":["123abc"],"validation":["just test ok"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/21","branch":"agent/issue-21-fix-isolated-issue-runner","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["just test ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }

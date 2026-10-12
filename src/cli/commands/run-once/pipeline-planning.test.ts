@@ -543,7 +543,7 @@ test("runOneIssue uses deterministic published artifacts before filename discove
           status: "pr-created",
           prUrl: "https://forgejo.example/pr/65",
           branch: "agent/issue-65-resolve-provided-artifacts",
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: ["npm test"],
           reviewSummary: "reviewed",
         }),
@@ -2549,7 +2549,7 @@ test("runOneIssue preserves approvals while clearing review labels", async () =>
           status: "pr-created",
           prUrl: "https://forgejo/pr/49",
           branch: "agent/issue-49-approved-plan",
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: [
             "node --test src/cli/commands/run-once/pipeline.test.ts",
           ],
