@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { finalJsonCandidates } from "./final-json.ts";
 import { errorFromUnknown } from "./pi-errors.ts";
+import {
+  findImplementationOidValidationError,
+  type ImplementationOidLocation,
+  type ImplementationOidValidationError,
+} from "./implementation-oid-validation.ts";
 
 const SUBAGENT_STATES = [
   "queued",
@@ -60,6 +65,9 @@ export type PiRepairFacts = {
   sessionPath: string;
   sessionByteSize: number;
   parseErrorMessage: string;
+  implementationOidError?: ImplementationOidLocation & {
+    requiredFormat: string;
+  };
   lastAssistantTextExcerpt?: string;
   subagentRuns: PiRepairSubagentRunFact[];
   unresolvedSummary: string;
@@ -252,6 +260,7 @@ function summarizeUnresolved(runs: PiRepairSubagentRunFact[]): string {
 export async function readPiRepairFacts(input: {
   sessionPath: string;
   parseError: unknown;
+  implementationOidError?: ImplementationOidValidationError | undefined;
 }): Promise<PiRepairFacts> {
   const runs = new Map<string, MutableRun>();
   const calls = new Map<
@@ -337,7 +346,20 @@ export async function readPiRepairFacts(input: {
       : run.asyncLaunched,
   }));
 
+  const oidError =
+    findImplementationOidValidationError(input.parseError) ??
+    input.implementationOidError;
   return {
+    ...(oidError
+      ? {
+          implementationOidError: {
+            context: oidError.context,
+            field: oidError.field,
+            ...(oidError.index === undefined ? {} : { index: oidError.index }),
+            requiredFormat: oidError.requiredFormat,
+          },
+        }
+      : {}),
     sessionPath: input.sessionPath,
     sessionByteSize: Buffer.byteLength(source),
     parseErrorMessage: errorFromUnknown(input.parseError).message,

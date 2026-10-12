@@ -31,6 +31,20 @@ export class ImplementationOidValidationError extends Error {
   }
 }
 
+export function findImplementationOidValidationError(
+  error: unknown,
+): ImplementationOidValidationError | undefined {
+  const seen = new Set<Error>();
+  let found: ImplementationOidValidationError | undefined;
+  while (error instanceof Error && !seen.has(error)) {
+    if (error instanceof AggregateError) return undefined;
+    seen.add(error);
+    if (error instanceof ImplementationOidValidationError) found ??= error;
+    error = error.cause;
+  }
+  return found;
+}
+
 export function assertImplementationOid(
   value: unknown,
   location: ImplementationOidLocation,

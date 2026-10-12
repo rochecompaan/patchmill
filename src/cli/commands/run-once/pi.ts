@@ -27,6 +27,8 @@ import { finalJsonCandidates } from "./final-json.ts";
 import {
   assertImplementationOid,
   parseImplementationCommits,
+  findImplementationOidValidationError,
+  type ImplementationOidValidationError,
 } from "./implementation-oid-validation.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
@@ -624,6 +626,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
     let attemptPromptPath = promptPath;
     let startOffset: number | undefined;
     let parseError: unknown;
+    let oidError: ImplementationOidValidationError | undefined;
     let repairAttempts = 0;
 
     for (let attempt = 0; ; attempt += 1) {
@@ -635,6 +638,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
         break;
       } catch (error) {
         parseError = error;
+        oidError = findImplementationOidValidationError(error) ?? oidError;
       }
 
       if (!repair || attempt >= repair.maxAttempts || !repairSessionPath) break;
@@ -643,6 +647,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
       const facts = await readPiRepairFacts({
         sessionPath: repairSessionPath,
         parseError,
+        implementationOidError: oidError,
       });
       await options?.progress?.event({
         time: new Date().toISOString(),
@@ -681,6 +686,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
               `Last assistant prose: ${facts.lastAssistantTextExcerpt ?? "not detected"}`,
               `Last parse error: ${facts.parseErrorMessage}`,
             ].join("; "),
+            { cause: oidError ?? parseError },
           ),
         );
       } else {
