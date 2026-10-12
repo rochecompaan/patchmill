@@ -24,6 +24,10 @@ import {
   type PiCommandSpec,
 } from "../../pi-cli.ts";
 import { finalJsonCandidates } from "./final-json.ts";
+import {
+  assertImplementationOid,
+  parseImplementationCommits,
+} from "./implementation-oid-validation.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   resolveIssueTodoContract,
@@ -201,7 +205,7 @@ export function parsePiResult(stdout: string): AgentIssuePiResult {
         status: "pr-created",
         prUrl: parsed.prUrl,
         branch: parsed.branch,
-        commits: stringArray(parsed.commits),
+        commits: parseImplementationCommits(parsed.commits, "pr-created"),
         validation: stringArray(parsed.validation),
         reviewSummary:
           typeof parsed.reviewSummary === "string"
@@ -215,16 +219,16 @@ export function parsePiResult(stdout: string): AgentIssuePiResult {
       };
     }
 
-    if (
-      parsed.status === "merged" &&
-      typeof parsed.branch === "string" &&
-      typeof parsed.mergeCommit === "string"
-    ) {
+    if (parsed.status === "merged" && typeof parsed.branch === "string") {
+      assertImplementationOid(parsed.mergeCommit, {
+        context: "merged",
+        field: "mergeCommit",
+      });
       return {
         status: "merged",
         branch: parsed.branch,
         mergeCommit: parsed.mergeCommit,
-        commits: stringArray(parsed.commits),
+        commits: parseImplementationCommits(parsed.commits, "merged"),
         validation: stringArray(parsed.validation),
         reviewSummary:
           typeof parsed.reviewSummary === "string"
