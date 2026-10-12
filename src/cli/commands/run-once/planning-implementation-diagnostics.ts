@@ -6,6 +6,7 @@ import {
   type RunOnceFailure,
 } from "./result-diagnostics.ts";
 import type { AgentIssueInternalBlockedResult } from "./types.ts";
+import type { ImplementationOidValidationError } from "./implementation-oid-validation.ts";
 
 type ImplementationDiagnosticBase = {
   issueNumber: number;
@@ -46,6 +47,29 @@ export function unsafeWorkspaceEvidence(input: {
       ? {}
       : { observedHeadOid: input.workspace.headOid }),
   };
+}
+
+export function implementationInvalidOidFailure(
+  state: PlanningStateV1,
+  phase: Extract<PlanningStateV1["phases"][number], { kind: "implementation" }>,
+  error: ImplementationOidValidationError,
+  pullRequestUrl?: string,
+  workspaceEvidence?: ReturnType<typeof unsafeWorkspaceEvidence>,
+): RunOnceFailure<"implementation-validation"> {
+  return runOnceFailure("implementation-validation", {
+    ...implementationDiagnosticBase(state, phase),
+    validationReason: "invalid-oid",
+    ...(pullRequestUrl === undefined ? {} : { pullRequestUrl }),
+    expected: [error.requiredFormat],
+    observed: [
+      `context=${error.context}`,
+      `field=${error.field}`,
+      ...(error.index === undefined ? [] : [`index=${error.index}`]),
+      ...Object.entries(workspaceEvidence ?? {}).map(
+        ([key, value]) => `${key}=${value}`,
+      ),
+    ],
+  });
 }
 
 export function implementationBlocked(

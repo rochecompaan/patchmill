@@ -3,6 +3,11 @@ import {
   type PlanningPublicationOperations,
 } from "../../../git/planning-publication-git.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
+import {
+  assertImplementationOid,
+  parseImplementationCommits,
+  ImplementationOidValidationError,
+} from "./implementation-oid-validation.ts";
 
 export class PlanningImplementationAncestryError extends Error {
   readonly reason = "ancestry" as const;
@@ -21,14 +26,29 @@ export async function assertPlanningImplementationAncestry(input: {
   commits: readonly string[];
   git: Pick<PlanningPublicationOperations, "assertAncestor">;
 }): Promise<void> {
-  const workspaceArtifacts = input.state.phases.flatMap((phase) =>
+  const reportedCommits = parseImplementationCommits(
+    input.commits,
+    "planning-ancestry",
+  );
+  for (const field of ["baseOid", "savedHeadOid", "headOid"] as const) {
+    assertImplementationOid(input[field], {
+      context: "planning-ancestry",
+      field,
+    });
+  }
+  const workspaceArtifacts = input.state.phases.flatMap((phase, phaseIndex) =>
     "artifacts" in phase
-      ? phase.artifacts
-          .filter((artifact) => artifact.source === "workspace")
-          .map((artifact) => artifact.commitOid)
+      ? phase.artifacts.flatMap((artifact, artifactIndex) => {
+          if (artifact.source !== "workspace") return [];
+          assertImplementationOid(artifact.commitOid, {
+            context: "planning-ancestry",
+            field: `phases[${phaseIndex}].artifacts[${artifactIndex}].commitOid`,
+          });
+          return [artifact.commitOid];
+        })
       : [],
   );
-  const commits = new Set([...input.commits, ...workspaceArtifacts]);
+  const commits = new Set([...reportedCommits, ...workspaceArtifacts]);
   try {
     await input.git.assertAncestor({
       ancestorOid: input.baseOid,
@@ -50,6 +70,15 @@ export async function assertPlanningImplementationAncestry(input: {
       });
     }
   } catch (error) {
+    if (
+      error instanceof PlanningPublicationGitError &&
+      error.operation === "ancestry" &&
+      error.reason === "invalid-input"
+    )
+      throw new ImplementationOidValidationError(
+        { context: "planning-ancestry", field: "ancestry.operands" },
+        { cause: error },
+      );
     if (
       error instanceof PlanningPublicationGitError &&
       error.reason === "not-ancestor"

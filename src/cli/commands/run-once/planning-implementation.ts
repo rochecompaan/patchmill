@@ -37,10 +37,29 @@ import {
   developmentEnvironmentWorkspaceFailure,
   implementationBlocked,
   implementationDiagnosticBase,
+  implementationInvalidOidFailure,
   unsafeWorkspaceEvidence,
 } from "./planning-implementation-diagnostics.ts";
 import type { AgentIssueInternalBlockedResult } from "./types.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
+import {
+  findImplementationOidValidationError,
+  parseImplementationCommits,
+  assertImplementationOid,
+} from "./implementation-oid-validation.ts";
+
+function invalidOidOutcome(
+  ...args: Parameters<typeof implementationInvalidOidFailure>
+): PlanningImplementationOutcome {
+  return {
+    kind: "blocked",
+    state: args[0],
+    result: implementationBlocked(
+      "implementation-validation",
+      implementationInvalidOidFailure(...args),
+    ),
+  };
+}
 
 export type PlanningImplementationOutcome =
   | { kind: "validated"; state: PlanningStateV1 }
@@ -147,7 +166,10 @@ export async function runPlanningImplementation(
         },
       });
     }
-    let result: Awaited<ReturnType<PlanningImplementationInput["runAgent"]>>;
+    let result:
+      | Awaited<ReturnType<PlanningImplementationInput["runAgent"]>>
+      | undefined;
+    let agentError: { error: unknown } | undefined;
     try {
       result = await input.runAgent({
         state,
@@ -166,7 +188,11 @@ export async function runPlanningImplementation(
         }),
       });
     } catch (error) {
-      await recoverPostAgentWorkspace({
+      agentError = { error };
+    }
+    let recovered: Awaited<ReturnType<typeof recoverPostAgentWorkspace>>;
+    try {
+      recovered = await recoverPostAgentWorkspace({
         state,
         phaseIndex: input.phaseIndex,
         phase,
@@ -174,16 +200,53 @@ export async function runPlanningImplementation(
         git: input.git,
         checkpoint: (nextPhase) => replace(state, nextPhase),
       });
+    } catch (error) {
+      const oidError = findImplementationOidValidationError(error);
+      if (agentError && !findImplementationOidValidationError(agentError.error))
+        throw new AggregateError(
+          [agentError.error, error],
+          "Implementation agent and workspace recovery failed",
+          { cause: error },
+        );
+      if (oidError) return invalidOidOutcome(state, phase, oidError);
       throw error;
     }
-    const recovered = await recoverPostAgentWorkspace({
-      state,
-      phaseIndex: input.phaseIndex,
-      phase,
-      workspaces: input.workspaces,
-      git: input.git,
-      checkpoint: (nextPhase) => replace(state, nextPhase),
-    });
+    if (agentError) {
+      const oidError = findImplementationOidValidationError(agentError.error);
+      if (!oidError) throw agentError.error;
+      return invalidOidOutcome(
+        recovered.state,
+        phase,
+        oidError,
+        existingPullRequest?.url,
+        recovered.kind === "unsafe"
+          ? unsafeWorkspaceEvidence(recovered)
+          : undefined,
+      );
+    }
+    if (!result) throw new Error("Implementation agent returned no result");
+    if (result.status !== "blocked") {
+      try {
+        parseImplementationCommits(result.commits, result.status);
+        if (result.status === "merged")
+          assertImplementationOid(result.mergeCommit, {
+            context: "merged",
+            field: "mergeCommit",
+          });
+      } catch (error) {
+        const oidError = findImplementationOidValidationError(error);
+        if (!oidError) throw error;
+        return invalidOidOutcome(
+          recovered.state,
+          phase,
+          oidError,
+          result.status === "pr-created" ? result.prUrl : undefined,
+          recovered.kind === "unsafe"
+            ? unsafeWorkspaceEvidence(recovered)
+            : undefined,
+        );
+      }
+    }
     if (recovered.kind === "unsafe") {
       const workspaceEvidence = unsafeWorkspaceEvidence(recovered);
       // The agent's own blocker explains why it stopped; the unsafe workspace
@@ -268,6 +331,9 @@ export async function runPlanningImplementation(
         git: input.git,
       });
     } catch (error) {
+      const oidError = findImplementationOidValidationError(error);
+      if (oidError)
+        return invalidOidOutcome(state, phase, oidError, result.prUrl);
       if (error instanceof PlanningImplementationAncestryError)
         return {
           kind: "blocked",

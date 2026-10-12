@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validatePlanningImplementation } from "./planning-implementation-validation.ts";
+import {
+  validatePlanningImplementation,
+  PlanningImplementationValidationError,
+} from "./planning-implementation-validation.ts";
+import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
+import { IMPLEMENTATION_OID_FORMAT } from "./implementation-oid-validation.ts";
 
 const oid = (value: string) => value.repeat(40);
 const repository = {
@@ -254,4 +259,62 @@ test("proves workspace artifact commits from completed planning phases reach fin
     { ancestorOid: oid("a"), descendantOid: oid("c") },
     { ancestorOid: oid("c"), descendantOid: oid("b") },
   ]);
+});
+
+test("classifies malformed resumed implementation evidence", async () => {
+  for (const change of [
+    (v: ReturnType<typeof input>) => {
+      v.phase = {
+        ...phase,
+        implementation: { ...phase.implementation, commits: ["short"] },
+      };
+    },
+    (v: ReturnType<typeof input>) => {
+      v.phase = { ...phase, base: { ...phase.base, baseOid: "short" } };
+    },
+  ]) {
+    const value = input();
+    change(value);
+    let calls = 0;
+    value.git.assertAncestor = async () => {
+      calls++;
+    };
+    await assert.rejects(
+      validatePlanningImplementation(value),
+      (error: unknown) => {
+        assert.ok(error instanceof PlanningImplementationValidationError);
+        assert.equal(error.validationReason, "invalid-oid");
+        assert.ok(error.facts.expected?.includes(IMPLEMENTATION_OID_FORMAT));
+        return true;
+      },
+    );
+    assert.equal(calls, 0);
+  }
+});
+test("classifies remaining ancestry invalid-input only", async () => {
+  for (const [operation, reason] of [
+    ["ancestry", "invalid-input"],
+    ["remote-head", "invalid-input"],
+    ["ancestry", "command-failed"],
+    ["ancestry", "not-ancestor"],
+  ] as const) {
+    const value = input();
+    const failure = new PlanningPublicationGitError(operation, reason);
+    value.git.assertAncestor = async () => {
+      throw failure;
+    };
+    await assert.rejects(
+      validatePlanningImplementation(value),
+      (error: unknown) => {
+        if (operation === "ancestry" && reason !== "command-failed") {
+          assert.ok(error instanceof PlanningImplementationValidationError);
+          assert.equal(
+            error.validationReason,
+            reason === "invalid-input" ? "invalid-oid" : "ancestry",
+          );
+        } else assert.equal(error, failure);
+        return true;
+      },
+    );
+  }
 });

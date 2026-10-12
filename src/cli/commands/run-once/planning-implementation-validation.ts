@@ -24,7 +24,28 @@ import type {
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
 
+import {
+  assertImplementationOid,
+  parseImplementationCommits,
+  findImplementationOidValidationError,
+} from "./implementation-oid-validation.ts";
+
+function classifyOidError(error: unknown): never {
+  const oidError = findImplementationOidValidationError(error);
+  if (oidError)
+    fail("invalid-oid", {
+      expected: [oidError.requiredFormat],
+      observed: [
+        `context=${oidError.context}`,
+        `field=${oidError.field}`,
+        ...(oidError.index === undefined ? [] : [`index=${oidError.index}`]),
+      ],
+    });
+  throw error;
+}
+
 export type PlanningImplementationValidationReason =
+  | "invalid-oid"
   | "workspace"
   | "local-head"
   | "remote-head"
@@ -105,6 +126,31 @@ export async function validatePlanningImplementation(
 }> {
   const { phase } = input;
   const workspace = await input.workspaces.inspect(phase.workspace.identity);
+  try {
+    parseImplementationCommits(
+      phase.implementation.commits,
+      "planning-ancestry",
+    );
+    assertImplementationOid(phase.base.baseOid, {
+      context: "planning-ancestry",
+      field: "baseOid",
+    });
+    assertImplementationOid(phase.workspace.headOid, {
+      context: "planning-ancestry",
+      field: "savedHeadOid",
+    });
+    assertImplementationOid(phase.publication.headOid, {
+      context: "planning-ancestry",
+      field: "publication.headOid",
+    });
+    if (workspace.state === "ready")
+      assertImplementationOid(workspace.headOid, {
+        context: "planning-ancestry",
+        field: "headOid",
+      });
+  } catch (error) {
+    classifyOidError(error);
+  }
   if (
     workspace.state !== "ready" ||
     !workspace.clean ||
@@ -259,7 +305,7 @@ export async function validatePlanningImplementation(
           ...phase.implementation.commits.map((commit) => `commit=${commit}`),
         ],
       });
-    throw error;
+    classifyOidError(error);
   }
   return {
     publication: phase.publication,
