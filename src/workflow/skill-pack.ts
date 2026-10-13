@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { posix } from "node:path";
 import {
   BUNDLED_PATCHMILL_SKILLS,
   bundledSkillByKey,
@@ -33,9 +34,27 @@ export type SkillPackSource = {
   tarballUrl: string;
 };
 
+export type SkillPackUpstreamSource = {
+  repository: string;
+  commit: string;
+  files: Array<{ sourcePath: string; targetPath: string }>;
+  license: { name: string; sourcePath: string; targetPath?: string };
+};
 export type SkillPackSkill = {
   name: string;
   source: "patchmill" | "superpowers" | "simple-english";
+  upstreamSources?: SkillPackUpstreamSource[];
+};
+export type SkillPackMetadataSkill = {
+  name: string;
+  source: SkillPackSkill["source"];
+  requiredFiles: string[];
+  upstreamSources?: Array<{
+    repository: string;
+    commit: string;
+    files: Array<{ sourcePath: string; installedPath: string }>;
+    license: { name: string; sourcePath: string; installedPath?: string };
+  }>;
 };
 
 export type SkillPack = {
@@ -58,6 +77,8 @@ export type SkillPackMetadataFile = {
   skillDir: string;
   metadataFile: typeof SKILL_PACK_METADATA_FILE;
   files: Array<{ path: string; sha256: string }>;
+  /** Absent only in metadata from older managed packs. */
+  skills?: SkillPackMetadataSkill[];
 };
 
 export function requiredSkillFiles(skillName: string): string[] {
@@ -66,7 +87,7 @@ export function requiredSkillFiles(skillName: string): string[] {
 
 export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
   name: "patchmill-recommended",
-  version: "2026.10.1",
+  version: "2026.10.2",
   source: {
     type: "github-release",
     repository: "obra/superpowers",
@@ -92,6 +113,64 @@ export const PATCHMILL_RECOMMENDED_SKILL_PACK: SkillPack = {
     { name: "module-size", source: "patchmill" },
     { name: PATCHMILL_VISUAL_EVIDENCE_SKILL, source: "patchmill" },
     { name: PATCHMILL_PLANNING_SKILL, source: "patchmill" },
+    {
+      name: "frontend-design",
+      source: "patchmill",
+      upstreamSources: [
+        {
+          repository: "anthropics/skills",
+          commit: "41bbe19d1a1a7eaab5e7bb9050a417e5c6cffc8f",
+          files: [
+            {
+              sourcePath: "skills/frontend-design/SKILL.md",
+              targetPath: "SKILL.md",
+            },
+            {
+              sourcePath: "skills/frontend-design/LICENSE.txt",
+              targetPath: "LICENSE.txt",
+            },
+          ],
+          license: {
+            name: "Apache-2.0",
+            sourcePath: "skills/frontend-design/LICENSE.txt",
+            targetPath: "LICENSE.txt",
+          },
+        },
+      ],
+    },
+    {
+      name: "patchmill-frontend-review",
+      source: "patchmill",
+      upstreamSources: [
+        {
+          repository: "vercel-labs/agent-skills",
+          commit: "ba46938889d4e58635362fb8f618e1178ac3ec46",
+          files: [
+            {
+              sourcePath: "skills/web-design-guidelines/SKILL.md",
+              targetPath: "references/upstream-web-design-guidelines.md",
+            },
+          ],
+          license: { name: "MIT", sourcePath: "README.md#license" },
+        },
+        {
+          repository: "vercel-labs/web-interface-guidelines",
+          commit: "e3d624baaf29dc1fc645aff3e38f03e564d2d6b1",
+          files: [
+            {
+              sourcePath: "command.md",
+              targetPath: "references/web-interface-guidelines.md",
+            },
+            { sourcePath: "LICENSE", targetPath: "LICENSE" },
+          ],
+          license: {
+            name: "MIT",
+            sourcePath: "LICENSE",
+            targetPath: "LICENSE",
+          },
+        },
+      ],
+    },
     { name: "simple-english", source: "simple-english" },
     { name: "brainstorming", source: "superpowers" },
     { name: "dispatching-parallel-agents", source: "superpowers" },
@@ -167,10 +246,51 @@ export function hashText(text: string): string {
   return hashContent(text);
 }
 
+function metadataSkill(
+  skill: SkillPackSkill,
+  skillDir: string,
+): SkillPackMetadataSkill {
+  const installed = (path: string) =>
+    posix.normalize(`${skillDir}/${skill.name}/${path}`);
+  return {
+    name: skill.name,
+    source: skill.source,
+    requiredFiles: requiredRuntimeFiles(skill.name).map(({ path }) =>
+      installed(path),
+    ),
+    ...(skill.upstreamSources === undefined
+      ? {}
+      : {
+          upstreamSources: skill.upstreamSources.map((source) => ({
+            repository: source.repository,
+            commit: source.commit,
+            files: source.files.map((file) => ({
+              sourcePath: file.sourcePath,
+              installedPath: installed(file.targetPath),
+            })),
+            license: {
+              name: source.license.name,
+              sourcePath: source.license.sourcePath,
+              ...(source.license.targetPath === undefined
+                ? {}
+                : { installedPath: installed(source.license.targetPath) }),
+            },
+          })),
+        }),
+  };
+}
+
 export function buildSkillPackMetadata(
   files: Array<{ path: string; sha256: string }>,
-  options: { installedAt?: string; skillDir?: string } = {},
+  options: {
+    installedAt?: string;
+    skillDir?: string;
+    skills?: SkillPackSkill[];
+  } = {},
 ): SkillPackMetadataFile {
+  const skillDir = trimTrailingSkillDirSlashes(
+    options.skillDir ?? DEFAULT_PROJECT_SKILL_DIR,
+  );
   return {
     pack: {
       name: PATCHMILL_RECOMMENDED_SKILL_PACK.name,
@@ -181,8 +301,9 @@ export function buildSkillPackMetadata(
       ),
     },
     installedAt: options.installedAt ?? "<generated-by-init>",
-    skillDir: trimTrailingSkillDirSlashes(
-      options.skillDir ?? DEFAULT_PROJECT_SKILL_DIR,
+    skillDir,
+    skills: (options.skills ?? PATCHMILL_RECOMMENDED_SKILL_PACK.skills).map(
+      (skill) => metadataSkill(skill, skillDir),
     ),
     metadataFile: SKILL_PACK_METADATA_FILE,
     files: files.map((file) => ({ ...file })),

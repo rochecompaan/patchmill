@@ -61,6 +61,16 @@ export const INLINE_IMPLEMENTATION_RUNTIME_FILES = [
   },
 ] as const satisfies readonly InlineImplementationRuntimeFile[];
 
+const frontendFiles = {
+  "frontend-design": ["SKILL.md", "LICENSE.txt"],
+  "patchmill-frontend-review": [
+    "SKILL.md",
+    "LICENSE",
+    "references/upstream-web-design-guidelines.md",
+    "references/web-interface-guidelines.md",
+  ],
+} as const;
+
 export function requiredRuntimeFiles(
   skillName: string,
 ): readonly SkillFileRequirement[] {
@@ -77,5 +87,20 @@ export function requiredRuntimeFiles(
   for (const requirement of inlineRequirements) {
     requirements.set(requirement.path, requirement);
   }
+  const local = Object.hasOwn(frontendFiles, skillName)
+    ? frontendFiles[skillName as keyof typeof frontendFiles]
+    : [];
+  const sibling =
+    skillName === "patchmill-planning"
+      ? frontendFiles["frontend-design"].map(
+          (path) => `../frontend-design/${path}`,
+        )
+      : skillName === INLINE_DEV_WITH_VALIDATION_AND_PR_CHECKS_SKILL
+        ? frontendFiles["patchmill-frontend-review"].map(
+            (path) => `../patchmill-frontend-review/${path}`,
+          )
+        : [];
+  for (const path of [...local, ...sibling])
+    requirements.set(path, { path, executable: false });
   return [...requirements.values()];
 }
