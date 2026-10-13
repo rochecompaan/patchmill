@@ -122,7 +122,7 @@ async function finishWithCost(options: {
           status: "pr-created",
           prUrl: "https://forgejo.example/acme/repo/pulls/45",
           branch: "agent/issue-45-cost-summary",
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: ["npm test"],
         },
         implementationPr: {

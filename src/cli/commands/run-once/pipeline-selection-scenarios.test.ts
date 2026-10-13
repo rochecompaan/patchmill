@@ -855,7 +855,7 @@ test("runOneIssue resumes a single in-progress issue with run state before selec
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-finished-plan-only","commits":["123abc"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-finished-plan-only","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["npm test"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -1459,7 +1459,7 @@ test("runOneIssue does not reuse finished side-effect checkpoints for a fresh se
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-finished-plan-only","commits":["123abc"],"validation":["npm test"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/45","branch":"agent/issue-45-finished-plan-only","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["npm test"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }

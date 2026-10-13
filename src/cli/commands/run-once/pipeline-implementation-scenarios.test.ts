@@ -171,7 +171,7 @@ test("runOneIssue creates a missing plan, then creates a worktree and runs Pi fr
           ".worktrees/patchmill-issue-15-ship-automation-pipeline",
         ),
       );
-      const finalText = `done\n{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["def456"],"validation":["node --test ok"],"reviewSummary":"reviewed"}`;
+      const finalText = `done\n{"status":"pr-created","prUrl":"https://forgejo.example/pr/15","branch":"agent/issue-15-ship-automation-pipeline","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["node --test ok"],"reviewSummary":"reviewed"}`;
       await writePiSessionMessage(call, "implementation output\n", {
         input: 20000,
         output: 1000,
@@ -468,7 +468,7 @@ test("runOneIssue resolves implementation skills from the config repo root witho
           status: "pr-created",
           prUrl: "https://forgejo.example/pr/16",
           branch: "agent/issue-16-use-local-skills",
-          commits: ["def456"],
+          commits: ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
           validation: ["node --test ok"],
         }),
         stderr: "",
@@ -624,7 +624,7 @@ test("runOneIssue renders configured project policy visual evidence fields in th
           status: "pr-created",
           prUrl: "https://forgejo.example/pr/16",
           branch: "agent/issue-16-render-configured-policy-prompt",
-          commits: ["def456"],
+          commits: ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
           validation: ["node --test ok"],
         }),
         stderr: "",
@@ -757,7 +757,7 @@ test("runOneIssue uses the configured worktree strategy for workspace names and 
           status: "pr-created",
           prUrl: "https://forgejo.example/pr/16",
           branch: "patchmill/issue-16-use-custom-worktrees",
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: ["node --test ok"],
         }),
         stderr: "",
@@ -868,7 +868,7 @@ test("runOneIssue honors configured clean-status ignore prefixes", async () => {
           status: "pr-created",
           prUrl: "https://forgejo.example/pr/18",
           branch: "agent/issue-18-ignore-configured-scratch-logs",
-          commits: ["abc123"],
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
           validation: ["node --test ok"],
         }),
         stderr: "",

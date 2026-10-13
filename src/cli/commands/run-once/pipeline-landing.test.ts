@@ -114,7 +114,7 @@ test("runOneIssue blocks completed handoff when issue task todos remain open", a
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/23","branch":"agent/issue-23-reject-stale-todo-progress","commits":["abc123"],"validation":["git diff --check ok"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/23","branch":"agent/issue-23-reject-stale-todo-progress","commits":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"validation":["git diff --check ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -235,7 +235,7 @@ test("runOneIssue accepts pr-created handoff when issue task todos are complete"
       return {
         code: 0,
         stdout:
-          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/24","branch":"agent/issue-24-accept-complete-todo-status","commits":["abc123"],"validation":["git diff --check ok"],"reviewSummary":"reviewed"}',
+          '{"status":"pr-created","prUrl":"https://forgejo.example/pr/24","branch":"agent/issue-24-accept-complete-todo-status","commits":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"validation":["git diff --check ok"],"reviewSummary":"reviewed"}',
         stderr: "",
       };
     }
@@ -309,7 +309,7 @@ test("runOneIssue rejects an agent merge even with a custom landing skill", asyn
       return {
         code: 0,
         stdout:
-          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
+          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"cccccccccccccccccccccccccccccccccccccccc","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
         stderr: "",
       };
     }
@@ -391,7 +391,7 @@ test("runOneIssue rejects Pi merged results when skills.landing is not configure
       return {
         code: 0,
         stdout:
-          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
+          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"cccccccccccccccccccccccccccccccccccccccc","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
         stderr: "",
       };
     }
@@ -467,7 +467,7 @@ test("runOneIssue rejects Pi merged results when direct landing is disabled", as
       return {
         code: 0,
         stdout:
-          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"abc999","commits":["def456"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
+          '{"status":"merged","branch":"agent/issue-22-fix-direct-landing","mergeCommit":"cccccccccccccccccccccccccccccccccccccccc","commits":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"validation":["just issue-runner-test ok"],"reviewSummary":"reviewed","landingDecision":"direct squash-landed: simple localized bug fix"}',
         stderr: "",
       };
     }

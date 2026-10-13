@@ -773,7 +773,13 @@ export function buildImplementationRepairPrompt(
         ];
   return [
     `Repair attempt ${input.attempt}/${input.maxAttempts}.`,
-    "Your previous response was invalid because it was not a terminal JSON object.",
+    "Your previous response was invalid because it did not contain a valid terminal JSON object. The object can be absent or contain invalid fields.",
+    ...(input.facts.implementationOidError
+      ? [
+          `Invalid OID field: ${input.facts.implementationOidError.context}.${input.facts.implementationOidError.field}${input.facts.implementationOidError.index === undefined ? "" : `[${input.facts.implementationOidError.index}]`}. Required format: ${input.facts.implementationOidError.requiredFormat}.`,
+          "Read full commit OIDs from the existing phase workspace with `git rev-parse --verify <commit>^{commit}`. Correct the terminal report only. Do not repeat implementation, create another PR, replace the branch, or change the existing publication.",
+        ]
+      : []),
     `Parent session path: ${input.facts.sessionPath}`,
     `Last parse error: ${input.facts.parseErrorMessage}`,
     `Detected async subagent summary: ${input.facts.unresolvedSummary}`,

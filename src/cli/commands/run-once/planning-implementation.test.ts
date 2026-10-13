@@ -4,6 +4,10 @@ import { PlanningPublicationGitError } from "../../../git/planning-publication-g
 import { validatePlanningState } from "../../../workflow/planning-state.ts";
 import { runPlanningImplementation } from "./planning-implementation.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
+import {
+  ImplementationOidValidationError,
+  IMPLEMENTATION_OID_FORMAT,
+} from "./implementation-oid-validation.ts";
 
 const oid = (value: string) => value.repeat(40);
 const repository = {
@@ -474,7 +478,13 @@ test("blocks direct merged agent results regardless configured landing policy", 
             throw new Error("unexpected validation");
           },
         },
-        runAgent: async () => ({ status: "merged" as const }),
+        runAgent: async () => ({
+          status: "merged" as const,
+          branch: "agent/189",
+          mergeCommit: oid("b"),
+          commits: [oid("b")],
+          validation: ["npm test passed"],
+        }),
       }),
     );
     assert.equal(result.kind, "blocked");
@@ -538,7 +548,10 @@ test("blocks invalid successful agent evidence before PR validation", async () =
   );
   assert.equal(result.kind, "blocked");
   if (result.kind === "blocked")
-    assert.equal(result.result.reason, "implementation-evidence");
+    assert.equal(
+      result.result.publicFailure?.reason,
+      "implementation-validation",
+    );
   assert.equal(hostReads, 0);
 });
 
@@ -1033,4 +1046,305 @@ test("propagates host transport failures instead of converting them to validatio
     runPlanningImplementation(input()),
     /host transport failure/,
   );
+});
+
+type ImplementationInput = Parameters<typeof runPlanningImplementation>[0];
+function invalidOidOutcome(
+  outcome: Awaited<ReturnType<typeof runPlanningImplementation>>,
+  field: string,
+) {
+  assert.equal(outcome.kind, "blocked");
+  if (outcome.kind !== "blocked") assert.fail("expected blocked");
+  assert.equal(
+    outcome.result.publicFailure?.reason,
+    "implementation-validation",
+  );
+  const facts = outcome.result.publicFailure?.diagnosticContext as {
+    validationReason: string;
+    expected: string[];
+    observed: string[];
+  };
+  assert.equal(facts.validationReason, "invalid-oid");
+  assert.ok(facts.expected.includes(IMPLEMENTATION_OID_FORMAT));
+  assert.ok(facts.observed.includes(`field=${field}`));
+  return facts;
+}
+function oidFailure() {
+  return new Error("Pi repair attempts exhausted after 2 attempts", {
+    cause: new ImplementationOidValidationError({
+      context: "pr-created",
+      field: "commits",
+      index: 0,
+    }),
+  });
+}
+test("classifies malformed direct implementation reports", async () => {
+  for (const commits of [["short"], [oid("b"), 123]]) {
+    const value = input() as ImplementationInput;
+    const checkpoints: string[] = [];
+    value.stateStore.replace = async ({ next }) => {
+      checkpoints.push(next.phases[0]!.status);
+      return next;
+    };
+    value.runAgent = async () => ({
+      status: "pr-created",
+      branch: "agent/189",
+      prUrl: "https://github.com/acme/patchmill/pull/189",
+      commits: commits as string[],
+      validation: ["npm test passed"],
+    });
+    invalidOidOutcome(await runPlanningImplementation(value), "commits");
+    assert.ok(!checkpoints.includes("branch-pushed"));
+  }
+});
+test("classifies typed agent errors after clean progress recovery", async () => {
+  const value = input({
+    runAgent: async () => {
+      throw oidFailure();
+    },
+  }) as ImplementationInput;
+  const result = await runPlanningImplementation(value);
+  invalidOidOutcome(result, "commits");
+  const phase = result.state.phases[0]!;
+  assert.equal(phase.status, "workspace-ready");
+  assert.equal(phase.workspace.headOid, oid("b"));
+  assert.deepEqual(
+    phase.workspace.identity,
+    value.state.phases[0]!.workspace.identity,
+  );
+});
+test("does not adopt dirty or unproven progress after OID failure", async () => {
+  for (const reason of ["dirty", "not-ready", "not-descendant"] as const) {
+    const value = input({
+      runAgent: async () => {
+        throw oidFailure();
+      },
+    }) as ImplementationInput;
+    if (reason === "not-ready")
+      value.workspaces.inspect = async () => ({ state: "missing" });
+    if (reason === "dirty")
+      value.workspaces.inspect = async () => ({
+        state: "ready",
+        clean: false,
+        headOid: oid("b"),
+        identity: value.state.phases[0]!.workspace.identity,
+      });
+    if (reason === "not-descendant")
+      value.git.assertAncestor = async () => {
+        throw new PlanningPublicationGitError("ancestry", "not-ancestor");
+      };
+    const result = await runPlanningImplementation(value);
+    const facts = invalidOidOutcome(result, "commits");
+    assert.equal(result.state.phases[0]!.workspace.headOid, oid("a"));
+    assert.ok(facts.observed.includes(`workspaceRecoveryReason=${reason}`));
+  }
+});
+test("classifies invalid OIDs during workspace recovery", async () => {
+  for (const field of ["savedHeadOid", "headOid"] as const) {
+    const value = input() as ImplementationInput;
+    let calls = 0;
+    if (field === "savedHeadOid")
+      value.state.phases[0]!.workspace.headOid = "short";
+    else
+      value.workspaces.inspect = async () => ({
+        state: "ready",
+        clean: true,
+        headOid: "short",
+        identity: value.state.phases[0]!.workspace.identity,
+      });
+    value.git.assertAncestor = async () => {
+      calls++;
+    };
+    value.stateStore.replace = async () =>
+      assert.fail("no malformed checkpoint");
+    invalidOidOutcome(await runPlanningImplementation(value), field);
+    assert.equal(calls, 0);
+  }
+});
+test("does not hide infrastructure errors beside OID failures", async () => {
+  for (const failure of [
+    new AggregateError([oidFailure(), new Error("cleanup")]),
+    new Error("wrapped", {
+      cause: new AggregateError([oidFailure(), new Error("process")]),
+    }),
+    new Error(
+      new ImplementationOidValidationError({
+        context: "pr-created",
+        field: "commits",
+      }).message,
+    ),
+    new Error("ordinary agent failure"),
+  ]) {
+    await assert.rejects(
+      runPlanningImplementation(
+        input({
+          runAgent: async () => {
+            throw failure;
+          },
+        }),
+      ),
+      (error) => error === failure,
+    );
+  }
+});
+test("classifies remaining ancestry invalid-input only", async () => {
+  for (const [operation, reason] of [
+    ["ancestry", "invalid-input"],
+    ["remote-head", "invalid-input"],
+    ["ancestry", "command-failed"],
+  ] as const) {
+    const failure = new PlanningPublicationGitError(operation, reason);
+    const value = input() as ImplementationInput;
+    value.workspaces.inspect = async () => ({
+      state: "ready",
+      clean: true,
+      headOid: oid("a"),
+      identity: value.state.phases[0]!.workspace.identity,
+    });
+    value.git.assertAncestor = async () => {
+      throw failure;
+    };
+    if (operation === "ancestry" && reason === "invalid-input")
+      invalidOidOutcome(
+        await runPlanningImplementation(value),
+        "ancestry.operands",
+      );
+    else
+      await assert.rejects(
+        runPlanningImplementation(value),
+        (error) => error === failure,
+      );
+  }
+});
+test("classifies malformed resumed implementation evidence", async () => {
+  const value = input() as ImplementationInput;
+  const ready = value.state.phases[0]!;
+  value.state.phases[0] = {
+    ...ready,
+    status: "branch-pushed",
+    publication: {
+      targetRepository: repository,
+      headRepository: repository,
+      baseBranch: "main",
+      headBranch: "agent/189",
+      headOid: oid("b"),
+    },
+    workspace: { ...ready.workspace, headOid: oid("b") },
+    implementation: {
+      status: "pr-created",
+      prUrl: "https://github.com/acme/patchmill/pull/189",
+      branch: "agent/189",
+      commits: ["short"],
+      validation: ["npm test passed"],
+      visualEvidence: [],
+    },
+  } as never;
+  value.runAgent = async () => assert.fail("no agent on resumed validation");
+  value.stateStore.replace = async () => assert.fail("no advancement");
+  value.host.getPullRequest = async () => ({
+    number: 189,
+    url: "https://github.com/acme/patchmill/pull/189",
+    targetRepository: repository,
+    headRepository: repository,
+    baseBranch: "main",
+    headBranch: "agent/189",
+    headSha: oid("b"),
+    body: "Closes #189\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+    status: "open",
+  });
+  invalidOidOutcome(await runPlanningImplementation(value), "commits");
+});
+
+test("classifies malformed direct reports even when progress is unsafe", async () => {
+  const value = input() as ImplementationInput;
+  value.workspaces.inspect = async () => ({ state: "missing" });
+  value.runAgent = async () => ({
+    status: "pr-created",
+    branch: "agent/189",
+    prUrl: "https://github.com/acme/patchmill/pull/189",
+    commits: ["short"],
+    validation: [],
+  });
+  const facts = invalidOidOutcome(
+    await runPlanningImplementation(value),
+    "commits",
+  );
+  assert.ok(facts.observed.includes("workspaceRecoveryReason=not-ready"));
+});
+test("classifies recovery OID errors after an agent OID failure", async () => {
+  for (const failure of [
+    new PlanningPublicationGitError("ancestry", "invalid-input"),
+    undefined,
+  ]) {
+    const value = input({
+      runAgent: async () => {
+        throw oidFailure();
+      },
+    }) as ImplementationInput;
+    if (failure)
+      value.git.assertAncestor = async () => {
+        throw failure;
+      };
+    else
+      value.workspaces.inspect = async () => ({
+        state: "ready",
+        clean: true,
+        headOid: "short",
+        identity: value.state.phases[0]!.workspace.identity,
+      });
+    invalidOidOutcome(
+      await runPlanningImplementation(value),
+      failure ? "ancestry.operands" : "headOid",
+    );
+  }
+});
+
+test("classifies malformed base and artifacts before recovery proof or checkpoint", async () => {
+  for (const field of ["baseOid", "phases[0].artifacts[0].commitOid"]) {
+    for (const agentThrows of [false, true]) {
+      const value = input() as ImplementationInput;
+      const ready = value.state.phases[0]!;
+      if (field === "baseOid") {
+        value.state.phases[0] = {
+          ...ready,
+          base: { ...ready.base, baseOid: "short" },
+          workspace: { ...ready.workspace, baseOid: "short" },
+        } as never;
+      } else {
+        value.state.phases[0] = {
+          ...ready,
+          artifacts: [
+            {
+              kind: "spec",
+              path: "docs/specs/oid.md",
+              source: "workspace",
+              commitOid: "short",
+            },
+            {
+              kind: "plan",
+              path: "docs/plans/oid.md",
+              source: "workspace",
+              commitOid: oid("a"),
+            },
+          ],
+        } as never;
+      }
+      let proofs = 0,
+        checkpoints = 0;
+      value.git.assertAncestor = async () => {
+        proofs++;
+      };
+      value.stateStore.replace = async ({ next }) => {
+        checkpoints++;
+        return validatePlanningState(next);
+      };
+      if (agentThrows)
+        value.runAgent = async () => {
+          throw oidFailure();
+        };
+      invalidOidOutcome(await runPlanningImplementation(value), field);
+      assert.equal(proofs, 0);
+      assert.equal(checkpoints, 0);
+    }
+  }
 });

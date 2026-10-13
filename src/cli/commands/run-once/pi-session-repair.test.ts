@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { readPiRepairFacts } from "./pi-session-repair.ts";
+import {
+  ImplementationOidValidationError,
+  IMPLEMENTATION_OID_FORMAT,
+} from "./implementation-oid-validation.ts";
 
 async function writeSession(lines: unknown[]): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "patchmill-repair-facts-"));
@@ -472,4 +476,55 @@ test("readPiRepairFacts tolerates malformed lines and unknown subagent result sh
   });
   assert.equal(facts.subagentRuns[0]?.id, "pm-subagents-xyz987");
   assert.equal(facts.subagentRuns[0]?.unresolved, true);
+});
+
+test("reports structured OID repair facts", async () => {
+  const sessionPath = await writeSession([]);
+  const facts = await readPiRepairFacts({
+    sessionPath,
+    parseError: new Error("wrapped", {
+      cause: new ImplementationOidValidationError({
+        context: "pr-created",
+        field: "commits",
+        index: 1,
+      }),
+    }),
+  });
+  assert.deepEqual(facts.implementationOidError, {
+    context: "pr-created",
+    field: "commits",
+    index: 1,
+    requiredFormat: IMPLEMENTATION_OID_FORMAT,
+  });
+  assert.equal(
+    (await readPiRepairFacts({ sessionPath, parseError: new Error("other") }))
+      .implementationOidError,
+    undefined,
+  );
+});
+
+test("OID facts ignore aggregate failures and tolerate cyclic causes", async () => {
+  const sessionPath = await writeSession([]);
+  const oid = new ImplementationOidValidationError({
+    context: "merged",
+    field: "mergeCommit",
+  });
+  for (const error of [
+    new AggregateError([oid, new Error("cleanup")]),
+    new Error("wrapped", { cause: new AggregateError([oid]) }),
+    new Error(oid.message),
+  ]) {
+    assert.equal(
+      (await readPiRepairFacts({ sessionPath, parseError: error }))
+        .implementationOidError,
+      undefined,
+    );
+  }
+  const cycle = new Error("cycle");
+  cycle.cause = cycle;
+  assert.equal(
+    (await readPiRepairFacts({ sessionPath, parseError: cycle }))
+      .implementationOidError,
+    undefined,
+  );
 });

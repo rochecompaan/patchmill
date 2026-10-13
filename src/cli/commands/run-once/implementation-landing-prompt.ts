@@ -50,12 +50,13 @@ If human input is required, stop safely, leave committed work as-is, keep the re
 
 function renderPrCreatedContract(branch: string): string {
   return `Successful final response for human-review PR fallback:
-Return this exact JSON object after PR handoff succeeds:
+Return this exact JSON object after PR handoff succeeds.
+The commits field must be a non-empty array. Each commit OID must contain exactly 40 (SHA-1) or 64 (SHA-256) lowercase hexadecimal characters. Do not use abbreviated OIDs or refs:
 {
   "status": "pr-created",
   "prUrl": "<pull request URL>",
   "branch": "${branch}",
-  "commits": ["<sha>"],
+  "commits": ["<full commit OID>"],
   "validation": ["command and result summary"],
   "reviewSummary": "short reviewer/fix summary",
   "landingDecision": "PR required: <reason>"

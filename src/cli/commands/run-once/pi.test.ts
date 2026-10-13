@@ -17,6 +17,7 @@ import { basename, dirname, join } from "node:path";
 import { DEFAULT_PI_TASK_CONTRACT } from "../../../policy/task-contract.ts";
 import { SUBAGENT_PROGRESS_LIMITS } from "../../../pi/subagent-progress.ts";
 import { parseDevelopmentEnvironmentResult, runPiPrompt } from "./pi.ts";
+import { ImplementationOidValidationError } from "./implementation-oid-validation.ts";
 import {
   createExactPiSessionObservationStreamer,
   createExactPiSessionProgressState,
@@ -1608,8 +1609,13 @@ test("runPiPrompt reads issue task progress from the configured worktree root", 
   await new Promise((resolve) => setTimeout(resolve, 25));
   finishRun({
     code: 0,
-    stdout:
-      '{"status":"pr-created","prUrl":"https://forgejo.example/pr/14","branch":"agent/issue-14-example","commits":[],"validation":[]}',
+    stdout: JSON.stringify({
+      status: "pr-created",
+      prUrl: "https://forgejo.example/pr/14",
+      branch: "agent/issue-14-example",
+      commits: ["a".repeat(40)],
+      validation: [],
+    }),
     stderr: "",
   });
   await run;
@@ -2126,4 +2132,106 @@ test("runPiPrompt streams exact parent child progress before Pi returns", async 
   });
   await result;
   assert.deepEqual(streamed, ["parent-child", "parent-child"]);
+});
+
+function oidReport(merge = false) {
+  return JSON.stringify({
+    status: merge ? "merged" : "pr-created",
+    branch: "agent/268",
+    prUrl: "https://github.com/acme/patchmill/pull/268",
+    commits: [merge ? "a".repeat(40) : "a1b2c3d4"],
+    mergeCommit: "abc123",
+  });
+}
+async function oidRepairRun(outputs: string[]) {
+  const sessions: string[] = [];
+  const facts: unknown[] = [];
+  let calls = 0;
+  const runner = createMockRunner(async (call) => {
+    const path = call.args[call.args.indexOf("--session") + 1] ?? "";
+    sessions.push(path);
+    const stdout = outputs[calls++] ?? outputs.at(-1)!;
+    await appendFile(
+      path,
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Final review is complete." }],
+        },
+      }) + "\n",
+    );
+    return { code: 0, stdout, stderr: "" };
+  });
+  const promise = runPiPrompt(runner, "/repo", "prompt", {
+    stage: "pi-implementation",
+    observeSession: true,
+    repair: {
+      maxAttempts: 2,
+      buildPrompt: (input) => {
+        facts.push(input.facts);
+        return "repair";
+      },
+    },
+  });
+  return { promise, sessions, facts, calls: () => calls };
+}
+const fullOidReport = JSON.stringify({
+  status: "pr-created",
+  branch: "agent/268",
+  prUrl: "https://github.com/acme/patchmill/pull/268",
+  commits: ["a".repeat(40)],
+});
+test("repairs abbreviated implementation OIDs in the exact session", async () => {
+  const run = await oidRepairRun([oidReport(), fullOidReport]);
+  const result = await run.promise;
+  assert.equal(result.status, "pr-created");
+  assert.deepEqual(result.commits, ["a".repeat(40)]);
+  assert.equal(run.sessions[0], run.sessions[1]);
+  assert.equal(run.calls(), 2);
+});
+test("accepts full OIDs on the second repair", async () => {
+  const run = await oidRepairRun([oidReport(), oidReport(), fullOidReport]);
+  assert.equal((await run.promise).status, "pr-created");
+  assert.equal(run.calls(), 3);
+  assert.equal(new Set(run.sessions).size, 1);
+});
+test("retains typed OID cause after repair exhaustion", async () => {
+  for (const merge of [false, true]) {
+    const run = await oidRepairRun([oidReport(merge)]);
+    await assert.rejects(run.promise, (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.cause instanceof ImplementationOidValidationError);
+      assert.equal(error.cause.field, merge ? "mergeCommit" : "commits");
+      assert.match(
+        error.message,
+        /Pi repair attempts exhausted after 2 attempts/,
+      );
+      assert.match(error.message, /no unresolved async subagent runs detected/);
+      assert.match(error.message, /Final review is complete/);
+      assert.match(error.message, /Last parse error:/);
+      return true;
+    });
+    assert.equal(run.calls(), 3);
+  }
+});
+test("preserves OID cause when later repair output is prose", async () => {
+  const run = await oidRepairRun([
+    oidReport(),
+    "still checking",
+    "no terminal report",
+  ]);
+  await assert.rejects(run.promise, (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.ok(error.cause instanceof ImplementationOidValidationError);
+    assert.match(error.message, /Last parse error: Pi output did not include/);
+    return true;
+  });
+  assert.equal(run.calls(), 3);
+  assert.ok(
+    run.facts.every(
+      (fact) =>
+        (fact as { implementationOidError?: unknown }).implementationOidError,
+    ),
+  );
 });

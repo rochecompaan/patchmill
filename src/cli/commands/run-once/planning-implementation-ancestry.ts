@@ -3,6 +3,11 @@ import {
   type PlanningPublicationOperations,
 } from "../../../git/planning-publication-git.ts";
 import type { PlanningStateV1 } from "../../../workflow/planning-state-types.ts";
+import {
+  assertImplementationOid,
+  parseImplementationCommits,
+  ImplementationOidValidationError,
+} from "./implementation-oid-validation.ts";
 
 export class PlanningImplementationAncestryError extends Error {
   readonly reason = "ancestry" as const;
@@ -13,6 +18,33 @@ export class PlanningImplementationAncestryError extends Error {
   }
 }
 
+/** Validates workspace evidence before recovery or reported-commit proofs. */
+export function validatePlanningImplementationWorkspaceOids(input: {
+  state: PlanningStateV1;
+  baseOid: string;
+  savedHeadOid: string;
+  headOid: string;
+}): string[] {
+  for (const field of ["baseOid", "savedHeadOid", "headOid"] as const) {
+    assertImplementationOid(input[field], {
+      context: "planning-ancestry",
+      field,
+    });
+  }
+  return input.state.phases.flatMap((phase, phaseIndex) =>
+    "artifacts" in phase
+      ? phase.artifacts.flatMap((artifact, artifactIndex) => {
+          if (artifact.source !== "workspace") return [];
+          assertImplementationOid(artifact.commitOid, {
+            context: "planning-ancestry",
+            field: `phases[${phaseIndex}].artifacts[${artifactIndex}].commitOid`,
+          });
+          return [artifact.commitOid];
+        })
+      : [],
+  );
+}
+
 export async function assertPlanningImplementationAncestry(input: {
   state: PlanningStateV1;
   baseOid: string;
@@ -21,14 +53,12 @@ export async function assertPlanningImplementationAncestry(input: {
   commits: readonly string[];
   git: Pick<PlanningPublicationOperations, "assertAncestor">;
 }): Promise<void> {
-  const workspaceArtifacts = input.state.phases.flatMap((phase) =>
-    "artifacts" in phase
-      ? phase.artifacts
-          .filter((artifact) => artifact.source === "workspace")
-          .map((artifact) => artifact.commitOid)
-      : [],
+  const reportedCommits = parseImplementationCommits(
+    input.commits,
+    "planning-ancestry",
   );
-  const commits = new Set([...input.commits, ...workspaceArtifacts]);
+  const workspaceArtifacts = validatePlanningImplementationWorkspaceOids(input);
+  const commits = new Set([...reportedCommits, ...workspaceArtifacts]);
   try {
     await input.git.assertAncestor({
       ancestorOid: input.baseOid,
@@ -50,6 +80,15 @@ export async function assertPlanningImplementationAncestry(input: {
       });
     }
   } catch (error) {
+    if (
+      error instanceof PlanningPublicationGitError &&
+      error.operation === "ancestry" &&
+      error.reason === "invalid-input"
+    )
+      throw new ImplementationOidValidationError(
+        { context: "planning-ancestry", field: "ancestry.operands" },
+        { cause: error },
+      );
     if (
       error instanceof PlanningPublicationGitError &&
       error.reason === "not-ancestor"

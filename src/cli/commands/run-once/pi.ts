@@ -24,6 +24,12 @@ import {
   type PiCommandSpec,
 } from "../../pi-cli.ts";
 import { finalJsonCandidates } from "./final-json.ts";
+import {
+  assertImplementationOid,
+  parseImplementationCommits,
+  findImplementationOidValidationError,
+  type ImplementationOidValidationError,
+} from "./implementation-oid-validation.ts";
 import { issueTodoProgress } from "./issue-todos.ts";
 import {
   resolveIssueTodoContract,
@@ -201,7 +207,7 @@ export function parsePiResult(stdout: string): AgentIssuePiResult {
         status: "pr-created",
         prUrl: parsed.prUrl,
         branch: parsed.branch,
-        commits: stringArray(parsed.commits),
+        commits: parseImplementationCommits(parsed.commits, "pr-created"),
         validation: stringArray(parsed.validation),
         reviewSummary:
           typeof parsed.reviewSummary === "string"
@@ -215,16 +221,16 @@ export function parsePiResult(stdout: string): AgentIssuePiResult {
       };
     }
 
-    if (
-      parsed.status === "merged" &&
-      typeof parsed.branch === "string" &&
-      typeof parsed.mergeCommit === "string"
-    ) {
+    if (parsed.status === "merged" && typeof parsed.branch === "string") {
+      assertImplementationOid(parsed.mergeCommit, {
+        context: "merged",
+        field: "mergeCommit",
+      });
       return {
         status: "merged",
         branch: parsed.branch,
         mergeCommit: parsed.mergeCommit,
-        commits: stringArray(parsed.commits),
+        commits: parseImplementationCommits(parsed.commits, "merged"),
         validation: stringArray(parsed.validation),
         reviewSummary:
           typeof parsed.reviewSummary === "string"
@@ -620,6 +626,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
     let attemptPromptPath = promptPath;
     let startOffset: number | undefined;
     let parseError: unknown;
+    let oidError: ImplementationOidValidationError | undefined;
     let repairAttempts = 0;
 
     for (let attempt = 0; ; attempt += 1) {
@@ -631,6 +638,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
         break;
       } catch (error) {
         parseError = error;
+        oidError = findImplementationOidValidationError(error) ?? oidError;
       }
 
       if (!repair || attempt >= repair.maxAttempts || !repairSessionPath) break;
@@ -639,6 +647,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
       const facts = await readPiRepairFacts({
         sessionPath: repairSessionPath,
         parseError,
+        implementationOidError: oidError,
       });
       await options?.progress?.event({
         time: new Date().toISOString(),
@@ -677,6 +686,7 @@ export async function runPiPrompt<Result = AgentIssuePiResult>(
               `Last assistant prose: ${facts.lastAssistantTextExcerpt ?? "not detected"}`,
               `Last parse error: ${facts.parseErrorMessage}`,
             ].join("; "),
+            { cause: oidError ?? parseError },
           ),
         );
       } else {

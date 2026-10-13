@@ -11,6 +11,10 @@ import type {
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
 
+import { ImplementationOidValidationError } from "./implementation-oid-validation.ts";
+
+import { validatePlanningImplementationWorkspaceOids } from "./planning-implementation-ancestry.ts";
+
 type UnsafeWorkspaceRecovery = Readonly<{
   kind: "unsafe";
   state: PlanningStateV1;
@@ -50,6 +54,12 @@ export async function recoverPostAgentWorkspace(
       reason: "not-ready",
       workspace,
     };
+  validatePlanningImplementationWorkspaceOids({
+    state: input.state,
+    baseOid: input.phase.base.baseOid,
+    savedHeadOid: input.phase.workspace.headOid,
+    headOid: workspace.headOid,
+  });
   if (!workspace.clean)
     return {
       kind: "unsafe",
@@ -70,6 +80,15 @@ export async function recoverPostAgentWorkspace(
       descendantOid: workspace.headOid,
     });
   } catch (error) {
+    if (
+      error instanceof PlanningPublicationGitError &&
+      error.operation === "ancestry" &&
+      error.reason === "invalid-input"
+    )
+      throw new ImplementationOidValidationError(
+        { context: "planning-ancestry", field: "ancestry.operands" },
+        { cause: error },
+      );
     if (
       error instanceof PlanningPublicationGitError &&
       error.reason === "not-ancestor"
