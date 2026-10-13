@@ -120,6 +120,7 @@ export async function inspectPlanningRevision(
         ...input,
         ...artifact,
         commitOid: input.candidateOid,
+        source: "workspace",
       }),
     );
   }
