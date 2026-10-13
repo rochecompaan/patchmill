@@ -1,3 +1,4 @@
+import { planningArtifactPaths } from "../../../workflow/planning-companion-artifacts.ts";
 import type {
   PlanningHeadAdoptionBlockedEvidence,
   PlanningHeadAdoptionFailure,
@@ -53,7 +54,7 @@ export function planningHeadObservationBlocked(input: {
       ...(input.remoteHeadOid === undefined
         ? {}
         : { remoteHeadOid: input.remoteHeadOid }),
-      artifactPaths: input.phase.artifacts.map((artifact) => artifact.path),
+      artifactPaths: planningArtifactPaths(input.phase.artifacts),
       unexpectedPaths: [],
       cleanupState: input.phase.workspace.cleanup.state,
     },
@@ -112,11 +113,7 @@ export async function adoptPlanningPullRequestHead(input: {
       status: "pull-request-open",
       workspace,
       publication: { ...phase.publication, headOid: adoption.headOid },
-      artifacts: phase.artifacts.map((artifact) => ({
-        ...artifact,
-        source: "workspace",
-        commitOid: adoption.headOid,
-      })),
+      artifacts: adoption.artifacts,
       pullRequest: {
         reference: input.validated.reference,
         url: input.validated.url,

@@ -129,7 +129,19 @@ test("runs a missing earlier artifact after a later base artifact", async () => 
         };
       },
     },
-    git: { async verifyArtifactCommit() {} },
+    git: {
+      async inspectArtifactEvidence(value) {
+        return value;
+      },
+      async verifyArtifactCommit(value) {
+        return {
+          kind: value.artifactKind,
+          path: value.artifactPath,
+          source: "workspace",
+          commitOid: value.headOid,
+        };
+      },
+    },
     checkpoint: async () => {},
     projectPolicy: DEFAULT_PATCHMILL_POLICY,
     skills: DEFAULT_PATCHMILL_SKILLS,
@@ -204,8 +216,19 @@ test("checkpoints spec before running plan", async () => {
       },
     },
     git: {
-      async verifyArtifactCommit({ artifactPath }) {
-        events.push(`git:${artifactPath.includes("specs") ? "spec" : "plan"}`);
+      async inspectArtifactEvidence(value) {
+        return value;
+      },
+      async verifyArtifactCommit(value) {
+        events.push(
+          `git:${value.artifactPath.includes("specs") ? "spec" : "plan"}`,
+        );
+        return {
+          kind: value.artifactKind,
+          path: value.artifactPath,
+          source: "workspace",
+          commitOid: value.headOid,
+        };
       },
     },
     checkpoint: async (phase) => {
@@ -273,8 +296,17 @@ test("resumes from a saved spec checkpoint without invoking spec again", async (
       },
     },
     git: {
-      async verifyArtifactCommit({ previousHeadOid }) {
-        calls.push(`git:${previousHeadOid}`);
+      async inspectArtifactEvidence(value) {
+        return value;
+      },
+      async verifyArtifactCommit(value) {
+        calls.push(`git:${value.previousHeadOid}`);
+        return {
+          kind: value.artifactKind,
+          path: value.artifactPath,
+          source: "workspace",
+          commitOid: value.headOid,
+        };
       },
     },
     checkpoint: async (phase) => {

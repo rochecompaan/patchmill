@@ -26,6 +26,7 @@ export const recoveryGit = (cwd: string, ...args: string[]) =>
 
 export async function planningArtifactRecoveryFixture(
   kind: "plan" | "implementation" = "implementation",
+  frontend = false,
 ) {
   const root = await mkdtemp(join(tmpdir(), "planning-artifact-recovery-"));
   const repo = join(root, "repo");
@@ -87,7 +88,20 @@ export async function planningArtifactRecoveryFixture(
   });
   const specPath = "docs/specs/2026-10-10-issue-307-spec.md";
   await mkdir(join(workspace, "docs/specs"), { recursive: true });
-  await writeFile(join(workspace, specPath), "# Recorded specification\n");
+  await writeFile(
+    join(workspace, specPath),
+    frontend
+      ? "# Recorded specification\n\n## Companion artifacts\n\n- `docs/mockups/example.html`: [Mockup](../mockups/example.html)\n"
+      : "# Recorded specification\n",
+  );
+  if (frontend) {
+    await mkdir(join(workspace, "docs/mockups"), { recursive: true });
+    await writeFile(
+      join(workspace, "docs/mockups/example.html"),
+      "<!doctype html><title>Mockup</title>",
+    );
+    recoveryGit(workspace, "add", "docs/mockups/example.html");
+  }
   recoveryGit(workspace, "add", specPath);
   recoveryGit(workspace, "commit", "-m", "recorded specification");
   const savedHeadOid = recoveryGit(workspace, "rev-parse", "HEAD");

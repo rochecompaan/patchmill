@@ -123,7 +123,7 @@ test("does not authorize companions from local content", async (t) => {
   await f.write(mockup, "undeclared");
   const head = f.commit();
   await f.write(spec, declaration());
-  assert.deepEqual((await f.inspect(head)).companionPaths, []);
+  assert.equal((await f.inspect(head)).companionPaths, undefined);
   await assert.rejects(
     f.publication.verifyArtifactCommit({
       workspacePath: f.repo,
@@ -216,7 +216,7 @@ test("preserves single-document creation and rejects undeclared files", async (t
         artifactPath: spec,
       })
     ).companionPaths,
-    [],
+    undefined,
   );
 });
 
@@ -279,7 +279,7 @@ test("adopts revised companions and only permits retirement by deletion", async 
       if (result.kind === "adopted")
         assert.deepEqual(
           result.artifacts[0]?.companionPaths,
-          revision === "add" ? ["docs/mockups/new.html"] : [],
+          revision === "add" ? ["docs/mockups/new.html"] : undefined,
         );
     } else assert.equal(result.kind, "blocked");
     assert.equal(workspace.headOid, recorded);

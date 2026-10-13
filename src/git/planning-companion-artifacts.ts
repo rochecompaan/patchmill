@@ -89,7 +89,9 @@ export async function readPlanningArtifactEvidence(
   }
   if (companionPaths.length > 0)
     await assertPlanningRegularFiles({ ...input, paths: companionPaths });
-  return { ...evidence, companionPaths };
+  return companionPaths.length === 0
+    ? evidence
+    : { ...evidence, companionPaths };
 }
 
 /** Inspect both trees; a retired companion is allowed only as an exact deletion. */

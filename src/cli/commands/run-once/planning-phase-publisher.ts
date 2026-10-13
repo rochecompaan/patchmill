@@ -1,3 +1,5 @@
+import { refreshPlanningArtifactEvidence } from "./planning-companion-evidence.ts";
+import { planningArtifactPaths } from "../../../workflow/planning-companion-artifacts.ts";
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
 import type {
@@ -59,7 +61,10 @@ export async function publishPlanningPhase(input: {
   host: PullRequestHost;
   git: Pick<
     PlanningPublicationOperations,
-    "verifyWorkspace" | "inspectRemoteHead" | "ensureRemoteHead"
+    | "verifyWorkspace"
+    | "inspectRemoteHead"
+    | "ensureRemoteHead"
+    | "inspectArtifactEvidence"
   >;
   workspaces: PlanningWorkspaceLifecycle;
   now?: () => Date;
@@ -69,6 +74,23 @@ export async function publishPlanningPhase(input: {
   let phase = state.phases[input.phaseIndex];
   if (phase === undefined || phase.kind === "implementation")
     throw new RangeError("Planning phase is not publishable");
+  if ("artifacts" in phase) {
+    const artifacts = await refreshPlanningArtifactEvidence({
+      artifacts: phase.artifacts,
+      git: input.git,
+    });
+    if (JSON.stringify(artifacts) !== JSON.stringify(phase.artifacts)) {
+      phase = { ...phase, artifacts };
+      state = await replace({
+        state,
+        phaseIndex: input.phaseIndex,
+        phase,
+        lock: input.lock,
+        stateStore: input.stateStore,
+        now,
+      });
+    }
+  }
   const phaseKind = phase.kind;
   const assignedArtifacts = planningPhasePlan(state.gates)[input.phaseIndex]!
     .artifactKinds;
@@ -159,7 +181,7 @@ export async function publishPlanningPhase(input: {
         body: planningPullRequestBody({
           issueNumber: state.issueNumber,
           phase: phaseKind,
-          artifactPaths: phase.artifacts.map((artifact) => artifact.path),
+          artifactPaths: planningArtifactPaths(phase.artifacts),
         }),
         baseBranch: phase.publication.baseBranch,
         headBranch: phase.publication.headBranch,

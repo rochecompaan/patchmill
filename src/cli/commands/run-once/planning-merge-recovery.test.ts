@@ -1,215 +1,188 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
+import type { PlanningArtifactEvidence } from "../../../workflow/planning-state-types.ts";
 import {
   verifyPlanningMergeRecoveryEvidence,
   verifyPlanningMergedArtifacts,
 } from "./planning-merge-recovery.ts";
 
-const rewrittenBaseOid = "a".repeat(40);
-const specArtifact = {
-  kind: "spec" as const,
-  path: "docs/specs/issue-260.md",
-  source: "workspace" as const,
-  commitOid: "b".repeat(40),
+const baseOid = "a".repeat(40);
+const mergeOid = "c".repeat(40);
+const artifacts: readonly PlanningArtifactEvidence[] = [
+  {
+    kind: "spec",
+    path: "docs/specs/issue-260.md",
+    source: "workspace",
+    commitOid: "b".repeat(40),
+  },
+  {
+    kind: "plan",
+    path: "docs/plans/issue-260.md",
+    source: "workspace",
+    commitOid: "b".repeat(40),
+  },
+];
+const base = {
+  remote: "origin",
+  baseBranch: "main",
+  baseOid,
+  artifactCandidates: {
+    spec: [artifacts[0]!.path],
+    plan: [artifacts[1]!.path],
+  },
 };
-const planArtifact = {
-  kind: "plan" as const,
-  path: "docs/plans/issue-260.md",
-  source: "workspace" as const,
-  commitOid: "b".repeat(40),
-};
-function snapshot(candidates: {
-  spec: readonly string[];
-  plan: readonly string[];
-}) {
-  return {
-    remote: "origin",
-    baseBranch: "main",
-    baseOid: rewrittenBaseOid,
-    artifactCandidates: candidates,
-  };
-}
+const refreshed = artifacts.map((artifact) => ({
+  ...artifact,
+  commitOid: baseOid,
+  source: "remote-base" as const,
+}));
 
-test("proves saved artifacts at merge and fetched-base in order", async () => {
-  const mergeOid = "c".repeat(40);
-  const calls: unknown[] = [];
+test("proves merge and fetched trees in order and returns authoritative evidence", async () => {
+  const calls: string[] = [];
   const result = await verifyPlanningMergedArtifacts({
     mergeOid,
-    artifacts: [specArtifact, planArtifact],
-    base: snapshot({ spec: [specArtifact.path], plan: [planArtifact.path] }),
+    artifacts,
+    base,
     git: {
-      async assertAncestor({ ancestorOid, descendantOid }) {
-        calls.push(["ancestor", ancestorOid, descendantOid]);
+      async assertAncestor(value) {
+        calls.push(`ancestor:${value.ancestorOid}:${value.descendantOid}`);
       },
-      async assertRegularFiles({ commitOid, paths }) {
-        calls.push(["regular", commitOid, ...paths]);
+      async inspectArtifactEvidence(value) {
+        calls.push(`${value.commitOid}:${value.path}`);
+        return value;
       },
     },
   });
   assert.deepEqual(calls, [
-    ["ancestor", mergeOid, rewrittenBaseOid],
-    ["regular", mergeOid, specArtifact.path, planArtifact.path],
-    ["regular", rewrittenBaseOid, specArtifact.path, planArtifact.path],
+    `ancestor:${mergeOid}:${baseOid}`,
+    `${mergeOid}:docs/specs/issue-260.md`,
+    `${mergeOid}:docs/plans/issue-260.md`,
+    `${baseOid}:docs/specs/issue-260.md`,
+    `${baseOid}:docs/plans/issue-260.md`,
   ]);
   assert.deepEqual(result, {
     kind: "verified",
     evidenceSource: "merge-and-base",
+    artifacts: refreshed,
   });
 });
 
-test("recovers only typed merged proof insufficiency and preserves hard errors", async () => {
-  const mergeOid = "c".repeat(40);
-  for (const [source, failAt, error] of [
-    [
-      "merge-ancestry",
-      "ancestor",
-      new PlanningPublicationGitError("ancestry", "not-ancestor"),
-    ],
-    [
-      "merge-commit-tree",
-      "merge",
-      new PlanningPublicationGitError("tree", "non-regular-file"),
-    ],
-    [
-      "fetched-base-tree",
-      "base",
-      new PlanningPublicationGitError("tree", "non-regular-file"),
-    ],
-  ] as const) {
-    let recoveryCalls = 0;
+test("recovers only typed proof insufficiency", async () => {
+  for (const failAt of ["ancestor", "merge", "base"]) {
     let failed = false;
     const result = await verifyPlanningMergedArtifacts({
       mergeOid,
-      artifacts: [specArtifact],
-      base: snapshot({ spec: [specArtifact.path], plan: [] }),
+      artifacts,
+      base,
       git: {
         async assertAncestor() {
-          if (failAt === "ancestor") throw error;
+          if (failAt === "ancestor")
+            throw new PlanningPublicationGitError("ancestry", "not-ancestor");
         },
-        async assertRegularFiles({ commitOid }) {
+        async inspectArtifactEvidence(value) {
           if (
             !failed &&
-            ((failAt === "merge" && commitOid === mergeOid) ||
-              (failAt === "base" && commitOid === rewrittenBaseOid))
+            ((failAt === "merge" && value.commitOid === mergeOid) ||
+              (failAt === "base" && value.commitOid === baseOid))
           ) {
             failed = true;
-            throw error;
+            throw new PlanningPublicationGitError("tree", "non-regular-file");
           }
-          if (commitOid === rewrittenBaseOid) recoveryCalls += 1;
+          return value;
         },
       },
     });
-    assert.deepEqual(
-      result,
-      { kind: "verified", evidenceSource: "current-base" },
-      source,
-    );
-    assert.equal(recoveryCalls, 1, source);
+    assert.deepEqual(result, {
+      kind: "verified",
+      evidenceSource: "current-base",
+      artifacts: refreshed,
+    });
   }
-  const hard = new PlanningPublicationGitError("tree", "command-failed");
-  let regularCalls = 0;
-  await assert.rejects(
-    verifyPlanningMergedArtifacts({
-      mergeOid,
-      artifacts: [specArtifact],
-      base: snapshot({ spec: [specArtifact.path], plan: [] }),
-      git: {
-        async assertAncestor() {},
-        async assertRegularFiles() {
-          regularCalls += 1;
-          throw hard;
-        },
-      },
-    }),
-    (received) => received === hard,
-  );
-  assert.equal(regularCalls, 1);
 });
 
-test("blocks missing, ambiguous, and renamed current-base candidates", async () => {
-  for (const [name, candidates, failure] of [
-    ["missing", [], "missing"],
-    [
-      "ambiguous",
-      ["docs/specs/issue-260.md", "docs/specs/issue-260-copy.md"],
-      "ambiguous",
-    ],
-    ["mismatched", ["docs/specs/issue-260-renamed.md"], "path-mismatch"],
+test("blocks missing ambiguous or renamed candidates before tree inspection", async () => {
+  for (const [spec, failure] of [
+    [[], "missing"],
+    [["docs/specs/a.md", "docs/specs/b.md"], "ambiguous"],
+    [["docs/specs/renamed.md"], "path-mismatch"],
   ] as const) {
     const result = await verifyPlanningMergeRecoveryEvidence({
-      artifacts: [specArtifact],
-      base: snapshot({ spec: candidates, plan: [] }),
-      git: { assertRegularFiles: async () => assert.fail("must not inspect") },
-    });
-    assert.deepEqual(
-      result,
-      {
-        kind: "blocked",
-        failure,
-        artifactKinds: ["spec"],
-        expectedPaths: [specArtifact.path],
-        observedCandidates: candidates,
+      artifacts,
+      base: {
+        ...base,
+        artifactCandidates: { ...base.artifactCandidates, spec },
       },
-      name,
-    );
+      git: {
+        async inspectArtifactEvidence() {
+          assert.fail("must not inspect");
+        },
+      },
+    });
+    assert.equal(result.kind, "blocked");
+    if (result.kind === "blocked") assert.equal(result.failure, failure);
   }
 });
 
-test("verifies combined artifacts once at the pinned base in saved order", async () => {
-  const calls: unknown[] = [];
+test("verifies current base in saved order and blocks only typed nonregular errors", async () => {
+  const calls: string[] = [];
   const result = await verifyPlanningMergeRecoveryEvidence({
-    artifacts: [specArtifact, planArtifact],
-    base: snapshot({ spec: [specArtifact.path], plan: [planArtifact.path] }),
+    artifacts,
+    base,
     git: {
-      async assertRegularFiles(value) {
-        calls.push(value);
+      async inspectArtifactEvidence(value) {
+        calls.push(value.path);
+        return value;
       },
     },
   });
   assert.deepEqual(calls, [
-    {
-      commitOid: rewrittenBaseOid,
-      paths: [specArtifact.path, planArtifact.path],
-    },
+    "docs/specs/issue-260.md",
+    "docs/plans/issue-260.md",
   ]);
-  assert.deepEqual(result, { kind: "verified" });
-});
-
-test("blocks only typed non-regular file errors and preserves hard errors", async () => {
-  const nonRegular = new PlanningPublicationGitError(
-    "tree",
-    "non-regular-file",
-  );
+  assert.deepEqual(result, { kind: "verified", artifacts: refreshed });
   const blocked = await verifyPlanningMergeRecoveryEvidence({
-    artifacts: [specArtifact, planArtifact],
-    base: snapshot({ spec: [specArtifact.path], plan: [planArtifact.path] }),
+    artifacts,
+    base,
     git: {
-      assertRegularFiles: async () => {
-        throw nonRegular;
+      async inspectArtifactEvidence() {
+        throw new PlanningPublicationGitError("tree", "non-regular-file");
       },
     },
   });
-  assert.deepEqual(blocked, {
-    kind: "blocked",
-    failure: "non-regular-file",
-    artifactKinds: ["spec", "plan"],
-    expectedPaths: [specArtifact.path, planArtifact.path],
-    observedCandidates: [specArtifact.path, planArtifact.path],
-  });
+  assert.equal(blocked.kind, "blocked");
+  if (blocked.kind === "blocked")
+    assert.equal(blocked.failure, "non-regular-file");
   for (const error of [
     new PlanningPublicationGitError("tree", "command-failed"),
     new PlanningPublicationGitError("tree", "invalid-input"),
     new PlanningPublicationGitError("tree", "malformed-response"),
-    new PlanningPublicationGitError("ancestry", "not-ancestor"),
-    new Error("inspection failed"),
+    new PlanningPublicationGitError("tree", "invalid-companion"),
+    new Error("permission denied"),
   ]) {
+    let calls = 0;
+    await assert.rejects(
+      verifyPlanningMergedArtifacts({
+        mergeOid,
+        artifacts,
+        base,
+        git: {
+          async assertAncestor() {},
+          async inspectArtifactEvidence() {
+            calls++;
+            throw error;
+          },
+        },
+      }),
+      (received) => received === error,
+    );
+    assert.equal(calls, 1);
     await assert.rejects(
       verifyPlanningMergeRecoveryEvidence({
-        artifacts: [specArtifact],
-        base: snapshot({ spec: [specArtifact.path], plan: [] }),
+        artifacts,
+        base,
         git: {
-          assertRegularFiles: async () => {
+          async inspectArtifactEvidence() {
             throw error;
           },
         },

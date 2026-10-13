@@ -19,7 +19,8 @@ export type PlanningPublicationGitReason =
   | "dirty-workspace"
   | "unexpected-changes"
   | "conflicting-head"
-  | "invalid-companion";
+  | "invalid-companion"
+  | "companion-evidence-mismatch";
 export class PlanningPublicationGitError extends Error {
   readonly operation: PlanningPublicationGitOperation;
   readonly reason: PlanningPublicationGitReason;

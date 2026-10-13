@@ -14,7 +14,6 @@ const artifacts = (commitOid: string) => [
     path: "docs/specs/example.md",
     commitOid,
     source: "workspace" as const,
-    companionPaths: [],
   },
 ];
 const identity = { branch: "planning/spec", worktreePath: "../worktrees/spec" };

@@ -16,7 +16,6 @@ const artifact = (commitOid = recorded) => ({
   path,
   commitOid,
   source: "workspace" as const,
-  companionPaths: [],
 });
 const workspace = {
   runId: "123e4567-e89b-42d3-a456-426614174000",

@@ -12,7 +12,10 @@ export type PlanningMergeRecoveryFailure =
   | "non-regular-file";
 
 export type PlanningMergeRecoveryResult =
-  | Readonly<{ kind: "verified" }>
+  | Readonly<{
+      kind: "verified";
+      artifacts: readonly PlanningArtifactEvidence[];
+    }>
   | Readonly<{
       kind: "blocked";
       failure: PlanningMergeRecoveryFailure;
@@ -32,6 +35,7 @@ export type PlanningMergedArtifactProof =
   | Readonly<{
       kind: "verified";
       evidenceSource: "merge-and-base" | "current-base";
+      artifacts: readonly PlanningArtifactEvidence[];
     }>
   | Readonly<{
       kind: "blocked";
@@ -62,7 +66,7 @@ function typedInsufficiency(
 export async function verifyPlanningMergeRecoveryEvidence(input: {
   artifacts: readonly PlanningArtifactEvidence[];
   base: PlanningRemoteBaseSnapshot;
-  git: Pick<PlanningPublicationOperations, "assertRegularFiles">;
+  git: Pick<PlanningPublicationOperations, "inspectArtifactEvidence">;
 }): Promise<PlanningMergeRecoveryResult> {
   for (const artifact of input.artifacts) {
     const candidates = input.base.artifactCandidates[artifact.kind];
@@ -84,11 +88,9 @@ export async function verifyPlanningMergeRecoveryEvidence(input: {
       };
   }
   const paths = input.artifacts.map((artifact) => artifact.path);
+  let artifacts: readonly PlanningArtifactEvidence[];
   try {
-    await input.git.assertRegularFiles({
-      commitOid: input.base.baseOid,
-      paths,
-    });
+    artifacts = await inspectAt(input, input.base.baseOid);
   } catch (error) {
     if (
       error instanceof PlanningPublicationGitError &&
@@ -106,7 +108,26 @@ export async function verifyPlanningMergeRecoveryEvidence(input: {
       };
     throw error;
   }
-  return { kind: "verified" };
+  return { kind: "verified", artifacts };
+}
+
+async function inspectAt(
+  input: {
+    artifacts: readonly PlanningArtifactEvidence[];
+    git: Pick<PlanningPublicationOperations, "inspectArtifactEvidence">;
+  },
+  commitOid: string,
+): Promise<readonly PlanningArtifactEvidence[]> {
+  const artifacts: PlanningArtifactEvidence[] = [];
+  for (const artifact of input.artifacts)
+    artifacts.push(
+      await input.git.inspectArtifactEvidence({
+        ...artifact,
+        source: "remote-base",
+        commitOid,
+      }),
+    );
+  return artifacts;
 }
 
 export async function verifyPlanningMergedArtifacts(input: {
@@ -115,10 +136,10 @@ export async function verifyPlanningMergedArtifacts(input: {
   base: PlanningRemoteBaseSnapshot;
   git: Pick<
     PlanningPublicationOperations,
-    "assertAncestor" | "assertRegularFiles"
+    "assertAncestor" | "inspectArtifactEvidence"
   >;
 }): Promise<PlanningMergedArtifactProof> {
-  const paths = input.artifacts.map((artifact) => artifact.path);
+  let artifacts: readonly PlanningArtifactEvidence[] = [];
   const checks: readonly [
     PlanningMergeProofInsufficiency["source"],
     () => Promise<void>,
@@ -133,12 +154,15 @@ export async function verifyPlanningMergedArtifacts(input: {
     ],
     [
       "merge-commit-tree",
-      () => input.git.assertRegularFiles({ commitOid: input.mergeOid, paths }),
+      async () => {
+        await inspectAt(input, input.mergeOid);
+      },
     ],
     [
       "fetched-base-tree",
-      () =>
-        input.git.assertRegularFiles({ commitOid: input.base.baseOid, paths }),
+      async () => {
+        artifacts = await inspectAt(input, input.base.baseOid);
+      },
     ],
   ];
   for (const [source, check] of checks) {
@@ -153,9 +177,13 @@ export async function verifyPlanningMergedArtifacts(input: {
         git: input.git,
       });
       return recovery.kind === "verified"
-        ? { kind: "verified", evidenceSource: "current-base" }
+        ? {
+            kind: "verified",
+            evidenceSource: "current-base",
+            artifacts: recovery.artifacts,
+          }
         : { kind: "blocked", trigger, recovery };
     }
   }
-  return { kind: "verified", evidenceSource: "merge-and-base" };
+  return { kind: "verified", evidenceSource: "merge-and-base", artifacts };
 }

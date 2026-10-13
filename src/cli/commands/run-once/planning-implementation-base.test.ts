@@ -96,8 +96,9 @@ test("uses only the newest merged effective anchor while retaining all artifact 
       async assertAncestor(value) {
         ancestorCalls.push(value);
       },
-      async assertRegularFiles(value) {
-        regularCalls.push(value);
+      async inspectArtifactEvidence(value) {
+        regularCalls.push({ commitOid: value.commitOid, path: value.path });
+        return value;
       },
     },
   });
@@ -105,7 +106,8 @@ test("uses only the newest merged effective anchor while retaining all artifact 
     { ancestorOid: newestMergedBase, descendantOid: implementationOid },
   ]);
   assert.deepEqual(regularCalls, [
-    { commitOid: implementationOid, paths: [specPath, planPath] },
+    { commitOid: implementationOid, path: specPath },
+    { commitOid: implementationOid, path: planPath },
   ]);
   assert.equal(JSON.stringify(ancestorCalls).includes(olderBase), false);
   assert.equal(JSON.stringify(ancestorCalls).includes(originalPlanBase), false);
@@ -122,7 +124,9 @@ test("uses the newest remote-base anchor and rejects any prior artifact candidat
       async assertAncestor(value) {
         calls.push(value);
       },
-      async assertRegularFiles() {},
+      async inspectArtifactEvidence(value) {
+        return value;
+      },
     },
   });
   assert.deepEqual(calls, [
@@ -148,7 +152,7 @@ test("uses the newest remote-base anchor and rejects any prior artifact candidat
           async assertAncestor() {
             assert.fail("must not inspect ancestry");
           },
-          async assertRegularFiles() {
+          async inspectArtifactEvidence() {
             assert.fail("must not inspect tree");
           },
         },
@@ -172,7 +176,7 @@ test("preserves non-regular and command errors from the current-base tree proof"
         base: base(),
         git: {
           async assertAncestor() {},
-          async assertRegularFiles() {
+          async inspectArtifactEvidence() {
             throw error;
           },
         },

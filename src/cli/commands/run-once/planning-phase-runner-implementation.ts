@@ -2,6 +2,7 @@ import type {
   ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
+import { refreshPlanningArtifactEvidence } from "./planning-companion-evidence.ts";
 import { assertPlanningImplementationBase } from "./planning-implementation-base.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
@@ -43,6 +44,10 @@ async function prepare(
     phase: input.phase,
     base,
   });
+  const artifacts = await refreshPlanningArtifactEvidence({
+    artifacts: resolution.artifacts,
+    git: input.publicationGit,
+  });
   if (resolution.kind === "satisfied-by-base" && input.planOnly) return state;
   const workspace = await input.workspaces.prepare({
     runId: state.runId,
@@ -55,7 +60,7 @@ async function prepare(
     status: "workspace-ready",
     base: workspace.base,
     workspace: workspace.workspace,
-    artifacts: resolution.artifacts,
+    artifacts,
   };
   return replacePhase(input, state, phase);
 }

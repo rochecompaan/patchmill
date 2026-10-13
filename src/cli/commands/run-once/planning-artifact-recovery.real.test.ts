@@ -188,9 +188,10 @@ test("refuses late HEAD movement before checkpointing a recovered plan", async (
   );
   let afterMovement: Awaited<ReturnType<typeof f.preservation>> | undefined;
   f.input.publicationGit.verifyArtifactCommit = async (input) => {
-    await real(input);
+    const evidence = await real(input);
     git(f.workspace, "commit", "--allow-empty", "-m", "late head movement");
     afterMovement = await f.preservation();
+    return evidence;
   };
   await assert.rejects(() => runPlanningPhase(f.input), /head-oid-mismatch/u);
   assert.ok(afterMovement);
@@ -388,11 +389,12 @@ test("refuses late ordinary dirtiness before checkpointing a recovered plan", as
   );
   const before = await f.preservation();
   f.input.publicationGit.verifyArtifactCommit = async (input) => {
-    await real(input);
+    const evidence = await real(input);
     await writeFile(
       join(f.workspace, "late-untracked.txt"),
       "late dirty state\n",
     );
+    return evidence;
   };
   await assert.rejects(() => runPlanningPhase(f.input), /dirty-workspace/u);
   await f.assertPreserved(before);
