@@ -90,7 +90,7 @@ buildNpmPackageNode24 rec {
       test -f "$install_check_dir/project/.patchmill/skills/$frontend_path"
     done
     test -f "$out/share/${pname}/THIRD_PARTY_NOTICES.md"
-    test -f "$out/share/${pname}/fixtures/patchmill-test-repo/README.md"}]}},{
+    test -f "$out/share/${pname}/fixtures/patchmill-test-repo/README.md"
     test -f "$out/share/${pname}/extensions/todos.ts"
     test -f "$out/share/${pname}/src/pi/subagent-progress.ts"
     test -f "$out/share/${pname}/src/pi/subagent-progress-correlation.ts"
