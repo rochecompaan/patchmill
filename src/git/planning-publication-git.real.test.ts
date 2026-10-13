@@ -170,9 +170,16 @@ test("publishes linked-worktree objects by full OID and proves real Git safety b
       () =>
         publication.verifyWorkspace({
           workspacePath: workspace,
-          baseOid,
+          baseOid: git(workspace, "rev-parse", "HEAD"),
           headOid: git(workspace, "rev-parse", "HEAD"),
-          artifactPaths: ["docs/specs/issue-188.md"],
+          artifacts: [
+            {
+              kind: "spec",
+              path: "docs/specs/issue-188.md",
+              commitOid: planningOid,
+              source: "workspace",
+            },
+          ],
         }),
       /dirty-workspace/,
     );
@@ -183,9 +190,16 @@ test("publishes linked-worktree objects by full OID and proves real Git safety b
     await writeFile(join(workspace, "ignored-residue"), "ignored\n");
     await publication.verifyWorkspace({
       workspacePath: workspace,
-      baseOid,
+      baseOid: git(workspace, "rev-parse", "HEAD"),
       headOid: git(workspace, "rev-parse", "HEAD"),
-      artifactPaths: ["docs/specs/issue-188.md"],
+      artifacts: [
+        {
+          kind: "spec",
+          path: "docs/specs/issue-188.md",
+          commitOid: planningOid,
+          source: "workspace",
+        },
+      ],
     });
 
     const pushCalls = calls.filter((call) => call[1] === "push");

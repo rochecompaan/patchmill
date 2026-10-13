@@ -310,6 +310,7 @@ export async function runPlanningPhaseArtifacts(input: {
       previousHeadOid: current.workspace.headOid,
       headOid: result.commit,
       artifactPath: path,
+      artifactKind: kind,
     });
     current = appendPlanningArtifactEvidence(current, input.phase, {
       kind,

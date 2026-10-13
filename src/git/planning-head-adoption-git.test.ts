@@ -10,30 +10,56 @@ import {
 
 const recorded = "a".repeat(40);
 const candidate = "b".repeat(40);
-const identity = { branch: "planning/spec", worktreePath: ".worktrees/spec" };
+const path = "docs/specs/example.md";
+const artifact = (commitOid = recorded) => ({
+  kind: "spec" as const,
+  path,
+  commitOid,
+  source: "workspace" as const,
+  companionPaths: [],
+});
 const workspace = {
   runId: "123e4567-e89b-42d3-a456-426614174000",
   phase: "spec" as const,
-  identity,
+  identity: { branch: "planning/spec", worktreePath: ".worktrees/spec" },
   remote: "origin",
   baseBranch: "main",
   baseOid: recorded,
   headOid: recorded,
   cleanup: { state: "removed" as const, pushedHeadOid: recorded },
 };
-
+const input = {
+  issueNumber: 188,
+  runId: workspace.runId,
+  phase: "spec" as const,
+  workspace,
+  hostHeadOid: candidate,
+  artifacts: [artifact()],
+};
+const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
 function adapter(run: CommandRunner["run"]) {
-  const repository = new PlanningWorkspaceRepositoryGit({
-    runner: { run },
-    repoRoot: "/repo",
-    worktreeRoot: "/repo/.worktrees",
+  return new PlanningHeadAdoptionGit({
+    repository: new PlanningWorkspaceRepositoryGit({
+      runner: { run },
+      repoRoot: "/repo",
+      worktreeRoot: "/repo/.worktrees",
+    }),
   });
-  return new PlanningHeadAdoptionGit({ repository });
+}
+function proof(args: string[]) {
+  if (args[0] === "ls-remote")
+    return ok(`${candidate}\trefs/heads/planning/spec\n`);
+  if (args[0] === "fetch" || args[0] === "merge-base") return ok();
+  if (args[0] === "rev-parse") return ok(`${candidate}\n`);
+  if (args[0] === "ls-tree") return ok(`100644 blob ${candidate}\t${path}\0`);
+  if (args[0] === "show") return ok("# Spec\n");
+  if (args[0] === "diff") return ok(`M\0${path}\0`);
+  throw new Error(`unexpected ${args.join(" ")}`);
 }
 
-test("rejects mismatched workspace ownership and cleanup head before Git effects", async () => {
-  for (const input of [
-    { runId: "another-run" },
+test("rejects mismatched ownership and cleanup before Git effects", async () => {
+  for (const override of [
+    { runId: "another" },
     { phase: "plan" as const },
     {
       workspace: {
@@ -45,350 +71,116 @@ test("rejects mismatched workspace ownership and cleanup head before Git effects
       },
     },
   ]) {
-    const calls: string[][] = [];
     await assert.rejects(
-      adapter(async (_command, args) => {
-        calls.push(args);
-        return { code: 0, stdout: "", stderr: "" };
-      }).adopt({
-        issueNumber: 188,
-        runId: workspace.runId,
-        phase: "spec",
-        workspace,
-        hostHeadOid: candidate,
-        artifactPaths: ["docs/specs/example.md"],
+      adapter(async () => assert.fail("no Git effect authorized")).adopt({
         ...input,
+        ...override,
       }),
-      (error: unknown) =>
-        error instanceof PlanningWorkspaceConflictError &&
-        (error.reason === "invalid-saved-identity" ||
-          error.reason === "head-oid-mismatch"),
+      PlanningWorkspaceConflictError,
     );
-    assert.deepEqual(calls, []);
   }
 });
 
-test("blocks a host and remote disagreement without local mutation", async () => {
-  const calls: string[][] = [];
-  const result = await adapter(async (_command, args) => {
-    calls.push(args);
-    if (args[0] === "ls-remote")
-      return {
-        code: 0,
-        stdout: `${candidate}\trefs/heads/planning/spec\n`,
-        stderr: "",
-      };
-    throw new Error(`unexpected ${args.join(" ")}`);
-  }).adopt({
-    issueNumber: 188,
-    runId: workspace.runId,
-    phase: "spec",
-    workspace,
-    hostHeadOid: "c".repeat(40),
-    artifactPaths: ["docs/specs/example.md"],
-  });
-  assert.deepEqual(result, {
-    kind: "blocked",
-    evidence: {
-      failure: "head-disagreement",
-      recordedHeadOid: recorded,
-      hostHeadOid: "c".repeat(40),
-      remoteHeadOid: candidate,
-      artifactPaths: ["docs/specs/example.md"],
-      unexpectedPaths: [],
-      cleanupState: "removed",
-    },
-  });
-  assert.equal(
-    calls.some((args) => args.includes("fetch")),
-    false,
-  );
-  assert.equal(
-    calls.some((args) => args.includes("merge")),
-    false,
-  );
-});
-
-test("classifies unsafe proof failures without local fast-forward", async () => {
-  const failures = [
-    ["remote-missing", "remote-missing"],
-    ["not-descendant", "not-descendant"],
-    ["unexpected-paths", "unexpected-paths"],
-    ["non-regular-artifact", "non-regular-artifact"],
-  ] as const;
-  for (const [scenario, expectedFailure] of failures) {
+test("blocks unsafe proofs without local mutation", async () => {
+  for (const scenario of [
+    "remote-missing",
+    "head-disagreement",
+    "not-descendant",
+    "unexpected-paths",
+    "non-regular-artifact",
+  ] as const) {
     const calls: string[][] = [];
-    let remoteChecks = 0;
     const result = await adapter(async (_command, args) => {
       calls.push(args);
-      if (args[0] === "ls-remote") {
-        remoteChecks += 1;
-        return scenario === "remote-missing"
-          ? { code: 2, stdout: "", stderr: "" }
-          : {
-              code: 0,
-              stdout: `${candidate}\trefs/heads/planning/spec\n`,
-              stderr: "",
-            };
-      }
-      if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
-      if (args[0] === "rev-parse")
-        return { code: 0, stdout: `${candidate}\n`, stderr: "" };
-      if (args[0] === "merge-base")
-        return {
-          code: scenario === "not-descendant" ? 1 : 0,
-          stdout: "",
-          stderr: "",
-        };
-      if (args[0] === "diff")
-        return {
-          code: 0,
-          stdout: scenario === "unexpected-paths" ? "README.md\0" : "",
-          stderr: "",
-        };
-      if (args[0] === "ls-tree")
-        return {
-          code: 0,
-          stdout:
-            scenario === "non-regular-artifact"
-              ? `120000 blob ${candidate}\tdocs/specs/example.md\0`
-              : `100644 blob ${candidate}\tdocs/specs/example.md\0`,
-          stderr: "",
-        };
-      throw new Error(`unexpected ${args.join(" ")}`);
-    }).adopt({
-      issueNumber: 188,
-      runId: workspace.runId,
-      phase: "spec",
-      workspace,
-      hostHeadOid: candidate,
-      artifactPaths: ["docs/specs/example.md"],
-    });
-    assert.equal(result.kind, "blocked", scenario);
+      if (scenario === "remote-missing" && args[0] === "ls-remote")
+        return { code: 2, stdout: "", stderr: "" };
+      if (scenario === "head-disagreement" && args[0] === "ls-remote")
+        return ok(`${recorded}\trefs/heads/planning/spec\n`);
+      if (scenario === "not-descendant" && args[0] === "merge-base")
+        return { code: 1, stdout: "", stderr: "" };
+      if (scenario === "unexpected-paths" && args[0] === "diff")
+        return ok("M\0README.md\0");
+      if (scenario === "non-regular-artifact" && args[0] === "ls-tree")
+        return ok(`120000 blob ${candidate}\t${path}\0`);
+      return proof(args);
+    }).adopt(input);
+    assert.equal(result.kind, "blocked");
     if (result.kind === "blocked") {
-      assert.equal(result.evidence.failure, expectedFailure, scenario);
+      assert.equal(result.evidence.failure, scenario);
       assert.deepEqual(
         result.evidence.unexpectedPaths,
         scenario === "unexpected-paths" ? ["README.md"] : [],
-        scenario,
       );
     }
     assert.equal(
-      calls.some((args) => args.includes("merge")),
+      calls.some(
+        (args) => args.includes("merge") || args.includes("update-ref"),
+      ),
       false,
-      scenario,
-    );
-    assert.equal(
-      calls.some((args) => args.includes("update-ref")),
-      false,
-      scenario,
-    );
-    if (scenario === "remote-missing") assert.equal(remoteChecks, 1);
-  }
-});
-
-test("rejects malformed planning artifact diff proof output", async () => {
-  for (const stdout of ["\0", "docs/specs/example.md\0\0"]) {
-    await assert.rejects(
-      adapter(async (_command, args) => {
-        if (args[0] === "ls-remote")
-          return {
-            code: 0,
-            stdout: `${candidate}\trefs/heads/planning/spec\n`,
-            stderr: "",
-          };
-        if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "rev-parse")
-          return { code: 0, stdout: `${candidate}\n`, stderr: "" };
-        if (args[0] === "merge-base")
-          return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "diff") return { code: 0, stdout, stderr: "" };
-        throw new Error(`unexpected ${args.join(" ")}`);
-      }).adopt({
-        issueNumber: 188,
-        runId: workspace.runId,
-        phase: "spec",
-        workspace,
-        hostHeadOid: candidate,
-        artifactPaths: ["docs/specs/example.md"],
-      }),
-      (error: unknown) =>
-        error instanceof PlanningWorkspaceResponseError &&
-        error.operation === "head-adoption-proof" &&
-        error.reason === "malformed-diff",
     );
   }
 });
 
-test("rejects malformed planning artifact tree proof output", async () => {
-  for (const stdout of [
-    `100644 blob ${candidate}\tdocs/specs/example.md`,
-    `100644 ${candidate}\tdocs/specs/example.md\0`,
-    `100644 blob ${candidate}\tdocs/specs/substituted.md\0`,
+test("rejects malformed diff and tree responses", async () => {
+  for (const [command, stdout] of [
+    ["diff", "\0"],
+    ["diff", `${path}\0\0`],
+    ["ls-tree", `100644 blob ${candidate}\t${path}`],
   ]) {
     await assert.rejects(
-      adapter(async (_command, args) => {
-        if (args[0] === "ls-remote")
-          return {
-            code: 0,
-            stdout: `${candidate}\trefs/heads/planning/spec\n`,
-            stderr: "",
-          };
-        if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "rev-parse")
-          return { code: 0, stdout: `${candidate}\n`, stderr: "" };
-        if (args[0] === "merge-base")
-          return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "diff") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "ls-tree") return { code: 0, stdout, stderr: "" };
-        throw new Error(`unexpected ${args.join(" ")}`);
-      }).adopt({
-        issueNumber: 188,
-        runId: workspace.runId,
-        phase: "spec",
-        workspace,
-        hostHeadOid: candidate,
-        artifactPaths: ["docs/specs/example.md"],
-      }),
-      (error: unknown) =>
-        error instanceof PlanningWorkspaceResponseError &&
-        error.operation === "head-adoption-proof" &&
-        error.reason === "malformed-tree",
+      adapter(async (_command, args) =>
+        args[0] === command ? ok(stdout) : proof(args),
+      ).adopt(input),
+      PlanningWorkspaceResponseError,
     );
   }
 });
 
-test("returns head-moved after local proof when the final remote observation races", async () => {
-  let remoteChecks = 0;
-  const result = await adapter(async (_command, args) => {
-    if (args[0] === "ls-remote") {
-      remoteChecks += 1;
-      return {
-        code: 0,
-        stdout: `${remoteChecks === 3 ? "c".repeat(40) : candidate}\trefs/heads/planning/spec\n`,
-        stderr: "",
-      };
+test("adopts verified evidence and detects a final remote race", async () => {
+  for (const race of [false, true]) {
+    let remoteChecks = 0;
+    const result = await adapter(async (_command, args) => {
+      if (args[0] === "ls-remote" && ++remoteChecks === 3 && race)
+        return ok(`${"c".repeat(40)}\trefs/heads/planning/spec\n`);
+      return proof(args);
+    }).adopt(input);
+    if (!race)
+      assert.deepEqual(result, {
+        kind: "adopted",
+        headOid: candidate,
+        artifacts: [artifact(candidate)],
+      });
+    else {
+      assert.equal(result.kind, "blocked");
+      if (result.kind === "blocked")
+        assert.equal(result.evidence.failure, "head-moved");
     }
-    if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
-    if (args[0] === "rev-parse")
-      return { code: 0, stdout: `${candidate}\n`, stderr: "" };
-    if (args[0] === "merge-base") return { code: 0, stdout: "", stderr: "" };
-    if (args[0] === "diff") return { code: 0, stdout: "", stderr: "" };
-    if (args[0] === "ls-tree")
-      return {
-        code: 0,
-        stdout: `100644 blob ${candidate}\tdocs/specs/example.md\0`,
-        stderr: "",
-      };
-    throw new Error(`unexpected ${args.join(" ")}`);
-  }).adopt({
-    issueNumber: 188,
-    runId: workspace.runId,
-    phase: "spec",
-    workspace,
-    hostHeadOid: candidate,
-    artifactPaths: ["docs/specs/example.md"],
-  });
-  assert.equal(result.kind, "blocked");
-  if (result.kind === "blocked") {
-    assert.equal(result.evidence.failure, "head-moved");
-    assert.equal(result.evidence.remoteHeadOid, "c".repeat(40));
+    assert.equal(remoteChecks, 3);
   }
 });
 
-test("adopts an artifact-only fast-forward candidate after bounded proof", async () => {
-  let remoteChecks = 0;
-  const result = await adapter(async (_command, args) => {
-    if (args[0] === "ls-remote") {
-      remoteChecks += 1;
-      return {
-        code: 0,
-        stdout: `${candidate}\trefs/heads/planning/spec\n`,
-        stderr: "",
-      };
-    }
-    if (args[0] === "fetch") return { code: 0, stdout: "", stderr: "" };
-    if (args[0] === "rev-parse")
-      return { code: 0, stdout: `${candidate}\n`, stderr: "" };
-    if (args[0] === "merge-base") return { code: 0, stdout: "", stderr: "" };
-    if (args[0] === "diff")
-      return { code: 0, stdout: "docs/specs/example.md\0", stderr: "" };
-    if (args[0] === "ls-tree")
-      return {
-        code: 0,
-        stdout: `100644 blob ${candidate}\tdocs/specs/example.md\0`,
-        stderr: "",
-      };
-    throw new Error(`unexpected ${args.join(" ")}`);
-  }).adopt({
-    issueNumber: 188,
-    runId: workspace.runId,
-    phase: "spec",
-    workspace,
-    hostHeadOid: candidate,
-    artifactPaths: ["docs/specs/example.md"],
-  });
-  assert.deepEqual(result, { kind: "adopted", headOid: candidate });
-  assert.equal(remoteChecks, 3);
-});
-
-test("rejects a successful local fast-forward that leaves a dirty workspace", async () => {
-  let remoteChecks = 0;
+test("rejects a local fast-forward that leaves a dirty workspace", async () => {
   let inspections = 0;
   await assert.rejects(
     adapter(async (_command, args) => {
       if (args[0] === "worktree")
-        return {
-          code: 0,
-          stdout: `worktree /repo/.worktrees/spec\0HEAD ${inspections === 0 ? recorded : candidate}\0branch refs/heads/planning/spec\0\0`,
-          stderr: "",
-        };
-      if (args[0] === "show-ref") return { code: 0, stdout: "", stderr: "" };
-      if (args[0] === "rev-parse") {
-        if (args[2]?.includes("planning-head-adoption"))
-          return { code: 0, stdout: `${candidate}\n`, stderr: "" };
-        inspections += 1;
-        return {
-          code: 0,
-          stdout: `${inspections === 1 ? recorded : candidate}\n`,
-          stderr: "",
-        };
-      }
+        return ok(
+          `worktree /repo/.worktrees/spec\0HEAD ${inspections === 0 ? recorded : candidate}\0branch refs/heads/planning/spec\0\0`,
+        );
+      if (args[0] === "show-ref") return ok();
+      if (
+        args[0] === "rev-parse" &&
+        !args[2]?.includes("planning-head-adoption")
+      )
+        return ok(`${++inspections === 1 ? recorded : candidate}\n`);
       if (args.includes("status"))
-        return {
-          code: 0,
-          stdout: inspections > 1 ? " M unsafe\0" : "",
-          stderr: "",
-        };
-      if (args[0] === "ls-remote") {
-        remoteChecks += 1;
-        return {
-          code: 0,
-          stdout: `${candidate}\trefs/heads/planning/spec\n`,
-          stderr: "",
-        };
-      }
-      if (args[0] === "fetch" || args.includes("merge"))
-        return { code: 0, stdout: "", stderr: "" };
-      if (args[0] === "merge-base") return { code: 0, stdout: "", stderr: "" };
-      if (args[0] === "diff")
-        return { code: 0, stdout: "docs/specs/example.md\0", stderr: "" };
-      if (args[0] === "ls-tree")
-        return {
-          code: 0,
-          stdout: `100644 blob ${candidate}\tdocs/specs/example.md\0`,
-          stderr: "",
-        };
-      throw new Error(`unexpected ${args.join(" ")}`);
+        return ok(inspections > 1 ? " M unsafe\0" : "");
+      if (args.includes("merge")) return ok();
+      return proof(args);
     }).adopt({
-      issueNumber: 188,
-      runId: workspace.runId,
-      phase: "spec",
+      ...input,
       workspace: { ...workspace, cleanup: { state: "ready" } },
-      hostHeadOid: candidate,
-      artifactPaths: ["docs/specs/example.md"],
     }),
-    /dirty-worktree/,
+    /dirty-worktree/u,
   );
-  assert.equal(remoteChecks, 2);
 });

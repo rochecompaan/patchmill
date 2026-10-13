@@ -91,7 +91,7 @@ class FakePlanningWorkspace implements PlanningWorkspaceLifecycle {
     input: PlanningHeadAdoptionInput,
   ): Promise<PlanningHeadAdoptionResult> {
     this.events.push("adopt-head");
-    return { kind: "adopted", headOid: input.hostHeadOid };
+    return { kind: "adopted", artifacts: [], headOid: input.hostHeadOid };
   }
 
   async inspect(

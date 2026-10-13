@@ -54,6 +54,7 @@ async function recoverArtifact(
     previousHeadOid: input.current.workspace.headOid,
     headOid,
     artifactPath: path,
+    artifactKind: kind,
   });
   return appendPlanningArtifactEvidence(input.current, input.phase, {
     kind,

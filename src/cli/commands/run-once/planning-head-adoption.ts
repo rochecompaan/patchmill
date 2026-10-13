@@ -89,7 +89,7 @@ export async function adoptPlanningPullRequestHead(input: {
       phase: phase.kind,
       workspace: phase.workspace,
       hostHeadOid: input.validated.summary.headSha,
-      artifactPaths: phase.artifacts.map((artifact) => artifact.path),
+      artifacts: phase.artifacts,
     });
     if (adoption.kind === "blocked")
       return {

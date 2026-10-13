@@ -8,6 +8,15 @@ import type { CommandRunner } from "../command/types.ts";
 import { PlanningWorkspaceGit } from "./planning-workspace-git.ts";
 
 const runId = "123e4567-e89b-42d3-a456-426614174000";
+const artifacts = (commitOid: string) => [
+  {
+    kind: "spec" as const,
+    path: "docs/specs/example.md",
+    commitOid,
+    source: "workspace" as const,
+    companionPaths: [],
+  },
+];
 const identity = { branch: "planning/spec", worktreePath: "../worktrees/spec" };
 
 function git(cwd: string, ...args: string[]): string {
@@ -101,9 +110,13 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
       phase: "spec",
       workspace: prepared.workspace,
       hostHeadOid: revised,
-      artifactPaths: ["docs/specs/example.md"],
+      artifacts: artifacts(baseOid),
     });
-    assert.deepEqual(safe, { kind: "adopted", headOid: revised });
+    assert.deepEqual(safe, {
+      kind: "adopted",
+      headOid: revised,
+      artifacts: artifacts(revised),
+    });
     assert.equal(git(worktreePath, "rev-parse", "HEAD"), revised);
 
     // Ignored content remains untouched while a cleanup-pending checkpoint advances.
@@ -130,9 +143,13 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
         },
       },
       hostHeadOid: twice,
-      artifactPaths: ["docs/specs/example.md"],
+      artifacts: artifacts(revised),
     });
-    assert.deepEqual(pending, { kind: "adopted", headOid: twice });
+    assert.deepEqual(pending, {
+      kind: "adopted",
+      headOid: twice,
+      artifacts: artifacts(twice),
+    });
     assert.equal(git(worktreePath, "rev-parse", "HEAD"), twice);
     assert.equal(
       await (
@@ -175,9 +192,13 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
         cleanup: { state: "worktree-removed", pushedHeadOid: twice },
       },
       hostHeadOid: branchOnlyHead,
-      artifactPaths: ["docs/specs/example.md"],
+      artifacts: artifacts(twice),
     });
-    assert.deepEqual(branchOnly, { kind: "adopted", headOid: branchOnlyHead });
+    assert.deepEqual(branchOnly, {
+      kind: "adopted",
+      headOid: branchOnlyHead,
+      artifacts: artifacts(branchOnlyHead),
+    });
     assert.equal(
       git(repo, "rev-parse", `refs/heads/${identity.branch}`),
       branchOnlyHead,
@@ -200,9 +221,13 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
         cleanup: { state: "removed", pushedHeadOid: branchOnlyHead },
       },
       hostHeadOid: removedHead,
-      artifactPaths: ["docs/specs/example.md"],
+      artifacts: artifacts(branchOnlyHead),
     });
-    assert.deepEqual(removed, { kind: "adopted", headOid: removedHead });
+    assert.deepEqual(removed, {
+      kind: "adopted",
+      headOid: removedHead,
+      artifacts: artifacts(removedHead),
+    });
     assert.throws(() =>
       git(repo, "rev-parse", `refs/heads/${identity.branch}`),
     );
@@ -219,7 +244,7 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
       phase: "spec",
       workspace: { ...prepared.workspace, headOid: twice },
       hostHeadOid: unsafePath,
-      artifactPaths: ["docs/specs/example.md"],
+      artifacts: artifacts(twice),
     });
     assert.equal(pathBlocked.kind, "blocked");
     assert.equal(pathBlocked.evidence.failure, "unexpected-paths");
@@ -241,7 +266,7 @@ test("real Git adopts artifact-only fast-forwards and blocks unsafe revisions", 
       phase: "spec",
       workspace: { ...prepared.workspace, headOid: twice },
       hostHeadOid: rewritten,
-      artifactPaths: ["docs/specs/example.md"],
+      artifacts: artifacts(twice),
     });
     assert.equal(rewriteBlocked.kind, "blocked");
     assert.equal(rewriteBlocked.evidence.failure, "not-descendant");

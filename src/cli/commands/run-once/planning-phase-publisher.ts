@@ -91,7 +91,7 @@ export async function publishPlanningPhase(input: {
       workspacePath: phase.workspace.identity.worktreePath,
       baseOid: phase.base.baseOid,
       headOid: phase.workspace.headOid,
-      artifactPaths: phase.artifacts.map((artifact) => artifact.path),
+      artifacts: phase.artifacts,
     });
     const publication = {
       targetRepository: await input.host.resolveTargetRepositoryIdentity(),
