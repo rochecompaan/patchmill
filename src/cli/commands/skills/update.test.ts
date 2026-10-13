@@ -1,3 +1,7 @@
+import {
+  writeFrontendWorkflowFiles,
+  frontendWorkflowFiles,
+} from "../../../../test-support/frontend-workflow-files.ts";
 import assert from "node:assert/strict";
 import {
   access,
@@ -19,7 +23,9 @@ import {
   PATCHMILL_RECOMMENDED_SKILL_PACK,
   SKILL_PACK_METADATA_FILE,
   hashText,
+  buildSkillPackMetadata,
   type SkillPackMetadataFile,
+  type SkillPackSkill,
 } from "../../../workflow/skill-pack.ts";
 import {
   defaultSkillSourceRoots,
@@ -91,6 +97,7 @@ async function writeSkill(
   name: string,
   files: Record<string, string>,
 ) {
+  if (name === "patchmill-planning") await writeFrontendWorkflowFiles(root);
   for (const [relativePath, content] of Object.entries(files)) {
     await writeFileEnsuringParent(join(root, name, relativePath), content);
   }
@@ -129,6 +136,234 @@ function oldMetadata(
   };
 }
 
+// Metadata and frontend migration boundaries use small custom packs to isolate update decisions.
+const planningPackSkills: SkillPackSkill[] = [
+  { name: "frontend-design", source: "patchmill" },
+  { name: "patchmill-planning", source: "patchmill" },
+];
+const frontendNotice = {
+  version: "2026.10.2",
+  message:
+    "The recommended pack adds conditional frontend design and independent frontend review.\nNo patchmill.config.json change is required.",
+};
+
+test("update refreshes provenance without changed hashes and rejects malformed metadata before mutation", async () => {
+  const repoRoot = await tempRoot("patchmill-provenance-");
+  const source = await tempRoot("patchmill-provenance-source-");
+  const oldSkill: SkillPackSkill = {
+    name: "fixture-review",
+    source: "patchmill",
+    upstreamSources: [
+      {
+        repository: "example/rules",
+        commit: "old-pin",
+        files: [{ sourcePath: "command.md", targetPath: "SKILL.md" }],
+        license: { name: "MIT", sourcePath: "README.md#license" },
+      },
+    ],
+  };
+  const newSkill: SkillPackSkill = {
+    ...oldSkill,
+    upstreamSources: [{ ...oldSkill.upstreamSources![0]!, commit: "new-pin" }],
+  };
+  await writeSkill(source, "fixture-review", { "SKILL.md": newWritingPlans });
+  const path = ".patchmill/skills/fixture-review/SKILL.md";
+  await writeFileEnsuringParent(join(repoRoot, path), newWritingPlans);
+  const original = buildSkillPackMetadata(
+    [{ path, sha256: hashText(newWritingPlans) }],
+    { skills: [oldSkill] },
+  );
+  await writeMetadata(repoRoot, original);
+  const options = {
+    repoRoot,
+    sourceRoots: { ...defaultSkillSourceRoots(), patchmillSkillsDir: source },
+    packSkills: [newSkill],
+  };
+  const result = await updateProjectSkills(options);
+  assert.equal(result.status, "updated");
+  if (result.status === "updated") assert.equal(result.updatedFiles, 0);
+  assert.equal((await updateProjectSkills(options)).status, "up-to-date");
+  const metadataPath = join(
+    repoRoot,
+    ".patchmill/skills",
+    SKILL_PACK_METADATA_FILE,
+  );
+  const valid = JSON.parse(await readFile(metadataPath, "utf8"));
+  assert.equal(valid.skills[0].upstreamSources[0].commit, "new-pin");
+  const skill = valid.skills[0];
+  const upstream = skill.upstreamSources[0];
+  const badSkills = [
+    null,
+    {},
+    [null],
+    [{ ...skill, name: "" }],
+    [{ ...skill, source: "unknown" }],
+    [{ ...skill, source: ["patchmill"] }],
+    [{ ...skill, name: undefined }],
+    [{ ...skill, source: undefined }],
+    [{ ...skill, requiredFiles: undefined }],
+    [{ ...skill, requiredFiles: [] }],
+    [{ ...skill, requiredFiles: "not-array" }],
+    [{ ...skill, upstreamSources: {} }],
+    ...["repository", "commit"].map((key) => [
+      { ...skill, upstreamSources: [{ ...upstream, [key]: "" }] },
+    ]),
+    [
+      {
+        ...skill,
+        upstreamSources: [
+          { ...upstream, files: [{ sourcePath: "", installedPath: path }] },
+        ],
+      },
+    ],
+    [
+      {
+        ...skill,
+        upstreamSources: [
+          { ...upstream, license: { name: "", sourcePath: "LICENSE" } },
+        ],
+      },
+    ],
+    [
+      {
+        ...skill,
+        upstreamSources: [
+          { ...upstream, license: { name: "MIT", sourcePath: "" } },
+        ],
+      },
+    ],
+  ];
+  for (const unsafe of [
+    "outside/file",
+    ".patchmill/skills/../escape",
+    ".patchmill/skills//a",
+    ".patchmill/skills/./a",
+    ".patchmill/skills/a\\b",
+    ".patchmill/skills/a\u0000b",
+  ]) {
+    badSkills.push(
+      [{ ...skill, requiredFiles: [unsafe] }],
+      [
+        {
+          ...skill,
+          upstreamSources: [
+            {
+              ...upstream,
+              files: [{ sourcePath: "command.md", installedPath: unsafe }],
+            },
+          ],
+        },
+      ],
+      [
+        {
+          ...skill,
+          upstreamSources: [
+            {
+              ...upstream,
+              license: {
+                name: "MIT",
+                sourcePath: "LICENSE",
+                installedPath: unsafe,
+              },
+            },
+          ],
+        },
+      ],
+    );
+  }
+  for (const skills of badSkills) {
+    const text = JSON.stringify({ ...valid, skills });
+    await writeFile(metadataPath, text);
+    await assert.rejects(updateProjectSkills(options), /No Patchmill-managed/u);
+    assert.equal(await readFile(metadataPath, "utf8"), text);
+    assert.equal(await readFile(join(repoRoot, path), "utf8"), newWritingPlans);
+  }
+});
+
+test("missing frontend source license rejects update without mutation", async () => {
+  const repoRoot = await tempRoot("patchmill-update-sidecar-");
+  const source = await tempRoot("patchmill-update-sidecar-source-");
+  await writeSkill(source, "frontend-design", { "SKILL.md": newWritingPlans });
+  const path = ".patchmill/skills/frontend-design/SKILL.md";
+  await writeFileEnsuringParent(join(repoRoot, path), oldWritingPlans);
+  await writeMetadata(
+    repoRoot,
+    oldMetadata([{ path, sha256: hashText(oldWritingPlans) }]),
+  );
+  const metadataPath = join(
+    repoRoot,
+    ".patchmill/skills",
+    SKILL_PACK_METADATA_FILE,
+  );
+  const before = await readFile(metadataPath);
+  await assert.rejects(
+    updateProjectSkills({
+      repoRoot,
+      sourceRoots: { ...defaultSkillSourceRoots(), patchmillSkillsDir: source },
+      packSkills: [{ name: "frontend-design", source: "patchmill" }],
+    }),
+    /Missing required skill file: frontend-design\/LICENSE.txt/u,
+  );
+  assert.deepEqual(await readFile(metadataPath), before);
+  assert.equal(await readFile(join(repoRoot, path), "utf8"), oldWritingPlans);
+});
+
+test("2026.10.1 frontend migration preserves custom config and rejects customization and new-file collisions", async () => {
+  for (const scenario of ["clean", "customized", "collision"] as const) {
+    const repoRoot = await tempRoot("patchmill-frontend-migration-");
+    const configPath = join(repoRoot, "patchmill.config.json");
+    const config = JSON.stringify({
+      skills: { planning: "global-planning", implementation: "custom/inline" },
+    });
+    await writeFile(configPath, config);
+    const oldPath = ".patchmill/skills/writing-plans/SKILL.md";
+    await writeFileEnsuringParent(join(repoRoot, oldPath), oldWritingPlans);
+    const files = [{ path: oldPath, sha256: hashText(oldWritingPlans) }];
+    if (scenario === "customized") {
+      const path = ".patchmill/skills/frontend-design/SKILL.md";
+      files.push({ path, sha256: hashText(oldWritingPlans) });
+      await writeFileEnsuringParent(join(repoRoot, path), "local edits");
+    }
+    if (scenario === "collision")
+      await writeFileEnsuringParent(
+        join(repoRoot, ".patchmill/skills/frontend-design/LICENSE.txt"),
+        "local license",
+      );
+    await writeMetadata(repoRoot, oldMetadata(files, "2026.10.1"));
+    const metadataPath = join(
+      repoRoot,
+      ".patchmill/skills",
+      SKILL_PACK_METADATA_FILE,
+    );
+    const before = await readFile(metadataPath);
+    const options = {
+      repoRoot,
+      packSkills: [
+        { name: "frontend-design", source: "patchmill" },
+      ] as SkillPackSkill[],
+    };
+    if (scenario === "clean") {
+      const result = await updateProjectSkills(options);
+      assert.equal(result.status, "updated");
+      assert.deepEqual(result.notices, [frontendNotice]);
+    } else {
+      await assert.rejects(
+        updateProjectSkills(options),
+        scenario === "customized"
+          ? /Refusing to update customized project-local skills/u
+          : /Refusing to overwrite unmanaged project-local skill files/u,
+      );
+      assert.deepEqual(await readFile(metadataPath), before);
+      assert.equal(
+        await readFile(join(repoRoot, oldPath), "utf8"),
+        oldWritingPlans,
+      );
+    }
+    assert.equal(await readFile(configPath, "utf8"), config);
+  }
+});
+
+// Existing update, customization, and runtime-file regressions remain together below.
 test("updateProjectSkills updates clean managed project-local skills", async () => {
   const repoRoot = await tempRoot("patchmill-skills-update-repo-");
   const patchmillSource = await tempRoot("patchmill-skills-update-patchmill-");
@@ -172,7 +407,7 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
         "patchmill-skills-simple-english-",
       ),
     },
-    packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
+    packSkills: planningPackSkills,
     installedAt: "2026-06-27T00:00:00.000Z",
     dependencies,
   });
@@ -181,7 +416,7 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
     status: "updated",
     fromVersion: "2026.04",
     toVersion: PATCHMILL_RECOMMENDED_SKILL_PACK.version,
-    updatedFiles: 2,
+    updatedFiles: 4,
     removedFiles: 1,
     notices: [
       {
@@ -209,6 +444,7 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
           '  "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"\n' +
           "Skills updates do not rewrite config. Customized files require an explicit operator decision before replacement.",
       },
+      frontendNotice,
     ],
   });
   assert.equal(
@@ -247,6 +483,12 @@ test("updateProjectSkills updates clean managed project-local skills", async () 
   assert.equal(metadata.pack.version, PATCHMILL_RECOMMENDED_SKILL_PACK.version);
   assert.equal(metadata.installedAt, "2026-06-27T00:00:00.000Z");
   assert.deepEqual(metadata.files, [
+    ...(
+      ["frontend-design/LICENSE.txt", "frontend-design/SKILL.md"] as const
+    ).map((path) => ({
+      path: `.patchmill/skills/${path}`,
+      sha256: hashText(frontendWorkflowFiles[path]),
+    })),
     {
       path: ".patchmill/skills/patchmill-planning/SKILL.md",
       sha256: hashText(newPatchmillPlanning),
@@ -295,7 +537,7 @@ test("updateProjectSkills reports only the planning-pull-request notice from 202
         "patchmill-skills-simple-english-",
       ),
     },
-    packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
+    packSkills: planningPackSkills,
     dependencies,
   });
   assert.deepEqual(first.notices, [
@@ -317,6 +559,7 @@ test("updateProjectSkills reports only the planning-pull-request notice from 202
         '  "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"\n' +
         "Skills updates do not rewrite config. Customized files require an explicit operator decision before replacement.",
     },
+    frontendNotice,
   ]);
 
   const second = await updateProjectSkills({
@@ -328,7 +571,7 @@ test("updateProjectSkills reports only the planning-pull-request notice from 202
         "patchmill-skills-simple-english-",
       ),
     },
-    packSkills: [{ name: "patchmill-planning", source: "patchmill" }],
+    packSkills: planningPackSkills,
     dependencies,
   });
   assert.deepEqual(second, {
@@ -359,6 +602,13 @@ test("updateProjectSkills reports already current packs", async () => {
     installedAt: "2026-06-01T00:00:00.000Z",
     skillDir: ".patchmill/skills",
     metadataFile: SKILL_PACK_METADATA_FILE,
+    skills: [
+      {
+        name: "writing-plans",
+        source: "superpowers",
+        requiredFiles: [".patchmill/skills/writing-plans/SKILL.md"],
+      },
+    ],
     files: [
       {
         path: ".patchmill/skills/writing-plans/SKILL.md",

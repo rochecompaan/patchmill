@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import {
+  writeFrontendWorkflowFiles,
+  frontendWorkflowFiles,
+} from "../../../../test-support/frontend-workflow-files.ts";
+import { chmod, mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -133,6 +137,7 @@ async function writeValidationWrapperDependencies(
   skillDir: string,
   options: { executableTaskScripts?: boolean; omit?: string } = {},
 ): Promise<void> {
+  await writeFrontendWorkflowFiles(root, skillDir);
   if (options.omit !== "inline-dev-with-validation-and-pr-checks/SKILL.md") {
     await writeSkill(
       root,
@@ -212,6 +217,22 @@ async function writeValidationWrapperDependencies(
     sharedPrompts,
   );
 }
+
+test("validateExistingSkillDirectory rejects each missing frontend workflow file", async () => {
+  for (const missingPath of Object.keys(frontendWorkflowFiles)) {
+    const repoRoot = await tempRoot("patchmill-frontend-missing-");
+    await writeBaseProjectLocalSkills(repoRoot);
+    await writeValidationWrapperDependencies(repoRoot, "project-skills");
+    await rm(join(repoRoot, "project-skills", missingPath));
+    await assert.rejects(
+      validateExistingSkillDirectory(repoRoot, "project-skills"),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message ===
+          `Missing required skill file: project-skills/${missingPath}`,
+    );
+  }
+});
 
 test("validateExistingSkillDirectory returns local config for path mode", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");

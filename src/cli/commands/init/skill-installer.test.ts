@@ -1,3 +1,7 @@
+import {
+  writeFrontendWorkflowFiles,
+  frontendWorkflowFiles,
+} from "../../../../test-support/frontend-workflow-files.ts";
 import assert from "node:assert/strict";
 import {
   access,
@@ -22,6 +26,7 @@ import {
   buildRecommendedProjectSkillConfig,
   buildSkillPackMetadata,
   hashText,
+  type SkillPackSkill,
 } from "../../../workflow/skill-pack.ts";
 import {
   defaultSkillSourceRoots,
@@ -133,6 +138,23 @@ description: Use when executing Patchmill implementation plans with one implemen
 # Single Subagent Dev with Codex and Thermo Reviews
 `;
 
+const fixturePackSkills: SkillPackSkill[] = [
+  { name: "patchmill-issue-triage", source: "patchmill" },
+  { name: "subagent-dev-with-validation-and-pr-checks", source: "patchmill" },
+  { name: "subagent-dev-with-codex-and-thermo-reviews", source: "patchmill" },
+  {
+    name: "single-subagent-dev-with-codex-and-thermo-reviews",
+    source: "patchmill",
+  },
+  { name: "frontend-design", source: "patchmill" },
+  { name: "patchmill-planning", source: "patchmill" },
+  { name: "simple-english", source: "simple-english" },
+  { name: "brainstorming", source: "superpowers" },
+  { name: "writing-plans", source: "superpowers" },
+  { name: "test-driven-development", source: "superpowers" },
+  { name: "subagent-driven-development", source: "superpowers" },
+];
+
 test("installProjectSkills copies skills and writes metadata", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
   const patchmillSource = await tempRoot("patchmill-install-patchmill-");
@@ -171,6 +193,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     "patchmill-planning",
     patchmillPlanningSkill,
   );
+  await writeFrontendWorkflowFiles(patchmillSource);
   await writeSkill(simpleEnglishSource, "simple-english", simpleEnglishSkill, {
     "references/checklist.md": "run the checklist\n",
     "references/use-cases.md": "adapt the rules\n",
@@ -210,27 +233,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       simpleEnglishSkillsDir: simpleEnglishSource,
     },
     installedAt: "2026-05-29T00:00:00.000Z",
-    packSkills: [
-      { name: "patchmill-issue-triage", source: "patchmill" },
-      {
-        name: "subagent-dev-with-validation-and-pr-checks",
-        source: "patchmill",
-      },
-      {
-        name: "subagent-dev-with-codex-and-thermo-reviews",
-        source: "patchmill",
-      },
-      {
-        name: "single-subagent-dev-with-codex-and-thermo-reviews",
-        source: "patchmill",
-      },
-      { name: "patchmill-planning", source: "patchmill" },
-      { name: "simple-english", source: "simple-english" },
-      { name: "brainstorming", source: "superpowers" },
-      { name: "writing-plans", source: "superpowers" },
-      { name: "test-driven-development", source: "superpowers" },
-      { name: "subagent-driven-development", source: "superpowers" },
-    ],
+    packSkills: fixturePackSkills,
   });
 
   assert.equal(result.skillDir, ".patchmill/skills");
@@ -240,6 +243,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
+    ".patchmill/skills/frontend-design",
     ".patchmill/skills/patchmill-planning",
     ".patchmill/skills/simple-english",
     ".patchmill/skills/brainstorming",
@@ -415,6 +419,12 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   ) as ReturnType<typeof buildSkillPackMetadata>;
   const expectedMetadata = buildSkillPackMetadata(
     [
+      ...["frontend-design/SKILL.md", "frontend-design/LICENSE.txt"].map(
+        (path) => ({
+          path: `.patchmill/skills/${path}`,
+          sha256: hashText(frontendWorkflowFiles[path]),
+        }),
+      ),
       {
         path: ".patchmill/skills/patchmill-issue-triage/SKILL.md",
         sha256: hashText(triageSkill),
@@ -515,6 +525,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     {
       installedAt: "2026-05-29T00:00:00.000Z",
       skillDir: ".patchmill/skills",
+      skills: fixturePackSkills,
     },
   );
 
@@ -532,6 +543,76 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     { ...metadata, files: undefined },
     { ...expectedMetadata, files: undefined },
   );
+});
+
+test("frontend files and custom metadata paths install together; missing staged license never publishes", async () => {
+  for (const skillDir of [".patchmill/skills", "custom/skills"]) {
+    const repoRoot = await tempRoot("patchmill-frontend-install-");
+    const result = await installProjectSkills({ repoRoot, skillDir });
+    const metadata = JSON.parse(await readFile(result.metadataPath, "utf8"));
+    for (const path of [
+      "frontend-design/SKILL.md",
+      "frontend-design/LICENSE.txt",
+      "patchmill-frontend-review/SKILL.md",
+      "patchmill-frontend-review/LICENSE",
+      "patchmill-frontend-review/references/upstream-web-design-guidelines.md",
+      "patchmill-frontend-review/references/web-interface-guidelines.md",
+    ])
+      assert.notEqual(
+        (await readFile(join(repoRoot, skillDir, path))).length,
+        0,
+      );
+    assert.equal(
+      metadata.skills.every((skill) =>
+        skill.requiredFiles.every((path) => path.startsWith(`${skillDir}/`)),
+      ),
+      true,
+    );
+  }
+  const repoRoot = await tempRoot("patchmill-frontend-staged-");
+  await assert.rejects(
+    installProjectSkills({
+      repoRoot,
+      dependencies: {
+        ...skillInstallerDependencies,
+        async cp(source, target, options) {
+          await cp(source, target, options);
+          if (String(target).endsWith("frontend-design"))
+            await rm(join(String(target), "LICENSE.txt"));
+        },
+      },
+    }),
+    /Missing required skill file: .*frontend-design.*LICENSE.txt/u,
+  );
+  await assert.rejects(access(join(repoRoot, ".patchmill/skills")));
+  assert.deepEqual(await readdir(join(repoRoot, ".patchmill")), []);
+});
+
+test("missing frontend source sidecars fail preflight without creating a pack", async () => {
+  for (const [name, omitted] of [
+    ["frontend-design", "LICENSE.txt"],
+    ["patchmill-frontend-review", "LICENSE"],
+    ["patchmill-frontend-review", "references/web-interface-guidelines.md"],
+  ]) {
+    const repoRoot = await tempRoot("patchmill-frontend-preflight-");
+    const source = await tempRoot("patchmill-frontend-source-");
+    await cp(defaultSkillSourceRoots().patchmillSkillsDir, source, {
+      recursive: true,
+    });
+    await rm(join(source, name, omitted));
+    await assert.rejects(
+      installProjectSkills({
+        repoRoot,
+        sourceRoots: {
+          ...defaultSkillSourceRoots(),
+          patchmillSkillsDir: source,
+        },
+      }),
+      (error: unknown) =>
+        error instanceof Error && error.message.includes(omitted),
+    );
+    await assert.rejects(access(join(repoRoot, ".patchmill/skills")));
+  }
 });
 
 test("installProjectSkills installs module-size from the recommended pack", async () => {

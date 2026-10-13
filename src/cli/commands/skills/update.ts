@@ -1,4 +1,8 @@
 import {
+  assertPatchmillManagedProjectLocal,
+  MISSING_METADATA_MESSAGE,
+} from "./metadata-validation.ts";
+import {
   access,
   chmod,
   cp,
@@ -73,10 +77,6 @@ const defaultDependencies: SkillInstallerDependencies = {
   writeFile,
 };
 
-const MISSING_METADATA_MESSAGE =
-  "No Patchmill-managed project-local skill pack found. Run `patchmill init` first,\n" +
-  "or reinstall project-local skills.";
-
 const VERSION_NOTICES: SkillPackUpdateNotice[] = [
   {
     version: "2026.07.1",
@@ -110,6 +110,11 @@ const VERSION_NOTICES: SkillPackUpdateNotice[] = [
       '  "implementation": ".patchmill/skills/inline-dev-with-validation-and-pr-checks"\n' +
       "Skills updates do not rewrite config. Customized files require an explicit operator decision before replacement.",
   },
+  {
+    version: "2026.10.2",
+    message:
+      "The recommended pack adds conditional frontend design and independent frontend review.\nNo patchmill.config.json change is required.",
+  },
 ];
 
 async function readInstalledMetadata(
@@ -124,69 +129,6 @@ async function readInstalledMetadata(
   try {
     return JSON.parse(await dependencies.readFile(metadataPath, "utf8"));
   } catch {
-    throw new Error(MISSING_METADATA_MESSAGE);
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isProjectSkillFilePath(path: unknown): path is string {
-  return (
-    typeof path === "string" &&
-    path.startsWith(`${DEFAULT_PROJECT_SKILL_DIR}/`) &&
-    !path.includes("\\") &&
-    !path.split("/").includes("..")
-  );
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function isSha256(value: unknown): value is string {
-  return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
-}
-
-function isSkillPackSource(source: unknown): boolean {
-  return (
-    isRecord(source) &&
-    source.type === "github-release" &&
-    isNonEmptyString(source.repository) &&
-    isNonEmptyString(source.tag) &&
-    isNonEmptyString(source.tarballUrl)
-  );
-}
-
-function isOptionalSkillPackSourceList(value: unknown): boolean {
-  return (
-    value === undefined ||
-    (Array.isArray(value) && value.every(isSkillPackSource))
-  );
-}
-
-function assertPatchmillManagedProjectLocal(
-  metadata: unknown,
-): asserts metadata is SkillPackMetadataFile {
-  if (!isRecord(metadata) || !isRecord(metadata.pack)) {
-    throw new Error(MISSING_METADATA_MESSAGE);
-  }
-  if (
-    metadata.pack.name !== PATCHMILL_RECOMMENDED_SKILL_PACK.name ||
-    !isNonEmptyString(metadata.pack.version) ||
-    !isSkillPackSource(metadata.pack.source) ||
-    !isOptionalSkillPackSourceList(metadata.pack.additionalSources) ||
-    metadata.skillDir !== DEFAULT_PROJECT_SKILL_DIR ||
-    metadata.metadataFile !== SKILL_PACK_METADATA_FILE ||
-    !Array.isArray(metadata.files) ||
-    metadata.files.some(
-      (file) =>
-        !isRecord(file) ||
-        !isProjectSkillFilePath(file.path) ||
-        !isSha256(file.sha256),
-    )
-  ) {
     throw new Error(MISSING_METADATA_MESSAGE);
   }
 }
@@ -391,8 +333,11 @@ export async function updateProjectSkills(
   const newMetadata = buildSkillPackMetadata(newFiles, {
     installedAt: options.installedAt ?? new Date().toISOString(),
     skillDir: DEFAULT_PROJECT_SKILL_DIR,
+    skills: packSkills,
   });
   if (
+    metadata.skills !== undefined &&
+    JSON.stringify(metadata.skills) === JSON.stringify(newMetadata.skills) &&
     metadata.pack.version === newMetadata.pack.version &&
     JSON.stringify(metadata.pack.source) ===
       JSON.stringify(newMetadata.pack.source) &&

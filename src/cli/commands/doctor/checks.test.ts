@@ -1666,6 +1666,35 @@ for (const name of [
   });
 }
 
+test("doctor diagnoses frontend siblings at custom configured wrapper paths", async () => {
+  for (const missingPath of [
+    "frontend-design/SKILL.md",
+    "frontend-design/LICENSE.txt",
+    "patchmill-frontend-review/SKILL.md",
+    "patchmill-frontend-review/LICENSE",
+    "patchmill-frontend-review/references/upstream-web-design-guidelines.md",
+    "patchmill-frontend-review/references/web-interface-guidelines.md",
+  ]) {
+    const repoRoot = await nativeDoctorFixture();
+    await writeConfig(repoRoot, {
+      host: { provider: "forgejo-tea", login: "triage-agent" },
+      skills: {
+        planning: "custom/installed/patchmill-planning",
+        implementation: "custom/installed/renamed",
+      },
+    });
+    await rm(join(repoRoot, "custom/installed", missingPath));
+    const results = await runDoctorChecks(runnerFrom(successMocks()), {
+      repoRoot,
+      teaRepoRootForTests: "/repo",
+    });
+    const skills = results.find((result) => result.name === "skills");
+    assert.equal(skills?.status, "fail");
+    assert.equal(skills?.message.includes(missingPath), true, skills?.message);
+    await rm(repoRoot, { recursive: true, force: true });
+  }
+});
+
 async function nativeDoctorFixture() {
   const repoRoot = await tempRepo();
   await installProjectSkills({ repoRoot, skillDir: "custom/installed" });

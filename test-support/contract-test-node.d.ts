@@ -35,6 +35,11 @@ declare module "node:path" {
   export const join: (...arguments_: readonly any[]) => any;
   export const resolve: (...arguments_: readonly any[]) => any;
   export const win32: any;
+  export const posix: {
+    dirname: (path: string) => string;
+    join: (...paths: string[]) => string;
+    normalize: (path: string) => string;
+  };
 }
 
 declare module "node:url" {

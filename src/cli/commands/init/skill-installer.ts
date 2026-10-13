@@ -317,6 +317,7 @@ export async function installProjectSkills(options: {
   const metadata = buildSkillPackMetadata(files, {
     installedAt: options.installedAt ?? new Date().toISOString(),
     skillDir,
+    skills: packSkills,
   });
 
   let stagingSkillDir: string | undefined;
@@ -409,6 +410,8 @@ export async function validateExistingSkillDirectory(
       name: skill.globalName,
       source: "patchmill" as const,
     })),
+    packSkill("frontend-design"),
+    packSkill("patchmill-frontend-review"),
     { name: PATCHMILL_PLANNING_SKILL, source: "patchmill" as const },
     packSkill("brainstorming"),
     packSkill("writing-plans"),
