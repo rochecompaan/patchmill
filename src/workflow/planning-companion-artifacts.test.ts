@@ -46,6 +46,23 @@ test("ignores fenced and raw HTML declaration examples", () => {
   }
 });
 
+test("raw closing tags and multiline block openings grant no companion authority", () => {
+  for (const [opening, closing] of [
+    ["</div> trailing text", ""],
+    ['<div\nclass="example">', "</div>"],
+    ['<script\ntype="text/plain">', "</script>"],
+    ['<style\nmedia="screen">', "</style>"],
+  ]) {
+    const example = `${opening}\n## Companion artifacts\n${entry}\n${closing}\n`;
+    assert.deepEqual(parse(example), [], opening);
+    assert.deepEqual(
+      parse(example + "\n\n" + section(entry)),
+      [mockupPath],
+      opening,
+    );
+  }
+});
+
 test("rejects malformed or repeated companion sections", () => {
   for (const text of [
     "",
