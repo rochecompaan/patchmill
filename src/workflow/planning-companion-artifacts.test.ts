@@ -49,6 +49,9 @@ test("ignores fenced and raw HTML declaration examples", () => {
 test("raw closing tags and multiline block openings grant no companion authority", () => {
   for (const [opening, closing] of [
     ["</div> trailing text", ""],
+    ["</search> trailing text", ""],
+    ["</option> trailing text", ""],
+    ['<frameset\nrows="*">', "</frameset>"],
     ['<div\nclass="example">', "</div>"],
     ['<script\ntype="text/plain">', "</script>"],
     ['<style\nmedia="screen">', "</style>"],
