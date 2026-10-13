@@ -84,6 +84,9 @@ const LABELS: Record<string, string> = {
   blockedAction: "Blocked action",
   guidance: "Assessment guidance",
   owner: "Recorded owner",
+  recordPath: "Admission record or guard",
+  requestedMode: "Requested mode",
+  ownerStatus: "Owner verification",
 };
 function detailValue(
   value: unknown,

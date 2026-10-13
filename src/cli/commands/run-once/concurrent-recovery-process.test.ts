@@ -22,8 +22,9 @@ for (const modes of [
         await first.waitForBarrier();
         const before = await scenario.snapshot(2);
         const second = await scenario.start(2, modes[1]).finish();
-        assert.equal(second.code, 1);
-        assert.match(JSON.stringify(second.output), /admission conflicts/u);
+        assert.equal(second.code, 0);
+        assert.equal(second.output.status, "stopped");
+        assert.equal(second.output.reason, "run-admission-busy");
         assert.deepEqual(await scenario.snapshot(2), before);
         assert.equal(scenario.agents.length, 1);
         first.release();

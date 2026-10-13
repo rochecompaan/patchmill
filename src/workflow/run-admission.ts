@@ -37,12 +37,26 @@ type GuardRecord = {
   hostname: string;
 };
 
+export type RunAdmissionConflictObservation = {
+  requestedMode: RunAdmissionMode;
+  issueNumber?: number;
+  ownerStatus: "active" | "unverifiable";
+  owner: Omit<AdmissionRecord, "version" | "ownerToken">;
+};
+
 export class RunAdmissionConflictError extends Error {
   readonly recordPath: string;
-  constructor(recordPath: string) {
-    super(`Run-once admission conflicts with active attempt: ${recordPath}`);
+  readonly observation: RunAdmissionConflictObservation | undefined;
+  constructor(
+    recordPath: string,
+    observation?: RunAdmissionConflictObservation,
+  ) {
+    super(
+      `Run-once admission conflicts with ${observation?.ownerStatus === "active" ? "active attempt" : "unverifiable ownership"}: ${recordPath}`,
+    );
     this.name = "RunAdmissionConflictError";
     this.recordPath = recordPath;
+    this.observation = observation;
   }
 }
 
@@ -91,14 +105,21 @@ function parseGuard(raw: string): GuardRecord | undefined {
     return undefined;
   }
 }
-function live(record: Pick<AdmissionRecord, "hostname" | "pid">): boolean {
-  if (record.hostname !== hostname()) return true;
+function ownerStatus(
+  record: Pick<AdmissionRecord, "hostname" | "pid">,
+): "active" | "dead" | "unverifiable" {
+  if (record.hostname !== hostname()) return "unverifiable";
   try {
     process.kill(record.pid, 0);
-    return true;
+    return "active";
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    return (error as NodeJS.ErrnoException).code === "ESRCH"
+      ? "dead"
+      : "unverifiable";
   }
+}
+function live(record: Pick<AdmissionRecord, "hostname" | "pid">): boolean {
+  return ownerStatus(record) !== "dead";
 }
 function waits(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -221,7 +242,13 @@ async function archiveDeadRecord(
 async function activeRecords(
   root: string,
   directory: string,
-): Promise<Array<{ path: string; record: AdmissionRecord }>> {
+): Promise<
+  Array<{
+    path: string;
+    record: AdmissionRecord;
+    ownerStatus: "active" | "unverifiable";
+  }>
+> {
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -229,26 +256,25 @@ async function activeRecords(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
-  const records: Array<{ path: string; record: AdmissionRecord }> = [];
+  const records: Array<{
+    path: string;
+    record: AdmissionRecord;
+    ownerStatus: "active" | "unverifiable";
+  }> = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json"))
       throw new RunAdmissionConflictError(join(directory, entry.name));
     const path = join(directory, entry.name);
-    const raw = await readFile(path, "utf8");
+    const raw = await readFile(path, "utf8").catch(() => {
+      throw new RunAdmissionConflictError(path);
+    });
     const record = parse(raw);
     if (!record) throw new RunAdmissionConflictError(path);
-    if (live(record)) records.push({ path, record });
+    const status = ownerStatus(record);
+    if (status !== "dead") records.push({ path, record, ownerStatus: status });
     else await archiveDeadRecord(root, path, raw);
   }
   return records;
-}
-function conflicts(
-  mode: RunAdmissionMode,
-  records: AdmissionRecord[],
-): boolean {
-  return mode === "automatic"
-    ? records.length > 0
-    : records.some((record) => record.mode === "automatic");
 }
 async function removeOwned(admission: RunAdmission): Promise<void> {
   let raw: string;
@@ -287,13 +313,28 @@ export async function withRunAdmission<T>(
   };
   try {
     const active = await activeRecords(root, directory);
-    if (
-      conflicts(
-        input.mode,
-        active.map(({ record }) => record),
-      )
-    )
-      throw new RunAdmissionConflictError(active[0]?.path ?? directory);
+    const conflict =
+      input.mode === "automatic"
+        ? active[0]
+        : active.find(({ record }) => record.mode === "automatic");
+    if (conflict)
+      throw new RunAdmissionConflictError(conflict.path, {
+        requestedMode: input.mode,
+        ...(input.issueNumber === undefined
+          ? {}
+          : { issueNumber: input.issueNumber }),
+        ownerStatus: conflict.ownerStatus,
+        owner: {
+          attemptId: conflict.record.attemptId,
+          mode: conflict.record.mode,
+          ...(Number.isSafeInteger(conflict.record.issueNumber) &&
+          (conflict.record.issueNumber ?? 0) > 0
+            ? { issueNumber: conflict.record.issueNumber }
+            : {}),
+          pid: conflict.record.pid,
+          hostname: conflict.record.hostname,
+        },
+      });
     const handle = await open(admission.recordPath, "wx", 0o600);
     try {
       await handle.writeFile(

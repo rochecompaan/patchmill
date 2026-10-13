@@ -53,6 +53,23 @@ const contexts = {
     nextPhase: "implementation",
   },
   "repository-busy": { issueNumber: 242, status: "stopped" },
+  "run-admission-busy": {
+    issueNumber: 242,
+    status: "stopped",
+    requestedMode: "explicit",
+    ownerStatus: "active",
+    recordPath: "/repo/.git/patchmill/run-once/admissions/winner.json",
+    owner: {
+      attemptId: "winner",
+      mode: "automatic",
+      pid: 123,
+      hostname: "builder",
+    },
+  },
+  "run-admission-unverifiable": {
+    status: "error",
+    recordPath: "/repo/.git/patchmill/run-once/admission-guard",
+  },
   "issue-locked": {
     issueNumber: 242,
     status: "stopped",

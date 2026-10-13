@@ -17,6 +17,7 @@ import {
 } from "../../run-once/pi-errors.ts";
 import {
   summarizeErrorResult,
+  summarizePipelineFailure,
   summarizeResult,
 } from "../../run-once/result-summary.ts";
 import {
@@ -111,14 +112,20 @@ export async function runResetCommand(
       }
     } catch (error) {
       const formatted = formatErrorWithCauses(error);
+      const failure = summarizePipelineFailure(error, logPath);
+      const stopped = failure.status === "stopped";
       let terminalError = error;
       try {
         await progress.event({
           time: new Date().toISOString(),
-          level: "error",
-          stage: "error",
-          message: `blocked: ${formatted.message}`,
-          data: { error: formatted.message, causes: formatted.causes },
+          level: stopped ? "warning" : "error",
+          stage: stopped ? "admission" : "error",
+          message: stopped
+            ? `stopped: ${failure.diagnostic.summary}`
+            : `blocked: ${formatted.message}`,
+          data: stopped
+            ? failure
+            : { error: formatted.message, causes: formatted.causes },
         });
       } catch (reportingError) {
         terminalError = appendPiErrorCause(

@@ -17,7 +17,11 @@ import {
 import { createCommandRunner } from "../triage/command.ts";
 import { detectDefaultBaseBranch } from "./git.ts";
 import { appendPiErrorCause, formatErrorWithCauses } from "./pi-errors.ts";
-import { summarizeErrorResult, summarizeResult } from "./result-summary.ts";
+import {
+  summarizeErrorResult,
+  summarizePipelineFailure,
+  summarizeResult,
+} from "./result-summary.ts";
 import {
   exitCodeForRunOnceResult,
   writeRunOnceResult,
@@ -99,7 +103,7 @@ export async function writePipelineFailureResult(
   logPath: string,
   options: Omit<WriteRunOnceResultOptions, "logPath">,
 ): Promise<0 | 1> {
-  const summary = summarizeErrorResult(error, logPath);
+  const summary = summarizePipelineFailure(error, logPath);
   try {
     await writeRunOnceResult(summary, { ...options, logPath });
   } catch (reportingError) {
@@ -217,14 +221,20 @@ export async function main(
       });
     } catch (error) {
       const formatted = formatErrorWithCauses(error);
+      const failure = summarizePipelineFailure(error, logPath);
+      const stopped = failure.status === "stopped";
       let terminalError = error;
       try {
         await progress.event({
           time: new Date().toISOString(),
-          level: "error",
-          stage: "error",
-          message: `blocked: ${formatted.message}`,
-          data: { error: formatted.message, causes: formatted.causes },
+          level: stopped ? "warning" : "error",
+          stage: stopped ? "admission" : "error",
+          message: stopped
+            ? `stopped: ${failure.diagnostic.summary}`
+            : `blocked: ${formatted.message}`,
+          data: stopped
+            ? failure
+            : { error: formatted.message, causes: formatted.causes },
         });
       } catch (reportingError) {
         terminalError = appendPiErrorCause(
