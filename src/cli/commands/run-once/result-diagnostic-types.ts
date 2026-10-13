@@ -2,6 +2,7 @@ import type {
   PlanningHeadAdoptionFailure,
   PlanningWorkspaceCleanup,
 } from "../../../git/planning-workspaces.ts";
+import type { RunAdmissionConflictObservation } from "../../../workflow/run-admission.ts";
 
 export const RUN_ONCE_REASON_CODES = [
   "non-open-state",
@@ -12,6 +13,8 @@ export const RUN_ONCE_REASON_CODES = [
   "plan-only",
   "issue-locked",
   "repository-busy",
+  "run-admission-busy",
+  "run-admission-unverifiable",
   "issue-lock-stale",
   "issue-lock-unverifiable",
   "issue-lock-malformed",
@@ -60,6 +63,8 @@ export type GeneralDiagnosticReasonCode = Extract<
   | "plan-only"
   | "issue-locked"
   | "repository-busy"
+  | "run-admission-busy"
+  | "run-admission-unverifiable"
   | "agent-blocked"
   | "development-environment-not-ready"
   | "unexpected-error"
@@ -167,6 +172,10 @@ export type RunOnceDiagnosticContextByReason = {
   "plan-only": Workspace & { nextPhase?: "implementation" };
   "issue-locked": Lock;
   "repository-busy": Base;
+  "run-admission-busy": Base &
+    RunAdmissionConflictObservation & { recordPath: string };
+  "run-admission-unverifiable": Base &
+    Partial<RunAdmissionConflictObservation> & { recordPath: string };
   "issue-lock-stale": Lock;
   "issue-lock-unverifiable": Lock;
   "issue-lock-malformed": Lock;

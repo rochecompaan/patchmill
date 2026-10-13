@@ -1,4 +1,5 @@
 import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
+import { RunAdmissionConflictError } from "../../../workflow/run-admission.ts";
 import { formatErrorWithCauses } from "./pi-errors.ts";
 import { RunRecoveryRefusalError } from "./pipeline-recovery.ts";
 import { IssueRunLeaseConflictError } from "./recovery-lease.ts";
@@ -34,6 +35,19 @@ export function failureForPipelineError(
   error: unknown,
   logPath?: string,
 ): AnyRunOnceFailure {
+  if (error instanceof RunAdmissionConflictError) {
+    const context = { recordPath: error.recordPath, ...error.observation };
+    return error.observation?.ownerStatus === "active"
+      ? runOnceFailure("run-admission-busy", {
+          ...error.observation,
+          recordPath: error.recordPath,
+          status: "stopped",
+        })
+      : runOnceFailure("run-admission-unverifiable", {
+          ...context,
+          status: "error",
+        });
+  }
   if (error instanceof IssueRunLeaseConflictError)
     return runOnceFailure("active-run", {
       issueNumber: error.issueNumber,

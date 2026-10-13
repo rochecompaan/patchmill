@@ -107,6 +107,12 @@ export type RunOncePipelineResultSummary = RunOnceResultLog &
 
 export type RunOnceResultSummary =
   | RunOncePipelineResultSummary
+  | (RunOnceResultLog & {
+      status: "stopped";
+      issueNumber?: number;
+      reason: "run-admission-busy";
+      diagnostic: RunOnceDiagnostic;
+    })
   | {
       status: "error";
       error: string;
@@ -252,6 +258,23 @@ export function summarizeResult(
         ...withLogPath,
       };
   }
+}
+
+/** Expected admission contention is a stop; other pipeline errors remain errors. */
+export function summarizePipelineFailure(
+  error: unknown,
+  logPath?: string,
+): Extract<RunOnceResultSummary, { status: "stopped" | "error" }> {
+  const failure = failureForPipelineError(error, logPath);
+  if (failure.reason !== "run-admission-busy")
+    return summarizeErrorResult(error, logPath);
+  const { issueNumber } = failure.diagnosticContext;
+  return {
+    status: "stopped",
+    ...(issueNumber === undefined ? {} : { issueNumber }),
+    ...(logPath ? { logPath } : {}),
+    ...summarizeFailure(failure),
+  };
 }
 
 export function summarizeErrorResult(

@@ -94,6 +94,44 @@ export const GENERAL_DIAGNOSTICS = {
     safety: "Do not remove another attempt's Git guard or reset its workspace.",
     retry: after("Retry when the current Git transaction stops."),
   }),
+  "run-admission-busy": {
+    summary: "Another attempt prevents this run from starting",
+    explanation:
+      "Automatic selection is exclusive for the full attempt in this clone: it cannot overlap any explicit or recovery attempt. For concurrent run-once commands, use --issue for every invocation. This attempt stopped before issue work started.",
+    details: contextDetails,
+    actions: (context) => {
+      const command =
+        context.requestedMode === "explicit"
+          ? issueCommand("run-once", context.issueNumber)
+          : undefined;
+      return [
+        {
+          description:
+            "Wait for the recorded owner to stop, then rerun the same command.",
+          ...(command ? { command } : {}),
+        },
+      ];
+    },
+    safety: [
+      "Do not delete admission records, remove guards, or repair Issue leases to bypass an active owner.",
+    ],
+    retry: () =>
+      after(
+        "Retry only after the recorded owner stops. An immediate retry will meet the same admission exclusion.",
+      ),
+  },
+  "run-admission-unverifiable": definition({
+    summary: "Admission ownership could not be verified",
+    explanation:
+      "Patchmill could not verify admission ownership safely and refused to continue. This is not proof that an owner is active or stale.",
+    action:
+      "Inspect the recorded admission or guard and its owner on the recorded host. Confirm ownership and let affected runners stop before retrying the same command.",
+    safety:
+      "Do not delete unknown admission records or guards, or use Issue lease repair to bypass clone-wide admission.",
+    retry: inspect(
+      "Inspect ownership first; retry only after the admission conflict is safely resolved.",
+    ),
+  }),
   "issue-locked": definition({
     summary: "issue already in progress.",
     explanation:
