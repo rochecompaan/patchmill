@@ -1,3 +1,4 @@
+import { writeFrontendWorkflowFiles } from "../../../../test-support/frontend-workflow-files.ts";
 import type { CommandRunner } from "../../../command/types.ts";
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -249,6 +250,7 @@ test("interactive init add-to-git with no skills commits config and gitignore on
 test("interactive init add-to-git with path skills commits the provided skill root", async () => {
   const repoRoot = await tempRepo();
   const calls: string[][] = [];
+  await writeFrontendWorkflowFiles(repoRoot, "custom-skills");
   await writeSkill(repoRoot, "custom-skills", "patchmill-issue-triage");
   await writeSkill(repoRoot, "custom-skills", "patchmill-planning");
   await writeSkill(repoRoot, "custom-skills", "brainstorming");
