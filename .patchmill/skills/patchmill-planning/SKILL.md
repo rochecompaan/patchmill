@@ -62,10 +62,69 @@ With the default spec directory, Patchmill generates:
 docs/specs/YYYY-MM-DD-issue-<number>-<title-slug>-design.md
 ```
 
+### Conditional frontend design during specification
+
+Evaluate the proposed scope during brainstorming. Record whether frontend design
+applies and give a brief reason in the spec. Activate for browser-visible
+layout, responsive behavior, typography, color, spacing, imagery, styling,
+interaction, motion, accessibility, navigation, or user-flow changes. Skip
+backend and documentation work. Copy-only work activates only when it materially
+changes one of these areas.
+
+When design applies, read `../frontend-design/SKILL.md` during the normal
+brainstorming process. Treat it as specification guidance, not a later product
+implementation phase. If its skill or license is missing, stop with evidence; do
+not fetch a substitute.
+
+Apply this precedence to conflicts:
+
+1. Explicit user and approved product requirements.
+2. Repository policy and the existing design system.
+3. The approved written specification.
+4. Mockup visual intent.
+5. Generic frontend-design guidance.
+
+Record why a higher-priority requirement overrides generic guidance. Preserve
+approved project choices instead of introducing preference-driven redesigns.
+
+Before completing an applicable spec, create one self-contained HTML mockup at
+`docs/mockups/YYYY-MM-DD-topic.html` in the active Phase workspace. Embed
+required CSS and JavaScript. Do not require network assets, installation, a
+build, or a local server. The file must open directly from disk in a browser.
+
+Show changed components in complete page context, not isolated fragments.
+Include mobile and desktop responsive layouts, semantic HTML, visible keyboard
+focus, and reduced-motion support where applicable. Open the file from disk at
+mobile and desktop widths during self-review. Verify page context, keyboard
+focus, reduced motion, and operation without network access.
+
+Declare each mockup with a repository-relative path and a working link in the
+spec's single top-level companion section. For the default spec directory, use
+this exact declaration shape:
+
+```markdown
+## Companion artifacts
+
+- `docs/mockups/YYYY-MM-DD-topic.html`:
+  [Full-page mockup](../mockups/YYYY-MM-DD-topic.html)
+```
+
+The link must resolve from the actual spec directory to the declared path. Use
+regular `.html` files under `docs/mockups/`. Do not declare remote links,
+traversal paths, symlinks, query strings, or fragments.
+
+Commit the mockup with its spec as a planning-only companion in the active Phase
+workspace. It is not product code and does not replace implementation screenshot
+evidence. A missing, unlinked, fragment-only, or non-self-contained required
+mockup stops the plan handoff. Repair the companion before proceeding. Preserve
+approved older specs without mockups; do not add a retroactive requirement.
+
 ### Plan artifacts
 
 For implementation plans, use the sibling writing-plans workflow as source
-material. Save the plan to the prompt's `Plan output path`.
+material. Save the plan to the prompt's `Plan output path`. Identify the
+approved spec and each referenced mockup as plan inputs. Read available mockups
+with the spec before planning the implementation.
 
 With the default plan directory, Patchmill generates:
 
@@ -109,7 +168,9 @@ implementation pull request.
 In that phase:
 
 1. Edit and commit only the requested spec or plan artifact in the active phase
-   workspace.
+   workspace. A spec commit also includes its required declared planning-only
+   companions. A plan commit includes only the plan document. Do not implement
+   product changes.
 2. Self-review the complete document against the issue, approved source
    material, project instructions, Testing Value Gate, and simple-english
    writing style.
