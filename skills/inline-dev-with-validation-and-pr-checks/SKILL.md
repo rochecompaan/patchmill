@@ -2,15 +2,16 @@
 name: inline-dev-with-validation-and-pr-checks
 description:
   Use when executing an approved Patchmill implementation plan in one session
-  with final validation, one independent review, and pull-request check
-  handling.
+  with final validation, normal independent review, conditional frontend review,
+  and pull-request check handling.
 ---
 
 # Inline Development with Validation and PR Checks
 
 Use the installed sibling `executing-plans` skill as the executor. This wrapper
-adds Patchmill boundaries for one whole-branch review, final validation, and PR
-checks. It does not fork the upstream executor or reviewer template.
+adds Patchmill boundaries for one normal whole-branch review, conditional
+frontend review, final validation, and PR checks. It does not fork the upstream
+executor or reviewer template.
 
 ## Required inputs
 
@@ -48,9 +49,11 @@ plan. Existing publication authorization remains valid.
 
 Keep the existing landing policy, implementation-PR requirements, recovery
 state, terminal JSON fields, and unattended completion rules. Do not add a
-second implementation method or review loop.
+second implementation method. Non-frontend work retains one normal review and
+one ordered fix pass. The conditional frontend repair loop below is the only
+automatic extra-review exception.
 
-## One final review and validation
+## One normal final review and validation
 
 After all plan tasks have their required command evidence, prepare one package
 for the complete delivery. Before setting its base and head, account for every
@@ -97,8 +100,50 @@ progress ledger.
 3. Use direct verification for Testing Value Gate exclusions. Defer Minor
    findings. Do not repair them in this pass.
 
-Run every required command again against the final state. Do not start an
-automatic second review or a repeat-until-approved loop.
+Run every required command again against the final state. For non-frontend work,
+do not start an automatic second review or a repeat-until-approved loop. For
+frontend work, complete explicit operator-configured normal reviews and use the
+conditional checkpoint below after final validation.
+
+## Conditional frontend review
+
+Evaluate applicability independently from the planning decision. Inspect the
+final delivery and materialized files outside the committed range. Record a
+brief reason in the progress ledger. Activate for browser-visible layout,
+responsive behavior, styling, interaction, motion, accessibility, navigation, or
+user-flow changes. Skip backend, documentation, and copy-only work unless copy
+materially changes one of these areas.
+
+When applicable, read and follow `../patchmill-frontend-review/SKILL.md`. Stop
+with an evidenced blocker if the skill or required local reference or license is
+missing. Never fetch replacement rules. This is an independent frontend
+checkpoint after task commands, normal review, its ordered fix pass, explicit
+operator-configured reviews, and final validation. It does not replace them.
+
+Use the shared skill's fresh canonical reviewer, resolved model and thinking,
+read-only shell-less policy, and safe parent-supplied command evidence. Supply
+immutable base/head, final frontend and materialized files, requirements,
+project design-system policy, approved spec, available mockup, local pinned
+rules, and current visual evidence. Do not retroactively require mockups for
+older approved specs. Missing optional evidence does not block review; existing
+required evidence remains required.
+
+The parent remains the sole repair author. Resolve every valid frontend finding,
+including Minor findings, before frontend `pass`. Record evidence and reasoned
+dispositions for disputes; do not waive valid requirements. This differs from
+the normal review's deferred Minor recommendations.
+
+For a production-code repair, refresh scope/head, rerun affected validation, and
+obtain independent normal code review for the repair scope. Complete its
+accepted ordered fixes and all required final commands before a fresh frontend
+review. For other repairs, run affected direct verification before fresh
+frontend review. Continue until `pass` or an evidenced blocker. Old-head
+approval cannot pass the current delivery.
+
+Record reviewed heads, review references, findings, dispositions, repairs,
+commands, and visual evidence in the progress ledger. Resolve all review and
+repair work before ready handoff. The normal review appendix remains the normal
+code-review contract, not a frontend preference list.
 
 ## PR checks and durable handoff
 
@@ -110,6 +155,15 @@ record the mismatch. For a current code-related failure, run affected validation
 and make no more than two repair passes. Push normally when existing
 authorization permits it. Never force-push.
 
+A current-head PR-check repair that changes frontend work invalidates affected
+frontend approval and stale screenshots. Refresh required visual evidence
+through the existing evidence tooling, then apply the same affected-validation,
+normal-review, final-command, and fresh-frontend-review order above. Preserve
+the two-pass PR-check repair limit and stale-check detection. Record the pass
+number before edits. Each attempt to repair a current-head failed check is one
+pass, including its review-driven corrections. A new failed-check repair attempt
+consumes the next pass. Never start a third attempt.
+
 Classify pre-existing failures as validation blockers, and credentials,
 services, runners, permissions, quotas, billing, and host failures as operator
 blockers. Do not make speculative source changes for either class. Require
@@ -117,6 +171,7 @@ observable passing checks, or evidence that no required checks exist, before a
 ready PR handoff.
 
 Carry rulings, deferred minors, structural recommendations, command evidence,
-and human-review callouts into the PR body. Direct landing is not permitted.
-Keep the plan workspace while blocked. Remove only this plan's scratch workspace
-after durable reporting is complete.
+and human-review callouts into the PR body. Include frontend reviewed heads,
+findings, dispositions, repairs, and current evidence before scratch cleanup.
+Direct landing is not permitted. Keep the plan workspace while blocked. Remove
+only this plan's scratch workspace after durable reporting is complete.

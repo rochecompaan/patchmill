@@ -64,6 +64,10 @@ Record the reason for each generic-rule override. Do not require pixel-perfect
 agreement with the mockup. A material difference needs a product or technical
 reason. Do not report personal preferences or unrelated pre-existing defects.
 
+For native semantic controls, evaluate actual keyboard behavior. Do not require
+redundant explicit key handlers when the browser supplies correct interaction. A
+keyboard finding needs observed user impact, not handler absence alone.
+
 ## Independent dispatch
 
 List available subagents and discover the executable canonical `reviewer`. If
