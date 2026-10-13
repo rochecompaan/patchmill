@@ -73,6 +73,57 @@ function state(phase: object, revision = 0) {
   };
 }
 
+test("validates present companion evidence and keeps old evidence readable", () => {
+  const document = (record: object) =>
+    state({
+      kind: "spec",
+      status: "workspace-ready",
+      base,
+      workspace: workspace(),
+      artifacts: [record],
+    });
+  const old = artifact("workspace", oid("b"));
+  const valid = { ...old, companionPaths: ["docs/mockups/example.html"] };
+  const parsed = validatePlanningState(document(valid));
+  assert.deepEqual(parsePlanningState(serializePlanningState(parsed)), parsed);
+  assert.deepEqual(validatePlanningState(document(old)).phases[0].artifacts, [
+    old,
+  ]);
+  for (const companionPaths of [
+    null,
+    "wrong",
+    ["src/a.html"],
+    ["docs/mockups/a.html", "docs/mockups/a.html"],
+  ]) {
+    assert.throws(
+      () => validatePlanningState(document({ ...old, companionPaths })),
+      (error: unknown) =>
+        error instanceof PlanningStateValidationError &&
+        error.path.includes("companionPaths"),
+    );
+  }
+  const planState = {
+    ...document(old),
+    gates: { specRequired: false, planRequired: true },
+    phases: [
+      {
+        kind: "plan",
+        status: "workspace-ready",
+        base,
+        workspace: { ...workspace(), phase: "plan" },
+        artifacts: [{ ...valid, kind: "plan", path: "docs/plans/example.md" }],
+      },
+      { kind: "implementation", status: "pending" },
+    ],
+  };
+  assert.throws(
+    () => validatePlanningState(planState),
+    (error: unknown) =>
+      error instanceof PlanningStateValidationError &&
+      error.path.includes("companionPaths"),
+  );
+});
+
 test("accepts and preserves a non-prefix remote-base artifact subset", () => {
   const planWorkspace = {
     ...workspace(),

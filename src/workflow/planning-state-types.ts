@@ -19,6 +19,7 @@ export type PlanningArtifactEvidence = Readonly<{
   path: string;
   commitOid: string;
   source: "remote-base" | "workspace";
+  companionPaths?: readonly string[];
 }>;
 export type PlanningPublicationEvidence = Readonly<{
   targetRepository: RepositoryIdentity;

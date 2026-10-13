@@ -1,3 +1,4 @@
+import { isPlanningCompanionPath } from "./planning-companion-artifacts.ts";
 import type { PlanningWorkspaceOwnership } from "../git/planning-workspaces.ts";
 import { pullRequestUrlMatchesReference } from "../host/pull-request-reference.ts";
 import {
@@ -30,6 +31,7 @@ import {
   fail,
   nonnegative,
   object,
+  objectWithOptionalKeys,
   oid,
   phase,
   positive,
@@ -96,9 +98,10 @@ function artifacts(
 ): readonly PlanningArtifactEvidence[] {
   if (!Array.isArray(value)) fail("expected-array", path);
   const parsed = (value as unknown[]).map((item: unknown, index: number) => {
-    const record = object(
+    const record = objectWithOptionalKeys(
       item,
       ["kind", "path", "commitOid", "source"],
+      ["companionPaths"],
       `${path}[${index}]`,
     );
     const kind = string(record.kind, `${path}[${index}].kind`);
@@ -107,7 +110,22 @@ function artifacts(
     const source = string(record.source, `${path}[${index}].source`);
     if (source !== "remote-base" && source !== "workspace")
       fail("invalid-artifact-source", `${path}[${index}].source`);
+    let companionPaths: string[] | undefined;
+    if ("companionPaths" in record) {
+      const field = `${path}[${index}].companionPaths`;
+      if (kind !== "spec") fail("plan-companions", field);
+      if (!Array.isArray(record.companionPaths)) fail("expected-array", field);
+      companionPaths = (record.companionPaths as unknown[]).map(
+        (value, companionIndex) =>
+          isPlanningCompanionPath(value)
+            ? value
+            : fail("invalid-path", `${field}[${companionIndex}]`),
+      );
+      if (new Set(companionPaths).size !== companionPaths.length)
+        fail("duplicate-value", field);
+    }
     return {
+      ...(companionPaths === undefined ? {} : { companionPaths }),
       kind: kind as PlanningArtifactKind,
       path: artifactPath(record.path, `${path}[${index}].path`),
       commitOid: oid(record.commitOid, `${path}[${index}].commitOid`),
