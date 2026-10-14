@@ -3,7 +3,10 @@ import { resolve } from "node:path";
 import type { CommandRunner } from "../../../command/types.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
 import type { ApprovedArtifactPreflight } from "./approval-artifact-preflight.ts";
-import type { PlanningArtifactPolicy } from "./planning-artifacts.ts";
+import {
+  assertPlanningArtifactResumeIdentity,
+  type PlanningArtifactPolicy,
+} from "./planning-artifacts.ts";
 import { assertExecutionArtifactDestination } from "./execution-artifact-destination.ts";
 import {
   materializeIssueArtifactSources,
@@ -18,6 +21,11 @@ export async function materializeExecutionPlanningArtifacts(input: {
   policy?: PlanningArtifactPolicy | undefined;
   approvedArtifactPreflight?: ApprovedArtifactPreflight | undefined;
 }): Promise<ResolvedIssueArtifactSources> {
+  if (input.policy)
+    assertPlanningArtifactResumeIdentity({
+      ...input.policy,
+      explicit: input.sources,
+    });
   const sources = {
     ...input.sources,
     ...input.approvedArtifactPreflight?.sources,

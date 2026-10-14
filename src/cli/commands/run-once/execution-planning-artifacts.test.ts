@@ -85,6 +85,49 @@ for (const content of [
   });
 }
 
+test("resume identity mismatch blocks before writing or staging an explicit artifact", async (t) => {
+  const repoRoot = await mkdtemp(
+    join(tmpdir(), "execution-artifact-identity-"),
+  );
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+  let gitCalls = 0;
+  const path = "docs/plans/unrelated-plan.md";
+  await assert.rejects(
+    materializeExecutionPlanningArtifacts({
+      repoRoot,
+      issueNumber: 140,
+      policy: {
+        kind: "implementation-resume",
+        primary: {
+          repoRoot,
+          specsDir: join(repoRoot, "docs/specs"),
+          plansDir: join(repoRoot, "docs/plans"),
+          source: "resume-worktree",
+        },
+        fallbacks: [],
+        saved: { planPath: "docs/plans/approved-plan.md" },
+      },
+      sources: {
+        plan: {
+          path,
+          absolutePath: join(repoRoot, path),
+          content: "# Unrelated\n",
+          evidence: "explicit issue comment",
+        },
+      },
+      runner: {
+        async run() {
+          gitCalls++;
+          return { code: 0, stdout: "", stderr: "" };
+        },
+      },
+    }),
+    /Explicit plan artifact.*does not match saved plan/,
+  );
+  assert.equal(gitCalls, 0);
+  await assert.rejects(readFile(join(repoRoot, path)), { code: "ENOENT" });
+});
+
 for (const kind of ["spec", "plan"] as const) {
   for (const escape of ["file", "directory"] as const) {
     test(`materialization rejects a ${escape} symlink for the selected ${kind} without touching external content`, async (t) => {

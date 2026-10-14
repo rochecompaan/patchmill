@@ -237,6 +237,19 @@ function generated(input: {
   };
 }
 
+export function assertPlanningArtifactResumeIdentity(
+  policy: PlanningArtifactPolicy,
+): void {
+  if (policy.kind !== "implementation-resume") return;
+  for (const kind of ["spec", "plan"] as const)
+    explicitMatchesSaved({
+      kind,
+      explicit: policy.explicit?.[kind],
+      savedPath: policy.saved[`${kind}Path`],
+      savedCommit: policy.saved[`${kind}Commit`],
+    });
+}
+
 export async function resolvePlanningArtifacts(input: {
   policy: PlanningArtifactPolicy;
   issue: IssueSummary;
@@ -245,18 +258,7 @@ export async function resolvePlanningArtifacts(input: {
   const policyRoots = roots(input.policy);
 
   if (input.policy.kind === "implementation-resume") {
-    explicitMatchesSaved({
-      kind: "spec",
-      explicit: input.policy.explicit?.spec,
-      savedPath: input.policy.saved.specPath,
-      savedCommit: input.policy.saved.specCommit,
-    });
-    explicitMatchesSaved({
-      kind: "plan",
-      explicit: input.policy.explicit?.plan,
-      savedPath: input.policy.saved.planPath,
-      savedCommit: input.policy.saved.planCommit,
-    });
+    assertPlanningArtifactResumeIdentity(input.policy);
 
     const spec = await findSaved({
       roots: policyRoots,

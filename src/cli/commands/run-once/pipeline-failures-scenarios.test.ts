@@ -1187,7 +1187,7 @@ test("runOneIssue resumes required plan approval after unexpected implementation
     if (call.command === "git" && call.args[0] === "worktree") {
       return {
         code: 0,
-        stdout: `worktree ${join(config.repoRoot, ".worktrees/patchmill-issue-43-handle-plan-approval-implementation-parse-failure")}\n`,
+        stdout: `worktree ${join(config.repoRoot, runState.worktreePath)}\n`,
         stderr: "",
       };
     }
@@ -1198,8 +1198,7 @@ test("runOneIssue resumes required plan approval after unexpected implementation
     ) {
       return {
         code: 0,
-        stdout:
-          "agent/issue-43-handle-plan-approval-implementation-parse-failure\n",
+        stdout: `${runState.branch}\n`,
         stderr: "",
       };
     }

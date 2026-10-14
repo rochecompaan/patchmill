@@ -439,11 +439,7 @@ test("runOneIssue retries worktree-only approved artifacts after development env
     ) {
       workspaceCreated = true;
       await mkdir(dirname(join(worktreeRoot, planPath)), { recursive: true });
-      await writeFile(
-        join(worktreeRoot, planPath),
-        "# worktree plan\n",
-        "utf8",
-      );
+      await writeFile(join(worktreeRoot, planPath), "# plan\n", "utf8");
       return { code: 0, stdout: "", stderr: "" };
     }
     if (

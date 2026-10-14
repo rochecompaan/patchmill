@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { gitBaseContainmentResult } from "./assertions.ts";
 import {
   legacyPublicationFixtureFallback,
+  LEGACY_FIXTURE_HEAD,
   normalizeLegacyFixturePublication,
   type LegacyFixturePublication,
 } from "./legacy-publication-fixture.ts";
@@ -66,6 +67,11 @@ function defaultGitPreflightResult(call: Call): CommandResult | undefined {
       stderr: "",
     };
   }
+  // Approved repository fallbacks now use the same staging step as explicit artifacts.
+  if (call.command === "git" && call.args[0] === "add")
+    return { code: 0, stdout: "", stderr: "" };
+  if (call.command === "git" && call.args.join(" ") === "rev-parse HEAD")
+    return { code: 0, stdout: `${LEGACY_FIXTURE_HEAD}\n`, stderr: "" };
   if (call.command === "git" && call.args[0] === "diff") {
     return { code: 0, stdout: "", stderr: "" };
   }
