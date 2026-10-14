@@ -332,10 +332,10 @@ GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test \
       independent review.
 - [x] Address findings and rerun the affected checks. Do not close todos based
       only on an implementation report.
-- [ ] Commit these documents and the plan's completed checkboxes.
-- [ ] Push with
+- [x] Commit these documents and the plan's completed checkboxes.
+- [x] Push with
       `git push origin HEAD:fix/planning-artifacts-without-issue-branch`.
-- [ ] Confirm PR #326 points at the pushed commit. Report CI status separately
+- [x] Confirm PR #326 points at the pushed commit. Report CI status separately
       from local verification. Update each todo with evidence and mark it
       complete.
 
@@ -364,6 +364,11 @@ tests. Dependency and contract checks, type checks, lint, build, architecture
 checks, and `git diff --check` pass. Dependency files remain unchanged, so no
 mandatory Nix rebuild applies. These documents use formatting and Markdown lint
 rather than new text-assertion tests.
+
+The implementation and review fixes were pushed as `bb131d8` to PR #326 on its
+existing branch. The PR head was confirmed, and all four review-fix todos are
+complete. CI status is reported separately from local verification. The branch
+and worktree remain available for PR feedback.
 
 ### Rulings
 
