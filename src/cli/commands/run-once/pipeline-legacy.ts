@@ -5,11 +5,11 @@ import { localPiAgentDir } from "../init/pi-agent-settings.ts";
 import { createRunOnceHostProvider } from "../../../host/factory.ts";
 import { planLabelChange } from "../triage/labels.ts";
 import { workflowRolesFromLabels } from "../../../issue-state/labels.ts";
-import { materializeIssueArtifactSources } from "./artifact-source-materialization.ts";
+import { materializeExecutionPlanningArtifacts } from "./execution-planning-artifacts.ts";
 import { assertApprovedArtifactsResolvable } from "./approval-artifact-preflight.ts";
 import { runArtifactSourceStage } from "./artifact-source-stage.ts";
 import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
-import { pathExists } from "./paths.ts";
+
 import { ensureAutomationLabel } from "./automation-labels.ts";
 import {
   assertCleanWorktree,
@@ -20,7 +20,6 @@ import {
 } from "./git.ts";
 import {
   PlanningArtifactSafetyError,
-  resolvePlanningArtifacts,
   type PlanningArtifactPolicy,
 } from "./planning-artifacts.ts";
 import { advancePlanningStages } from "./stage-advancement.ts";
@@ -801,90 +800,30 @@ async function runLegacyOneIssueInternal(
       );
     }
 
-    if (artifactPolicy?.kind === "implementation-resume") {
-      const resumeArtifactPolicy = artifactPolicy;
-      const sourcesToMaterialize: ResolvedIssueArtifactSources = {};
-      for (const kind of ["spec", "plan"] as const) {
-        const source = resolvedArtifacts[kind];
-        if (!source) continue;
-        const savedPath = resumeArtifactPolicy.saved[`${kind}Path`];
-        if (savedPath) {
-          const roots = [
-            resumeArtifactPolicy.primary,
-            ...resumeArtifactPolicy.fallbacks,
-          ];
-          const exists = (
-            await Promise.all(
-              roots.map((root) => pathExists(join(root.repoRoot, savedPath))),
-            )
-          ).some(Boolean);
-          // Preflight verifies the published source matches the saved identity.
-          if (!approvedArtifactPreflight || exists) continue;
-        }
-        sourcesToMaterialize[kind] = source;
-      }
-      if (sourcesToMaterialize.spec || sourcesToMaterialize.plan) {
-        const materializedArtifacts = await runStep(
-          "materialize issue artifact sources",
-          async () =>
-            materializeIssueArtifactSources({
-              repoRoot: resumeArtifactPolicy.primary.repoRoot,
-              runner,
-              issueNumber: issueForRun.number,
-              sources: sourcesToMaterialize,
-            }),
-        );
-        // Restoring a saved file does not change its recorded artifact identity.
-        if (
-          resumeArtifactPolicy.saved.specPath &&
-          resumeArtifactPolicy.saved.specCommit &&
-          materializedArtifacts.spec
-        )
-          materializedArtifacts.spec.commit =
-            resumeArtifactPolicy.saved.specCommit;
-        if (
-          resumeArtifactPolicy.saved.planPath &&
-          resumeArtifactPolicy.saved.planCommit &&
-          materializedArtifacts.plan
-        )
-          materializedArtifacts.plan.commit =
-            resumeArtifactPolicy.saved.planCommit;
-        resolvedArtifacts = {
-          ...resolvedArtifacts,
-          ...materializedArtifacts,
-        };
-        artifactPolicy = {
-          ...artifactPolicy,
-          explicit: resolvedArtifacts,
-        };
-      }
-      if (!approvedArtifactPreflight) {
-        await resolvePlanningArtifacts({
+    const executionSources = {
+      ...resolvedArtifacts,
+      ...approvedArtifactPreflight?.sources,
+    };
+    const artifactWorktree =
+      executionSources.spec || executionSources.plan
+        ? await ensureIssueWorkspace()
+        : undefined;
+    resolvedArtifacts = await runStep(
+      "materialize issue artifact sources",
+      async () =>
+        materializeExecutionPlanningArtifacts({
+          repoRoot: artifactWorktree
+            ? join(config.repoRoot, artifactWorktree.worktreePath)
+            : config.repoRoot,
+          runner,
+          issueNumber: issueForRun.number,
+          sources: resolvedArtifacts,
           policy: artifactPolicy,
-          issue: issueForRun,
-          now: runOptions.now ?? new Date(),
-        });
-      }
-    } else {
-      const artifactWorktree =
-        resolvedArtifacts.spec || resolvedArtifacts.plan
-          ? await ensureIssueWorkspace()
-          : undefined;
-      const artifactRepoRoot = artifactWorktree
-        ? join(config.repoRoot, artifactWorktree.worktreePath)
-        : config.repoRoot;
-      const materializedArtifacts = await runStep(
-        "materialize issue artifact sources",
-        async () =>
-          materializeIssueArtifactSources({
-            repoRoot: artifactRepoRoot,
-            runner,
-            issueNumber: issueForRun.number,
-            sources: resolvedArtifacts,
-          }),
-      );
-      resolvedArtifacts = materializedArtifacts;
-    }
+          approvedArtifactPreflight,
+        }),
+    );
+    if (artifactPolicy)
+      artifactPolicy = { ...artifactPolicy, explicit: resolvedArtifacts };
 
     if (!artifactPolicy && (resolvedArtifacts.spec || resolvedArtifacts.plan)) {
       await writeRunState(

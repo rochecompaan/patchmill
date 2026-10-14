@@ -44,6 +44,7 @@ export type ApprovedArtifactPreflightOptions = {
 export type ApprovedArtifactPreflight = {
   policy: PlanningArtifactPolicy;
   artifacts: ResolvedPlanningArtifacts;
+  sources: ResolvedIssueArtifactSources;
 };
 
 async function approvedArtifactPolicy(input: {
@@ -342,5 +343,12 @@ export async function assertApprovedArtifactsResolvable(
     runner: options.runner,
   });
 
-  return { policy, artifacts };
+  return {
+    policy,
+    artifacts,
+    sources: {
+      ...(artifacts.spec.source ? { spec: artifacts.spec.source } : {}),
+      ...(artifacts.plan.source ? { plan: artifacts.plan.source } : {}),
+    },
+  };
 }

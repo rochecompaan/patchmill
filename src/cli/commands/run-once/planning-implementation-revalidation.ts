@@ -1,26 +1,12 @@
 import type { CommandRunner } from "../../../command/types.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
-  ImplementationPullRequestOpenPlanningPhase,
   ImplementationRevalidationPendingPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
-import { implementationRecoveryReceipt } from "../../../workflow/planning-state-implementation-revalidation.ts";
+import { invalidateImplementationChecks } from "../../../workflow/planning-state-implementation-revalidation.ts";
 import type { PlanningImplementationInput } from "./planning-implementation.ts";
 
-export function invalidateImplementationChecks(
-  phase:
-    | ImplementationBranchPushedPlanningPhase
-    | ImplementationPullRequestOpenPlanningPhase,
-): ImplementationRevalidationPendingPlanningPhase {
-  return {
-    kind: "implementation",
-    status: "revalidation-pending",
-    base: phase.base,
-    workspace: phase.workspace,
-    artifacts: phase.artifacts,
-    revalidation: implementationRecoveryReceipt(phase),
-  };
-}
+export { invalidateImplementationChecks };
 
 /** A preserved local branch can move before its PR is pushed. */
 export async function implementationChecksChanged(input: {

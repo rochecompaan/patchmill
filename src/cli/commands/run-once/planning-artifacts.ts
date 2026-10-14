@@ -1,7 +1,11 @@
 import type { IssueSummary } from "../../../issue/types.ts";
 import { basename, isAbsolute, join, relative } from "node:path";
 import { findIssueArtifacts } from "./artifacts.ts";
-import type { ResolvedIssueArtifactSources } from "./artifact-sources.ts";
+import type {
+  ResolvedIssueArtifactSource,
+  ResolvedIssueArtifactSources,
+} from "./artifact-sources.ts";
+import { snapshotApprovedArtifact } from "./approved-artifact-snapshots.ts";
 import { pathExists, pathIsRegularFile } from "./paths.ts";
 import { buildPlanPath, findIssuePlan } from "./plans.ts";
 import { buildSpecPath, findIssueSpec } from "./specs.ts";
@@ -14,6 +18,7 @@ export type PlanningArtifactRoot = {
 };
 
 export type ResolvedPlanningArtifact = {
+  source?: ResolvedIssueArtifactSource | undefined;
   path?: string | undefined;
   commit?: string | undefined;
   exists: boolean;
@@ -437,6 +442,21 @@ export async function resolveApprovedPlanningArtifacts(input: {
       kind: "plan",
       artifact: artifacts.plan,
     });
+  }
+  for (const kind of ["spec", "plan"] as const) {
+    if (kind === "spec" ? !input.requireSpec : !input.requirePlan) continue;
+    try {
+      artifacts[kind].source = await snapshotApprovedArtifact({
+        policy: input.policy,
+        artifact: artifacts[kind],
+        kind,
+        issueNumber: input.issue.number,
+      });
+    } catch (error) {
+      throw new PlanningArtifactSafetyError(
+        `Issue #${input.issue.number} approved ${kind} ${artifacts[kind].path} cannot be read from its selected source: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
   return artifacts;
 }

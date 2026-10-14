@@ -100,6 +100,9 @@ for (const kind of ["spec", "plan"] as const) {
       assert.equal(preflight?.artifacts[kind].path, path);
       assert.equal(preflight?.artifacts[kind].exists, true);
       assert.equal(preflight?.artifacts[kind].generated, false);
+      assert.equal(preflight?.sources[kind]?.path, path);
+      assert.equal(preflight?.sources[kind]?.content, content);
+      assert.equal(preflight?.artifacts[kind].source, preflight?.sources[kind]);
       const missing = await options.runner!.run(
         "git",
         ["cat-file", "-e", `${branch}:${path}`],

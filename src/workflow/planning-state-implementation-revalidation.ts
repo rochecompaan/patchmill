@@ -3,6 +3,7 @@ import type {
   PlanningPhaseStateV1,
   PlanningWorkspaceEvidence,
   ImplementationBranchPushedPlanningPhase,
+  ImplementationRevalidationPendingPlanningPhase,
   ImplementationPullRequestOpenPlanningPhase,
   PlanningImplementationRevalidationEvidence,
 } from "./planning-state-types.ts";
@@ -31,6 +32,21 @@ export function implementationRecoveryReceipt(
             ? {}
             : { observedHeadOid: phase.observedHeadOid }),
         }),
+  };
+}
+
+export function invalidateImplementationChecks(
+  phase:
+    | ImplementationBranchPushedPlanningPhase
+    | ImplementationPullRequestOpenPlanningPhase,
+): ImplementationRevalidationPendingPlanningPhase {
+  return {
+    kind: "implementation",
+    status: "revalidation-pending",
+    base: phase.base,
+    workspace: phase.workspace,
+    artifacts: phase.artifacts,
+    revalidation: implementationRecoveryReceipt(phase),
   };
 }
 

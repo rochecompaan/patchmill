@@ -4,7 +4,7 @@ import {
   implementationOid as oid,
   publishedImplementationState,
 } from "../../test-support/run-once/planning-implementation-state-fixture.ts";
-import { invalidateImplementationChecks } from "../cli/commands/run-once/planning-implementation-revalidation.ts";
+import { invalidateImplementationChecks } from "./planning-state-implementation-revalidation.ts";
 import {
   assertPlanningStateReplacement,
   parsePlanningState,

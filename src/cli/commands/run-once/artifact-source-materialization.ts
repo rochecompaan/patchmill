@@ -1,6 +1,7 @@
 import type { CommandRunner } from "../../../command/types.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
+import { assertExecutionArtifactDestination } from "./execution-artifact-destination.ts";
 import type {
   ResolvedIssueArtifactSource,
   ResolvedIssueArtifactSources,
@@ -38,6 +39,13 @@ function withTrailingNewline(content: string): string {
   return content.endsWith("\n") ? content : `${content}\n`;
 }
 
+export function artifactSourceContentMatches(
+  source: string,
+  destination: string,
+): boolean {
+  return destination === source || destination === withTrailingNewline(source);
+}
+
 async function existingContent(path: string): Promise<string | undefined> {
   try {
     return await readFile(path, "utf8");
@@ -60,10 +68,15 @@ async function materializationWrites(input: {
   const writes: ArtifactWrite[] = [];
   for (const entry of artifactEntries(input.sources)) {
     const content = withTrailingNewline(entry.source.content);
-    const absolutePath = resolve(input.repoRoot, entry.source.path);
+    const absolutePath = await assertExecutionArtifactDestination({
+      repoRoot: input.repoRoot,
+      issueNumber: input.issueNumber,
+      kind: entry.kind,
+      path: entry.source.path,
+    });
     const existing = await existingContent(absolutePath);
     if (existing !== undefined) {
-      if (existing !== content) {
+      if (!artifactSourceContentMatches(entry.source.content, existing)) {
         throw new Error(
           `Issue #${input.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
         );
@@ -116,7 +129,7 @@ export async function assertIssueArtifactSourcesMaterializableInBranch(input: {
         `git show failed while checking issue #${input.issueNumber} ${entry.kind} artifact on ${input.branch}: ${commandOutput(content)}`,
       );
     }
-    if (content.stdout !== withTrailingNewline(entry.source.content)) {
+    if (!artifactSourceContentMatches(entry.source.content, content.stdout)) {
       throw new Error(
         `Issue #${input.issueNumber} artifact would overwrite existing ${entry.kind} artifact at ${entry.source.path}`,
       );
@@ -134,7 +147,16 @@ export async function materializeIssueArtifactSources(
 
   for (const { entry, content } of writes) {
     await mkdir(dirname(entry.source.absolutePath), { recursive: true });
-    await writeFile(entry.source.absolutePath, content, "utf8");
+    await assertExecutionArtifactDestination({
+      repoRoot: options.repoRoot,
+      issueNumber: options.issueNumber,
+      kind: entry.kind,
+      path: entry.source.path,
+    });
+    await writeFile(entry.source.absolutePath, content, {
+      encoding: "utf8",
+      flag: "wx",
+    });
   }
 
   const paths = entries.map((entry) => entry.source.path);
