@@ -27,7 +27,7 @@ export type ImplementationPrEvidence = {
   ownershipMarkerRequired: boolean;
 };
 export type ImplementationPrReconciliation =
-  | { kind: "open" }
+  | { kind: "open"; headOid: string }
   | { kind: "merged"; mergeOid: string; mergedBaseOid: string }
   | { kind: "blocked"; reason: string };
 export class ImplementationPrEvidenceError extends Error {
@@ -42,11 +42,15 @@ function validate(
   evidence: Omit<ImplementationPrEvidence, "reference" | "url">,
   expectedReference?: PullRequestReference,
 ) {
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(summary.headSha))
+    throw new PlanningPullRequestValidationError("head-oid");
+  // The repository and branches identify the PR. Its current head is evidence
+  // for fresh checks, not immutable ownership proof.
   const validated = validatePlanningPullRequestSummary({
     summary,
     issueNumber,
     phase: "implementation",
-    publication: evidence.publication,
+    publication: { ...evidence.publication, headOid: summary.headSha },
     ownershipMarkerRequired: evidence.ownershipMarkerRequired,
     ...(expectedReference ? { expectedReference } : {}),
   });
@@ -77,12 +81,13 @@ export async function findOwnedImplementationPullRequest(input: {
     );
   return {
     ...input.evidence,
+    publication: { ...publication, headOid: validated.summary.headSha },
     reference: validated.reference,
     url: validated.url,
   };
 }
 
-/** Proves the saved publication against host identity and the freshly fetched target. */
+/** Reconciles the owned PR with the host and freshly fetched merge target. */
 export async function reconcileImplementationPullRequest(input: {
   host: PullRequestHost;
   issueNumber: number;
@@ -130,7 +135,8 @@ export async function reconcileImplementationPullRequest(input: {
       return { kind: "blocked", reason: error.message };
     throw error;
   }
-  if (summary.status === "open") return { kind: "open" };
+  if (summary.status === "open")
+    return { kind: "open", headOid: summary.headSha };
   if (summary.status === "closed-unmerged")
     return { kind: "blocked", reason: "saved PR is closed without a merge" };
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(summary.mergeCommit))

@@ -84,7 +84,8 @@ export async function reconcilePlanningWorkspaceReady(
     saved: current.workspace,
   };
   try {
-    return await input.workspaces.resume(ownership);
+    const resumed = await input.workspaces.resume(ownership);
+    if (resumed.headOid === current.workspace.headOid) return resumed;
   } catch (error) {
     if (
       !(error instanceof PlanningWorkspaceConflictError) ||
@@ -104,11 +105,19 @@ export async function reconcilePlanningWorkspaceReady(
     saved: { ...current.workspace, headOid: observed.headOid },
   };
   const live = await input.workspaces.resume(liveOwnership);
+  if (live.headOid !== observed.headOid)
+    throw new PlanningWorkspaceConflictError(
+      "head-oid-mismatch",
+      current.workspace.identity,
+    );
   if (kind !== undefined && !live.clean)
     throw new PlanningPublicationGitError("status", "dirty-workspace");
   try {
     await input.git.assertAncestor({
-      ancestorOid: current.workspace.headOid,
+      ancestorOid:
+        kind === undefined && current.kind === "implementation"
+          ? current.base.baseOid
+          : current.workspace.headOid,
       descendantOid: observed.headOid,
     });
   } catch (error) {
@@ -132,6 +141,11 @@ export async function reconcilePlanningWorkspaceReady(
       : await recoverArtifact(input, kind, observed.headOid);
   // Re-prove ownership, registration, exact HEAD, and status at the checkpoint edge.
   const verified = await input.workspaces.resume(liveOwnership);
+  if (verified.headOid !== observed.headOid)
+    throw new PlanningWorkspaceConflictError(
+      "head-oid-mismatch",
+      current.workspace.identity,
+    );
   if (kind !== undefined && !verified.clean)
     throw new PlanningPublicationGitError("status", "dirty-workspace");
   await input.checkpoint(next);

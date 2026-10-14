@@ -75,6 +75,59 @@ test("prepares at exact pinned OID and resumes saved ownership without mutation"
       ),
   );
 });
+test("implementation resume preserves a changed head without Git mutation", async () => {
+  const head = "b".repeat(40);
+  const calls: string[][] = [];
+  const git = new PlanningWorkspaceGit({
+    repoRoot: "/repo",
+    worktreeRoot: "/repo/.worktrees",
+    runner: {
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "worktree")
+          return {
+            code: 0,
+            stdout: `worktree /repo/.worktrees/topic\0HEAD ${head}\0branch refs/heads/topic\0\0`,
+            stderr: "",
+          };
+        if (args[0] === "rev-parse")
+          return {
+            code: 0,
+            stdout: args[2]?.startsWith("refs/heads/") ? head : oid,
+            stderr: "",
+          };
+        return { code: 0, stdout: "", stderr: "" };
+      },
+    },
+  });
+  const saved = {
+    runId: "123e4567-e89b-42d3-a456-426614174000",
+    phase: "implementation" as const,
+    identity,
+    remote: base.remote,
+    baseBranch: base.baseBranch,
+    baseOid: oid,
+    headOid: oid,
+    cleanup: { state: "ready" as const },
+  };
+  const resumed = await git.resume({
+    runId: saved.runId,
+    phase: "implementation",
+    identity,
+    base,
+    saved,
+  });
+  assert.equal(resumed.headOid, head);
+  assert.ok(
+    calls.every(
+      (args) =>
+        ["rev-parse", "show-ref"].includes(args[0]!) ||
+        args.includes("status") ||
+        (args[0] === "worktree" && args[1] === "list"),
+    ),
+  );
+});
+
 test("invalid prepare evidence is rejected before any Git command", async () => {
   const calls: string[][] = [];
   const git = new PlanningWorkspaceGit({

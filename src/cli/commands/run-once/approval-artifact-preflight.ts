@@ -153,11 +153,9 @@ async function branchSavedArtifact(input: {
   const type = await options.runner.run("git", ["cat-file", "-t", object], {
     cwd: options.config.repoRoot,
   });
-  if (type.code === 1 || type.code === 128) {
-    throw new PlanningArtifactSafetyError(
-      `Saved ${kind} ${path} does not exist on issue branch ${options.artifactWorkspace.branch}`,
-    );
-  }
+  // Saved artifacts may resolve from the repository or a published source
+  // without being committed on the issue branch.
+  if (type.code === 1 || type.code === 128) return undefined;
   if (type.code !== 0) {
     throw new PlanningArtifactSafetyError(
       `git cat-file failed while resolving saved ${kind} ${path} from ${options.artifactWorkspace.branch}`,

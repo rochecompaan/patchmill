@@ -59,7 +59,7 @@ test("older legacy PR needs exact URL, branch, issue and saved head proof before
   assert.equal(result.kind, "open");
   assert.equal(result.evidence.ownershipMarkerRequired, false);
   for (const invalid of [
-    { ...pull, headSha: "c".repeat(40) },
+    { ...pull, headSha: "invalid" },
     { ...pull, headBranch: "agent/issue-227" },
     { ...pull, body: "Closes #227" },
   ]) {
@@ -69,6 +69,16 @@ test("older legacy PR needs exact URL, branch, issue and saved head proof before
     );
   }
 });
+test("legacy discovery refreshes an advanced head without changing PR identity", async () => {
+  const result = await reconcileLegacyImplementationPr(
+    input({ ...pull, headSha: "c".repeat(40) }),
+  );
+  assert.equal(result.kind, "open");
+  if (result.kind !== "open") assert.fail("the owned PR must remain resumable");
+  assert.equal(result.evidence.url, url);
+  assert.equal(result.evidence.publication.headOid, "c".repeat(40));
+});
+
 test("only host merge proof authorizes legacy completion and retains the saved PR", async () => {
   const result = await reconcileLegacyImplementationPr(
     input({ ...pull, status: "merged", mergeCommit: "c".repeat(40) }),

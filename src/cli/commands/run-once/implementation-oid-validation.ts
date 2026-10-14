@@ -15,7 +15,7 @@ export const IMPLEMENTATION_OID_FORMAT =
 export class ImplementationOidValidationError extends Error {
   readonly context: ImplementationOidContext;
   readonly field: string;
-  readonly index?: number;
+  readonly index: number | undefined;
   readonly requiredFormat = IMPLEMENTATION_OID_FORMAT;
 
   constructor(location: ImplementationOidLocation, options?: ErrorOptions) {

@@ -145,7 +145,10 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
       );
     }
     const snapshot = await this.repository.inspect(input.identity);
-    if (snapshot.state !== "ready" || snapshot.headOid !== saved.headOid) {
+    if (
+      snapshot.state !== "ready" ||
+      (input.phase !== "implementation" && snapshot.headOid !== saved.headOid)
+    ) {
       throw new PlanningWorkspaceConflictError(
         "head-oid-mismatch",
         input.identity,

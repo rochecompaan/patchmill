@@ -71,6 +71,13 @@ path and commit, including custom artifact directories. Recovery preserves prior
 evidence, the todo root, and todos. Failed proof or checkpoint stops before
 later agents or publication. The normal review gates still apply.
 
+An owned implementation workspace can advance after its saved checks. If its
+local or open pull request head changes, Patchmill invalidates those checks and
+runs fresh implementation and review work. It keeps the owned workspace and
+reconciles the same implementation pull request. See
+[implementation head changes](/using-patchmill/run-once/#implementation-head-changes)
+for recovery steps and limits.
+
 `review-pending` and supported `stopped` results are exit-zero nonfailure
 results. Patchmill no longer returns the public `cleanup-pending` result.
 Same-issue contention reports `issue already in progress.` without repair

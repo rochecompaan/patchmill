@@ -29,6 +29,10 @@ default for meaningful behavior and use direct verification for static docs,
 workflow YAML, lockfiles, dependency versions, and similar low-value-test
 changes.
 
+See [Workflow conventions](/using-patchmill/workflow-conventions/) for the
+artifact filenames and workspace names that these prompts and skills must
+preserve.
+
 For unattended Run-once planning, the prompt identifies dedicated, same-phase,
 merged-base, or implementation-carried review context. The agent edits, commits,
 and self-reviews only the requested artifact in its phase workspace; Run-once

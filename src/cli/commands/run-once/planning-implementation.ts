@@ -32,6 +32,7 @@ import {
   validatePlanningImplementation,
 } from "./planning-implementation-validation.ts";
 import { recoverPostAgentWorkspace } from "./planning-implementation-workspace-recovery.ts";
+import { changedImplementationPublication } from "./planning-implementation-revalidation.ts";
 import {
   blockedAgentWorkspaceFailure,
   developmentEnvironmentWorkspaceFailure,
@@ -101,7 +102,7 @@ export type PlanningImplementationInput = {
   now?: () => Date;
 };
 
-/** Runs the implementation agent only once, then durably validates its PR. */
+/** Runs the implementation agent and durably validates the current PR head. */
 export async function runPlanningImplementation(
   input: PlanningImplementationInput,
 ): Promise<PlanningImplementationOutcome> {
@@ -121,6 +122,13 @@ export async function runPlanningImplementation(
   let phase = state.phases[input.phaseIndex];
   if (phase?.kind !== "implementation")
     throw new RangeError("Invalid implementation phase");
+  if (phase.status === "branch-pushed") {
+    const changed = await changedImplementationPublication(input, phase);
+    if (changed) {
+      state = await replace(state, changed);
+      phase = changed;
+    }
+  }
   if (phase.status === "workspace-ready") {
     if (
       input.configuredGit.remote !== phase.workspace.remote ||

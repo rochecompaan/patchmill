@@ -22,6 +22,7 @@ import {
   successfulImplementationFromState,
 } from "./pipeline-lifecycle.ts";
 import { runPipelineFinishStage } from "./pipeline-finish.ts";
+import { implementationChecksChanged } from "./planning-implementation-revalidation.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
 import { repositoryMutationContext } from "./repository-mutation-context.ts";
 import type {
@@ -162,6 +163,48 @@ export async function resumeLegacyPublishedPr(input: {
           ),
         );
     }
+  }
+  const savedHead =
+    input.state.implementationPr?.publication.headOid ??
+    input.state.commits?.at(-1);
+  if (
+    result.kind === "open" &&
+    (await implementationChecksChanged({
+      runner,
+      repoRoot: config.repoRoot,
+      branch: state.branch!,
+      savedHeadOid: savedHead,
+      remoteHeadOid: result.headOid,
+    }))
+  ) {
+    const {
+      implementationCompleted: _implemented,
+      prCostSummaryUpdated: _cost,
+      visualEvidenceValidated: _visual,
+      handoffCommentPosted: _handoff,
+      doneLabelEnsured: _doneEnsured,
+      doneLabelApplied: _doneApplied,
+      cleanupHookCompleted: _hook,
+      worktreeRemoved: _worktree,
+      branchRemoved: _branch,
+      ...checkpoints
+    } = state.checkpoints ?? {};
+    await writeRunState(
+      config.runStateDir,
+      {
+        issueNumber: issue.number,
+        status: "implementing",
+        branch: state.branch,
+        worktreePath: state.worktreePath,
+        todoRoot: state.todoRoot,
+        prUrl: result.evidence.url,
+        implementationPr: result.evidence,
+        checkpoints,
+        resetCheckpoints: true,
+        clearLastError: true,
+      },
+      lease,
+    );
   }
   state = await writeRunState(
     config.runStateDir,

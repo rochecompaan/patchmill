@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { assertImplementationRevalidation } from "./planning-state-implementation-revalidation.ts";
 import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
 import type {
   BranchPushedPlanningPhase,
@@ -287,6 +288,7 @@ export function assertPlanningPhaseReplacement(
   next: PlanningPhaseStateV1,
   index: number,
 ): void {
+  if (assertImplementationRevalidation(current, next, index)) return;
   const from = phaseName(current);
   const to = phaseName(next);
   if (!allowed[from].includes(to)) fail("invalid-transition", index, ".status");

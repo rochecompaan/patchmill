@@ -40,7 +40,7 @@ export type PostAgentWorkspaceRecoveryInput = Readonly<{
   ) => Promise<PlanningStateV1>;
 }>;
 
-/** Adopts only a clean workspace head proven to descend from saved evidence. */
+/** Adopts clean progress on the saved base; head changes require fresh checks. */
 export async function recoverPostAgentWorkspace(
   input: PostAgentWorkspaceRecoveryInput,
 ): Promise<UnsafeWorkspaceRecovery | SafeWorkspaceRecovery> {
@@ -76,7 +76,7 @@ export async function recoverPostAgentWorkspace(
     };
   try {
     await input.git.assertAncestor({
-      ancestorOid: input.phase.workspace.headOid,
+      ancestorOid: input.phase.base.baseOid,
       descendantOid: workspace.headOid,
     });
   } catch (error) {

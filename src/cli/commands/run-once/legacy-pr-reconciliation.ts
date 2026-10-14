@@ -86,5 +86,10 @@ export async function reconcileLegacyImplementationPr(input: {
       kind: "blocked",
       reason: "Saved merge proof conflicts with the host PR",
     };
+  if (result.kind === "open")
+    evidence = {
+      ...evidence,
+      publication: { ...evidence.publication, headOid: result.headOid },
+    };
   return { ...result, evidence };
 }
