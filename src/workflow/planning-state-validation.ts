@@ -1,4 +1,5 @@
 import { assertRevalidationWorkspace } from "./planning-state-revalidation-codec.ts";
+import { implementationPublicationMatchesWorkspace } from "./planning-state-implementation-merge.ts";
 import type { PlanningWorkspaceOwnership } from "../git/planning-workspaces.ts";
 import { pullRequestUrlMatchesReference } from "../host/pull-request-reference.ts";
 import {
@@ -475,13 +476,9 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
       "publication" in item &&
       (item.publication.baseBranch !== item.base.baseBranch ||
         item.publication.headBranch !== item.workspace.identity.branch ||
-        (item.publication.headOid !== item.workspace.headOid &&
-          !(
-            item.kind === "implementation" &&
-            "merge" in item &&
-            item.merge !== undefined &&
-            item.observedHeadOid === item.workspace.headOid
-          )))
+        (item.kind === "implementation" && "merge" in item
+          ? !implementationPublicationMatchesWorkspace(item)
+          : item.publication.headOid !== item.workspace.headOid))
     )
       fail("publication-mismatch", `${path}.publication`);
     if (

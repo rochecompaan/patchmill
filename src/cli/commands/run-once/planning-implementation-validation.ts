@@ -6,6 +6,7 @@ import {
   type PullRequestHost,
 } from "../../../host/pull-requests.ts";
 import { parseCanonicalPullRequestUrl } from "../../../host/pull-request-reference.ts";
+import { implementationRecoveryPullRequest } from "../../../workflow/planning-state-implementation-revalidation.ts";
 import { assertImplementationClosingReference } from "../../../workflow/planning-implementation-body.ts";
 import {
   assertPlanningImplementationAncestry,
@@ -216,13 +217,17 @@ export async function validatePlanningImplementation(
       observed: [`url=${phase.implementation.prUrl}`],
     });
   const { number } = canonical.reference;
+  const expectedPullRequest = phase.revalidation
+    ? implementationRecoveryPullRequest(phase.revalidation)
+    : undefined;
+  if (phase.revalidation && !expectedPullRequest) fail("url");
   if (
-    phase.revalidation?.pullRequest &&
-    (number !== phase.revalidation.pullRequest.reference.number ||
-      canonical.url !== phase.revalidation.pullRequest.url)
+    expectedPullRequest &&
+    (number !== expectedPullRequest.reference.number ||
+      canonical.url !== expectedPullRequest.url)
   )
     fail("url", {
-      expected: [phase.revalidation.pullRequest.url],
+      expected: [expectedPullRequest.url],
       observed: [canonical.url],
     });
   let validated: ReturnType<typeof validatePlanningPullRequestSummary>;
@@ -239,7 +244,7 @@ export async function validatePlanningImplementation(
       issueNumber: input.state.issueNumber,
       phase: "implementation",
       publication: phase.publication,
-      expectedReference: phase.revalidation?.pullRequest?.reference ?? {
+      expectedReference: expectedPullRequest?.reference ?? {
         targetRepository,
         number,
       },

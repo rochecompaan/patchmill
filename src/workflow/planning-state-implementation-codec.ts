@@ -3,6 +3,7 @@ import {
   assertRevalidationWorkspace,
 } from "./planning-state-revalidation-codec.ts";
 import type { PlanningWorkspaceOwnership } from "../git/planning-workspaces.ts";
+import { implementationPublicationMatchesWorkspace } from "./planning-state-implementation-merge.ts";
 import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
@@ -386,14 +387,23 @@ export function implementationPhaseState(
       parsed.implementation,
       `${path}.implementation`,
     );
+    const observedHeadOid =
+      parsed.observedHeadOid === undefined
+        ? undefined
+        : oid(parsed.observedHeadOid, `${path}.observedHeadOid`);
+    const merge =
+      parsed.merge === undefined
+        ? undefined
+        : implementationMerge(parsed.merge, `${path}.merge`);
     if (
       evidence.branch !== workspaceEvidence.identity.branch ||
       evidence.prUrl !== pullRequestEvidence.url ||
-      (publicationEvidence.headOid !== workspaceEvidence.headOid &&
-        !(
-          parsed.merge !== undefined &&
-          parsed.observedHeadOid === workspaceEvidence.headOid
-        ))
+      !implementationPublicationMatchesWorkspace({
+        publication: publicationEvidence,
+        workspace: workspaceEvidence,
+        observedHeadOid,
+        merge,
+      })
     )
       failState("implementation-mismatch", `${path}.implementation`);
     return {
@@ -406,17 +416,8 @@ export function implementationPhaseState(
       pullRequest: pullRequestEvidence,
       implementation: evidence,
       finish: implementationFinish(parsed.finish, `${path}.finish`),
-      ...(parsed.observedHeadOid === undefined
-        ? {}
-        : {
-            observedHeadOid: oid(
-              parsed.observedHeadOid,
-              `${path}.observedHeadOid`,
-            ),
-          }),
-      ...(parsed.merge === undefined
-        ? {}
-        : { merge: implementationMerge(parsed.merge, `${path}.merge`) }),
+      ...(observedHeadOid === undefined ? {} : { observedHeadOid }),
+      ...(merge === undefined ? {} : { merge }),
     };
   }
   if (status !== "complete") failState("invalid-status", `${path}.status`);
@@ -463,15 +464,24 @@ export function implementationPhaseState(
     `${path}.implementation`,
   );
   const finish = implementationFinish(parsed.finish, `${path}.finish`);
+  const observedHeadOid =
+    parsed.observedHeadOid === undefined
+      ? undefined
+      : oid(parsed.observedHeadOid, `${path}.observedHeadOid`);
+  const merge =
+    parsed.merge === undefined
+      ? undefined
+      : implementationMerge(parsed.merge, `${path}.merge`);
   if (
     workspaceEvidence.cleanup.state !== "removed" ||
     evidence.branch !== workspaceEvidence.identity.branch ||
     evidence.prUrl !== pullRequestEvidence.url ||
-    (publicationEvidence.headOid !== workspaceEvidence.headOid &&
-      !(
-        parsed.merge !== undefined &&
-        parsed.observedHeadOid === workspaceEvidence.headOid
-      )) ||
+    !implementationPublicationMatchesWorkspace({
+      publication: publicationEvidence,
+      workspace: workspaceEvidence,
+      observedHeadOid,
+      merge,
+    }) ||
     !planningImplementationFinishCheckpointKeys.every(
       (checkpoint) => finish[checkpoint] === true,
     )
@@ -487,25 +497,29 @@ export function implementationPhaseState(
     pullRequest: pullRequestEvidence,
     implementation: evidence,
     finish: finish as Required<PlanningImplementationFinishCheckpoints>,
-    ...(parsed.observedHeadOid === undefined
-      ? {}
-      : {
-          observedHeadOid: oid(
-            parsed.observedHeadOid,
-            `${path}.observedHeadOid`,
-          ),
-        }),
+    ...(observedHeadOid === undefined ? {} : { observedHeadOid }),
     completion: { kind: "implementation-pull-request" },
-    ...(parsed.merge === undefined
-      ? {}
-      : { merge: implementationMerge(parsed.merge, `${path}.merge`) }),
+    ...(merge === undefined ? {} : { merge }),
   };
 }
 
 function implementationMerge(value: unknown, path: string) {
-  const parsed = object(value, ["mergeOid", "mergedBaseOid"], path);
+  const parsed = objectWithOptionalKeys(
+    value,
+    ["mergeOid", "mergedBaseOid"],
+    ["workspaceHeadOid"],
+    path,
+  );
   return {
     mergeOid: oid(parsed.mergeOid, `${path}.mergeOid`),
     mergedBaseOid: oid(parsed.mergedBaseOid, `${path}.mergedBaseOid`),
+    ...(parsed.workspaceHeadOid === undefined
+      ? {}
+      : {
+          workspaceHeadOid: oid(
+            parsed.workspaceHeadOid,
+            `${path}.workspaceHeadOid`,
+          ),
+        }),
   };
 }

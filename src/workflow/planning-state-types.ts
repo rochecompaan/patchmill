@@ -165,6 +165,12 @@ export type ImplementationBranchPushedPlanningPhase = Readonly<{
   publication: PlanningPublicationEvidence;
   implementation: PlanningImplementationAgentEvidence;
 }>;
+export type PlanningImplementationMergeEvidence = Readonly<{
+  mergeOid: string;
+  mergedBaseOid: string;
+  /** Saved workspace revision independently proved to be included in the merged PR head. */
+  workspaceHeadOid?: string;
+}>;
 export type ImplementationPullRequestOpenPlanningPhase = Readonly<{
   kind: "implementation";
   status: "pull-request-open";
@@ -176,7 +182,7 @@ export type ImplementationPullRequestOpenPlanningPhase = Readonly<{
   implementation: PlanningImplementationAgentEvidence;
   finish: PlanningImplementationFinishCheckpoints;
   observedHeadOid?: string;
-  merge?: Readonly<{ mergeOid: string; mergedBaseOid: string }>;
+  merge?: PlanningImplementationMergeEvidence;
 }>;
 export type ImplementationCompletePlanningPhase = Readonly<{
   kind: "implementation";
@@ -194,7 +200,7 @@ export type ImplementationCompletePlanningPhase = Readonly<{
   observedHeadOid?: string;
   completion: Readonly<{ kind: "implementation-pull-request" }>;
   /** Absent only in older, unverified completion checkpoints. */
-  merge?: Readonly<{ mergeOid: string; mergedBaseOid: string }>;
+  merge?: PlanningImplementationMergeEvidence;
 }>;
 export type PlanningPhaseStateV1 =
   | Readonly<{ kind: PlanningPhaseKind; status: "pending" }>

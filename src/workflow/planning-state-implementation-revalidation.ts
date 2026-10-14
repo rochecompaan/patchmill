@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { parseCanonicalPullRequestUrl } from "../host/pull-request-reference.ts";
 import type {
   PlanningPhaseStateV1,
   PlanningWorkspaceEvidence,
@@ -6,8 +7,22 @@ import type {
   ImplementationRevalidationPendingPlanningPhase,
   ImplementationPullRequestOpenPlanningPhase,
   PlanningImplementationRevalidationEvidence,
+  PlanningPullRequestEvidence,
 } from "./planning-state-types.ts";
 import { PlanningStateValidationError } from "./planning-state-validation.ts";
+
+/** Branch-pushed checkpoints retain the PR URL before its explicit reference is validated. */
+export function implementationRecoveryPullRequest(
+  receipt: PlanningImplementationRevalidationEvidence,
+): PlanningPullRequestEvidence | undefined {
+  return (
+    receipt.pullRequest ??
+    parseCanonicalPullRequestUrl(
+      receipt.implementation.prUrl,
+      receipt.publication.targetRepository,
+    )
+  );
+}
 
 function identity(workspace: PlanningWorkspaceEvidence) {
   const { headOid: _head, cleanup: _cleanup, ...stable } = workspace;
@@ -125,8 +140,11 @@ export function assertImplementationRevalidation(
       current.status === "branch-pushed" &&
       next.status === "pull-request-open"
     ) {
-      if (current.revalidation.pullRequest)
-        same(current.revalidation.pullRequest, next.pullRequest);
+      const expectedPullRequest = implementationRecoveryPullRequest(
+        current.revalidation,
+      );
+      if (!expectedPullRequest) fail();
+      same(expectedPullRequest, next.pullRequest);
       const { headOid: _priorHead, ...priorIdentity } =
         current.revalidation.publication;
       const { headOid: _newHead, ...newIdentity } = next.publication;

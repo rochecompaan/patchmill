@@ -322,15 +322,15 @@ GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 node --test \
 
 ## Final verification and PR update
 
-- [ ] Run `npm test`, `npm run check:types`, `npm run lint`, `npm run build`,
+- [x] Run `npm test`, `npm run check:types`, `npm run lint`, `npm run build`,
       `npm run check:architecture`, and `git diff --check`. Require successful
       exits.
-- [ ] Review the complete diff against
+- [x] Review the complete diff against
       `221441ce7c9fa0b0461c7a170e6b18b453a8961c`. Recheck every todo acceptance
       criterion, execution ordering, and truthfulness of historical evidence.
       Use the canonical `reviewer` if the chosen execution method authorizes
       independent review.
-- [ ] Address findings and rerun the affected checks. Do not close todos based
+- [x] Address findings and rerun the affected checks. Do not close todos based
       only on an implementation report.
 - [ ] Commit these documents and the plan's completed checkboxes.
 - [ ] Push with
@@ -348,3 +348,29 @@ Review Focus cases have explicit regression tests in their owning tasks.
 
 The starting branch passes `npm test`. No production changes or fixes are part
 of this planning checkpoint.
+
+## Final implementation evidence
+
+The independent review reported two Important findings and no Critical or Minor
+findings. Both reproductions failed before their fixes. Recovery now derives a
+missing saved PR reference from its canonical URL for agent handoff and
+independent validation. Late merges retain checked A, prepared workspace B, and
+observed C after proving B is in C's Git history. Real-Git regressions cover
+normal and squash merges, rewritten history, and dirty local work.
+
+All nine added review regressions pass. The full npm test script, run directly
+with Node's `--test-concurrency=4` before its file arguments, passes 2,478
+tests. Dependency and contract checks, type checks, lint, build, architecture
+checks, and `git diff --check` pass. Dependency files remain unchanged, so no
+mandatory Nix rebuild applies. These documents use formatting and Markdown lint
+rather than new text-assertion tests.
+
+### Rulings
+
+- Prove B's inclusion in merged PR head C, not ancestry in the target merge
+  commit. Squash merges preserve PR contents but not source commit ancestry. If
+  the source head cannot be proved locally, retain the workspace and block
+  cleanup. Cost if wrong: a valid merge can require manual recovery.
+- Leave unchanged detached-Git shutdown timing outside this fix. Run the full
+  test script at concurrency 4 without changing its deadlines or assertions.
+  Cost if wrong: shutdown delays under heavier contention remain unfixed.

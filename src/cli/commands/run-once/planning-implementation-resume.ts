@@ -2,9 +2,10 @@ import type {
   ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
 } from "../../../workflow/planning-state-types.ts";
-import { parseCanonicalPullRequestUrl } from "../../../host/pull-request-reference.ts";
+import { implementationRecoveryPullRequest } from "../../../workflow/planning-state-implementation-revalidation.ts";
 import { reconcileImplementationPullRequest } from "../../../workflow/implementation-pr-reconciliation.ts";
 import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
+import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import {
   changedImplementationPublication,
   invalidateImplementationChecks,
@@ -94,12 +95,7 @@ export async function preparePlanningImplementationRevalidation(
     return { kind: "advanced", state };
   const receipt = phase.revalidation;
   const savedBase = phase.base;
-  const pullRequest =
-    receipt.pullRequest ??
-    parseCanonicalPullRequestUrl(
-      receipt.implementation.prUrl,
-      receipt.publication.targetRepository,
-    );
+  const pullRequest = implementationRecoveryPullRequest(receipt);
   const fail = (reason: string): PlanningPhaseRunnerOutcome => ({
     kind: "blocked",
     state,
@@ -133,6 +129,28 @@ export async function preparePlanningImplementationRevalidation(
   });
   if (observed.kind === "blocked") return fail(observed.reason);
   if (observed.kind === "merged") {
+    const workspaceHeadOid =
+      phase.workspace.headOid !== receipt.publication.headOid &&
+      phase.workspace.headOid !== observed.headOid
+        ? phase.workspace.headOid
+        : undefined;
+    if (workspaceHeadOid !== undefined) {
+      try {
+        await input.publicationGit.assertAncestor({
+          ancestorOid: workspaceHeadOid,
+          descendantOid: observed.headOid,
+        });
+      } catch (error) {
+        if (
+          error instanceof PlanningPublicationGitError &&
+          error.reason === "not-ancestor"
+        )
+          return fail(
+            "Prepared implementation workspace is absent from the verified merged PR head",
+          );
+        throw error;
+      }
+    }
     state = await replacePhase(input, state, {
       kind: "implementation",
       status: "pull-request-open",
@@ -147,6 +165,7 @@ export async function preparePlanningImplementationRevalidation(
       merge: {
         mergeOid: observed.mergeOid,
         mergedBaseOid: observed.mergedBaseOid,
+        ...(workspaceHeadOid === undefined ? {} : { workspaceHeadOid }),
       },
     });
     return { kind: "advanced", state };

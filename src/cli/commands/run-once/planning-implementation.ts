@@ -11,6 +11,7 @@ import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull
 import type { PlanningIssueLock } from "../../../workflow/planning-issue-lock.ts";
 import { PlanningStateValidationError } from "../../../workflow/planning-state.ts";
 import { replacePlanningPhase } from "../../../workflow/planning-phase-replacement.ts";
+import { implementationRecoveryPullRequest } from "../../../workflow/planning-state-implementation-revalidation.ts";
 import type { PlanningStateStore } from "../../../workflow/planning-state-store.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
@@ -146,9 +147,15 @@ export async function runPlanningImplementation(
       state = await replace(state, phase);
     }
     let existingPullRequest: ImplementationPrEvidence | undefined;
-    if (phase.revalidation?.pullRequest) {
+    if (phase.revalidation) {
+      const pullRequest = implementationRecoveryPullRequest(phase.revalidation);
+      if (!pullRequest)
+        throw new PlanningStateValidationError(
+          "pull-request-mismatch",
+          `$.phases[${input.phaseIndex}].revalidation.implementation.prUrl`,
+        );
       existingPullRequest = {
-        ...phase.revalidation.pullRequest,
+        ...pullRequest,
         publication: phase.revalidation.publication,
         ownershipMarkerRequired: true,
       };

@@ -93,7 +93,10 @@ artifact and stop before agent execution.
 Add an implementation-only `revalidation-pending` phase. It retains the saved
 workspace and prior publication evidence while fresh work is required. Carry
 that prior evidence into the next `workspace-ready` and `branch-pushed`
-checkpoints until independent validation succeeds for the same PR.
+checkpoints until independent validation succeeds for the same PR. If a
+`branch-pushed` receipt has only a PR URL, resolve its canonical reference for
+both agent handoff and independent validation. Restoring a workspace must not
+allow an agent to replace that PR.
 
 Use a focused recovery helper from the outer phase runner. Extend the workspace
 lifecycle's existing `resume` input with an optional restoration head. The Git
@@ -115,6 +118,16 @@ their checked revision from the saved publication head, not a new observation.
 Both open and merged PR reconciliation return `headOid`. The completion result
 exposes the checked and observed heads. If they differ, its validation and
 review presentation explicitly identifies the saved evidence as historical.
+
+A late merge can have three distinct revisions: checked A, prepared workspace B,
+and merged PR head C. Before recording this transition, prove that B is in C's
+Git history and verify the PR merge in the fetched target. Record B in optional
+`merge.workspaceHeadOid`. Retain A's receipt, B's workspace head, and observed
+C.
+
+This proof also supports squash merges, which combine PR changes into one
+commit. Cleanup must still reject new dirty content or a changed local head. If
+B's inclusion cannot be proved, retain the workspace and block cleanup.
 
 ### Artifact selection
 
