@@ -32,15 +32,29 @@ export function durableImplementationResult(
     | ImplementationPullRequestOpenPlanningPhase
     | ImplementationCompletePlanningPhase,
 ): AgentIssuePrCreatedResult {
+  const checkedHeadOid =
+    phase.implementation.checkedHeadOid ?? phase.publication.headOid;
+  const observedHeadOid = phase.observedHeadOid ?? phase.publication.headOid;
+  const historical = checkedHeadOid !== observedHeadOid;
   return {
     status: "pr-created",
+    checkedHeadOid,
+    observedHeadOid,
     prUrl: phase.pullRequest.url,
     branch: phase.implementation.branch,
     commits: [...phase.implementation.commits],
-    validation: [...phase.implementation.validation],
+    validation: phase.implementation.validation.map((entry) =>
+      historical
+        ? `Historical checks for ${checkedHeadOid} (observed PR head ${observedHeadOid}): ${entry}`
+        : entry,
+    ),
     ...(phase.implementation.reviewSummary === undefined
       ? {}
-      : { reviewSummary: phase.implementation.reviewSummary }),
+      : {
+          reviewSummary: historical
+            ? `Historical review for ${checkedHeadOid} (observed PR head ${observedHeadOid}): ${phase.implementation.reviewSummary}`
+            : phase.implementation.reviewSummary,
+        }),
     ...(phase.implementation.landingDecision === undefined
       ? {}
       : { landingDecision: phase.implementation.landingDecision }),

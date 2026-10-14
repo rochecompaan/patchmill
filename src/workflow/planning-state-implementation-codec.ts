@@ -101,7 +101,7 @@ export function implementationEvidence(value: unknown, path: string) {
   const parsed = objectWithOptionalKeys(
     value,
     ["status", "prUrl", "branch", "commits", "validation", "visualEvidence"],
-    ["reviewSummary", "landingDecision", "runCostReport"],
+    ["reviewSummary", "landingDecision", "runCostReport", "checkedHeadOid"],
     path,
   );
   if (parsed.status !== "pr-created")
@@ -117,6 +117,11 @@ export function implementationEvidence(value: unknown, path: string) {
     fail("expected-array", `${path}.visualEvidence`);
   return {
     status: "pr-created" as const,
+    ...(parsed.checkedHeadOid === undefined
+      ? {}
+      : {
+          checkedHeadOid: oid(parsed.checkedHeadOid, `${path}.checkedHeadOid`),
+        }),
     prUrl: safeUrl(parsed.prUrl, `${path}.prUrl`),
     branch: branch(parsed.branch, `${path}.branch`),
     commits: entries(parsed.commits, `${path}.commits`).map(
@@ -312,7 +317,7 @@ export function implementationPhaseState(
         "implementation",
         "finish",
       ],
-      ["merge"],
+      ["merge", "observedHeadOid"],
       path,
     );
     const workspaceEvidence = workspace(parsed.workspace, `${path}.workspace`);
@@ -344,6 +349,14 @@ export function implementationPhaseState(
       pullRequest: pullRequestEvidence,
       implementation: evidence,
       finish: implementationFinish(parsed.finish, `${path}.finish`),
+      ...(parsed.observedHeadOid === undefined
+        ? {}
+        : {
+            observedHeadOid: oid(
+              parsed.observedHeadOid,
+              `${path}.observedHeadOid`,
+            ),
+          }),
       ...(parsed.merge === undefined
         ? {}
         : { merge: implementationMerge(parsed.merge, `${path}.merge`) }),
@@ -370,7 +383,7 @@ export function implementationPhaseState(
           "finish",
           "completion",
         ],
-    ["merge"],
+    ["merge", "observedHeadOid"],
     path,
   );
   const terminal = object(parsed.completion, ["kind"], `${path}.completion`);
@@ -413,6 +426,14 @@ export function implementationPhaseState(
     pullRequest: pullRequestEvidence,
     implementation: evidence,
     finish: finish as Required<PlanningImplementationFinishCheckpoints>,
+    ...(parsed.observedHeadOid === undefined
+      ? {}
+      : {
+          observedHeadOid: oid(
+            parsed.observedHeadOid,
+            `${path}.observedHeadOid`,
+          ),
+        }),
     completion: { kind: "implementation-pull-request" },
     ...(parsed.merge === undefined
       ? {}

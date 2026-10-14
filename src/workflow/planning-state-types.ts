@@ -57,6 +57,8 @@ export type PlanningRunCostEvidence = Readonly<{
 }>;
 export type PlanningImplementationAgentEvidence = Readonly<{
   status: "pr-created";
+  /** Revision covered by the saved validation and review receipt. */
+  checkedHeadOid?: string;
   prUrl: string;
   branch: string;
   commits: readonly string[];
@@ -156,6 +158,7 @@ export type ImplementationPullRequestOpenPlanningPhase = Readonly<{
   pullRequest: PlanningPullRequestEvidence;
   implementation: PlanningImplementationAgentEvidence;
   finish: PlanningImplementationFinishCheckpoints;
+  observedHeadOid?: string;
   merge?: Readonly<{ mergeOid: string; mergedBaseOid: string }>;
 }>;
 export type ImplementationCompletePlanningPhase = Readonly<{
@@ -171,6 +174,7 @@ export type ImplementationCompletePlanningPhase = Readonly<{
   pullRequest: PlanningPullRequestEvidence;
   implementation: PlanningImplementationAgentEvidence;
   finish: Required<PlanningImplementationFinishCheckpoints>;
+  observedHeadOid?: string;
   completion: Readonly<{ kind: "implementation-pull-request" }>;
   /** Absent only in older, unverified completion checkpoints. */
   merge?: Readonly<{ mergeOid: string; mergedBaseOid: string }>;

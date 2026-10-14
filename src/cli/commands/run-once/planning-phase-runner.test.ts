@@ -1069,6 +1069,7 @@ test("returns verified terminal implementation result without rerunning implemen
     kind: "implementation",
     status: "complete",
     merge: { mergeOid: oid("c"), mergedBaseOid: oid("d") },
+    publication: { headOid: oid("a") },
     workspace,
     artifacts: [],
     pullRequest: { url: "https://example.test/pr/189" },
@@ -1122,6 +1123,8 @@ test("returns verified terminal implementation result without rerunning implemen
   assert.equal(result.kind, "complete");
   assert.deepEqual(result.result, {
     status: "merged",
+    checkedHeadOid: oid("a"),
+    observedHeadOid: oid("a"),
     mergeCommit: oid("c"),
     branch: workspace.identity.branch,
     commits: ["abc123"],

@@ -112,6 +112,7 @@ export async function finishPlanningImplementation(
   if (reconciliation.kind === "merged" && phase.merge === undefined) {
     phase = {
       ...phase,
+      observedHeadOid: reconciliation.headOid,
       merge: {
         mergeOid: reconciliation.mergeOid,
         mergedBaseOid: reconciliation.mergedBaseOid,

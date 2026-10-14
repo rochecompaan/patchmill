@@ -16,7 +16,7 @@ import {
 } from "./planning-implementation-body.ts";
 import {
   PlanningPullRequestValidationError,
-  validatePlanningPullRequestSummary,
+  validatePlanningPullRequestIdentity,
 } from "./planning-pull-request-validation.ts";
 import type { PlanningPublicationEvidence } from "./planning-state-types.ts";
 
@@ -28,7 +28,7 @@ export type ImplementationPrEvidence = {
 };
 export type ImplementationPrReconciliation =
   | { kind: "open"; headOid: string }
-  | { kind: "merged"; mergeOid: string; mergedBaseOid: string }
+  | { kind: "merged"; headOid: string; mergeOid: string; mergedBaseOid: string }
   | { kind: "blocked"; reason: string };
 export class ImplementationPrEvidenceError extends Error {
   constructor(reason: string) {
@@ -46,11 +46,11 @@ function validate(
     throw new PlanningPullRequestValidationError("head-oid");
   // The repository and branches identify the PR. Its current head is evidence
   // for fresh checks, not immutable ownership proof.
-  const validated = validatePlanningPullRequestSummary({
+  const validated = validatePlanningPullRequestIdentity({
     summary,
     issueNumber,
     phase: "implementation",
-    publication: { ...evidence.publication, headOid: summary.headSha },
+    publication: evidence.publication,
     ownershipMarkerRequired: evidence.ownershipMarkerRequired,
     ...(expectedReference ? { expectedReference } : {}),
   });
@@ -162,6 +162,7 @@ export async function reconcileImplementationPullRequest(input: {
   }
   return {
     kind: "merged",
+    headOid: summary.headSha,
     mergeOid: summary.mergeCommit,
     mergedBaseOid: baseOid,
   };

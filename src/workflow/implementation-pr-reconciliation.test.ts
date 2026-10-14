@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { PlanningPublicationGitError } from "../git/planning-publication-git.ts";
 import test from "node:test";
 import type {
   PullRequestHost,
@@ -90,6 +91,7 @@ test("merged implementation requires ancestry against the freshly pinned target"
   ]);
   assert.deepEqual(result, {
     kind: "merged",
+    headOid: "b".repeat(40),
     mergeOid: "c".repeat(40),
     mergedBaseOid: "d".repeat(40),
   });
@@ -98,6 +100,13 @@ test("merged implementation requires ancestry against the freshly pinned target"
 test("conflicting publication identity cannot authorize landing", async () => {
   for (const changed of [
     { ...summary, baseBranch: "other" },
+    { ...summary, headBranch: "other" },
+    { ...summary, body: "Closes #226" },
+    {
+      ...summary,
+      body: "<!-- patchmill:planning-pr-v1 issue=226 phase=implementation -->",
+    },
+    { ...summary, url: "https://github.com/test/repo/pull/18" },
     { ...summary, headSha: "invalid" },
     { ...summary, headRepository: { ...repository, repository: "other" } },
     { ...summary, body: "Closes #227" },
@@ -161,7 +170,12 @@ test("an advanced merged PR still needs host merge proof on the fresh target", a
       },
     },
   });
-  assert.equal(result.kind, "merged");
+  assert.deepEqual(result, {
+    kind: "merged",
+    headOid: "e".repeat(40),
+    mergeOid: "c".repeat(40),
+    mergedBaseOid: "d".repeat(40),
+  });
   assert.deepEqual(proofs, [
     { ancestorOid: "c".repeat(40), descendantOid: "d".repeat(40) },
   ]);
@@ -193,4 +207,19 @@ test("publication-crash discovery preserves one owned PR and rejects ambiguity",
     }),
     undefined,
   );
+});
+
+test("a host merge outside the fetched target remains blocked", async () => {
+  const result = await reconcileImplementationPullRequest({
+    host: host([{ ...summary, status: "merged", mergeCommit: "c".repeat(40) }]),
+    issueNumber: 226,
+    evidence,
+    fetchBase: async () => ({ baseOid: "d".repeat(40) }),
+    git: {
+      assertAncestor: async () => {
+        throw new PlanningPublicationGitError("ancestry", "not-ancestor");
+      },
+    },
+  });
+  assert.equal(result.kind, "blocked");
 });

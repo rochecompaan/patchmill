@@ -489,6 +489,11 @@ export async function runPlanningImplementation(
       status: "pull-request-open",
       publication: validated.publication,
       pullRequest: validated.pullRequest,
+      implementation: {
+        ...phase.implementation,
+        checkedHeadOid: validated.publication.headOid,
+      },
+      observedHeadOid: validated.publication.headOid,
       finish: {},
     });
     return { kind: "validated", state };

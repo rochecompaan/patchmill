@@ -127,6 +127,7 @@ function input(initial = state(), fail?: string) {
       lock: {} as never,
       reconcilePr: async () => ({
         kind: "merged" as const,
+        headOid: oid("b"),
         mergeOid: oid("c"),
         mergedBaseOid: oid("d"),
       }),

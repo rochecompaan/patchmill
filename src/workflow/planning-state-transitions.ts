@@ -350,7 +350,18 @@ export function assertPlanningPhaseReplacement(
     if (current.kind === "implementation") {
       if (!("implementation" in next))
         fail("invalid-transition", index, ".implementation");
-      same(current.implementation, next.implementation, index);
+      const { checkedHeadOid: currentChecked, ...currentReceipt } =
+        current.implementation;
+      const { checkedHeadOid: nextChecked, ...nextReceipt } =
+        next.implementation;
+      same(currentReceipt, nextReceipt, index);
+      if (
+        currentChecked !== nextChecked &&
+        (currentChecked !== undefined ||
+          next.status !== "pull-request-open" ||
+          nextChecked !== next.publication.headOid)
+      )
+        fail("immutable-evidence", index, ".implementation.checkedHeadOid");
       if (
         next.status === "pull-request-open" &&
         (Object.keys(next.finish).length || next.merge !== undefined)
@@ -377,7 +388,10 @@ export function assertPlanningPhaseReplacement(
       if (!("implementation" in next) || !("finish" in next))
         fail("invalid-transition", index, ".implementation");
       same(current.implementation, next.implementation, index);
-      if (current.merge !== undefined) same(current.merge, next.merge, index);
+      if (current.merge !== undefined) {
+        same(current.merge, next.merge, index);
+        same(current.observedHeadOid, next.observedHeadOid, index);
+      }
       const mergeAdded =
         current.merge === undefined && next.merge !== undefined;
       const finishAdvanced = assertImplementationFinish(
@@ -437,6 +451,7 @@ export function assertPlanningPhaseReplacement(
     if (current.merge === undefined || next.merge === undefined)
       fail("unverified-implementation-merge", index, ".merge");
     same(current.merge, next.merge, index);
+    same(current.observedHeadOid, next.observedHeadOid, index);
     return;
   }
   if (

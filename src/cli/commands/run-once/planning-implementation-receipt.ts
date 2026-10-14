@@ -156,6 +156,7 @@ export async function reconcileSavedPlanningImplementation(input: {
       ...(input.options.now ? { now: () => input.options.now! } : {}),
       phase: {
         ...current,
+        observedHeadOid: reconciliation.headOid,
         merge: {
           mergeOid: reconciliation.mergeOid,
           mergedBaseOid: reconciliation.mergedBaseOid,

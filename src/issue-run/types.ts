@@ -67,6 +67,8 @@ export type AgentIssueVisualEvidence = {
 };
 
 export type AgentIssuePrCreatedResult = {
+  checkedHeadOid?: string;
+  observedHeadOid?: string;
   status: "pr-created";
   prUrl: string;
   branch: string;
@@ -78,6 +80,8 @@ export type AgentIssuePrCreatedResult = {
 };
 
 export type AgentIssueMergedResult = {
+  checkedHeadOid?: string;
+  observedHeadOid?: string;
   status: "merged";
   branch: string;
   mergeCommit: string;
