@@ -1,3 +1,4 @@
+import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningRemoteBaseGit } from "../../../git/planning-remote-base.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
@@ -175,6 +176,7 @@ export function blocked(
 export async function runWorkspaceArtifacts(
   input: PlanningPhaseRunnerInput,
   state: PlanningStateV1,
+  durableState = state,
 ): Promise<
   | PlanningPhaseRunnerOutcome
   | { kind: "workspace-ready"; state: PlanningStateV1 }
@@ -182,19 +184,44 @@ export async function runWorkspaceArtifacts(
   const saved = state.phases[input.phaseIndex];
   if (saved?.status !== "workspace-ready")
     throw new RangeError("Planning phase workspace is not ready");
-  const workspace = await reconcilePlanningWorkspaceReady({
-    runId: state.runId,
-    issueNumber: state.issueNumber,
-    specsDir: input.config.specsDir,
-    plansDir: input.config.plansDir,
-    phase: input.phase,
-    current: saved,
-    git: input.publicationGit,
-    workspaces: input.workspaces,
-    checkpoint: async (next) => {
-      state = await replacePhase(input, state, next);
-    },
-  });
+  let workspace;
+  try {
+    workspace = await reconcilePlanningWorkspaceReady({
+      runId: state.runId,
+      issueNumber: state.issueNumber,
+      specsDir: input.config.specsDir,
+      plansDir: input.config.plansDir,
+      phase: input.phase,
+      current: saved,
+      git: input.publicationGit,
+      workspaces: input.workspaces,
+      checkpoint: async (next) => {
+        state = await replacePhase(input, state, next);
+      },
+    });
+  } catch (error) {
+    if (
+      !(error instanceof PlanningPublicationGitError) ||
+      error.reason !== "dirty-workspace"
+    )
+      throw error;
+    return {
+      kind: "blocked",
+      state: durableState,
+      result: blocked(
+        "planning-workspace-dirty",
+        runOnceFailure("planning-workspace-dirty", {
+          issueNumber: state.issueNumber,
+          status: "blocked",
+          phase: saved.kind,
+          branch: saved.workspace.identity.branch,
+          worktreePath: saved.workspace.identity.worktreePath,
+          workspaceState: "ready",
+          statusEvidence: "dirty",
+        }),
+      ),
+    };
+  }
   const current = state.phases[input.phaseIndex];
   if (current?.status !== "workspace-ready")
     throw new RangeError("Planning phase workspace is not ready");

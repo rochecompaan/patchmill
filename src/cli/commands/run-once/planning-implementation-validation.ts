@@ -216,6 +216,15 @@ export async function validatePlanningImplementation(
       observed: [`url=${phase.implementation.prUrl}`],
     });
   const { number } = canonical.reference;
+  if (
+    phase.revalidation?.pullRequest &&
+    (number !== phase.revalidation.pullRequest.reference.number ||
+      canonical.url !== phase.revalidation.pullRequest.url)
+  )
+    fail("url", {
+      expected: [phase.revalidation.pullRequest.url],
+      observed: [canonical.url],
+    });
   let validated: ReturnType<typeof validatePlanningPullRequestSummary>;
   let summary:
     | Awaited<ReturnType<PullRequestHost["getPullRequest"]>>
@@ -230,7 +239,10 @@ export async function validatePlanningImplementation(
       issueNumber: input.state.issueNumber,
       phase: "implementation",
       publication: phase.publication,
-      expectedReference: { targetRepository, number },
+      expectedReference: phase.revalidation?.pullRequest?.reference ?? {
+        targetRepository,
+        number,
+      },
     });
   } catch (error) {
     if (error instanceof PullRequestNotFoundError)

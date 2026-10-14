@@ -224,7 +224,10 @@ async function fixture(cleanup: "ready" | "legacy") {
         },
         issue: { number: 262, state: "open" } as never,
         lock: {} as never,
-        config: { remote: "origin" } as never,
+        config: {
+          remote: "origin",
+          workspaceIdentity: () => prepared.workspace.identity,
+        } as never,
         stateStore: {
           replace: async ({ next }: { next: PlanningStateV1 }) => {
             const valid = validatePlanningState(next);
@@ -389,9 +392,28 @@ for (const cleanup of ["ready", "legacy"] as const) {
         await readFile(join(setup.path, ".env"), "utf8"),
         ignoredBytes,
       );
-      assert.deepEqual(setup.state(), saved);
-      assert.deepEqual(setup.events, []);
-      assert.equal(setup.calls.length, 0);
+      const before = saved.phases[0];
+      const after = setup.state().phases[0];
+      if (
+        before?.kind !== "implementation" ||
+        before.status !== "pull-request-open" ||
+        after?.kind !== "implementation" ||
+        after.status !== "revalidation-pending"
+      )
+        assert.fail();
+      assert.deepEqual(after.workspace, before.workspace);
+      assert.deepEqual(after.revalidation.pullRequest, before.pullRequest);
+      assert.deepEqual(after.revalidation.publication, before.publication);
+      assert.deepEqual(
+        after.revalidation.implementation,
+        before.implementation,
+      );
+      assert.ok(
+        setup.events.every(
+          (event) => event === "remote" || event.startsWith("checkpoint:"),
+        ),
+      );
+      assert.ok(setup.calls.every((args) => args[0] === "ls-remote"));
     } finally {
       await setup.cleanup();
     }

@@ -1,3 +1,7 @@
+import {
+  implementationRevalidationEvidence,
+  assertRevalidationWorkspace,
+} from "./planning-state-revalidation-codec.ts";
 import type { PlanningWorkspaceOwnership } from "../git/planning-workspaces.ts";
 import { planningImplementationFinishCheckpointKeys } from "./planning-state-types.ts";
 import type {
@@ -5,6 +9,7 @@ import type {
   ImplementationCompletePlanningPhase,
   ImplementationPullRequestOpenPlanningPhase,
   ImplementationWorkspaceReadyPlanningPhase,
+  ImplementationRevalidationPendingPlanningPhase,
   PlanningArtifactEvidence,
   PlanningBaseEvidence,
   PlanningImplementationFinishCheckpoints,
@@ -233,6 +238,7 @@ export function implementationPhaseState(
   path: string,
   dependencies: PlanningImplementationPhaseCodecDependencies,
 ):
+  | ImplementationRevalidationPendingPlanningPhase
   | ImplementationWorkspaceReadyPlanningPhase
   | ImplementationBranchPushedPlanningPhase
   | ImplementationPullRequestOpenPlanningPhase
@@ -245,15 +251,60 @@ export function implementationPhaseState(
     pullRequest,
     workspace,
   } = dependencies;
-  if (status === "workspace-ready") {
+  const recovery = (parsed: Record<string, unknown>) =>
+    parsed.revalidation === undefined
+      ? {}
+      : {
+          revalidation: implementationRevalidationEvidence(
+            parsed.revalidation,
+            `${path}.revalidation`,
+            {
+              publication,
+              pullRequest,
+              implementationEvidence,
+              implementationFinish,
+              failState,
+            },
+          ),
+        };
+  if (status === "revalidation-pending") {
     const parsed = object(
       value,
+      ["kind", "status", "base", "workspace", "artifacts", "revalidation"],
+      path,
+    );
+    const result = {
+      kind: "implementation" as const,
+      status: "revalidation-pending" as const,
+      base: base(parsed.base, `${path}.base`),
+      workspace: workspace(parsed.workspace, `${path}.workspace`),
+      artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
+      revalidation: implementationRevalidationEvidence(
+        parsed.revalidation,
+        `${path}.revalidation`,
+        {
+          publication,
+          pullRequest,
+          implementationEvidence,
+          implementationFinish,
+          failState,
+        },
+      ),
+    };
+    assertRevalidationWorkspace(result, path, failState);
+    return result;
+  }
+  if (status === "workspace-ready") {
+    const parsed = objectWithOptionalKeys(
+      value,
       ["kind", "status", "base", "workspace", "artifacts"],
+      ["revalidation"],
       path,
     );
     return {
       kind: "implementation",
       status,
+      ...recovery(parsed),
       base: base(parsed.base, `${path}.base`),
       workspace: workspace(
         parsed.workspace,
@@ -263,7 +314,7 @@ export function implementationPhaseState(
     };
   }
   if (status === "branch-pushed") {
-    const parsed = object(
+    const parsed = objectWithOptionalKeys(
       value,
       [
         "kind",
@@ -274,6 +325,7 @@ export function implementationPhaseState(
         "publication",
         "implementation",
       ],
+      ["revalidation"],
       path,
     );
     const workspaceEvidence = workspace(
@@ -296,6 +348,7 @@ export function implementationPhaseState(
     return {
       kind: "implementation",
       status,
+      ...recovery(parsed),
       base: base(parsed.base, `${path}.base`),
       workspace: workspaceEvidence,
       artifacts: artifacts(parsed.artifacts, `${path}.artifacts`),
@@ -336,7 +389,11 @@ export function implementationPhaseState(
     if (
       evidence.branch !== workspaceEvidence.identity.branch ||
       evidence.prUrl !== pullRequestEvidence.url ||
-      publicationEvidence.headOid !== workspaceEvidence.headOid
+      (publicationEvidence.headOid !== workspaceEvidence.headOid &&
+        !(
+          parsed.merge !== undefined &&
+          parsed.observedHeadOid === workspaceEvidence.headOid
+        ))
     )
       failState("implementation-mismatch", `${path}.implementation`);
     return {
@@ -410,7 +467,11 @@ export function implementationPhaseState(
     workspaceEvidence.cleanup.state !== "removed" ||
     evidence.branch !== workspaceEvidence.identity.branch ||
     evidence.prUrl !== pullRequestEvidence.url ||
-    publicationEvidence.headOid !== workspaceEvidence.headOid ||
+    (publicationEvidence.headOid !== workspaceEvidence.headOid &&
+      !(
+        parsed.merge !== undefined &&
+        parsed.observedHeadOid === workspaceEvidence.headOid
+      )) ||
     !planningImplementationFinishCheckpointKeys.every(
       (checkpoint) => finish[checkpoint] === true,
     )

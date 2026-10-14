@@ -85,7 +85,20 @@ export async function reconcilePlanningWorkspaceReady(
   };
   try {
     const resumed = await input.workspaces.resume(ownership);
-    if (resumed.headOid === current.workspace.headOid) return resumed;
+    if (
+      resumed.headOid === current.workspace.headOid &&
+      !(current.kind === "implementation" && current.revalidation)
+    ) {
+      if (current.kind === "implementation") {
+        if (!resumed.clean)
+          throw new PlanningPublicationGitError("status", "dirty-workspace");
+        await input.git.assertAncestor({
+          ancestorOid: current.base.baseOid,
+          descendantOid: resumed.headOid,
+        });
+      }
+      return resumed;
+    }
   } catch (error) {
     if (
       !(error instanceof PlanningWorkspaceConflictError) ||
@@ -110,7 +123,7 @@ export async function reconcilePlanningWorkspaceReady(
       "head-oid-mismatch",
       current.workspace.identity,
     );
-  if (kind !== undefined && !live.clean)
+  if (!live.clean)
     throw new PlanningPublicationGitError("status", "dirty-workspace");
   try {
     await input.git.assertAncestor({
@@ -146,7 +159,7 @@ export async function reconcilePlanningWorkspaceReady(
       "head-oid-mismatch",
       current.workspace.identity,
     );
-  if (kind !== undefined && !verified.clean)
+  if (!verified.clean)
     throw new PlanningPublicationGitError("status", "dirty-workspace");
   await input.checkpoint(next);
   return verified;

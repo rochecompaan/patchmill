@@ -200,6 +200,7 @@ export interface PlanningWorkspaceLifecycle {
     identity: PlanningWorkspaceIdentity;
     base: PlanningRemoteBaseSnapshot;
     saved: PlanningWorkspaceOwnership;
+    restoreHeadOid?: string;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "ready" }>>;
   inspect(
     identity: PlanningWorkspaceIdentity,

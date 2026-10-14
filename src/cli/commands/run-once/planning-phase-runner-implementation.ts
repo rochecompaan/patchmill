@@ -1,3 +1,4 @@
+import { preparePlanningImplementationRevalidation } from "./planning-implementation-resume.ts";
 import type {
   ImplementationWorkspaceReadyPlanningPhase,
   PlanningStateV1,
@@ -76,6 +77,29 @@ export async function runPlanningImplementationPhase(
       state,
       result: durableMergedImplementationResult(phase),
     };
+  if (
+    input.planOnly &&
+    (phase.status === "branch-pushed" ||
+      phase.status === "pull-request-open" ||
+      phase.status === "revalidation-pending")
+  )
+    return { kind: "stopped", state, reason: "plan-only" };
+  if (
+    phase.status === "branch-pushed" ||
+    phase.status === "pull-request-open" ||
+    phase.status === "revalidation-pending" ||
+    (phase.status === "workspace-ready" && phase.revalidation)
+  ) {
+    const retry = await preparePlanningImplementationRevalidation(input, state);
+    if (retry.kind !== "advanced" && retry.kind !== "workspace-ready")
+      return retry;
+    state = retry.state;
+    workspaceCreated =
+      retry.kind === "workspace-ready" && retry.workspaceCreated;
+    phase = state.phases[input.phaseIndex];
+    if (phase?.kind !== "implementation")
+      throw new RangeError("Implementation retry state changed");
+  }
   if (phase.status === "pending") {
     try {
       state = await prepare(input, state);
@@ -110,7 +134,7 @@ export async function runPlanningImplementationPhase(
   }
   if (phase?.kind !== "implementation")
     throw new RangeError("Planning implementation state changed");
-  if (phase.status === "workspace-ready") {
+  if (phase.status === "workspace-ready" && !phase.revalidation) {
     await fetchVerifiedBase(input, state);
     const result = await runWorkspaceArtifacts(input, state);
     if (result.kind !== "workspace-ready") return result;

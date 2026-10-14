@@ -20,6 +20,7 @@ type PhaseName =
   | "pull-request-open-removed"
   | "complete-remote-base"
   | "complete-merged"
+  | "implementation-revalidation-pending"
   | "implementation-workspace-ready"
   | "implementation-branch-pushed"
   | "implementation-pull-request-open-ready"
@@ -29,6 +30,8 @@ type PhaseName =
   | "implementation-complete";
 function phaseName(phase: PlanningPhaseStateV1): PhaseName {
   if (phase.kind === "implementation") {
+    if (phase.status === "revalidation-pending")
+      return "implementation-revalidation-pending";
     if (phase.status === "complete") return "implementation-complete";
     if (phase.status === "workspace-ready")
       return "implementation-workspace-ready";
@@ -68,6 +71,9 @@ const allowed: Readonly<Record<PhaseName, readonly PhaseName[]>> = {
   "pull-request-open-removed": ["pull-request-open-removed", "complete-merged"],
   "complete-remote-base": ["complete-remote-base"],
   "complete-merged": ["complete-merged"],
+  "implementation-revalidation-pending": [
+    "implementation-revalidation-pending",
+  ],
   "implementation-workspace-ready": [
     "implementation-workspace-ready",
     "implementation-branch-pushed",
@@ -289,6 +295,11 @@ export function assertPlanningPhaseReplacement(
   index: number,
 ): void {
   if (assertImplementationRevalidation(current, next, index)) return;
+  if (
+    current.status === "revalidation-pending" ||
+    next.status === "revalidation-pending"
+  )
+    fail("invalid-phase-transition", index);
   const from = phaseName(current);
   const to = phaseName(next);
   if (!allowed[from].includes(to)) fail("invalid-transition", index, ".status");

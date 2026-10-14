@@ -7,6 +7,23 @@ import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces
 import { runPlanningPhase } from "./planning-phase-runner.ts";
 
 const oid = (character: string) => character.repeat(40);
+const repository = {
+  provider: "github-gh" as const,
+  host: "github.com",
+  owner: "test",
+  repository: "repo",
+};
+const publishedIdentity = {
+  targetRepository: repository,
+  headRepository: repository,
+  baseBranch: "main",
+  headBranch: "agent/issue-189-implementation",
+  headOid: oid("a"),
+};
+const savedPullRequest = {
+  reference: { targetRepository: repository, number: 17 },
+  url: "https://github.com/test/repo/pull/17",
+};
 const issue = { number: 189, title: "Planning runner", state: "open" } as never;
 const base = {
   remote: "origin",
@@ -71,7 +88,7 @@ function input(overrides: Record<string, unknown> = {}) {
     },
     host: {} as never,
     remoteBase: { fetch: async () => base },
-    publicationGit: {} as never,
+    publicationGit: { assertAncestor: async () => {} } as never,
     workspaces: {
       prepare: async () => ({ workspace, base }),
       resume: async () => ({ state: "ready", headOid: oid("a"), clean: true }),
@@ -336,7 +353,7 @@ test("refuses rewritten implementation progress left by a blocked agent", async 
   assert.deepEqual(checkpoints, []);
 });
 
-test("adopts blocked-agent commits before the dirty workspace block", async () => {
+test("dirty blocked-agent progress cannot be checkpointed as ready", async () => {
   const checkpoints: Array<{
     phases: Array<{ workspace: { headOid: string } }>;
   }> = [];
@@ -389,10 +406,8 @@ test("adopts blocked-agent commits before the dirty workspace block", async () =
     }),
   );
   assert.equal(result.kind, "blocked");
-  if (result.kind === "blocked")
-    assert.equal(result.result.reason, "planning-workspace-dirty");
   assert.equal(artifactRuns, 0);
-  assert.equal(checkpoints[0]?.phases[0]?.workspace.headOid, oid("b"));
+  assert.deepEqual(checkpoints, []);
 });
 
 test("open planning review takes precedence over plan-only without state mutation", async () => {
@@ -904,7 +919,7 @@ test("plan-only stops resumed branch-pushed and pull-request-open implementation
         base,
         workspace,
         artifacts: [],
-        publication: {},
+        publication: publishedIdentity,
         implementation: {},
       },
     ],
@@ -916,8 +931,8 @@ test("plan-only stops resumed branch-pushed and pull-request-open implementation
         base,
         workspace,
         artifacts: [],
-        publication: {},
-        pullRequest: {},
+        publication: publishedIdentity,
+        pullRequest: savedPullRequest,
         implementation: {},
         finish: {},
       },
@@ -962,7 +977,7 @@ test("resumes branch-pushed and pull-request-open implementation phases without 
         base,
         workspace,
         artifacts: [],
-        publication: {},
+        publication: publishedIdentity,
         implementation: {},
       },
       1,
@@ -975,8 +990,8 @@ test("resumes branch-pushed and pull-request-open implementation phases without 
         base,
         workspace,
         artifacts: [],
-        publication: {},
-        pullRequest: {},
+        publication: publishedIdentity,
+        pullRequest: savedPullRequest,
         implementation: {},
         finish: {},
       },
@@ -992,6 +1007,31 @@ test("resumes branch-pushed and pull-request-open implementation phases without 
         implementation: {
           implementation: {} as never,
           finish: () => ({}) as never,
+        },
+        workspaces: {
+          inspect: async () => ({
+            state: "ready",
+            identity: workspace.identity,
+            headOid: oid("a"),
+            clean: true,
+          }),
+        },
+        publicationGit: {
+          inspectRemoteHead: async () => ({
+            state: "present",
+            headOid: oid("a"),
+          }),
+        },
+        host: {
+          resolveTargetRepositoryIdentity: async () => repository,
+          getPullRequest: async () => ({
+            ...publishedIdentity,
+            number: 17,
+            url: savedPullRequest.url,
+            headSha: oid("a"),
+            status: "open",
+            body: "Closes #189\n<!-- patchmill:planning-pr-v1 issue=189 phase=implementation -->",
+          }),
         },
         operations: {
           runImplementation: async () => {

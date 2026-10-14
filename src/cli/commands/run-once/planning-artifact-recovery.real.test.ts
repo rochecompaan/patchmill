@@ -167,7 +167,10 @@ for (const condition of [
       };
     }
     const before = await f.preservation();
-    await assert.rejects(() => runPlanningPhase(input));
+    if (condition === "ordinary dirty status") {
+      const result = await runPlanningPhase(input);
+      assert.equal(result.kind, "blocked");
+    } else await assert.rejects(() => runPlanningPhase(input));
     assert.equal(f.artifactAgentCalls(), 0);
     assert.equal(f.checkpointStates.length, 0);
     assert.equal(f.boundaries.length, 0);
@@ -394,7 +397,12 @@ test("refuses late ordinary dirtiness before checkpointing a recovered plan", as
       "late dirty state\n",
     );
   };
-  await assert.rejects(() => runPlanningPhase(f.input), /dirty-workspace/u);
+  const result = await runPlanningPhase(f.input);
+  assert.equal(result.kind, "blocked");
+  assert.equal(
+    result.state.phases[0]?.workspace.headOid,
+    f.input.state.phases[0]?.workspace.headOid,
+  );
   await f.assertPreserved(before);
   assert.equal(
     await readFile(join(f.workspace, "late-untracked.txt"), "utf8"),

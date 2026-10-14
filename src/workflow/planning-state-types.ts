@@ -132,9 +132,25 @@ export type MergedPullRequestCompletePlanningPhase = Readonly<{
     mergedBaseOid: string;
   }>;
 }>;
+export type PlanningImplementationRevalidationEvidence = Readonly<{
+  publication: PlanningPublicationEvidence;
+  implementation: PlanningImplementationAgentEvidence;
+  pullRequest?: PlanningPullRequestEvidence;
+  finish?: PlanningImplementationFinishCheckpoints;
+  observedHeadOid?: string;
+}>;
+export type ImplementationRevalidationPendingPlanningPhase = Readonly<{
+  kind: "implementation";
+  status: "revalidation-pending";
+  base: PlanningBaseEvidence;
+  workspace: PlanningWorkspaceOwnership;
+  artifacts: readonly PlanningArtifactEvidence[];
+  revalidation: PlanningImplementationRevalidationEvidence;
+}>;
 export type ImplementationWorkspaceReadyPlanningPhase = Readonly<{
   kind: "implementation";
   status: "workspace-ready";
+  revalidation?: PlanningImplementationRevalidationEvidence;
   base: PlanningBaseEvidence;
   workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
   artifacts: readonly PlanningArtifactEvidence[];
@@ -142,6 +158,7 @@ export type ImplementationWorkspaceReadyPlanningPhase = Readonly<{
 export type ImplementationBranchPushedPlanningPhase = Readonly<{
   kind: "implementation";
   status: "branch-pushed";
+  revalidation?: PlanningImplementationRevalidationEvidence;
   base: PlanningBaseEvidence;
   workspace: PlanningWorkspaceOwnership<{ state: "ready" }>;
   artifacts: readonly PlanningArtifactEvidence[];
@@ -186,6 +203,7 @@ export type PlanningPhaseStateV1 =
   | PullRequestOpenPlanningPhase
   | RemoteBaseCompletePlanningPhase
   | MergedPullRequestCompletePlanningPhase
+  | ImplementationRevalidationPendingPlanningPhase
   | ImplementationWorkspaceReadyPlanningPhase
   | ImplementationBranchPushedPlanningPhase
   | ImplementationPullRequestOpenPlanningPhase

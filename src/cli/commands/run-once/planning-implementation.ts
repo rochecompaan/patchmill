@@ -32,7 +32,6 @@ import {
   validatePlanningImplementation,
 } from "./planning-implementation-validation.ts";
 import { recoverPostAgentWorkspace } from "./planning-implementation-workspace-recovery.ts";
-import { changedImplementationPublication } from "./planning-implementation-revalidation.ts";
 import {
   blockedAgentWorkspaceFailure,
   developmentEnvironmentWorkspaceFailure,
@@ -122,13 +121,6 @@ export async function runPlanningImplementation(
   let phase = state.phases[input.phaseIndex];
   if (phase?.kind !== "implementation")
     throw new RangeError("Invalid implementation phase");
-  if (phase.status === "branch-pushed") {
-    const changed = await changedImplementationPublication(input, phase);
-    if (changed) {
-      state = await replace(state, changed);
-      phase = changed;
-    }
-  }
   if (phase.status === "workspace-ready") {
     if (
       input.configuredGit.remote !== phase.workspace.remote ||
@@ -154,7 +146,13 @@ export async function runPlanningImplementation(
       state = await replace(state, phase);
     }
     let existingPullRequest: ImplementationPrEvidence | undefined;
-    if (!input.workspaceCreated) {
+    if (phase.revalidation?.pullRequest) {
+      existingPullRequest = {
+        ...phase.revalidation.pullRequest,
+        publication: phase.revalidation.publication,
+        ownershipMarkerRequired: true,
+      };
+    } else if (!input.workspaceCreated) {
       const [targetRepository, headRepository] = await Promise.all([
         input.host.resolveTargetRepositoryIdentity(),
         input.host.resolveRemoteRepositoryIdentity(phase.workspace.remote),
@@ -484,8 +482,9 @@ export async function runPlanningImplementation(
       workspaces: input.workspaces,
       git: input.git,
     });
+    const { revalidation: _previousReceipt, ...freshPhase } = phase;
     state = await replace(state, {
-      ...phase,
+      ...freshPhase,
       status: "pull-request-open",
       publication: validated.publication,
       pullRequest: validated.pullRequest,

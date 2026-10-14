@@ -1,3 +1,4 @@
+import { assertRevalidationWorkspace } from "./planning-state-revalidation-codec.ts";
 import type { PlanningWorkspaceOwnership } from "../git/planning-workspaces.ts";
 import { pullRequestUrlMatchesReference } from "../host/pull-request-reference.ts";
 import {
@@ -430,6 +431,20 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
       paths.has(canonicalPath(item.workspace.identity.worktreePath))
     )
       fail("duplicate-workspace-identity", `${path}.workspace.identity`);
+    if (
+      item.kind === "implementation" &&
+      "revalidation" in item &&
+      item.revalidation
+    )
+      assertRevalidationWorkspace(
+        {
+          base: item.base,
+          workspace: item.workspace,
+          revalidation: item.revalidation,
+        },
+        path,
+        fail,
+      );
     branches.add(item.workspace.identity.branch);
     paths.add(canonicalPath(item.workspace.identity.worktreePath));
     if (
@@ -460,7 +475,13 @@ export function validatePlanningState(value: unknown): PlanningStateV1 {
       "publication" in item &&
       (item.publication.baseBranch !== item.base.baseBranch ||
         item.publication.headBranch !== item.workspace.identity.branch ||
-        item.publication.headOid !== item.workspace.headOid)
+        (item.publication.headOid !== item.workspace.headOid &&
+          !(
+            item.kind === "implementation" &&
+            "merge" in item &&
+            item.merge !== undefined &&
+            item.observedHeadOid === item.workspace.headOid
+          )))
     )
       fail("publication-mismatch", `${path}.publication`);
     if (

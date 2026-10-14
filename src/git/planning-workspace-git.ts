@@ -5,6 +5,7 @@ import type { PlanningPhaseKind } from "../workflow/planning-pull-request-marker
 import { PlanningHeadAdoptionGit } from "./planning-head-adoption-git.ts";
 import { PlanningWorkspaceCleanupGit } from "./planning-workspace-cleanup.ts";
 import { PlanningWorkspaceRepositoryGit } from "./planning-workspace-inspection.ts";
+import { restorePlanningImplementationWorkspace } from "./planning-workspace-restoration.ts";
 import { assertPlanningWorkspacePrepareInput } from "./planning-workspace-input.ts";
 import {
   PlanningWorkspaceConflictError,
@@ -117,7 +118,10 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
     identity: PlanningWorkspaceIdentity;
     base: PlanningRemoteBaseSnapshot;
     saved: PlanningWorkspaceOwnership;
+    restoreHeadOid?: string;
   }): Promise<Extract<PlanningWorkspaceSnapshot, { state: "ready" }>> {
+    if (input.restoreHeadOid && this.mutation)
+      return this.transaction((git) => git.resume(input));
     const saved = input.saved;
     if (
       saved.runId !== input.runId ||
@@ -127,7 +131,8 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
       saved.remote !== input.base.remote ||
       saved.baseBranch !== input.base.baseBranch ||
       saved.baseOid !== input.base.baseOid ||
-      saved.cleanup.state !== "ready"
+      (saved.cleanup.state !== "ready" &&
+        (input.phase !== "implementation" || !input.restoreHeadOid))
     ) {
       throw new PlanningWorkspaceConflictError(
         "invalid-saved-identity",
@@ -144,7 +149,9 @@ export class PlanningWorkspaceGit implements PlanningWorkspaceLifecycle {
         input.identity,
       );
     }
-    const snapshot = await this.repository.inspect(input.identity);
+    const snapshot = input.restoreHeadOid
+      ? await restorePlanningImplementationWorkspace(this.repository, input)
+      : await this.repository.inspect(input.identity);
     if (
       snapshot.state !== "ready" ||
       (input.phase !== "implementation" && snapshot.headOid !== saved.headOid)

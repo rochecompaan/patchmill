@@ -2,22 +2,23 @@ import type { CommandRunner } from "../../../command/types.ts";
 import type {
   ImplementationBranchPushedPlanningPhase,
   ImplementationPullRequestOpenPlanningPhase,
-  ImplementationWorkspaceReadyPlanningPhase,
+  ImplementationRevalidationPendingPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
+import { implementationRecoveryReceipt } from "../../../workflow/planning-state-implementation-revalidation.ts";
 import type { PlanningImplementationInput } from "./planning-implementation.ts";
 
 export function invalidateImplementationChecks(
   phase:
     | ImplementationBranchPushedPlanningPhase
     | ImplementationPullRequestOpenPlanningPhase,
-  headOid = phase.workspace.headOid,
-): ImplementationWorkspaceReadyPlanningPhase {
+): ImplementationRevalidationPendingPlanningPhase {
   return {
     kind: "implementation",
-    status: "workspace-ready",
+    status: "revalidation-pending",
     base: phase.base,
-    workspace: { ...phase.workspace, headOid, cleanup: { state: "ready" } },
+    workspace: phase.workspace,
     artifacts: phase.artifacts,
+    revalidation: implementationRecoveryReceipt(phase),
   };
 }
 
@@ -46,9 +47,9 @@ export async function implementationChecksChanged(input: {
 export async function changedImplementationPublication(
   input: Pick<PlanningImplementationInput, "workspaces" | "git">,
   phase: ImplementationBranchPushedPlanningPhase,
-): Promise<ImplementationWorkspaceReadyPlanningPhase | undefined> {
+): Promise<ImplementationRevalidationPendingPlanningPhase | undefined> {
   const snapshot = await input.workspaces.inspect(phase.workspace.identity);
-  if (snapshot.state !== "ready") return undefined;
+  if (snapshot.state !== "ready") return invalidateImplementationChecks(phase);
   const remote = await input.git.inspectRemoteHead({
     remote: phase.base.remote,
     branch: phase.workspace.identity.branch,
@@ -58,5 +59,5 @@ export async function changedImplementationPublication(
     (remote.state !== "present" || remote.headOid === phase.publication.headOid)
   )
     return undefined;
-  return invalidateImplementationChecks(phase, snapshot.headOid);
+  return invalidateImplementationChecks(phase);
 }

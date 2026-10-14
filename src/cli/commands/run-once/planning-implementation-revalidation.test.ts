@@ -252,28 +252,23 @@ test("an advanced saved planning implementation PR reruns verification instead o
   if (result.kind !== "ready")
     assert.fail("owned implementation must be resumable");
   const phase = result.state.phases[0];
-  assert.equal(phase?.status, "workspace-ready");
+  assert.equal(phase?.status, "revalidation-pending");
   assert.equal(
     "implementation" in phase!,
     false,
     "old checks must be invalidated",
   );
-  const checked = await runPlanningImplementation({
-    ...run.input,
-    state: result.state,
-  });
-  assert.equal(checked.kind, "validated", JSON.stringify(checked));
-  assert.equal(run.agents(), 1);
-  const published = checked.state.phases[0];
   if (
-    published?.kind !== "implementation" ||
-    published.status !== "pull-request-open"
+    phase?.kind !== "implementation" ||
+    phase.status !== "revalidation-pending"
   )
-    assert.fail("fresh handoff missing");
-  assert.equal(published.pullRequest.url, url);
-  assert.equal(published.publication.headOid, oid("c"));
-  assert.deepEqual(published.implementation.validation, ["fresh checks"]);
-  assert.deepEqual(published.finish, {});
+    assert.fail();
+  assert.equal(phase.revalidation.pullRequest?.url, url);
+  assert.deepEqual(phase.revalidation.implementation.validation, [
+    "old checks",
+  ]);
+  assert.equal(phase.workspace.headOid, oid("b"));
+  assert.equal(run.agents(), 0);
 });
 
 test("local implementation progress invalidates checks even before it is pushed", async () => {
@@ -282,13 +277,8 @@ test("local implementation progress invalidates checks even before it is pushed"
   assert.equal(result.kind, "ready");
   if (result.kind !== "ready")
     assert.fail("owned implementation must be resumable");
-  assert.equal(result.state.phases[0]?.status, "workspace-ready");
-  const checked = await runPlanningImplementation({
-    ...run.input,
-    state: result.state,
-  });
-  assert.equal(checked.kind, "validated", JSON.stringify(checked));
-  assert.equal(run.agents(), 1);
+  assert.equal(result.state.phases[0]?.status, "revalidation-pending");
+  assert.equal(run.agents(), 0);
 });
 
 test("invalidating checks cannot change ownership, artifact evidence, or merge proof", () => {
@@ -313,14 +303,13 @@ test("invalidating checks cannot change ownership, artifact evidence, or merge p
       })),
     },
   ]) {
-    const next = validatePlanningState({
-      ...saved,
-      revision: 1,
-      phases: [nextPhase],
-    });
     assert.throws(
-      () => assertPlanningStateReplacement(saved, next),
-      /immutable-evidence/,
+      () =>
+        assertPlanningStateReplacement(
+          saved,
+          validatePlanningState({ ...saved, revision: 1, phases: [nextPhase] }),
+        ),
+      /immutable-evidence|implementation-mismatch/,
     );
   }
   const merged = validatePlanningState({
@@ -339,14 +328,10 @@ test("invalidating checks cannot change ownership, artifact evidence, or merge p
   );
 });
 
-test("a moved branch-pushed implementation reenters verification on its existing PR", async () => {
+test("the implementation executor cannot restart a moved branch without outer preparation", async () => {
   const run = fixture(initial("branch-pushed"));
   const result = await runPlanningImplementation(run.input);
-  assert.equal(result.kind, "validated", JSON.stringify(result));
-  assert.equal(run.agents(), 1);
-  const phase = result.state.phases[0];
-  if (phase?.kind !== "implementation" || phase.status !== "pull-request-open")
-    assert.fail("fresh handoff missing");
-  assert.equal(phase.pullRequest.url, url);
-  assert.deepEqual(phase.implementation.validation, ["fresh checks"]);
+  assert.equal(result.kind, "blocked", JSON.stringify(result));
+  assert.equal(run.agents(), 0);
+  assert.equal(result.state.phases[0]?.status, "branch-pushed");
 });
