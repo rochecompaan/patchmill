@@ -1,5 +1,49 @@
 # Third-Party Notices
 
+## Anthropic frontend-design
+
+- Repository: <https://github.com/anthropics/skills>
+- Commit: `41bbe19d1a1a7eaab5e7bb9050a417e5c6cffc8f`
+- Source files: `skills/frontend-design/SKILL.md` and
+  `skills/frontend-design/LICENSE.txt`
+- Packaged path: `skills/frontend-design/`
+- Installed path: `.patchmill/skills/frontend-design/`
+- License: Apache-2.0, from the pinned `skills/frontend-design/LICENSE.txt`
+- Purpose: Specification-time frontend design guidance.
+- Modification status: Both files remain verbatim.
+
+## Vercel web-design-guidelines reference
+
+- Repository: <https://github.com/vercel-labs/agent-skills>
+- Commit: `ba46938889d4e58635362fb8f618e1178ac3ec46`
+- Source file: `skills/web-design-guidelines/SKILL.md`
+- Packaged path:
+  `skills/patchmill-frontend-review/references/upstream-web-design-guidelines.md`
+- Installed path:
+  `.patchmill/skills/patchmill-frontend-review/references/upstream-web-design-guidelines.md`
+- License: MIT, declared in `README.md#license` at the pinned commit.
+- Purpose: Provenance for the Patchmill-owned review wrapper.
+- Modification status: The reference remains verbatim, with a different
+  filename.
+
+The active Patchmill wrapper replaces the runtime fetch with local pinned rules.
+The renamed reference is not an active skill.
+
+## Vercel Web Interface Guidelines
+
+- Repository: <https://github.com/vercel-labs/web-interface-guidelines>
+- Commit: `e3d624baaf29dc1fc645aff3e38f03e564d2d6b1`
+- Source files: `command.md` and `LICENSE`
+- Packaged paths:
+  `skills/patchmill-frontend-review/references/web-interface-guidelines.md` and
+  `skills/patchmill-frontend-review/LICENSE`
+- Installed paths:
+  `.patchmill/skills/patchmill-frontend-review/references/web-interface-guidelines.md`
+  and `.patchmill/skills/patchmill-frontend-review/LICENSE`
+- License: MIT, from the pinned `LICENSE` file.
+- Purpose: Offline rules for independent frontend review.
+- Modification status: Both files remain verbatim.
+
 Patchmill vendors the following third-party components:
 
 ## agent-stuff `extensions/todos.ts`

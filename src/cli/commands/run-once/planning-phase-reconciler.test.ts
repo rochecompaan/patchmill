@@ -269,20 +269,29 @@ function fixture(
           events.push(`ancestor:${value.ancestorOid}:${value.descendantOid}`);
           if (input.ancestorError) throw input.ancestorError;
         },
-        async assertRegularFiles(value: {
-          commitOid: string;
-          paths: readonly string[];
-        }) {
-          events.push(`regular:${value.commitOid}:${value.paths.join(",")}`);
+        async inspectArtifactEvidence(
+          value: import("../../../workflow/planning-state-types.ts").PlanningArtifactEvidence,
+        ) {
+          events.push(`regular:${value.commitOid}:${value.path}`);
           if (input.regularError) throw input.regularError;
+          return value;
         },
       },
       workspaces: {
-        async adoptPlanningHead() {
+        async adoptPlanningHead(
+          value: import("../../../git/planning-workspaces.ts").PlanningHeadAdoptionInput,
+        ) {
           events.push("adopt-head");
-          return input.adoptedHead === undefined
-            ? { kind: "adopted" as const, headOid }
-            : { kind: "adopted" as const, headOid: input.adoptedHead };
+          const adopted = input.adoptedHead ?? headOid;
+          return {
+            kind: "adopted" as const,
+            headOid: adopted,
+            artifacts: value.artifacts.map((artifact) => ({
+              ...artifact,
+              source: "workspace" as const,
+              commitOid: adopted,
+            })),
+          };
         },
         async removeWorktree() {
           events.push("remove-worktree");

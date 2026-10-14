@@ -1,3 +1,7 @@
+import {
+  writeFrontendWorkflowFiles,
+  frontendWorkflowFiles,
+} from "../../../../test-support/frontend-workflow-files.ts";
 import assert from "node:assert/strict";
 import {
   access,
@@ -22,6 +26,7 @@ import {
   buildRecommendedProjectSkillConfig,
   buildSkillPackMetadata,
   hashText,
+  type SkillPackSkill,
 } from "../../../workflow/skill-pack.ts";
 import {
   defaultSkillSourceRoots,
@@ -133,6 +138,23 @@ description: Use when executing Patchmill implementation plans with one implemen
 # Single Subagent Dev with Codex and Thermo Reviews
 `;
 
+const fixturePackSkills: SkillPackSkill[] = [
+  { name: "patchmill-issue-triage", source: "patchmill" },
+  { name: "subagent-dev-with-validation-and-pr-checks", source: "patchmill" },
+  { name: "subagent-dev-with-codex-and-thermo-reviews", source: "patchmill" },
+  {
+    name: "single-subagent-dev-with-codex-and-thermo-reviews",
+    source: "patchmill",
+  },
+  { name: "frontend-design", source: "patchmill" },
+  { name: "patchmill-planning", source: "patchmill" },
+  { name: "simple-english", source: "simple-english" },
+  { name: "brainstorming", source: "superpowers" },
+  { name: "writing-plans", source: "superpowers" },
+  { name: "test-driven-development", source: "superpowers" },
+  { name: "subagent-driven-development", source: "superpowers" },
+];
+
 test("installProjectSkills copies skills and writes metadata", async () => {
   const repoRoot = await tempRoot("patchmill-install-repo-");
   const patchmillSource = await tempRoot("patchmill-install-patchmill-");
@@ -171,6 +193,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     "patchmill-planning",
     patchmillPlanningSkill,
   );
+  await writeFrontendWorkflowFiles(patchmillSource);
   await writeSkill(simpleEnglishSource, "simple-english", simpleEnglishSkill, {
     "references/checklist.md": "run the checklist\n",
     "references/use-cases.md": "adapt the rules\n",
@@ -210,27 +233,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
       simpleEnglishSkillsDir: simpleEnglishSource,
     },
     installedAt: "2026-05-29T00:00:00.000Z",
-    packSkills: [
-      { name: "patchmill-issue-triage", source: "patchmill" },
-      {
-        name: "subagent-dev-with-validation-and-pr-checks",
-        source: "patchmill",
-      },
-      {
-        name: "subagent-dev-with-codex-and-thermo-reviews",
-        source: "patchmill",
-      },
-      {
-        name: "single-subagent-dev-with-codex-and-thermo-reviews",
-        source: "patchmill",
-      },
-      { name: "patchmill-planning", source: "patchmill" },
-      { name: "simple-english", source: "simple-english" },
-      { name: "brainstorming", source: "superpowers" },
-      { name: "writing-plans", source: "superpowers" },
-      { name: "test-driven-development", source: "superpowers" },
-      { name: "subagent-driven-development", source: "superpowers" },
-    ],
+    packSkills: fixturePackSkills,
   });
 
   assert.equal(result.skillDir, ".patchmill/skills");
@@ -240,6 +243,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     ".patchmill/skills/subagent-dev-with-validation-and-pr-checks",
     ".patchmill/skills/subagent-dev-with-codex-and-thermo-reviews",
     ".patchmill/skills/single-subagent-dev-with-codex-and-thermo-reviews",
+    ".patchmill/skills/frontend-design",
     ".patchmill/skills/patchmill-planning",
     ".patchmill/skills/simple-english",
     ".patchmill/skills/brainstorming",
@@ -415,6 +419,12 @@ test("installProjectSkills copies skills and writes metadata", async () => {
   ) as ReturnType<typeof buildSkillPackMetadata>;
   const expectedMetadata = buildSkillPackMetadata(
     [
+      ...["frontend-design/SKILL.md", "frontend-design/LICENSE.txt"].map(
+        (path) => ({
+          path: `.patchmill/skills/${path}`,
+          sha256: hashText(frontendWorkflowFiles[path]),
+        }),
+      ),
       {
         path: ".patchmill/skills/patchmill-issue-triage/SKILL.md",
         sha256: hashText(triageSkill),
@@ -515,6 +525,7 @@ test("installProjectSkills copies skills and writes metadata", async () => {
     {
       installedAt: "2026-05-29T00:00:00.000Z",
       skillDir: ".patchmill/skills",
+      skills: fixturePackSkills,
     },
   );
 

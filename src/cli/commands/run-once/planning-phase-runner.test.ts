@@ -4,7 +4,24 @@ import { PlanningImplementationBaseError } from "./planning-implementation-base.
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { PlanningPublicationGitError } from "../../../git/planning-publication-git.ts";
 import { PlanningWorkspaceConflictError } from "../../../git/planning-workspaces.ts";
-import { runPlanningPhase } from "./planning-phase-runner.ts";
+import { runPlanningPhase as runPhase } from "./planning-phase-runner.ts";
+
+// Pure orchestration fixtures supply immutable evidence; real Git tests prove blob safety.
+const runPlanningPhase = (input: Parameters<typeof runPhase>[0]) =>
+  runPhase({
+    ...input,
+    publicationGit: {
+      async inspectArtifactEvidence(value) {
+        if (input.publicationGit.assertRegularFiles)
+          await input.publicationGit.assertRegularFiles({
+            commitOid: value.commitOid,
+            paths: [value.path],
+          });
+        return value;
+      },
+      ...input.publicationGit,
+    },
+  });
 
 const oid = (character: string) => character.repeat(40);
 const issue = { number: 189, title: "Planning runner", state: "open" } as never;

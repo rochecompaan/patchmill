@@ -215,7 +215,10 @@ export async function runPlanningPhaseArtifacts(input: {
   plansDir: string;
   artifactDate: Date;
   agent: PlanningArtifactAgent;
-  git: Pick<PlanningPublicationOperations, "verifyArtifactCommit">;
+  git: Pick<
+    PlanningPublicationOperations,
+    "verifyArtifactCommit" | "inspectArtifactEvidence"
+  >;
   checkpoint: PlanningArtifactCheckpoint;
   projectPolicy: PatchmillProjectPolicy;
   skills: PatchmillSkillsConfig;
@@ -271,6 +274,19 @@ export async function runPlanningPhaseArtifacts(input: {
     const specPath =
       current.artifacts.find((artifact) => artifact.kind === "spec")?.path ??
       mergedBaseSpecPath(current);
+    if (kind === "plan" && specPath !== undefined) {
+      const spec = current.artifacts.find(
+        (artifact) => artifact.kind === "spec",
+      );
+      await input.git.inspectArtifactEvidence(
+        spec ?? {
+          kind: "spec",
+          path: specPath,
+          source: "remote-base",
+          commitOid: current.base.baseOid,
+        },
+      );
+    }
     const prompt =
       kind === "spec"
         ? buildSpecCreationPrompt({
@@ -305,18 +321,14 @@ export async function runPlanningPhaseArtifacts(input: {
       kind === "spec" ? input.specsDir : input.plansDir,
       result.path,
     );
-    await input.git.verifyArtifactCommit({
+    const evidence = await input.git.verifyArtifactCommit({
       workspacePath: current.workspace.identity.worktreePath,
       previousHeadOid: current.workspace.headOid,
       headOid: result.commit,
       artifactPath: path,
+      artifactKind: kind,
     });
-    current = appendPlanningArtifactEvidence(current, input.phase, {
-      kind,
-      path,
-      source: "workspace",
-      commitOid: result.commit,
-    });
+    current = appendPlanningArtifactEvidence(current, input.phase, evidence);
     await input.checkpoint(current);
   }
   return { kind: "workspace-ready", phase: current };

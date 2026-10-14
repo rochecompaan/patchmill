@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderPlanningPullRequestMarker } from "../../../workflow/planning-pull-request-markers.ts";
-import { publishPlanningPhase } from "./planning-phase-publisher.ts";
+import { publishPlanningPhase as publish } from "./planning-phase-publisher.ts";
+
+// Orchestration fixtures supply evidence; real Git suites prove blob safety.
+const publishPlanningPhase = (input: Parameters<typeof publish>[0]) =>
+  publish({
+    ...input,
+    git: {
+      async inspectArtifactEvidence(value) {
+        return value;
+      },
+      ...input.git,
+    },
+  });
 
 const oid = "a".repeat(40);
 const repository = {
@@ -568,8 +580,18 @@ test("adopts a second safe revision observed after cleanup", async () => {
       },
     } as never,
     workspaces: {
-      async adoptPlanningHead() {
-        return { kind: "adopted" as const, headOid: revised };
+      async adoptPlanningHead(
+        input: import("../../../git/planning-workspaces.ts").PlanningHeadAdoptionInput,
+      ) {
+        return {
+          kind: "adopted" as const,
+          headOid: revised,
+          artifacts: input.artifacts.map((artifact) => ({
+            ...artifact,
+            source: "workspace" as const,
+            commitOid: revised,
+          })),
+        };
       },
       async removeWorktree() {
         return removedWorktree();

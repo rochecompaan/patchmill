@@ -49,18 +49,14 @@ async function recoverArtifact(
         : "ambiguous-workspace-artifact",
     );
   const path = paths[0]!;
-  await input.git.verifyArtifactCommit({
+  const evidence = await input.git.verifyArtifactCommit({
     workspacePath: input.current.workspace.identity.worktreePath,
     previousHeadOid: input.current.workspace.headOid,
     headOid,
     artifactPath: path,
+    artifactKind: kind,
   });
-  return appendPlanningArtifactEvidence(input.current, input.phase, {
-    kind,
-    path,
-    source: "workspace",
-    commitOid: headOid,
-  });
+  return appendPlanningArtifactEvidence(input.current, input.phase, evidence);
 }
 
 /**

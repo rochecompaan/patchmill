@@ -92,6 +92,14 @@ async function fixture() {
     repo,
     workspace,
     artifactPath,
+    artifacts: [
+      {
+        kind: "plan" as const,
+        path: artifactPath,
+        commitOid: headOid,
+        source: "workspace" as const,
+      },
+    ],
     baseOid,
     headOid,
     sentinels,
@@ -139,12 +147,13 @@ test("verifies committed artifacts with ignored content without writing", async 
           previousHeadOid: f.baseOid,
           headOid: f.headOid,
           artifactPath: f.artifactPath,
+          artifactKind: "plan",
         });
         await f.publication.verifyWorkspace({
           workspacePath: f.workspace,
           baseOid: f.baseOid,
           headOid: f.headOid,
-          artifactPaths: [f.artifactPath],
+          artifacts: f.artifacts,
         });
       }
       assert.deepEqual(await readFile(f.indexPath), index);
@@ -206,6 +215,7 @@ for (const condition of [
             previousHeadOid: f.baseOid,
             headOid: f.headOid,
             artifactPath: f.artifactPath,
+            artifactKind: "plan",
           }),
         /dirty-workspace/u,
       );
@@ -215,7 +225,7 @@ for (const condition of [
             workspacePath: f.workspace,
             baseOid: f.baseOid,
             headOid: f.headOid,
-            artifactPaths: [f.artifactPath],
+            artifacts: f.artifacts,
           }),
         /dirty-workspace/u,
       );
@@ -240,16 +250,20 @@ test("rejects committed force-added ignored content in the artifact delta", asyn
           previousHeadOid: f.baseOid,
           headOid,
           artifactPath: f.artifactPath,
+          artifactKind: "plan",
         }),
       /diff\/unexpected-changes/u,
     );
-    // Whole-workspace verification intentionally has no committed-delta guard.
-    await f.publication.verifyWorkspace({
-      workspacePath: f.workspace,
-      baseOid: f.baseOid,
-      headOid,
-      artifactPaths: [f.artifactPath],
-    });
+    // Aggregate workspace scope rejects committed ignored content too.
+    await assert.rejects(
+      f.publication.verifyWorkspace({
+        workspacePath: f.workspace,
+        baseOid: f.baseOid,
+        headOid,
+        artifacts: f.artifacts,
+      }),
+      /diff\/unexpected-changes/u,
+    );
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }

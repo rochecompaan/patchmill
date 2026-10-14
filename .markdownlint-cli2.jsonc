@@ -17,6 +17,9 @@
     "site/src/content/docs/**/*.md",
   ],
   "ignores": [
+    "skills/frontend-design/SKILL.md",
+    "skills/patchmill-frontend-review/references/upstream-web-design-guidelines.md",
+    "skills/patchmill-frontend-review/references/web-interface-guidelines.md",
     "vendor/**",
     "node_modules/**",
     "site/.astro/**",

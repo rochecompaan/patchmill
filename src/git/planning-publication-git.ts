@@ -1,5 +1,22 @@
 import { isAbsolute, resolve } from "node:path";
 import {
+  assertPlanningRegularFiles,
+  readPlanningArtifactEvidence,
+  type PlanningArtifactInspectionInput,
+} from "./planning-companion-artifacts.ts";
+import { planningArtifactPaths } from "../workflow/planning-companion-artifacts.ts";
+import type { PlanningArtifactEvidence } from "../workflow/planning-state-types.ts";
+import type { PlanningArtifactKind } from "../workflow/planning-pull-requests.ts";
+import {
+  PlanningPublicationGitError,
+  type PlanningPublicationGitOperation,
+} from "./planning-publication-git-errors.ts";
+export {
+  PlanningPublicationGitError,
+  type PlanningPublicationGitOperation,
+  type PlanningPublicationGitReason,
+} from "./planning-publication-git-errors.ts";
+import {
   parsePlanningArtifactCandidates,
   planningArtifactDirectory,
 } from "./planning-artifact-tree.ts";
@@ -23,12 +40,13 @@ export type PlanningArtifactCommitInput = Readonly<{
   previousHeadOid: string;
   headOid: string;
   artifactPath: string;
+  artifactKind: PlanningArtifactKind;
 }>;
 export type PlanningWorkspaceVerificationInput = Readonly<{
   workspacePath: string;
   baseOid: string;
   headOid: string;
-  artifactPaths: readonly string[];
+  artifacts: readonly PlanningArtifactEvidence[];
 }>;
 export type PlanningRemoteBranchInput = Readonly<{
   remote: string;
@@ -51,7 +69,12 @@ export type PlanningRegularFilesInput = Readonly<{
   paths: readonly string[];
 }>;
 export interface PlanningPublicationOperations {
-  verifyArtifactCommit(input: PlanningArtifactCommitInput): Promise<void>;
+  inspectArtifactEvidence(
+    input: PlanningArtifactInspectionInput,
+  ): Promise<PlanningArtifactEvidence>;
+  verifyArtifactCommit(
+    input: PlanningArtifactCommitInput,
+  ): Promise<PlanningArtifactEvidence>;
   verifyWorkspace(input: PlanningWorkspaceVerificationInput): Promise<void>;
   inspectRemoteHead(
     input: PlanningRemoteBranchInput,
@@ -64,48 +87,6 @@ export interface PlanningPublicationOperations {
   inspectArtifactCandidates(
     input: PlanningArtifactCandidatesInput,
   ): Promise<PlanningArtifactCandidates>;
-}
-export type PlanningPublicationGitOperation =
-  | "head"
-  | "ancestry"
-  | "tree"
-  | "diff"
-  | "status"
-  | "remote-head"
-  | "push";
-export type PlanningPublicationGitReason =
-  | "invalid-input"
-  | "invalid-workspace"
-  | "command-failed"
-  | "malformed-response"
-  | "head-mismatch"
-  | "not-ancestor"
-  | "non-regular-file"
-  | "dirty-workspace"
-  | "unexpected-changes"
-  | "conflicting-head";
-export class PlanningPublicationGitError extends Error {
-  readonly operation: PlanningPublicationGitOperation;
-  readonly reason: PlanningPublicationGitReason;
-  readonly exitCode?: number;
-  constructor(
-    operation: PlanningPublicationGitOperation,
-    reason: PlanningPublicationGitReason,
-    result?: CommandResult,
-  ) {
-    super(`Planning publication Git failed: ${operation}/${reason}`);
-    this.name = "PlanningPublicationGitError";
-    this.operation = operation;
-    this.reason = reason;
-    if (result !== undefined) {
-      this.exitCode = result.code;
-      Object.defineProperty(this, "diagnostics", {
-        enumerable: false,
-        value: Object.freeze({ ...result }),
-      });
-    }
-  }
-  declare readonly diagnostics: Readonly<CommandResult>;
 }
 function input(
   operation: PlanningPublicationGitOperation,
@@ -122,14 +103,6 @@ function nulRecords(
   if (value !== "" && !value.endsWith("\0"))
     throw new PlanningPublicationGitError(operation, "malformed-response");
   return value.split("\0").filter(Boolean);
-}
-function treeRecord(record: string, path: string): void {
-  const parsed =
-    /^(100644|100755) blob ([0-9a-f]{40}|[0-9a-f]{64})\t([^\0\r\n]+)$/u.exec(
-      record,
-    );
-  if (parsed === null || parsed[3] !== path)
-    throw new PlanningPublicationGitError("tree", "non-regular-file");
 }
 export class PlanningPublicationGit implements PlanningPublicationOperations {
   readonly runner: CommandRunner;
@@ -236,21 +209,11 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
   async assertRegularFiles(
     inputValue: PlanningRegularFilesInput,
   ): Promise<void> {
-    this.validateOid("tree", inputValue.commitOid);
-    if (inputValue.paths.length === 0)
-      throw new PlanningPublicationGitError("tree", "invalid-input");
-    for (const path of inputValue.paths) {
-      input("tree", path, isPlanningArtifactPath);
-      const result = await this.run(
-        "tree",
-        ["ls-tree", "-z", inputValue.commitOid, "--", path],
-        this.repoRoot,
-      );
-      const records = nulRecords(result.stdout, "tree");
-      if (records.length !== 1)
-        throw new PlanningPublicationGitError("tree", "non-regular-file");
-      treeRecord(records[0]!, path);
-    }
+    await assertPlanningRegularFiles({
+      ...inputValue,
+      runner: this.runner,
+      repoRoot: this.repoRoot,
+    });
   }
   private async assertClean(workspacePath: string): Promise<void> {
     const result = await this.run(
@@ -269,9 +232,18 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
     if (result.stdout !== "")
       throw new PlanningPublicationGitError("status", "dirty-workspace");
   }
+  async inspectArtifactEvidence(
+    inputValue: PlanningArtifactInspectionInput,
+  ): Promise<PlanningArtifactEvidence> {
+    return readPlanningArtifactEvidence({
+      ...inputValue,
+      runner: this.runner,
+      repoRoot: this.repoRoot,
+    });
+  }
   async verifyArtifactCommit(
     inputValue: PlanningArtifactCommitInput,
-  ): Promise<void> {
+  ): Promise<PlanningArtifactEvidence> {
     const workspacePath = this.workspace(inputValue.workspacePath);
     this.validateOid("head", inputValue.previousHeadOid);
     this.validateOid("head", inputValue.headOid);
@@ -287,23 +259,12 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
       ancestorOid: inputValue.previousHeadOid,
       descendantOid: inputValue.headOid,
     });
-    const tree = await this.run(
-      "tree",
-      [
-        "-C",
-        workspacePath,
-        "ls-tree",
-        "-z",
-        inputValue.headOid,
-        "--",
-        inputValue.artifactPath,
-      ],
-      this.repoRoot,
-    );
-    const records = nulRecords(tree.stdout, "tree");
-    if (records.length !== 1)
-      throw new PlanningPublicationGitError("tree", "non-regular-file");
-    treeRecord(records[0]!, inputValue.artifactPath);
+    const artifact = await this.inspectArtifactEvidence({
+      kind: inputValue.artifactKind,
+      path: inputValue.artifactPath,
+      commitOid: inputValue.headOid,
+      source: "workspace",
+    });
     const diff = await this.run(
       "diff",
       [
@@ -311,6 +272,7 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
         workspacePath,
         "diff",
         "--name-only",
+        "--no-renames",
         "-z",
         inputValue.previousHeadOid,
         inputValue.headOid,
@@ -319,9 +281,14 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
       this.repoRoot,
     );
     const changed = nulRecords(diff.stdout, "diff");
-    if (changed.length !== 1 || changed[0] !== inputValue.artifactPath)
+    const allowed = new Set(planningArtifactPaths([artifact]));
+    if (
+      !changed.includes(inputValue.artifactPath) ||
+      changed.some((path) => !allowed.has(path))
+    )
       throw new PlanningPublicationGitError("diff", "unexpected-changes");
     await this.assertClean(workspacePath);
+    return artifact;
   }
   async verifyWorkspace(
     inputValue: PlanningWorkspaceVerificationInput,
@@ -340,10 +307,32 @@ export class PlanningPublicationGit implements PlanningPublicationOperations {
       ancestorOid: inputValue.baseOid,
       descendantOid: inputValue.headOid,
     });
-    await this.assertRegularFiles({
-      commitOid: inputValue.headOid,
-      paths: inputValue.artifactPaths,
-    });
+    if (inputValue.artifacts.length === 0)
+      throw new PlanningPublicationGitError("tree", "invalid-input");
+    const artifacts = await Promise.all(
+      inputValue.artifacts.map((artifact) =>
+        this.inspectArtifactEvidence({
+          ...artifact,
+          commitOid: inputValue.headOid,
+        }),
+      ),
+    );
+    const allowed = new Set(planningArtifactPaths(artifacts));
+    const diff = await this.run(
+      "diff",
+      [
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        inputValue.baseOid,
+        inputValue.headOid,
+        "--",
+      ],
+      this.repoRoot,
+    );
+    if (nulRecords(diff.stdout, "diff").some((path) => !allowed.has(path)))
+      throw new PlanningPublicationGitError("diff", "unexpected-changes");
     await this.assertClean(workspacePath);
   }
   async inspectRemoteHead(

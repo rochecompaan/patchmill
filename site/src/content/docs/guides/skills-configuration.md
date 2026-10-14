@@ -31,20 +31,78 @@ changes.
 
 For unattended Run-once planning, the prompt identifies dedicated, same-phase,
 merged-base, or implementation-carried review context. The agent edits, commits,
-and self-reviews only the requested artifact in its phase workspace; Run-once
-owns push, pull requests, review, merge reconciliation, labels, and cleanup.
+and self-reviews only the requested artifact and declared spec companions in its
+phase workspace; Run-once owns push, pull requests, review, merge
+reconciliation, labels, and cleanup.
 
 `patchmill init` installs the recommended skill pack by default when you choose
 project-local skills. The installed
 `.patchmill/skills/patchmill-skill-pack.json` metadata records the pack name,
-version, source, and managed file checksums so `patchmill skills update` can
-update Patchmill-managed files safely.
+version, sources, required installed paths, upstream provenance, and managed
+file checksums. `patchmill skills update` checks these records before it changes
+managed files. Older metadata without per-skill records remains readable and
+gains those records on update.
 
 You can replace skills with repository-specific versions, but preserve the same
 workflow contracts: planning skills must produce usable plans, implementation
 skills must return the expected final JSON, review and landing skills must leave
 auditable evidence, and visual-evidence skills must reference committed proof
 files.
+
+## Conditional frontend work
+
+Pack `2026.10.2` adds `frontend-design` and `patchmill-frontend-review` as local
+supporting skills. No new configuration key or phase is required. The managed
+planning and inline implementation wrappers invoke them conditionally. Custom
+and global entrypoints opt in through their own wrappers; updates do not change
+those entrypoints.
+
+Planning evaluates the proposed scope during brainstorming. Implementation
+evaluates final delivery independently, including materialized files outside the
+committed range. Each records applicability and a brief reason. Layout,
+responsive behavior, styling, interaction, motion, accessibility, navigation,
+and user-flow changes activate the skills. Backend and documentation work skip
+them. Copy-only work activates only when it materially affects these areas.
+
+When design applies, planning reads the frontend-design sibling as specification
+guidance. It creates a self-contained HTML mockup with embedded CSS and
+JavaScript. The mockup opens from disk without network assets, installation, a
+build, or a server. It shows full-page context, mobile and desktop layouts,
+semantic HTML, keyboard focus, and applicable reduced-motion behavior.
+
+The author declares and links the mockup in the spec, then commits both in the
+active phase workspace. Missing, unlinked, fragment-only, or non-self-contained
+required mockups stop the plan handoff. Normal `writing-plans` consumes the spec
+and referenced mockup. Approved older specs need no retroactive mockup. See
+[Workflow artifacts](/using-patchmill/workflow-artifacts/#spec-companions) for
+the declaration format and verification rules.
+
+Frontend review follows task commands, normal whole-delivery review, its ordered
+fix pass, explicit operator-configured reviews, and final validation. A fresh
+canonical reviewer inspects code and available current visual evidence. It
+remains read-only, shell-less, and unable to create children. The parent
+supplies safe command evidence and remains the sole repair author.
+
+Resolve every valid frontend finding, including Minor findings. Production
+repairs require affected validation, independent normal repair-scope review,
+accepted fixes, final commands, and fresh frontend review. Other repairs require
+affected direct verification and fresh frontend review. Current-head PR-check
+frontend repairs invalidate affected approval and screenshots. Refresh evidence
+through existing tooling and repeat that order within the two-pass check limit.
+Non-frontend work retains one normal review and one ordered fix pass.
+
+Apply user and product requirements first, then repository policy and its design
+system, the written spec, mockup intent, and generic guidance. Record reasons
+for overrides and disputed findings. Do not demand pixel-perfect agreement.
+Missing optional visual evidence does not block review; existing required
+screenshots remain required. A planning mockup is not an implementation
+screenshot.
+
+The pack vendors Anthropic design guidance and Vercel review rules at immutable
+commits. Review never fetches mutable rules. Local licenses, required paths,
+upstream commits, source paths, and installed paths appear in metadata and
+`THIRD_PARTY_NOTICES.md`. Missing required skills, references, or licenses block
+installation or applicable review rather than trigger a download.
 
 ## Project-local skills
 
@@ -130,9 +188,10 @@ the managed local pack for the complete Patchmill workflow.
 
 Explicit custom implementation skills remain supported. An explicit
 `skills.review` adds the operator's review workflow. An absent value adds no
-extra review pass. Planning preserves explicit execution choices and unattended
-config choices. A supplied execution method does not waive existing planning
-review gates.
+extra operator-configured review pass. The managed inline wrapper still runs its
+conditional frontend checkpoint. Planning preserves explicit execution choices
+and unattended config choices. A supplied execution method does not waive
+existing planning review gates.
 
 ## Landing skill
 
@@ -248,6 +307,10 @@ npx patchmill@latest skills update
 The update command changes only Patchmill-managed project-local files. It stops
 when managed files contain custom changes or new files collide with unmanaged
 files. It does not rewrite `patchmill.config.json`.
+
+Pack `2026.10.2` adds conditional frontend design and review without a
+configuration migration. Update notices explain this addition. Customized
+managed files and new-file collisions still stop updates.
 
 Pack version `2026.10.1` retires these managed wrappers:
 

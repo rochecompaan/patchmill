@@ -88,7 +88,14 @@ test("accepts an owned workspace outside the repository root", async () => {
         workspacePath: "/other-worktrees/spec",
         baseOid: "a".repeat(40),
         headOid: "a".repeat(40),
-        artifactPaths: ["docs/specs/a.md"],
+        artifacts: [
+          {
+            kind: "spec",
+            path: "docs/specs/a.md",
+            commitOid: "a".repeat(40),
+            source: "workspace",
+          },
+        ],
       }),
     (error: unknown) =>
       error instanceof PlanningPublicationGitError &&
@@ -190,6 +197,7 @@ test("verifies committed artifacts and rejects dirty workspaces", async () => {
     { code: 0, stdout: `${"b".repeat(40)}\n`, stderr: "" },
     { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: regular, stderr: "" },
+    { code: 0, stdout: "# Spec", stderr: "" },
     { code: 0, stdout: "docs/specs/a.md\0", stderr: "" },
     { code: 0, stdout: "", stderr: "" },
   ];
@@ -202,6 +210,7 @@ test("verifies committed artifacts and rejects dirty workspaces", async () => {
     },
   });
   await git.verifyArtifactCommit({
+    artifactKind: "spec",
     workspacePath: "/workspace",
     previousHeadOid: "a".repeat(40),
     headOid: "b".repeat(40),
@@ -211,6 +220,7 @@ test("verifies committed artifacts and rejects dirty workspaces", async () => {
     { code: 0, stdout: `${"b".repeat(40)}\n`, stderr: "" },
     { code: 0, stdout: "", stderr: "" },
     { code: 0, stdout: regular, stderr: "" },
+    { code: 0, stdout: "# Spec", stderr: "" },
     { code: 0, stdout: "docs/specs/a.md\0", stderr: "" },
     { code: 0, stdout: "?? ignored\0", stderr: "" },
   ];
@@ -225,6 +235,7 @@ test("verifies committed artifacts and rejects dirty workspaces", async () => {
   await assert.rejects(
     () =>
       dirty.verifyArtifactCommit({
+        artifactKind: "spec",
         workspacePath: "/workspace",
         previousHeadOid: "a".repeat(40),
         headOid: "b".repeat(40),

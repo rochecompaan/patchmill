@@ -1,3 +1,6 @@
+import { inspectPlanningRevision } from "./planning-companion-artifacts.ts";
+import { planningArtifactPaths } from "../workflow/planning-companion-artifacts.ts";
+import { PlanningPublicationGitError } from "./planning-publication-git-errors.ts";
 import {
   isPlanningArtifactPath,
   isPlanningBranch,
@@ -43,7 +46,7 @@ export class PlanningHeadAdoptionGit {
         failure,
         recordedHeadOid: input.workspace.headOid,
         ...observed,
-        artifactPaths: input.artifactPaths,
+        artifactPaths: planningArtifactPaths(input.artifacts),
         unexpectedPaths,
         cleanupState: input.workspace.cleanup.state,
       },
@@ -102,8 +105,12 @@ export class PlanningHeadAdoptionGit {
         "invalid-identity",
       );
     if (
-      input.artifactPaths.length === 0 ||
-      input.artifactPaths.some((path) => !isPlanningArtifactPath(path))
+      input.artifacts.length === 0 ||
+      input.artifacts.some(
+        (artifact) =>
+          !isPlanningArtifactPath(artifact.path) ||
+          (artifact.kind !== "spec" && artifact.kind !== "plan"),
+      )
     )
       throw new PlanningWorkspaceResponseError(
         "head-adoption-proof",
@@ -157,48 +164,6 @@ export class PlanningHeadAdoptionGit {
     if (result.code !== 0)
       throw new PlanningWorkspaceCommandError("head-adoption-proof", result);
     return true;
-  }
-
-  private diffPaths(stdout: string): readonly string[] {
-    if (stdout === "") return [];
-    if (!stdout.endsWith("\0"))
-      throw new PlanningWorkspaceResponseError(
-        "head-adoption-proof",
-        "malformed-diff",
-      );
-    const paths = stdout.slice(0, -1).split("\0");
-    if (paths.some((path) => path === ""))
-      throw new PlanningWorkspaceResponseError(
-        "head-adoption-proof",
-        "malformed-diff",
-      );
-    return paths;
-  }
-
-  private regularArtifact(stdout: string, path: string): boolean {
-    if (stdout === "") return false;
-    if (!stdout.endsWith("\0"))
-      throw new PlanningWorkspaceResponseError(
-        "head-adoption-proof",
-        "malformed-tree",
-      );
-    const records = stdout.slice(0, -1).split("\0");
-    const [record] = records;
-    if (records.length !== 1 || record === undefined || record === "")
-      throw new PlanningWorkspaceResponseError(
-        "head-adoption-proof",
-        "malformed-tree",
-      );
-    const match =
-      /^([0-7]{6}) ([a-z-]+) ([0-9a-f]{40}|[0-9a-f]{64})\t(.+)$/u.exec(record);
-    if (match === null || match[4] !== path)
-      throw new PlanningWorkspaceResponseError(
-        "head-adoption-proof",
-        "malformed-tree",
-      );
-    return (
-      (match[1] === "100644" || match[1] === "100755") && match[2] === "blob"
-    );
   }
 
   private async reconcileLocal(
@@ -335,21 +300,43 @@ export class PlanningHeadAdoptionGit {
         fetchedHeadOid: candidate,
         remoteHeadOid: second.headOid,
       });
-    const diff = await this.proofCommand([
-      "diff",
-      "--name-only",
-      "--no-renames",
-      "-z",
-      input.workspace.headOid,
-      candidate,
-      "--",
-    ]);
-    const expected = new Set(input.artifactPaths);
-    const unexpected = [
-      ...new Set(
-        this.diffPaths(diff.stdout).filter((path) => !expected.has(path)),
-      ),
-    ].sort();
+    let revision: Awaited<ReturnType<typeof inspectPlanningRevision>>;
+    try {
+      revision = await inspectPlanningRevision({
+        runner: this.repository.runner,
+        repoRoot: this.repository.repoRoot,
+        recordedOid: input.workspace.headOid,
+        candidateOid: candidate,
+        artifacts: input.artifacts,
+      });
+    } catch (error) {
+      if (!(error instanceof PlanningPublicationGitError)) throw error;
+      if (
+        error.reason === "non-regular-file" ||
+        error.reason === "invalid-companion"
+      )
+        return this.evidence(
+          input,
+          error.reason === "non-regular-file"
+            ? "non-regular-artifact"
+            : "invalid-companion",
+          {
+            hostHeadOid: input.hostHeadOid,
+            fetchedHeadOid: candidate,
+            remoteHeadOid: second.headOid,
+          },
+        );
+      if (error.reason === "command-failed")
+        throw new PlanningWorkspaceCommandError(
+          "head-adoption-proof",
+          error.diagnostics,
+        );
+      throw new PlanningWorkspaceResponseError(
+        "head-adoption-proof",
+        error.reason,
+      );
+    }
+    const unexpected = revision.unexpectedPaths;
     if (unexpected.length)
       return this.evidence(
         input,
@@ -361,21 +348,6 @@ export class PlanningHeadAdoptionGit {
         },
         unexpected,
       );
-    for (const path of input.artifactPaths) {
-      const tree = await this.proofCommand([
-        "ls-tree",
-        "-z",
-        candidate,
-        "--",
-        path,
-      ]);
-      if (!this.regularArtifact(tree.stdout, path))
-        return this.evidence(input, "non-regular-artifact", {
-          hostHeadOid: input.hostHeadOid,
-          fetchedHeadOid: candidate,
-          remoteHeadOid: second.headOid,
-        });
-    }
     await this.reconcileLocal(input, candidate);
     const final = await this.remote(input);
     if (final.state === "missing")
@@ -389,6 +361,10 @@ export class PlanningHeadAdoptionGit {
         fetchedHeadOid: candidate,
         remoteHeadOid: final.headOid,
       });
-    return { kind: "adopted", headOid: candidate };
+    return {
+      kind: "adopted",
+      headOid: candidate,
+      artifacts: revision.artifacts,
+    };
   }
 }

@@ -80,7 +80,7 @@ type PlanningPhaseReconcilerInput = Readonly<{
   remoteBase: Pick<PlanningRemoteBaseGit, "fetch">;
   git: Pick<
     PlanningPublicationOperations,
-    "inspectRemoteHead" | "assertAncestor" | "assertRegularFiles"
+    "inspectRemoteHead" | "assertAncestor" | "inspectArtifactEvidence"
   >;
   workspaces: PlanningWorkspaceLifecycle;
   now?: () => Date;
@@ -227,11 +227,7 @@ async function reconcileMergedPlanningPullRequest(input: {
   const completed = {
     ...cleanup.phase,
     status: "complete" as const,
-    artifacts: cleanup.phase.artifacts.map((artifact) => ({
-      ...artifact,
-      source: "remote-base" as const,
-      commitOid: snapshot.baseOid,
-    })),
+    artifacts: evidence.artifacts,
     completion: {
       kind: "merged-pull-request" as const,
       mergeOid: summary.mergeCommit,

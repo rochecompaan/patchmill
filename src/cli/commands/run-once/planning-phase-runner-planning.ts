@@ -2,6 +2,8 @@ import type {
   PlanningStateV1,
   WorkspaceReadyPlanningPhase,
 } from "../../../workflow/planning-state-types.ts";
+import { refreshPlanningArtifactEvidence } from "./planning-companion-evidence.ts";
+import { assertPlanningImplementationBase } from "./planning-implementation-base.ts";
 import type { PlanningHeadAdoptionBlockedOutcome } from "./planning-head-adoption.ts";
 import { PlanningPhaseArtifactError } from "./planning-phase-artifacts.ts";
 import { runOnceFailure } from "./result-diagnostics.ts";
@@ -173,9 +175,19 @@ async function prepare(
     remote: input.config.remote,
     baseBranch: input.config.baseBranch,
   });
+  await assertPlanningImplementationBase({
+    state,
+    phaseIndex: input.phaseIndex,
+    base,
+    git: input.publicationGit,
+  });
   const resolution = operations(input).resolveArtifacts({
     phase: input.phase,
     base,
+  });
+  const artifacts = await refreshPlanningArtifactEvidence({
+    artifacts: resolution.artifacts,
+    git: input.publicationGit,
   });
   if (resolution.kind === "satisfied-by-base")
     return {
@@ -183,7 +195,7 @@ async function prepare(
         kind: input.phase.kind as "spec" | "plan",
         status: "complete",
         base,
-        artifacts: resolution.artifacts,
+        artifacts,
         completion: { kind: "remote-base" },
       }),
       satisfied: true,
@@ -199,7 +211,7 @@ async function prepare(
     status: "workspace-ready",
     base: prepared.base,
     workspace: prepared.workspace,
-    artifacts: resolution.artifacts,
+    artifacts,
   };
   return { state: await replacePhase(input, state, phase), satisfied: false };
 }

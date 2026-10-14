@@ -15,6 +15,7 @@ import {
   hashText,
   projectSkillPath,
   requiredSkillFiles,
+  type SkillPackSkill,
 } from "./skill-pack.ts";
 
 const unixNewline = "name: sample\n";
@@ -102,7 +103,7 @@ test("buildRecommendedProjectSkillConfig maps required workflow stages locally",
 
 test("default pack records pinned external source", () => {
   assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.name, "patchmill-recommended");
-  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.10.1");
+  assert.equal(PATCHMILL_RECOMMENDED_SKILL_PACK.version, "2026.10.2");
   assert.deepEqual(
     PATCHMILL_RECOMMENDED_SKILL_PACK.source,
     expectedSuperpowersSource,
@@ -110,31 +111,39 @@ test("default pack records pinned external source", () => {
   assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.additionalSources, [
     expectedSimpleEnglishSource,
   ]);
-  assert.deepEqual(PATCHMILL_RECOMMENDED_SKILL_PACK.skills, [
-    { name: "patchmill-issue-triage", source: "patchmill" },
-    {
-      name: "inline-dev-with-validation-and-pr-checks",
-      source: "patchmill",
-    },
-    { name: "module-size", source: "patchmill" },
-    { name: "patchmill-visual-evidence", source: "patchmill" },
-    { name: "patchmill-planning", source: "patchmill" },
-    { name: "simple-english", source: "simple-english" },
-    { name: "brainstorming", source: "superpowers" },
-    { name: "dispatching-parallel-agents", source: "superpowers" },
-    { name: "executing-plans", source: "superpowers" },
-    { name: "finishing-a-development-branch", source: "superpowers" },
-    { name: "receiving-code-review", source: "superpowers" },
-    { name: "requesting-code-review", source: "superpowers" },
-    { name: "subagent-driven-development", source: "superpowers" },
-    { name: "systematic-debugging", source: "superpowers" },
-    { name: "test-driven-development", source: "superpowers" },
-    { name: "using-git-worktrees", source: "superpowers" },
-    { name: "using-superpowers", source: "superpowers" },
-    { name: "verification-before-completion", source: "superpowers" },
-    { name: "writing-plans", source: "superpowers" },
-    { name: "writing-skills", source: "superpowers" },
-  ]);
+  assert.deepEqual(
+    PATCHMILL_RECOMMENDED_SKILL_PACK.skills.map(({ name, source }) => ({
+      name,
+      source,
+    })),
+    [
+      { name: "patchmill-issue-triage", source: "patchmill" },
+      {
+        name: "inline-dev-with-validation-and-pr-checks",
+        source: "patchmill",
+      },
+      { name: "module-size", source: "patchmill" },
+      { name: "patchmill-visual-evidence", source: "patchmill" },
+      { name: "patchmill-planning", source: "patchmill" },
+      { name: "frontend-design", source: "patchmill" },
+      { name: "patchmill-frontend-review", source: "patchmill" },
+      { name: "simple-english", source: "simple-english" },
+      { name: "brainstorming", source: "superpowers" },
+      { name: "dispatching-parallel-agents", source: "superpowers" },
+      { name: "executing-plans", source: "superpowers" },
+      { name: "finishing-a-development-branch", source: "superpowers" },
+      { name: "receiving-code-review", source: "superpowers" },
+      { name: "requesting-code-review", source: "superpowers" },
+      { name: "subagent-driven-development", source: "superpowers" },
+      { name: "systematic-debugging", source: "superpowers" },
+      { name: "test-driven-development", source: "superpowers" },
+      { name: "using-git-worktrees", source: "superpowers" },
+      { name: "using-superpowers", source: "superpowers" },
+      { name: "verification-before-completion", source: "superpowers" },
+      { name: "writing-plans", source: "superpowers" },
+      { name: "writing-skills", source: "superpowers" },
+    ],
+  );
   assert.equal(
     new Set(PATCHMILL_RECOMMENDED_SKILL_PACK.skills.map((skill) => skill.name))
       .size,
@@ -159,6 +168,87 @@ test("Patchmill planning wrapper annotates sibling Superpowers skills", () => {
   assert.match(planning, /issue worktree/u);
   assert.match(planning, /Testing Value Gate/u);
   assert.match(planning, /direct verification/u);
+});
+
+test("metadata renders provenance and canonical sibling requirements without mutating entries", () => {
+  const skills: SkillPackSkill[] = [
+    {
+      name: "patchmill-planning",
+      source: "simple-english",
+      upstreamSources: [
+        {
+          repository: "example/guidance",
+          commit: "fixture-pin",
+          files: [
+            { sourcePath: "guidance.md", targetPath: "references/guidance.md" },
+          ],
+          license: {
+            name: "MIT",
+            sourcePath: "LICENSE",
+            targetPath: "LICENSE",
+          },
+        },
+        {
+          repository: "example/other",
+          commit: "other-pin",
+          files: [
+            { sourcePath: "wrapper.md", targetPath: "references/wrapper.md" },
+          ],
+          license: { name: "MIT", sourcePath: "README.md#license" },
+        },
+      ],
+    },
+  ];
+  const before = structuredClone(skills);
+  const metadata = buildSkillPackMetadata([], {
+    skillDir: "custom/skills/",
+    skills,
+  });
+  assert.deepEqual(metadata.skills, [
+    {
+      name: "patchmill-planning",
+      source: "simple-english",
+      requiredFiles: [
+        "custom/skills/patchmill-planning/SKILL.md",
+        "custom/skills/frontend-design/SKILL.md",
+        "custom/skills/frontend-design/LICENSE.txt",
+      ],
+      upstreamSources: [
+        {
+          repository: "example/guidance",
+          commit: "fixture-pin",
+          files: [
+            {
+              sourcePath: "guidance.md",
+              installedPath:
+                "custom/skills/patchmill-planning/references/guidance.md",
+            },
+          ],
+          license: {
+            name: "MIT",
+            sourcePath: "LICENSE",
+            installedPath: "custom/skills/patchmill-planning/LICENSE",
+          },
+        },
+        {
+          repository: "example/other",
+          commit: "other-pin",
+          files: [
+            {
+              sourcePath: "wrapper.md",
+              installedPath:
+                "custom/skills/patchmill-planning/references/wrapper.md",
+            },
+          ],
+          license: { name: "MIT", sourcePath: "README.md#license" },
+        },
+      ],
+    },
+  ]);
+  assert.deepEqual(skills, before);
+  metadata.skills![0]!.upstreamSources![0]!.files[0]!.sourcePath = "changed";
+  assert.deepEqual(skills, before);
+  assert.ok(Array.isArray(buildSkillPackMetadata([]).skills));
 });
 
 test("hashText returns stable sha256 hex", () => {
@@ -186,18 +276,26 @@ test("buildSkillPackMetadata records installed file hashes", () => {
   ];
   const metadata = buildSkillPackMetadata(files, {
     skillDir: "custom/skills/",
+    skills: [{ name: "writing-plans", source: "superpowers" }],
   });
 
   assert.deepEqual(metadata, {
     pack: {
       name: "patchmill-recommended",
-      version: "2026.10.1",
+      version: "2026.10.2",
       source: expectedSuperpowersSource,
       additionalSources: [expectedSimpleEnglishSource],
     },
     installedAt: "<generated-by-init>",
     skillDir: "custom/skills",
     metadataFile: SKILL_PACK_METADATA_FILE,
+    skills: [
+      {
+        name: "writing-plans",
+        source: "superpowers",
+        requiredFiles: ["custom/skills/writing-plans/SKILL.md"],
+      },
+    ],
     files: [
       {
         path: ".patchmill/skills/writing-plans/SKILL.md",

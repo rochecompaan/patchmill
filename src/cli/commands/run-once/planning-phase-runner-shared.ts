@@ -1,3 +1,4 @@
+import { refreshPlanningArtifactEvidence } from "./planning-companion-evidence.ts";
 import type { PlanningPublicationOperations } from "../../../git/planning-publication-git.ts";
 import type { PlanningRemoteBaseGit } from "../../../git/planning-remote-base.ts";
 import type { PlanningWorkspaceLifecycle } from "../../../git/planning-workspaces.ts";
@@ -195,7 +196,7 @@ export async function runWorkspaceArtifacts(
       state = await replacePhase(input, state, next);
     },
   });
-  const current = state.phases[input.phaseIndex];
+  let current = state.phases[input.phaseIndex];
   if (current?.status !== "workspace-ready")
     throw new RangeError("Planning phase workspace is not ready");
   if (!workspace.clean)
@@ -215,6 +216,14 @@ export async function runWorkspaceArtifacts(
         }),
       ),
     };
+  const refreshed = await refreshPlanningArtifactEvidence({
+    artifacts: current.artifacts,
+    git: input.publicationGit,
+  });
+  if (JSON.stringify(refreshed) !== JSON.stringify(current.artifacts)) {
+    current = { ...current, artifacts: refreshed };
+    state = await replacePhase(input, state, current);
+  }
   const artifacts = await operations(input).runArtifacts({
     issue: input.issue,
     phase: input.phase,

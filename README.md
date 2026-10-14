@@ -97,6 +97,20 @@ provides the factory floor; Superpowers provides much of the planning,
 implementation, debugging, review, and workflow discipline that moves work
 through it.
 
+## Frontend design and review
+
+The recommended local pack adds conditional frontend guidance. For meaningful
+browser-visible changes, planning includes a linked, offline full-page HTML
+mockup. Implementation completes normal code review and validation, then runs
+fresh independent frontend review. The parent repairs valid findings and
+refreshes review and evidence after frontend changes.
+
+Backend, documentation, and non-material copy work skip these additions. Pack
+`2026.10.2` uses pinned local guidance and needs no configuration change. Custom
+and global workflows opt in through their own wrappers. See
+[Skills configuration](https://patchmill.dev/guides/skills-configuration/) and
+[Workflow artifacts](https://patchmill.dev/using-patchmill/workflow-artifacts/).
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

@@ -3,6 +3,7 @@ import type { PlanningRemoteBaseSnapshot } from "../../../git/planning-workspace
 import type {
   PlanningPhaseStateV1,
   PlanningStateV1,
+  PlanningArtifactEvidence,
 } from "../../../workflow/planning-state-types.ts";
 
 export type PlanningImplementationBaseErrorReason =
@@ -42,11 +43,11 @@ export async function assertPlanningImplementationBase(input: {
   base: PlanningRemoteBaseSnapshot;
   git: Pick<
     PlanningPublicationOperations,
-    "assertAncestor" | "assertRegularFiles"
+    "assertAncestor" | "inspectArtifactEvidence"
   >;
 }): Promise<void> {
   let newestAnchor: string | undefined;
-  const paths = new Set<string>();
+  const artifacts = new Map<string, PlanningArtifactEvidence>();
   for (const phase of input.state.phases.slice(0, input.phaseIndex)) {
     if (phase.kind === "implementation" || phase.status !== "complete")
       continue;
@@ -59,7 +60,7 @@ export async function assertPlanningImplementationBase(input: {
         throw new PlanningImplementationBaseError("prior-artifact-ambiguous");
       if (candidates[0] !== artifact.path)
         throw new PlanningImplementationBaseError("prior-artifact-mismatch");
-      paths.add(artifact.path);
+      artifacts.set(artifact.path, artifact);
     }
   }
   if (newestAnchor !== undefined)
@@ -67,9 +68,10 @@ export async function assertPlanningImplementationBase(input: {
       ancestorOid: newestAnchor,
       descendantOid: input.base.baseOid,
     });
-  if (paths.size > 0)
-    await input.git.assertRegularFiles({
+  for (const artifact of artifacts.values())
+    await input.git.inspectArtifactEvidence({
+      ...artifact,
+      source: "remote-base",
       commitOid: input.base.baseOid,
-      paths: [...paths],
     });
 }

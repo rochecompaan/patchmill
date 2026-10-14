@@ -88,9 +88,19 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
     git(repo, "merge", "--squash", "planning/spec");
     await writeFile(
       join(repo, "docs/specs/example-issue-188-artifact.md"),
-      "reviewed B\n",
+      "# Reviewed B\n\n## Companion artifacts\n\n- `docs/mockups/reviewed.html`: [Mockup](../mockups/reviewed.html)\n",
     );
-    git(repo, "add", "docs/specs/example-issue-188-artifact.md");
+    await mkdir(join(repo, "docs/mockups"), { recursive: true });
+    await writeFile(
+      join(repo, "docs/mockups/reviewed.html"),
+      "<!doctype html><title>Reviewed</title>",
+    );
+    git(
+      repo,
+      "add",
+      "docs/specs/example-issue-188-artifact.md",
+      "docs/mockups/reviewed.html",
+    );
     git(repo, "commit", "-m", "reviewed squash merge");
     const forgeMergeOid = git(repo, "rev-parse", "HEAD");
     git(repo, "push", "origin", "main");
@@ -205,6 +215,7 @@ test("reconciliation trusts the fetched reviewed squash base artifact rather tha
         path: "docs/specs/example-issue-188-artifact.md",
         source: "remote-base",
         commitOid: rewrittenBaseOid,
+        companionPaths: ["docs/mockups/reviewed.html"],
       },
     ]);
     assert.deepEqual(phase.completion, {

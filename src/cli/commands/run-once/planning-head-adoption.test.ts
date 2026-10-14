@@ -97,8 +97,16 @@ test("atomically reanchors all planning head evidence after safe adoption", asyn
     },
     lock: {} as never,
     workspaces: {
-      async adoptPlanningHead() {
-        return { kind: "adopted" as const, headOid: candidate };
+      async adoptPlanningHead(input) {
+        return {
+          kind: "adopted" as const,
+          headOid: candidate,
+          artifacts: input.artifacts.map((artifact) => ({
+            ...artifact,
+            source: "workspace" as const,
+            commitOid: candidate,
+          })),
+        };
       },
     },
     stateStore: {
@@ -146,8 +154,16 @@ test("retries the durable checkpoint after local adoption succeeded before a sto
       url: "https://github.com/acme/patchmill/pull/188",
     },
     workspaces: {
-      async adoptPlanningHead() {
-        return { kind: "adopted" as const, headOid: candidate };
+      async adoptPlanningHead(input) {
+        return {
+          kind: "adopted" as const,
+          headOid: candidate,
+          artifacts: input.artifacts.map((artifact) => ({
+            ...artifact,
+            source: "workspace" as const,
+            commitOid: candidate,
+          })),
+        };
       },
     },
   };

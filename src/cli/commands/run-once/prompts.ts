@@ -541,7 +541,7 @@ function renderSubagentFinalizationGate(): string {
   return `Patchmill subagent finalization gate:
 Before returning any terminal result:
 1. Call \`subagent({ action: "status" })\` and confirm no subagent run is unresolved.
-2. Confirm every task, review, accepted fix, validation command, PR check, todo, and landing step required by the configured workflow is complete. Do not add an automatic re-review.
+2. Confirm every task, review, accepted fix, validation command, PR check, todo, and landing step required by the configured workflow is complete. Do not add reviews beyond the configured workflow.
 3. Resolve, await, resume, or interrupt every outstanding run before returning.
 4. Return only the specified \`pr-created\` or genuine human-input blocker JSON object.
 Never return progress prose or promise to continue after the response. This non-interactive Pi invocation has no subsequent turn.`;
@@ -567,7 +567,7 @@ export function buildSpecCreationPrompt(
   const workflow = numberedWorkflow([
     renderPlanContextInstruction(projectPolicy),
     ...(reviewInstruction === undefined ? [] : [reviewInstruction]),
-    `Treat \`${ready}\` as meaning the issue is clear enough for automation to write a design spec. Do not implement code.`,
+    `Treat \`${ready}\` as meaning the issue is clear enough for automation to write a design spec. Do not implement product changes.`,
     "Write a concise design spec that captures requirements, proposed behavior, affected components, and verification strategy.",
     `Save the spec to ${specPath}.`,
     specApprovalRequired
@@ -575,7 +575,8 @@ export function buildSpecCreationPrompt(
       : "Do not stop for an additional manual spec-approval gate. Continue to planning in the next Patchmill workflow step.",
     renderPlanningSkillStep(skills),
     "Do not create or update implementation-plan task todos during spec creation; those belong to the later plan-creation step.",
-    "Commit only the spec document using a Conventional Commit message.",
+    "Required planning-only companion artifacts, such as HTML mockups, are permitted when the configured planning workflow requires them.",
+    "Commit the spec document and any required companion planning artifacts using a Conventional Commit message. Do not implement product changes.",
   ]);
 
   return `Create a design spec for ${formatIssueTarget(projectPolicy)} #${issue.number}: ${issue.title}

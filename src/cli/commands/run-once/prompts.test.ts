@@ -112,6 +112,13 @@ test("buildSpecCreationPrompt instructs Pi to save and commit the spec", () => {
   });
 
   assert.match(prompt, /Create a design spec/);
+  assert.match(prompt, /Do not implement product changes/u);
+  assert.match(prompt, /Required planning-only companion artifacts/u);
+  assert.match(
+    prompt,
+    /Commit the spec document and any required companion planning artifacts/u,
+  );
+  assert.doesNotMatch(prompt, /Do not implement code/u);
   assert.match(
     prompt,
     /docs\/specs\/2026-06-13-issue-42-add-once-runner-design\.md/,
@@ -562,6 +569,8 @@ test("buildImplementationPrompt includes plan-first execution, review loop, vali
     /Any queued, running, paused, needs-attention, or otherwise unresolved run prohibits the final response/,
   );
   assert.match(prompt, /Patchmill subagent finalization gate:/);
+  assert.match(prompt, /Do not add reviews beyond the configured workflow/u);
+  assert.doesNotMatch(prompt, /Do not add an automatic re-review/u);
   assert.match(
     prompt,
     /Never return progress prose or promise to continue after the response/,

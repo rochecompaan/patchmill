@@ -1,4 +1,5 @@
 import type { CommandResult } from "../command/types.ts";
+import type { PlanningArtifactEvidence } from "../workflow/planning-state-types.ts";
 import type { PlanningPhaseKind } from "../workflow/planning-pull-request-markers.ts";
 
 export type PlanningWorkspaceIdentity = Readonly<{
@@ -36,6 +37,7 @@ export type PlanningHeadAdoptionFailure =
   | "not-descendant"
   | "unexpected-paths"
   | "non-regular-artifact"
+  | "invalid-companion"
   | "head-moved";
 
 export type PlanningHeadAdoptionBlockedEvidence = Readonly<{
@@ -50,7 +52,11 @@ export type PlanningHeadAdoptionBlockedEvidence = Readonly<{
 }>;
 
 export type PlanningHeadAdoptionResult =
-  | Readonly<{ kind: "adopted"; headOid: string }>
+  | Readonly<{
+      kind: "adopted";
+      headOid: string;
+      artifacts: readonly PlanningArtifactEvidence[];
+    }>
   | Readonly<{
       kind: "blocked";
       evidence: PlanningHeadAdoptionBlockedEvidence;
@@ -62,7 +68,7 @@ export type PlanningHeadAdoptionInput = Readonly<{
   phase: PlanningPhaseKind;
   workspace: PlanningWorkspaceOwnership;
   hostHeadOid: string;
-  artifactPaths: readonly string[];
+  artifacts: readonly PlanningArtifactEvidence[];
 }>;
 
 export type PlanningWorkspaceBranchRemovalAuthorization =
