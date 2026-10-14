@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { runLegacyOneIssue as runOneIssue } from "./pipeline-legacy.ts";
 import { formatPublishedArtifactComment } from "../../../workflow/artifacts/published-artifacts.ts";
 import { writeFixtureRunState as writeRunState } from "../../../../test-support/run-once/run-state-fixture.ts";
+import { readRunState } from "./run-state.ts";
 import {
   issue,
   issueListPayload,
@@ -357,12 +358,15 @@ test("runOneIssue resumes an approved branch-only saved plan", async () => {
   assert.ok(worktreeAdd < firstPi);
 });
 
-test("runOneIssue rejects a missing branch saved plan before mutation despite a matching published source", async () => {
+test("runOneIssue resumes a saved plan missing from the issue branch using its published source", async () => {
   const issueNumber = 70;
   const title = "Missing branch saved plan";
   const planPath =
     "docs/plans/2026-05-14-issue-70-missing-branch-saved-plan.md";
   const branch = "agent/issue-70-missing-branch-saved-plan";
+  const worktreePath =
+    ".worktrees/patchmill-issue-70-missing-branch-saved-plan";
+  const planCommit = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   const config = await makeConfig({
     dryRun: false,
     execute: true,
@@ -378,7 +382,8 @@ test("runOneIssue rejects a missing branch saved plan before mutation despite a 
       status: "implementing",
       branch,
       planPath,
-      worktreePath: ".worktrees/patchmill-issue-70-missing-branch-saved-plan",
+      planCommit,
+      worktreePath,
       checkpoints: {
         claimed: true,
         startedCommentPosted: true,
@@ -433,36 +438,79 @@ test("runOneIssue rejects a missing branch saved plan before mutation despite a 
     if (call.command === "git" && call.args[0] === "cat-file") {
       return { code: 1, stdout: "", stderr: "missing" };
     }
+    if (
+      call.command === "git" &&
+      call.args[0] === "worktree" &&
+      call.args[1] === "add"
+    ) {
+      await mkdir(join(config.repoRoot, worktreePath), { recursive: true });
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      call.args[0] === "-C" &&
+      call.args[2] === "branch"
+    ) {
+      return { code: 0, stdout: `${branch}\n`, stderr: "" };
+    }
+    if (
+      call.command === "git" &&
+      ["add", "commit", "log"].includes(call.args[0] ?? "")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "git" && call.args[0] === "rev-parse") {
+      return {
+        code: 0,
+        stdout: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+        stderr: "",
+      };
+    }
     if (call.command === "git" && call.args[0] === "status") {
       return { code: 0, stdout: "", stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      call.args[0] === "labels" &&
+      call.args[1] === "list"
+    ) {
+      return { code: 0, stdout: labelListPayload(), stderr: "" };
+    }
+    if (
+      call.command === "tea" &&
+      (call.args[0] === "issues" || call.args[0] === "comment")
+    ) {
+      return { code: 0, stdout: "", stderr: "" };
+    }
+    if (call.command === "pi") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          status: "pr-created",
+          prUrl: "https://forgejo/pr/70",
+          branch,
+          commits: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+          validation: ["focused test passed"],
+        }),
+        stderr: "",
+      };
     }
     throw new Error(
       `unexpected command: ${call.command} ${call.args.join(" ")}`,
     );
   });
 
-  await assert.rejects(
-    () => runOneIssue(runner, config, { now: NOW }),
-    /Saved plan .* does not exist on issue branch/u,
-  );
-  assert.equal((await workflowPiCalls(runner.calls)).length, 0);
+  const result = await runOneIssue(runner, config, { now: NOW });
+
+  assert.equal(result.status, "pr-created", JSON.stringify(result));
+  assert.equal((await workflowPiCalls(runner.calls)).length, 1);
   assert.equal(
-    runner.calls.some(
-      (call) =>
-        call.command === "tea" &&
-        ((call.args[0] === "issues" && call.args[1] === "edit") ||
-          call.args[0] === "comment"),
-    ),
-    false,
+    await readFile(join(config.repoRoot, worktreePath, planPath), "utf8"),
+    "# Matching published plan\n",
   );
   assert.equal(
-    runner.calls.some(
-      (call) =>
-        call.command === "git" &&
-        call.args[0] === "worktree" &&
-        call.args[1] === "add",
-    ),
-    false,
+    (await readRunState(config.runStateDir, issueNumber))?.planCommit,
+    planCommit,
   );
 });
 

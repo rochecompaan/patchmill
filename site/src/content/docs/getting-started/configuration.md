@@ -325,6 +325,10 @@ repository already has conventions for specs, plans, worktrees, or run logs.
 }
 ```
 
+See [Workflow conventions](/using-patchmill/workflow-conventions/) for generated
+filenames, `git.branchPrefix`, `git.worktreeNamePrefix`, and how Run-once finds
+artifacts by issue number.
+
 Commit `patchmill.config.json` and project-local skills when the workflow should
 be shared by the team. Keep machine-specific runtime state such as
 `.patchmill/pi-agent/`, `.patchmill/runs/`, and `.patchmill/triage-runs/` local.

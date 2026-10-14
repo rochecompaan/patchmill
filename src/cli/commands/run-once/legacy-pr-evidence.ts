@@ -128,5 +128,9 @@ export async function captureLegacyImplementationPr(input: {
     implementationPr: evidence,
   });
   if (result.kind === "blocked") throw new Error(result.reason);
+  if (result.kind === "open" && result.headOid !== evidence.publication.headOid)
+    throw new Error(
+      "Implementation head changed after verification; rerun checks on the existing PR",
+    );
   return result;
 }

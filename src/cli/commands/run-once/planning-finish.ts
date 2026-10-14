@@ -99,6 +99,16 @@ export async function finishPlanningImplementation(
   const reconciliation = await input.reconcilePr(phase);
   if (reconciliation.kind === "blocked")
     return { kind: "blocked", state, reason: reconciliation.reason };
+  if (
+    reconciliation.kind === "open" &&
+    reconciliation.headOid !== phase.publication.headOid
+  )
+    return {
+      kind: "blocked",
+      state,
+      reason:
+        "Implementation head changed; rerun checks on the existing PR before finishing.",
+    };
   if (reconciliation.kind === "merged" && phase.merge === undefined) {
     phase = {
       ...phase,

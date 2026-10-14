@@ -91,7 +91,9 @@ eligible issues.
 
 The saved gate snapshot assigns spec and plan artifacts to a **phase
 workspace**: the owned worktree and branch for one spec, plan, or implementation
-phase, pinned to saved remote-base evidence.
+phase, pinned to saved remote-base evidence. See
+[Workflow conventions](/using-patchmill/workflow-conventions/) for artifact
+filenames, workspace names, and lookup rules.
 
 1. Patchmill fetches the target base and resolves assigned artifacts. Exactly
    one matching regular file under the configured directory satisfies assigned
@@ -290,8 +292,9 @@ and a single artifact-only delta from the saved HEAD. It selects the committed
 artifact by issue number and configured directory, not by the retry date. The
 checkpoint retains the original artifact path, commit, todo root, and todos. No
 second artifact agent runs for that artifact. Ambiguous candidates, unrelated
-commits, changed HEAD, or checkpoint errors stop before later agents or
-publication. Normal planning review and implementation PR gates still apply.
+commits, a HEAD change during this proof, or checkpoint errors stop before later
+agents or publication. Normal planning review and implementation PR gates still
+apply.
 
 Saved legacy `cleanup-pending` records resume normal cleanup without a ready
 label. Patchmill does not publish new needs-info state for these records.
@@ -324,6 +327,34 @@ evidence. Inspect again before any separate lease repair.
 Unknown, foreign, malformed, unlinked, or unverified repair guards remain
 blocked. Interrupted reconciliation guards also remain blocked. Preserve this
 evidence for operator inspection. No lock-bypass flag exists.
+
+### Implementation head changes
+
+A branch head is its current commit. Merging the target base into an owned
+implementation branch does not make its worktree foreign. A local commit or an
+update to an open implementation pull request can change the head after earlier
+checks.
+
+If the local or open pull request head changes, Patchmill invalidates the saved
+implementation and review checks. It runs fresh checks against the current head
+before publication or cleanup. It keeps the owned workspace and reconciles the
+same implementation pull request instead of creating a replacement for the head
+change.
+
+To continue, run the same explicit command:
+
+```sh
+patchmill run-once --issue N
+```
+
+Do not reset or delete the owned workspace to resolve a head change. That can
+discard work and break saved ownership. Inspect the new implementation and
+review results before merging the pull request.
+
+This continuation differs from the artifact-only recovery proof above. It does
+not bypass ownership, ancestry, ordinary Git status, or publication checks.
+Missing, foreign, ambiguous, or closed-unmerged pull requests remain blockers.
+Planning review gates and final merge proof still require exact saved evidence.
 
 ## Legacy compatibility
 

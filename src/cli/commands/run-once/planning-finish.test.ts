@@ -188,12 +188,23 @@ test("open implementation PR leaves the Issue run unfinished", async () => {
   const run = input();
   const result = await finishPlanningImplementation({
     ...run.value,
-    reconcilePr: async () => ({ kind: "open" as const }),
+    reconcilePr: async () => ({ kind: "open" as const, headOid: oid("b") }),
   });
   assert.equal(result.kind, "implementation-published");
   assert.equal(result.state.phases[0]?.status, "pull-request-open");
   assert.equal(run.events.includes("ensureDoneLabel"), false);
   assert.equal(run.events.includes("applyDoneLabels"), false);
+});
+
+test("a changed implementation head cannot reuse finish evidence or remove the workspace", async () => {
+  const run = input();
+  const result = await finishPlanningImplementation({
+    ...run.value,
+    reconcilePr: async () => ({ kind: "open" as const, headOid: oid("e") }),
+  });
+  assert.equal(result.kind, "blocked");
+  assert.deepEqual(run.events, []);
+  assert.deepEqual(run.checkpoints, []);
 });
 
 test("finishes in durable external-effect and cleanup order", async () => {
@@ -312,7 +323,7 @@ test("rechecks publication after the cleanup hook before removing local data", a
   await assert.rejects(
     finishPlanningImplementation({
       ...run.value,
-      reconcilePr: async () => ({ kind: "open" }),
+      reconcilePr: async () => ({ kind: "open", headOid: oid("b") }),
     }),
     /remote-head-mismatch/,
   );

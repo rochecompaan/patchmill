@@ -64,7 +64,7 @@ test("an exact open implementation PR remains unfinished without a base fetch", 
       assertAncestor: async () => assert.fail("no merge proof for open PR"),
     },
   });
-  assert.deepEqual(result, { kind: "open" });
+  assert.deepEqual(result, { kind: "open", headOid: summary.headSha });
 });
 
 test("merged implementation requires ancestry against the freshly pinned target", async () => {
@@ -98,7 +98,8 @@ test("merged implementation requires ancestry against the freshly pinned target"
 test("conflicting publication identity cannot authorize landing", async () => {
   for (const changed of [
     { ...summary, baseBranch: "other" },
-    { ...summary, headSha: "e".repeat(40) },
+    { ...summary, headSha: "invalid" },
+    { ...summary, headRepository: { ...repository, repository: "other" } },
     { ...summary, body: "Closes #227" },
     { ...summary, number: 18 },
     { ...summary, status: "closed-unmerged" as const },
@@ -115,6 +116,55 @@ test("conflicting publication identity cannot authorize landing", async () => {
     });
     assert.equal(result.kind, "blocked");
   }
+});
+
+test("advanced implementation heads retain PR identity and require fresh verification", async () => {
+  const advanced = { ...summary, headSha: "e".repeat(40) };
+  const found = await findOwnedImplementationPullRequest({
+    host: host([advanced]),
+    issueNumber: 226,
+    evidence,
+  });
+  assert.deepEqual(found, {
+    ...evidence,
+    publication: { ...evidence.publication, headOid: advanced.headSha },
+  });
+  const result = await reconcileImplementationPullRequest({
+    host: host([advanced]),
+    issueNumber: 226,
+    evidence,
+    fetchBase: async () => assert.fail("an open PR cannot prove landing"),
+    git: {
+      assertAncestor: async () => assert.fail("no merge proof for open PR"),
+    },
+  });
+  assert.deepEqual(result, { kind: "open", headOid: advanced.headSha });
+});
+
+test("an advanced merged PR still needs host merge proof on the fresh target", async () => {
+  const proofs: unknown[] = [];
+  const result = await reconcileImplementationPullRequest({
+    host: host([
+      {
+        ...summary,
+        headSha: "e".repeat(40),
+        status: "merged",
+        mergeCommit: "c".repeat(40),
+      },
+    ]),
+    issueNumber: 226,
+    evidence,
+    fetchBase: async () => ({ baseOid: "d".repeat(40) }),
+    git: {
+      assertAncestor: async (proof) => {
+        proofs.push(proof);
+      },
+    },
+  });
+  assert.equal(result.kind, "merged");
+  assert.deepEqual(proofs, [
+    { ancestorOid: "c".repeat(40), descendantOid: "d".repeat(40) },
+  ]);
 });
 
 test("publication-crash discovery preserves one owned PR and rejects ambiguity", async () => {

@@ -6,6 +6,9 @@ description:
 ---
 
 A spec describes design and constraints; a plan describes implementation work.
+See [Workflow conventions](/using-patchmill/workflow-conventions/) for artifact
+filenames, branch and worktree names, and issue-based lookup.
+
 For a fresh `planning-pr-v1` Issue run, an artifact is authoritative only when
 it is either:
 

@@ -14,6 +14,10 @@ import { replacePlanningPhase } from "../../../workflow/planning-phase-replaceme
 import { repositoryMutationContext } from "./repository-mutation-context.ts";
 import type { RunOneIssueOptions } from "./pipeline-legacy-types.ts";
 import type { AgentIssueConfig } from "./types.ts";
+import {
+  implementationChecksChanged,
+  invalidateImplementationChecks,
+} from "./planning-implementation-revalidation.ts";
 
 /** Validates a saved handoff before labels, workspace creation, or agent reentry. */
 export async function reconcileSavedPlanningImplementation(input: {
@@ -115,6 +119,28 @@ export async function reconcileSavedPlanningImplementation(input: {
     });
   }
   const current = state.phases[phaseIndex];
+  if (
+    reconciliation.kind === "open" &&
+    current?.kind === "implementation" &&
+    current.status === "pull-request-open" &&
+    (await implementationChecksChanged({
+      runner: input.runner,
+      repoRoot: input.config.repoRoot,
+      branch: current.workspace.identity.branch,
+      savedHeadOid: current.publication.headOid,
+      remoteHeadOid: reconciliation.headOid,
+    }))
+  ) {
+    await mutation?.assertOwned();
+    state = await replacePlanningPhase({
+      stateStore: input.stateStore,
+      state,
+      lock: input.lock,
+      phaseIndex,
+      ...(input.options.now ? { now: () => input.options.now! } : {}),
+      phase: invalidateImplementationChecks(current),
+    });
+  }
   if (
     reconciliation.kind === "merged" &&
     current?.kind === "implementation" &&
