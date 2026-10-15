@@ -1,5 +1,9 @@
 import { CommandFailedError, commandOutput } from "../process/command.ts";
-import type { CommandRunner, CommandRunOptions } from "../process/command.ts";
+import type {
+  CommandResult,
+  CommandRunner,
+  CommandRunOptions,
+} from "../process/command.ts";
 import type {
   Host,
   HostCliCheck,
@@ -78,23 +82,18 @@ export class GitHubHost implements Host, RepositorySetupHost {
     return result;
   }
   async checkCli(): Promise<HostCliCheck> {
-    for (const args of [
-      ["--version"],
-      ["auth", "status"],
-      ["api", "user", "--jq", ".login"],
-    ]) {
-      const result = await this.gh(args);
-      if (result.code !== 0)
-        return {
-          ok: false,
-          message: `gh ${args.slice(0, 2).join(" ")} failed: ${commandOutput(result)}`,
-        };
-      if (args[0] === "api") {
-        const login = result.stdout.trim();
-        return { ok: true, message: `gh authenticated as ${login}`, login };
-      }
-    }
-    return { ok: false, message: "gh api user failed: no output" };
+    const fail = (label: string, result: CommandResult): HostCliCheck => ({
+      ok: false,
+      message: `${label} failed: ${commandOutput(result)}`,
+    });
+    const version = await this.gh(["--version"]);
+    if (version.code !== 0) return fail("gh --version", version);
+    const auth = await this.gh(["auth", "status"]);
+    if (auth.code !== 0) return fail("gh auth status", auth);
+    const user = await this.gh(["api", "user", "--jq", ".login"]);
+    if (user.code !== 0) return fail("gh api user", user);
+    const login = user.stdout.trim();
+    return { ok: true, message: `gh authenticated as ${login}`, login };
   }
   async repository(): Promise<Repository> {
     const result = await this.ghOk([
