@@ -80,7 +80,8 @@ not in a prompt renderer with a config schema behind it.
 | Init and auth      | Patchmill provisions the agent directory and skills. Provider login and model choice use Pi's own interactive flows.                                          |
 | Triage             | Code lists candidates, runs Pi with the triage skill, and applies the returned labels and comment. No simulated dry-run agent.                                |
 | Diagnostics        | The agent's `summary` is the diagnostic. The kernel prints the final JSON, one outcome line, and a best-effort cost line.                                     |
-| Build strategy     | Build the kernel as a new tree beside the old code. Switch the CLI in one release. Delete the old tree in that release.                                       |
+| Build strategy     | Blank slate. The kernel is a fresh tree. No code is ported for compatibility. The old tree is deleted in the same change.                                     |
+| Earlier versions   | No upgrade path. The kernel reads no run state, config, label, spec, or plan from an earlier Patchmill and contains no migration code.                        |
 | Quality gates      | Keep type checks, lint, format, markdown lint, and `node --test`. Remove mutation testing, the CRAP gate, dependency-cruiser, property tests, contract tests. |
 | Tests              | End-to-end tests of `runOneIssue` against a fake host and a fake Pi. Unit tests only for the derived-phase table, result parsing, naming, and supervision.    |
 | Hosts              | GitHub through `gh` and Forgejo through `tea`, both behind one small interface.                                                                               |
@@ -136,15 +137,19 @@ swaps the label back to `agent-ready`.
 
 ### 3. Derive the phase from the world
 
-After claiming, the kernel runs `git fetch origin` and collects five facts:
+After claiming, the kernel runs `git fetch origin`, resolves F1, creates the
+worktree when it is missing, and collects the remaining facts in that worktree:
 
 | Fact | Question                                                                                                           |
 | ---- | ------------------------------------------------------------------------------------------------------------------ |
 | F1   | Does a remote branch `agent/issue-N-*` exist? (One match is used. Several matches stop the run with `needs-info`.) |
-| F2   | Does a spec `docs/specs/*-issue-N-*-design.md` exist on that branch, or on the base branch if no branch exists?    |
-| F3   | Does a plan `docs/plans/*-issue-N-*.md` exist, by the same rule?                                                   |
+| F2   | Does a spec `<specsDir>/*-issue-N-*-design.md` exist in the worktree?                                              |
+| F3   | Does a plan `<plansDir>/*-issue-N-*.md` exist in the worktree?                                                     |
 | F4   | Is spec approval satisfied? True when the gate is off, or when the issue carries `spec-approved`.                  |
 | F5   | Is there a pull request whose head is the branch? None, draft, open, merged, or closed.                            |
+
+F2 and F3 match these names and nothing else. A file with another name does not
+exist as far as the kernel is concerned.
 
 The phase follows from the facts, in this order:
 
@@ -161,9 +166,9 @@ session. The kernel re-derives the facts between sessions. The attempt stops
 when a phase needs a human, when the implementation phase verifies, or when
 `--plan-only` was given and planning is complete.
 
-The worktree is created when missing, at `<worktreeDir>/<branch-dir>`, from the
-remote branch when it exists and from the base branch otherwise. The kernel
-never deletes a worktree. Cleanup stays a human task through the
+The worktree lives at `<worktreeDir>/<branch-dir>`. It is created from the
+remote branch when one exists and from the base branch otherwise. The kernel
+never deletes a worktree. Cleanup is a human task through the
 `patchmill-cleanup` skill.
 
 ### 4. Verify the outcome
@@ -200,8 +205,7 @@ issue comments and does not touch labels.
 | Run directory | `.patchmill/runs/issue-<N>/<run-id>/` with `prompt.md`, `pi.log`, `sessions/`, `result.json`. |
 
 `result.json` is a write-only record for operators and future tooling. The
-kernel never reads it to make a decision. The existing `buildIssueBranchName`
-and `buildIssueWorktreePath` rules are kept as they are.
+kernel never reads it to make a decision.
 
 ## Issue lifecycle
 
@@ -216,8 +220,8 @@ Labels the kernel owns:
 | `needs-info`    | The agent asked questions, or the Run attempt failed. | Kernel                    | Kernel on next claim |
 | `agent-done`    | A ready pull request that closes the issue exists.    | Kernel after verification | Human                |
 
-Triage labels (`agent-unsuitable`, `blocked`, `wontfix`) are unchanged and are
-set by the triage flow only.
+Triage labels (`agent-unsuitable`, `blocked`, `wontfix`) are set by the triage
+flow only.
 
 To resume any stopped issue, a human adds `agent-ready`. For a spec stop, the
 human also adds `spec-approved`, or leaves it off and adds review comments on
@@ -247,10 +251,9 @@ order:
    the base branch; never force-push; never change labels; put questions in the
    summary; end with the JSON block.
 
-The template is one file. The target is under 150 lines. Everything else that
-the current prompts carry (todo contracts, validation rule lists, subagent
-orchestration prose, visual-evidence examples, finalization gates) moves into
-the skills or is dropped.
+The template is one file. The target is under 150 lines. Nothing else goes in
+it. Todo contracts, validation rule lists, subagent orchestration prose,
+visual-evidence examples, and finalization gates belong in skills or nowhere.
 
 ## The result contract
 
@@ -270,42 +273,43 @@ and commits itself.
 Skills shipped in the Patchmill package and installed by `init` into
 `.patchmill/skills`:
 
-| Skill                                                    | Change                                                                                                                                                                                             |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patchmill-issue-triage`                                 | Unchanged in purpose. Its output contract stays the triage JSON the kernel applies.                                                                                                                |
-| `patchmill-planning`                                     | Rewritten for one branch: write the spec, commit, push, open or update a draft pull request, then stop with `done` when the gate is on. Otherwise continue to the plan. Revise on review comments. |
-| `patchmill-implementation`                               | New name for `inline-dev-with-validation-and-pr-checks`. Absorbs the landing skill, the development-environment step, todo advice, and the pull request body rule (`Closes #N`, mark ready).       |
-| `patchmill-visual-evidence`                              | Unchanged. Advice only; nothing in code checks it.                                                                                                                                                 |
-| `module-size`                                            | Unchanged.                                                                                                                                                                                         |
-| `patchmill-cleanup`, `patchmill-label`, `patchmill-plan` | Unchanged. Human-interactive.                                                                                                                                                                      |
-| `patchmill-upload`                                       | Removed. Artifacts are files on the branch. There is nothing to upload.                                                                                                                            |
-| `patchmill-development-environment`, `landing`           | Removed as separate skills. Their content folds into `patchmill-implementation`.                                                                                                                   |
+| Skill                                                    | Role                                                                                                                                                                                                  |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `patchmill-issue-triage`                                 | Classifies one issue and returns the triage JSON (labels and comment) that the kernel applies.                                                                                                        |
+| `patchmill-planning`                                     | Writes the spec on the issue branch, commits, pushes, opens or updates a draft pull request, then stops with `done` when the gate is on. Otherwise continues to the plan. Revises on review comments. |
+| `patchmill-implementation`                               | Sets up the development environment, implements the plan, validates, may use todos and subagents, and marks the pull request ready with a body that closes the issue (`Closes #N`).                   |
+| `patchmill-visual-evidence`                              | Advice for user-facing changes. Nothing in code checks it.                                                                                                                                            |
+| `module-size`                                            | Advice on file size.                                                                                                                                                                                  |
+| `patchmill-cleanup`, `patchmill-label`, `patchmill-plan` | Human-interactive helpers.                                                                                                                                                                            |
 
-The third-party pack (Superpowers, SimpleEnglish) is still installed and pinned
-to a release. Whether `init` keeps the current copy-and-hash installer or uses
-Pi's own package manager is left to the builder. The installer must pin a
-release and must be idempotent.
+This is the complete list. There is no upload skill, because artifacts are files
+on the branch. There are no separate development-environment or landing skills,
+because that advice lives in `patchmill-implementation`.
 
-The reviewer agent definition from #229 stays. `init` provisions
-`.patchmill/pi-agent` with it and with the `pi-subagents` extension. The
-implementation skill may dispatch subagents. The kernel does not observe them.
+The third-party pack (Superpowers, SimpleEnglish) is installed and pinned to a
+release. Whether `init` uses a copy-and-hash installer or Pi's own package
+manager is left to the builder. The installer must pin a release and must be
+idempotent.
+
+`init` provisions `.patchmill/pi-agent` with the reviewer agent definition
+(#229) and the `pi-subagents` extension. The implementation skill may dispatch
+subagents. The kernel does not observe them.
 
 ## Commands
 
 | Command                                                    | Behaviour                                                                                                                            |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `patchmill init`                                           | Write or refresh config, install skills, provision the agent directory, move old `.patchmill/runs` aside. Idempotent.                |
+| `patchmill init`                                           | Write config when missing, install skills, provision the agent directory. Idempotent.                                                |
 | `patchmill auth`                                           | Run Pi interactively with the agent directory set. Login and model choice use Pi's `/login` and `/model`. Patchmill records nothing. |
 | `patchmill doctor`                                         | Read-only checks: host CLI logged in, labels exist, worktree directory ignored, skills present, Pi answers a smoke prompt.           |
 | `patchmill labels setup`                                   | Create missing labels.                                                                                                               |
 | `patchmill triage [--dry-run]`                             | Run the triage skill per candidate issue. Dry run runs Pi and prints the labels and comment instead of applying them.                |
 | `patchmill run-once [--issue N] [--dry-run] [--plan-only]` | Advance one issue. Dry run prints the selected issue and derived phase without claiming or running Pi.                               |
 | `patchmill release --issue N`                              | Clear a stale claim after a hard crash.                                                                                              |
-| `patchmill version`                                        | Unchanged.                                                                                                                           |
-| `patchmill setup-test-repo`                                | Kept as a development tool for the end-to-end CI (#320). Outside the kernel.                                                         |
+| `patchmill version`                                        | Print the version.                                                                                                                   |
+| `patchmill setup-test-repo`                                | Development tool for the end-to-end CI (#320). Outside the kernel.                                                                   |
 
-Removed: `run reset`, `run lease`, `set-artifact`, `set-spec`, `set-plan`,
-`skills update` (re-run `init`).
+This table is the complete command set.
 
 `runOneIssue(config, options)` remains the programmatic entry point so a later
 loop (#236) can call it.
@@ -343,13 +347,9 @@ loop (#236) can call it.
 ```
 
 `git.baseBranch` of `null` means the remote default branch. Every key has a
-default. Unknown keys fail loading with their names. The loader targets under
-200 lines.
-
-Removed keys: `projectPolicy` (validation rules, visual-evidence policy),
-`pi.taskContract`, `pi.workflow`, `triage.*` beyond trusted authors,
-`cleanupHook`, `git.allowDirectLand`, `workflow.planApproval`, and the
-`reviewLabel`/`approvedLabel` pairs.
+default. The loader recognises exactly the keys above. There are no aliases, no
+deprecated keys, and no rewriting of files written by anything else. Any other
+key fails loading by name. The loader targets under 200 lines.
 
 Direct landing is not a Patchmill feature. The agent has shell access, so code
 cannot stop it from pushing the base branch. Branch protection on the host is
@@ -377,54 +377,47 @@ interface Host {
 }
 ```
 
-Existing parsing helpers for `gh` and `tea` output may be copied where they are
-small. The pull request body rewriting, ownership markers, reference parsing,
-and existence probing modules are not carried over.
+The adapters are written for this interface. Pull request body rewriting,
+ownership markers, reference parsing, and existence probing are not part of it.
 
-## What is removed
+## What is deleted
 
-Production code that does not survive, by area:
+The kernel replaces the production tree rather than extending it. Deleted in the
+same change:
 
-- `src/cli/commands/run-once/` in full: pipeline, planning, recovery, result
-  diagnostics, terminal layout, stage advancement, legacy modules, artifact
-  sources, approval preflight, todo contract, development-environment stage,
-  cost publication, and the prompt builders.
-- `src/workflow/` planning state types, codecs, transitions, and skill-pack
-  logic that the new installer does not need.
+- `src/cli/commands/run-once/` in full, including every prompt builder.
+- `src/workflow/` in full.
 - `src/git/planning-*`, head adoption, remote-base evidence, and the mutation
   runner.
 - `src/pi/subagent-progress*`, `src/pi/extensions/`, and `extensions/todos.ts`.
-- `src/cli/commands/init/` auth flow, auth dialog, provider state, model
-  selector and selection, git policy and push setup.
-- `src/cli/commands/triage/` dry-run agent, blocked preprocessor, and the
-  Forgejo-specific module.
-- `src/cli/commands/run/`, `set-artifact/`, `skills/`, and the legacy planning
-  deprecation shims.
-- `src/config/load.ts` deep-merge and clone helpers for removed keys.
+- `src/cli/commands/init/` and `src/cli/commands/triage/` are rewritten. The
+  auth flow, model selection, git policy, push setup, dry-run agent, blocked
+  preprocessor, and Forgejo-specific module have no successor.
+- `src/cli/commands/run/`, `set-artifact/`, `skills/`, and every deprecation
+  shim.
+- `src/config/load.ts` and its deep-merge and clone helpers. The new loader
+  replaces it.
 - Quality tooling: `stryker.config.mjs`, `.crap-ts.json`, dependency-cruiser
   config, `quality/property`, and `tsconfig.contract-tests.json`.
 
-Tests dedicated to removed code go with it. The fake-host and fake-Pi test
-support is rewritten for the kernel interface.
+Tests dedicated to deleted code go with it. The fake-host and fake-Pi test
+support is written fresh for the kernel interface.
 
-## Transition for existing work
+## No upgrade path
 
-- **Old run state.** The kernel never reads `.patchmill/runs` content from the
-  old workflow. `init` renames the directory to `.patchmill/runs-legacy-<date>`
-  once and says so.
-- **Issues with merged planning pull requests.** Their spec and plan are on the
-  base branch. If no issue branch exists, the kernel creates one from the base
-  branch, F2 and F3 are true, and the next phase follows. If an old branch
-  exists without those files, the operator rebases it or deletes it first.
-- **Issues with open planning pull requests.** The operator merges or closes
-  them before adding `agent-ready`. The documentation lists the steps.
-- **Old labels.** `plan-review` and `plan-approved` are unused. `doctor` warns
-  when they are present on open issues.
-- **Old config.** `init` rewrites `patchmill.config.json`. Running any command
-  with unknown keys fails and names them.
+The kernel assumes a repository that has never run Patchmill. It has no code for
+earlier versions:
 
-This supersedes #298. There is no compatibility window; the old workflow is
-deleted in the release that ships the kernel.
+- It reads no run directory, config file, label, spec, or plan written by an
+  earlier Patchmill. It renames nothing, migrates nothing, and warns about
+  nothing.
+- Spec and plan discovery uses only the naming rules in this document.
+- The config loader accepts only the keys in this document. Any other key fails
+  loading by name, whatever wrote it.
+- `init` on a repository that already has a valid `patchmill.config.json` leaves
+  it alone. On an invalid one it fails like every other command.
+
+There is no upgrade path from earlier versions and no compatibility window.
 
 ## Testing and quality gates
 
@@ -490,7 +483,7 @@ silently. Updating the glossary is part of the implementation.
 
 | Issue                        | Effect of this design                                                                              |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| #298, #164, #163, #154       | Superseded. The old workflow is deleted, not retired.                                              |
+| #298, #164, #163, #154       | Superseded. The old workflow is deleted outright.                                                  |
 | #226, #250, #232             | Covered by the lock, the label swap, and process supervision.                                      |
 | #229                         | Kept. The reviewer agent is provisioned by `init`.                                                 |
 | #276, #317                   | Covered. Comments carry author and trust in the envelope.                                          |
@@ -507,7 +500,7 @@ silently. Updating the glossary is part of the implementation.
   `timeoutMinutes`.
 - The shape of `result.json`.
 - Whether the old tree is deleted in one commit or several on the same branch.
-- The release notes and the migration section of the README.
+- The release notes and the README rewrite.
 
 ## Acceptance criteria
 
@@ -520,7 +513,10 @@ silently. Updating the glossary is part of the implementation.
   head is the issue branch and whose body closes the issue.
 - The agent's result block has two fields, and the envelope template is one file
   under 150 lines.
-- `patchmill.config.json` with any removed key fails loading and names the key.
+- `patchmill.config.json` with any unknown key fails loading and names the key.
+- No code path reads, renames, or warns about run state, config, labels, specs,
+  or plans from an earlier Patchmill version. Spec and plan discovery matches
+  only the names in this document.
 - The end-to-end CI from #320 passes against the kernel.
 - The old `run-once` tree, the planning state machine, recovery modules, the
   todo extension, and the removed quality gates are gone from the repository.
