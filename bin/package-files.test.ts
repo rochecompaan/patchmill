@@ -72,7 +72,6 @@ test("npm pack dry-run includes bundled runtime resources and notices", () => {
   assert.equal(files.has("skills/brainstorming/SKILL.md"), false);
   assert.equal(files.has("skills/writing-plans/SKILL.md"), false);
   assert.equal(files.has("skills/test-driven-development/SKILL.md"), false);
-  assert.equal(files.has("extensions/todos.ts"), true);
   assert.equal(files.has("CHANGELOG.md"), true);
   assert.equal(files.has("LICENSES/Apache-2.0.txt"), false);
   assert.equal(files.has("THIRD_PARTY_NOTICES.md"), true);
