@@ -297,6 +297,15 @@ test("setup repository lookup distinguishes absence and maps URLs; labels strip 
   ]);
 });
 
+test("recordingRunner reuses responses with global regexes", async () => {
+  const runner = recordingRunner([
+    { match: /gh --version/g, result: { stdout: "gh version 2\n" } },
+  ]);
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await runner("gh", ["--version"])).stdout, "gh version 2\n");
+  }
+});
+
 test("factory selects GitHub and rejects the unsupported Forgejo provider", () => {
   const runner = recordingRunner([]);
   const host = new GitHubHost({ runner, repoRoot: "/repo" });

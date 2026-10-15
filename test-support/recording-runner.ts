@@ -13,7 +13,10 @@ export function recordingRunner(
     const argv = [command, ...args];
     calls.push(argv);
     options.push(runOptions);
-    const response = responses.find(({ match }) => match.test(argv.join(" ")));
+    const response = responses.find(({ match }) => {
+      match.lastIndex = 0;
+      return match.test(argv.join(" "));
+    });
     if (!response)
       throw new Error(`recordingRunner: no response for ${argv.join(" ")}`);
     return { code: 0, stdout: "", stderr: "", ...response.result };
