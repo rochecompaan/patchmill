@@ -37,7 +37,7 @@ export function isPlanFile(issue: number, fileName: string): boolean {
 
 function localDate(date: Date): string {
   return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
-    .map((part) => String(part).padStart(2, "0"))
+    .map((part, index) => String(part).padStart(index === 0 ? 4 : 2, "0"))
     .join("-");
 }
 

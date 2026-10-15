@@ -83,6 +83,14 @@ test("newRunId uses the local timestamp and a four-character hex suffix", () => 
   assert.equal(runId.slice(0, 15), "20261015-130405");
 });
 
+test("artifact names and run IDs pad local years below 1000", () => {
+  const year999 = new Date(2026, 9, 15, 13, 4, 5);
+  year999.setFullYear(999);
+  assert.ok(specFileName(year999, 5, "Login").startsWith("0999-"));
+  assert.ok(planFileName(year999, 5, "Login").startsWith("0999-"));
+  assert.ok(newRunId(year999).startsWith("09991015-"));
+});
+
 test("runDirectory joins the run root, issue, and identifier", () => {
   assert.equal(
     runDirectory(".patchmill/runs", 5, "x"),
