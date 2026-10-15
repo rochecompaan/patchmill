@@ -45,6 +45,35 @@ test("runCommand resolves with diagnostics when a binary cannot start", async ()
   assert.match(result.stderr, /ENOENT/);
 });
 
+test("runCommand reports abort even when the child handles SIGTERM and exits zero", async () => {
+  const controller = new AbortController();
+  const reportOnSignal = process.report.reportOnSignal;
+  process.report.reportOnSignal = false;
+  const abort = () => controller.abort();
+  process.once("SIGUSR2", abort);
+  try {
+    const result = await runCommand(
+      process.execPath,
+      [
+        "-e",
+        'process.on("SIGTERM", () => process.exit(0)); process.kill(process.ppid, "SIGUSR2"); setInterval(() => {}, 1000)',
+      ],
+      { signal: controller.signal },
+    );
+    assert.equal(result.code, -1);
+    assert.match(result.stderr, /aborted/i);
+  } finally {
+    process.removeListener("SIGUSR2", abort);
+    process.report.reportOnSignal = reportOnSignal;
+  }
+});
+
+test("runCommand resolves synchronous spawn failures with diagnostics", async () => {
+  const result = await runCommand(process.execPath, ["-e", "1", "a\u0000b"]);
+  assert.equal(result.code, -1);
+  assert.match(result.stderr, /null bytes/);
+});
+
 test("CommandFailedError exposes command context and trimmed diagnostics", () => {
   const error = new CommandFailedError("gh", ["auth", "status"], {
     code: 1,

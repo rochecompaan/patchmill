@@ -33,13 +33,24 @@ export class CommandFailedError extends Error {
 
 export const runCommand: CommandRunner = (command, args, options = {}) =>
   new Promise((resolve) => {
-    const child = spawn(command, args, {
-      shell: false,
-      stdio: [options.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-      ...(options.env !== undefined ? { env: options.env } : {}),
-      ...(options.signal !== undefined ? { signal: options.signal } : {}),
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, args, {
+        shell: false,
+        stdio: [
+          options.stdin === undefined ? "ignore" : "pipe",
+          "pipe",
+          "pipe",
+        ],
+        ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+        ...(options.env !== undefined ? { env: options.env } : {}),
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      resolve({ code: -1, stdout: "", stderr: `${message}\n` });
+      return;
+    }
     let stdout = "";
     let stderr = "";
     let errorMessage = "";
@@ -56,7 +67,7 @@ export const runCommand: CommandRunner = (command, args, options = {}) =>
       if (errorMessage)
         stderr += `${stderr && !stderr.endsWith("\n") ? "\n" : ""}${errorMessage}\n`;
       resolve({
-        code: signal || code === null || code < 0 ? -1 : code,
+        code: errorMessage || signal || code === null || code < 0 ? -1 : code,
         stdout,
         stderr,
       });
