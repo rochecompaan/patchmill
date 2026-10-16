@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -37,6 +38,33 @@ if (step.commit) {
   await git("git", ["commit", "-m", step.commit]);
 }
 if (step.push) await git("git", ["push", "-u", "origin", "HEAD"]);
+if (step.pullRequest) {
+  const stateFile = process.env.PATCHMILL_FAKE_HOST_STATE;
+  if (!stateFile) throw new Error("PATCHMILL_FAKE_HOST_STATE is required");
+  const { stdout } = await git("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const headBranch = stdout.trim();
+  // Read after git finishes so host changes made during that command survive.
+  const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  const existing = state.pullRequests.find(
+    (pr) => pr.headBranch === headBranch,
+  );
+  if (existing) {
+    Object.assign(existing, step.pullRequest, { headBranch });
+  } else {
+    const number =
+      Math.max(0, ...state.pullRequests.map((pr) => pr.number)) + 1;
+    state.pullRequests.push({
+      number,
+      url: `https://example.invalid/pulls/${number}`,
+      state: "open",
+      draft: true,
+      body: "",
+      ...step.pullRequest,
+      headBranch,
+    });
+  }
+  writeFileSync(stateFile, JSON.stringify(state));
+}
 if (step.stdout !== undefined) console.log(step.stdout);
 for (const name of step.printEnv ?? []) console.log(process.env[name] ?? "");
 if (step.sleepMs)
