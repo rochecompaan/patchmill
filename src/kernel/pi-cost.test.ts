@@ -46,21 +46,13 @@ test("any JSON parse or read failure makes the entire aggregate unavailable", as
 
 test("ignores unusable token blocks and omits incomplete or malformed cost totals", async (t) => {
   const dir = await sessions(t);
-  for (const cost of [
-    undefined,
-    null,
-    {},
-    { total: "0.1" },
-    { total: -1 },
-    { total: Number.POSITIVE_INFINITY },
-  ]) {
+  for (const cost of [undefined, null, {}, { total: "0.1" }, { total: -1 }]) {
     const entries = [
       null,
       [],
       {},
       { usage: { input: "2", output: 3 } },
       { usage: { input: -1, output: 2 } },
-      { usage: { input: Number.POSITIVE_INFINITY, output: 2 } },
       { usage: { input: 100, output: 20, cost: { total: 0.05 } } },
       { message: { usage: { input: 200, output: 40, cost } } },
     ];
@@ -73,6 +65,32 @@ test("ignores unusable token blocks and omits incomplete or malformed cost total
       outputTokens: 60,
     });
   }
+});
+
+test("rejects nonfinite tokens and suppresses nonfinite costs parsed from raw JSON", async (t) => {
+  const dir = await sessions(t);
+  const path = join(dir, "usage.jsonl");
+  await fs.writeFile(
+    path,
+    [
+      '{"usage":{"input":100,"output":20,"cost":{"total":0.05}}}',
+      '{"usage":{"input":1e309,"output":2}}',
+      '{"message":{"usage":{"input":2,"output":1e309}}}',
+    ].join("\n") + "\n",
+  );
+  assert.deepEqual(await sumSessionUsage(dir), {
+    inputTokens: 100,
+    outputTokens: 20,
+    costUsd: 0.05,
+  });
+  await fs.appendFile(
+    path,
+    '{"usage":{"input":0,"output":0,"cost":{"total":1e309}}}\n',
+  );
+  assert.deepEqual(await sumSessionUsage(dir), {
+    inputTokens: 100,
+    outputTokens: 20,
+  });
 });
 
 test("no usable usage is unavailable, while numeric zero is real usage", async (t) => {
