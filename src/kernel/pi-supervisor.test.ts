@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { getEventListeners } from "node:events";
-import { setTimeout as delay } from "node:timers/promises";
+import { getEventListeners, once } from "node:events";
+import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mock, test, type TestContext } from "node:test";
@@ -194,10 +194,39 @@ test(
   async (t) => {
     const options = await setup(t);
     const controller = new AbortController();
-    // The descendant closes IPC before readiness. It cannot hold the leader's pipes open.
-    const descendant = `process.on('SIGTERM', () => {}); process.send(process.pid); process.disconnect(); setInterval(() => {}, 1000);`;
+    // A direct descendant-to-test socket closes on death without holding leader pipes.
+    const server = createServer();
+    let socket: Socket | undefined;
+    let death: Promise<void> | undefined;
+    const connected = new Promise<void>((resolve) =>
+      server.once("connection", (peer) => {
+        socket = peer;
+        death = new Promise<void>((resolve) =>
+          peer.once("close", () => resolve()),
+        );
+        peer.on("error", (error) => {
+          if ((error as NodeJS.ErrnoException).code !== "ECONNRESET")
+            throw error;
+        });
+        resolve();
+      }),
+    );
+    t.after(() => {
+      socket?.destroy();
+      server.close();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    // IPC is disconnected before readiness; the descendant's stdio is ignored.
+    const descendant = `process.on('SIGTERM', () => {}); require('node:net').createConnection(${address.port},'127.0.0.1',()=>{process.send(process.pid); process.disconnect();}); setInterval(() => {}, 1000);`;
     const leader = `const {spawn}=require('node:child_process'); const c=spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:['ignore','ignore','ignore','ipc']}); c.on('message',pid=>{c.once('disconnect',()=>process.stdout.write(JSON.stringify({leader:process.pid,child:pid})+'\\n'));}); setInterval(()=>{},1000);`;
     let pids: { leader: number; child: number } | undefined;
+    let acknowledge: () => void;
+    const ready = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
     t.after(() => {
       if (!pids) return;
       try {
@@ -206,40 +235,31 @@ test(
         if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
       }
     });
-    const result = await supervisePi({
+    const running = supervisePi({
       ...options,
       command: { command: process.execPath, argsPrefix: ["-e", leader, "--"] },
       signal: controller.signal,
       graceMs: 100,
       onOutput: (chunk) => {
         pids = JSON.parse(chunk);
-        controller.abort();
+        acknowledge();
       },
     });
+    await Promise.all([connected, ready]);
+    assert.ok(socket && !socket.destroyed && death);
+    controller.abort();
+    const result = await running;
     assert.equal(result.aborted, true);
+    assert.equal(result.signal, "SIGTERM");
     assert.ok(pids);
     assert.throws(() => process.kill(pids.leader, 0), { code: "ESRCH" });
-    // An orphan zombie may await init reaping, but must not remain runnable.
-    const deadline = performance.now() + 1000;
-    while (true) {
-      const stat = await fs
-        .readFile(`/proc/${pids.child}/stat`, "utf8")
-        .catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return "";
-          throw error;
-        });
-      if (stat === "" || stat.split(") ")[1]?.startsWith("Z")) break;
-      assert.ok(
-        performance.now() < deadline,
-        `descendant still running: ${stat}`,
-      );
-      await delay(10);
-    }
+    await death;
+    assert.equal(socket.destroyed, true);
   },
 );
 
 test(
-  "spawn, log-open, runtime log, and callback failures reject without hiding the cause",
+  "spawn, log-open, and callback failures reject without hiding the cause",
   { timeout: 5000 },
   async (t) => {
     const controller = new AbortController();
@@ -260,9 +280,6 @@ test(
     );
     await assert.rejects(supervisePi({ ...options, logPath: options.cwd }), {
       code: "EISDIR",
-    });
-    await assert.rejects(supervisePi({ ...options, logPath: "/dev/full" }), {
-      code: "ENOSPC",
     });
     const failure = new Error("output callback failed");
     await assert.rejects(
@@ -326,34 +343,51 @@ test("fake Pi commits and pushes sequenced file changes only to a local bare rep
   assert.equal((await run("rev-list", "--count", "HEAD")).stdout.trim(), "2");
 });
 
-test("a log-close failure preserves the primary failure and releases the descriptor", async (t) => {
-  const options = await setup(t);
-  const primary = new Error("callback failed");
-  const cleanup = new Error("close failed");
-  const open = fs.open;
-  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
-  mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
-    handle = await open(...args);
-    const close = handle.close.bind(handle);
-    mock.method(handle, "close", async () => {
-      await close();
-      throw cleanup;
+for (const fault of ["write", "close"]) {
+  test(`log-${fault} failure preserves errors and releases the real descriptor`, async (t) => {
+    const options = await setup(t);
+    const primary = new Error(
+      fault === "write" ? "write failed" : "callback failed",
+    );
+    const cleanup = new Error("close failed");
+    const open = fs.open;
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+    mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
+      handle = await open(...args);
+      if (fault === "write")
+        mock.method(handle, "writeFile", async () => {
+          throw primary;
+        });
+      else {
+        const close = handle.close.bind(handle);
+        mock.method(handle, "close", async () => {
+          await close();
+          throw cleanup;
+        });
+      }
+      return handle;
     });
-    return handle;
-  });
-  t.after(() => mock.restoreAll());
-  await assert.rejects(
-    supervisePi({
-      ...options,
-      onOutput: () => {
-        throw primary;
+    t.after(() => mock.restoreAll());
+    await assert.rejects(
+      supervisePi({
+        ...options,
+        ...(fault === "close"
+          ? {
+              onOutput: () => {
+                throw primary;
+              },
+            }
+          : {}),
+      }),
+      (error: unknown) => {
+        if (fault === "write") assert.equal(error, primary);
+        else {
+          assert.ok(error instanceof AggregateError);
+          assert.deepEqual(error.errors, [primary, cleanup]);
+        }
+        return true;
       },
-    }),
-    (error: unknown) => {
-      assert.ok(error instanceof AggregateError);
-      assert.deepEqual(error.errors, [primary, cleanup]);
-      return true;
-    },
-  );
-  assert.equal(handle?.fd, -1);
-});
+    );
+    assert.equal(handle?.fd, -1);
+  });
+}
