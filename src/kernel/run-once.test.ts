@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { basename } from "node:path";
 import { test } from "node:test";
 import {
   setupRun,
@@ -31,6 +32,13 @@ test("fresh planning pushes a spec and draft PR, then releases with one cost com
   assert.equal(c.host.state().pullRequests[0]!.draft, true);
   assert.equal(await c.git(["show", `origin/${branch}:${spec}`]), "design");
   const record = await c.records();
+  const runId = basename(record.dir);
+  assert.match(runId, /^20261015-120000-[0-9a-f]{4}$/);
+  assert.equal(record.result.runId, runId);
+  assert.equal(
+    record.result.startedAt,
+    new Date(2026, 9, 15, 12).toISOString(),
+  );
   assert.equal(record.result.sessions[0].phase, "planning");
   assert.equal(record.result.sessions[0].status, "done");
   assert.equal(await fs.readFile(c.lockPath, "utf8"), "");

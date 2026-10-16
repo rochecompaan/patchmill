@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import { randomUUID } from "node:crypto";
 import { resolve, join } from "node:path";
 import {
   trustedAuthors,
@@ -19,6 +18,7 @@ import { supervisePi } from "./pi-supervisor.ts";
 import { parseAgentResult, lastJsonBlock } from "./result.ts";
 import { verifyOutcome, type OutcomeLabel } from "./verify.ts";
 import { sumSessionUsage, costLine } from "./pi-cost.ts";
+import { newRunId } from "./names.ts";
 
 export type RunOnceOptions = {
   issue?: number;
@@ -122,8 +122,9 @@ export async function runOneIssue(
       };
     throw error;
   }
-  const runId = randomUUID();
-  const startedAt = now().toISOString();
+  const started = now();
+  const runId = newRunId(started);
+  const startedAt = started.toISOString();
   const runDir = join(issueDir, runId);
   const sessions: {
     phase: Phase;
