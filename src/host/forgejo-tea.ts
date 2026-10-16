@@ -328,7 +328,10 @@ export class ForgejoHost implements Host, RepositorySetupHost {
     ]);
   }
   cloneCommand(target: RepositoryTarget): string {
-    return `tea clone ${target.slug}`;
+    const login = this.login
+      ? ` --login '${this.login.replaceAll("'", "'\"'\"'")}'`
+      : "";
+    return `tea clone${login} ${target.slug}`;
   }
   async createIssue(
     target: RepositoryTarget,
