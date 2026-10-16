@@ -120,20 +120,23 @@ label and not the in-progress label.
 
 Claiming has two layers:
 
-- **Same clone.** A lock file at `.patchmill/runs/issue-N/lock` created with
-  `O_EXCL`. It holds the process id and start time. If the file exists and the
-  process is alive, the Run attempt stops with "another Run attempt is active".
-  If the process is dead, the kernel replaces the lock. This handles a crash on
-  the same machine without operator action.
+- **Same clone.** A permanent file at `.patchmill/runs/issue-N/lock` uses an
+  OS-managed exclusive lock through `fs-ext`. If another process holds the lock,
+  the Run attempt stops with "another Run attempt is active". The OS releases
+  ownership when the process exits. The JSON process id and start time are
+  diagnostic only. The kernel never removes or replaces the file. See the
+  approved [issue-lock revision](2026-10-16-issue-lock-design.md).
 - **Across clones.** The label swap from `agent-ready` to `in-progress`, re-read
   once after the swap. A narrow race window between two clones is accepted and
   documented. There are no leases, revision counters, or repair flows.
 
-Release always runs, including after timeout, kill, or a thrown error: remove
-`in-progress`, add the outcome label, remove the lock file. A hard crash (power
-loss, `SIGKILL` of Patchmill itself) can leave `in-progress` on the issue. The
-operator runs `patchmill release --issue N`, which checks the local lock and
-swaps the label back to `agent-ready`.
+Release always runs after timeout, termination, or a thrown error. Remove
+`in-progress`, add the outcome label, clear the diagnostic JSON while locked,
+and close the lock handle. Keep the file and its containing directory in place.
+A hard crash can leave `in-progress` on the issue. The operator runs
+`patchmill release --issue N`, which acquires the same local lock before it
+swaps the label back to `agent-ready`. Contention stops the command without
+changing labels. The command releases its handle in `finally`.
 
 ### 3. Derive the phase from the world
 
