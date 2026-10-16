@@ -306,15 +306,11 @@ test("recordingRunner reuses responses with global regexes", async () => {
   }
 });
 
-test("factory selects GitHub and rejects the unsupported Forgejo provider", () => {
+test("factory selects GitHub", () => {
   const runner = recordingRunner([]);
   const host = new GitHubHost({ runner, repoRoot: "/repo" });
   assert.ok(
     createHostForProvider("github-gh", "octocat", runner, "/repo") instanceof
       host.constructor,
-  );
-  assert.throws(
-    () => createHostForProvider("forgejo-tea", "octocat", runner, "/repo"),
-    { message: "Unsupported host provider: forgejo-tea" },
   );
 });

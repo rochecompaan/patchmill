@@ -1,6 +1,7 @@
 import type { PatchmillConfig } from "../config/config.ts";
 import type { CommandRunner } from "../process/command.ts";
 import { GitHubHost } from "./github-gh.ts";
+import { ForgejoHost } from "./forgejo-tea.ts";
 import type { Host, HostProviderId, RepositorySetupHost } from "./types.ts";
 
 export function createHost(
@@ -18,10 +19,10 @@ export function createHost(
 
 export function createHostForProvider(
   provider: HostProviderId,
-  _login: string,
+  login: string,
   runner: CommandRunner,
   repoRoot: string,
 ): Host & RepositorySetupHost {
   if (provider === "github-gh") return new GitHubHost({ runner, repoRoot });
-  throw new Error("Unsupported host provider: forgejo-tea");
+  return new ForgejoHost({ runner, repoRoot, login });
 }

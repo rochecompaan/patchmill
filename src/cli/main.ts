@@ -1,3 +1,4 @@
+import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
 
 export const HELP_TEXT = `Usage:
@@ -88,6 +89,9 @@ export function createCliMain(
   };
 }
 
-const COMMANDS = new Map<string, CommandHandler>([["version", versionMain]]);
+const COMMANDS = new Map<string, CommandHandler>([
+  ["version", versionMain],
+  ["setup-test-repo", setupTestRepoMain],
+]);
 
 export const main = createCliMain(COMMANDS);
