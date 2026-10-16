@@ -1,3 +1,5 @@
+import { main as runOnceMain } from "./commands/run-once/main.ts";
+import { main as releaseMain } from "./commands/release/main.ts";
 import { main as labelsMain } from "./commands/labels/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
@@ -12,7 +14,7 @@ Commands:
   labels      Manage repository labels.
   triage      Classify repository issues for agent readiness.
   run-once    Advance one issue.
-  release     Prepare a release.
+  release     Reset an issue from in-progress to ready.
   version     Print the Patchmill CLI version.
   setup-test-repo  Create or reset a disposable Patchmill demo repository.
 `;
@@ -91,6 +93,8 @@ export function createCliMain(
 }
 
 const COMMANDS = new Map<string, CommandHandler>([
+  ["run-once", runOnceMain],
+  ["release", releaseMain],
   ["labels", labelsMain],
   ["version", versionMain],
   ["setup-test-repo", setupTestRepoMain],
