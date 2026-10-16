@@ -246,3 +246,94 @@ test("fetch, host and non-missing filesystem errors stay visible", async (t) => 
   await fs.rename(join(c.repoRoot, ".git"), join(c.repoRoot, "saved-git"));
   await assert.rejects(c.collect(), CommandFailedError);
 });
+
+for (const key of ["specsDir", "plansDir"] as const) {
+  for (const mode of [
+    "traversal",
+    "absolute sibling",
+    "missing escape",
+    "symlink escape",
+  ] as const) {
+    test(`${key} rejects ${mode} outside the selected worktree`, async (t) => {
+      const c = await setup(t);
+      const { worktree } = await c.collect();
+      // The sibling shares the complete root prefix: string-prefix checks are unsafe.
+      const outside = `${worktree}-outside`;
+      await fs.mkdir(outside);
+      await fs.writeFile(
+        join(outside, "2026-10-15-issue-9-x-design.md"),
+        "outside spec",
+      );
+      await fs.writeFile(
+        join(outside, "2026-10-15-issue-9-x.md"),
+        "outside plan",
+      );
+      if (mode === "traversal")
+        c.config.paths[key] = "../agent-issue-9-x-outside";
+      if (mode === "absolute sibling") c.config.paths[key] = outside;
+      if (mode === "missing escape") c.config.paths[key] = `${outside}/missing`;
+      if (mode === "symlink escape") {
+        await fs.symlink(outside, join(worktree, "outside-link"), "dir");
+        c.config.paths[key] = "outside-link";
+      }
+      await assert.rejects(c.collect(), /outside.*worktree/i);
+    });
+  }
+}
+
+test("in-tree absolute directories and symlink aliases retain relative artifact paths", async (t) => {
+  const c = await setup(t);
+  const { worktree } = await c.collect();
+  await fs.mkdir(join(worktree, "artifacts"));
+  await fs.writeFile(
+    join(worktree, "artifacts/2026-10-15-issue-9-x-design.md"),
+    "spec",
+  );
+  await fs.writeFile(
+    join(worktree, "artifacts/2026-10-15-issue-9-x.md"),
+    "plan",
+  );
+  await fs.symlink(join(worktree, "artifacts"), join(worktree, "alias"), "dir");
+  c.config.paths.specsDir = join(worktree, "artifacts");
+  c.config.paths.plansDir = "alias";
+  const facts = await c.collect();
+  assert.equal(facts.specPath, "artifacts/2026-10-15-issue-9-x-design.md");
+  assert.equal(facts.planPath, "alias/2026-10-15-issue-9-x.md");
+  assert.equal(
+    facts.expectedSpecPath,
+    "artifacts/2026-10-15-issue-9-x-design.md",
+  );
+  assert.equal(facts.expectedPlanPath, "alias/2026-10-15-issue-9-x.md");
+  c.config.paths.specsDir = join(worktree, "missing/specs");
+  c.config.paths.plansDir = "missing/plans";
+  const missing = await c.collect();
+  assert.equal(missing.specPath, undefined);
+  assert.equal(missing.planPath, undefined);
+  assert.equal(
+    missing.expectedSpecPath,
+    "missing/specs/2026-10-15-issue-9-x-design.md",
+  );
+  assert.equal(
+    missing.expectedPlanPath,
+    "missing/plans/2026-10-15-issue-9-x.md",
+  );
+});
+
+test("canonical checks normalize a worktree reached through a root alias", async (t) => {
+  const c = await setup(t);
+  const initial = await c.collect();
+  await fs.mkdir(join(initial.worktree, "custom/specs"), { recursive: true });
+  await fs.writeFile(
+    join(initial.worktree, "custom/specs/2026-10-15-issue-9-x-design.md"),
+    "spec",
+  );
+  const alias = join(c.dir, "repo-alias");
+  await fs.symlink(c.repoRoot, alias, "dir");
+  c.deps.repoRoot = alias;
+  const facts = await c.collect();
+  assert.equal(facts.specPath, "custom/specs/2026-10-15-issue-9-x-design.md");
+  assert.equal(
+    await fs.realpath(facts.worktree),
+    await fs.realpath(initial.worktree),
+  );
+});
