@@ -115,3 +115,19 @@ Default rubric:
   JSON explicitly asks for them.
 - When posting comments in execute mode, keep them actionable and consistent
   with the prompt's configured workflow.
+
+## Result contract
+
+For the skills-first kernel, this contract controls the final result and all
+repository-hosting mutations, overriding earlier mutation or preview guidance.
+Return a final fenced `json` block containing exactly `label` and `comment`:
+
+```json
+{ "label": "<configured outcome label>", "comment": "<comment text>" }
+```
+
+`label` must be one of the four configured values supplied in the prompt:
+`labels.ready`, `labels.unsuitable`, `labels.blocked`, or `labels.needsInfo`.
+`comment` must be a string; use an empty string when no comment is needed. The
+kernel alone applies labels and posts non-empty comments. Do not mutate
+repository-hosting state yourself, including during dry runs.
