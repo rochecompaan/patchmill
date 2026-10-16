@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   branchName,
   isPlanFile,
@@ -34,6 +34,26 @@ async function findArtifact(
   matches: (name: string) => boolean,
 ): Promise<string | undefined> {
   const path = resolve(worktree, directory);
+  const lexical = relative(worktree, path);
+  if (
+    lexical === ".." ||
+    lexical.startsWith(`..${sep}`) ||
+    isAbsolute(lexical)
+  ) {
+    throw new Error(`Artifact directory outside the worktree: ${directory}`);
+  }
+  const root = await fs.realpath(worktree);
+  const canonical = await fs
+    .realpath(path)
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+  if (canonical === undefined) return undefined;
+  const actual = relative(root, canonical);
+  if (actual === ".." || actual.startsWith(`..${sep}`) || isAbsolute(actual)) {
+    throw new Error(`Artifact directory outside the worktree: ${directory}`);
+  }
   const entries = await fs
     .readdir(path, { withFileTypes: true })
     .catch((error: NodeJS.ErrnoException) => {
