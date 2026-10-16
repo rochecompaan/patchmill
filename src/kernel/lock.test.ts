@@ -291,6 +291,70 @@ test("release clearing failure still closes and repeated calls preserve the reje
   await assert.rejects(acquireLock(path), LockHeldError);
 });
 
+for (const phase of ["publication", "clearing", "close-only"]) {
+  test(`${phase} failure preserves errors when close rejects`, async (t) => {
+    const path = await location(t);
+    const primary = new Error("operation failed");
+    const cleanup = new Error("close failed");
+    const open = fs.open;
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+    const patch = mock.method(
+      fs,
+      "open",
+      async (...args: Parameters<typeof fs.open>) => {
+        handle = await open(...args);
+        const close = handle.close.bind(handle);
+        t.after(close);
+        mock.method(handle, "close", async () => {
+          await close(); // Fault injection must not leak the real descriptor.
+          throw cleanup;
+        });
+        if (phase === "publication") {
+          mock.method(handle, "writeFile", async () => {
+            throw primary;
+          });
+        }
+        return handle;
+      },
+    );
+    t.after(() => mock.restoreAll());
+    const acquiring = acquireLock(path);
+    const owner = phase === "publication" ? undefined : await acquiring;
+    if (phase === "clearing") {
+      assert.ok(handle);
+      mock.method(handle, "truncate", async () => {
+        throw primary;
+      });
+    }
+    const failed = owner ? owner.release() : acquiring;
+    if (owner) assert.equal(owner.release(), failed);
+    let rejection: unknown;
+    await assert.rejects(failed, (error: unknown) => {
+      rejection = error;
+      if (phase === "close-only") assert.equal(error, cleanup);
+      else {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.errors[0], primary);
+        assert.equal(error.errors[1], cleanup);
+        assert.equal(error.errors.length, 2);
+      }
+      return true;
+    });
+    patch.mock.restore();
+    assert.equal(handle?.fd, -1);
+    const successor = await acquireLock(path);
+    t.after(() => successor.release());
+    if (owner) {
+      assert.equal(owner.release(), failed);
+      await assert.rejects(
+        owner.release(),
+        (error: unknown) => error === rejection,
+      );
+    }
+    await assert.rejects(acquireLock(path), LockHeldError);
+  });
+}
+
 test("non-contention flock errors propagate and close the failed handle", async (t) => {
   const path = await location(t);
   const failure = Object.assign(new Error("locking unsupported"), {

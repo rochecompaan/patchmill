@@ -77,7 +77,15 @@ export async function acquireLock(
       }),
     );
   } catch (error) {
-    await handle.close();
+    try {
+      await handle.close();
+    } catch (closeError) {
+      throw new AggregateError(
+        [error, closeError],
+        "Issue lock acquisition and close failed",
+        { cause: closeError },
+      );
+    }
     throw error;
   }
   let released: Promise<void> | undefined;
@@ -87,9 +95,19 @@ export async function acquireLock(
       return (released ??= (async () => {
         try {
           await handle.truncate(0);
-        } finally {
-          await handle.close();
+        } catch (error) {
+          try {
+            await handle.close();
+          } catch (closeError) {
+            throw new AggregateError(
+              [error, closeError],
+              "Issue lock clearing and close failed",
+              { cause: closeError },
+            );
+          }
+          throw error;
         }
+        await handle.close();
       })());
     },
   };
