@@ -69,15 +69,16 @@ test("npm pack dry-run includes bundled runtime resources and notices", () => {
   assert.equal(files.has("skills/patchmill-issue-triage/SKILL.md"), true);
   assert.equal(files.has("skills/module-size/SKILL.md"), true);
   assert.equal(files.has("skills/patchmill-planning/SKILL.md"), true);
-  for (const path of [
-    "frontend-design/SKILL.md",
-    "frontend-design/LICENSE.txt",
-    "patchmill-frontend-review/SKILL.md",
-    "patchmill-frontend-review/LICENSE",
-    "patchmill-frontend-review/references/upstream-web-design-guidelines.md",
-    "patchmill-frontend-review/references/web-interface-guidelines.md",
-  ])
-    assert.equal(files.has(`skills/${path}`), true, path);
+  assert.deepEqual(
+    {
+      implementation: files.has("skills/patchmill-implementation/SKILL.md"),
+      inline: files.has(
+        "skills/inline-dev-with-validation-and-pr-checks/SKILL.md",
+      ),
+      upload: files.has("skills/patchmill-upload/SKILL.md"),
+    },
+    { implementation: true, inline: false, upload: false },
+  );
   assert.equal(files.has("skills/brainstorming/SKILL.md"), false);
   assert.equal(files.has("skills/writing-plans/SKILL.md"), false);
   assert.equal(files.has("skills/test-driven-development/SKILL.md"), false);
