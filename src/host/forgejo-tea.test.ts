@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import { recordingRunner } from "../../test-support/recording-runner.ts";
 import { CommandFailedError } from "../process/command.ts";
@@ -30,6 +31,34 @@ function fixture(
     runner,
     host: new ForgejoHost({ runner, repoRoot: "/repo", login }),
   };
+}
+
+test("clone guidance preserves the no-login command", () => {
+  assert.equal(
+    fixture("[]", "").host.cloneCommand(target),
+    "tea clone owner/repo",
+  );
+});
+
+for (const login of [
+  "selected",
+  'team\'s sandbox; $(printf injected)\n"quoted"\\path',
+]) {
+  test(`clone guidance selects the named login safely through a shell: ${JSON.stringify(login)}`, () => {
+    const command = fixture("[]", login).host.cloneCommand(target);
+    // Capture shell-parsed argv locally, without ever invoking the tea binary.
+    const output = execFileSync(
+      "/bin/sh",
+      ["-c", `tea() { printf '%s\\000' "$@"; }\n${command}`],
+      { encoding: "utf8" },
+    );
+    assert.deepEqual(output.split("\0").slice(0, -1), [
+      "clone",
+      "--login",
+      login,
+      "owner/repo",
+    ]);
+  });
 }
 
 test("factory constructs Forgejo", () => {
