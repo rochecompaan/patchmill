@@ -577,10 +577,18 @@ deletes then creates the repository and creates the fixture issues; missing
 
 ### Task 7: Issue lock
 
+**Spec revision:**
+[Approved OS-managed lock design](../specs/2026-10-16-issue-lock-design.md).
+This revision replaces the unsafe `wx`/PID-check/unlink algorithm.
+
 **Files:**
 
 - Create: `src/kernel/lock.ts`
 - Test: `src/kernel/lock.test.ts`
+- Create if needed: `test-support/issue-lock-child.mjs` for subprocess barriers
+- Modify: `package.json`, `package-lock.json`, `npm-shrinkwrap.json`
+- Modify: `nix/package.nix` for the dependency hash and necessary native build
+  support
 
 **Interfaces:**
 
@@ -589,35 +597,56 @@ deletes then creates the repository and creates the fixture issues; missing
 ```ts
 export type LockRecord = { pid: number; startedAt: string };
 export class LockHeldError extends Error {
-  readonly record: LockRecord;
+  readonly record: LockRecord | undefined;
 }
 export type IssueLock = { path: string; release(): Promise<void> };
-export function isProcessAlive(pid: number): boolean; // process.kill(pid, 0); EPERM counts as alive
 export async function acquireLock(
   path: string,
-  options?: {
-    pid?: number;
-    now?: () => Date;
-    alive?: (pid: number) => boolean;
-  },
+  options?: { pid?: number; now?: () => Date },
 ): Promise<IssueLock>;
 export async function readLock(path: string): Promise<LockRecord | undefined>;
 ```
 
-Create the parent directory, open with `wx`. On `EEXIST` read the record: if
-`alive(pid)` throw `LockHeldError`; otherwise unlink and retry once. A record
-that fails to parse counts as stale.
+Use `fs-ext@2.1.1` nonblocking exclusive `flock` on a permanent file. Open
+without truncation, acquire once, then publish JSON through the held handle.
+Keep that handle until release. Never unlink or replace the file or its
+containing directory. PID metadata never authorizes ownership. `readLock` is
+diagnostic-only. Missing, empty, or malformed JSON gives `undefined`; genuine
+filesystem errors propagate. Contention can lack valid owner metadata. Close
+losing/error handles. Release clears JSON while locked, then closes in
+`finally`. Repeated release calls share one promise.
 
-- [ ] **Step 1: Write failing tests**
+- [ ] **Step 1: Write failing behavioral tests**
 
-Acquire writes JSON with `pid` and `startedAt`. Second acquire with an `alive`
-stub returning true throws `LockHeldError`. Stale lock (alive stub false) is
-replaced and the new pid is written. `release()` removes the file; a second
-`release()` does not throw. Corrupt lock content is treated as stale.
+Use real OS locks and temporary directories. Use IPC barriers for subprocess
+ordering, not sleep-based stress loops. Prove these cases:
 
-- [ ] **Step 2: Run tests; expect failure**
-- [ ] **Step 3: Implement**
-- [ ] **Step 4: Run tests; expect PASS**
+1. Acquire writes `pid` and `startedAt`; an independent open contends even in
+   the same process. Missing metadata never permits a second owner.
+2. Two contenders recovering stale or corrupt diagnostic JSON yield one owner.
+3. A preopened contender cannot acquire an old inode while a successor owns the
+   permanent file. The inode stays unchanged across ownership changes.
+4. Release clears diagnostics but leaves the file. Repeated/concurrent old
+   release calls cannot disturb a successor or close a reused descriptor.
+5. Owner process exit releases ownership without PID-based reclamation. An
+   ordinary spawned child does not keep the owner's descriptor alive.
+6. Metadata-write failure closes ownership. Genuine open/read/lock errors
+   propagate rather than triggering recovery.
+
+- [ ] **Step 2: Run `node --test src/kernel/lock.test.ts`; expect behavioral
+      RED**
+- [ ] **Step 3: Add the native dependency and implement the lock**
+
+Use suitable development typings. Keep both npm lock artifacts identical.
+Refresh the Nix dependency hash. Add native toolchain inputs only if the pinned
+Nix builder needs them. Do not change Pi or skill-pack versions.
+
+- [ ] **Step 4: Run covering tests, `npm test`, `npm run lint`, `npm run build`,
+      and `nix build .#patchmill --no-link`; expect PASS**
+
+Stage new tracked sources before the normal git-backed Nix build. Report which
+platform was tested. Do not claim a Linux run proves Darwin support.
+
 - [ ] **Step 5: Commit** `feat(kernel): add the per-issue run lock`
 
 ---
@@ -1171,10 +1200,13 @@ builds deps (`createHost`, `runCommand`, `createKernelGit`,
 codes: `completed`, `stopped`, `dry-run`, `no-work` give 0; `refused` and
 `claimed-elsewhere` give 1.
 
-`release/main.ts`: `--issue N` required. Read the lock; if the pid is alive,
-print "Run attempt is active" and return 1. Otherwise remove the lock, and when
-the issue carries `inProgress`, `setLabels([ready], [inProgress])`; print what
-changed.
+`release/main.ts`: `--issue N` required. Acquire the same issue lock before
+reading or changing the issue's labels. On `LockHeldError`, print "Run attempt
+is active" and return 1, even if owner metadata is unavailable. While holding
+the lock, when the issue carries `inProgress`, call
+`setLabels([ready], [inProgress])`; print what changed. Always release in
+`finally`. Do not use `readLock` or PID liveness to authorize mutations. Never
+remove the permanent lock file or its containing directory.
 
 The fake Pi `pullRequest` step reads `PATCHMILL_FAKE_HOST_STATE`, appends or
 updates a `PullRequest` with `headBranch` = current branch
@@ -1231,9 +1263,11 @@ worktree and `origin`.
 
 `run-once/main.test.ts`: `--issue x` returns 1 with a message; `--dry-run` with
 an injected `runOneIssue` stub prints the derived phase; outcome to exit code
-mapping. `release/main.test.ts`: live pid returns 1; stale lock with
-`in-progress` swaps to `agent-ready`; no lock and no label prints "nothing to
-release".
+mapping. `release/main.test.ts`: held OS lock returns 1 without label mutation,
+including when owner metadata is missing; unlocked stale diagnostics with
+`in-progress` swap to `agent-ready`; no label prints "nothing to release". Prove
+a competing run cannot acquire during the label reset. Prove successful and
+failing host operations release the handle without removing the lock file.
 
 - [ ] **Step 6: Implement the two CLI files; register `run-once` and `release`;
       run `npm test`; expect PASS**
