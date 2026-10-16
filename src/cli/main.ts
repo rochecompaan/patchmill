@@ -1,3 +1,4 @@
+import { main as labelsMain } from "./commands/labels/main.ts";
 import { main as setupTestRepoMain } from "./commands/setup-test-repo/main.ts";
 import { main as versionMain } from "./commands/version/main.ts";
 
@@ -90,6 +91,7 @@ export function createCliMain(
 }
 
 const COMMANDS = new Map<string, CommandHandler>([
+  ["labels", labelsMain],
   ["version", versionMain],
   ["setup-test-repo", setupTestRepoMain],
 ]);
