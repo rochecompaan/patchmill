@@ -107,7 +107,7 @@ New tree:
 | `src/process/command.ts`                                          | `CommandRunner`: spawn, capture, env, cwd.                                             |
 | `src/kernel/names.ts`                                             | Slug, branch, worktree, spec, plan, run directory rules.                               |
 | `src/kernel/result.ts`                                            | Last fenced JSON block to `{ status, summary }`.                                       |
-| `src/kernel/lock.ts`                                              | `O_EXCL` lock with stale-process replacement.                                          |
+| `src/kernel/lock.ts`                                              | Permanent-inode OS advisory issue lock.                                                |
 | `src/kernel/pi-supervisor.ts`                                     | Spawn Pi in its own group, timeout, log tee.                                           |
 | `src/kernel/pi-cost.ts`                                           | Best-effort usage sum from session files.                                              |
 | `src/kernel/git.ts`                                               | Fetch, remote branch lookup, worktree creation, dirty and unpushed checks.             |
@@ -1101,7 +1101,21 @@ returns 1.
 - Modify: `src/cli/main.ts`, `test-support/fake-pi.mjs` (pull request step
   writes to the host state file)
 - Test: `src/kernel/run-once.test.ts`, `src/cli/commands/run-once/main.test.ts`,
-  `src/cli/commands/release/main.test.ts`
+  `src/cli/commands/release/main.test.ts`, `src/kernel/run-fixtures.test.ts`
+- If needed, split kernel failure cases into
+  `src/kernel/run-once-failures.test.ts` and shared setup into
+  `test-support/run-once-fixture.ts` to keep test files focused.
+
+Implement this task in four serial stages with one writer per checkout:
+
+1. Add the fake host and fake Pi pull request step. Prove their shared file
+   behavior with focused tests and commit the fixture stage.
+2. Add the kernel run loop and end-to-end tests. Commit after its focused
+   behavior and type checks pass.
+3. Add the release command and its real issue-lock tests. Commit after its
+   focused checks pass.
+4. Add the run-once CLI and register both commands. Run the full test suite,
+   lint, and build. Review the combined Task 14 diff independently.
 
 **Interfaces:**
 
@@ -1178,14 +1192,19 @@ Flow of `runOneIssue`:
    issue is closed give `claimed-elsewhere`, release the lock, change nothing
    else (Review Focus 4).
 5. Create the run directory. Loop at most three sessions: `collectFacts`
-   (ambiguous branches stop with `needsInfo`), `derivePhase`; a `stop` ends the
-   loop; otherwise write `prompt.md`, `supervisePi` with the phase skill,
-   `parseAgentResult`, `collectFacts` again, `hasUncommittedChanges`,
-   `unpushedCommits`, `verifyOutcome`. `advance` continues unless `planOnly` and
-   the phase was `planning` (then stop with `specReview` when the gate is on,
-   else `needsInfo` with summary "planning complete"). If the re-derived phase
-   equals the phase just run, stop with `needsInfo` and a comment naming the
-   expected artifact path.
+   (ambiguous branches stop with `needsInfo`), `derivePhase`. On the first
+   decision only, an issue that carried `ready` before claim can revise an
+   existing spec that lacks required approval. Run one `planning` session in
+   place of the `specReview` stop. Keep the facts and approval unchanged. A
+   verified revision stops at `specReview` without entering implementation.
+   Other results follow normal verification. A merged PR still stops at `done`.
+   All other derived stops end the loop. Otherwise write `prompt.md`,
+   `supervisePi` with the phase skill, `parseAgentResult`, `collectFacts` again,
+   `hasUncommittedChanges`, `unpushedCommits`, `verifyOutcome`. `advance`
+   continues unless `planOnly` and the phase was `planning` (then stop with
+   `specReview` when the gate is on, else `needsInfo` with summary "planning
+   complete"). If the re-derived phase equals the phase just run, stop with
+   `needsInfo` and a comment naming the expected artifact path.
 6. `finally`: `setLabels(releaseSwap(outcome))`, one `commentIssue` with the
    outcome line, summary, `costLine`, warnings; write `result.json`
    (`{ runId, issue, startedAt, finishedAt, outcome, sessions: [{ phase, exitCode, timedOut, status }] }`);
@@ -1224,7 +1243,7 @@ worktree and `origin`.
    `docs/specs/2026-10-15-issue-9-add-login-design.md`, commits, pushes, opens a
    draft PR, returns `done`. Expect labels `spec-review` only (no `in-progress`,
    no `agent-ready`), one comment containing the summary and `Cost:`, lock
-   removed, `result.json` present.
+   released with its permanent file retained, `result.json` present.
 2. Approved spec to ready PR: start with the spec on
    `origin/agent/issue-9-add-login`, `spec-approved` on the issue; session 1
    writes the plan and returns `done`; session 2 commits code, pushes, marks the
@@ -1240,8 +1259,9 @@ worktree and `origin`.
    comment names the log path, process gone.
 6. Invalid result: fake Pi prints prose only. Expect `needs-info` with
    `no result`.
-7. Stale lock: pre-write a lock with pid 999999. Expect the run proceeds. Live
-   lock (own pid): expect `refused`.
+7. Diagnostic JSON with pid 999999 or the current PID does not block an unlocked
+   file. Expect the run proceeds. A real held OS lock gives `refused`, including
+   when its diagnostic JSON is empty.
 8. Merged PR: state has a merged PR on the branch. Expect `agent-done`, no Pi
    invocation (counter file absent).
 9. Several branches: push `agent/issue-9-a` and `agent/issue-9-b`. Expect
