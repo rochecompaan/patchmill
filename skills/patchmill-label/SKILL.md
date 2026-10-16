@@ -7,6 +7,13 @@ description: >-
 
 # Patchmill Label
 
+Planning and implementation share one issue branch and worktree. Label changes
+do not create phase branches, move artifacts, or remove worktrees. This
+interactive skill is not available to kernel planning, implementation, or triage
+agents. Read `patchmill.config.json` for the current provider and configured
+label names. Do not infer approval or readiness from a local artifact or a
+completed command.
+
 ## Parse and context
 
 Use only in a human-controlled interactive coding-agent session; stop in
