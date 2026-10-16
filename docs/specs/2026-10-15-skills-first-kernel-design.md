@@ -164,6 +164,13 @@ The phase follows from the facts, in this order:
 | F3 is false                | Phase `planning`. The envelope says the spec exists and names it.        |
 | otherwise                  | Phase `implementation`. The envelope names the PR and its state if any.  |
 
+One exception applies when the issue carried `agent-ready` before the claim. If
+its spec exists and lacks required approval, the attempt runs one initial
+`planning` session to revise it. The exception does not change the facts or
+grant approval. A verified revision stops at `spec-review`. It does not enter
+`implementation` in that attempt. Other results follow the verification table.
+The merged pull request stop still takes precedence.
+
 A Run attempt advances through phases in order. Each phase is a fresh Pi
 session. The kernel re-derives the facts between sessions. The attempt stops
 when a phase needs a human, when the implementation phase verifies, or when
@@ -229,8 +236,8 @@ flow only.
 To resume any stopped issue, a human adds `agent-ready`. For a spec stop, the
 human also adds `spec-approved`, or leaves it off and adds review comments on
 the draft pull request or the issue. In the second case the next Run attempt
-derives phase `planning` again, and the skill tells the agent to read the review
-comments and revise the spec.
+uses the one-session revision exception above. The skill tells the agent to read
+the review comments and revise the spec.
 
 Re-running an issue that already has an open, ready pull request derives phase
 `implementation`. The envelope names the pull request, and the implementation
